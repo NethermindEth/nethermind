@@ -390,7 +390,7 @@ public class FrameTxSignatureValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = sender ?? TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, null, 100_000, default, default)],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000, default, default)],
             FrameSignatures = [],
             GasPrice = 1,
             DecodedMaxFeePerGas = 100,

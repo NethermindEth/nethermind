@@ -147,6 +147,7 @@ public class KademliaSimulation
         {
             TestNode[] nodesClosest = await mainNode.LookupNodesClosest(targetNode, cts.Token);
             HashSet<ValueHash256> expectedNodeClosestK = nodeIds
+                .Append(mainNodeHash)
                 .Order(Comparer<ValueHash256>.Create((n1, n2) => ValueHash256KademliaDistance.Instance.Compare(n1, n2, targetNode)))
                 .Take(_config.KSize)
                 .ToHashSet();
@@ -168,7 +169,9 @@ public class KademliaSimulation
         TimeSpan queryDuration = sw.Elapsed;
         double totalNodesReturned = nodeIds.Count * _config.KSize;
 
-        Assert.That(closestKCount / totalNodesReturned, Is.GreaterThan(0.95));
+        // Alpha > 1 lookups interleave their Task.Run workers, so their ratio is scheduling-dependent.
+        double minClosestKRatio = _config.Alpha == 1 ? 0.99 : 0.93;
+        Assert.That(closestKCount / totalNodesReturned, Is.GreaterThan(minClosestKRatio));
 
         TestContext.Out.WriteLine($"Closest K ratio {closestKCount / totalNodesReturned}");
         TestContext.Out.WriteLine($"Missed ratio {missedCount / totalNodesReturned}");
@@ -195,7 +198,8 @@ public class KademliaSimulation
         public bool SimulateLatency { get; set; } = false;
 
         internal ConcurrentDictionary<ValueHash256, ILifetimeScope> _nodes = new();
-        private readonly ValueHashKeyOperator<TestNode> _nodeHashProvider = new(static node => node.Hash);
+        // Bootstrapped in creation order: _nodes iterates in process-seeded hash order.
+        private readonly List<ILifetimeScope> _nodesInCreationOrder = [];
         private readonly Random _random = new(0);
 
         private bool TryGetReceiver(TestNode receiverHash, out ReceiverForNode contentKademliaMessageReceiver)
@@ -219,7 +223,7 @@ public class KademliaSimulation
                 .AddModule(new KademliaModule<ValueHash256, TestNode, ValueHash256>())
                 .AddSingleton<ITimestamper>(new ManualTimestamper(new DateTime(2025, 5, 13, 21, 0, 0, DateTimeKind.Utc)))
                 .AddSingleton<IKademliaDistance<ValueHash256>>(ValueHash256KademliaDistance.Instance)
-                .AddSingleton<IKeyOperator<ValueHash256, TestNode, ValueHash256>>(_nodeHashProvider)
+                .AddSingleton<IKeyOperator<ValueHash256, TestNode, ValueHash256>>(new ValueHashKeyOperator<TestNode>(static node => node.Hash, _random))
                 .AddSingleton(new KademliaConfig<TestNode>
                 {
                     CurrentNodeId = nodeIDTestNode,
@@ -227,6 +231,8 @@ public class KademliaSimulation
                     Alpha = config.Alpha,
                     Beta = config.Beta,
                     RefreshInterval = TimeSpan.FromHours(1),
+                    // A delayed wall-clock ping on full buckets would reorder the LRU mid-bootstrap.
+                    RefreshPingDelay = TimeSpan.FromHours(1),
                 })
                 .AddSingleton<IKademliaMessageSender<ValueHash256, TestNode>>(new SenderForNode(nodeIDTestNode, this))
                 .AddSingleton<ReceiverForNode>()
@@ -235,6 +241,7 @@ public class KademliaSimulation
             IContainer container = builder.Build();
 
             _nodes[nodeID] = container;
+            _nodesInCreationOrder.Add(container);
 
             return container.Resolve<TestKademlia>();
         }
@@ -303,9 +310,9 @@ public class KademliaSimulation
 
         public async Task Bootstrap(CancellationToken token)
         {
-            foreach (KeyValuePair<ValueHash256, ILifetimeScope> kv in _nodes)
+            foreach (ILifetimeScope node in _nodesInCreationOrder)
             {
-                await kv.Value.Resolve<IKademlia<ValueHash256, TestNode>>().Bootstrap(token);
+                await node.Resolve<IKademlia<ValueHash256, TestNode>>().Bootstrap(token);
             }
         }
     }

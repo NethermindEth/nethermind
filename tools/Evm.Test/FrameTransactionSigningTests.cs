@@ -202,8 +202,8 @@ public class FrameTransactionSigningTests
             [
                 new FrameForRpc
                 {
-                    Mode = TxFrame.ModeVerify,
-                    Flags = TxFrame.ApproveExecutionAndPayment,
+                    Mode = (byte)FrameMode.Verify,
+                    Flags = (byte)FrameFlags.ApproveExecutionAndPayment,
                     ExecutionGasLimit = 50_000,
                     StateGasLimit = 25_000,
                     Value = UInt256.Zero,

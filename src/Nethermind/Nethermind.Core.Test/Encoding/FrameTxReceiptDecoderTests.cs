@@ -781,6 +781,64 @@ public class FrameTxReceiptDecoderTests
         Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpException>());
     }
 
+    /// <summary>A frame transaction has at least one frame, so a receipt without one is malformed: accepting it
+    /// would derive a successful transaction status from nothing.</summary>
+    /// <remarks>Built rather than round-tripped, the encoder refusing an empty frame list first — the payload
+    /// decoder is the only place these bytes can reach.</remarks>
+    [Test]
+    public void PayloadDecode_FrameReceiptWithoutFrames_Throws()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            // The same builder with one frame has to decode, and read back the fields ahead of the frame
+            // list, or a change to DecodePayload's read order would leave the empty case below throwing
+            // over a mis-shaped payload rather than over the guard it was written for.
+            TxReceipt decoded = DecodeFrameReceiptPayload(FrameReceiptPayload(frameCount: 1));
+            Assert.That(decoded.GasUsedTotal, Is.EqualTo(21_000UL));
+            Assert.That(decoded.Payer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(decoded.FrameReceipts, Has.Length.EqualTo(1));
+
+            Assert.That(() => DecodeFrameReceiptPayload(FrameReceiptPayload(frameCount: 0)),
+                Throws.InstanceOf<RlpException>());
+        }
+    }
+
+    /// <summary>A <c>[cumulative_gas_used, payer, [frame, ...]]</c> payload carrying
+    /// <paramref name="frameCount"/> log-free frames.</summary>
+    private static byte[] FrameReceiptPayload(int frameCount)
+    {
+        int gasUsedLength = Rlp.LengthOf(21_000UL) + Rlp.LengthOf(0UL);
+        int frameLength = Rlp.LengthOf((ulong)TxFrameReceipt.StatusSuccess)
+                          + Rlp.LengthOfSequence(gasUsedLength)
+                          + Rlp.LengthOfSequence(0);
+        int framesLength = frameCount * Rlp.LengthOfSequence(frameLength);
+
+        byte[] payload = new byte[Rlp.LengthOf(21_000UL) + Rlp.LengthOf(TestItem.AddressA) + Rlp.LengthOfSequence(framesLength)];
+        RlpWriter writer = new(payload);
+        writer.Encode(21_000UL);
+        writer.Encode(TestItem.AddressA);
+        writer.StartSequence(framesLength);
+        for (int i = 0; i < frameCount; i++)
+        {
+            writer.StartSequence(frameLength);
+            writer.Encode((ulong)TxFrameReceipt.StatusSuccess);
+            writer.StartSequence(gasUsedLength);
+            writer.Encode(21_000UL);
+            writer.Encode(0UL);
+            writer.StartSequence(0);
+        }
+
+        return payload;
+    }
+
+    private static TxReceipt DecodeFrameReceiptPayload(byte[] payload)
+    {
+        TxReceipt receipt = new();
+        RlpReader reader = new(payload);
+        FrameReceiptRlp.DecodePayload(ref reader, receipt, payload.Length, RlpBehaviors.None);
+        return receipt;
+    }
+
     /// <summary>Where the first frame's status byte sits in an encoded receipt message.</summary>
     /// <remarks>Walks the wrapper, the type byte and the payload fields the decoder reads before the status,
     /// so a layout change moves this with it rather than silently patching the wrong byte.</remarks>

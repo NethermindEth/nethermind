@@ -166,6 +166,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             // tx is present, but not cached, at this point we need to load it from db...
             if (_blobTxStorage.TryGet(hash, lightTx.SenderAddress!, lightTx.Timestamp, out fullBlobTx))
             {
+                RestoreAdmissionMetadata(fullBlobTx, lightTx);
                 // ...and we are saving recently used blob tx to cache
                 _blobTxCache.Set(hash, fullBlobTx);
                 return true;
@@ -295,7 +296,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             return false;
         }
 
+        // Built from the storage record, so it is payer-less exactly as a full reload is.
         blobTx = BlobTransactionPayload.Elide(loadedTx);
+        RestoreAdmissionMetadata(blobTx, currentLightTx);
         _blobTxMetadataCache.Set(hash, blobTx);
 
         return true;
@@ -369,10 +372,10 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
          Span<ReadOnlyMemory<byte[]>> proofs)
     {
         int found = 0;
-        using ArrayPoolList<TxLookupKey> dbKeys = new(requestedBlobVersionedHashes.Length);
-        using ArrayPoolList<Transaction> dbLightTransactions = new(requestedBlobVersionedHashes.Length);
-        using ArrayPoolList<int> missOutputIndex = new(requestedBlobVersionedHashes.Length);
-        using ArrayPoolList<int> missBlobIndex = new(requestedBlobVersionedHashes.Length);
+        using ArrayPoolListRef<TxLookupKey> dbKeys = new(requestedBlobVersionedHashes.Length);
+        using ArrayPoolListRef<Transaction> dbLightTransactions = new(requestedBlobVersionedHashes.Length);
+        using ArrayPoolListRef<int> missOutputIndex = new(requestedBlobVersionedHashes.Length);
+        using ArrayPoolListRef<int> missBlobIndex = new(requestedBlobVersionedHashes.Length);
 
         // Phase 1: Under lock — in-memory lookups only
         using (McsLock.Disposable lockRelease = Lock.Acquire())
@@ -441,7 +444,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             try
             {
                 Array.Clear(dbResults, 0, missCount);
-                _blobTxStorage.TryGetMany(dbKeys.UnsafeGetInternalArray(), missCount, dbResults);
+                ReadDistinctBlobTransactions(dbKeys.UnsafeGetInternalArray(), missCount, dbResults);
 
                 using McsLock.Disposable lockRelease = Lock.Acquire();
                 for (int m = 0; m < missCount; m++)
@@ -495,6 +498,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
                     if (cacheStorageResult)
                     {
+                        RestoreAdmissionMetadata(fullTx, currentLightTx);
                         _blobTxCache.Set(dbKey.Hash, fullTx);
                     }
                 }
@@ -506,6 +510,75 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
 
         return found;
+    }
+
+    private void ReadDistinctBlobTransactions(TxLookupKey[] keys, int count, Transaction?[] results)
+    {
+        if (count == 1)
+        {
+            _blobTxStorage.TryGetMany(keys, count, results);
+            return;
+        }
+
+        using ArrayPoolListRef<int> resultIndices = new(count, count);
+        int distinctCount = 0;
+        if (count <= 512)
+        {
+            int tableSize = 2;
+            while (tableSize < count * 2) tableSize <<= 1;
+            using ArrayPoolListRef<int> slots = new(tableSize, tableSize);
+            for (int i = 0; i < count; i++)
+            {
+                int slot = keys[i].GetHashCode() & (tableSize - 1);
+                while (slots[slot] != 0 && keys[slots[slot] - 1] != keys[i])
+                {
+                    slot = (slot + 1) & (tableSize - 1);
+                }
+
+                if (slots[slot] == 0)
+                {
+                    slots[slot] = i + 1;
+                    resultIndices[i] = distinctCount++;
+                }
+                else
+                {
+                    resultIndices[i] = resultIndices[slots[slot] - 1];
+                }
+            }
+        }
+        else
+        {
+            Dictionary<TxLookupKey, int> indices = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                if (!indices.TryGetValue(keys[i], out int index))
+                {
+                    index = distinctCount++;
+                    indices.Add(keys[i], index);
+                }
+
+                resultIndices[i] = index;
+            }
+        }
+
+        if (distinctCount == count)
+        {
+            _blobTxStorage.TryGetMany(keys, count, results);
+            return;
+        }
+
+        using ArrayPoolListRef<TxLookupKey> distinctKeys = new(distinctCount);
+        for (int i = 0; i < count; i++)
+        {
+            if (resultIndices[i] == distinctKeys.Count) distinctKeys.Add(keys[i]);
+        }
+        _blobTxStorage.TryGetMany(distinctKeys.UnsafeGetInternalArray(), distinctCount, results);
+
+        // Expand backwards so mapped results are not overwritten before reuse.
+        for (int i = count - 1; i >= 0; i--)
+        {
+            results[i] = results[resultIndices[i]];
+        }
     }
 
     private bool TryGetFullBlobCandidateNonLocked(
@@ -705,9 +778,21 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 return false;
             }
 
+            RestoreAdmissionMetadata(fullBlobTx, currentLightTx);
             _blobTxCache.Set(hash, fullBlobTx);
             return true;
         }
+    }
+
+    /// <summary>Puts back onto a storage-loaded copy what only the pooled record carries.</summary>
+    /// <remarks>
+    /// EIP-8141 resolves the payer at admission and records it on the light record, but the wire form kept in
+    /// storage has no room for it, so a reloaded copy would otherwise read as having resolved none.
+    /// </remarks>
+    private static void RestoreAdmissionMetadata(Transaction fullBlobTx, Transaction lightTx)
+    {
+        fullBlobTx.PayerAddress = lightTx.PayerAddress;
+        fullBlobTx.PayerExposure = lightTx.PayerExposure;
     }
 
     protected override bool Remove(ValueHash256 hash, out Transaction? tx)
@@ -853,8 +938,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         TryGetBlobTxSortingEquivalent(blobTx.Hash!, out Transaction? lightTx);
         if (lightTx is LightTransaction light)
         {
-            BlobCellMask cellMask = (blobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
-            light.UpdateBlobPoolMetadata(cellMask, blobTx.GetLength());
+            light.UpdateBlobPoolMetadata(blobTx);
         }
 
         _blobTxCache.Set(blobTx.Hash, blobTx);

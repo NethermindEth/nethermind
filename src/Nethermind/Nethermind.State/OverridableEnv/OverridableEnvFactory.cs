@@ -3,19 +3,26 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.State.OverridableEnv;
 
-public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetimeScope, ISpecProvider specProvider) : IOverridableEnvFactory
+public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifetimeScope parentLifetimeScope, ISpecProvider specProvider, IPrefixStateSeedSource? prefixSeeds = null) : IOverridableEnvFactory
 {
     public IOverridableEnv Create()
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
+        StateReadOverlaySlot? readOverlay = prefixSeeds is { Enabled: true } ? new StateReadOverlaySlot() : null;
+        IWorldStateScopeProvider scopeProvider = readOverlay is null
+            ? overridableScope.WorldState
+            : new OverlaidScopeProvider(overridableScope.WorldState, readOverlay);
+
         // eth_simulateV1 and the tracers share these envs and bring their own recorder, so only add one
         // where a diff can actually be read.
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
@@ -23,7 +30,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
         ILifetimeScope childLifetimeScope = parentLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder
-                .AddSingleton<IWorldStateScopeProvider>(overridableScope.WorldState);
+                .AddSingleton<IWorldStateScopeProvider>(scopeProvider);
             if (recordsTransactionDiffs)
             {
                 // At scope level so the tx processor and the code repository share one slice.
@@ -37,32 +44,30 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
         });
 
         OverridableSpecProvider overridableSpecProvider = new(specProvider);
-        return new OverridableEnv(overridableScope, childLifetimeScope, specProvider, overridableSpecProvider);
+        return new OverridableEnv(overridableScope, childLifetimeScope, specProvider, overridableSpecProvider, readOverlay);
     }
 
     private class OverridableEnv(
         IOverridableWorldScope overridableScope,
         ILifetimeScope childLifetimeScope,
         ISpecProvider specProvider,
-        OverridableSpecProvider overridableSpecProvider
+        OverridableSpecProvider overridableSpecProvider,
+        StateReadOverlaySlot? readOverlay
     ) : Module, IOverridableEnv, IDisposable
     {
         private IDisposable? _worldScopeCloser;
         private readonly IOverridableCodeInfoRepository _codeInfoRepository = childLifetimeScope.Resolve<IOverridableCodeInfoRepository>();
         private readonly IWorldState _worldState = childLifetimeScope.Resolve<IWorldState>();
 
-        public IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null)
+        public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, BlockOverride? blockOverride, [NotNullWhen(true)] out IDisposable? scope)
         {
-            if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
-
-            Reset();
-
-            if (specOverride is not null)
-                overridableSpecProvider.SetOverride(specOverride);
-
             // Open the scope on the real base block first (its committed (number, root) state), then apply the block
             // override (e.g. eth_call blockOverride.number) on top.
-            _worldScopeCloser = _worldState.BeginScope(header);
+            if (!TryOpen(specOverride, () => _worldState.TryBeginScope(header, out _worldScopeCloser)))
+            {
+                scope = null;
+                return false;
+            }
 
             try
             {
@@ -80,13 +85,55 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
                     }
                 }
 
-                return new Scope(this);
+                scope = new Scope(this);
+                return true;
             }
             catch
             {
                 Reset();
                 throw;
             }
+        }
+
+        public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out IDisposable? scope)
+        {
+            if (!TryOpen(specOverride, () => _worldState.TryBeginScopeAtTarget(targetBlock, out _worldScopeCloser)))
+            {
+                scope = null;
+                return false;
+            }
+
+            try
+            {
+                // Committed on top of the parent state at the target's height, where the target's own commit lands too.
+                if (stateOverride is not null)
+                {
+                    _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(targetBlock), targetBlock.Number);
+                }
+
+                scope = new Scope(this);
+                return true;
+            }
+            catch
+            {
+                Reset();
+                throw;
+            }
+        }
+
+        private bool TryOpen(IReleaseSpec? specOverride, Func<bool> beginScope)
+        {
+            if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
+
+            Reset();
+
+            if (specOverride is not null)
+                overridableSpecProvider.SetOverride(specOverride);
+
+            if (beginScope()) return true;
+
+            Reset();
+            return false;
         }
 
         private class Scope(OverridableEnv env) : IDisposable
@@ -96,6 +143,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
 
         private void Reset()
         {
+            readOverlay?.Disarm();
             _codeInfoRepository.ResetOverrides();
             overridableSpecProvider.ResetOverride();
 
@@ -104,15 +152,18 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
             overridableScope.ResetOverrides();
         }
 
-        protected override void Load(ContainerBuilder builder) =>
+        protected override void Load(ContainerBuilder builder)
+        {
             builder
                 .AddScoped<IWorldState>(_worldState)
                 .AddScoped<IStateReader>(overridableScope.GlobalStateReader)
                 .AddScoped<IOverridableEnv>(this)
                 .AddScoped<ICodeInfoRepository>(_codeInfoRepository)
                 .AddScoped<IOverridableCodeInfoRepository>(_codeInfoRepository)
-                .AddScoped<ISpecProvider>(overridableSpecProvider)
-            ;
+                .AddScoped<ISpecProvider>(overridableSpecProvider);
+
+            if (readOverlay is not null) builder.AddScoped<StateReadOverlaySlot>(readOverlay);
+        }
 
         public void Dispose() =>
             // Note: This is the env's dispose, not the scope dispose.

@@ -80,7 +80,7 @@ public class TxPoolSenderTests
         DecodedMaxFeePerGas = 100,
         Frames =
         [
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
         ],
         FrameSignatures = [],
         NonceKeys = nonceKeys,

@@ -79,7 +79,7 @@ internal static unsafe class BN254
                 return false;
 
             Unsafe.SkipInit(out mclBnFr y);
-            if (mclBnFr_setBigEndianMod(ref y, (nint)data + chunkSize, scalarSize) == -1 || mclBnFr_isValid(y) == 0)
+            if (mclBnFr_setBigEndianMod(ref y, data + chunkSize, scalarSize) == -1 || mclBnFr_isValid(y) == 0)
                 return false;
 
             mclBnG1_mul(ref x, x, y);  // x *= y
@@ -183,8 +183,8 @@ internal static unsafe class BN254
 
             mclBn_millerLoopVec(
                 ref hasMl ? ref ml : ref acc,
-                in Unsafe.AsRef<mclBnG1>(g1Bytes),
-                in Unsafe.AsRef<mclBnG2>(g2Bytes),
+                (mclBnG1*)g1Bytes,
+                (mclBnG2*)g2Bytes,
                 (nuint)nonZeroInChunk);
 
             if (hasMl)
@@ -228,11 +228,11 @@ internal static unsafe class BN254
 
         // x
         CopyReverse32(data, tmp);
-        if (mclBnFp_deserialize(ref point.x, (nint)tmp, chunkSize) == nuint.Zero)
+        if (mclBnFp_deserialize(ref point.x, tmp, chunkSize) == nuint.Zero)
             return false;
         // y
         CopyReverse32(data + chunkSize, tmp);
-        if (mclBnFp_deserialize(ref point.y, (nint)tmp, chunkSize) == nuint.Zero)
+        if (mclBnFp_deserialize(ref point.y, tmp, chunkSize) == nuint.Zero)
             return false;
 
         mclBnFp_setInt32(ref point.z, 1);
@@ -258,22 +258,22 @@ internal static unsafe class BN254
 
         // x.im
         CopyReverse32(data, tmp);
-        if (mclBnFp_deserialize(ref point.x.d1, (nint)tmp, chunkSize) == nuint.Zero)
+        if (mclBnFp_deserialize(ref point.x.d1, tmp, chunkSize) == nuint.Zero)
             return false;
 
         // x.re
         CopyReverse32(data + chunkSize, tmp);
-        if (mclBnFp_deserialize(ref point.x.d0, (nint)tmp, chunkSize) == nuint.Zero)
+        if (mclBnFp_deserialize(ref point.x.d0, tmp, chunkSize) == nuint.Zero)
             return false;
 
         // y.im
         CopyReverse32(data + chunkSize * 2, tmp);
-        if (mclBnFp_deserialize(ref point.y.d1, (nint)tmp, chunkSize) == nuint.Zero)
+        if (mclBnFp_deserialize(ref point.y.d1, tmp, chunkSize) == nuint.Zero)
             return false;
 
         // y.re
         CopyReverse32(data + chunkSize * 3, tmp);
-        if (mclBnFp_deserialize(ref point.y.d0, (nint)tmp, chunkSize) == nuint.Zero)
+        if (mclBnFp_deserialize(ref point.y.d0, tmp, chunkSize) == nuint.Zero)
             return false;
 
         mclBnFp_setInt32(ref point.z.d0, 1);
@@ -287,10 +287,10 @@ internal static unsafe class BN254
 
         fixed (byte* ptr = &MemoryMarshal.GetArrayDataReference(output))
         {
-            if (mclBnFp_getLittleEndian((nint)ptr, chunkSize, point.x) == nuint.Zero)
+            if (mclBnFp_getLittleEndian(ptr, chunkSize, point.x) == nuint.Zero)
                 return false;
 
-            if (mclBnFp_getLittleEndian((nint)ptr + chunkSize, chunkSize, point.y) == nuint.Zero)
+            if (mclBnFp_getLittleEndian(ptr + chunkSize, chunkSize, point.y) == nuint.Zero)
                 return false;
 
             CopyReverse32(ptr, ptr); // To big-endian

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.TransactionProcessing;
@@ -20,6 +21,116 @@ namespace Nethermind.TxPool
         private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new NetworkTransactionSizeCalculator(TxDecoder.Instance);
 
         public static int GetLength(this Transaction tx, bool shouldCountBlobs = true) => tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
+
+        /// <summary>
+        /// Size in bytes of the blob-elided typed transaction encoding of <paramref name="tx"/>, as announced in
+        /// <c>NewPooledTransactionHashes</c> for eth/72 and measured by peers after decoding a
+        /// <c>PooledTransactions</c> response.
+        /// </summary>
+        /// <remarks>
+        /// The current devp2p text calls for the consensus encoding size, but established clients size-check the
+        /// delivered encoding instead. See <see href="https://github.com/ethereum/devp2p/pull/281"/>.
+        /// </remarks>
+        public static int GetElidedNetworkEncodingSize(this Transaction tx)
+        {
+            if (tx is LightTransaction lightTx)
+            {
+                return lightTx.GetElidedNetworkEncodingSize();
+            }
+
+            if (!tx.SupportsBlobs)
+            {
+                return tx.GetLength();
+            }
+
+            if (tx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
+            {
+                return 0;
+            }
+
+            int versionLength = GetProofVersionLength(wrapper.Version);
+            if (versionLength < 0)
+            {
+                return 0;
+            }
+
+            int commitmentsLength = GetFixedByteStringsSequenceLength(wrapper.Commitments.Length, Ckzg.BytesPerCommitment);
+            int proofsLength = GetFixedByteStringsSequenceLength(wrapper.Proofs.Length, Ckzg.BytesPerProof);
+            if (commitmentsLength == 0 || proofsLength == 0)
+            {
+                return 0;
+            }
+
+            long contentLength = (long)tx.GetLength(shouldCountBlobs: false) - 1
+                + versionLength
+                + Rlp.OfEmptyList.Length
+                + commitmentsLength
+                + proofsLength;
+            return GetTypedSequenceLength(contentLength);
+        }
+
+        internal static int CalculateElidedNetworkEncodingSize(int consensusEncodingSize, ProofVersion? proofVersion, int blobCount)
+        {
+            if (consensusEncodingSize <= 1 || blobCount <= 0 || proofVersion is null)
+            {
+                return 0;
+            }
+
+            int versionLength = GetProofVersionLength(proofVersion.Value);
+            if (versionLength < 0)
+            {
+                return 0;
+            }
+
+            long proofCount = proofVersion is ProofVersion.V1
+                ? (long)blobCount * Ckzg.CellsPerExtBlob
+                : blobCount;
+            int commitmentsLength = GetFixedByteStringsSequenceLength(blobCount, Ckzg.BytesPerCommitment);
+            int proofsLength = GetFixedByteStringsSequenceLength(proofCount, Ckzg.BytesPerProof);
+            if (commitmentsLength == 0 || proofsLength == 0)
+            {
+                return 0;
+            }
+
+            long contentLength = (long)consensusEncodingSize - 1
+                + versionLength
+                + Rlp.OfEmptyList.Length
+                + commitmentsLength
+                + proofsLength;
+            return GetTypedSequenceLength(contentLength);
+        }
+
+        private static int GetFixedByteStringsSequenceLength(long count, int itemLength)
+        {
+            int encodedItemLength = Rlp.LengthOfByteString(itemLength, firstByte: 0);
+            return count < 0 || count > long.MaxValue / encodedItemLength
+                ? 0
+                : GetSequenceLength(count * encodedItemLength);
+        }
+
+        private static int GetTypedSequenceLength(long contentLength)
+        {
+            int sequenceLength = GetSequenceLength(contentLength);
+            return sequenceLength is > 0 and < int.MaxValue ? sequenceLength + 1 : 0;
+        }
+
+        private static int GetSequenceLength(long contentLength)
+        {
+            const int maxSequencePrefixLength = 1 + sizeof(int);
+            if (contentLength is < 0 or > int.MaxValue - maxSequencePrefixLength)
+            {
+                return 0;
+            }
+
+            return Rlp.LengthOfSequence((int)contentLength);
+        }
+
+        private static int GetProofVersionLength(ProofVersion proofVersion) => proofVersion switch
+        {
+            ProofVersion.V0 => 0,
+            ProofVersion.V1 => Rlp.LengthOf((byte)proofVersion),
+            _ => -1,
+        };
 
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => (UInt256)tx.MaxFeePerGas >= currentBaseFee;
 
@@ -85,11 +196,12 @@ namespace Nethermind.TxPool
         internal static bool CheckForNotEnoughBalance(this Transaction tx, UInt256 currentCost, UInt256 balance, out UInt256 cumulativeCost)
             => tx.IsOverflowWhenAddingPricedCostToCumulative(currentCost, out cumulativeCost) || balance < cumulativeCost;
 
-        private struct SenderBucketState(Transaction tx, UInt256 accountNonce, bool unreservedOnly, bool keyedNoncesEnabled)
+        private struct SenderBucketState(Transaction tx, ulong accountNonce, bool unreservedOnly, bool keyedNoncesEnabled)
         {
             public readonly Transaction Tx = tx;
-            public readonly UInt256 AccountNonce = accountNonce;
-            public readonly UInt256 TxNonce = tx.Nonce;
+            // Match the source nonce types to avoid UInt256 copies and comparisons during bucket scans.
+            public readonly ulong AccountNonce = accountNonce;
+            public readonly ulong TxNonce = tx.Nonce;
             public readonly bool UnreservedOnly = unreservedOnly;
             public readonly bool KeyedNoncesEnabled = keyedNoncesEnabled;
             public UInt256 CumulativeCost = UInt256.Zero;
@@ -107,7 +219,7 @@ namespace Nethermind.TxPool
         /// admission rejects a keyed transaction outright — the walk keeps the early exit ascending nonce order
         /// allows.</remarks>
         /// <returns><c>true</c> when the sum overflows, leaving <paramref name="cumulativeCost"/> unusable.</returns>
-        internal static bool IsOverflowWhenSummingSenderBucket(this Transaction tx, TxDistinctSortedPool pool, in UInt256 accountNonce, bool unreservedOnly, bool keyedNoncesEnabled, out UInt256 cumulativeCost)
+        internal static bool IsOverflowWhenSummingSenderBucket(this Transaction tx, TxDistinctSortedPool pool, ulong accountNonce, bool unreservedOnly, bool keyedNoncesEnabled, out UInt256 cumulativeCost)
         {
             SenderBucketState bucket = new(tx, accountNonce, unreservedOnly, keyedNoncesEnabled);
             // tx.SenderAddress! as unknownSenderFilter will run before either caller

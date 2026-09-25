@@ -65,7 +65,7 @@ namespace Nethermind.TxPool
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         bool ContainsTx(Hash256 hash, TxType txType);
-        AnnounceResult NotifyAboutTx(Hash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
+        AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         /// <summary>
         /// Validates a sparse blob transaction before sampler cell retrieval without inserting it
@@ -96,9 +96,12 @@ namespace Nethermind.TxPool
         /// call that removes the transaction reports <see langword="true"/>, raises the events and counts the
         /// eviction, and a call for a transaction the pool does not hold changes nothing.
         /// Runs without the pool's head lock, so it may land at any point of a concurrent head update.
-        /// Required rather than defaulted to <c>RemoveTransaction(tx.Hash)</c>, unlike its defaulted neighbours
-        /// here: that forward leaves the hash known, turning the drop into the blacklist this contract forbids,
-        /// and it also ignores the retry budget and raises no <see cref="EvictedPending"/>.
+        /// Required rather than defaulted, unlike its defaulted neighbours here, and neither candidate default
+        /// works: <c>RemoveTransaction(tx.Hash)</c> leaves the hash known, turning the drop into the blacklist this
+        /// contract forbids, and it ignores the retry budget and raises no <see cref="EvictedPending"/>, while
+        /// <c>false</c> is also the ordinary "retained, budget not yet spent" answer, so an
+        /// unimplemented member would read as a deliberate retention while every later block re-burns a prefix that
+        /// can never be paid. Declining is said outright, as <see cref="NullTxPool"/> does.
         /// </remarks>
         /// <param name="tx">The transaction to drop. The instance is what the events carry, so it must be the
         /// pooled one rather than a re-decoded copy sharing its hash.</param>
@@ -107,13 +110,15 @@ namespace Nethermind.TxPool
         Transaction? GetBestTx();
         IEnumerable<Transaction> GetBestTxOfEachSender();
         bool IsKnown(Hash256 hash);
-        bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction);
+        /// <summary>Checks whether a transaction hash is already known.</summary>
+        bool IsKnown(in ValueHash256 hash);
+        bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction);
 
         /// <summary>
         /// Gets a pending transaction for metadata-only consumers. Blob and cell payloads are
         /// elided from returned blob transactions while commitments and proofs are preserved.
         /// </summary>
-        bool TryGetPendingTransactionWithoutBlobs(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction)
+        bool TryGetPendingTransactionWithoutBlobs(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction)
         {
             if (TryGetPendingTransaction(hash, out transaction) && transaction is not null)
             {
@@ -154,7 +159,7 @@ namespace Nethermind.TxPool
         /// Gets the cell availability mask of a pending blob transaction without materializing blobs or cells.
         /// </summary>
         /// <returns><c>true</c> when the transaction is present in the blob pool.</returns>
-        bool TryGetPendingBlobCellMask(Hash256 hash, out BlobCellMask availableMask);
+        bool TryGetPendingBlobCellMask(in ValueHash256 hash, out BlobCellMask availableMask);
 
         /// <summary>
         /// Gets blob-cell serving metadata without materializing blob payloads or touching persistent storage.

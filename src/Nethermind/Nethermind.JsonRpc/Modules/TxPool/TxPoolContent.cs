@@ -18,19 +18,19 @@ namespace Nethermind.JsonRpc.Modules.TxPool
             Queued = MapByAddress(info.Queued, extraData);
         }
 
-        public Dictionary<string, Dictionary<string, TransactionForRpc>> Pending { get; set; }
-        public Dictionary<string, Dictionary<string, TransactionForRpc>> Queued { get; set; }
+        public Dictionary<string, Dictionary<TxPoolTxKey, TransactionForRpc>> Pending { get; set; }
+        public Dictionary<string, Dictionary<TxPoolTxKey, TransactionForRpc>> Queued { get; set; }
 
-        private static Dictionary<string, Dictionary<string, TransactionForRpc>> MapByAddress(
-            Dictionary<AddressAsKey, IDictionary<string, Transaction>> source,
+        private static Dictionary<string, Dictionary<TxPoolTxKey, TransactionForRpc>> MapByAddress(
+            Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> source,
             in TransactionForRpcContext extraData)
         {
-            Dictionary<string, Dictionary<string, TransactionForRpc>> result = new(source.Count);
-            foreach (KeyValuePair<AddressAsKey, IDictionary<string, Transaction>> byAddress in source)
+            Dictionary<string, Dictionary<TxPoolTxKey, TransactionForRpc>> result = new(source.Count);
+            foreach (KeyValuePair<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> byAddress in source)
             {
                 string key = ((Address)byAddress.Key).ToString(withZeroX: true, withEip55Checksum: true);
-                Dictionary<string, TransactionForRpc> txsByNonce = new(byAddress.Value.Count);
-                foreach (KeyValuePair<string, Transaction> kv in byAddress.Value)
+                Dictionary<TxPoolTxKey, TransactionForRpc> txsByNonce = new(byAddress.Value.Count);
+                foreach (KeyValuePair<TxPoolTxKey, Transaction> kv in byAddress.Value)
                     txsByNonce[kv.Key] = TransactionForRpc.FromTransaction(kv.Value, extraData);
                 result[key] = txsByNonce;
             }

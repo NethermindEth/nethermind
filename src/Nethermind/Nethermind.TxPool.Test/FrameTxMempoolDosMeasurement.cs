@@ -102,12 +102,15 @@ public class FrameTxMempoolDosMeasurement
     /// <summary>Tolerance when cross-checking Groth16 frame gas against <c>gas.txt</c>.</summary>
     private const double Groth16GasTolerance = 0.02;
 
-    /// <summary>Threshold distinguishing the Groth16 pairing call from ecMul/ecAdd calls.</summary>
+    /// <summary>Threshold below which no call is pairing-sized. <see cref="PaidPairingCallGas"/> already implies
+    /// this once a call exists; kept only so a prefix that fails before any pairing-sized call gets its own
+    /// message instead of being misread as an underpaid pairing.</summary>
     private const long MinPairingCallGas = 150_000;
 
     private const long Bn254FourPairPrice = 181_000;
 
-    private const long PairingPriceTolerance = 3_000;
+    /// <summary>STATICCALL cost of a fully paid four-pair ecPairing: its price plus the warm access to the pre-warmed precompile.</summary>
+    private const long PaidPairingCallGas = Bn254FourPairPrice + (long)GasCostOf.WarmStateRead;
 
     private static readonly Address Sender = TestItem.AddressA;
     private static readonly UInt256 SenderBalance = 1_000.Ether;
@@ -125,9 +128,9 @@ public class FrameTxMempoolDosMeasurement
 
     private static readonly Dictionary<string, Groth16Sweep> Groth16Sweeps = new()
     {
-        ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285, 234_190, Groth16Failure.RevertsProofInvalid),
-        ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000, 299_256, Groth16Failure.RevertsProofInvalid),
-        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 500_000, 494_586, Groth16Failure.RevertsProofInvalid),
+        ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285, 227_659, Groth16Failure.RevertsProofInvalid),
+        ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000, 292_843, Groth16Failure.RevertsProofInvalid),
+        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 500_000, 488_241, Groth16Failure.RevertsProofInvalid),
         ["groth16-soispoke"] = new Groth16Sweep("sweep-soispoke", 300_000, 248_437, Groth16Failure.ReturnsFalse),
     };
 
@@ -578,7 +581,9 @@ public class FrameTxMempoolDosMeasurement
         if (!File.Exists(path))
         {
             Assert.Ignore($"Groth16 artifact {path} is missing; build it with the artifacts tree's generate.sh, "
-                          + "or point FRAME_GROTH16_ARTIFACTS at a tree that has it.");
+                          + "or point FRAME_GROTH16_ARTIFACTS at a tree that has it. Must be built after the "
+                          + "fully-paid-pairing fix (frame-verify-gas) — an older tree's 236k/300k artifacts "
+                          + "underpay ecPairing and fail PaidPairingCallGas instead.");
         }
 
         return Bytes.FromHexString(File.ReadAllText(path).Trim());
@@ -618,10 +623,12 @@ public class FrameTxMempoolDosMeasurement
             if (cost > _lastPairingCallGas) _lastPairingCallGas = cost;
         }
 
-        Assert.That(_lastPairingCallGas, Is.EqualTo(Bn254FourPairPrice).Within(PairingPriceTolerance),
-            $"{sweep.Directory}'s pairing call cost {_lastPairingCallGas} against a priced "
-            + $"{Bn254FourPairPrice}. Above the band means ecPairing errored and burned the gas forwarded to "
-            + "it, which charges full price for no curve work; below means it is not a 4-pair check.");
+        Assert.That(_lastPairingCallGas, Is.EqualTo(PaidPairingCallGas),
+            $"{sweep.Directory}'s pairing call cost {_lastPairingCallGas} against the {PaidPairingCallGas} of a paid "
+            + $"4-pair check. Below it, 63/64 of the frame's gas left ecPairing short of its {Bn254FourPairPrice} "
+            + "price, so it failed out of gas before any curve work and ProofInvalid() describes that early exit; "
+            + "above it, ecPairing errored and burned the gas forwarded to it, the call expanded memory, or it is "
+            + "not a 4-pair check.");
 
         long slack = (long)(sweep.ExpectedFrameGas * Groth16GasTolerance);
         Assert.That((long)readout.Burned, Is.EqualTo((long)sweep.ExpectedFrameGas).Within(slack),
@@ -674,7 +681,7 @@ public class FrameTxMempoolDosMeasurement
             ChainId = _specProvider.ChainId,
             Nonce = 0,
             SenderAddress = Sender,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: _frameExecutionGasLimit, UInt256.Zero, data)],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: _frameExecutionGasLimit, UInt256.Zero, data)],
             FrameSignatures = _frameSignatures,
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,
@@ -825,13 +832,13 @@ public class FrameTxMempoolDosMeasurement
         public FrameTxSimulationResult Simulate(
             Transaction tx,
             bool signaturesPreValidated = false,
-            CancellationToken token = default,
-            bool local = false)
+            bool local = false,
+            CancellationToken token = default)
         {
             long start = Stopwatch.GetTimestamp();
             try
             {
-                return inner.Simulate(tx, signaturesPreValidated, token, local);
+                return inner.Simulate(tx, signaturesPreValidated: signaturesPreValidated, local: local, token: token);
             }
             finally
             {

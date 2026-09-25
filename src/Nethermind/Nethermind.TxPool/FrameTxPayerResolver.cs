@@ -154,7 +154,7 @@ internal static class FrameTxPayerResolver
     {
         for (int i = verifyIndex + 1; i < frames.Length; i++)
         {
-            if ((frames[i].Flags & TxFrame.ApprovePayment) != 0)
+            if ((frames[i].Flags & FrameFlags.ApprovePayment) != 0)
             {
                 return true;
             }

@@ -427,6 +427,30 @@ public class FrameTxPayerExposureFilterTests
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
     }
 
+    // BalanceZeroFilter waves frame transactions through, so its zero-balance backstop lives here: the test
+    // has to hold even at zero cost, or a zero-fee prefix buys a pool slot no account could have paid for.
+    [TestCase(0, true, false, TestName = "a zero-balance sender is refused a zero-cost frame tx")]
+    [TestCase(1, false, false, TestName = "one wei is enough for a zero-cost frame tx")]
+    [TestCase(0, true, true, TestName = "a zero-balance payer-less sender is refused one too")]
+    [TestCase(1, false, true, TestName = "one wei is enough for a payer-less one")]
+    public void Accept_ZeroBalanceSender_IsRefusedEvenAtZeroCost(int senderBalance, bool rejected, bool payerless)
+    {
+        Transaction tx = FrameTx(frameGasLimit: 21_000, payer: TestItem.AddressA);
+        tx.DecodedMaxFeePerGas = UInt256.Zero;
+        tx.Hash = TestItem.KeccakA;
+        if (payerless) tx.PayerAddress = null;
+
+        Assert.That(FrameTxValidation.TryCalculateMaxCost(tx, Spec, out UInt256 maxCost), Is.True);
+        Assert.That(maxCost, Is.EqualTo(UInt256.Zero), "a priced transaction would be rejected on its cost instead");
+
+        TestReadOnlyStateProvider senderAccounts = new();
+        senderAccounts.CreateAccount(TestItem.AddressA, (UInt256)senderBalance);
+
+        AcceptTxResult result = Accept(new TestReadOnlyStateProvider(), new PayerExposureCache(), tx, senderAccounts);
+
+        Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.InsufficientFunds : AcceptTxResult.Accepted));
+    }
+
     /// <summary>Where the SENDER frame whose value is bounded sits, relative to the validation prefix.</summary>
     public enum SenderFramePosition
     {
@@ -457,7 +481,7 @@ public class FrameTxPayerExposureFilterTests
     public void Accept_SelfPayingSender_CountsTheValueOfALeadingSenderFrame(int balanceDelta, bool rejected, SenderFramePosition position, bool payerless)
     {
         const int frameValue = 4_000;
-        TxFrame senderFrame = new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
+        TxFrame senderFrame = new(FrameMode.Sender, FrameFlags.None, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
         Transaction tx = FrameTxTestFrames.FrameTx(FramesFor(position, senderFrame));
         tx.DecodedMaxFeePerGas = UInt256.One;
         tx.Hash = TestItem.KeccakA;
@@ -497,7 +521,7 @@ public class FrameTxPayerExposureFilterTests
     public void Accept_SponsoredFrameTx_HoldsTheSenderToItsOwnLeadingFrameValue(int balanceDelta, bool rejected)
     {
         const int frameValue = 4_000;
-        TxFrame senderFrame = new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
+        TxFrame senderFrame = new(FrameMode.Sender, FrameFlags.None, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
         Transaction tx = FrameTxTestFrames.FrameTx(FrameTxTestFrames.OnlyVerify(), FrameTxTestFrames.Pay(Payer), senderFrame);
         tx.DecodedMaxFeePerGas = UInt256.One;
         tx.Hash = TestItem.KeccakA;
@@ -656,14 +680,21 @@ public class FrameTxPayerExposureFilterTests
         }
     }
 
-    [Test]
+    // Reads the shared payer counter.
+    [Test, NonParallelizable]
     public void ExposureCache_ZeroCostReserveLeavesNoEntry()
     {
-        // Subtract early-returns on zero, so a zero reservation would leave an entry nothing reclaims.
+        // The entry is what matters, not its value: a stored zero reads back as zero either way, so the
+        // payer counter is the only thing that tells an absent entry from one an idle pool still holds.
         PayerExposureCache cache = new();
+        long before = Metrics.FrameTxPayersWithReservedExposure;
 
-        Assert.That(cache.TryReserve(Payer, HashFor(1), UInt256.Zero, balance: 1000, out _), Is.True);
-        Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryReserve(Payer, HashFor(1), UInt256.Zero, balance: 1000, out _), Is.True);
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo(UInt256.Zero));
+            Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(before));
+        }
     }
 
     [Test]
@@ -749,7 +780,7 @@ public class FrameTxPayerExposureFilterTests
     {
         Type = TxType.FrameTx,
         SenderAddress = TestItem.AddressA,
-        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, default)],
+        Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, default)],
         FrameSignatures = [],
         DecodedMaxFeePerGas = UInt256.One,
         PayerAddress = payer ?? Payer,

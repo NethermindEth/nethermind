@@ -1533,7 +1533,7 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    public void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
     }
 
@@ -1541,7 +1541,7 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
     }
 

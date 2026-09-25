@@ -188,7 +188,7 @@ public class TxPoolLockContentionMeasurement
         public int Total { get; private set; }
 
         public FrameTxSimulationResult Simulate(
-            Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default, bool local = false)
+            Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default)
         {
             Calls++;
             Total++;
@@ -277,7 +277,7 @@ public class TxPoolLockContentionMeasurement
             ChainId = _specProvider.ChainId,
             Nonce = KeyedNonceManager.UsesKeyedDomain(nonceKeys) ? KeyedSeq : 0,
             SenderAddress = sender,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default)],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default)],
             NonceKeys = nonceKeys,
             FrameSignatures = [],
             GasLimit = TxGasLimit,

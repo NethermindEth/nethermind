@@ -223,10 +223,7 @@ public static partial class EvmInstructions
             }
 
             if (TTracingInst.IsActive)
-            {
-                vm.TxTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(in gas));
-                vm.TxTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
-            }
+                vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas), EvmExceptionType.NotEnoughBalance);
 
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
@@ -260,7 +257,7 @@ public static partial class EvmInstructions
                     state.SubtractFromBalance(caller, in callValue, spec);
                     vm.AddTransferLog<TEip7708>(caller, target, in callValue);
                 }
-                state.AddToBalanceAndCreateIfNotExists(target, TOpCall.ExecutionType, in callValue, spec);
+                state.AddToBalanceAndCreateIfNotEmpty(target, TOpCall.ExecutionType, in callValue, spec);
             }
             vm.MetricsCounters.IncrementEmptyCalls();
             return EvmExceptionType.None;

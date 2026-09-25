@@ -287,7 +287,7 @@ public class FrameTxPayerResolverTests
         DefaultCodeAccount(state, Sender);
         TxFrame deploy = DeployFrame();
         TxFrame selfVerify = SelfVerify(PrefixFrameGas);
-        TxFrame trailing = new(TxFrame.ModeDefault, flags: 0, target: null, gasLimit: 5_000_000, UInt256.Zero, default);
+        TxFrame trailing = new(FrameMode.Default, flags: FrameFlags.None, target: null, gasLimit: 5_000_000, UInt256.Zero, default);
         Transaction tx = FrameTx([deploy, selfVerify, trailing], [Secp256k1Signature(Sender)]);
 
         FrameTxPayerResolution resolution = Resolve(tx, state);
@@ -316,10 +316,10 @@ public class FrameTxPayerResolverTests
     private static Transaction FrameTx(TxFrame[] frames, TxFrameSignature[] signatures) =>
         FrameTxTestFrames.FrameTx(Sender, signatures, frames);
 
-    private static TxFrame Frame(byte mode) => new(mode, flags: 0, target: null, gasLimit: 50_000, UInt256.Zero, default);
+    private static TxFrame Frame(FrameMode mode) => new(mode, flags: FrameFlags.None, target: null, gasLimit: 50_000, UInt256.Zero, default);
 
     private static TxFrame SelfVerifyWithStateGas(ulong stateGasLimit) =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, PrefixFrameGas, stateGasLimit, UInt256.Zero, default);
+        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, PrefixFrameGas, stateGasLimit, UInt256.Zero, default);
 
-    private static TxFrame DeployFrame() => Frame(TxFrame.ModeDefault);
+    private static TxFrame DeployFrame() => Frame(FrameMode.Default);
 }

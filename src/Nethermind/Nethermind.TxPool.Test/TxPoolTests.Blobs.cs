@@ -28,7 +28,9 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
 using Nethermind.TxPool.Collections;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections;
@@ -576,6 +578,121 @@ namespace Nethermind.TxPool.Test
             Assert.That(() => _txPool.GetPendingBlobTransactionsCount(), Is.Zero.After(Timeout, 10));
             storage.DidNotReceiveWithAnyArgs().TryGetMany(default, default, default);
         }
+
+        [Test]
+        public void reloaded_blobs_are_kept_when_head_state_is_unavailable()
+        {
+            // Soak #13577: after a Flat repair resync, headers/HEAD remain but state was Clear()'d.
+            // Persistent blob txs are reloaded and TxPool ctor used to die in UpdateBucketsWithoutRevalidation
+            // (MissingTrieNodeException from TryGetAccount) → docker restart loop. Unknown state is not an
+            // empty account either: the reloaded blobs must stay pooled and persisted until state is back.
+            IBlobTxStorage storage = CreateStorageWithOneReloadedBlobTx();
+            ChainHeadInfoProvider headInfo = CreateHeadInfoWithState(_ => throw MissingHeadState());
+
+            Assert.DoesNotThrow(() => _txPool = CreatePoolWithPersistentBlobs(headInfo, storage));
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+            storage.DidNotReceiveWithAnyArgs().Delete(default, default);
+        }
+
+        [Test]
+        public async Task reloaded_blobs_see_real_account_once_head_state_is_back()
+        {
+            const ulong accountNonce = 2;
+            bool stateAvailable = false;
+            IBlobTxStorage storage = CreateStorageWithOneReloadedBlobTx();
+            ChainHeadInfoProvider headInfo = CreateHeadInfoWithState(callInfo =>
+            {
+                if (!stateAvailable) throw MissingHeadState();
+                callInfo[1] = new AccountStruct(accountNonce, UInt256.MaxValue);
+                return true;
+            });
+
+            _txPool = CreatePoolWithPersistentBlobs(headInfo, storage);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+
+            stateAvailable = true;
+            // Had the failed lookup been cached as TotallyEmpty, the pooled nonce-0 tx would yield 1 here.
+            Assert.That(_txPool.GetLatestPendingNonce(TestItem.AddressA), Is.EqualTo(accountNonce));
+
+            Block nextBlock = Build.A.Block.WithNumber(_blockTree.Head.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = nextBlock.Header;
+            await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+            AssertRevalidatedForHead();
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+            storage.ReceivedWithAnyArgs(1).Delete(default, default);
+        }
+
+        // The constructor's head-state guard covers the bucket update only, but restoring a blob-carrying frame tx
+        // reads head state first, to index a delegated sender. Neither the missing state nor a sender with code may
+        // stop the constructor or leave the second record out of the ledgers, which the checked build compares
+        // against the pool at the next head.
+        [Test]
+        public async Task reloaded_frame_blobs_seed_every_ledger_when_head_state_is_unavailable([Values] bool senderHasCode)
+        {
+            bool stateAvailable = false;
+            IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
+            storage.GetAll().Returns([
+                new LightTransaction(RestorableFrameBlobTx(nonce: 0, payer: TestItem.AddressC)),
+                new LightTransaction(RestorableFrameBlobTx(nonce: 1, payer: TestItem.AddressD))]);
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+            state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(callInfo =>
+            {
+                if (!stateAvailable && !senderHasCode) throw MissingHeadState();
+                callInfo[1] = senderHasCode
+                    ? new AccountStruct(0, UInt256.MaxValue, Keccak.EmptyTreeHash, TestItem.KeccakA)
+                    : new AccountStruct(0, UInt256.MaxValue);
+                return true;
+            });
+            state.GetCode(Arg.Any<Address>()).Returns(_ => stateAvailable ? [] : throw MissingHeadState());
+            ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(GetBogotaSpecProvider(), _blockTree), _blockTree, state);
+
+            Assert.DoesNotThrow(() => _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 10 },
+                GetBogotaSpecProvider(),
+                chainHeadInfoProvider: headInfo,
+                txStorage: storage));
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(2));
+
+            stateAvailable = true;
+            Block nextBlock = Build.A.Block.WithNumber(_blockTree.Head.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = nextBlock.Header;
+            await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+            AssertRevalidatedForHead();
+        }
+
+        private Transaction RestorableFrameBlobTx(ulong nonce, Address payer)
+        {
+            Transaction tx = BuildBlobFrameTx(nonce, blobCount: 1, paymaster: payer);
+            tx.PayerAddress = payer;
+            tx.PayerExposure = 1.GWei;
+            return tx;
+        }
+
+        private IBlobTxStorage CreateStorageWithOneReloadedBlobTx()
+        {
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
+            storage.GetAll().Returns([new LightTransaction(transaction)]);
+            return storage;
+        }
+
+        private ChainHeadInfoProvider CreateHeadInfoWithState(Func<NSubstitute.Core.CallInfo, bool> tryGetAccount)
+        {
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+            state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(tryGetAccount);
+            return new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state);
+        }
+
+        private TxPool CreatePoolWithPersistentBlobs(ChainHeadInfoProvider headInfo, IBlobTxStorage storage) => CreatePool(
+            new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 1 },
+            GetCancunSpecProvider(),
+            chainHeadInfoProvider: headInfo,
+            txStorage: storage);
+
+        private static MissingTrieNodeException MissingHeadState() =>
+            new("State for block 11739434 is unavailable", null, TreePath.Empty, Keccak.Zero);
 
         [Test]
         public async Task should_allow_rebroadcast_of_blob_with_new_proofs_after_fork_when_balance_is_insufficient()
@@ -1862,10 +1979,12 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            int lengthBeforeTranslation = blobTxAdded.GetLength();
 
             AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(isTxValid ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
             Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.EqualTo(isTxValid));
+            int lengthAfterTranslation = isTxValid && isOsakaActivated ? GetUncachedLength(blobTxAdded) : 0;
 
             if (isTxValid)
             {
@@ -1875,6 +1994,11 @@ namespace Nethermind.TxPool.Test
                     ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
                     Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
                     Assert.That(wrapper.Version, Is.EqualTo(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0));
+                    if (isOsakaActivated)
+                    {
+                        Assert.That(blobTxAdded.GetLength(), Is.EqualTo(lengthAfterTranslation));
+                        Assert.That(blobTxAdded.GetLength(), Is.GreaterThan(lengthBeforeTranslation));
+                    }
 
                     Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
                     if (isPersistentStorage)
@@ -1913,10 +2037,12 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            int lengthBeforeTranslation = blobTxAdded.GetLength();
 
             AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(isConversionEnabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
             Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.EqualTo(isConversionEnabled));
+            int lengthAfterTranslation = isConversionEnabled ? GetUncachedLength(blobTxAdded) : 0;
 
             if (isConversionEnabled)
             {
@@ -1927,6 +2053,8 @@ namespace Nethermind.TxPool.Test
                     Assert.That(wrapper.Proofs.Length, Is.EqualTo(1));
                     Assert.That(wrapper.Version, Is.EqualTo(ProofVersion.V0));
                     Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
+                    Assert.That(blobTxAdded.GetLength(), Is.EqualTo(lengthAfterTranslation));
+                    Assert.That(blobTxAdded.GetLength(), Is.LessThan(lengthBeforeTranslation));
 
                     Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
                     if (isPersistentStorage)
@@ -2238,6 +2366,14 @@ namespace Nethermind.TxPool.Test
                 .WithNonce(nonce)
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
 
+        private static int GetUncachedLength(Transaction transaction)
+        {
+            Transaction copy = new();
+            transaction.CopyTo(copy, copyHash: true);
+            copy.ClearLengthCache();
+            return copy.GetLength();
+        }
+
         [Test]
         public async Task should_evict_txs_with_too_many_blobs_per_tx_after_fork()
         {
@@ -2326,10 +2462,8 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_batch_return_blobs_and_proofs_v1_from_persistent_storage()
+        public void should_batch_return_blobs_and_proofs_v1_from_persistent_storage([Values(1, 2)] int blobCount, [Values(1, 2, 16, 256, 257)] int repetitions)
         {
-            // BlobCacheSize = 1 forces cache eviction after the first insert,
-            // so the second tx must be fetched via TryGetMany (Phase 2 DB path).
             TxPoolConfig txPoolConfig = new()
             {
                 BlobsSupport = BlobsSupportMode.Storage,
@@ -2342,40 +2476,64 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
 
             Transaction tx1 = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithShardBlobTxTypeAndFields(blobCount, spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction tx2 = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithShardBlobTxTypeAndFields(blobCount, spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
-                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 2))
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 3))
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+
+            int expectedSlot = new TxLookupKey(tx1.Hash!, tx1.SenderAddress!, tx1.Timestamp).GetHashCode() & 1023;
+            for (uint timestamp = 0; timestamp < 100_000; timestamp++)
+            {
+                tx2.Timestamp = timestamp;
+                if ((new TxLookupKey(tx2.Hash!, tx2.SenderAddress!, tx2.Timestamp).GetHashCode() & 1023) == expectedSlot)
+                    break;
+            }
+            Assert.That(new TxLookupKey(tx2.Hash!, tx2.SenderAddress!, tx2.Timestamp).GetHashCode() & 1023, Is.EqualTo(expectedSlot));
 
             Assert.That(tx2.BlobVersionedHashes![0], Is.Not.EqualTo(tx1.BlobVersionedHashes![0]));
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Transaction cacheEvictor = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(1)
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 4))
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            Assert.That(_txPool.SubmitTx(cacheEvictor, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // tx1 was evicted from cache (size=1) when tx2 was inserted,
-            // so at least one must come from DB via TryGetMany
-            byte[][] requestedHashes = [tx1.BlobVersionedHashes![0]!, tx2.BlobVersionedHashes![0]!];
-            byte[][] blobs = new byte[2][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[2];
+            byte[][] requestedHashes = new byte[repetitions * (blobCount + 1)][];
+            for (int i = 0; i < requestedHashes.Length; i++)
+            {
+                int index = i % (blobCount + 1);
+                requestedHashes[i] = index == blobCount ? tx2.BlobVersionedHashes![0]! : tx1.BlobVersionedHashes![index]!;
+            }
+            byte[][] blobs = new byte[requestedHashes.Length][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[requestedHashes.Length];
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(found, Is.EqualTo(2));
-                Assert.That(blobs[0], Is.Not.Null);
-                Assert.That(blobs[1], Is.Not.Null);
-                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-                Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-                Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(1));
+                Assert.That(found, Is.EqualTo(requestedHashes.Length));
+                for (int i = 0; i < requestedHashes.Length; i++)
+                {
+                    int blobIndex = i % (blobCount + 1);
+                    ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)(blobIndex == blobCount ? tx2 : tx1).NetworkWrapper!;
+                    int index = blobIndex == blobCount ? 0 : blobIndex;
+                    Assert.That(blobs[i].AsSpan().SequenceEqual(wrapper.Blobs[index]), Is.True, $"Blob at index {i}");
+                    Assert.That(proofs[i].ToArray(), Is.EqualTo(wrapper.Proofs.AsSpan(index * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob).ToArray()));
+                }
+                Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(2));
             }
         }
 
@@ -4929,7 +5087,9 @@ namespace Nethermind.TxPool.Test
             Transaction restored = Sponsored(TestItem.PrivateKeyA);
             Assert.That(_txPool.SubmitTx(restored, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // A fresh pool over the same storage stands in for a node restart.
+            // A fresh pool over the same storage stands in for a node restart, and the old one is disposed so
+            // that only one of them answers the head below.
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the rest reads against");
 
@@ -5057,7 +5217,9 @@ namespace Nethermind.TxPool.Test
 
             if (restart)
             {
-                // A fresh pool over the same storage stands in for a node restart.
+                // A fresh pool over the same storage stands in for a node restart, and the old one is disposed
+                // so that only one of them answers the head below.
+                await _txPool.DisposeAsync();
                 _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             }
 
@@ -5090,8 +5252,10 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             }
 
-            // AddressA's record goes stale once that account moves on, so restoring the pool evicts it.
+            // AddressA's record goes stale once that account moves on, so restoring the pool evicts it. The old
+            // pool is disposed so that only one of them answers the head below.
             _stateProvider.IncrementNonce(TestItem.AddressA);
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the restart must evict the stale record and keep the other");
 
@@ -5151,17 +5315,14 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // The persistent pool holds a light record, and it is that record's removal which releases the payer's
-        // reservation — a record without the payer would leak it and lock the payer out of the pool for good.
-        [TestCase(BlobsSupportMode.InMemory, TestName = "the in-memory pool keeps the frames, so the prefix is revalidated")]
-        [TestCase(BlobsSupportMode.StorageWithReorgs, TestName = "the persistent pool holds a frameless record, which revalidation must leave alone")]
-        public async Task Blob_carrying_frame_tx_is_only_revalidated_while_its_prefix_is_still_there(BlobsSupportMode blobsSupport)
+        // EIP-8141 "Revalidation". The persistent pool swaps the transaction for a frameless light record, but
+        // the prefix it was admitted with is still in blob storage, so the sweep reloads it in every blob mode.
+        [Test]
+        public async Task Blob_carrying_frame_tx_whose_prefix_stops_validating_is_evicted_on_a_new_head(
+            [Values(BlobsSupportMode.InMemory, BlobsSupportMode.Storage, BlobsSupportMode.StorageWithReorgs)] BlobsSupportMode blobsSupport)
         {
-            // The persistent pool swaps the transaction for a frameless light record. Simulating a prefix that
-            // is no longer there can only reject, so revalidating one would evict every such transaction on the
-            // first head touching its sender; skipping it leaves the transaction pending instead.
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
                 .Returns(FrameTxSimulationResult.Accept(TestItem.AddressF));
             TxPoolConfig txPoolConfig = new() { BlobsSupport = blobsSupport, FrameTxMaxVerifyGas = 200_000 };
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), frameTxPrefixSimulator: simulator);
@@ -5176,8 +5337,12 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
+            // The reload is the claim under test, so a persistent pool must answer from storage rather than
+            // from the cache it would only have on the first few hundred blob transactions after a restart.
+            if (blobsSupport.IsPersistentStorage()) DropCachedBlobTransactions();
+
             // The prefix stops validating; only the dependency index decides whether that is ever noticed.
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
                 .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
 
             // A complete change list naming the sender, so only the dependency index decides whether the
@@ -5186,12 +5351,254 @@ namespace Nethermind.TxPool.Test
             block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
             await RaiseBlockAddedToMainAndWaitForNewHead(block);
 
-            bool framesSurvivePooling = blobsSupport == BlobsSupportMode.InMemory;
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(framesSurvivePooling ? 0 : 1),
-                framesSurvivePooling
-                    ? "a pooled prefix that no longer validates must be evicted"
-                    : "a record with no prefix left to judge must be left pending");
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero,
+                "a pooled prefix that no longer validates must be evicted");
         }
+
+        // EIP-8141 "Revalidation". The payer is admission metadata, carried on the pooled light record but not
+        // on the wire form blob storage keeps, so the verdict must not be read off the reloaded copy.
+        [Test]
+        public async Task Blob_carrying_frame_tx_whose_payer_moved_is_evicted_on_a_new_head([Values] bool reloadedFromStorage)
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), frameTxPrefixSimulator: simulator);
+
+            // Both solvent, so only the move can decide the eviction rather than a bound either side failed.
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction tx = SponsoredBlobFrameTx(TestItem.PrivateKeyA);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressF), "nothing is reserved unless the payer resolves");
+
+            if (reloadedFromStorage) DropCachedBlobTransactions();
+            Assert.That(BlobTransactionIsCached(tx.Hash!), Is.EqualTo(!reloadedFromStorage),
+                "the arm under test is which copy the sweep reads back");
+            Assert.That(BlobTransactionMetadataIsCached(tx.Hash!), Is.EqualTo(!reloadedFromStorage),
+                "the sweep reads the sidecar-free copy, so that is the cache the storage arm has to miss");
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>())
+                .Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero,
+                "a moved payer evicts rather than rewrites, or its old reservation is held for good");
+        }
+
+        // EIP-8141 "Revalidation". The sidecar-free read also declines when the record behind the light one is
+        // gone, and that decline repeats every head: carrying it alone would leave the transaction pending,
+        // unjudged and still holding its payer's reservation, which is the exemption the sweep exists to close.
+        [Test]
+        public async Task Blob_carrying_frame_tx_whose_record_cannot_be_read_is_judged_rather_than_deferred_for_good(
+            [Values] bool recordDeleted)
+        {
+            const int deferralBudget = 2;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.StorageWithReorgs,
+                FrameTxMaxVerifyGas = 200_000,
+                FrameTxRevalidationDeferralBudget = deferralBudget
+            };
+            BlobTxStorage blobTxStorage = new();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            Transaction tx = SponsoredBlobFrameTx(TestItem.PrivateKeyA);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressF), "nothing is reserved unless the payer resolves");
+
+            // The light record stays pooled either way, so readability is the single variable. The simulator keeps
+            // accepting, so an arm that can read its record has nothing to evict it for.
+            DropCachedBlobTransactions();
+            if (recordDeleted) blobTxStorage.Delete(tx.Hash!.ValueHash256, tx.Timestamp);
+
+            Assert.That(BlobPool().TryGetValueWithoutBlobs(tx.Hash!.ValueHash256, out _), Is.EqualTo(!recordDeleted),
+                "the arm under test is whether the sweep can read the record back at all");
+            DropCachedBlobTransactions();
+
+            // One head per carry, then one more, on which the carry is spent and a verdict has to be reached.
+            for (int i = 1; i <= deferralBudget + 1; i++)
+            {
+                Block block = Build.A.Block.WithNumber(i).TestObject;
+                block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+                await RaiseBlockAddedToMainAndWaitForNewHead(block);
+            }
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(recordDeleted ? 0 : 1),
+                "a record no head can read must not outlast the carry, and one every head can read must");
+
+            // What the drop is for: the payer takes one pending transaction at a time, so the slot coming back
+            // is the reservation having been released rather than stranded on an unjudgeable record.
+            AcceptTxResult next = _txPool.SubmitTx(SponsoredBlobFrameTx(TestItem.PrivateKeyB), TxHandlingOptions.None);
+            Assert.That(next, recordDeleted ? Is.EqualTo(AcceptTxResult.Accepted) : Is.Not.EqualTo(AcceptTxResult.Accepted),
+                "the payer's reservation leaves with the record, and only with it");
+        }
+
+        // The deferral budget is one allowance per transaction, not one per reason it was deferred: a
+        // sidecar-free read that declines spends the same carry the simulation site later reads.
+        [Test]
+        public async Task Blob_frame_tx_carry_spent_by_declined_reads_is_already_gone_when_the_simulator_defers()
+        {
+            const int deferralBudget = 2;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.StorageWithReorgs,
+                FrameTxMaxVerifyGas = 200_000,
+                FrameTxRevalidationDeferralBudget = deferralBudget
+            };
+            BlobTxStorage blobTxStorage = new();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            Transaction tx = SponsoredBlobFrameTx(TestItem.PrivateKeyA);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // Unreadable for exactly the budget, so the carry is spent without one simulation having run.
+            DropCachedBlobTransactions();
+            blobTxStorage.Delete(tx.Hash!.ValueHash256, tx.Timestamp);
+            simulator.ClearReceivedCalls();
+
+            Block head = Build.A.Block.WithNumber(1).TestObject;
+            head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            for (int number = 2; number <= deferralBudget; number++)
+            {
+                head = Build.A.Block.WithNumber(number).WithParent(head).TestObject;
+                head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressE };
+                await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            }
+
+            simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+
+            // Readable again, and now the simulator is the one that cannot decide. Only the carry can reach the
+            // transaction from here, so every later simulation is one the carry paid for.
+            blobTxStorage.Add(tx);
+            DropCachedBlobTransactions();
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+
+            for (int number = deferralBudget + 1; number <= deferralBudget + 3; number++)
+            {
+                head = Build.A.Block.WithNumber(number).WithParent(head).TestObject;
+                head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressE };
+                await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            }
+
+            // One: the carry the declined reads spent is already gone, so the first node-bound simulation
+            // exhausts it rather than opening a fresh allowance. A per-path carry would have run three.
+            simulator.Received(1).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1),
+                "an exhausted carry leaves the transaction pending and unjudged, it does not evict");
+        }
+
+        // The persistent pool recreates its light records inside its own constructor, so a restart is the one
+        // path on which nothing raises Inserted and the index would otherwise never hear about them.
+        [Test]
+        public async Task Restored_blob_carrying_frame_tx_is_revalidated_against_a_new_head()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            BlobTxStorage blobTxStorage = new();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            Assert.That(_txPool.SubmitTx(SponsoredBlobFrameTx(TestItem.PrivateKeyA), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+
+            // A fresh pool over the same storage stands in for a node restart, and the old one is disposed so
+            // that only one of them answers the head below.
+            await _txPool.DisposeAsync();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the sweep reads against");
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>())
+                .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero,
+                "a record restored at startup must be indexed, or a restart exempts it from revalidation");
+        }
+
+        // A reorg's change list does not describe what the abandoned branch reverted, so the sweep falls back
+        // from CollectAffected to CollectAll and queues every indexed frame transaction at once. That fan-out,
+        // not the single-transaction case, is what a reload under the head write lock is paid for.
+        [Test]
+        public async Task Reorg_revalidates_every_indexed_blob_carrying_frame_tx([Values] bool reorged)
+        {
+            const int pooled = 8;
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            for (int i = 0; i < pooled; i++)
+            {
+                Assert.That(_txPool.SubmitTx(SponsoredBlobFrameTx(TestItem.PrivateKeys[i], TestItem.Addresses[200 + i]), TxHandlingOptions.None),
+                    Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(pooled), "the fan-out has to have something to reach");
+
+            // The pool has no last head yet, so until one lands even a change-list-carrying block counts as
+            // non-sequential and takes the fallback. This head is the parent the sequential arm needs.
+            Block parent = Build.A.Block.WithNumber(1).TestObject;
+            parent.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.Addresses[100] };
+            await RaiseBlockAddedToMainAndWaitForNewHead(parent);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(pooled),
+                "the parent head still resolves the same payer, so nothing may leave on it");
+
+            // Every reload then goes to blob storage, which is the per-transaction cost the fan-out multiplies.
+            DropCachedBlobTransactions();
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>())
+                .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+
+            // Named by nothing these transactions depend on, so the sequential arm's change list reaches none of
+            // them and only the reorg's CollectAll fallback can. Both arms are the same sequential block, so a
+            // reported previous branch is the single variable between them.
+            Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.Addresses[100] };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block, reorged ? parent : null);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(reorged ? 0 : pooled),
+                "a reorg must revalidate every indexed frame transaction, and a sequential head only those its change list names");
+        }
+
+        /// <summary>Drops every cached blob transaction, full and sidecar-free, so the pool has to answer from
+        /// blob storage.</summary>
+        /// <remarks>Both caches, because revalidation reads the sidecar-free one: leaving it populated would
+        /// let the storage arm answer from memory and stop discriminating.</remarks>
+        private void DropCachedBlobTransactions()
+        {
+            BlobTxCache("_blobTxCache").Clear();
+            BlobTxCache("_blobTxMetadataCache").Clear();
+        }
+
+        private bool BlobTransactionIsCached(Hash256 hash) => BlobTxCache("_blobTxCache").Contains(hash.ValueHash256);
+
+        private bool BlobTransactionMetadataIsCached(Hash256 hash) => BlobTxCache("_blobTxMetadataCache").Contains(hash.ValueHash256);
+
+        /// <summary>The pool's blob collection and its caches, which no public surface exposes.</summary>
+        /// <remarks>Reached by field name, so a rename of either field throws here rather than passing quietly —
+        /// these two helpers are the only place it has to be followed to.</remarks>
+        private PersistentBlobTxDistinctSortedPool BlobPool() =>
+            (PersistentBlobTxDistinctSortedPool)PrivateField(typeof(TxPool), "_blobTransactions").GetValue(_txPool)!;
+
+        private Nethermind.Core.Caching.LruCache<ValueHash256, Transaction> BlobTxCache(string field) =>
+            (Nethermind.Core.Caching.LruCache<ValueHash256, Transaction>)
+                PrivateField(typeof(PersistentBlobTxDistinctSortedPool), field).GetValue(BlobPool())!;
+
+        private static System.Reflection.FieldInfo PrivateField(Type declaring, string field) =>
+            declaring.GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new MissingFieldException(declaring.Name, field);
 
         [Test]
         // The gauge asserted below is a process-wide static and this fixture is ParallelScope.All, so any frame
@@ -5217,7 +5624,7 @@ namespace Nethermind.TxPool.Test
 
             // The gauge, not a second submission: the payer here is the sender, whose balance already covers
             // several such reservations, so nothing it submits later can observe the leak. The baseline absorbs
-            // residue from earlier tests, whose pools are never disposed.
+            // residue from the pools that earlier tests left undisposed.
             long payersBefore = Metrics.FrameTxPayersWithReservedExposure;
 
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -5233,7 +5640,7 @@ namespace Nethermind.TxPool.Test
         // fields without seeding the ledger would be worse than not persisting them: the record's removal
         // would subtract against another transaction's reservation for the same payer.
         [Test]
-        public void Restored_blob_carrying_frame_tx_still_counts_against_its_payer()
+        public async Task Restored_blob_carrying_frame_tx_still_counts_against_its_payer()
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
             BlobTxStorage blobTxStorage = new();
@@ -5251,7 +5658,9 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(first.PayerAddress, Is.EqualTo(TestItem.AddressF), "nothing is reserved unless the payer resolves");
 
-            // A fresh pool over the same storage stands in for a node restart.
+            // A fresh pool over the same storage stands in for a node restart, and the old one is disposed so
+            // that only one of them holds the reservations the bound is read against.
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the rest reads against");
 
@@ -5263,7 +5672,7 @@ namespace Nethermind.TxPool.Test
         // The round trip the seeding exists for: a restored record's removal has to release what admission
         // took, or the sponsor stays locked out for the life of the pool.
         [Test]
-        public void Removing_a_restored_blob_carrying_frame_tx_releases_its_payer_exposure()
+        public async Task Removing_a_restored_blob_carrying_frame_tx_releases_its_payer_exposure()
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
             BlobTxStorage blobTxStorage = new();
@@ -5278,6 +5687,8 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
+            // The old pool is disposed so that only one of them holds the reservations the bound is read against.
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
             Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
 
@@ -5288,16 +5699,18 @@ namespace Nethermind.TxPool.Test
         private IFrameTxPrefixSimulator SponsorNamingSimulator()
         {
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>())
                 .Returns(FrameTxSimulationResult.Accept(TestItem.AddressF));
             return simulator;
         }
 
         // A code-carrying pay target, so the payer resolves only through the simulator rather than natively.
-        private Transaction SponsoredBlobFrameTx(PrivateKey sender)
+        private Transaction SponsoredBlobFrameTx(PrivateKey sender, Address paymaster = null)
         {
-            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressF);
-            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressF, sender: sender);
+            // One pending transaction per non-canonical pay target, so pooling several needs a target each.
+            paymaster ??= TestItem.AddressF;
+            _stateProvider.InsertCode([0x60, 0x00], paymaster);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: paymaster, sender: sender);
             EnsureSenderBalance(sender.Address, (UInt256)tx.GasLimit * tx.MaxFeePerGas
                 + (UInt256)Eip4844Constants.GasPerBlob * tx.MaxFeePerBlobGas!.Value);
             return tx;
@@ -5381,11 +5794,13 @@ namespace Nethermind.TxPool.Test
 
             Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
 
-            PersistentBlobTxDistinctSortedPool poolBeforeRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
-            Assert.That(poolBeforeRestart.TryInsert(frameBlobTx.Hash, frameBlobTx, out _), Is.True);
+            using (PersistentBlobTxDistinctSortedPool poolBeforeRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance))
+            {
+                Assert.That(poolBeforeRestart.TryInsert(frameBlobTx.Hash, frameBlobTx, out _), Is.True);
+            }
 
             // A fresh pool over the same storage stands in for a node restart.
-            PersistentBlobTxDistinctSortedPool poolAfterRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
+            using PersistentBlobTxDistinctSortedPool poolAfterRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
 
             byte[][] blobs = new byte[1][];
             ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
@@ -5420,7 +5835,9 @@ namespace Nethermind.TxPool.Test
             Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [0xbeef]);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // A fresh pool over the same storage stands in for a node restart.
+            // A fresh pool over the same storage stands in for a node restart, and the old one is disposed so
+            // that only one of them answers the head below.
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider(), txStorage: blobTxStorage);
             Transaction[] restored = _txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressA);
             Assert.That(restored, Has.Length.EqualTo(1), "the restart must not evict a keyed transaction whose sequence is current");

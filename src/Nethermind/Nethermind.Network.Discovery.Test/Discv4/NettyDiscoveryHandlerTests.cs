@@ -78,6 +78,35 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        public async Task Send_serializes_on_channel_event_loop([Values] bool sendFromEventLoop)
+        {
+            IMessageSerializationService real = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
+            IMessageSerializationService service = Substitute.For<IMessageSerializationService>();
+            bool serializedOnEventLoop = false;
+            IByteBuffer? serialized = null;
+            service.ZeroSerialize(Arg.Any<PingMsg>(), Arg.Any<IByteBufferAllocator>()).Returns(ci =>
+            {
+                serializedOnEventLoop = _channels[^1].EventLoop.InEventLoop;
+                return serialized = real.ZeroSerialize(ci.Arg<PingMsg>(), UnpooledByteBufferAllocator.Default);
+            });
+            await StartUdpChannel("127.0.0.1", 10003, _kademliaAdaptersMocks[0], service);
+            PingMsg message = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address, _address2, new byte[32])
+            {
+                FarAddress = _address2
+            };
+
+            if (sendFromEventLoop)
+                await _channels[^1].EventLoop.SubmitAsync(() => _discoveryHandlers[^1].SendMsg(message)).Unwrap();
+            else
+                await Task.Run(() => _discoveryHandlers[^1].SendMsg(message));
+
+            Assert.That(serializedOnEventLoop, Is.True);
+            await SleepWhileWaiting();
+            await _kademliaAdaptersMocks[1].Received(1).OnIncomingMsg(Arg.Any<PingMsg>());
+            Assert.That(serialized?.ReferenceCount, Is.Zero);
+        }
+
+        [Test]
         public async Task PingSentReceivedTest()
         {
             PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address, _address2, new byte[32])
@@ -497,7 +526,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             }
 
             public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
-                => innerService.Deserialize<T>(buffer);
+            {
+                if (typeof(T) == typeof(PingMsg) && Interlocked.Increment(ref _deserializeCalls) == 1)
+                {
+                    deserializeEntered.Set();
+                    unblockDeserialize.Wait(TimeSpan.FromSeconds(10));
+                }
+
+                return innerService.Deserialize<T>(buffer);
+            }
         }
     }
 }

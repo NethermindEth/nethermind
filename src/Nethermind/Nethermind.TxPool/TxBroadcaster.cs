@@ -127,12 +127,15 @@ namespace Nethermind.TxPool
             // (70% by default). Otherwise only add to persistent txs and broadcast when tx will be ready for inclusion
 
             if (tx is not null
-                && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree())
-                && _persistentTxs.TryInsert(tx.Hash, tx.CarriesBlobs ? new LightTransaction(tx) : tx, out Transaction? removed)
-                && removed?.Hash != tx.Hash)
+                && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree()))
             {
-                NotifyPeersAboutLocalTx(tx);
-                return true;
+                Transaction broadcastTx = PrecomputeBlobAnnouncement(tx);
+                if (_persistentTxs.TryInsert(tx.Hash, broadcastTx, out Transaction? removed)
+                    && removed?.Hash != tx.Hash)
+                {
+                    NotifyPeersAboutLocalTx(broadcastTx);
+                    return true;
+                }
             }
 
             return false;
@@ -140,11 +143,15 @@ namespace Nethermind.TxPool
 
         private void BroadcastOnce(Transaction tx)
         {
+            Transaction broadcastTx = PrecomputeBlobAnnouncement(tx);
             lock (_accumulatedTxsLock)
             {
-                _accumulatedTemporaryTxs.Add(tx);
+                _accumulatedTemporaryTxs.Add(broadcastTx);
             }
         }
+
+        private static Transaction PrecomputeBlobAnnouncement(Transaction tx) =>
+            tx.CarriesBlobs && tx is not LightTransaction ? new LightTransaction(tx) : tx;
 
         public void AnnounceOnce(ITxPoolPeer peer, Transaction[] txs)
         {
@@ -434,7 +441,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPersistentTx(Hash256 hash, out Transaction? transaction)
+        public bool TryGetPersistentTx(in ValueHash256 hash, out Transaction? transaction)
         {
             if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.CarriesBlobs)
             {

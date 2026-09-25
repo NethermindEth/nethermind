@@ -13,8 +13,11 @@ namespace Nethermind.TxPool;
 public class LightTxDecoder : TxDecoder<Transaction>
 {
     private const byte ConsensusEncodingSizeFormatVersion = 1;
+    // Format 2 holds the already-derived elided network-encoding size. It is still written when the consensus size
+    // is unknown; otherwise records keep the foundational consensus size, from which future encodings can be derived.
+    private const byte ElidedNetworkEncodingSizeFormatVersion = 2;
 
-    private static int GetLength(Transaction tx, Address? paymaster) => Rlp.LengthOf(tx.Timestamp)
+    private static int GetLength(Transaction tx, Address? paymaster, int networkSize, int persistedEncodingSize, byte sizeFormatVersion) => Rlp.LengthOf(tx.Timestamp)
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
@@ -25,11 +28,11 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
                + Rlp.LengthOf(tx.BlobVersionedHashes!)
                + Rlp.LengthOf(tx.PoolIndex)
-               + Rlp.LengthOf(tx.GetLength())
+               + Rlp.LengthOf(networkSize)
                + Rlp.LengthOf(sizeof(byte))
                + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0)
-               + Rlp.LengthOf(GetConsensusEncodingSize(tx))
-               + Rlp.LengthOf(ConsensusEncodingSizeFormatVersion)
+               + Rlp.LengthOf(persistedEncodingSize)
+               + Rlp.LengthOf(sizeFormatVersion)
                + Rlp.LengthOf((byte)tx.Type)
                + (FrameTxValidation.TryGetExpiryDeadline(tx, out ulong expiryDeadline) ? Rlp.LengthOf(expiryDeadline) : 0)
                + TrailingLength(tx, paymaster);
@@ -71,7 +74,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
     {
         // Read once through the pool's own key, so the record and the cap's ledger cannot disagree on the sponsor.
         Address? paymaster = PendingPaymasterCache.KeyFor(tx);
-        byte[] bytes = new byte[GetLength(tx, paymaster)];
+        int networkSize = tx.GetLength();
+        (int persistedEncodingSize, byte sizeFormatVersion) = GetPersistedEncodingSize(tx);
+        byte[] bytes = new byte[GetLength(tx, paymaster, networkSize, persistedEncodingSize, sizeFormatVersion)];
         RlpWriter writer = new(bytes);
 
         writer.Encode(tx.Timestamp);
@@ -85,11 +90,11 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.MaxFeePerBlobGas!.Value);
         writer.Encode(tx.BlobVersionedHashes!);
         writer.Encode(tx.PoolIndex);
-        writer.Encode(tx.GetLength());
+        writer.Encode(networkSize);
         writer.Encode((byte)(tx.GetProofVersion() ?? default));
         EncodeAvailableCellMask(tx, ref writer);
-        writer.Encode(GetConsensusEncodingSize(tx));
-        writer.Encode(ConsensusEncodingSizeFormatVersion);
+        writer.Encode(persistedEncodingSize);
+        writer.Encode(sizeFormatVersion);
         // Appended after the blob fields so records written before it still decode, defaulting to TxType.Blob.
         writer.Encode((byte)tx.Type);
         // Expiry needs the deadline after a reload, where the frames that carried it are gone.
@@ -156,9 +161,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
             : BlobCellMask.Full;
         int persistedEncodingSize = optionalFieldCount >= 3 ? ctx.DecodePositiveInt() : 0;
         byte sizeFormatVersion = optionalFieldCount >= 4 ? (byte)ctx.DecodeByte() : (byte)0;
-        int consensusEncodingSize = sizeFormatVersion == ConsensusEncodingSizeFormatVersion
-            ? persistedEncodingSize
-            : 0;
+        int consensusEncodingSize = sizeFormatVersion == ConsensusEncodingSizeFormatVersion ? persistedEncodingSize : 0;
+        int elidedNetworkEncodingSize = sizeFormatVersion == ElidedNetworkEncodingSizeFormatVersion ? persistedEncodingSize : 0;
         TxType type = optionalFieldCount >= 5 ? (TxType)ctx.DecodeByte() : TxType.Blob;
         // The deadline is the only optional scalar left, so a sequence here means the keys follow instead.
         ulong? expiryDeadline = optionalFieldCount >= 6 && !ctx.IsSequenceNext() ? ctx.DecodeULong() : null;
@@ -221,6 +225,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             proofVersion,
             blobCellMask,
             consensusEncodingSize,
+            elidedNetworkEncodingSize,
             type,
             expiryDeadline,
             nonceKeys,
@@ -243,8 +248,16 @@ public class LightTxDecoder : TxDecoder<Transaction>
                 ? lightTx.BlobCellMask
                 : BlobCellMask.Empty;
 
-    private static int GetConsensusEncodingSize(Transaction tx) =>
-        tx is LightTransaction lightTx && lightTx.GetConsensusEncodingSize() > 0
-            ? lightTx.GetConsensusEncodingSize()
-            : tx.GetLength(shouldCountBlobs: false);
+    private static (int Size, byte FormatVersion) GetPersistedEncodingSize(Transaction tx)
+    {
+        if (tx is not LightTransaction lightTx)
+        {
+            return (tx.GetLength(shouldCountBlobs: false), ConsensusEncodingSizeFormatVersion);
+        }
+
+        int consensusEncodingSize = lightTx.GetConsensusEncodingSize();
+        return consensusEncodingSize > 0
+            ? (consensusEncodingSize, ConsensusEncodingSizeFormatVersion)
+            : (lightTx.GetElidedNetworkEncodingSize(), ElidedNetworkEncodingSizeFormatVersion);
+    }
 }

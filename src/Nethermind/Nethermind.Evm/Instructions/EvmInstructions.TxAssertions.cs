@@ -238,7 +238,7 @@ public static partial class EvmInstructions
         view = null!;
         ctx = null!;
         FrameTxContext? frameContext = vm.TxExecutionContext.FrameTxContext;
-        if (frameContext is null || frameContext.CurrentFrame.Mode != TxFrame.ModePostTx) return false;
+        if (frameContext is null || frameContext.CurrentFrame.Mode != FrameMode.PostTx) return false;
         ctx = frameContext;
 
         if (frameContext.PostTxDiffView is TransactionDiffView cached)
