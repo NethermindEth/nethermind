@@ -9,14 +9,30 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Filters;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Benchmarks.Evm;
 
+[Config(typeof(SupportedKernelsConfig))]
 public class JumpDestinationsBenchmark
 {
+    /// <summary>Leaves out the kernels this machine cannot run, so their rows are absent instead of timing nothing.</summary>
+    private sealed class SupportedKernelsConfig : ManualConfig
+    {
+        public SupportedKernelsConfig() => AddFilter(new SimpleFilter(static benchmark => benchmark.Descriptor.WorkloadMethod.Name switch
+        {
+            nameof(Vector128) => Ssse3.IsSupported || AdvSimd.Arm64.IsSupported,
+            nameof(Vector256) => Avx2.IsSupported,
+            // The benchmark method names hide the vector types, so the type needs its namespace here.
+            nameof(Vector512) => Avx512Vbmi.IsSupported && System.Runtime.Intrinsics.Vector512.IsHardwareAccelerated,
+            _ => true,
+        }));
+    }
+
     const string x0000_48KiB = "0x0000..48KiB";
     const string x5b00_48KiB = "0x5b00..48KiB";
     const string x005b_256KiB = "0x005b..256KiB";
@@ -125,8 +141,6 @@ public class JumpDestinationsBenchmark
     [Benchmark]
     public long[] Vector128()
     {
-        if (!Ssse3.IsSupported && !AdvSimd.Arm64.IsSupported) return _bitmap;
-
         Array.Clear(_bitmap);
         return Ssse3.IsSupported
             ? JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Ssse3(_bitmap, _code)
@@ -136,8 +150,6 @@ public class JumpDestinationsBenchmark
     [Benchmark]
     public long[] Vector256()
     {
-        if (!Avx2.IsSupported) return _bitmap;
-
         Array.Clear(_bitmap);
         return JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector256(_bitmap, _code);
     }
@@ -145,9 +157,6 @@ public class JumpDestinationsBenchmark
     [Benchmark]
     public long[] Vector512()
     {
-        // The benchmark method names hide the vector types, so the type needs its namespace here.
-        if (!Avx512Vbmi.IsSupported || !System.Runtime.Intrinsics.Vector512.IsHardwareAccelerated) return _bitmap;
-
         Array.Clear(_bitmap);
         return JumpDestinationAnalyzer.PopulateJumpDestinationBitmap_Vector512(_bitmap, _code);
     }
