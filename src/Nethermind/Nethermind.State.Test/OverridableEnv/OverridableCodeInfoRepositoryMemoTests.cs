@@ -20,11 +20,14 @@ public class OverridableCodeInfoRepositoryMemoTests
 {
     private static readonly IReleaseSpec Spec = Substitute.For<IReleaseSpec>();
 
-    private static (OverridableCodeInfoRepository repository, ICodeInfoRepository inner) Build(bool memoize, byte[] code)
+    private static (OverridableCodeInfoRepository repository, ICodeInfoRepository inner) Build(bool memoize, byte[] code) =>
+        Build(memoize, () => new CodeInfo(code));
+
+    private static (OverridableCodeInfoRepository repository, ICodeInfoRepository inner) Build(bool memoize, Func<CodeInfo> codeInfo)
     {
         ICodeInfoRepository inner = Substitute.For<ICodeInfoRepository>();
         inner.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address>())
-            .Returns(_ => new CodeInfo(code));
+            .Returns(_ => codeInfo());
         OverridableCodeInfoRepository repository = new(inner, Substitute.For<IWorldState>()) { MemoizeResolvedCode = memoize };
         return (repository, inner);
     }
@@ -98,11 +101,7 @@ public class OverridableCodeInfoRepositoryMemoTests
     [Test]
     public void Code_resolving_to_a_precompile_is_not_remembered()
     {
-        ICodeInfoRepository inner = Substitute.For<ICodeInfoRepository>();
-        inner.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address>())
-            .Returns(_ => new CodeInfo(Substitute.For<IPrecompile>()));
-        OverridableCodeInfoRepository repository = new(inner, Substitute.For<IWorldState>()) { MemoizeResolvedCode = true };
-
+        (OverridableCodeInfoRepository repository, ICodeInfoRepository inner) = Build(true, () => new CodeInfo(Substitute.For<IPrecompile>()));
         Lookup(repository, TestItem.AddressA, 3);
 
         Assert.That(InnerLookups(inner), Is.EqualTo(3));
