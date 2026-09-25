@@ -1715,6 +1715,33 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task VmTrace_store_does_not_depend_on_stateDiff_selection([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        // PUSH1 1, PUSH1 0, SSTORE, PUSH1 0x20, PUSH1 0, RETURN: the SSTORE is ops[2].
+        const string bytecode = "0x60016000556020600060f3";
+        JToken vmTraceOnly = await TraceCallVmTrace(context, bytecode, "vmTrace");
+        JToken withStateDiff = await TraceCallVmTrace(context, bytecode, "vmTrace", "stateDiff");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(vmTraceOnly["ops"]![2]!["ex"]!["store"]!.Type, Is.EqualTo(JTokenType.Object));
+            Assert.That(vmTraceOnly, Is.EqualTo(withStateDiff).Using(JToken.EqualityComparer));
+        }
+    }
+
+    private static async Task<JToken> TraceCallVmTrace(Context context, string bytecode, params string[] traceTypes)
+    {
+        string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":null,\"data\":\"{bytecode}\",\"gas\":\"0xf4240\"}},{JsonSerializer.Serialize(traceTypes)}]]";
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls);
+        return JToken.Parse(response)["result"]![0]!["vmTrace"]!;
+    }
+
+    [Test]
     public async Task Streaming_vmTrace_matches_buffered_across_nested_call_frame()
     {
         Context context = new();
