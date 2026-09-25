@@ -92,6 +92,21 @@ internal static class PbtNodeCodec
         return Blake3Hash.Hash(preimage);
     }
 
+    /// <summary><see cref="HashLeaf"/> for two leaves at once, compressed in lock-step.</summary>
+    internal static void HashLeaves(ReadOnlySpan<byte> firstKey, in ValueHash256 firstValue, ReadOnlySpan<byte> secondKey, in ValueHash256 secondValue,
+        out ValueHash256 firstHash, out ValueHash256 secondHash)
+    {
+        Span<byte> first = stackalloc byte[1 + firstKey.Length + 32];
+        Span<byte> second = stackalloc byte[1 + secondKey.Length + 32];
+        first[0] = LeafTag;
+        firstKey.CopyTo(first[1..]);
+        firstValue.Bytes.CopyTo(first[(1 + firstKey.Length)..]);
+        second[0] = LeafTag;
+        secondKey.CopyTo(second[1..]);
+        secondValue.Bytes.CopyTo(second[(1 + secondKey.Length)..]);
+        Blake3Hash.HashTwo(first, second, out firstHash, out secondHash);
+    }
+
     internal static byte[] EncodeLeaf<TKey>(TKey key) where TKey : struct, IPbtKey<TKey>
     {
         if (key.Length == 0) throw new ArgumentException("A complete key cannot be empty.", nameof(key));

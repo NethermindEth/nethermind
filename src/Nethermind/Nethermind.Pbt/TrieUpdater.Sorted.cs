@@ -136,8 +136,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int anchorDepth, scoped Span<byte> encoding)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        using PbtNodeGroupWriter<TPath> writer = new(bitDepth, context.MemoryProvider, context.PrefixlessBranchOmission);
-        StoredGroupHashes hashes = default;
+        using PbtNodeGroupWriter<TPath> writer = PbtNodeGroupWriter<TPath>.Rent(bitDepth, context.MemoryProvider, context.PrefixlessBranchOmission);
+        StoredGroupHashes.Open(out StoredGroupHashes hashes);
         ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path, default);
         SlotNode result = default;
         ValueHash256 groupHash = default;
@@ -306,10 +306,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
     }
 
-    /// <summary>Sorts a zone's operations, which the producer grouped by <paramref name="shardTable"/>'s shards, by sorting each shard in place.</summary>
+    /// <summary>Sorts a zone's operations, which the producer grouped by <paramref name="shardTable"/>'s shards, by sorting each shard in place, and replaces every set value with its leaf hash.</summary>
     /// <remarks>
     /// The shards lie in ascending shard order and every key in one shard shares the shard nibble, so sorted shards make a
-    /// sorted zone. A zone wide enough for two workers sorts its shards across threads under the fold quota.
+    /// sorted zone. A zone wide enough for two workers sorts and hashes its shards across threads under the fold quota,
+    /// taking the leaf hashes off the fold's own path and pairing them for <see cref="Blake3Hash.HashTwo"/>.
     /// </remarks>
     /// <param name="shardTable">The used-shard mask, then each used shard's count.</param>
     internal static void SortShards(FoldContext context, Span<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> shardTable)
@@ -320,9 +321,10 @@ internal static partial class TrieUpdater<TKey, TPath>
             int offset = 0;
             foreach (int count in shardTable.Slice(1, shardCount))
             {
-                operations.Slice(offset, count).Sort(OperationComparer.Instance);
+                PbtOperationSort.Sort(operations.Slice(offset, count));
                 offset += count;
             }
+            HashLeaves(operations);
             return;
         }
 
@@ -330,7 +332,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         int[] starts = new int[shardCount + 1];
         starts[0] = OffsetOf(array, operations);
         for (int shard = 0; shard < shardCount; shard++) starts[shard + 1] = starts[shard] + shardTable[1 + shard];
-        ForEachOnQuota(context.FoldQuota, shardCount, shard => array.AsSpan(starts[shard], starts[shard + 1] - starts[shard]).Sort(OperationComparer.Instance));
+        ForEachOnQuota(context.FoldQuota, shardCount, shard =>
+        {
+            Span<PbtWriteOperation<TKey>> shardOperations = array.AsSpan(starts[shard], starts[shard + 1] - starts[shard]);
+            PbtOperationSort.Sort(shardOperations);
+            HashLeaves(shardOperations);
+        });
     }
 
     /// <summary>Folds a zone group whose operations <see cref="SortShards"/> sorted, leaving its root in <paramref name="result"/> anchored at <paramref name="resultDepth"/>.</summary>
@@ -349,12 +356,6 @@ internal static partial class TrieUpdater<TKey, TPath>
         AssertSorted(operations);
         ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path, shardTable);
         TakeRoot(writer, path, resultDepth, root, ref result);
-    }
-
-    private sealed class OperationComparer : IComparer<PbtWriteOperation<TKey>>
-    {
-        internal static readonly OperationComparer Instance = new();
-        public int Compare(PbtWriteOperation<TKey> left, PbtWriteOperation<TKey> right) => left.Key.CompareTo(right.Key);
     }
 
     private static int OffsetOf(PbtWriteOperation<TKey>[] array, ReadOnlySpan<PbtWriteOperation<TKey>> span)
@@ -396,12 +397,35 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     private static ValueHash256 HashBranch(ReadOnlySpan<byte> encoding) => Blake3Hash.Hash(PbtNodeReader.FromValidated(encoding).Preimage);
 
-    private static ValueHash256 HashLeaf(in PbtWriteOperation<TKey> operation)
+    /// <summary>The leaf hash of a set operation, which <see cref="SortShards"/> put in place of its value.</summary>
+    private static ValueHash256 HashLeaf(in PbtWriteOperation<TKey> operation) => operation.Value;
+
+    /// <summary>Replaces every set operation's value with its leaf hash, hashing two leaves at a time; deletions stay default.</summary>
+    private static void HashLeaves(Span<PbtWriteOperation<TKey>> operations)
     {
-        // Copied out first: a span taken off a readonly reference's property would point at a hidden temporary.
-        TKey key = operation.Key;
-        ValueHash256 value = operation.Value;
-        return PbtNodeCodec.HashLeaf(key.Bytes, value.Bytes);
+        int pending = -1;
+        for (int index = 0; index < operations.Length; index++)
+        {
+            if (operations[index].Value == default) continue;
+            if (pending < 0)
+            {
+                pending = index;
+                continue;
+            }
+            TKey firstKey = operations[pending].Key;
+            TKey secondKey = operations[index].Key;
+            PbtNodeCodec.HashLeaves(firstKey.Bytes, operations[pending].Value, secondKey.Bytes, operations[index].Value,
+                out ValueHash256 firstHash, out ValueHash256 secondHash);
+            operations[pending] = new(firstKey, firstHash);
+            operations[index] = new(secondKey, secondHash);
+            pending = -1;
+        }
+        if (pending >= 0)
+        {
+            TKey key = operations[pending].Key;
+            ValueHash256 value = operations[pending].Value;
+            operations[pending] = new(key, PbtNodeCodec.HashLeaf(key.Bytes, value.Bytes));
+        }
     }
 
     private static SlotNode EncodeLeaf(TKey key, in ValueHash256 hash, Span<byte> encoding)
@@ -516,7 +540,8 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         ComposeFrame frame = new(local, default);
         int leftPosition = position - local.Width;
-        OmittedPreimage omittedLeft = default;
+        // Only read back once SettleLeftSorted wrote it, so it is not zeroed.
+        Unsafe.SkipInit(out OmittedPreimage omittedLeft);
         bool leftPending = SettleLeftSorted(walk.Writer, walk.Path, leftPosition, left.RiseBitCount == 0 ? left : Land(ref walk.Reader, ref walk.Hashes, walk.Writer, left, leftPosition), ref frame, omittedLeft);
         ComposedNode right = Walk(ref walk, local.Right, rightCover);
         Debug.Assert(!right.IsEmpty, "A right half known to survive composes a node.");
