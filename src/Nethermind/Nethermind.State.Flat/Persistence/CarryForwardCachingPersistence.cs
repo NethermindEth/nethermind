@@ -58,6 +58,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         }
     }
 
+    internal bool HasSpareWrittenAccounts => Volatile.Read(ref _spareWrittenAccounts) is not null;
+
     internal bool HasSpareWrittenSlots => Volatile.Read(ref _spareWrittenSlots) is not null;
 
     public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind)

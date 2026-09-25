@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.State.Flat.Collections;
 using NUnit.Framework;
 
@@ -55,17 +56,16 @@ public class LargeArrayPoolTests
         Assert.That(pool.Rent(1500), Is.Not.SameAs(foreign));
     }
 
-    [TestCase(false, false, true, TestName = "Trim_keeps_arrays_used_since_the_previous_trim")]
-    [TestCase(false, true, false, TestName = "Trim_releases_arrays_idle_since_the_previous_trim")]
+    [TestCase(false, false, true, TestName = "Trim_keeps_arrays_used_recently")]
+    [TestCase(false, true, false, TestName = "Trim_releases_arrays_idle_for_the_idle_period")]
     [TestCase(true, false, false, TestName = "Trim_under_memory_pressure_releases_everything")]
-    public void Trim_releases_idle_or_all_arrays(bool all, bool idleRound, bool kept)
+    public void Trim_releases_idle_or_all_arrays(bool all, bool idle, bool kept)
     {
         LargeArrayPool<long> pool = CreatePool();
         long[] array = pool.Rent(4096);
         pool.Return(array);
-        if (idleRound) pool.Trim(all: false);
 
-        pool.Trim(all);
+        pool.Trim(all, Environment.TickCount64 + (idle ? LargeArrayPool<long>.IdleTrimMilliseconds : 0));
 
         Assert.That(pool.Rent(4096) == array, Is.EqualTo(kept));
     }

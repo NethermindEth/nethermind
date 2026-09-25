@@ -36,8 +36,8 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
 {
     private const int StackScratchLength = 256;
 
-    // Entry arrays of 64 KiB and more: ArrayPool.Shared kept idle copies of them in thread-local slots (366 MB in a
-    // block-processing heap dump) while compaction rented fresh ones.
+    // Entry arrays of 64 KiB and more: ArrayPool.Shared keeps idle copies of them in per-thread slots while
+    // compaction rents fresh ones.
     private const int MaxPooledLargeArrayLength = 1 << 21;
     private const int MaxPooledLargeArraysPerSize = 4;
     private static readonly int LargeEntryArrayMinLength = Math.Max(16, 64 * 1024 / Unsafe.SizeOf<Entry>());
