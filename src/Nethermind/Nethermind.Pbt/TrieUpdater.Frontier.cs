@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
@@ -53,7 +54,10 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 case EntrySource.AtPosition:
                     // The root stays: a touched slot resolved after this take still reads its links from it.
-                    return fromRoot ? Root : reader.TakeBoundaryNode(entry.SourcePosition, ref hashes, metrics);
+                    if (fromRoot) return Root;
+                    ValueHash256 hash = LinkHash(ref reader, this, entry.SourcePosition);
+                    if (hash == default) hash = hashes.GetHash(ref reader, entry.SourcePosition, metrics);
+                    return reader.TakeBoundaryNode(entry.SourcePosition, hash);
                 case EntrySource.LeftLeafOf:
                 case EntrySource.RightLeafOf:
                     bool right = entry.Source == EntrySource.RightLeafOf;

@@ -154,7 +154,7 @@ public static partial class TrieUpdater
         Span<StoredGroupHashes> zoneHashes = stackalloc StoredGroupHashes[sharedReaders.Length];
         int absentZoneMask = 0;
         StoredGroupHashes rootHashes = default;
-        Decompose(ref rootReader, ref rootHashes, rootPath, ref root, 0, ref rootFrontier, touchedRootMask);
+        Decompose(ref rootReader, rootPath, ref root, 0, ref rootFrontier, touchedRootMask);
         foreach (PartitionFold worker in workers)
         {
             int slot = worker.Zone >> 4;
@@ -170,12 +170,12 @@ public static partial class TrieUpdater
                 {
                     absentZoneMask |= 1 << slot;
                     absentZones[slot] = AbsentFrame(boundary, sharedPath, 4, rootReader.DescendantBytes(slot), metrics);
-                    Decompose(ref absentZones[slot], ref zoneHashes[slot], sharedPath, ref boundary, 4, ref zoneFrontiers[slot], touchedZoneMasks[slot]);
+                    Decompose(ref absentZones[slot], sharedPath, ref boundary, 4, ref zoneFrontiers[slot], touchedZoneMasks[slot]);
                 }
                 else
                 {
                     sharedReaders[slot] = new(store, sharedPath, boundary.HashAt(sharedPath, 4, metrics), metrics);
-                    Decompose(ref sharedReaders[slot], ref zoneHashes[slot], sharedPath, ref boundary, 4, ref zoneFrontiers[slot], touchedZoneMasks[slot]);
+                    Decompose(ref sharedReaders[slot], sharedPath, ref boundary, 4, ref zoneFrontiers[slot], touchedZoneMasks[slot]);
                 }
             }
             if ((absentZoneMask >> slot & 1) != 0) TakeWorkerBoundary(ref absentZones[slot], ref zoneHashes[slot], sharedPath, ref zoneFrontiers[slot], worker, metrics);

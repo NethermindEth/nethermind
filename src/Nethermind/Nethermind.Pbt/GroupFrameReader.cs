@@ -133,13 +133,12 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
     }
 
     /// <inheritdoc/>
-    /// <remarks>The hash is the seeded link hash where a link named this node, and otherwise the one hash its encoding needs.</remarks>
-    public TrieUpdater<TKey, TPath>.BoundaryNode TakeBoundaryNode(int position, ref TrieUpdater<TKey, TPath>.StoredGroupHashes hashes, TrieUpdaterMetrics? metrics)
+    public readonly TrieUpdater<TKey, TPath>.BoundaryNode TakeBoundaryNode(int position, in ValueHash256 hash)
     {
         ReadOnlyMemory<byte> encoding = GetEncoding(position);
         if (encoding.IsEmpty) throw new InvalidDataException("A referenced PBT node is missing.");
         if (PbtNodeReader.FromValidated(encoding.Span).IsLeaf) return new(encoding, _groupHash);
-        return new(encoding, BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length, hashes.GetHash(ref this, position, metrics));
+        return new(encoding, BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length, hash);
     }
 
     /// <inheritdoc/>

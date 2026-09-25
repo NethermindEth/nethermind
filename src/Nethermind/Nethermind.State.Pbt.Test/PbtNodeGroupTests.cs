@@ -920,7 +920,7 @@ public class PbtNodeGroupTests
         TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.StoredGroupHashes hashes = default;
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode source = reader.TakeBoundaryNode(position, ref hashes, null);
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode source = reader.TakeBoundaryNode(position, hashes.GetHash(ref reader, position, null));
             Assert.That(source.AnchorDepth, Is.EqualTo(path.BitDepth));
             PbtTraversalPath nodePath = PbtTraversalPath.FromPath(stackalloc byte[66], path);
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult materialized = default;
@@ -1159,7 +1159,7 @@ public class PbtNodeGroupTests
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
             root = reader.TakeRoot();
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Decompose(ref reader, ref hashes, groupPath, ref root, 0, ref frontier, touchedMask);
+            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Decompose(ref reader, groupPath, ref root, 0, ref frontier, touchedMask);
             Assert.That(frontier.Unresolved, Is.EqualTo(touchedMask), "touched slots are resolved only when their fold takes them");
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult[] results = new TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult[BitOperations.PopCount((uint)touchedMask)];
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult[] taken = new TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult[PbtFourLevelGroupGeometry.BoundarySlots];
@@ -1251,7 +1251,7 @@ public class PbtNodeGroupTests
         Span<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult> results = stackalloc TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult[1];
         TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult composed = default;
         TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode input = default;
-        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Decompose(ref reader, ref hashes, groupPath, ref input, 0, ref frontier, 1 << slot);
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Decompose(ref reader, groupPath, ref input, 0, ref frontier, 1 << slot);
         Assert.That(frontier.Mask, Is.Zero);
         Assert.That(TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeBoundary(ref reader, ref hashes, groupPath, ref frontier, slot, null).IsEmpty,
             Is.True, "an absent group has no boundary node to fold into");

@@ -10,7 +10,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
-    /// <summary>The hashes of the nodes one stored group holds, taken from the links that name them or computed once from their encodings.</summary>
+    /// <summary>The hashes of the nodes one stored group holds that the fold computes from their encodings, each computed once.</summary>
     /// <remarks>
     /// Kept beside a frame from its decomposition to its composition. A group that is not stored holds no node, so its
     /// hashes are never read.
@@ -21,16 +21,6 @@ internal static partial class TrieUpdater<TKey, TPath>
     {
         private HashBuffer _hashes;
         private uint _known;
-
-        /// <summary>Records the hash a parent node holds for <paramref name="position"/>, so composing it needs no rehash.</summary>
-        internal void SeedHash(int position, in ValueHash256 hash)
-        {
-            _hashes[position] = hash;
-            _known |= 1u << position;
-        }
-
-        /// <summary>The hash already known for the node at <paramref name="position"/>, or default when none is.</summary>
-        internal readonly ValueHash256 SeededHash(int position) => (_known & (1u << position)) != 0 ? _hashes[position] : default;
 
         /// <summary>The hash of the node <paramref name="frame"/> stores or leaves implicit at <paramref name="position"/>, computed once.</summary>
         internal ValueHash256 GetHash<TFrame>(ref TFrame frame, int position, TrieUpdaterMetrics? metrics)

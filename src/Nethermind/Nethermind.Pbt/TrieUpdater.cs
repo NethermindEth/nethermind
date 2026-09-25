@@ -523,7 +523,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     {
         Debug.Assert(path.BitDepth == bitDepth);
         Frontier frontier = new(partition.UsedMask);
-        Decompose(ref reader, ref hashes, path, ref current, bitDepth, ref frontier, partition.UsedMask);
+        Decompose(ref reader, path, ref current, bitDepth, ref frontier, partition.UsedMask);
 
         if (context.FoldQuota is not null
             && (partition.UsedMask & (partition.UsedMask - 1)) != 0
@@ -754,7 +754,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         if ((frontier.Unresolved >> slot & 1) != 0)
         {
             frontier.Unresolved &= ~(1 << slot);
-            ResolveBlock(ref reader, ref hashes, path.BitDepth, frontier.Stored, frontier.Copies, slot, 1, ref frontier);
+            ResolveBlock(ref reader, path.BitDepth, frontier.Stored, frontier.Copies, slot, 1, ref frontier);
         }
         uint bit = 1u << BoundaryPosition(slot);
         if ((frontier.Mask & bit) == 0) return default;
@@ -788,7 +788,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             case EntrySource.AtPosition when entry.SourcePosition != RootSource:
                 ReadOnlyMemory<byte> stored = reader.GetEncoding(entry.SourcePosition);
                 return stored.IsEmpty
-                    ? AppendImplicitBranch(ref reader, ref hashes, writer, position, metrics)
+                    ? AppendImplicitBranch(ref reader, ref hashes, writer, frontier, position, metrics)
                     : AppendReanchored(writer, position, local.Length - PbtFourLevelGroupGeometry.LocalPathOf(entry.SourcePosition).Length,
                         PbtNodeReader.FromValidated(stored.Span));
             default:
@@ -843,13 +843,13 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>Appends the branch at <paramref name="position"/> that the group leaves implicit, rebuilt from the children it stores.</summary>
     /// <remarks>
     /// Only an interior prefixless branch is ever left out (<see cref="PbtNodeGroupCodec.ShouldOmit"/>), so a
-    /// boundary position or the root with nothing stored, or a child missing, is a corrupt group. The link hash
-    /// decomposition seeded is kept, so the branch is only hashed again if a sibling's deletion promotes it. With that
+    /// boundary position or the root with nothing stored, or a child missing, is a corrupt group. The hash its parent's
+    /// link holds is kept, so the branch is only hashed again if a sibling's deletion promotes it. With that
     /// hash known and the branch left out again, its child hashes are only needed by <see cref="Land"/>, so they are
     /// resolved there instead, sparing the rehash of every unchanged node below it.
     /// </remarks>
-    private static ComposedNode AppendImplicitBranch<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, int position,
-        TrieUpdaterMetrics? metrics)
+    private static ComposedNode AppendImplicitBranch<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
+        scoped in Frontier frontier, int position, TrieUpdaterMetrics? metrics)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         int width = PbtFourLevelGroupGeometry.WidthOf(position);
@@ -858,13 +858,13 @@ internal static partial class TrieUpdater<TKey, TPath>
             int offset = writer.WrittenCount;
             int length = PbtNodeCodec.BranchLength(0, 0, 0);
             Span<byte> branch = writer.Append(position, length);
-            ValueHash256 seeded = hashes.SeededHash(position);
-            if (seeded != default)
+            ValueHash256 linkHash = LinkHash(ref reader, frontier, position);
+            if (linkHash != default)
             {
-                // The seeded hash only stands in for the child hashes, which omission does not look at.
-                PbtNodeCodec.CreateBranchEncoding(branch, 0, seeded, seeded);
+                // The link hash only stands in for the child hashes, which omission does not look at.
+                PbtNodeCodec.CreateBranchEncoding(branch, 0, linkHash, linkHash);
                 PbtNodeCodec.WriteBranchTrailer(branch[PbtNodeCodec.BranchPreimageLength(0)..], 0, 0);
-                if (writer.Omits(position, branch)) return new(offset, length, seeded) { ChildHashesPending = true };
+                if (writer.Omits(position, branch)) return new(offset, length, linkHash) { ChildHashesPending = true };
             }
 
             hashes.GetChildHashes(ref reader, position - width, position - 1, metrics, out ValueHash256 left, out ValueHash256 right);
@@ -872,7 +872,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 PbtNodeCodec.CreateBranchEncoding(branch, 0, left, right);
                 PbtNodeCodec.WriteBranchTrailer(branch[PbtNodeCodec.BranchPreimageLength(0)..], 0, 0);
-                return new(offset, length, seeded);
+                return new(offset, length, linkHash);
             }
         }
         throw new InvalidDataException("A referenced PBT node is missing.");
@@ -938,7 +938,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                     int copied = reader.CopyRange(writer, position - 2 * frame.Path.Width + 2, position + 1);
                     metrics?.AddBulkCopy(copied);
                     int length = reader.GetEncoding(position).Length;
-                    prevSubtree = new ComposedNode(writer.WrittenCount - length, length, hashes.SeededHash(position));
+                    prevSubtree = new ComposedNode(writer.WrittenCount - length, length, LinkHash(ref reader, frontier, position));
                     frameCount--;
                     continue;
                 }
@@ -1335,10 +1335,10 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// hash, so entries are placed without hashing anything. Entries use their leftmost boundary slot; the mask retains
     /// their group positions. An opaque subtree and its descendants never coexist, so their slots cannot collide. A
     /// stored node with no touched slot under it gets no entry: <see cref="Compose"/> copies it from the stored and
-    /// touched positions alone, so only its link hash is seeded here.
+    /// touched positions alone.
     /// </remarks>
     [SkipLocalsInit]
-    internal static void Decompose<TFrame>(ref TFrame reader, ref StoredGroupHashes hashes, scoped in PbtTraversalPath path, ref BoundaryNode input,
+    internal static void Decompose<TFrame>(ref TFrame reader, scoped in PbtTraversalPath path, ref BoundaryNode input,
         int bitDepth, ref Frontier frontier, int touchedMask)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
@@ -1380,7 +1380,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                    && (slot & (2 * width - 1)) == 0
                    && (touchedMask & (((1 << (2 * width)) - 1) << slot)) == 0)
                 width <<= 1;
-            ResolveBlock(ref reader, ref hashes, bitDepth, stored, copies, slot, width, ref frontier);
+            ResolveBlock(ref reader, bitDepth, stored, copies, slot, width, ref frontier);
             slot += width;
         }
     }
@@ -1389,10 +1389,10 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <remarks>
     /// What covers the block is the deepest node stored above its position, because a node carrying a compressed prefix
     /// is always stored at its anchor and only prefixless interior branches are left implicit. That node either spans
-    /// the block itself, holds the block's whole subtree as an inlined leaf, or names it through a link, whose hash is
-    /// seeded at the level the link addresses rather than at the block's own.
+    /// the block itself, holds the block's whole subtree as an inlined leaf, or names it through a link, whose hash
+    /// composition reads back through <see cref="LinkHash"/>.
     /// </remarks>
-    private static void ResolveBlock<TFrame>(ref TFrame reader, ref StoredGroupHashes hashes, int bitDepth, uint stored, uint copies, int slot, int width, ref Frontier frontier)
+    private static void ResolveBlock<TFrame>(ref TFrame reader, int bitDepth, uint stored, uint copies, int slot, int width, ref Frontier frontier)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         int level = PbtFourLevelGroupGeometry.LevelsPerGroup - BitOperations.Log2((uint)width);
@@ -1414,7 +1414,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             for (int bit = bitDepth; bit < bitDepth + entryLevel; bit++)
                 entrySlot = (entrySlot << 1) | (bit < node.AnchorDepth ? SlotBit(slot, bitDepth, bit) : GetBit(node.Prefix.Bytes, bit - node.AnchorDepth));
             entrySlot <<= PbtFourLevelGroupGeometry.LevelsPerGroup - entryLevel;
-            if (covering >= 0) SeedLinkHash(ref reader, ref hashes, bitDepth, stored, covering, ref frontier);
             frontier.Place(entrySlot, new NodeGroupPath(entrySlot, entryLevel).Position, EntrySource.AtPosition,
                 covering < 0 ? RootSource : covering);
             return;
@@ -1435,30 +1434,28 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         // The link names a node, so every level between it and this block holds a prefixless branch left implicit,
-        // and this block's position holds a node of its own. Only the link's own level carries the hash.
+        // and this block's position holds a node of its own.
         int linkLevel = branchDepth + 1 - bitDepth;
         int linkPosition = new NodeGroupPath(slot & ~((PbtFourLevelGroupGeometry.BoundarySlots >> linkLevel) - 1), linkLevel).Position;
-        hashes.SeedHash(linkPosition, side == 0 ? branch.LeftHash : branch.RightHash);
         Debug.Assert(linkPosition == position || level < PbtFourLevelGroupGeometry.LevelsPerGroup,
             "A boundary node is never left implicit, so its link addresses it directly.");
         if ((copies & (1u << position)) == 0) frontier.Place(slot, position, EntrySource.AtPosition, position);
     }
 
-    /// <summary>Seeds the hash of the node stored at <paramref name="position"/> from the link that names it.</summary>
+    /// <summary>The hash the parent's link holds for the untouched node at <paramref name="position"/>, or default when no link names it.</summary>
     /// <remarks>
-    /// A level left implicit carries no link, so a node below one keeps the single hash its own encoding needs, which
-    /// the frame computes once on demand. Nothing is hashed here.
+    /// The parent is read back from the group and input <see cref="Decompose"/> resolved against, which composition
+    /// leaves unchanged. A level left implicit carries no link, so a node below one keeps the single hash its own
+    /// encoding needs, which is computed once on demand. Nothing is hashed here.
     /// </remarks>
-    private static void SeedLinkHash<TFrame>(ref TFrame reader, ref StoredGroupHashes hashes, int bitDepth, uint stored, int position, ref Frontier frontier)
+    private static ValueHash256 LinkHash<TFrame>(scoped ref TFrame reader, scoped in Frontier frontier, int position)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        if (hashes.SeededHash(position) != default) return;
         NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
-        SpineNode node = NodeAt(ref reader, frontier.Root, bitDepth, DeepestStoredAbove(stored, position));
-        int linkDepth = bitDepth + local.Length;
-        if (node.BranchDepth != linkDepth - 1) return;
-        int side = local.GetBit(local.Length - 1);
-        hashes.SeedHash(position, side == 0 ? node.Node.LeftHash : node.Node.RightHash);
+        int bitDepth = reader.BitDepth;
+        SpineNode node = NodeAt(ref reader, frontier.Root, bitDepth, DeepestStoredAbove(frontier.Stored, position));
+        if (node.BranchDepth != bitDepth + local.Length - 1) return default;
+        return local.GetBit(local.Length - 1) == 0 ? node.Node.LeftHash : node.Node.RightHash;
     }
 
     /// <summary>The stored positions below the group root with no touched slot under them, which composition copies unchanged.</summary>
