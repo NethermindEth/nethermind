@@ -4,6 +4,7 @@
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api.Steps;
+using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
@@ -25,10 +26,14 @@ namespace Nethermind.Init.Steps
 
         private readonly IComponentContext _ctx;
         private readonly IEthereumStepsLoader _loader;
+        private readonly StepTarget[] _targets;
+        private readonly StepCommandSelection[] _commandSelections;
 
         public EthereumStepsManager(
             IEthereumStepsLoader loader,
             IComponentContext ctx,
+            IEnumerable<StepTarget> targets,
+            IEnumerable<StepCommandSelection> commandSelections,
             ILogManager logManager)
         {
             ArgumentNullException.ThrowIfNull(loader);
@@ -38,29 +43,58 @@ namespace Nethermind.Init.Steps
                       ?? throw new ArgumentNullException(nameof(logManager));
 
             _loader = loader ?? throw new ArgumentNullException(nameof(loader));
+            _targets = targets.ToArray();
+            _commandSelections = commandSelections.ToArray();
         }
 
+        /// <summary>Whether this run is a one-shot command rather than a node start.</summary>
+        public bool HasTarget => _targets.Length > 0 || _commandSelections.Length > 0;
+
+        /// <summary>Runs the step graph, or the target's closure when this run is a command.</summary>
+        /// <exception cref="OperationCanceledException">Shutdown was requested before the target finished.</exception>
+        /// <exception cref="StepDependencyException">The target did not complete.</exception>
         public async Task InitializeAll(CancellationToken cancellationToken)
         {
-            List<Task> allRequiredSteps = CreateAndExecuteSteps(cancellationToken);
-            if (allRequiredSteps.Count == 0)
-                return;
-            do
+            (List<Task> allRequiredSteps, Task? targetTask) = CreateAndExecuteSteps(cancellationToken);
+            if (allRequiredSteps.Count != 0)
             {
-                Task current = await Task.WhenAny(allRequiredSteps);
-                ReviewFailedAndThrow(current);
-                if (current.IsCanceled && _logger.IsDebug) _logger.Debug("A required step was cancelled!");
-                allRequiredSteps.Remove(current);
-            } while (allRequiredSteps.Any(s => !s.IsCompleted));
+                do
+                {
+                    Task current = await Task.WhenAny(allRequiredSteps);
+                    ReviewFailedAndThrow(current);
+                    if (current.IsCanceled && _logger.IsDebug) _logger.Debug("A required step was cancelled!");
+                    allRequiredSteps.Remove(current);
+                } while (allRequiredSteps.Any(s => !s.IsCompleted));
+            }
+
+            if (!HasTarget) return;
+
+            // A command's exit code is the target's outcome, so anything short of it completing has to surface
+            // as an exception for Program to map. Review every task first, not just the ones the loop happened
+            // to pick up: when the last tasks complete together the loop stops with one of them unreviewed, and
+            // a failing ancestor cancels the target before its own task faults, so the real error is there.
+            foreach (Task step in allRequiredSteps) ReviewFailedAndThrow(step);
+
+            // Shutdown counts as not completing; the exit code is already SigInt and must not be overwritten.
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (targetTask?.IsCompletedSuccessfully != true)
+                throw new StepDependencyException("The command step did not complete.");
         }
 
 
-        private List<Task> CreateAndExecuteSteps(CancellationToken cancellationToken)
+        private (List<Task> AllSteps, Task? TargetTask) CreateAndExecuteSteps(CancellationToken cancellationToken)
         {
             Dictionary<Type, StepWrapper> stepInfoMap = [];
+            List<StepInfo> resolvedSteps = _loader.ResolveStepsImplementations().ToList();
+            Type? target = ResolveTarget(resolvedSteps);
 
-            foreach (StepInfo stepInfo in _loader.ResolveStepsImplementations().ToList())
+            foreach (StepInfo stepInfo in resolvedSteps)
             {
+                // Command steps are jobs in their own right, not part of a node start, so they only run when
+                // selected. Excluding them here rather than after the graph is built keeps the dependency
+                // validation below meaningful: no edge is ever folded in for a step that will not run.
+                if (stepInfo.Command is not null && stepInfo.StepBaseType != target) continue;
                 cancellationToken.ThrowIfCancellationRequested();
 
                 IStep StepFactory() => CreateStepInstance(stepInfo);
@@ -103,13 +137,18 @@ namespace Nethermind.Init.Steps
                 }
             }
 
+            if (target is not null) PruneToTarget(stepInfoMap, target);
+
             if (_logger.IsDebug) _logger.Debug($"Ethereum steps dependency tree:\n{BuildStepDependencyTree(stepInfoMap)}");
             List<Task> allRequiredSteps = [];
-            foreach (StepWrapper stepWrapper in stepInfoMap.Values)
+            Task? targetTask = null;
+            foreach ((Type stepBaseType, StepWrapper stepWrapper) in stepInfoMap)
             {
-                allRequiredSteps.Add(ExecuteStep(stepWrapper, stepInfoMap, cancellationToken));
+                Task stepTask = ExecuteStep(stepWrapper, stepInfoMap, cancellationToken);
+                allRequiredSteps.Add(stepTask);
+                if (stepBaseType == target) targetTask = stepTask;
             }
-            return allRequiredSteps;
+            return (allRequiredSteps, targetTask);
         }
 
         private async Task ExecuteStep(StepWrapper stepWrapper, Dictionary<Type, StepWrapper> stepBaseTypeMap, CancellationToken cancellationToken)
@@ -147,6 +186,93 @@ namespace Nethermind.Init.Steps
             {
                 if (_logger.IsDebug) _logger.Debug($"{stepWrapper.StepInfo.StepType.Name,-24} complete");
             }
+        }
+
+        /// <summary>Determines the single step this run exists to execute, if any.</summary>
+        /// <remarks>
+        /// Merges the targets selected by modules with the command name given on the command line. Targets are
+        /// one-shot jobs over the same databases, so selecting more than one distinct step is rejected rather
+        /// than run as a union.
+        /// </remarks>
+        /// <exception cref="InvalidConfigurationException">
+        /// The requested command is not registered, or more than one distinct target was selected.
+        /// </exception>
+        private Type? ResolveTarget(IReadOnlyList<StepInfo> resolvedSteps)
+        {
+            HashSet<Type> targets = [];
+            foreach (StepTarget target in _targets) targets.Add(target.StepBaseType);
+
+            foreach (StepCommandSelection selection in _commandSelections)
+            {
+                StepInfo[] matches = [.. resolvedSteps.Where(step =>
+                    string.Equals(step.Command, selection.Name, StringComparison.OrdinalIgnoreCase))];
+
+                if (matches.Length == 0)
+                    throw new InvalidConfigurationException(
+                        $"Unknown command '{selection.Name}'. {DescribeAvailableCommands(resolvedSteps)}",
+                        ExitCodes.UnrecognizedOption);
+
+                // Commands come from whatever steps are registered, including a plugin's, so two of them can
+                // claim the same name. Picking one silently would make which job runs depend on plugin order.
+                if (matches.Length > 1)
+                    throw new InvalidConfigurationException(
+                        $"Command '{selection.Name}' is claimed by more than one step: {string.Join(", ", matches.Select(static s => s.StepType.FullName).Order())}.",
+                        ExitCodes.ConflictingConfigurations);
+
+                targets.Add(matches[0].StepBaseType);
+            }
+
+            if (targets.Count > 1)
+                throw new InvalidConfigurationException(
+                    $"Only one command can run at a time, but these were all selected: {string.Join(", ", targets.Select(t => DescribeTarget(resolvedSteps, t)).Order())}.",
+                    ExitCodes.ConflictingConfigurations);
+
+            return targets.FirstOrDefault();
+        }
+
+        /// <summary>Names a target the way the operator asked for it — by command where it has one.</summary>
+        private static string DescribeTarget(IReadOnlyList<StepInfo> resolvedSteps, Type stepBaseType)
+        {
+            string? command = resolvedSteps.FirstOrDefault(step => step.StepBaseType == stepBaseType)?.Command;
+            return command is null ? stepBaseType.Name : $"'{command}'";
+        }
+
+        private static string DescribeAvailableCommands(IReadOnlyList<StepInfo> resolvedSteps)
+        {
+            StepInfo[] commands = [.. resolvedSteps.Where(static step => step.Command is not null).OrderBy(static step => step.Command, StringComparer.Ordinal)];
+            if (commands.Length == 0) return "No commands are available.";
+
+            int width = commands.Max(static step => step.Command!.Length);
+            StringBuilder sb = new("Available commands:");
+            foreach (StepInfo command in commands)
+                sb.Append("\n  ").Append(command.Command!.PadRight(width)).Append("  ").Append(command.CommandDescription);
+
+            return sb.ToString();
+        }
+
+        /// <summary>Restricts execution to the target and its transitive dependencies.</summary>
+        /// <remarks>
+        /// Runs after <c>Dependents</c> edges have been folded into the dependency map, so a step declaring
+        /// itself a dependent of something inside the closure is pulled in with it. <see cref="StepWrapper.Step"/>
+        /// is lazy, so pruned steps are never resolved from the container and their dependencies are never built.
+        /// </remarks>
+        /// <exception cref="StepDependencyException">The target step is not registered.</exception>
+        private static void PruneToTarget(Dictionary<Type, StepWrapper> stepInfoMap, Type target)
+        {
+            if (!stepInfoMap.ContainsKey(target))
+                throw new StepDependencyException(
+                    $"Target step {target.Name} is not registered. Registered steps: {string.Join(", ", stepInfoMap.Keys.Select(static t => t.Name).Order())}.");
+
+            HashSet<Type> required = [];
+            Stack<Type> toVisit = new([target]);
+            while (toVisit.TryPop(out Type? stepBaseType))
+            {
+                if (!required.Add(stepBaseType)) continue;
+                foreach (Type dependency in stepInfoMap[stepBaseType].Dependencies) toVisit.Push(dependency);
+            }
+
+            foreach (Type stepBaseType in stepInfoMap.Keys.Where(t => !required.Contains(t)).ToArray())
+                stepInfoMap.Remove(stepBaseType);
         }
 
         private IStep CreateStepInstance(StepInfo stepInfo)
