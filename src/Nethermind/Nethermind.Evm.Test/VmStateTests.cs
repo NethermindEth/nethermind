@@ -198,6 +198,21 @@ namespace Nethermind.Evm.Test
             Assert.That(parent.VmState.AccessTracker.DestroyList.Contains(Address.Zero), Is.False);
         }
 
+        // The dense destroy list still clears the whole backing set; since #13568 it enumerates in destroy order.
+        [Test]
+        public void Destroy_list_uses_dense_clear_semantics()
+        {
+            using StackAccessTracker tracker = new();
+            tracker.DestroyList.Clear();
+            tracker.ToBeDestroyed(Address.Zero);
+            tracker.ToBeDestroyed(TestItem.AddressA);
+            tracker.DestroyList.Restore(-1);
+            tracker.ToBeDestroyed(TestItem.AddressB);
+            tracker.ToBeDestroyed(TestItem.AddressC);
+
+            Assert.That(tracker.DestroyList, Is.EqualTo(new[] { TestItem.AddressB, TestItem.AddressC }));
+        }
+
         [Test]
         public void Commit_adds_refunds()
         {
