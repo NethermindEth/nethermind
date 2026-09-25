@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using Microsoft.ClearScript.V8;
 using Nethermind.Logging;
 
@@ -32,7 +33,8 @@ internal sealed class TracerRuntime : IDisposable
     private const string BigIntegerJavaScript = "_bigInteger.js";
     private const string CreateUint8ArrayCode = "(function (buffer) {return new Uint8Array(buffer);}).valueOf()";
 
-    private static readonly Lazy<Dictionary<string, string>> _builtInSources = new(LoadBuiltInSources);
+    // PublicationOnly does not cache a failed load, so a later request retries it instead of rethrowing it for the process lifetime.
+    private static readonly Lazy<Dictionary<string, string>> _builtInSources = new(LoadBuiltInSources, LazyThreadSafetyMode.PublicationOnly);
 
     private readonly V8Runtime _runtime;
     private readonly Dictionary<string, V8Script> _scripts = [];
@@ -58,7 +60,10 @@ internal sealed class TracerRuntime : IDisposable
 
     public V8ScriptEngine CreateScriptEngine(V8ScriptEngineFlags flags) => _runtime.CreateScriptEngine(flags);
 
-    public V8Script BigInteger => GetScript(BigIntegerJavaScript, _builtInSources.Value[BigIntegerJavaScript]);
+    public V8Script BigInteger => GetScript(BigIntegerJavaScript,
+        _builtInSources.Value.TryGetValue(BigIntegerJavaScript, out string? code)
+            ? code
+            : throw new FileNotFoundException($"JavaScript tracer helper '{BigIntegerJavaScript}' is missing from {TracersPath}"));
 
     public V8Script CreateUint8Array => GetScript(nameof(CreateUint8ArrayCode), CreateUint8ArrayCode);
 

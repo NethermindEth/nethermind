@@ -684,13 +684,20 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [Test]
     public void Tracer_reused_across_block_traces_traces_every_block()
     {
-        using GethLikeBlockJavaScriptTracer tracer = GetTracer(StepCountingTracer);
+        const string stepAndIndexTracer = @"{
+                    steps: 0,
+                    step: function(log, db) { this.steps++; },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return { steps: this.steps, txIndex: ctx.txIndex }; }
+                }";
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(stepAndIndexTracer);
 
         for (int block = 0; block < 2; block++)
         {
             ExecuteTwoTransactionBlock(tracer);
 
-            Assert.That(ResultJsons(tracer.BuildResult()), Is.EqualTo(new[] { """{"steps":7}""", """{"steps":7}""" }), $"block {block}");
+            Assert.That(ResultJsons(tracer.BuildResult()),
+                Is.EqualTo(new[] { """{"steps":7,"txIndex":0}""", """{"steps":7,"txIndex":1}""" }), $"block {block}");
         }
     }
 

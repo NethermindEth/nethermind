@@ -28,6 +28,7 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         _ctx.block = block.Number;
         _blockHash = block.Hash;
         _baseFee = block.BaseFeePerGas;
+        _index = 0;
         base.StartNewBlockTrace(block);
     }
 
