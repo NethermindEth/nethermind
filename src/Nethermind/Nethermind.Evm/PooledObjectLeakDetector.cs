@@ -20,7 +20,8 @@ internal static class PooledObjectLeakDetector
 {
     private const string SitesVariable = "NETHERMIND_EVM_LEAK_SITES";
 
-    internal static bool CaptureSites = Environment.GetEnvironmentVariable(SitesVariable) is "1" or "true";
+    internal static bool CaptureSites = Environment.GetEnvironmentVariable(SitesVariable) is { } value
+        && (value is "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Captures the calling frame's stack, or <c>null</c> when site capture is off.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]

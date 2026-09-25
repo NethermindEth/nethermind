@@ -169,7 +169,7 @@ public class PooledObjectLeakDetectionTests
 
     [Test]
     public void Leaked_state_reused_from_the_pool_is_reported() =>
-        AssertReported(LeakRecycledState, "VmState", nameof(LeakRecycledState));
+        AssertReported(LeakRecycledState, nameof(VmState<>), nameof(LeakRecycledState));
 
     [Test]
     public void Collected_disposed_environment_is_not_reported() =>
@@ -177,6 +177,6 @@ public class PooledObjectLeakDetectionTests
 
     [Test]
     public void Collected_disposed_state_is_not_reported() =>
-        AssertNotReported(DisposeState, "VmState");
+        AssertNotReported(DisposeState, nameof(VmState<>));
 }
 #endif
