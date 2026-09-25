@@ -137,12 +137,11 @@ public class SszStaticTests
         Map<AttesterSlashingGloas>("AttesterSlashing", GloasOnly, presetDependent: true);
         Map<ExecutionRequests>("ExecutionRequests", ElectraFulu);
         Map<ExecutionRequestsGloas>("ExecutionRequests", GloasOnly);
-        // This repo has no Gloas-shaped AggregateAndProof/SignedAggregateAndProof container (they
-        // would wrap the Gloas Attestation shape); left unmapped for gloas so it reports
-        // not-implemented rather than misapplying the Electra/Fulu shape and reporting a false Fail.
         // Both wrap the preset-dependent Attestation shape, so they are preset-dependent too.
         Map<AggregateAndProof>("AggregateAndProof", ElectraFulu, presetDependent: true);
+        Map<AggregateAndProofGloas>("AggregateAndProof", GloasOnly, presetDependent: true);
         Map<SignedAggregateAndProof>("SignedAggregateAndProof", ElectraFulu, presetDependent: true);
+        Map<SignedAggregateAndProofGloas>("SignedAggregateAndProof", GloasOnly, presetDependent: true);
         Map<BeaconBlockBody>("BeaconBlockBody", ElectraFulu, presetDependent: true);
         Map<BeaconBlockBodyGloas>("BeaconBlockBody", GloasOnly, presetDependent: true);
         Map<BeaconBlock>("BeaconBlock", ElectraFulu, presetDependent: true);

@@ -16,6 +16,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
+using Nethermind.BeaconChain.Test.P2P.Gossip;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,7 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
+using Snappier;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
@@ -229,6 +231,89 @@ public partial class BeaconSyncOrchestratorTests
         });
     }
 
+    /// <summary>
+    /// The spec IGNOREs a block only once a block with a valid signature was seen for its (slot, proposer): a forged
+    /// block that fails its signature must not suppress the real one, while an equivocation after it is ignored.
+    /// </summary>
+    [Test]
+    public async Task Forged_gossip_block_does_not_suppress_the_real_block_for_its_slot_and_proposer()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
+        harness.Importer.Known.Add(anchorRoot);
+        SignedBeaconBlock real = chain[0];
+        SignedBeaconBlock forged = TestChain.CreateBlock(150, anchorRoot);
+        forged.Message!.StateRoot = TestItem.KeccakF;
+        SignedBeaconBlock equivocation = TestChain.CreateBlock(150, anchorRoot);
+        equivocation.Message!.StateRoot = TestItem.KeccakG;
+        harness.Importer.Forged.Add(SszRoots.HashTreeRoot(forged.Message));
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(forged), CancellationToken.None);
+        bool seenAfterForged = harness.Router.IsProposalSeen(150, real.Message!.ProposerIndex);
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(real), CancellationToken.None);
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(equivocation), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seenAfterForged, Is.False, "a block failing its signature does not mark (slot, proposer)");
+            Assert.That(harness.Importer.Known, Does.Contain(SszRoots.HashTreeRoot(real.Message)), "the real block is imported after the forged one");
+            Assert.That(harness.Router.IsProposalSeen(150, real.Message.ProposerIndex), "the imported block marks (slot, proposer)");
+            Assert.That(harness.Importer.Imports.Select(static i => i.Root), Does.Not.Contain(SszRoots.HashTreeRoot(equivocation.Message)), "a later block for the pair is ignored");
+        }
+    }
+
+    [Test]
+    public async Task Gossip_block_deferred_for_the_engine_marks_its_slot_and_proposer()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.EngineDown.Add(SszRoots.HashTreeRoot(chain[0].Message!));
+
+        await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None);
+
+        Assert.That(harness.Router.IsProposalSeen(150, chain[0].Message!.ProposerIndex), "the engine is called only after the proposer signature verified");
+    }
+
+    [Test]
+    public async Task Gloas_gossip_aggregate_and_attester_slashing_reach_the_importer()
+    {
+        Harness harness = CreateHarness();
+        harness.Orchestrator.RouteGossipEvents();
+
+        MessageValidity[] verdicts =
+        [
+            harness.Router.Handle(GossipTopics.BeaconAggregateAndProof, gloasTopic: true, GossipMessageValidatorTests.Encode(GossipMessageValidatorTests.GloasAggregate(slot: WallSlot))),
+            harness.Router.Handle(GossipTopics.AttesterSlashing, gloasTopic: true,
+                GossipMessageValidatorTests.Encode(GossipMessageValidatorTests.GloasSlashing([1, 2], [2, 3], secondSource: 2, secondTarget: 3))),
+        ];
+        harness.Orchestrator.WorkWriter.Complete();
+        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdicts, Is.All.EqualTo(MessageValidity.Ignored), "consumed by the router, not forwarded");
+            Assert.That(harness.Importer.GossipOperations.Select(static o => o.GetType()), Is.EqualTo(new[] { typeof(SignedAggregateAndProofGloas), typeof(AttesterSlashingGloas) }));
+        }
+    }
+
+    [Test]
+    public async Task Slot_tick_releases_a_gossip_block_held_for_its_slot()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, WallSlot + 1);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Orchestrator.RouteGossipEvents();
+
+        harness.Router.Handle(GossipTopics.BeaconBlock, gloasTopic: false, Snappy.CompressToArray(SignedBeaconBlock.Encode(chain[0])));
+        harness.Timestamper.Set(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + (WallSlot + 1) * Spec.SecondsPerSlot));
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
+        harness.Orchestrator.WorkWriter.Complete();
+        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+
+        Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo(new[] { WallSlot + 1 }), "no later gossip message is needed to release the held block");
+    }
+
     [Test]
     public async Task Replay_imports_canonical_store_blocks_without_network_and_stops_at_a_linkage_break()
     {
@@ -281,7 +366,7 @@ public partial class BeaconSyncOrchestratorTests
 
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
         orchestrator.Initialize(importer, anchorBlock, anchorRoot);
-        return new Harness(orchestrator, importer, engine, pool, router, statusHolder);
+        return new Harness(orchestrator, importer, engine, pool, router, statusHolder, timestamper);
     }
 
     private static HeadView CreateHead(Hash256 root, ulong slot, ulong finalizedEpoch, Hash256? execHash = null) => new(
@@ -299,7 +384,8 @@ public partial class BeaconSyncOrchestratorTests
         ScriptedEngine Engine,
         StubPool Pool,
         GossipRouter Router,
-        BeaconChainStatusHolder StatusHolder);
+        BeaconChainStatusHolder StatusHolder,
+        ManualTimestamper Timestamper);
 
     private sealed class ScriptedFactory(IBlockImporter importer) : IBlockImporterFactory
     {
@@ -312,6 +398,14 @@ public partial class BeaconSyncOrchestratorTests
 
         /// <summary>Block roots for which <see cref="Import"/> answers <see cref="BlockImportResult.DataUnavailable"/> instead of importing.</summary>
         public HashSet<Hash256> Unavailable { get; } = [];
+
+        /// <summary>Block roots whose proposer signature fails, so <see cref="Import"/> answers <see cref="BlockImportResult.Invalid"/>.</summary>
+        public HashSet<Hash256> Forged { get; } = [];
+
+        /// <summary>Block roots for which <see cref="Import"/> answers <see cref="BlockImportResult.EngineUnavailable"/>.</summary>
+        public HashSet<Hash256> EngineDown { get; } = [];
+
+        public List<object> GossipOperations { get; } = [];
 
         public List<(ulong Slot, Hash256 Root, bool VerifySignatures)> Imports { get; } = [];
         public List<ulong> Ticks { get; } = [];
@@ -332,6 +426,8 @@ public partial class BeaconSyncOrchestratorTests
             if (Known.Contains(blockRoot)) return BlockImportResult.AlreadyKnown;
             if (!Known.Contains(block.Message.ParentRoot!)) return BlockImportResult.UnknownParent;
             if (Unavailable.Contains(blockRoot)) return BlockImportResult.DataUnavailable;
+            if (Forged.Contains(blockRoot)) return BlockImportResult.Invalid;
+            if (EngineDown.Contains(blockRoot)) return BlockImportResult.EngineUnavailable;
             Known.Add(blockRoot);
             return BlockImportResult.Imported;
         }
@@ -354,7 +450,11 @@ public partial class BeaconSyncOrchestratorTests
 
         public void OnGossipAggregate(SignedAggregateAndProof aggregate) { }
 
+        public void OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => GossipOperations.Add(aggregate);
+
         public void OnGossipAttesterSlashing(AttesterSlashing slashing) { }
+
+        public void OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => GossipOperations.Add(slashing);
     }
 
     private sealed class ScriptedEngine : IEngineDriver

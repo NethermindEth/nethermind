@@ -456,16 +456,54 @@ public class BlockImporterTests
     }
 
     [Test]
-    public void Gossip_aggregate_refused_by_fork_choice_is_counted()
+    public void Gossip_aggregate_refused_by_fork_choice_is_counted([Values] bool gloasContainer)
     {
         UnsignedChain chain = UnsignedChain.Create();
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
         importer.OnSlotTick(2);
         long refusedBefore = RefusedByForkChoice("gossip_aggregate");
+        Attestation vote = chain.Vote(1, UnknownBlockRoot);
 
-        importer.OnGossipAggregate(new SignedAggregateAndProof { Message = new AggregateAndProof { AggregatorIndex = 0, Aggregate = chain.Vote(1, UnknownBlockRoot) } });
+        if (gloasContainer)
+        {
+            AttestationGloas gloasVote = new() { AggregationBits = vote.AggregationBits, Data = vote.Data, Signature = vote.Signature, CommitteeBits = vote.CommitteeBits };
+            importer.OnGossipAggregate(new SignedAggregateAndProofGloas { Message = new AggregateAndProofGloas { AggregatorIndex = 0, Aggregate = gloasVote } });
+        }
+        else
+        {
+            importer.OnGossipAggregate(new SignedAggregateAndProof { Message = new AggregateAndProof { AggregatorIndex = 0, Aggregate = vote } });
+        }
 
-        Assert.That(RefusedByForkChoice("gossip_aggregate") - refusedBefore, Is.EqualTo(1));
+        Assert.That(RefusedByForkChoice("gossip_aggregate") - refusedBefore, Is.EqualTo(1), "the aggregate reached fork choice, which refused its unknown head block");
+    }
+
+    [Test]
+    public void Gossip_attester_slashing_refused_by_fork_choice_is_counted([Values] bool gloasContainer)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
+        long refusedBefore = RefusedByForkChoice("gossip_attester_slashing");
+        // The same vote twice is not slashable, so fork choice refuses it before any signature check.
+        AttestationData data = chain.Vote(1, chain.AnchorRoot).Data!;
+
+        if (gloasContainer)
+        {
+            importer.OnGossipAttesterSlashing(new AttesterSlashingGloas
+            {
+                Attestation1 = new IndexedAttestationGloas { AttestingIndices = [1], Data = data },
+                Attestation2 = new IndexedAttestationGloas { AttestingIndices = [1], Data = data },
+            });
+        }
+        else
+        {
+            importer.OnGossipAttesterSlashing(new AttesterSlashing
+            {
+                Attestation1 = new IndexedAttestation { AttestingIndices = [1], Data = data },
+                Attestation2 = new IndexedAttestation { AttestingIndices = [1], Data = data },
+            });
+        }
+
+        Assert.That(RefusedByForkChoice("gossip_attester_slashing") - refusedBefore, Is.EqualTo(1), "the slashing reached fork choice, which refused it");
     }
 
     private static long RefusedByForkChoice(string operation) =>
