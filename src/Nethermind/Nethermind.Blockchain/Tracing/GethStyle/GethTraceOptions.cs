@@ -64,8 +64,8 @@ public record GethTraceOptions
             reader.TokenType switch
             {
                 JsonTokenType.Null => 0,
-                JsonTokenType.Number => reader.GetInt64(),
-                _ => throw new JsonException("Trace limit must be an integer.")
+                JsonTokenType.Number when reader.TryGetInt64(out long limit) => limit,
+                _ => throw new JsonException("Trace limit must be a 64-bit integer.")
             };
 
         /// <inheritdoc/>

@@ -19,6 +19,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     private readonly Transaction? _transaction;
     private readonly long _limit;
     private long _resultSize;
+    private Utf8JsonWriter? _sizeWriter;
     private readonly Dictionary<AddressAsKey, Dictionary<UInt256, UInt256>>? _sizeStorageByAddress;
 
     private bool LimitReached => _limit != 0 && _resultSize > _limit;
@@ -56,9 +57,10 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             storage[delta.Key] = delta.Value;
         }
 
-        using Utf8JsonWriter writer = new(Stream.Null);
-        GethLikeTxTraceConverter.WriteEntry(writer, entry, storage);
-        _resultSize += writer.BytesCommitted + writer.BytesPending;
+        _sizeWriter ??= new(Stream.Null, new JsonWriterOptions { SkipValidation = true });
+        _sizeWriter.Reset();
+        GethLikeTxTraceConverter.WriteEntry(_sizeWriter, entry, storage);
+        _resultSize += _sizeWriter.BytesCommitted + _sizeWriter.BytesPending;
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -103,6 +105,11 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     {
         if (CurrentTraceEntry is not null && !returnData.IsEmpty)
             CurrentTraceEntry.ReturnData = returnData.Span.ToHexString(true);
+    }
+    public override void Dispose()
+    {
+        _sizeWriter?.Dispose();
+        base.Dispose();
     }
 
 }
