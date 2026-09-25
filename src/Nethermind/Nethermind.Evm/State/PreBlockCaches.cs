@@ -75,7 +75,7 @@ public class PreBlockCaches
     public bool BypassesStorageCache(Address address) => _storageBypass.Contains(address);
 
     /// <summary>The number of contracts currently bypassing the storage cache; see <see cref="BypassesStorageCache"/>.</summary>
-    public int StorageBypassCount => _storageBypass.Count;
+    internal int StorageBypassCount => _storageBypass.Count;
 
     /// <summary>
     /// The main processing scope, registered for its lifetime as the target of trie warm-up hints
@@ -531,7 +531,8 @@ public class PreBlockCaches
 
         public WipedContracts(int capacity)
         {
-            _capacity = Math.Max(capacity, 0);
+            // Bounded so that twice the capacity still rounds to a positive power of two.
+            _capacity = Math.Clamp(capacity, 0, 1 << 29);
             _slots = new Address?[Math.Max(2, (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(_capacity, 1) * 2))];
         }
 
