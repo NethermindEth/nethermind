@@ -6,11 +6,9 @@ using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.ExceptionServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
@@ -22,68 +20,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     {
         [Test]
         [Repeat(10)]
-        public async Task Concurrent_analysis_publishes_complete_bitmap(
-            [Values(64, 66, 32768)] int length, [Values] bool analysisCompletesFirst)
-        {
-            const int Workers = 4;
-            TimeSpan timeout = TimeSpan.FromSeconds(30);
-            byte[] code = GroupedJumpDestinations(length);
-            TaskCompletionSource analysisStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            TaskCompletionSource continueAnalysis = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            TaskCompletionSource startReaders = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            using GatedCodeMemory memory = new(code, () =>
-            {
-                // Execute claims analysis before requesting the code span.
-                analysisStarted.TrySetResult();
-                continueAnalysis.Task.GetAwaiter().GetResult();
-            });
-            CodeInfo codeInfo = new(memory.Memory);
-            Task[] workers = new Task[Workers];
-            Array.Fill(workers, Task.CompletedTask);
-            ExceptionDispatchInfo? failure = null;
-            try
-            {
-                workers[0] = Task.Factory.StartNew(((IThreadPoolWorkItem)codeInfo).Execute,
-                    CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-                await analysisStarted.Task.WaitAsync(timeout);
-                for (int worker = 1; worker < workers.Length; worker++)
-                {
-                    workers[worker] = Task.Run(async () =>
-                    {
-                        await startReaders.Task;
-                        AssertGroupedJumpDestinations(codeInfo, length);
-                    });
-                }
-                continueAnalysis.TrySetResult();
-                // Cover completed fast-path reads separately from scheduling-dependent publication races.
-                if (analysisCompletesFirst) await workers[0].WaitAsync(timeout);
-            }
-            catch (Exception exception)
-            {
-                failure = ExceptionDispatchInfo.Capture(exception);
-            }
-            finally
-            {
-                continueAnalysis.TrySetResult();
-                startReaders.TrySetResult();
-            }
-
-            try
-            {
-                await Task.WhenAll(workers).WaitAsync(timeout);
-            }
-            catch (Exception exception)
-            {
-                failure ??= ExceptionDispatchInfo.Capture(exception);
-            }
-            failure?.Throw();
-        }
-
-        [Test]
-        [Repeat(10)]
         public async Task Concurrent_first_use_publishes_complete_bitmap([Values(64, 66, 32768)] int length)
         {
-            // Without a background analysis every reader may analyze the code itself; each must see a complete bitmap.
+            // Readers that use the code first at the same time each analyze it; each must see a complete bitmap.
             const int Readers = 4;
             CodeInfo codeInfo = new(GroupedJumpDestinations(length));
             TaskCompletionSource startReaders = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -130,12 +69,11 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
-        public async Task Analysis_failure_is_reported_to_later_readers([Values] bool background)
+        public async Task Analysis_failure_is_reported_to_every_reader()
         {
             InvalidOperationException expected = new("analysis failed");
             using GatedCodeMemory memory = new([(byte)Instruction.JUMPDEST], () => throw expected);
             CodeInfo codeInfo = new(memory.Memory);
-            if (background) ((IThreadPoolWorkItem)codeInfo).Execute();
 
             for (int reader = 0; reader < 2; reader++)
             {

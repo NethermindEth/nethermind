@@ -86,7 +86,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     {
         if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
         {
-            _codeCache.Set(in codeHash, CodeInfoFactory.CreateCodeInfo(code));
+            _codeCache.Set(in codeHash, new CodeInfo(code));
         }
     }
 

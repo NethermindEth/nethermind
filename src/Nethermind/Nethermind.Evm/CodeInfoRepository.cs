@@ -133,7 +133,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         Metrics.IncrementCodeReads();
         Metrics.IncrementCodeBytesRead(code.Length);
 
-        return CodeInfoFactory.CreateCodeInfo(code);
+        return new CodeInfo(code);
 
         [DoesNotReturn, StackTraceHidden]
         static void MissingCode(in ValueHash256 codeHash) => throw new DataException($"Code {codeHash} missing in the state");

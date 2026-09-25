@@ -32,7 +32,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     internal long[] JumpDestinationBitmap
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
+        get => _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -65,6 +65,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     private static int GetInt64ArrayLengthFromBitLength(int n) =>
         (n - 1 + (1 << BitShiftPerInt64)) >>> BitShiftPerInt64;
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private long[] CreateJumpDestinationBitmap()
     {
         Metrics.IncrementContractsAnalysed();
@@ -664,6 +665,4 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
         ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetReference(jumpDestinationBitmap), offset);
         segment = segment | flags;
     }
-
-    public bool RequiresAnalysis => _jumpDestinationBitmap is null;
 }
