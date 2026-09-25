@@ -310,7 +310,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <remarks>
     /// The shards lie in ascending shard order and every key in one shard shares the shard nibble, so sorted shards make a
     /// sorted zone. A zone wide enough for two workers sorts and hashes its shards across threads under the fold quota,
-    /// taking the leaf hashes off the fold's own path and pairing them for <see cref="Blake3Hash.HashTwo"/>.
+    /// taking the leaf hashes off the fold's own path and batching them for <see cref="Blake3Hash.HashMany"/>.
     /// </remarks>
     /// <param name="shardTable">The used-shard mask, then each used shard's count.</param>
     internal static void SortShards(FoldContext context, Span<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> shardTable)
@@ -400,31 +400,44 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>The leaf hash of a set operation, which <see cref="SortShards"/> put in place of its value.</summary>
     private static ValueHash256 HashLeaf(in PbtWriteOperation<TKey> operation) => operation.Value;
 
-    /// <summary>Replaces every set operation's value with its leaf hash, hashing two leaves at a time; deletions stay default.</summary>
+    /// <summary>How many leaves <see cref="HashLeaves"/> hashes in one <see cref="Blake3Hash.HashMany"/> call, the widest lane count.</summary>
+    private const int LeafHashBatch = 16;
+
+    /// <summary>Replaces every set operation's value with its leaf hash, hashing up to <see cref="LeafHashBatch"/> leaves at a time; deletions stay default.</summary>
+    /// <remarks>A batch holds keys of one length only, so its preimages are equally long.</remarks>
+    [SkipLocalsInit]
     private static void HashLeaves(Span<PbtWriteOperation<TKey>> operations)
     {
-        int pending = -1;
+        Span<byte> preimages = stackalloc byte[LeafHashBatch * PbtNodeCodec.LeafPreimageLength(TKey.Capacity)];
+        Span<int> indices = stackalloc int[LeafHashBatch];
+        int count = 0;
+        int preimageLength = 0;
         for (int index = 0; index < operations.Length; index++)
         {
             if (operations[index].Value == default) continue;
-            if (pending < 0)
+            TKey key = operations[index].Key;
+            int length = PbtNodeCodec.LeafPreimageLength(key.Length);
+            if (count == LeafHashBatch || (count > 0 && length != preimageLength))
             {
-                pending = index;
-                continue;
+                HashLeafBatch(operations, indices[..count], preimages, preimageLength);
+                count = 0;
             }
-            TKey firstKey = operations[pending].Key;
-            TKey secondKey = operations[index].Key;
-            PbtNodeCodec.HashLeaves(firstKey.Bytes, operations[pending].Value, secondKey.Bytes, operations[index].Value,
-                out ValueHash256 firstHash, out ValueHash256 secondHash);
-            operations[pending] = new(firstKey, firstHash);
-            operations[index] = new(secondKey, secondHash);
-            pending = -1;
+            preimageLength = length;
+            PbtNodeCodec.WriteLeafPreimage(preimages.Slice(count * preimageLength, preimageLength), key.Bytes, operations[index].Value.Bytes);
+            indices[count++] = index;
         }
-        if (pending >= 0)
+        if (count > 0) HashLeafBatch(operations, indices[..count], preimages, preimageLength);
+    }
+
+    [SkipLocalsInit]
+    private static void HashLeafBatch(Span<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> indices, ReadOnlySpan<byte> preimages, int preimageLength)
+    {
+        Span<ValueHash256> hashes = stackalloc ValueHash256[LeafHashBatch];
+        Blake3Hash.HashMany(preimages[..(indices.Length * preimageLength)], preimageLength, hashes[..indices.Length]);
+        for (int batchIndex = 0; batchIndex < indices.Length; batchIndex++)
         {
-            TKey key = operations[pending].Key;
-            ValueHash256 value = operations[pending].Value;
-            operations[pending] = new(key, PbtNodeCodec.HashLeaf(key.Bytes, value.Bytes));
+            int index = indices[batchIndex];
+            operations[index] = new(operations[index].Key, hashes[batchIndex]);
         }
     }
 

@@ -85,26 +85,20 @@ internal static class PbtNodeCodec
     internal static ValueHash256 HashLeaf(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
     {
         if (value.Length != 32) throw new ArgumentException("Value must be exactly 32 bytes.", nameof(value));
-        Span<byte> preimage = stackalloc byte[1 + key.Length + 32];
-        preimage[0] = LeafTag;
-        key.CopyTo(preimage[1..]);
-        value.CopyTo(preimage[(1 + key.Length)..]);
+        Span<byte> preimage = stackalloc byte[LeafPreimageLength(key.Length)];
+        WriteLeafPreimage(preimage, key, value);
         return Blake3Hash.Hash(preimage);
     }
 
-    /// <summary><see cref="HashLeaf"/> for two leaves at once, compressed in lock-step.</summary>
-    internal static void HashLeaves(ReadOnlySpan<byte> firstKey, in ValueHash256 firstValue, ReadOnlySpan<byte> secondKey, in ValueHash256 secondValue,
-        out ValueHash256 firstHash, out ValueHash256 secondHash)
+    /// <summary>The length of the preimage <see cref="HashLeaf"/> hashes for a key of <paramref name="keyLength"/> bytes.</summary>
+    internal static int LeafPreimageLength(int keyLength) => 1 + keyLength + 32;
+
+    /// <summary>Writes the preimage <see cref="HashLeaf"/> hashes into <paramref name="preimage"/>, which is <see cref="LeafPreimageLength"/> bytes long.</summary>
+    internal static void WriteLeafPreimage(Span<byte> preimage, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
     {
-        Span<byte> first = stackalloc byte[1 + firstKey.Length + 32];
-        Span<byte> second = stackalloc byte[1 + secondKey.Length + 32];
-        first[0] = LeafTag;
-        firstKey.CopyTo(first[1..]);
-        firstValue.Bytes.CopyTo(first[(1 + firstKey.Length)..]);
-        second[0] = LeafTag;
-        secondKey.CopyTo(second[1..]);
-        secondValue.Bytes.CopyTo(second[(1 + secondKey.Length)..]);
-        Blake3Hash.HashTwo(first, second, out firstHash, out secondHash);
+        preimage[0] = LeafTag;
+        key.CopyTo(preimage[1..]);
+        value.CopyTo(preimage[(1 + key.Length)..]);
     }
 
     internal static byte[] EncodeLeaf<TKey>(TKey key) where TKey : struct, IPbtKey<TKey>

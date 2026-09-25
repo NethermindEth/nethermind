@@ -56,6 +56,25 @@ public class Blake3ManagedTests
         Assert.That(actualB.ToHexString(), Is.EqualTo(expectedB.ToHexString()));
     }
 
+    /// <summary>Counts cover every lane width with and without a remainder; sizes cover one, two and sixteen blocks and the multi-chunk fallback.</summary>
+    [Test]
+    public void Many_inputs_match_single_hash(
+        [Values(0, 1, 3, 4, 7, 8, 15, 16, 17, 31)] int count,
+        [Values(0, 1, 64, 65, 99, 128, 1024, 1025)] int size)
+    {
+        byte[] inputs = new byte[count * size];
+        new Random(count * 1031 + size).NextBytes(inputs);
+
+        byte[] expected = new byte[count * 32];
+        for (int index = 0; index < count; index++)
+            Blake3Managed.Hash(inputs.AsSpan(index * size, size), expected.AsSpan(index * 32, 32));
+
+        byte[] actual = new byte[count * 32];
+        Blake3Managed.HashMany(inputs, size, actual);
+
+        Assert.That(actual.ToHexString(), Is.EqualTo(expected.ToHexString()));
+    }
+
     /// <summary>Verifies the BLAKE3 empty-input reference vector independently of the native binding.</summary>
     [Test]
     public void Matches_reference_vector()
