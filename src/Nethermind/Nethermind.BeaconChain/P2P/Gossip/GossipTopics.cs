@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Extensions;
 
@@ -114,8 +115,23 @@ public static class GossipTopics
     }
 
     /// <summary>Whether <paramref name="name"/> is a <c>data_column_sidecar_{subnet_id}</c> topic name.</summary>
-    public static bool IsDataColumnSidecarTopicName(string name) =>
-        name.StartsWith(DataColumnSidecarPrefix, StringComparison.Ordinal) && IsDecimal(name.AsSpan(DataColumnSidecarPrefix.Length));
+    /// <param name="name">The topic name.</param>
+    /// <param name="subnetId">The subnet the name carries, or <see cref="ulong.MaxValue"/> when its decimal digits overflow.</param>
+    public static bool TryParseDataColumnSidecarTopicName(string name, out ulong subnetId)
+    {
+        subnetId = 0;
+        if (!name.StartsWith(DataColumnSidecarPrefix, StringComparison.Ordinal) || !IsDecimal(name.AsSpan(DataColumnSidecarPrefix.Length)))
+        {
+            return false;
+        }
+
+        if (!ulong.TryParse(name.AsSpan(DataColumnSidecarPrefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out subnetId))
+        {
+            subnetId = ulong.MaxValue;
+        }
+
+        return true;
+    }
 
     private static bool IsDecimal(ReadOnlySpan<char> value) => !value.IsEmpty && !value.ContainsAnyExceptInRange('0', '9');
 

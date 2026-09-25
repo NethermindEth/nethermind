@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Libp2p.Protocols.Pubsub;
@@ -21,10 +22,11 @@ namespace Nethermind.BeaconChain.P2P.Gossip;
 /// before it has passed.
 /// </para>
 /// <para>
-/// Data column sidecars are accepted unchecked and reach <see cref="ColumnGossipRouter"/> through the topic event.
+/// Data column sidecars go to <see cref="ColumnGossipRouter"/>. A Gloas sidecar is the one message that can be
+/// <see cref="MessageValidity.Accepted"/>: every check its spec lists runs here without beacon state.
 /// </para>
 /// </remarks>
-public sealed class GossipMessageValidator(GossipRouter gossip, BeaconChainSpec spec, SlotClock slotClock)
+public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRouter columns, BeaconChainSpec spec, SlotClock slotClock)
 {
     private const string UnhandledTopicLabel = "unhandled";
 
@@ -36,7 +38,7 @@ public sealed class GossipMessageValidator(GossipRouter gossip, BeaconChainSpec 
 
     /// <summary>Validates <paramref name="message"/> and consumes it when it passes.</summary>
     /// <returns>
-    /// <see cref="MessageValidity.Accepted"/> only for a data column sidecar topic; otherwise
+    /// <see cref="MessageValidity.Accepted"/> only for a Gloas data column sidecar that passed every check; otherwise
     /// <see cref="MessageValidity.Rejected"/> or <see cref="MessageValidity.Ignored"/>, including for a consumed message.
     /// </returns>
     public MessageValidity Verify(Message message)
@@ -56,14 +58,20 @@ public sealed class GossipMessageValidator(GossipRouter gossip, BeaconChainSpec 
             return Drop(label, GossipDropReason.UnknownTopic, MessageValidity.Rejected);
         }
 
-        if (GossipTopics.IsDataColumnSidecarTopicName(name!))
+        bool column = GossipTopics.TryParseDataColumnSidecarTopicName(name!, out ulong subnetId);
+        if (column && subnetId >= Eip7594DasConstants.DataColumnSidecarSubnetCount)
         {
-            return MessageValidity.Accepted;
+            return Drop(label, GossipDropReason.UnknownTopic, MessageValidity.Rejected);
         }
 
-        if (!TryGetFork(digest!, out bool gloas) || !IsHandled(name!, gloas))
+        if (!TryGetFork(digest!, out bool gloas) || (!column && !IsHandled(name!, gloas)))
         {
             return Drop(label, GossipDropReason.UnknownTopic, MessageValidity.Ignored);
+        }
+
+        if (column)
+        {
+            return columns.Handle(subnetId, gloas, message.Data.ToByteArray());
         }
 
         return gossip.Handle(name!, gloas, message.Data.ToByteArray());
