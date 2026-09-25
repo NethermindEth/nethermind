@@ -42,25 +42,30 @@ public class ImportFlatDb(
                 ExitCodes.ForbiddenOptionValue);
         }
 
-        BlockHeader? head = blockTree.Head?.Header;
-        if (head is null) return;
+        // Nothing to import is a failure, not a no-op. This step ends the process, so returning quietly would
+        // stop the node with exit 0 on every restart once the flag is left in a config after a finished import.
+        BlockHeader? head = blockTree.Head?.Header
+            ?? throw new InvalidConfigurationException(
+                $"Cannot import: the block tree has no head. Remove FlatDb.{nameof(IFlatDbConfig.ImportFromPruningTrieState)} to start the node normally.",
+                ExitCodes.ForbiddenOptionValue);
 
         using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
         {
             if (_logger.IsWarn) _logger.Warn($"Current state is {reader.CurrentState}");
             if (reader.CurrentState != StateId.PreGenesis)
             {
-                if (_logger.IsInfo) _logger.Info("Flat db already exist");
-                return;
+                throw new InvalidConfigurationException(
+                    $"Cannot import: the flat DB is already populated at {reader.CurrentState}. Remove FlatDb.{nameof(IFlatDbConfig.ImportFromPruningTrieState)} to start the node normally.",
+                    ExitCodes.ForbiddenOptionValue);
             }
         }
 
         if (head.StateRoot is null ||
             !nodeStorage.KeyExists(null, TreePath.Empty, new ValueHash256(head.StateRoot.Bytes)))
         {
-            if (_logger.IsInfo) _logger.Info(
-                $"Pruning trie state does not contain head state root {head.StateRoot}; skipping flat DB import.");
-            return;
+            throw new InvalidConfigurationException(
+                $"Cannot import: the pruning trie state does not contain head state root {head.StateRoot}. Remove FlatDb.{nameof(IFlatDbConfig.ImportFromPruningTrieState)} to start the node normally.",
+                ExitCodes.ForbiddenOptionValue);
         }
 
         if (_logger.IsInfo) _logger.Info($"Copying state {head.ToString(BlockHeader.Format.Short)} with state root {head.StateRoot}");

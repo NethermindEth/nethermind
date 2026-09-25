@@ -28,14 +28,12 @@ namespace Nethermind.Init.Steps
         private readonly IEthereumStepsLoader _loader;
         private readonly StepTarget[] _targets;
         private readonly StepCommandSelection[] _commandSelections;
-        private readonly IProcessExitSource _processExitSource;
 
         public EthereumStepsManager(
             IEthereumStepsLoader loader,
             IComponentContext ctx,
             IEnumerable<StepTarget> targets,
             IEnumerable<StepCommandSelection> commandSelections,
-            IProcessExitSource processExitSource,
             ILogManager logManager)
         {
             ArgumentNullException.ThrowIfNull(loader);
@@ -47,15 +45,17 @@ namespace Nethermind.Init.Steps
             _loader = loader ?? throw new ArgumentNullException(nameof(loader));
             _targets = targets.ToArray();
             _commandSelections = commandSelections.ToArray();
-            _processExitSource = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
         }
 
         /// <summary>Whether this run is a one-shot command rather than a node start.</summary>
         public bool HasTarget => _targets.Length > 0 || _commandSelections.Length > 0;
 
+        /// <summary>Runs the step graph, or the target's closure when this run is a command.</summary>
+        /// <exception cref="OperationCanceledException">Shutdown was requested before the target finished.</exception>
+        /// <exception cref="StepDependencyException">The target did not complete.</exception>
         public async Task InitializeAll(CancellationToken cancellationToken)
         {
-            List<Task> allRequiredSteps = CreateAndExecuteSteps(cancellationToken);
+            (List<Task> allRequiredSteps, Task? targetTask) = CreateAndExecuteSteps(cancellationToken);
             if (allRequiredSteps.Count != 0)
             {
                 do
@@ -67,14 +67,23 @@ namespace Nethermind.Init.Steps
                 } while (allRequiredSteps.Any(s => !s.IsCompleted));
             }
 
-            // A target run is a one-shot job with nothing left to keep the process alive. This must happen only
-            // once every step has completed, because exiting cancels the token the steps are running under.
-            // Exit is idempotent, so a step that already reported a failure code keeps it.
-            if (HasTarget) _processExitSource.Exit(ExitCodes.Ok);
+            if (!HasTarget) return;
+
+            // A command's exit code is the target's outcome, so anything short of it completing has to surface
+            // as an exception for Program to map. Review every task first, not just the ones the loop happened
+            // to pick up: when the last tasks complete together the loop stops with one of them unreviewed, and
+            // a failing ancestor cancels the target before its own task faults, so the real error is there.
+            foreach (Task step in allRequiredSteps) ReviewFailedAndThrow(step);
+
+            // Shutdown counts as not completing; the exit code is already SigInt and must not be overwritten.
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (targetTask?.IsCompletedSuccessfully != true)
+                throw new StepDependencyException("The command step did not complete.");
         }
 
 
-        private List<Task> CreateAndExecuteSteps(CancellationToken cancellationToken)
+        private (List<Task> AllSteps, Task? TargetTask) CreateAndExecuteSteps(CancellationToken cancellationToken)
         {
             Dictionary<Type, StepWrapper> stepInfoMap = [];
             List<StepInfo> resolvedSteps = _loader.ResolveStepsImplementations().ToList();
@@ -132,11 +141,14 @@ namespace Nethermind.Init.Steps
 
             if (_logger.IsDebug) _logger.Debug($"Ethereum steps dependency tree:\n{BuildStepDependencyTree(stepInfoMap)}");
             List<Task> allRequiredSteps = [];
-            foreach (StepWrapper stepWrapper in stepInfoMap.Values)
+            Task? targetTask = null;
+            foreach ((Type stepBaseType, StepWrapper stepWrapper) in stepInfoMap)
             {
-                allRequiredSteps.Add(ExecuteStep(stepWrapper, stepInfoMap, cancellationToken));
+                Task stepTask = ExecuteStep(stepWrapper, stepInfoMap, cancellationToken);
+                allRequiredSteps.Add(stepTask);
+                if (stepBaseType == target) targetTask = stepTask;
             }
-            return allRequiredSteps;
+            return (allRequiredSteps, targetTask);
         }
 
         private async Task ExecuteStep(StepWrapper stepWrapper, Dictionary<Type, StepWrapper> stepBaseTypeMap, CancellationToken cancellationToken)

@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -19,33 +18,31 @@ namespace Nethermind.Init;
 public class RunVerifyTrie(
     IWorldStateManager worldStateManager,
     IBlockTree blockTree,
-    IProcessExitSource processExitSource,
     ILogManager logManager)
     : IStep
 {
     private ILogger _logger = logManager.GetClassLogger<RunVerifyTrie>();
 
+    /// <inheritdoc/>
+    /// <exception cref="StepDependencyException">
+    /// There is no head to verify, or the state trie is incomplete.
+    /// </exception>
+    /// <remarks>
+    /// Failure is reported by throwing rather than by setting an exit code, so that the runner sees the command
+    /// as unsuccessful. Having nothing to verify counts as failure: a caller asking for verification must not
+    /// read "no head" as "the state is fine".
+    /// </remarks>
     public Task Execute(CancellationToken cancellationToken)
     {
         _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-        BlockHeader? head = blockTree!.Head?.Header;
 
-        // Report the verdict through the exit code so the command is usable from a script. Having nothing to
-        // verify is a failure too: a caller asking for verification must not read "no head" as "state is fine".
-        if (head is null)
-        {
-            if (_logger.IsError) _logger.Error("Verify trie failed: the block tree has no head to verify.");
-            processExitSource!.Exit(ExitCodes.GeneralError);
-        }
-        else
-        {
-            _logger.Info($"Starting from {head.Number} {head.StateRoot}{Environment.NewLine}");
-            if (!worldStateManager.VerifyTrie(head, processExitSource!.Token))
-            {
-                if (_logger.IsError) _logger.Error("Verify trie failed");
-                processExitSource.Exit(ExitCodes.GeneralError);
-            }
-        }
+        BlockHeader head = blockTree!.Head?.Header
+            ?? throw new StepDependencyException("Verify trie failed: the block tree has no head to verify.");
+
+        _logger.Info($"Starting from {head.Number} {head.StateRoot}{Environment.NewLine}");
+
+        if (!worldStateManager.VerifyTrie(head, cancellationToken))
+            throw new StepDependencyException($"Verify trie failed: state at block {head.Number} is incomplete.");
 
         return Task.CompletedTask;
     }

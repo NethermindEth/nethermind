@@ -196,12 +196,14 @@ public class EthereumRunnerTests
     }
 
     /// <summary>
-    /// Proves the real production container resolves a command by name and ends the run on its own. Which steps
-    /// the closure contains is covered by <c>EthereumStepsManagerTests</c>.
+    /// Proves the real production container resolves a command by name and that a command which cannot do its
+    /// job fails the run instead of exiting Ok. Under <see cref="DiagnosticMode.MemDb"/> the block tree has no
+    /// head, so <c>verify-trie</c> has nothing to verify. Closure contents are covered by
+    /// <c>EthereumStepsManagerTests</c>.
     /// </summary>
     [Test]
     [MaxTime(60000)]
-    public async Task Command_run_completes_and_asks_to_exit()
+    public async Task Command_run_that_cannot_do_its_job_fails_without_exiting_ok()
     {
         Rlp.ResetDecoders(); // The global decoder registry is shared with every other test in this assembly.
 
@@ -220,9 +222,10 @@ public class EthereumRunnerTests
 
         try
         {
-            await runner.Start(CancellationToken.None).WaitAsync(RunnerTimeout);
+            Assert.That(async () => await runner.Start(CancellationToken.None).WaitAsync(RunnerTimeout),
+                Throws.TypeOf<StepDependencyException>());
 
-            processExitSource.Received().Exit(ExitCodes.Ok);
+            processExitSource.DidNotReceive().Exit(ExitCodes.Ok);
         }
         finally
         {
