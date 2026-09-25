@@ -16,7 +16,6 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -78,9 +77,6 @@ public sealed class BeaconSyncOrchestrator(
     private readonly Channel<WorkItem> _work = Channel.CreateBounded<WorkItem>(
         new BoundedChannelOptions(WorkQueueCapacity) { SingleReader = true });
 
-    /// <summary>First-block-per-(slot, proposer) gossip rule.</summary>
-    private readonly LruKeyCache<(ulong Slot, ulong Proposer)> _seenProposals = new(1024, "beacon gossip proposals");
-
     /// <summary>Gossip blocks waiting for their parent, keyed by the unknown parent root.</summary>
     private readonly Dictionary<Hash256, List<ForkedSignedBeaconBlock>> _pendingByParent = [];
 
@@ -111,7 +107,9 @@ public sealed class BeaconSyncOrchestrator(
     internal sealed record RangeBlockItem(ForkedSignedBeaconBlock Block) : WorkItem;
     internal sealed record GossipBlockItem(ForkedSignedBeaconBlock Block) : WorkItem;
     internal sealed record GossipAggregateItem(SignedAggregateAndProof Aggregate) : WorkItem;
+    internal sealed record GossipGloasAggregateItem(SignedAggregateAndProofGloas Aggregate) : WorkItem;
     internal sealed record GossipAttesterSlashingItem(AttesterSlashing Slashing) : WorkItem;
+    internal sealed record GossipGloasAttesterSlashingItem(AttesterSlashingGloas Slashing) : WorkItem;
     internal sealed record SlotTickItem(ulong Slot) : WorkItem;
 
     /// <summary>Whether gossip topics are subscribed; settable by tests to exercise the rotation path.</summary>
@@ -280,7 +278,13 @@ public sealed class BeaconSyncOrchestrator(
             case GossipAggregateItem aggregate:
                 _importer!.OnGossipAggregate(aggregate.Aggregate);
                 break;
+            case GossipGloasAggregateItem aggregate:
+                _importer!.OnGossipAggregate(aggregate.Aggregate);
+                break;
             case GossipAttesterSlashingItem slashing:
+                _importer!.OnGossipAttesterSlashing(slashing.Slashing);
+                break;
+            case GossipGloasAttesterSlashingItem slashing:
                 _importer!.OnGossipAttesterSlashing(slashing.Slashing);
                 break;
             case SlotTickItem tick:
@@ -311,6 +315,12 @@ public sealed class BeaconSyncOrchestrator(
 
         long startMs = Environment.TickCount64;
         BlockImportResult result = _importer!.Import(fulu, root, verifySignatures: true);
+        // Both results come after the state transition verified the proposer signature.
+        if (result is BlockImportResult.Imported or BlockImportResult.EngineUnavailable)
+        {
+            gossipRouter.MarkProposalSeen(block.Slot, block.ProposerIndex);
+        }
+
         if (result == BlockImportResult.Imported)
         {
             Metrics.BeaconChainBlocksImported++;
@@ -396,7 +406,7 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>
     /// Full gossip validation, then import. Checks (in order): not already known, past the
-    /// finalized slot, first block per (slot, proposer), expected proposer per the lookahead.
+    /// finalized slot, no block with a valid signature seen for its (slot, proposer), expected proposer per the lookahead.
     /// The proposer signature is verified by the state transition during the immediate import
     /// (the import runs with <c>verifySignatures: true</c> right below), so no separate
     /// pre-verification pass is needed. A Gloas-shaped block is dropped before any of these, so it
@@ -422,7 +432,7 @@ public sealed class BeaconSyncOrchestrator(
             return;
         }
 
-        if (!_seenProposals.Set((block.Slot, block.ProposerIndex)))
+        if (gossipRouter.IsProposalSeen(block.Slot, block.ProposerIndex))
         {
             if (_logger.IsDebug) _logger.Debug($"Ignoring repeat gossip proposal for slot {block.Slot} by proposer {block.ProposerIndex}");
             return;
@@ -617,6 +627,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Per-slot work: fork-choice tick, head step, BPO/fork digest rotation, and the once-per-epoch status log.</summary>
     internal async Task ProcessSlotAsync(ulong slot, CancellationToken token)
     {
+        gossipRouter.ReleaseDueMessages();
         _importer!.OnSlotTick(slot);
         await RunHeadStepAsync(token);
         await DrainPendingRetriesAsync(token);
@@ -641,13 +652,21 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
+    /// <summary>Routes the gossip router's events into the work channel; gossip overflow is droppable.</summary>
+    internal void RouteGossipEvents()
+    {
+        gossipRouter.BeaconBlockReceived += block => _work.Writer.TryWrite(new GossipBlockItem(block));
+        gossipRouter.AggregateAndProofReceived += aggregate => _work.Writer.TryWrite(new GossipAggregateItem(aggregate));
+        gossipRouter.GloasAggregateAndProofReceived += aggregate => _work.Writer.TryWrite(new GossipGloasAggregateItem(aggregate));
+        gossipRouter.AttesterSlashingReceived += slashing => _work.Writer.TryWrite(new GossipAttesterSlashingItem(slashing));
+        gossipRouter.GloasAttesterSlashingReceived += slashing => _work.Writer.TryWrite(new GossipGloasAttesterSlashingItem(slashing));
+    }
+
     /// <summary>Subscribes the gossip topics and routes their events into the work channel; gossip overflow is droppable.</summary>
     private void StartGossip()
     {
         GossipStarted = true;
-        gossipRouter.BeaconBlockReceived += block => _work.Writer.TryWrite(new GossipBlockItem(block));
-        gossipRouter.AggregateAndProofReceived += aggregate => _work.Writer.TryWrite(new GossipAggregateItem(aggregate));
-        gossipRouter.AttesterSlashingReceived += slashing => _work.Writer.TryWrite(new GossipAttesterSlashingItem(slashing));
+        RouteGossipEvents();
         gossipRouter.Start(p2p!.GetTopic, _currentDigest);
         if (_logger.IsInfo) _logger.Info($"Within {GossipStartDistanceSlots} slots of the wall clock — gossip following started");
     }

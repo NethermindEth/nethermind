@@ -88,8 +88,14 @@ public interface IBlockImporter
     /// <summary>Feeds a gossip aggregate to fork choice; invalid attestations are counted and dropped.</summary>
     void OnGossipAggregate(SignedAggregateAndProof aggregate);
 
+    /// <summary>Feeds a Gloas gossip aggregate to fork choice; invalid attestations are counted and dropped.</summary>
+    void OnGossipAggregate(SignedAggregateAndProofGloas aggregate);
+
     /// <summary>Feeds a gossip attester slashing to fork choice; invalid slashings are dropped.</summary>
     void OnGossipAttesterSlashing(AttesterSlashing slashing);
+
+    /// <summary>Feeds a Gloas gossip attester slashing to fork choice; invalid slashings are dropped.</summary>
+    void OnGossipAttesterSlashing(AttesterSlashingGloas slashing);
 }
 
 /// <summary>Creates the importer once the anchor is known; lets tests script the consensus core.</summary>
