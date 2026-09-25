@@ -72,14 +72,17 @@ public class SstIngestionTests
         }
 
         FaultingColumnsDb faulting = WrapWithFaults();
-        faulting.FailIngest(FlatDbColumns.Storage, static _ => throw new IOException("injected SST ingest failure"));
+        int ingestAttempts = 0;
+        faulting.FailIngest(FlatDbColumns.Storage, _ => throw (++ingestAttempts == 1
+            ? new IOException("injected SST ingest failure")
+            : new InvalidOperationException("injected repair failure")));
 
         Assert.That(() =>
         {
             using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None);
             batch.SetAccount(Addr, new Account(200));
             batch.SetStorage(Addr, Slot2, Slot(0x22));
-        }, Throws.InstanceOf<IOException>());
+        }, Throws.InstanceOf<IOException>().With.Message.EqualTo("injected SST ingest failure"));
 
         faulting.FailIngest(FlatDbColumns.Storage, null);
 

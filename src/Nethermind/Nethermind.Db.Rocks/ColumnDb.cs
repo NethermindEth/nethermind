@@ -155,7 +155,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     private const int L0DrainMaxPolls = 1500;
     private const int L0DrainPollMs = 20;
 
-    private readonly IngestExternalFileOptions _ingestOptions = new IngestExternalFileOptions()
+    private static readonly IngestExternalFileOptions IngestOptions = new IngestExternalFileOptions()
         .SetMoveFiles(true)
         .SetAllowGlobalSeqno(true)
         .SetAllowBlockingFlush(true);
@@ -165,7 +165,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         if (files.Count == 0) return;
         try
         {
-            _rocksDb.IngestExternalFiles([.. files], _ingestOptions, _columnFamily);
+            _rocksDb.IngestExternalFiles([.. files], IngestOptions, _columnFamily);
         }
         catch (RocksDbException x)
         {

@@ -201,7 +201,8 @@ public class RocksDbPersistence : IPersistence, IDisposable
             // The staged files are the marker's redo log, and roll-forward reads a missing one as move-ingested.
             // Their contents are already synced by SstFileWriter.Finish, but the directory entries naming them are
             // not: without this a power loss could drop a file the marker lists, and the reopen would advance the
-            // pointer over rows nothing ever wrote.
+            // pointer over rows nothing ever wrote. The parent is synced too because the staging directory itself is
+            // new after the first ingest or a Clear(), and its own entry is not durable until then.
             if (stagedFiles.Count > 0)
             {
                 DirectorySync.Fsync(_stagingDir!);
