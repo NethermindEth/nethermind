@@ -89,8 +89,10 @@ public class OptimismReceiptTests
         AssertL1AndOperatorFees(receipt, expectedOperatorFeeScalar: 0, expectedOperatorFeeConstant: 0);
     }
 
-    [Test]
-    public void ContainsOperatorFeeParameters_PostIsthmus_FromExtraData()
+    // A transaction this small sits at the 100-byte minimum DA size, so its DA footprint is 100 * daFootprintGasScalar.
+    [TestCase(false, null, null, TestName = "Isthmus 176-byte L1 attributes")]
+    [TestCase(true, 802UL, 80_200UL, TestName = "Jovian 178-byte L1 attributes")]
+    public void ContainsOperatorFeeParameters_PostIsthmus_FromExtraData(bool isJovian, ulong? expectedDaFootprintGasScalar, ulong? expectedBlobGasUsed)
     {
         // Isthmus style l1 attributes with:
         // - baseFeeScalar = 2
@@ -99,7 +101,9 @@ public class OptimismReceiptTests
         // - blobBaseFee = 10*1e6
         // - operatorFeeScalar = 7
         // - operatorFeeConstant = 9
-        byte[] l1Attributes = Bytes.FromHexString("098999be000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2000000070000000000000009");
+        // Jovian uses its own selector and appends daFootprintGasScalar = 802.
+        const string isthmusFields = "000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2000000070000000000000009";
+        byte[] l1Attributes = Bytes.FromHexString(isJovian ? "3db6be2b" + isthmusFields + "0322" : "098999be" + isthmusFields);
 
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader.TestObject)
@@ -116,6 +120,7 @@ public class OptimismReceiptTests
         specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
         IOptimismSpecHelper helper = Substitute.For<IOptimismSpecHelper>();
         helper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(true);
+        helper.IsJovian(Arg.Any<BlockHeader>()).Returns(isJovian);
 
         L1BlockGasInfo blockGasInfo = new(block, helper);
         OptimismReceiptForRpc receipt = new(
@@ -127,6 +132,11 @@ public class OptimismReceiptTests
         );
 
         AssertL1AndOperatorFees(receipt, expectedOperatorFeeScalar: 7, expectedOperatorFeeConstant: 9);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.DaFootprintGasScalar, Is.EqualTo(expectedDaFootprintGasScalar));
+            Assert.That(receipt.BlobGasUsed, Is.EqualTo(expectedBlobGasUsed));
+        }
     }
 
     private static void AssertL1AndOperatorFees(OptimismReceiptForRpc receipt, UInt256 expectedOperatorFeeScalar, UInt256 expectedOperatorFeeConstant)

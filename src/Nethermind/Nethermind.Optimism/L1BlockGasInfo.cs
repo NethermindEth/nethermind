@@ -17,7 +17,9 @@ public readonly struct L1TxGasInfo(
     UInt256? l1BlobBaseFee = null,
     UInt256? l1BlobBaseFeeScalar = null,
     UInt32? operatorFeeScalar = null,
-    UInt64? operatorFeeConstant = null)
+    UInt64? operatorFeeConstant = null,
+    UInt64? daFootprintGasScalar = null,
+    UInt64? daFootprint = null)
 {
     public UInt256? L1Fee { get; } = l1Fee;
     public UInt256? L1GasPrice { get; } = l1GasPrice;
@@ -30,6 +32,9 @@ public readonly struct L1TxGasInfo(
 
     public UInt32? OperatorFeeScalar { get; } = operatorFeeScalar;
     public UInt64? OperatorFeeConstant { get; } = operatorFeeConstant;
+
+    public UInt64? DaFootprintGasScalar { get; } = daFootprintGasScalar;
+    public UInt64? DaFootprint { get; } = daFootprint;
 }
 
 public sealed class L1BlockGasInfo
@@ -47,6 +52,7 @@ public sealed class L1BlockGasInfo
     private readonly string? _feeScalarDecimal;
     private readonly UInt32 _operatorFeeScalar;
     private readonly UInt64 _operatorFeeConstant;
+    private readonly UInt64? _daFootprintGasScalar;
 
     private readonly bool _isIsthmus;
     private readonly bool _isFjord;
@@ -83,7 +89,13 @@ public sealed class L1BlockGasInfo
 
                 ParsePostEcotoneBaseValues(data, out _l1GasPrice, out _l1BlobBaseFee, out _l1BaseFeeScalar, out _l1BlobBaseFeeScalar);
 
-                if (data.Length != IsthmusDataLength)
+                if (_specHelper.IsJovian(block.Header))
+                {
+                    _daFootprintGasScalar = (UInt64)OptimismCostHelper.GetDaFootprintScalar(block);
+                }
+
+                // Jovian appends the DA footprint gas scalar to the Isthmus layout, so only a shorter payload lacks the operator fee.
+                if (data.Length < IsthmusDataLength)
                 {
                     _operatorFeeScalar = 0;
                     _operatorFeeConstant = 0;
@@ -136,6 +148,7 @@ public sealed class L1BlockGasInfo
         UInt256? l1GasUsed = null;
         UInt32? operatorFeeScalar = null;
         UInt64? operatorFeeConstant = null;
+        UInt64? daFootprint = null;
 
         if (_l1GasPrice is not null)
         {
@@ -143,6 +156,10 @@ public sealed class L1BlockGasInfo
             {
                 operatorFeeScalar = _operatorFeeScalar;
                 operatorFeeConstant = _operatorFeeConstant;
+            }
+            if (_daFootprintGasScalar is { } daFootprintGasScalar)
+            {
+                daFootprint = (UInt64)OptimismCostHelper.ComputeDaUsageEstimate(tx) * daFootprintGasScalar;
             }
             if (_isFjord)
             {
@@ -170,6 +187,8 @@ public sealed class L1BlockGasInfo
             _l1BlobBaseFee,
             _l1BlobBaseFeeScalar,
             operatorFeeScalar,
-            operatorFeeConstant);
+            operatorFeeConstant,
+            _daFootprintGasScalar,
+            daFootprint);
     }
 }
