@@ -49,6 +49,7 @@ namespace Nethermind.Evm.Test
         /// <summary>Output of every action frame that ended successfully; a create frame contributes its deployed code.</summary>
         public List<byte[]> ActionOutputs { get; } = [];
 
+        /// <summary>Output of every action frame that ended with REVERT.</summary>
         public List<byte[]> ActionRevertOutputs { get; } = [];
 
         public List<EvmExceptionType> ReportedActionErrors { get; set; } = [];
