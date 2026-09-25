@@ -486,11 +486,14 @@ public static class EpochProcessing
         int[] indices = GetNextSyncCommitteeIndices(state);
         BlsPublicKey[] pubkeys = new BlsPublicKey[indices.Length];
         BlsSigner.AggregatedPublicKey aggregate = new();
+        Bls.P1Affine publicKey = new(stackalloc long[Bls.P1Affine.Sz]);
         for (int i = 0; i < indices.Length; i++)
         {
             pubkeys[i] = state.Validators![indices[i]].Pubkey;
-            if (!aggregate.TryAggregate(pubkeys[i].Bytes, out Bls.ERROR error))
-                throw new BeaconStateException($"Invalid sync committee pubkey for validator {indices[i]}: {error}");
+            // Altair eth_aggregate_pubkeys asserts KeyValidate on every member, rejecting infinity and off-subgroup keys
+            if (!BlsSignatureSet.TryKeyValidate(pubkeys[i].Bytes, publicKey))
+                throw new BeaconStateException($"Invalid sync committee pubkey for validator {indices[i]}");
+            aggregate.Aggregate(publicKey);
         }
         return new SyncCommittee
         {
@@ -504,6 +507,8 @@ public static class EpochProcessing
     {
         ulong epoch = state.GetCurrentEpoch() + 1;
         int[] activeValidatorIndices = state.GetActiveValidatorIndices(epoch);
+        if (activeValidatorIndices.Length == 0)
+            throw new BeaconStateException("Cannot select a sync committee from an empty active validator set");
         Hash256 seed = state.GetSeed(epoch, DomainType.SyncCommittee);
 
         Span<byte> preimage = stackalloc byte[32 + 8];
