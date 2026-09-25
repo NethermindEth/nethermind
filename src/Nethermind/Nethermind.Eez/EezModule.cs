@@ -15,7 +15,7 @@ public class EezModule : Module
 {
     internal static readonly ExecutionRequestsOptions ExecutionRequestsOptions = new()
     {
-        CodelessRequestContracts = CodelessRequestContractBehavior.ProduceNoRequests,
+        CodelessRequestContracts = CodelessRequestContractBehavior.CallAsEmptyAccount,
     };
 
     protected override void Load(ContainerBuilder builder)

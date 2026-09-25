@@ -282,13 +282,8 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
     private void ReadRequests(Block block, IWorldState state, Address contractAddress, ref ArrayPoolListRef<byte[]> requests,
         Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
     {
-        if (!state.HasCode(contractAddress))
+        if (_options.CodelessRequestContracts == CodelessRequestContractBehavior.RejectBlock && !state.HasCode(contractAddress))
         {
-            if (_options.CodelessRequestContracts == CodelessRequestContractBehavior.ProduceNoRequests)
-            {
-                return;
-            }
-
             throw new InvalidBlockException(block, contractEmptyError);
         }
 

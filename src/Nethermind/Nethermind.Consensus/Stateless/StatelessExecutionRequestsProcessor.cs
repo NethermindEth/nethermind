@@ -18,8 +18,8 @@ namespace Nethermind.Consensus.Stateless;
 /// leaving the consensus-layer-provided value on the header keeps stateless validation aligned with
 /// the tests-zkevm fixtures, which treat requests-hash mismatches as statelessly valid.
 /// </remarks>
-public sealed class StatelessExecutionRequestsProcessor(ITransactionProcessor transactionProcessor, ExecutionRequestsOptions? options = null)
-    : ExecutionRequestsProcessor(transactionProcessor, options)
+public sealed class StatelessExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
+    : ExecutionRequestsProcessor(transactionProcessor)
 {
     protected override void RecordRequests(Block block, ref ArrayPoolListRef<byte[]> requests)
     {

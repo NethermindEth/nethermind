@@ -8,17 +8,10 @@ namespace Nethermind.Eez;
 
 /// <summary>An EEZ genesis that names no EIP-6110 deposit contract gets the mainnet one.</summary>
 /// <remarks>A geth-style genesis without <c>depositContractAddress</c> loads as <see cref="Address.Zero"/>.</remarks>
-public sealed class EezReleaseSpec : ReleaseSpecDecorator
+public sealed class EezReleaseSpec(IReleaseSpec spec) : ReleaseSpecDecorator(spec)
 {
-    private readonly Address? _depositContractAddress;
+    public static bool NeedsDepositContractDefault(IReleaseSpec spec) =>
+        spec.IsEip6110Enabled && (spec.DepositContractAddress is null || spec.DepositContractAddress == Address.Zero);
 
-    public EezReleaseSpec(IReleaseSpec spec) : base(spec)
-    {
-        Address? configured = spec.DepositContractAddress;
-        _depositContractAddress = spec.IsEip6110Enabled && (configured is null || configured == Address.Zero)
-            ? Eip6110Constants.MainnetDepositContractAddress
-            : configured;
-    }
-
-    public override Address? DepositContractAddress => _depositContractAddress;
+    public override Address DepositContractAddress => Eip6110Constants.MainnetDepositContractAddress;
 }

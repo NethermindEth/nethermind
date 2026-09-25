@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.Forks;
@@ -58,7 +59,6 @@ public class EezModuleTests
         ISpecProvider specProvider = _scope.Resolve<ISpecProvider>();
 
         Assert.That(specProvider, Is.InstanceOf<EezSpecProvider>(), "every spec consumer sees the EEZ deposit contract default");
-        Assert.That(specProvider.GenesisSpec, Is.InstanceOf<EezReleaseSpec>(), "the genesis spec is decorated too");
     }
 
     [Test]
@@ -78,6 +78,7 @@ public class EezModuleTests
             : _scope.Resolve<IExecutionRequestsProcessor>();
         using IDisposable stateScope = _codelessState.BeginScope(IWorldState.PreGenesis);
         Block block = Build.A.Block.WithNumber(1).TestObject;
+        _scope.Resolve<ITransactionProcessor>().SetBlockExecutionContext(new BlockExecutionContext(block.Header, Osaka.Instance));
 
         Assert.That(() => processor.ProcessExecutionRequests(block, _codelessState, [], Osaka.Instance), Throws.Nothing,
             "every construction path receives the EEZ options");

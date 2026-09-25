@@ -9,6 +9,9 @@ public enum CodelessRequestContractBehavior
     /// <summary>The block is invalid, as the EIPs require.</summary>
     RejectBlock,
 
-    /// <summary>The contract contributes no requests, as a call to an empty account returns no data.</summary>
-    ProduceNoRequests,
+    /// <summary>
+    /// The contract is called as an empty account: the call returns no data, so it contributes no requests, and it
+    /// still touches the address as the call it replaces would (e.g. for EIP-7928 block access lists).
+    /// </summary>
+    CallAsEmptyAccount,
 }

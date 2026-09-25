@@ -8,13 +8,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Eez;
 
-/// <summary>Serves every release spec as an <see cref="EezReleaseSpec"/>.</summary>
+/// <summary>Serves a release spec as an <see cref="EezReleaseSpec"/> where it names no deposit contract, and unchanged otherwise.</summary>
 public sealed class EezSpecProvider(ISpecProvider inner) : IForkAwareSpecProvider
 {
     private readonly ConcurrentDictionary<IReleaseSpec, IReleaseSpec> _wrapped = new(ReferenceEqualityComparer.Instance);
-
-    // The spec rarely changes between calls, so the last pair answers almost every lookup without hashing.
-    private WrappedSpec? _last;
 
     public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null) =>
         inner.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
@@ -46,18 +43,6 @@ public sealed class EezSpecProvider(ISpecProvider inner) : IForkAwareSpecProvide
         return false;
     }
 
-    private IReleaseSpec Wrap(IReleaseSpec spec)
-    {
-        WrappedSpec? last = _last;
-        if (last is not null && ReferenceEquals(last.Inner, spec))
-        {
-            return last.Outer;
-        }
-
-        IReleaseSpec outer = _wrapped.GetOrAdd(spec, static s => new EezReleaseSpec(s));
-        _last = new WrappedSpec(spec, outer);
-        return outer;
-    }
-
-    private sealed record WrappedSpec(IReleaseSpec Inner, IReleaseSpec Outer);
+    private IReleaseSpec Wrap(IReleaseSpec spec) =>
+        _wrapped.GetOrAdd(spec, static s => EezReleaseSpec.NeedsDepositContractDefault(s) ? new EezReleaseSpec(s) : s);
 }

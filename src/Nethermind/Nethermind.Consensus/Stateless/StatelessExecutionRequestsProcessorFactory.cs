@@ -7,10 +7,10 @@ using Nethermind.Evm.TransactionProcessing;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>Creates <see cref="StatelessExecutionRequestsProcessor"/> for stateless re-execution.</summary>
-public sealed class StatelessExecutionRequestsProcessorFactory(ExecutionRequestsOptions options) : IExecutionRequestsProcessorFactory
+public sealed class StatelessExecutionRequestsProcessorFactory : IExecutionRequestsProcessorFactory
 {
-    public static StatelessExecutionRequestsProcessorFactory Instance { get; } = new(ExecutionRequestsOptions.Default);
+    public static StatelessExecutionRequestsProcessorFactory Instance { get; } = new();
 
     public IExecutionRequestsProcessor Create(ITransactionProcessor transactionProcessor) =>
-        new StatelessExecutionRequestsProcessor(transactionProcessor, options);
+        new StatelessExecutionRequestsProcessor(transactionProcessor);
 }

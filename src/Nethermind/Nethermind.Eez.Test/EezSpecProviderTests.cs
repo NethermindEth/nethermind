@@ -25,12 +25,23 @@ public class EezSpecProviderTests
     [Test]
     public void GetSpec_SameInnerSpec_ReturnsTheSameDecoratedInstance()
     {
-        EezSpecProvider specProvider = new(new TestSpecProvider(Osaka.Instance));
+        EezSpecProvider specProvider = new(new TestSpecProvider(new OverridableReleaseSpec(Osaka.Instance) { DepositContractAddress = Address.Zero }));
 
         IReleaseSpec first = specProvider.GetSpec(new ForkActivation(1));
 
+        Assert.That(first, Is.InstanceOf<EezReleaseSpec>(), "precondition: the spec needs the deposit contract default");
         Assert.That(specProvider.GetSpec(new ForkActivation(2)), Is.SameAs(first), "the hot path must not allocate a decorator per lookup");
         Assert.That(specProvider.GenesisSpec, Is.SameAs(first), "every lookup of the same fork shares one decorator");
+    }
+
+    [Test]
+    public void GetSpec_SpecNamingADepositContract_IsServedUndecorated()
+    {
+        IReleaseSpec inner = new OverridableReleaseSpec(Osaka.Instance) { DepositContractAddress = TestItem.AddressA };
+        EezSpecProvider specProvider = new(new TestSpecProvider(inner));
+
+        Assert.That(specProvider.GetSpec(new ForkActivation(1)), Is.SameAs(inner),
+            "a spec with nothing to override keeps its direct property reads on the processing path");
     }
 
     private static TestCaseData[] DepositContractCases() =>
