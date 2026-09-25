@@ -553,6 +553,33 @@ public partial class DebugRpcModuleTests
             Assert.That((JArray?)result["result"]?["structLogs"], Has.Count.EqualTo(expected ?? 6), response);
     }
 
+    [TestCase("6000600060006000600073000000000000000000000000000000000000beef6000f1", 23000UL, "out of gas: out of gas")]
+    [TestCase("600060006000600060017300000000000000000000000000000000000056786000f1", 29548UL, "out of gas: out of gas")]
+    [TestCase("6001600055", 23306UL, "out of gas: not enough gas for reentrancy sentry")]
+    [TestCase("6001600101", 21006UL, "out of gas")]
+    public async Task Debug_traceCall_preserves_out_of_gas_reason(string bytecode, ulong gasLimit, string expectedError)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        string sender = TestItem.AddressA.ToString();
+        string contract = TestItem.AddressC.ToString();
+        const string balance = "0x100000000000000000000";
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [sender] = new { balance, code = "0x", nonce = "0x1" },
+            [contract] = new { balance, code = "0x" + bytecode, nonce = "0x1", state = new Dictionary<string, string>() }
+        };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { from = sender, to = contract, gas = $"0x{gasLimit:x}" }, "latest",
+            new { tracer = "callTracer", stateOverrides });
+        JToken result = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)result["result"]?["error"], Is.EqualTo(expectedError), response);
+            Assert.That((string?)result["result"]?["gasUsed"], Is.EqualTo($"0x{gasLimit:x}"), response);
+            Assert.That(result["error"], Is.Null, response);
+        }
+    }
+
     [Test]
     public async Task Debug_traceCall_named_tracer_ignores_opcode_logger_limit([Values(-1, 1)] long limit)
     {

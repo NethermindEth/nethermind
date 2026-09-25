@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// stack/memory plus, when storage tracing is enabled, the cumulative per-address storage map for the
 /// transaction.
 /// </summary>
-public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
+public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceActionErrorDetails, ITraceOperationGasCost
 {
     private const int DefaultFlushIntervalEntries = 8192;
     private const int EvmWordSize = EvmPooledMemory.WordSize;
@@ -157,10 +157,41 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _gasCostAlreadySet = true;
     }
 
+    /// <inheritdoc/>
+    public void ReportOperationGasCost(ulong gasCost)
+    {
+        if (_hasPendingOpcode)
+        {
+            _pendingGasCost = gasCost;
+            _gasCostAlreadySet = true;
+        }
+    }
+
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error)
+    {
+        if (_hasPendingOpcode)
+            _pendingError = error;
+    }
+
     public override void ReportOperationError(EvmExceptionType error)
     {
         if (!_hasPendingOpcode) return;
-        _pendingError = GetErrorDescription(error);
+        if (_pendingOpcode == Instruction.INVALID)
+        {
+            _pendingGasCost = 0;
+            return;
+        }
+        if (error == EvmExceptionType.BadInstruction) _pendingGasCost = 0;
+        if (error == EvmExceptionType.StaticCallViolation && _pendingOpcode == Instruction.SSTORE)
+            _pendingError = "out of gas: write protection";
+        if (!IsExecutionFault(error)) _pendingError ??= GetErrorDescription(error);
+    }
+
+    /// <inheritdoc/>
+    public override void ReportStorageRefund(long refund)
+    {
+        if (_hasPendingOpcode) _pendingRefund = CurrentRefund + refund;
     }
 
     public override void SetOperationMemorySize(ulong newSize)

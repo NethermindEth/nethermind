@@ -63,7 +63,7 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         }
 
         writer.WritePropertyName("stack");
-        if (value.Stack is { } stack)
+        if (value.Stack is ReadOnlyMemory<byte> stack)
         {
             writer.WriteStartArray();
 

@@ -1518,7 +1518,7 @@ public partial class VirtualMachine<TGasPolicy>(
             tracer.SetOperationMemorySize(vmState.Memory.Size);
         }
 
-        if (tracer.IsTracingStack)
+        if (tracer.IsTracingStack || tracer.IsTracingOpLevelStorage && instruction == Instruction.SSTORE && stackHead >= 2)
         {
             // Slots hold words in limb layout; TraceStack reverses the ones the tracer reads into the
             // big-endian words the EVM shows.
@@ -1527,7 +1527,13 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 _tracedStackWords = new byte[EvmStack.MaxStackSize * EvmStack.WordSize];
             }
-            tracer.SetOperationStack(new TraceStack(slots, _tracedStackWords.AsMemory(0, slots.Length)));
+            TraceStack traceStack = new(slots, _tracedStackWords.AsMemory(0, slots.Length));
+            if (tracer.IsTracingStack) tracer.SetOperationStack(traceStack);
+            if (instruction == Instruction.SSTORE && traceStack.Count >= 2)
+                tracer.ForEach<ITraceOperationStorage, (Address Address, UInt256 Key, UInt256 Value)>(
+                    static inner => inner.IsTracingOpLevelStorage,
+                    (vmState.Env.ExecutingAccount, traceStack.PeekUInt256(0), traceStack.PeekUInt256(1)),
+                    static (inner, storage) => inner.ReportStorageAttempt(storage.Address, storage.Key, storage.Value));
         }
 
         if (tracer.IsTracingReturnData)
@@ -1546,6 +1552,30 @@ public partial class VirtualMachine<TGasPolicy>(
                 state.Machine.StartInstructionTrace(implicitStopTracer, Instruction.STOP, state.Gas, state.ProgramCounter, state.StackHead);
                 implicitStopTracer.ReportOperationRemainingGas(state.Gas);
             });
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceStorageRefund(long refund) =>
+        _txTracer.ForEach<ITraceOperationStorage, long>(
+            static tracer => tracer.IsTracingInstructions, refund,
+            static (tracer, value) => tracer.ReportStorageRefund(value));
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceOperationGasCost(ulong gasCost)
+    {
+        if (_txTracer.IsTracingInstructions)
+            _txTracer.ForEach<ITraceOperationGasCost, ulong>(
+                static tracer => tracer.IsTracingInstructions, gasCost,
+                static (tracer, cost) => tracer.ReportOperationGasCost(cost));
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceActionErrorDetails(string error)
+    {
+        if (IsTracingActions)
+            _txTracer.ForEach<ITraceActionErrorDetails, string>(
+                static tracer => tracer.IsTracingActions, error,
+                static (tracer, message) => tracer.ReportActionErrorDetails(message));
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal void EndInstructionTrace(ulong gasAvailable) => _txTracer.ReportOperationRemainingGas(gasAvailable);

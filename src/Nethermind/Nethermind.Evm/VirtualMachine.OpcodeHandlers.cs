@@ -525,7 +525,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         {
             if (!HasCheckedBody)
-                return EvmInstructions.InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(ref stack, ref gas);
+            {
+                EvmExceptionType result = EvmInstructions.InstructionMath2Param<TGasPolicy, TOpMath, TTracingInst>(ref stack, ref gas);
+                if (TTracingInst.IsActive && result == EvmExceptionType.OutOfGas)
+                    vm.TraceOperationGasCost(TOpMath.GasCost);
+                return result;
+            }
 
             return EvmInstructions.Math2ParamCore<TOpMath, TTracingInst, OffFlag>(ref stack);
         }
