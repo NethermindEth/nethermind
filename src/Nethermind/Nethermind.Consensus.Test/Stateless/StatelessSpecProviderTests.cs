@@ -22,16 +22,21 @@ public class StatelessSpecProviderTests
         Assert.That(() => StatelessSpecProvider.Create(chainId, fork, GetOsakaActivation(chainId)),
             Throws.TypeOf<InvalidDataException>());
 
-    /// <summary>
-    /// A fork the chain has not scheduled yet is how devnets and spec fixtures pin future rules, including at
-    /// the far-future placeholder activation mainnet parks its unscheduled forks at.
-    /// </summary>
+    /// <summary>A fork the chain has not scheduled yet is how devnets and spec fixtures pin future rules.</summary>
     [Test]
     public void Accepts_the_scheduled_fork_and_later_ones(
-        [Values(ProtocolFork.Current, ProtocolFork.Osaka, ProtocolFork.BPO1, ProtocolFork.Amsterdam)] ProtocolFork fork,
-        [Values] bool placeholderActivation) =>
+        [Values(ProtocolFork.Current, ProtocolFork.Osaka, ProtocolFork.BPO1, ProtocolFork.Amsterdam)] ProtocolFork fork) =>
+        Assert.That(() => StatelessSpecProvider.Create(BlockchainIds.Mainnet, fork, MainnetSpecProvider.OsakaActivation), Throws.Nothing);
+
+    /// <summary>
+    /// Spec fixtures pin Amsterdam at the far-future placeholder activations mainnet parks its unscheduled forks at.
+    /// </summary>
+    [Test]
+    public void Accepts_amsterdam_at_placeholder_activations(
+        [Values(ProtocolFork.Current, ProtocolFork.Amsterdam)] ProtocolFork fork,
+        [Values] bool bogota) =>
         Assert.That(() => StatelessSpecProvider.Create(BlockchainIds.Mainnet, fork,
-            placeholderActivation ? MainnetSpecProvider.BogotaActivation : MainnetSpecProvider.OsakaActivation), Throws.Nothing);
+            bogota ? MainnetSpecProvider.BogotaActivation : MainnetSpecProvider.AmsterdamActivation), Throws.Nothing);
 
     private static ForkActivation GetOsakaActivation(ulong chainId) =>
         chainId == BlockchainIds.Gnosis ? _gnosisOsakaActivation : MainnetSpecProvider.OsakaActivation;
