@@ -61,9 +61,9 @@ public class TaikoHeaderValidator(
     {
         ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
 
-        if (taikoSpec.IsShastaEnabled && header.ExtraData is { Length: < TaikoHeaderHelper.ShastaExtraDataLen })
+        if (taikoSpec.IsShastaEnabled && header.ExtraData.Length != TaikoHeaderHelper.ShastaExtraDataLen)
         {
-            error = $"ExtraData must be at least {TaikoHeaderHelper.ShastaExtraDataLen} bytes for Shasta, but got {header.ExtraData.Length}";
+            error = $"ExtraData must be {TaikoHeaderHelper.ShastaExtraDataLen} bytes for Shasta, but got {header.ExtraData.Length}";
             if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
             return false;
         }
