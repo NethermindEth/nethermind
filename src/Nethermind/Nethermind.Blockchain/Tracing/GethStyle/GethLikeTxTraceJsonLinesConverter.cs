@@ -80,6 +80,12 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
             writer.WriteNullValue();
         }
 
+        if (value.ReturnData is not null)
+        {
+            writer.WritePropertyName("returnData");
+            writer.WriteStringValue(value.ReturnData);
+        }
+
         writer.WritePropertyName("depth");
         writer.WriteNumberValue(value.Depth);
 
