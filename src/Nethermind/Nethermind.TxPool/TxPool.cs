@@ -737,7 +737,7 @@ namespace Nethermind.TxPool
 
             ReadOnlySpan<byte> code = _headInfo.ReadOnlyStateProvider.GetCode(address);
             return Eip7702Constants.IsDelegatedCode(code)
-                ? new Address(code[Eip7702Constants.DelegationHeader.Length..])
+                ? new Address(code[Eip7702Constants.DelegationHeaderLength..])
                 : null;
         }
 
