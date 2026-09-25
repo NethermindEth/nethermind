@@ -172,7 +172,7 @@ public class RetryCacheTests
     private const int AssertTimeoutMs = 10_000;
 
     [SetUp]
-    public async Task Setup()
+    public void Setup()
     {
         _cancellationTokenSource = new CancellationTokenSource();
         _timeProvider = new ManualTimeProvider();
@@ -181,7 +181,7 @@ public class RetryCacheTests
             _timeProvider,
             timeoutMs: CacheTimeoutMs,
             token: _cancellationTokenSource.Token);
-        await _timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
+        Assert.That(_timeProvider.TimerCreated.IsCompleted, Is.True);
     }
 
     [TearDown]

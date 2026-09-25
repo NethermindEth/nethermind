@@ -399,15 +399,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _timeProvider = timeProvider;
         _lifetimeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
         _token = _lifetimeCancellation.Token;
-        try
-        {
-            _mainLoopTask = Task.Run(RunAsync, _token);
-        }
-        catch
-        {
-            _lifetimeCancellation.Dispose();
-            throw;
-        }
+        // Not Task.Run: the retry timer must exist when the constructor returns, not when a pool thread gets to it.
+        _mainLoopTask = RunAsync();
     }
 
     private async Task RunAsync()
