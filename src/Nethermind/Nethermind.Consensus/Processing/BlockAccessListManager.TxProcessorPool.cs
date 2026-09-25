@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
@@ -10,12 +11,11 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Cpu;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -66,9 +66,9 @@ public partial class BlockAccessListManager
         }
 
         private Block? _currentBlock;
+        private Hash256? _parentStateRoot;
         private BlockExecutionContext _currentCtx;
         private int _lastBalIndex;
-        private BlockHeader? _parentStateHeader;
         private BalReadStoragePlan? _readPlan;
 
         // _inUse[i] is the processor currently bound to balIndex i.
@@ -109,12 +109,7 @@ public partial class BlockAccessListManager
             _readPlan = readPlan;
             _currentBlock = block;
             _currentCtx = blockExecutionContext;
-            _parentStateHeader = null;
-            if (_parentReaderEnvPool is not null)
-            {
-                if (parentStateRoot is null) ThrowNotInitialized(nameof(parentStateRoot));
-                _parentStateHeader = CreateParentStateHeader(block, parentStateRoot);
-            }
+            _parentStateRoot = parentStateRoot;
 
             int previousSize = _lastBalIndex + 1;
             int newLastBalIndex = block.Transactions.Length + 1;
@@ -142,7 +137,7 @@ public partial class BlockAccessListManager
             if (existing is not null) return existing;
 
             TxProcessorWithWorldState processor = RentProcessor();
-            ParentReaderLease? parentReader = RentParentReader();
+            ParentReaderLease? parentReader = RentParentReader(_currentBlock.Header);
 
             try
             {
@@ -246,26 +241,27 @@ public partial class BlockAccessListManager
             _processors.Enqueue(p);
         }
 
-        private ParentReaderLease? RentParentReader()
+        private ParentReaderLease? RentParentReader(BlockHeader targetBlock)
         {
             if (_parentReaderEnvPool is null)
             {
                 return null;
             }
 
-            if (_parentStateHeader is null) ThrowNotInitialized(nameof(_parentStateHeader));
-
             IReadOnlyTxProcessorSource source = _parentReaderEnvPool.Get();
-            try
-            {
-                return new ParentReaderLease(source, _parentReaderEnvPool, source.Build(_parentStateHeader));
-            }
-            catch
+            if (!source.TryBuildAtTarget(targetBlock, out IReadOnlyTxProcessingScope? scope))
             {
                 _parentReaderEnvPool.Return(source);
-                throw;
+                ThrowParentStateUnavailable(targetBlock);
             }
+
+            Debug.Assert(scope.WorldState.StateRoot == _parentStateRoot, "parent readers must read the pre-state the block executes on");
+            return new ParentReaderLease(source, _parentReaderEnvPool, scope);
         }
+
+        [DoesNotReturn]
+        private static void ThrowParentStateUnavailable(BlockHeader targetBlock)
+            => throw new StateNotRetainedException($"Parent state is unavailable for block {targetBlock.ToString(BlockHeader.Format.Short)}.");
 
         private void ReclaimAndResize(int size, int previousSize)
         {
@@ -303,23 +299,6 @@ public partial class BlockAccessListManager
                 : null;
         }
 
-        private static BlockHeader CreateParentStateHeader(Block block, Hash256 stateRoot)
-        {
-            Hash256 parentHash = block.ParentHash ?? Keccak.Zero;
-            return new BlockHeader(
-                parentHash,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                UInt256.Zero,
-                block.Number == 0 ? 0 : block.Number - 1,
-                0,
-                0,
-                [])
-            {
-                StateRoot = stateRoot,
-                Hash = parentHash,
-            };
-        }
     }
 
     private class SequentialTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager

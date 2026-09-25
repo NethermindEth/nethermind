@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -327,7 +328,11 @@ namespace Nethermind.Network
         {
             long reputation = _stats.GetOrAdd(node).NewPersistedNodeReputation(DateTime.UtcNow);
             NodeRecord? record = node.Enr;
-            if (record is not null && node.IsVerifiedEnr(record) && record.EnrSequence >= node.HighestObservedEnrSequence)
+            // A reloaded ENR is dialed at its default TCP endpoint, so it is kept only when that is the address that
+            // worked. Ports are not compared because the Hello message overwrites the node's port.
+            if (record is not null && node.IsVerifiedEnr(record) && record.EnrSequence >= node.HighestObservedEnrSequence &&
+                record.TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint) &&
+                tcpEndpoint.Address.Equals(node.Address.Address))
             {
                 return new NetworkNode(record.ToString()) { Reputation = reputation };
             }

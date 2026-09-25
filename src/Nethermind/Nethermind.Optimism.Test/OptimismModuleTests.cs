@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using Autofac;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -13,9 +14,11 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.P2P;
+using Nethermind.Optimism.Rpc;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.TxPool;
@@ -67,6 +70,22 @@ public class OptimismModuleTests
             .Any(step => step.StepType == typeof(StartOptimismCl));
 
         Assert.That(clStepRegistered, Is.EqualTo(clEnabled));
+    }
+
+    [Test]
+    public void Proof_rpc_module_is_decorated_with_deposit_receipt_fields()
+    {
+        ChainSpec chainSpec = new()
+        {
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters())
+        };
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig()));
+        builder.RegisterInstance(Substitute.For<IProofRpcModule>()).As<IProofRpcModule>();
+        builder.RegisterInstance(Substitute.For<IReceiptFinder>()).Keyed<IReceiptFinder>(IReceiptFinder.RegenerableKey);
+        using IContainer container = builder.Build();
+
+        Assert.That(container.Resolve<IProofRpcModule>(), Is.TypeOf<OptimismProofRpcModule>());
     }
 
     [Test]

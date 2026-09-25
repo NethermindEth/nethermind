@@ -76,6 +76,9 @@ namespace Nethermind.TxPool.Filters
                     ? _incrementalSpecChangeTxValidator is null
                         ? specChangeTxValidator.IsWellFormed(transaction, releaseSpec, blockGasLimit: 0,
                             validationOptions & ~TxValidationOptions.SkipBlobProofs)
+                        // Takes no options: SkipErrorDetails and SkipIntrinsicGasMemo are dropped on this path
+                        // rather than widening the interface. Cost only, and SkipIntrinsicGasMemo is moot for a
+                        // frame transaction, whose intrinsic-gas validator NonFrameTxValidator short-circuits.
                         : _incrementalSpecChangeTxValidator.IsWellFormedAfterFullValidation(transaction, releaseSpec)
                     : validationResult;
             }

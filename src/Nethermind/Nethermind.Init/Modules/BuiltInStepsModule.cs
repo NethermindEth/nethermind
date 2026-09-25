@@ -30,6 +30,7 @@ public class BuiltInStepsModule : Module
         typeof(StartBlockProcessor),
         typeof(StartBlockProducer),
         typeof(StartGcPacer),
+        typeof(StartHistoryPruner),
         typeof(StartMonitoring),
         typeof(StartLogIndex)
     ];
