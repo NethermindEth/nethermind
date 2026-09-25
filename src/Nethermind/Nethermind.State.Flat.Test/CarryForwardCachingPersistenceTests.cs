@@ -59,6 +59,21 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(inner.AccountReads, Is.EqualTo(3), "second distinct address overflows capacity 1, clearing the first");
     }
 
+    [TestCase(2, true, TestName = "WriteBatch_SlotSetWithinTwiceCapacity_KeptForTheNextBatch")]
+    [TestCase(3, false, TestName = "WriteBatch_SlotSetBeyondTwiceCapacity_NotKept")]
+    public void WriteBatch_CommittedSlotSet_KeptOnlyWithinTwiceTheCacheCapacity(int writtenSlots, bool kept)
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
+
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+        {
+            for (int i = 0; i < writtenSlots; i++) batch.SetStorage(Address, (UInt256)i, BaseFlatPersistence.DecodeSlotValue([0x22]));
+        }
+
+        Assert.That(cache.HasSpareWrittenSlots, Is.EqualTo(kept));
+    }
+
     private static IEnumerable<TestCaseData> SlotReadCases()
     {
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((_, _) => { }), 1)
