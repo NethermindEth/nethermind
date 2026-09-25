@@ -86,17 +86,34 @@ public static partial class EvmInstructions
         in UInt256 destOffset,
         in UInt256 sourceOffset,
         in UInt256 size,
-        scoped ReadOnlySpan<byte> source)
+        scoped ReadOnlySpan<byte> source,
+        bool traceReturnData = false)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
+        ulong traceInitialGas = TTracingInst.IsActive && traceReturnData ? TGasPolicy.GetRemainingGas(in gas) : 0;
         ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) goto OutOfGas;
         if (outOfGas) goto OutOfGas;
 
         // Ahead of the zero-length short-circuit: a zero-length read past the end still halts.
         if (UInt256.AddOverflow(size, sourceOffset, out UInt256 end) || end > source.Length)
+        {
+            if (TTracingInst.IsActive && traceReturnData)
+            {
+                // Geth calculates memory expansion before checking return-data bounds.
+                EvmPooledMemory traceMemory = vm.VmState.Memory;
+                ulong memoryCost = traceMemory.CalculateMemoryCost(in destOffset, in size, out bool memoryOverflow);
+                ulong remainingGas = TGasPolicy.GetRemainingGas(in gas);
+                if (!memoryOverflow)
+                {
+                    vm.TraceOperationGasCost(traceInitialGas - remainingGas + memoryCost);
+                    if (memoryCost > remainingGas)
+                        vm.TraceActionErrorDetails("out of gas");
+                }
+            }
             goto AccessViolation;
+        }
 
         if (!size.IsZero)
         {
@@ -157,7 +174,7 @@ public static partial class EvmInstructions
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
             return EvmExceptionType.StackUnderflow;
 
-        return BoundedDataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in destOffset, in sourceOffset, in size, vm.ReturnDataBuffer.Span);
+        return BoundedDataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in destOffset, in sourceOffset, in size, vm.ReturnDataBuffer.Span, traceReturnData: true);
     }
 
     /// <summary>

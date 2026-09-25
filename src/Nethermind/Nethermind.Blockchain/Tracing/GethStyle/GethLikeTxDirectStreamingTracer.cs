@@ -177,7 +177,15 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceAc
     public override void ReportOperationError(EvmExceptionType error)
     {
         if (!_hasPendingOpcode) return;
-        _pendingError ??= GetErrorDescription(error);
+        if (_pendingOpcode == Instruction.INVALID)
+        {
+            _pendingGasCost = 0;
+            return;
+        }
+        if (error == EvmExceptionType.BadInstruction) _pendingGasCost = 0;
+        if (error == EvmExceptionType.StaticCallViolation && _pendingOpcode == Instruction.SSTORE)
+            _pendingError = "out of gas: write protection";
+        if (!IsExecutionFault(error)) _pendingError ??= GetErrorDescription(error);
     }
 
     /// <inheritdoc/>
