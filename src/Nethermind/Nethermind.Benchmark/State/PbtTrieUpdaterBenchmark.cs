@@ -34,7 +34,7 @@ public class PbtTrieUpdaterBenchmark
     private const int BatchVariants = 64;
     private const int BuildChunk = 1 << 16;
 
-    private OverlayStore _store = null!;
+    private PbtOverlayStore _store = null!;
     private ValueHash256 _root;
     private Batch[] _batches = null!;
     private int _next;
@@ -52,7 +52,7 @@ public class PbtTrieUpdaterBenchmark
     public void GlobalSetup()
     {
         Random random = new(8297);
-        _store = new OverlayStore();
+        _store = new PbtOverlayStore();
         PbtPath[] keys = new PbtPath[TreeSize];
         for (int index = 0; index < keys.Length; index++) keys[index] = RandomKey(random);
 
@@ -150,53 +150,5 @@ public class PbtTrieUpdaterBenchmark
     {
         internal static readonly OperationComparer Instance = new();
         public int Compare(PbtWriteOperation<PbtPath> left, PbtWriteOperation<PbtPath> right) => left.Key.CompareTo(right.Key);
-    }
-
-    /// <summary>An in-memory store whose writes land in an overlay above fixed base groups, so the base tree can be reused.</summary>
-    private sealed class OverlayStore : IPbtStore, IPbtNodeGroupSink, IDisposable
-    {
-        private readonly Dictionary<PbtStorageNodePath, RefCountingMemory> _base = [];
-        private readonly Dictionary<PbtStorageNodePath, RefCountingMemory?> _overlay = [];
-
-        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
-
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash)
-        {
-            PbtStorageNodePath key = groupKey.ToPath<PbtStorageNodePath>();
-            if (!_overlay.TryGetValue(key, out RefCountingMemory? payload) && !_base.TryGetValue(key, out payload)) return null;
-            payload?.AcquireLease();
-            return payload;
-        }
-
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
-        {
-            payload?.AcquireLease();
-            PbtStorageNodePath key = groupKey.ToPath<PbtStorageNodePath>();
-            if (_overlay.TryGetValue(key, out RefCountingMemory? previous)) ((IDisposable?)previous)?.Dispose();
-            _overlay[key] = payload;
-        }
-
-        public void CommitOverlay()
-        {
-            foreach ((PbtStorageNodePath key, RefCountingMemory? payload) in _overlay)
-            {
-                if (_base.Remove(key, out RefCountingMemory? previous)) ((IDisposable)previous).Dispose();
-                if (payload is not null) _base[key] = payload;
-            }
-            _overlay.Clear();
-        }
-
-        public void ResetOverlay()
-        {
-            foreach (RefCountingMemory? payload in _overlay.Values) ((IDisposable?)payload)?.Dispose();
-            _overlay.Clear();
-        }
-
-        public void Dispose()
-        {
-            ResetOverlay();
-            foreach (RefCountingMemory payload in _base.Values) ((IDisposable)payload).Dispose();
-            _base.Clear();
-        }
     }
 }

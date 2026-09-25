@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Benchmark" />
     <InternalsVisibleTo Include="Nethermind.State.Pbt.Test" />
   </ItemGroup>
   <ItemGroup>
