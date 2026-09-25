@@ -551,6 +551,38 @@ public class TraceRpcModuleTests
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
         Assert.That(traces.Data.Count(), Is.EqualTo(1));
     }
+
+    [Test]
+    public async Task Trace_filter_matches_rewards_by_author([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Block head = blockchain.BlockTree.Head!;
+        string fromBlock = $"0x{head.Number - 2:x}";
+        string author = head.Beneficiary!.ToString();
+
+        async Task<string[]> Filter(object filter)
+        {
+            string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", filter);
+            using JsonDocument document = JsonDocument.Parse(response);
+            return [.. document.RootElement.GetProperty("result").EnumerateArray().Select(static trace => trace.GetRawText())];
+        }
+
+        string[] rewards = [.. (await Filter(new { fromBlock, toBlock = "latest" })).Where(trace => trace.Contains($"\"author\":\"{author}\""))];
+        string[] byAuthor = await Filter(new { fromBlock, toBlock = "latest", toAddress = new[] { author } });
+        string[] paged = await Filter(new { fromBlock, toBlock = "latest", toAddress = new[] { author }, after = 1, count = 1 });
+        string[] bySenderAndAuthor = await Filter(new { fromBlock, toBlock = "latest", fromAddress = new[] { TestItem.AddressB }, toAddress = new[] { author } });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewards, Has.Length.EqualTo(3));
+            Assert.That(byAuthor, Is.EqualTo(rewards));
+            Assert.That(paged, Is.EqualTo(rewards[1..2]));
+            Assert.That(bySenderAndAuthor, Is.Empty);
+        }
+    }
     [Test]
     public async Task Trace_filter_complex_scenario()
     {

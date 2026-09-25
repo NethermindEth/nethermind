@@ -505,5 +505,12 @@ public class ParityLikeTxTracer : TxTracer
     {
         if (_currentOperation is null) return;
         _currentOperation.Used = gasAvailable;
+
+        if (!_gasAlreadySetForCurrentOp)
+        {
+            _gasAlreadySetForCurrentOp = true;
+            _currentOperation.Push = _currentPushList.ToArray();
+            _treatGasParityStyle = false;
+        }
     }
 }
