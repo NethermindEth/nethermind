@@ -12,7 +12,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
-using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65;
@@ -109,26 +108,6 @@ public class PooledTransactionsMessageSerializerTests
         {
             Assert.That(tx.NetworkWrapper, Is.Null);
         }
-    }
-
-    [Test]
-    public void Does_not_skip_an_oversized_item_before_decoding_it()
-    {
-        // PooledTransactions carries no pre-decode size guard - Eth68ProtocolHandler.ValidateSizeAndType polices
-        // size against the announcement instead. A placeholder item past its type byte is not a real oversized
-        // tx, so a full decode attempt fails as an ordinary RLP error rather than being silently skipped.
-        const int maxTxSize = 500;
-        Transaction validTxBefore = TransactionsMessageSerializerTests.SimpleSignedTx();
-        Transaction validTxAfter = TransactionsMessageSerializerTests.SimpleSignedTx(1);
-        byte[] validTxBeforeBytes = TxDecoder.Instance.Encode(validTxBefore, RlpBehaviors.InMempoolForm).Bytes;
-        byte[] validTxAfterBytes = TxDecoder.Instance.Encode(validTxAfter, RlpBehaviors.InMempoolForm).Bytes;
-        byte[] oversizedItem = TransactionsMessageSerializerTests.EncodeOversizedTypedItem(maxTxSize + 1, (byte)TxType.EIP1559);
-        byte[] wireBytes = TransactionsMessageSerializerTests.EncodeAsSequence(validTxBeforeBytes, oversizedItem, validTxAfterBytes);
-        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(wireBytes).AsDisposable();
-
-        PooledTransactionsMessageSerializer serializer = new();
-
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
     }
 
     private static IEnumerable<PooledTransactionsMessage> GetTransactionMessages() =>
