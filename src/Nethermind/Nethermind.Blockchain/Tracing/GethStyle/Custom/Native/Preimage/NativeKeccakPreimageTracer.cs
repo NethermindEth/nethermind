@@ -16,6 +16,8 @@ public sealed class NativeKeccakPreimageTracer : GethLikeNativeTxTracer, IInstru
     /// <summary>The Geth tracer name accepted by debug tracing methods.</summary>
     public const string KeccakPreimageTracer = "keccak256PreimageTracer";
 
+    private static readonly UInt256 CaptureMask = UInt256.One << (int)Instruction.KECCAK256;
+
     private readonly Transaction _transaction;
     private readonly Dictionary<Hash256, byte[]> _preimages = [];
     private TraceMemory _memory;
@@ -32,7 +34,7 @@ public sealed class NativeKeccakPreimageTracer : GethLikeNativeTxTracer, IInstru
     }
 
     /// <inheritdoc/>
-    public UInt256 InstructionMask => UInt256.One << (int)Instruction.KECCAK256;
+    public UInt256 InstructionMask => CaptureMask;
 
     /// <inheritdoc/>
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
