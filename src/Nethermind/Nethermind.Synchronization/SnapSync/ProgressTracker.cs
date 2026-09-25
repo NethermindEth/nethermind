@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Synchronization;
@@ -191,6 +192,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             Interlocked.Increment(ref _reqCount);
+            TempLogStorageTail(); // TEMP(snap-storage-split)
 
             BlockHeader? pivotHeader = _pivot.GetPivotHeader();
             Hash256 rootHash = pivotHeader!.StateRoot!;
@@ -237,6 +239,7 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     _logger.Info("Snap - State Ranges (Phase 1) finished.");
                     _snapTrieFactory.MarkRangePhaseFinished();
+                    TempLogStorageSummary(); // TEMP(snap-storage-split)
                 }
 
                 LogRequest(NO_REQUEST);
@@ -411,6 +414,10 @@ namespace Nethermind.Synchronization.SnapSync
 
             ValueHash256? startingHash = parentRequest.StartingHash;
             PathWithAccount account = parentRequest.Accounts.AsSpan()[accountIndex];
+            // TEMP(snap-storage-split)
+            TempLargeStorageStats stats = _tempLargeStorageStats.GetOrAdd(account.Path, static _ => new TempLargeStorageStats());
+            Interlocked.Increment(ref stats.Requests);
+            Interlocked.Add(ref stats.Slots, slotCount);
             UInt256 limit = new(limitHash.Bytes, true);
             UInt256 lastProcessed = new(lastProcessedHash.Bytes, true);
             UInt256 start = startingHash.HasValue ? new UInt256(startingHash.Value.Bytes, true) : UInt256.Zero;
@@ -424,7 +431,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             UInt256 fullRange = limit - start;
 
-            if (estimatedRemainingSlotCount > 10_000_000 && _enableStorageRangeSplit && lastProcessed < fullRange / StorageRangeSplitFactor + start)
+            if (estimatedRemainingSlotCount > TempSplitThreshold && _enableStorageRangeSplit && lastProcessed < fullRange / StorageRangeSplitFactor + start)
             {
                 ValueHash256 halfOfLeftHash = ((limit - lastProcessed) / 2 + lastProcessed).ToValueHash();
 
@@ -444,6 +451,11 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (_logger.IsTrace)
                     _logger.Trace($"EnqueueStorageRange account {account.Path} start hash: {startingHash} | last processed: {lastProcessedHash} | limit: {limitHash} | split {halfOfLeftHash}");
+
+                // TEMP(snap-storage-split)
+                int splits = Interlocked.Increment(ref stats.Splits);
+                int openPartitions = Interlocked.Increment(ref stats.OpenPartitions);
+                if (_logger.IsInfo) _logger.Info($"[SNAP-STORAGE-SPLIT] split - account: {account.Path}, estimatedRemainingSlots: {estimatedRemainingSlotCount:N0}, at: {lastProcessedHash}, splitAt: {halfOfLeftHash}, splits: {splits}, openPartitions: {openPartitions}, requestsSoFar: {Volatile.Read(ref stats.Requests)}");
             }
             else
             {
@@ -637,6 +649,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void OnCompletedLargeStorage(PathWithAccount pathWithAccount)
         {
+            TempOnLargeStoragePartitionCompleted(pathWithAccount.Path); // TEMP(snap-storage-split)
             if (_largeStorageProgress.TryGetValue(pathWithAccount.Path, out LargeProgressStatus progressStatus))
             {
                 if (progressStatus.OnCompletedPartition())
@@ -657,6 +670,112 @@ namespace Nethermind.Synchronization.SnapSync
         /// </remarks>
         public void DropLargeStorageProgress(PathWithAccount pathWithAccount) =>
             _largeStorageProgress.Remove(pathWithAccount.Path, out _);
+
+        // TEMP(snap-storage-split): measurement only, remove after the sync. The Temp*Log* methods run on the single
+        // PrepareRequest thread; the per-account stats are updated from response threads, hence the interlocked fields.
+        private static readonly int TempSplitThreshold =
+            int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_TEMP_SNAP_SPLIT_THRESHOLD"), out int threshold) && threshold > 0 ? threshold : 10_000_000;
+        private const int TempMinRequestsToLog = 20;
+        private const int TempSummaryTopCount = 10;
+        private static readonly TimeSpan TempTailLogInterval = TimeSpan.FromMinutes(1);
+        private readonly ConcurrentDictionary<ValueHash256, TempLargeStorageStats> _tempLargeStorageStats = new();
+        private long _tempStartTimestamp;
+        private long _tempAccountRangesDoneTimestamp;
+        private long _tempLastTailLogTimestamp;
+        private bool _tempSummaryLogged;
+
+        private sealed class TempLargeStorageStats
+        {
+            public readonly long StartTimestamp = Stopwatch.GetTimestamp();
+            public long EndTimestamp;
+            public int Requests;
+            public long Slots;
+            public int Splits;
+            public int OpenPartitions = 1;
+
+            public TimeSpan Duration => Stopwatch.GetElapsedTime(StartTimestamp, Volatile.Read(ref EndTimestamp) is var end and not 0 ? end : Stopwatch.GetTimestamp());
+        }
+
+        private void TempOnLargeStoragePartitionCompleted(in ValueHash256 accountPath)
+        {
+            if (!_tempLargeStorageStats.TryGetValue(accountPath, out TempLargeStorageStats? stats)) return;
+
+            int requests = Interlocked.Increment(ref stats.Requests); // the final chunk
+            if (Interlocked.Decrement(ref stats.OpenPartitions) != 0) return;
+
+            long now = Stopwatch.GetTimestamp();
+            Volatile.Write(ref stats.EndTimestamp, now);
+            if (requests < TempMinRequestsToLog && stats.Splits == 0) return;
+
+            long accountRangesDone = Volatile.Read(ref _tempAccountRangesDoneTimestamp);
+            string inTail = accountRangesDone == 0 ? "no" : $"{Stopwatch.GetElapsedTime(accountRangesDone, now).TotalMinutes:N1} min after account ranges finished";
+            if (_logger.IsInfo) _logger.Info($"[SNAP-STORAGE-SPLIT] large storage done - account: {accountPath}, requests: {requests}, slots (excl. last chunk): {Interlocked.Read(ref stats.Slots):N0}, splits: {stats.Splits}, duration: {stats.Duration.TotalMinutes:N1} min, avg per request: {stats.Duration.TotalSeconds / requests:N2} s, finished in tail: {inTail}");
+        }
+
+        private void TempLogStorageTail()
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (_tempStartTimestamp == 0)
+            {
+                _tempStartTimestamp = now;
+                if (_logger.IsInfo) _logger.Info($"[SNAP-STORAGE-SPLIT] measuring - EnableSnapSyncStorageRangeSplit: {_enableStorageRangeSplit}, split threshold: {TempSplitThreshold:N0} estimated remaining slots (override with NETHERMIND_TEMP_SNAP_SPLIT_THRESHOLD)");
+            }
+
+            if (_tempAccountRangesDoneTimestamp == 0 && AccountRangeReadyForRequest.IsEmpty && _activeAccountRequests == 0)
+            {
+                Volatile.Write(ref _tempAccountRangesDoneTimestamp, now);
+                _tempLastTailLogTimestamp = now;
+                if (_logger.IsInfo) _logger.Info($"[SNAP-STORAGE-SPLIT] account ranges finished after {Stopwatch.GetElapsedTime(_tempStartTimestamp, now).TotalMinutes:N1} min - {TempQueueState()}");
+                return;
+            }
+
+            if (_tempAccountRangesDoneTimestamp == 0 || _tempSummaryLogged || Stopwatch.GetElapsedTime(_tempLastTailLogTimestamp, now) < TempTailLogInterval) return;
+
+            _tempLastTailLogTimestamp = now;
+            if (_logger.IsInfo) _logger.Info($"[SNAP-STORAGE-SPLIT] tail +{Stopwatch.GetElapsedTime(_tempAccountRangesDoneTimestamp, now).TotalMinutes:N1} min - {TempQueueState()}");
+        }
+
+        private string TempQueueState()
+        {
+            int openLargeStorages = 0;
+            ValueHash256 busiestPath = default;
+            TempLargeStorageStats? busiest = null;
+            foreach (KeyValuePair<ValueHash256, TempLargeStorageStats> kv in _tempLargeStorageStats)
+            {
+                if (Volatile.Read(ref kv.Value.OpenPartitions) <= 0) continue;
+                openLargeStorages++;
+                if (busiest is null || kv.Value.Requests > busiest.Requests)
+                {
+                    busiest = kv.Value;
+                    busiestPath = kv.Key;
+                }
+            }
+
+            string busiestText = busiest is null ? "none" : $"{busiestPath} ({busiest.Requests} requests, {busiest.Duration.TotalMinutes:N1} min, {busiest.OpenPartitions} open partitions)";
+            return $"open large storages: {openLargeStorages}, NextSlotRange: {NextSlotRange.Count}, StoragesToRetrieve: {StoragesToRetrieve.Count}, active storage accounts: {_activeStorageRequests}, codes queued: {CodesToRetrieve.Count}, busiest: {busiestText}";
+        }
+
+        private void TempLogStorageSummary()
+        {
+            if (_tempSummaryLogged || !_logger.IsInfo) return;
+            _tempSummaryLogged = true;
+
+            long now = Stopwatch.GetTimestamp();
+            List<(ValueHash256 Path, TempLargeStorageStats Stats)> largeStorages = [];
+            foreach (KeyValuePair<ValueHash256, TempLargeStorageStats> kv in _tempLargeStorageStats)
+            {
+                if (kv.Value.Requests >= TempMinRequestsToLog || kv.Value.Splits > 0) largeStorages.Add((kv.Key, kv.Value));
+            }
+            largeStorages.Sort(static (a, b) => b.Stats.Duration.CompareTo(a.Stats.Duration));
+
+            string tail = _tempAccountRangesDoneTimestamp == 0 ? "n/a" : $"{Stopwatch.GetElapsedTime(_tempAccountRangesDoneTimestamp, now).TotalMinutes:N1} min";
+            _logger.Info($"[SNAP-STORAGE-SPLIT] SUMMARY - range phase: {Stopwatch.GetElapsedTime(_tempStartTimestamp, now).TotalMinutes:N1} min, tail after account ranges: {tail}, storages with >= {TempMinRequestsToLog} requests or a split: {largeStorages.Count}, split enabled: {_enableStorageRangeSplit}");
+            for (int i = 0; i < largeStorages.Count && i < TempSummaryTopCount; i++)
+            {
+                (ValueHash256 path, TempLargeStorageStats stats) = largeStorages[i];
+                _logger.Info($"[SNAP-STORAGE-SPLIT] SUMMARY #{i + 1} - account: {path}, duration: {stats.Duration.TotalMinutes:N1} min, requests: {stats.Requests}, slots (excl. last chunk): {stats.Slots:N0}, splits: {stats.Splits}, avg per request: {stats.Duration.TotalSeconds / Math.Max(1, stats.Requests):N2} s");
+            }
+        }
 
         // A partition of the top level account range starting from `AccountPathStart` to `AccountPathLimit` (exclusive).
         private class AccountRangePartition
