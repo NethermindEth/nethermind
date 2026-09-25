@@ -1830,16 +1830,14 @@ public class Eip8297CanonicalTreeTests
         Assert.That(TrackingMemoryProvider.CountUnreleased(nodeProvider.Rented), Is.Zero);
     }
 
-    [TestCase(2, 4)]
-    [TestCase(8, 4)]
-    public void Ordered_group_emission_rents_one_bucket_instead_of_per_node(int leafCount, int expectedRentCount)
+    [Test]
+    public void Ordered_group_emission_rents_one_bucket_instead_of_per_node([Values(2, 8)] int leafCount)
     {
         // Every leaf pair is inlined in a stored branch. A single pair is the root, whose prefix spans the zone byte;
         // otherwise the pairs are the prefixless branches of the zone's group at depth eight, below a root of their own.
         bool singlePair = leafCount == 2;
         int pairBranchLength = PbtNodeCodec.BranchLength(singlePair ? 8 : 0, PbtPath.KeyLength, PbtPath.KeyLength);
         int storedNodes = leafCount / 2;
-        const int initialCapacity = 1024;
         TrackingMemoryProvider provider = new() { FillByte = 0xFF };
         using PbtNodeGroupStore store = new();
         EipReferenceTree oracle = new();
@@ -1870,9 +1868,8 @@ public class Eip8297CanonicalTreeTests
             Assert.That(group.Payload.Length, Is.EqualTo(PbtNodeGroupCodec.HeaderLength + storedNodes * pairBranchLength
                 + storedNodes * sizeof(ushort) + sizeof(uint) + PbtNodeGroupCodec.DescendantMaskLength));
             Assert.That(group.Payload.ToArray(), Is.EqualTo(expectedPayload));
-            Assert.That(provider.RentCount, Is.EqualTo(expectedRentCount));
-            Assert.That(provider.RequestedLengths.Take(3), Has.All.EqualTo(initialCapacity), "one pool bucket up front for each of the root, zone and zone group writers");
-            Assert.That(provider.RequestedLengths[^1], Is.EqualTo(payloads.Single(payload => payload.Key.BitDepth == 0).Payload.Length), "the small root group is compacted to its payload");
+            Assert.That(provider.RequestedLengths, Is.EquivalentTo(payloads.Select(static payload => payload.Payload.Length)),
+                "every published group is rented once, at its final size");
             AssertOnlyPublishedRentalsRemain(store, provider);
         }
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(payloads);

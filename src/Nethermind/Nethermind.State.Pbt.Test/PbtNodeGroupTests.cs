@@ -2130,19 +2130,17 @@ public class PbtNodeGroupTests
         Assert.Throws<ArgumentOutOfRangeException>(() => nonRoot.GetSpan(30, 67));
     }
 
-    [TestCase(1, false)]
-    [TestCase(2, false)]
-    [TestCase(2, true)]
-    public void Streaming_writer_releases_memory_after_rent_failure(int failedRent, bool failInDetach)
+    /// <remarks>Composition only uses pooled scratch; the provider is asked once, by detaching.</remarks>
+    [Test]
+    public void Streaming_writer_releases_memory_after_rent_failure()
     {
-        TrackingMemoryProvider provider = new() { ThrowOnRent = failedRent };
+        TrackingMemoryProvider provider = new() { ThrowOnRent = 1 };
         PbtTraversalPath groupPath = new(Span<byte>.Empty);
         using (PbtNodeGroupWriter<PbtNodePath> writer = new(0, provider, PbtPrefixlessBranchOmission.Interior))
         {
-            byte[] branch = PbtNodeCodec.EncodeBranch([], 0, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
-            if (failedRent == 2) writer.Write(groupPath, 0, branch);
-            Action rentingOperation = failInDetach ? () => writer.Detach(default) : () => writer.GetSpan(failedRent, 1024);
-            Assert.Throws<InvalidOperationException>(rentingOperation);
+            writer.Write(groupPath, 0, PbtNodeCodec.EncodeBranch([], 0, new ValueHash256(Value(1)), new ValueHash256(Value(2))));
+            Assert.That(provider.RentCount, Is.Zero);
+            Assert.Throws<InvalidOperationException>(() => writer.Detach(default));
         }
         Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
     }
