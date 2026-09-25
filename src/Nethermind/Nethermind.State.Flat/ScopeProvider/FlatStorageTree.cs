@@ -143,8 +143,8 @@ public sealed class FlatStorageTree(
     {
         _bundle.ClearStorage(_address, AddressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
-        // A trieless scope never reads the root, so it builds no trees just to empty it.
-        if (!_scope.Trieless) GetTrees().Tree.RootHash = Keccak.EmptyTreeHash;
+        // Trieless scopes too: IWorldState.GetStorageRoot still reads RootHash there.
+        GetTrees().Tree.RootHash = Keccak.EmptyTreeHash;
     }
 
     // No trees means nothing was written, so there is nothing to commit.
