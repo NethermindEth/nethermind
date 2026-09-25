@@ -4,3 +4,4 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Ethereum.Blockchain.Pyspec.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Consensus.Test")]
