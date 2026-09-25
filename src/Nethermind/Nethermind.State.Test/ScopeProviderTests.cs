@@ -629,9 +629,9 @@ public class ScopeProviderTests(bool useFlat)
     /// Models the driver: caches prepared for the base state, then a block-processing world state over a consumer
     /// scope that reads everything into them.
     /// </summary>
-    private static (PreBlockCaches Caches, WorldState Consumer) WarmConsumerCaches(Context ctx, Hash256 baseRoot)
+    private static (PreBlockCaches Caches, WorldState Consumer) WarmConsumerCaches(Context ctx, Hash256 baseRoot, PreBlockCachesConfig config = null)
     {
-        PreBlockCaches caches = NewCaches();
+        PreBlockCaches caches = config is null ? NewCaches() : new PreBlockCaches(config);
         PrewarmerScopeProvider consumerProvider = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
         WorldState consumer = new(consumerProvider, LimboLogs.Instance);
         caches.PrepareFor(baseRoot);
@@ -668,6 +668,10 @@ public class ScopeProviderTests(bool useFlat)
         Assert.That(caches.StateCache.TryGetValue(in key, out Account account), Is.True, $"{address} is cached");
         return account;
     }
+
+    /// <summary>Whether a storage read of <paramref name="cell"/> would be answered from the storage cache.</summary>
+    private static bool ServedFromCache(PreBlockCaches caches, in StorageCell cell) =>
+        !caches.BypassesStorageCache(cell.Address) && caches.StorageCache.TryGetValue(in cell, out _);
 
     private static byte[] CachedSlot(PreBlockCaches caches, in StorageCell cell)
     {
@@ -762,7 +766,7 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(true, TestName = "Test_StorageClear_OfPreBlockStorage_DropsTheStorageCache")]
+    [TestCase(true, TestName = "Test_StorageClear_OfPreBlockStorage_BypassesOnlyThatContract")]
     [TestCase(false, TestName = "Test_StorageClear_OfAnAccountWithoutStorage_KeepsTheStorageCache")]
     public void Test_StorageClear(bool preExistingStorage)
     {
@@ -786,13 +790,26 @@ public class ScopeProviderTests(bool useFlat)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(carried, Is.True);
-            Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.EqualTo(!preExistingStorage),
-                "unrelated slots survive only when the cleared account had no storage to begin with");
-            Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.EqualTo(!preExistingStorage),
-                "the cleared account's pre-block slots must not survive the clear");
-            Assert.That(caches.StorageCache.TryGetValue(in written, out UInt256 writtenValue), Is.EqualTo(!preExistingStorage),
-                "a clear abandons the rest of the block, which would refill the cache with one block's writes");
-            if (!preExistingStorage) Assert.That(writtenValue, Is.EqualTo(new UInt256(9)));
+            Assert.That(caches.BypassesStorageCache(cleared), Is.EqualTo(preExistingStorage),
+                "only a contract that held storage before the block has pre-block slots to go stale");
+            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }), "unrelated slots survive the clear");
+            Assert.That(ServedFromCache(caches, in SlotA1), Is.EqualTo(!preExistingStorage),
+                "the cleared account's pre-block slots must not be served after the clear");
+            Assert.That(ServedFromCache(caches, in written), Is.EqualTo(!preExistingStorage),
+                "a bypassed contract's slots are neither served nor written back");
+            if (!preExistingStorage) Assert.That(CachedSlot(caches, in written), Is.EqualTo(new byte[] { 9 }));
+        }
+
+        // The next block reads the cleared contract from the committed state, not from what the cache held before.
+        using (consumer.BeginScope(HeaderAt(newRoot, 2)))
+        using (Assert.EnterMultipleScope())
+        {
+            consumer.Get(in SlotA1, out UInt256 slotA1);
+            consumer.Get(in written, out UInt256 writtenValue);
+            consumer.Get(in SlotC5, out UInt256 slotC5);
+            Assert.That(slotA1, Is.EqualTo(preExistingStorage ? UInt256.Zero : new UInt256([10, 20], isBigEndian: true)));
+            Assert.That(writtenValue, Is.EqualTo((UInt256)9));
+            Assert.That(slotC5, Is.EqualTo((UInt256)5));
         }
     }
 
@@ -818,11 +835,12 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.That(carried, Is.True);
             Assert.That(CachedAccount(caches, TestItem.AddressA), Is.Null);
-            Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.False, "the removed account's slots must not survive it");
+            Assert.That(ServedFromCache(caches, in SlotA1), Is.False, "the removed account's slots must not survive it");
+            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }), "nor may the removal take other contracts' slots");
         }
     }
 
-    [TestCase(true, TestName = "Test_AccountDestroyedAcrossTwoFlushes_WithPreBlockStorage_DropsTheStorageCache")]
+    [TestCase(true, TestName = "Test_AccountDestroyedAcrossTwoFlushes_WithPreBlockStorage_BypassesOnlyThatContract")]
     [TestCase(false, TestName = "Test_AccountDestroyedAcrossTwoFlushes_CreatedInTheBlock_LeavesNoTrace")]
     public void Test_AccountDestroyedAcrossTwoFlushes(bool preExistingStorage)
     {
@@ -854,10 +872,10 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.That(carried, Is.True);
             Assert.That(CachedAccount(caches, destroyed), Is.Null);
-            Assert.That(caches.StorageCache.TryGetValue(in written, out _), Is.False, "a slot of the destroyed account must not be cached");
-            Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.EqualTo(!preExistingStorage), "pre-block slots of the destroyed account must not survive it");
-            Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.EqualTo(!preExistingStorage),
-                "unrelated slots go only with an account that held storage before the block");
+            Assert.That(ServedFromCache(caches, in written), Is.False, "a slot of the destroyed account must not be cached");
+            Assert.That(ServedFromCache(caches, in SlotA1), Is.EqualTo(!preExistingStorage), "pre-block slots of the destroyed account must not survive it");
+            Assert.That(caches.BypassesStorageCache(destroyed), Is.EqualTo(preExistingStorage));
+            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }), "unrelated slots survive either way");
         }
     }
 
@@ -893,7 +911,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_StorageWrittenWithoutTheAccountEverLoaded_DropsTheStorageCache()
+    public void Test_StorageWrittenWithoutTheAccountEverLoaded_BypassesThatContract()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         Hash256 baseRoot = CommitBaseState(ctx);
@@ -915,8 +933,9 @@ public class ScopeProviderTests(bool useFlat)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(carried, Is.True);
-            Assert.That(caches.StorageCache.TryGetValue(in slotD1, out _), Is.False, "storage that never became state must not be cached");
-            Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.False, "an unknown fate clears the storage cache");
+            Assert.That(ServedFromCache(caches, in slotD1), Is.False, "storage that never became state must not be cached");
+            Assert.That(caches.BypassesStorageCache(TestItem.AddressD), Is.True, "an unknown fate bypasses the contract's storage");
+            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }), "and leaves every other contract's alone");
             Assert.That(CachedAccount(caches, TestItem.AddressB).Balance, Is.EqualTo((UInt256)500), "the account cache is unaffected");
         }
     }
@@ -1024,9 +1043,249 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.That(carried, Is.True);
             Assert.That(CachedAccount(caches, TestItem.AddressE), Is.Null);
-            Assert.That(caches.StorageCache.TryGetValue(in SlotE1, out _), Is.False, "the removed account's slots must not survive it");
+            Assert.That(ServedFromCache(caches, in SlotE1), Is.False, "the removed account's slots must not survive it");
             consumer.Get(in SlotE1, out UInt256 storageValue4);
             Assert.That(storageValue4.IsZero, Is.True, "the state agrees the storage is gone");
+        }
+    }
+
+    [Test]
+    public void Test_StorageWipe_KeepsTheRestOfTheBlocksWriteBack()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+        TestLogger testLogger = new() { IsDebug = false };
+        consumer = new WorldState(
+            new PrewarmerScopeProvider(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), new OneLoggerLogManager(new ILogger(testLogger))),
+            LimboLogs.Instance);
+
+        // A wipe used to drop the whole storage cache and end the write-back there, taking the block's other slots with it.
+        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
+        {
+            ws.GetBalance(TestItem.AddressA);
+            ws.MarkStorageDestroyed(TestItem.AddressA);
+            ws.DeleteAccount(TestItem.AddressA);
+            ws.GetBalance(TestItem.AddressC);
+            ws.Set(in SlotC5, (UInt256)9);
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.PrepareFor(newRoot), Is.True);
+            Assert.That(caches.BypassesStorageCache(TestItem.AddressA), Is.True);
+            Assert.That(caches.StorageBypassCount, Is.EqualTo(1));
+            Assert.That(ServedFromCache(caches, in SlotA1), Is.False);
+            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 9 }), "the block's other slots are written back");
+            Assert.That(CachedSlot(caches, in SlotE1), Is.EqualTo(new byte[] { 3 }), "and slots it did not touch are kept");
+            Assert.That(testLogger.LogList, Is.Empty, "a wipe that loses nothing else is not worth an Info line");
+        }
+    }
+
+    [Test]
+    public void Test_WipedContract_RecreatedInALaterBlock_IsReadFromTheState()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+        StorageCell slotA2 = new(TestItem.AddressA, 2);
+        // A slot the cache holds from before the wipe that the state no longer has.
+        caches.StorageCache.Set(in slotA2, (UInt256)77);
+
+        Hash256 destroyedRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
+        {
+            ws.GetBalance(TestItem.AddressA);
+            ws.MarkStorageDestroyed(TestItem.AddressA);
+            ws.DeleteAccount(TestItem.AddressA);
+        });
+        Assert.That(caches.PrepareFor(destroyedRoot), Is.True);
+
+        // Recreated at the same address (CREATE2), with a new value in the slot the old contract used.
+        Hash256 recreatedRoot;
+        using (consumer.BeginScope(HeaderAt(destroyedRoot, 2)))
+        {
+            Assert.That(consumer.AccountExists(TestItem.AddressA), Is.False);
+            consumer.CreateAccount(TestItem.AddressA, 1);
+            consumer.Set(in SlotA1, (UInt256)3);
+            consumer.Commit(Cancun.Instance);
+            consumer.CommitTree(3);
+            recreatedRoot = consumer.StateRoot;
+        }
+
+        Assert.That(caches.PrepareFor(recreatedRoot), Is.True);
+        using (consumer.BeginScope(HeaderAt(recreatedRoot, 3)))
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.BypassesStorageCache(TestItem.AddressA), Is.True, "the contract keeps bypassing until the next clear");
+            consumer.Get(in SlotA1, out UInt256 slotA1);
+            consumer.Get(in slotA2, out UInt256 slotA2Value);
+            Assert.That(slotA1, Is.EqualTo((UInt256)3), "the recreated contract's value, not the one cached before the wipe");
+            Assert.That(slotA2Value, Is.EqualTo(UInt256.Zero), "a slot the wipe removed reads as empty");
+            Assert.That(ServedFromCache(caches, in SlotA1), Is.False);
+            Assert.That(ServedFromCache(caches, in slotA2), Is.False);
+        }
+    }
+
+    [Test]
+    public void Test_StorageWipesPastTheCap_ClearTheStorageCacheAndTheBypass()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        PreBlockCachesConfig config = TestPreBlockCachesConfig.Small with { MaxStorageWipesBeforeClear = 1 };
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot, config);
+        TestLogger testLogger = new() { IsDebug = false };
+        consumer = new WorldState(
+            new PrewarmerScopeProvider(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), new OneLoggerLogManager(new ILogger(testLogger))),
+            LimboLogs.Instance);
+
+        Hash256 firstRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
+        {
+            ws.GetBalance(TestItem.AddressA);
+            ws.MarkStorageDestroyed(TestItem.AddressA);
+            ws.DeleteAccount(TestItem.AddressA);
+        });
+        Assert.That(caches.PrepareFor(firstRoot), Is.True);
+        Assert.That(caches.StorageBypassCount, Is.EqualTo(1), "precondition: one wipe fits under the cap");
+
+        // A second wipe would pass the cap, so the whole storage cache goes instead, and with it the bypass.
+        Hash256 secondRoot;
+        using (consumer.BeginScope(HeaderAt(firstRoot, 2)))
+        {
+            consumer.AddToBalance(TestItem.AddressE, UInt256.Zero, Cancun.Instance, out _);
+            consumer.Commit(Cancun.Instance);
+            consumer.CommitTree(3);
+            secondRoot = consumer.StateRoot;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.PrepareFor(secondRoot), Is.True, "a cleared storage cache still describes the committed state");
+            Assert.That(caches.StorageBypassCount, Is.Zero);
+            Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.False);
+            Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.False);
+            Assert.That(caches.StorageCache.TryGetValue(in SlotE1, out _), Is.False);
+            Assert.That(testLogger.LogList, Is.EqualTo(new[] { "Pre-block storage cache cleared after 2 contracts wiped their storage" }));
+        }
+
+        using (consumer.BeginScope(HeaderAt(secondRoot, 3)))
+        {
+            consumer.Get(in SlotA1, out UInt256 slotA1);
+            consumer.Get(in SlotE1, out UInt256 slotE1);
+            consumer.Get(in SlotC5, out UInt256 slotC5);
+            Assert.That((slotA1, slotE1, slotC5), Is.EqualTo((UInt256.Zero, UInt256.Zero, (UInt256)5)));
+        }
+    }
+
+    [Test]
+    public void Test_StateMismatch_ClearsTheBypassWithTheStorageCache()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
+        {
+            ws.GetBalance(TestItem.AddressA);
+            ws.MarkStorageDestroyed(TestItem.AddressA);
+            ws.DeleteAccount(TestItem.AddressA);
+        });
+        Assert.That(caches.PrepareFor(newRoot), Is.True);
+        Assert.That(caches.BypassesStorageCache(TestItem.AddressA), Is.True, "precondition");
+
+        // A sibling on the parent: the caches are cleared, and a contract with nothing left in them need not bypass.
+        Assert.That(caches.PrepareFor(baseRoot), Is.False);
+        using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.StorageBypassCount, Is.Zero);
+            Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.False);
+            consumer.Get(in SlotA1, out UInt256 slotA1);
+            Assert.That(slotA1, Is.EqualTo(new UInt256([10, 20], isBigEndian: true)), "the parent still has the slot");
+            Assert.That(CachedSlot(caches, in SlotA1), Is.EqualTo(new byte[] { 10, 20 }), "and caches it again");
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public void Test_WipedContract_IsNeverServedStale_ToConcurrentReaders()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+        const int slots = 64;
+        // Stale entries for every slot the readers will ask for, as a busy contract would leave behind.
+        for (int i = 1; i <= slots; i++)
+        {
+            StorageCell cell = new(TestItem.AddressA, (UInt256)i);
+            caches.StorageCache.Set(in cell, (UInt256)(1000 + i));
+        }
+
+        Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, ws =>
+        {
+            ws.GetBalance(TestItem.AddressA);
+            ws.MarkStorageDestroyed(TestItem.AddressA);
+            ws.DeleteAccount(TestItem.AddressA);
+        });
+        Assert.That(caches.PrepareFor(newRoot), Is.True);
+
+        // Populators of the next block: many scopes reading the wiped contract and an unrelated one at once, each
+        // backfilling on a miss, which is exactly what could put a pre-wipe value back in front of a reader.
+        PrewarmerScopeProvider populators = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
+        ConcurrentBag<string> wrong = [];
+        // The test trie store is not built for concurrent scope opening; the reads through the caches are what race.
+        Lock open = new();
+        using Barrier start = new(8);
+        Thread[] readers = new Thread[8];
+        for (int t = 0; t < readers.Length; t++)
+        {
+            int seed = t;
+            readers[t] = new Thread(() =>
+            {
+                try
+                {
+                    start.SignalAndWait();
+                    Random random = new(seed);
+                    for (int round = 0; round < 200; round++)
+                    {
+                        IWorldStateScopeProvider.IScope scope;
+                        IWorldStateScopeProvider.IStorageTree wiped, kept;
+                        lock (open)
+                        {
+                            scope = populators.BeginScope(HeaderAt(newRoot, 2));
+                            wiped = scope.CreateStorageTree(TestItem.AddressA);
+                            kept = scope.CreateStorageTree(TestItem.AddressC);
+                        }
+
+                        for (int i = 0; i < slots; i++)
+                        {
+                            UInt256 index = (UInt256)random.Next(1, slots + 1);
+                            wiped.Get(in index, out UInt256 value);
+                            if (!value.IsZero) wrong.Add($"{TestItem.AddressA}[{index}] = {value}");
+                            kept.Get(SlotC5.Index, out UInt256 kept5);
+                            if (kept5 != (UInt256)5) wrong.Add($"{TestItem.AddressC}[5] = {kept5}");
+                        }
+
+                        lock (open) scope.Dispose();
+                    }
+                }
+                catch (Exception e)
+                {
+                    wrong.Add(e.ToString());
+                }
+            });
+            readers[t].Start();
+        }
+
+        foreach (Thread reader in readers) reader.Join();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrong, Is.Empty, "every read of the wiped contract comes from the committed state");
+            for (int i = 1; i <= slots; i++)
+            {
+                StorageCell cell = new(TestItem.AddressA, (UInt256)i);
+                Assert.That(ServedFromCache(caches, in cell), Is.False, $"{cell} is never served from the cache");
+            }
+            Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }), "an unrelated contract keeps being cached");
         }
     }
 
