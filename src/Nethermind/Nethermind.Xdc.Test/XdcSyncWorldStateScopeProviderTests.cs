@@ -59,7 +59,7 @@ internal class XdcSyncWorldStateScopeProviderTests
 
         using (codeDb)
         using (IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }))
+            .AddModule(new TestNethermindModule())
             .AddKeyedSingleton<IDb>(DbNames.Code, codeDb)
             .AddSingleton<IPersistence>(persistence)
             .AddSingleton<XdcSyncReadOnlyTxProcessingEnvFactory>()

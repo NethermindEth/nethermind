@@ -30,7 +30,6 @@
     "SequencerUrl": "https://worldchain-mainnet-sequencer.g.alchemy.com"
   },
   "FlatDb": {
-    "Enabled": true,
     "HistoryEnabled": true,
     "PersistenceWriteBufferFloor": 67108864
   }

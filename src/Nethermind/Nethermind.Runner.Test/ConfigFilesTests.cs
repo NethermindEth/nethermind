@@ -314,9 +314,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
             }
 
             archiveConfigs++;
-            IFlatDbConfig flatDbConfig = GetConfigFromFile<IFlatDbConfig>(configFile);
-            Assert.That(flatDbConfig.Enabled, Is.True, configFile);
-            Assert.That(flatDbConfig.HistoryEnabled, Is.True, configFile);
+            Assert.That(GetConfigFromFile<IFlatDbConfig>(configFile).HistoryEnabled, Is.True, configFile);
         }
 
         Assert.That(archiveConfigs, Is.GreaterThan(0));

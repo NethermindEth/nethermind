@@ -30,7 +30,7 @@ public sealed class FlatStateActivationPolicy
     /// <summary>Message shown when a node still points at one of the removed state schemas.</summary>
     public const string LegacySchemaMessage =
         "Hash and HalfPath schemas were deprecated in Nethermind 2.1 and are no longer supported. " +
-        "Use Nethermind 2.1 to open/migrate the database to FlatDB, or start with a fresh FlatDB database. " +
+        "Migrate the database to FlatDB with Nethermind 2.1 and --FlatDb.ImportFromPruningTrieState=true, or start with a fresh FlatDB database. " +
         "See https://docs.nethermind.io/next/fundamentals/configuration/#flatdbimportfrompruningtriestate.";
 
     private static readonly long LowMemoryLayoutThreshold = 16.GiB;
@@ -65,10 +65,6 @@ public sealed class FlatStateActivationPolicy
         if (!flatDbConfig.Enabled)
             throw new InvalidConfigurationException(
                 $"FlatDb.Enabled=false is no longer supported. {LegacySchemaMessage}", -1);
-
-        if (flatDbConfig.ImportFromPruningTrieState)
-            throw new InvalidConfigurationException(
-                $"FlatDb.ImportFromPruningTrieState=true is no longer supported. {LegacySchemaMessage}", -1);
 
         string? configuredKeyScheme = initConfig.StateDbKeyScheme;
         string? keyScheme = configuredKeyScheme?.Trim();

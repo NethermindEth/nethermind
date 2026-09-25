@@ -274,7 +274,6 @@ public class E2ESyncTests(bool isPostMerge)
         await configurer(configProvider, spec);
 
         IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-        flatDbConfig.Enabled = true;
         flatDbConfig.VerifyWithTrie = true;
 
         ContainerBuilder builder = new ContainerBuilder()

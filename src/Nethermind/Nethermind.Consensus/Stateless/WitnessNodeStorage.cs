@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Collections;
-using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Stateless;
 
-internal static partial class WitnessNodeStorage
+internal static class WitnessNodeStorage
 {
     /// <summary>Builds a hash-keyed node storage holding the witness' state nodes.</summary>
     /// <param name="state">The witness' state nodes, each keyed by the keccak of its own bytes.</param>

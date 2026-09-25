@@ -52,11 +52,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     {
         foreach (FlatLayout layout in Enum.GetValues<FlatLayout>())
         {
-            yield return new TestConfiguration(new FlatDbConfig()
-            {
-                Enabled = true,
-                Layout = layout
-            }, layout.ToString());
+            yield return new TestConfiguration(new FlatDbConfig { Layout = layout }, layout.ToString());
         }
     }
 

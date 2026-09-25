@@ -23,7 +23,6 @@
     "Port": 8545
   },
   "FlatDb": {
-    "Enabled": true,
     "HistoryEnabled": true,
     "PersistenceWriteBufferFloor": 67108864
   }

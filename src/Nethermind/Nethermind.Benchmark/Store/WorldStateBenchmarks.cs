@@ -48,9 +48,7 @@ public class WorldStateBenchmarks
         // Prewarm caches are disabled as nothing clears the cross-block PreBlockCaches here, which would
         // otherwise serve stale nulls cached during setup instead of exercising the state backend.
         _container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(
-                new BlocksConfig { PreWarming = PreWarmMode.None },
-                new FlatDbConfig { Enabled = true }))
+            .AddModule(new TestNethermindModule(new BlocksConfig { PreWarming = PreWarmMode.None }))
             .Build();
 
         IWorldState worldState = _globalWorldState = _container.Resolve<IMainProcessingContext>().WorldState;

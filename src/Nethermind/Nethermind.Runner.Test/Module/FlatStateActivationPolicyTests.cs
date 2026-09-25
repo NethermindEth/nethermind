@@ -71,14 +71,7 @@ public class FlatStateActivationPolicyTests
     public void WorldStateBoundaryResolutionRejectsLegacyStateBeforeBoundaryConstruction()
     {
         (IFileSystem fileSystem, IDbFactory dbFactory) = CreateLegacyFileSystem("state/0/MANIFEST-000001");
-        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
-        flatDbConfig.Enabled.Returns(true);
-        flatDbConfig.ImportFromPruningTrieState.Returns(false);
-        flatDbConfig.Layout.Returns(FlatLayout.Flat);
-        IInitConfig initConfig = Substitute.For<IInitConfig>();
-        initConfig.StateDbKeyScheme.Returns("Current");
-
-        using IContainer container = CreateProductionContainerBuilder(flatDbConfig, initConfig, fileSystem, dbFactory).Build();
+        using IContainer container = CreateProductionContainerBuilder(fileSystem: fileSystem, dbFactory: dbFactory).Build();
 
         DependencyResolutionException exception = Assert.Throws<DependencyResolutionException>(() => container.Resolve<IStateBoundary>())!;
         using (Assert.EnterMultipleScope())
@@ -162,24 +155,6 @@ public class FlatStateActivationPolicyTests
         Assert.DoesNotThrow(() => CreatePolicy(initConfig: initConfig));
     }
 
-    [TestCase(false, false, "FlatDb.Enabled=false is no longer supported.")]
-    [TestCase(true, true, "FlatDb.ImportFromPruningTrieState=true is no longer supported.")]
-    public void ExplicitLegacyFlatDbSettingIsRejected(bool enabled, bool importFromPruningTrieState, string prefix)
-    {
-        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
-        flatDbConfig.Enabled.Returns(enabled);
-        flatDbConfig.ImportFromPruningTrieState.Returns(importFromPruningTrieState);
-
-        InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(() =>
-            CreatePolicy(flatDbConfig: flatDbConfig))!;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(exception.Message, Does.StartWith(prefix));
-            Assert.That(exception.Message, Does.Contain(FlatStateActivationPolicy.LegacySchemaMessage));
-        }
-    }
-
     [Test]
     public void FlatDbDisabledByTypedConfigurationIsRejected()
     {
@@ -196,14 +171,13 @@ public class FlatStateActivationPolicyTests
         }
     }
 
-    [TestCase(true, FlatLayout.Flat, 8, true)]
-    [TestCase(true, FlatLayout.FlatInTrie, 8, false)]
-    [TestCase(true, FlatLayout.Flat, 32, false)]
-    public void AdvisesFlatInTrieLayoutOnLowMemory(bool enabled, FlatLayout layout, int availableMemoryGiB, bool expectWarn)
+    [TestCase(FlatLayout.Flat, 8, true)]
+    [TestCase(FlatLayout.FlatInTrie, 8, false)]
+    [TestCase(FlatLayout.Flat, 32, false)]
+    public void AdvisesFlatInTrieLayoutOnLowMemory(FlatLayout layout, int availableMemoryGiB, bool expectWarn)
     {
         TestLogger testLogger = new();
-        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
-        flatDbConfig.Enabled.Returns(enabled);
+        IFlatDbConfig flatDbConfig = CreateFlatDbConfig();
         flatDbConfig.Layout.Returns(layout);
         CreatePolicy(
             flatDbConfig: flatDbConfig,
@@ -392,7 +366,6 @@ public class FlatStateActivationPolicyTests
     {
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(true);
-        flatDbConfig.ImportFromPruningTrieState.Returns(false);
         flatDbConfig.Layout.Returns(FlatLayout.Flat);
         flatDbConfig.OnRepair.Returns(onRepair);
         return flatDbConfig;
@@ -418,13 +391,7 @@ public class FlatStateActivationPolicyTests
         IDbFactory? dbFactory = null,
         IPersistence? persistence = null)
     {
-        if (flatDbConfig is null)
-        {
-            flatDbConfig = Substitute.For<IFlatDbConfig>();
-            flatDbConfig.Enabled.Returns(true);
-            flatDbConfig.ImportFromPruningTrieState.Returns(false);
-            flatDbConfig.Layout.Returns(FlatLayout.Flat);
-        }
+        flatDbConfig ??= CreateFlatDbConfig();
 
         if (initConfig is null)
         {

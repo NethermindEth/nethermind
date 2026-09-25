@@ -275,7 +275,7 @@ public class StatelessInputGeneratorTests
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
         ISpecProvider specProvider = new TestSpecProvider(spec);
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }))
+            .AddModule(new TestNethermindModule())
             .AddSingleton(specProvider)
             .Build();
         IWorldStateScopeProvider scopeProvider = container.Resolve<IWorldStateManager>().GlobalWorldState;

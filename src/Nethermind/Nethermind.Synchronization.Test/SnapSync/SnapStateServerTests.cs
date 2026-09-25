@@ -26,7 +26,7 @@ public class SnapStateServerTests
         const int chainLength = 200;
 
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
-            .AddSingleton<IFlatDbConfig>(new FlatDbConfig { Enabled = true })
+            .AddSingleton<IFlatDbConfig>(new FlatDbConfig())
             .AddSingleton<ISyncConfig>(new SyncConfig { SnapServingEnabled = true }));
 
         await chain.BuildSomeBlocks(chainLength);
