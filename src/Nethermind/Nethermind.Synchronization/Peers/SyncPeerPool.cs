@@ -50,6 +50,7 @@ namespace Nethermind.Synchronization.Peers
         private readonly INodeStatsManager _stats;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly int _allocationsUpgradeIntervalInMs;
+        private readonly bool _fastSyncEnabled;
 
         private bool _isStarted;
         private readonly Lock _isAllocatedChecks = new();
@@ -69,7 +70,7 @@ namespace Nethermind.Synchronization.Peers
             INetworkConfig networkConfig,
             ISyncConfig syncConfig,
             ILogManager logManager)
-        : this(blockTree, nodeStatsManager, betterPeerStrategy, logManager, networkConfig.MaxActivePeers, networkConfig.PriorityPeersMaxCount, syncConfig.AllocationSlots)
+        : this(blockTree, nodeStatsManager, betterPeerStrategy, logManager, networkConfig.MaxActivePeers, networkConfig.PriorityPeersMaxCount, syncConfig.AllocationSlots, fastSyncEnabled: syncConfig.FastSync)
         {
 
         }
@@ -84,7 +85,8 @@ namespace Nethermind.Synchronization.Peers
             int peersMaxCount = 100,
             int priorityPeerMaxCount = 0,
             int allocationSlots = 1,
-            int allocationsUpgradeIntervalInMsInMs = DefaultUpgradeIntervalInMs)
+            int allocationsUpgradeIntervalInMsInMs = DefaultUpgradeIntervalInMs,
+            bool fastSyncEnabled = false)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -92,6 +94,7 @@ namespace Nethermind.Synchronization.Peers
             PeerMaxCount = peersMaxCount;
             PriorityPeerMaxCount = priorityPeerMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
+            _fastSyncEnabled = fastSyncEnabled;
             _logger = logManager.GetClassLogger<SyncPeerPool>();
 
             // The packed AllocationAllowances representation reserves 1 byte (8 bits) per context but only honours
@@ -542,8 +545,9 @@ namespace Nethermind.Synchronization.Peers
 
         private int DropWorstPeer()
         {
-            ulong? nextBodyNumber = _blockTree.BestSuggestedBody?.Number is { } bestBodyNumber
-                ? bestBodyNumber + (bestBodyNumber < ulong.MaxValue ? 1UL : 0UL)
+            // Fast sync leaves BestSuggestedBody at genesis while headers and state are still downloading.
+            ulong? nextBodyNumber = !_fastSyncEnabled && _blockTree.BestSuggestedBody?.Number is { } bestBodyNumber
+                ? bestBodyNumber + 1
                 : null;
 
             string? IsPeerWorstWithReason(PeerInfo currentPeer, PeerInfo toCompare)

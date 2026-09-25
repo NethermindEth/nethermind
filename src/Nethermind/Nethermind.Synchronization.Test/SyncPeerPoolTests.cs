@@ -210,12 +210,14 @@ public class SyncPeerPoolTests
         Assert.That(peers.Any(static p => p.DisconnectRequested), Is.True);
     }
 
-    [Test]
-    public async Task Drops_peer_that_cannot_serve_next_body_before_serving_peer([Values(0UL, 101UL)] ulong servingFloor)
+    [TestCase(false, 0UL)]
+    [TestCase(false, 101UL)]
+    [TestCase(true, 0UL)]
+    public async Task Prefers_history_serving_peer_only_without_fast_sync(bool fastSyncEnabled, ulong servingFloor)
     {
         await using Context ctx = new();
-        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, 2);
-        ctx.BlockTree.BestSuggestedBody.Returns(Build.A.Block.WithNumber(100).TestObject);
+        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, 2, fastSyncEnabled: fastSyncEnabled);
+        ctx.BlockTree.BestSuggestedBody.Returns(Build.A.Block.WithNumber(fastSyncEnabled ? 0 : 100).TestObject);
         SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
         peers[0].EarliestBlock = 102;
         peers[0].HeadNumber = 200;
@@ -226,8 +228,8 @@ public class SyncPeerPoolTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(peers[0].DisconnectRequested, Is.True);
-            Assert.That(peers[1].DisconnectRequested, Is.False);
+            Assert.That(peers[0].DisconnectRequested, Is.EqualTo(!fastSyncEnabled));
+            Assert.That(peers[1].DisconnectRequested, Is.EqualTo(fastSyncEnabled));
         }
     }
 
