@@ -8,6 +8,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Eez.Config;
+using Nethermind.Eez.Execution;
 using Nethermind.Eez.Rpc;
 using Nethermind.Specs.ChainSpecStyle;
 

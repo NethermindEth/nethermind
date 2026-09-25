@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
-namespace Nethermind.Eez;
+namespace Nethermind.Eez.Execution;
 
 /// <summary>Serves a release spec as an <see cref="EezReleaseSpec"/> where it names no deposit contract, and unchanged otherwise.</summary>
 public sealed class EezSpecProvider(ISpecProvider inner) : IForkAwareSpecProvider

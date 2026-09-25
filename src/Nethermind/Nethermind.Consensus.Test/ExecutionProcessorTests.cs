@@ -424,26 +424,34 @@ public class ExecutionProcessorTests
     }
 
     [Test]
-    public void ProcessExecutionRequests_WithCodelessRequestContractsCalledAsEmptyAccounts_RecordsEmptyRequests()
+    public void ProcessExecutionRequests_WithCodelessRequestContractsProducingNoRequests_RecordsEmptyRequestsWithoutCallingThem()
     {
         IWorldState codelessState = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = codelessState.BeginScope(IWorldState.PreGenesis);
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        ITransactionProcessor emptyAccountCalls = Substitute.For<ITransactionProcessor>();
-        emptyAccountCalls.Execute(Arg.Any<Transaction>(), Arg.Any<CallOutputTracer>()).Returns(ci =>
-        {
-            ci.Arg<CallOutputTracer>().StatusCode = StatusCode.Success;
-            return TransactionResult.Ok;
-        });
-        ExecutionRequestsProcessor processor = new(emptyAccountCalls,
-            new ExecutionRequestsOptions { CodelessRequestContracts = CodelessRequestContractBehavior.CallAsEmptyAccount });
+        ExecutionRequestsProcessor processor = new(_transactionProcessor,
+            new ExecutionRequestsOptions { CodelessRequestContracts = CodelessRequestContractBehavior.ProduceNoRequests });
 
         processor.ProcessExecutionRequests(block, codelessState, [], _spec);
 
         Assert.That(block.Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.EmptyRequestsHash),
-            "a call to an empty account returns no data, so codeless predeploys contribute no requests");
-        emptyAccountCalls.Received(1).Execute(Arg.Is<Transaction>(tx => tx.To == eip7002Account), Arg.Any<CallOutputTracer>());
-        emptyAccountCalls.Received(1).Execute(Arg.Is<Transaction>(tx => tx.To == eip7251Account), Arg.Any<CallOutputTracer>());
+            "codeless predeploys contribute no requests");
+        _transactionProcessor.DidNotReceiveWithAnyArgs().Execute(default!, default!);
+    }
+
+    [Test]
+    public void ProcessExecutionRequests_WithCodelessRequestContractsUnderBlockAccessLists_RejectsBlock()
+    {
+        IWorldState codelessState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = codelessState.BeginScope(IWorldState.PreGenesis);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        _spec.IsEip7928Enabled.Returns(true);
+        ExecutionRequestsProcessor processor = new(_transactionProcessor,
+            new ExecutionRequestsOptions { CodelessRequestContracts = CodelessRequestContractBehavior.ProduceNoRequests });
+
+        Assert.That(() => processor.ProcessExecutionRequests(block, codelessState, [], _spec),
+            Throws.TypeOf<InvalidBlockException>().With.Message.Contains("block access lists"),
+            "a skipped call would be missing from the block access list, so the block is refused rather than mis-recorded");
     }
 
     [Test]

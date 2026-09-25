@@ -11,7 +11,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
-namespace Nethermind.Eez;
+namespace Nethermind.Eez.Execution;
 
 /// <summary>
 /// Executes EEZ system transactions: zero fee, and <c>value</c> minted to the system address before the call.

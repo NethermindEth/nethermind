@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Eez;
+namespace Nethermind.Eez.Execution;
 
 /// <summary>An EEZ genesis that names no EIP-6110 deposit contract gets the mainnet one.</summary>
 /// <remarks>A geth-style genesis without <c>depositContractAddress</c> loads as <see cref="Address.Zero"/>.</remarks>

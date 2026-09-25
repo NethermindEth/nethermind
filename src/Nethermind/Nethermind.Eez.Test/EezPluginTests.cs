@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Eez.Execution;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 

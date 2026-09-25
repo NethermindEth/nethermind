@@ -4,6 +4,7 @@
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Eez.Execution;
 using Nethermind.Eez.Rpc;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;

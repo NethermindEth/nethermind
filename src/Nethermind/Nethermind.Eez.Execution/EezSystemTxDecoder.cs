@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 
-namespace Nethermind.Eez;
+namespace Nethermind.Eez.Execution;
 
 /// <summary>
 /// Codec for <c>0x76 || rlp([chainId, nonce, to, value, input])</c>. The body carries no signature, sender, gas or

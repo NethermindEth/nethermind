@@ -7,7 +7,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 
-namespace Nethermind.Eez;
+namespace Nethermind.Eez.Execution;
 
 /// <summary>Builds <see cref="EezTransactionProcessor"/> for the processors that bypass the scoped registration.</summary>
 public sealed class EezTransactionProcessorFactory : ITransactionProcessorFactory

@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Eez.Execution;
 using Nethermind.Int256;
 
 namespace Nethermind.Eez.Test;

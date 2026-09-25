@@ -3,7 +3,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Eez;
+namespace Nethermind.Eez.Execution;
 
 public static class EezConstants
 {

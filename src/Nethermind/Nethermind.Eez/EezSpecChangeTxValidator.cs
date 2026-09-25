@@ -5,6 +5,7 @@ using System;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Eez.Execution;
 using Nethermind.TxPool;
 
 namespace Nethermind.Eez;

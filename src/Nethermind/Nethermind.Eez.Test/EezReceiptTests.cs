@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Eez.Execution;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 

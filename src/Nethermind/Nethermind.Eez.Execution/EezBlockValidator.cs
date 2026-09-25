@@ -7,7 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
-namespace Nethermind.Eez;
+namespace Nethermind.Eez.Execution;
 
 /// <summary>
 /// EEZ L2 blocks carry no blob transactions and no beacon withdrawals: L2 ether is minted only by system transactions.

@@ -754,8 +754,13 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Api": "[2.1.0-preview, )",
-          "Nethermind.Consensus": "[2.1.0-preview, )",
-          "Nethermind.Evm": "[2.1.0-preview, )"
+          "Nethermind.Eez.Execution": "[2.1.0-preview, )"
+        }
+      },
+      "nethermind.eez.execution": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Consensus": "[2.1.0-preview, )"
         }
       },
       "nethermind.era1": {

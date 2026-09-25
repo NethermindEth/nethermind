@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.TxPool;
 
-namespace Nethermind.Eez;
+namespace Nethermind.Eez.Execution;
 
 public static class EezTxType
 {

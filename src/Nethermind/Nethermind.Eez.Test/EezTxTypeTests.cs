@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Eez.Execution;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
