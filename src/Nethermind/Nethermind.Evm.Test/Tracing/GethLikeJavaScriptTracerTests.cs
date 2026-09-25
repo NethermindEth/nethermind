@@ -95,6 +95,20 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(traces, expectedStrings);
     }
 
+    [TestCase("flatCallTracer")]
+    [TestCase("noSuchTracer.js")]
+    [TestCase("_bigInteger")]
+    [TestCase("../JSTracers/callTracer_legacy")]
+    [TestCase("{ ) }")]
+    public void Unusable_tracer_is_refused_without_an_engine(string tracer) =>
+        Assert.That(() => Engine.ValidateTracer(tracer), Throws.ArgumentException);
+
+    [TestCase("callTracer_legacy")]
+    [TestCase(" opcountTracer.js ")]
+    [TestCase("{ result: function(ctx, db) { return null } }")]
+    public void Usable_tracer_is_accepted_without_an_engine(string tracer) =>
+        Assert.That(() => Engine.ValidateTracer(tracer), Throws.Nothing);
+
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
 
