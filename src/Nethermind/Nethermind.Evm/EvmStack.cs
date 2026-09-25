@@ -2093,10 +2093,12 @@ public ref partial struct EvmStack
             return EvmExceptionType.StackOverflow;
         }
 
-        if (TTracingInst.IsActive) Trace(depth);
-
         Head = head;
         Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<EvmWord>(ref from));
+
+        // Parity reports DUPn as the top n + 1 words after the copy.
+        if (TTracingInst.IsActive) Trace(depth + 1);
+
         return EvmExceptionType.None;
     }
 
