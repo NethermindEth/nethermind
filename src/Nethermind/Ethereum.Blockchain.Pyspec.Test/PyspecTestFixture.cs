@@ -193,7 +193,7 @@ internal static class PyspecLoader
     {
         if (testRef.Length == 0)
         {
-            _ = LoadFileTests<T>(testRef.File, Path.GetDirectoryName(testRef.File) ?? string.Empty, testRef.TestType, throwOnFailure: true);
+            ThrowIfFileFails(testRef.File, testRef.TestType);
             throw new InvalidDataException($"Pyspec fixture '{testRef.File}' could not be loaded during discovery.");
         }
 
@@ -211,7 +211,7 @@ internal static class PyspecLoader
         catch (Exception e) when (e is IOException or JsonException)
         {
             // A changed file can invalidate a saved byte range; re-read only on failure to report the fixture's load error.
-            _ = LoadFileTests<T>(testRef.File, Path.GetDirectoryName(testRef.File) ?? string.Empty, testRef.TestType, throwOnFailure: true);
+            ThrowIfFileFails(testRef.File, testRef.TestType);
             throw new InvalidDataException($"Pyspec fixture '{testRef.File}': {e}", e);
         }
     }
@@ -344,23 +344,14 @@ internal static class PyspecLoader
         return result;
     }
 
-    // Same per-file pipeline as TestLoadStrategy.LoadTestsFromDirectories: parse, apply
-    // fixture exclusions (inside FileTestsSource), then default the category to the directory.
-    private static List<T> LoadFileTests<T>(string file, string directory, TestType testType, bool throwOnFailure = false) where T : EthereumTest
+    // Re-reads the whole file only to surface FileTestsSource's original load error.
+    private static void ThrowIfFileFails(string file, TestType testType)
     {
-        List<T> tests = [];
         foreach (EthereumTest test in new FileTestsSource(file).LoadTests(testType))
         {
-            if (throwOnFailure && test is FailedToLoadTest failed)
+            if (test is FailedToLoadTest failed)
                 throw new InvalidDataException($"Pyspec fixture '{file}': {failed.LoadFailure}");
-            if (test is T typed)
-            {
-                typed.Category ??= directory;
-                tests.Add(typed);
-            }
         }
-
-        return tests;
     }
 
     private sealed record SlicedTest<T>(T Test, long Offset, int Length, int Index) where T : EthereumTest;
@@ -401,6 +392,8 @@ internal static class PyspecLoader
         }
     }
 
+    // Same per-file pipeline as TestLoadStrategy.LoadTestsFromDirectories: parse, apply
+    // fixture exclusions (inside FileTestsSource), then default the category to the directory.
     private static List<T> ConvertProperty<T>(string file, string directory, TestType testType, ReadOnlySpan<byte> property) where T : EthereumTest
     {
         byte[] json = new byte[property.Length + 2];

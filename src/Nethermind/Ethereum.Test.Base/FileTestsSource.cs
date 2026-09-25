@@ -36,6 +36,7 @@ namespace Ethereum.Test.Base
         }
 
         /// <summary>Converts a JSON fixture and applies the same exclusions as <see cref="LoadTests(TestType)"/>.</summary>
+        /// <remarks>The file-name filters of <see cref="LoadTests(TestType)"/>, hidden files and the constructor's wildcard, do not apply.</remarks>
         public IEnumerable<EthereumTest> LoadTests(ReadOnlySpan<byte> json, TestType testType)
         {
             IEnumerable<EthereumTest> tests = testType switch
