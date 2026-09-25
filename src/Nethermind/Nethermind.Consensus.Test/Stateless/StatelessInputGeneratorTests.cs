@@ -76,11 +76,7 @@ public class StatelessInputGeneratorTests
                 }
                 Block reconstructed = input.NewPayloadRequest.ToBlock(requestsEnabled: true)!;
                 Assert.That(HeaderValidator.ValidateHash(reconstructed.Header), Is.EqualTo(mutation == "valid"));
-                byte[] body = StatelessInput<TPayload>.Encode(input);
-                byte[] modified = new byte[body.Length + sizeof(ushort)];
-                encoded.AsSpan(0, sizeof(ushort)).CopyTo(modified);
-                body.CopyTo(modified, sizeof(ushort));
-                encoded = modified;
+                encoded = Reencode(encoded, input);
             }
         }
     }
@@ -97,11 +93,11 @@ public class StatelessInputGeneratorTests
             // Through the SSZ view: the payload caches the wrapped transaction array, so a write to the
             // inner byte[][] would not survive the re-encode.
             input.NewPayloadRequest.ExecutionPayload.Transactions[0] = new SszProgressiveBytes { Bytes = [] };
+            byte[] modified = Reencode(encoded, input);
 
-            byte[] body = StatelessInput<SszExecutionPayload>.Encode(input);
-            byte[] modified = new byte[body.Length + sizeof(ushort)];
-            encoded.AsSpan(0, sizeof(ushort)).CopyTo(modified);
-            body.CopyTo(modified, sizeof(ushort));
+            // The declared block hash no longer matches either, so only the decode step pins the empty-entry rule.
+            StatelessInput<SszExecutionPayload>.Decode(modified.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> decoded);
+            Assert.That(() => decoded.NewPayloadRequest.ToBlock(requestsEnabled: true), Throws.InvalidOperationException);
 
             StatelessValidationResult.Decode(StatelessExecutor.Execute(modified), out StatelessValidationResult result);
             Assert.That(result.IsSuccess, Is.False);
@@ -144,7 +140,7 @@ public class StatelessInputGeneratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.GetBlockhash(current, 100, Cancun.Instance), Is.EqualTo(parent.Hash));
-            Assert.That(() => provider.GetBlockhash(current, 99, Cancun.Instance), Throws.Exception);
+            Assert.That(() => provider.GetBlockhash(current, 99, Cancun.Instance), Throws.TypeOf<InvalidDataException>());
         }
     }
 
@@ -406,6 +402,16 @@ public class StatelessInputGeneratorTests
             state.CreateAccount(address, 0);
             state.InsertCode(address, Keccak.Compute(code), code, spec);
         }
+    }
+
+    private static byte[] Reencode<TPayload>(byte[] encoded, StatelessInput<TPayload> input)
+        where TPayload : SszExecutionPayload, ISszCodec<TPayload>, new()
+    {
+        byte[] body = StatelessInput<TPayload>.Encode(input);
+        byte[] modified = new byte[body.Length + sizeof(ushort)];
+        encoded.AsSpan(0, sizeof(ushort)).CopyTo(modified);
+        body.CopyTo(modified, sizeof(ushort));
+        return modified;
     }
 
     private static Witness EmptyWitness(byte[][]? headers = null) => new()
