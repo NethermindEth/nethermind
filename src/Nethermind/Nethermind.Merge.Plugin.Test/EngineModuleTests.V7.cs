@@ -441,9 +441,10 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV6_resubmitting_canonical_block_with_same_inclusion_list_stays_valid()
+    public async Task NewPayloadV6_resubmitting_canonical_block_with_same_inclusion_list_requires_state([Values] bool statePruned)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned, releaseSpec: Bogota.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
@@ -469,14 +470,15 @@ public partial class EngineModuleTests
         // Promote to canonical head, then re-submit the same (block, IL).
         await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
+        if (statePruned) pruned[payload.BlockHash] = 0;
 
-        // The re-submission must reuse the cached result (VALID + satisfied), not regress to SYNCING or re-execute.
+        // A cached result can only be reused while the state that established compliance is available.
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
             payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(resend.Data.InclusionListSatisfied, Is.True);
+            Assert.That(resend.Data.Status, Is.EqualTo(statePruned ? PayloadStatus.Syncing : PayloadStatus.Valid));
+            if (!statePruned) Assert.That(resend.Data.InclusionListSatisfied, Is.True);
         }
     }
 

@@ -2156,6 +2156,7 @@ public partial class EngineModuleTests
             "a block below finalized can never become the head, so its verdict stays usable without state");
     }
 
+    /// <summary>A processed block with a stale canonical marker can be re-executed when the head follows another branch.</summary>
     [Test]
     public async Task newPayloadV1_reexecutes_a_pruned_block_when_only_its_canonical_marker_is_stale()
     {

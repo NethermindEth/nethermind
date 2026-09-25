@@ -240,7 +240,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             }
             else
             {
-                // Reuse a known compliance result while its VALID verdict is still serviceable.
+                // bogota.md newPayloadV6 (2.1) requires a VALID response to carry a compliance answer.
+                // Reuse a known compliance result while its VALID verdict is still serviceable;
+                // a different list must be judged against the current state.
                 if (IsVerdictServiceable(block) && TryGetCachedResult(block, out ResultWrapper<PayloadStatusV1>? cachedResult))
                 {
                     if (_logger.IsInfo) _logger.Info($"Valid... A new payload with a known inclusion-list result. Block {block.ToString(Block.Format.Short)} found in main chain.");
