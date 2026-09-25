@@ -5,6 +5,8 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -16,7 +18,7 @@ namespace Nethermind.Facade.Test
         private ITxSender _txSender;
         private ITxPool _txPool;
         private ITxSigner _txSigner;
-        private INonceManager _nonceManager;
+        private NonceManager _nonceManager;
         private IEthereumEcdsa _ecdsa;
 
         [SetUp]
@@ -24,10 +26,13 @@ namespace Nethermind.Facade.Test
         {
             _txPool = Substitute.For<ITxPool>();
             _txSigner = Substitute.For<ITxSigner>();
-            _nonceManager = new NonceManager(Substitute.For<IAccountStateProvider>());
+            _nonceManager = new NonceManager(Substitute.For<IChainHeadInfoProvider>(), Substitute.For<IStateReader>(), Substitute.For<IStateHeaderProvider>(), LimboLogs.Instance);
             _ecdsa = Substitute.For<IEthereumEcdsa>();
             _txSender = new TxPoolSender(_txPool, new TxSealer(_txSigner, Timestamper.Default), _nonceManager, _ecdsa);
         }
+
+        [TearDown]
+        public void TearDown() => _nonceManager.Dispose();
 
         [Test]
         public void Timestamp_is_set_on_transactions()

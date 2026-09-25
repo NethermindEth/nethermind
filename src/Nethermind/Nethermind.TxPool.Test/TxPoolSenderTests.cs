@@ -7,6 +7,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -14,6 +16,11 @@ namespace Nethermind.TxPool.Test;
 
 public class TxPoolSenderTests
 {
+    private NonceManager _nonceManager;
+
+    [TearDown]
+    public void TearDown() => _nonceManager?.Dispose();
+
     [Test]
     public void SendTransaction_FrameTransaction_NotRejectedAsSignFailed()
     {
@@ -54,7 +61,7 @@ public class TxPoolSenderTests
         Assert.That(tx.Nonce, Is.EqualTo(7UL));
     }
 
-    private static TxPoolSender BuildSender(out INonceManager nonceManager)
+    private TxPoolSender BuildSender(out INonceManager nonceManager)
     {
         ITxPool txPool = Substitute.For<ITxPool>();
         txPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
@@ -62,9 +69,9 @@ public class TxPoolSenderTests
         TxSealer sealer = new(Substitute.For<ITxSigner>(), Timestamper.Default);
 
         // NonceLocker is a ref struct, so INonceManager cannot be substituted; use the real one.
-        IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
-        accountStateProvider.GetNonce(TestItem.AddressA).Returns(0UL);
-        nonceManager = new NonceManager(accountStateProvider);
+        IChainHeadInfoProvider chainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        chainHeadInfoProvider.ReadOnlyStateProvider.GetNonce(TestItem.AddressA).Returns(0UL);
+        nonceManager = _nonceManager = new NonceManager(chainHeadInfoProvider, Substitute.For<IStateReader>(), Substitute.For<IStateHeaderProvider>(), LimboLogs.Instance);
 
         return new TxPoolSender(txPool, sealer, nonceManager, Substitute.For<IEthereumEcdsa>());
     }
