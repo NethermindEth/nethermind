@@ -88,6 +88,7 @@ internal class Program
 
         public static Option<int> MinFcuInclusionListAssertions { get; } =
             new("--minFcuInclusionListAssertions") { Description = "Fail the run unless the EIP-7805 inclusion-list expectation was asserted on at least this many engine_forkchoiceUpdated responses. Guards a FOCIL run against fixtures that stop stating the expectation, which would pass vacuously. [Only for Engine Test]" };
+
         public static Option<string[]> ForkAlias { get; } =
             new("--forkAlias") { Description = "Resolve a fixture's declared fork name as another fork, e.g. 'Bogota=Eip8141Prototype'. Repeatable; needed where separate fixture releases give one fork name incompatible meanings.", AllowMultipleArgumentsPerToken = true };
     }
@@ -170,6 +171,7 @@ internal class Program
             Console.Error.Flush();
             return 1;
         }
+
         // Set before any fixture is loaded: the parse workers only ever read the table.
         ForkAliases.Set(parseResult.GetValue(Options.ForkAlias) ?? []);
 
