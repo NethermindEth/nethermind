@@ -8,6 +8,9 @@ namespace Nethermind.Mcp.Plugin.Tools;
 /// <summary>Collects the tools of every registered <see cref="IMcpToolSet"/>.</summary>
 public sealed class McpToolCatalog(IEnumerable<IMcpToolSet> toolSets)
 {
+    /// <summary>Gets the executor running the tool bodies, which the host drains at shutdown.</summary>
+    internal McpToolExecutor? Executor { get; init; }
+
     /// <summary>Creates the descriptors of all tools, rejecting duplicate names.</summary>
     /// <exception cref="InvalidOperationException">Two tool sets declare the same tool name.</exception>
     internal IReadOnlyList<McpServerTool> CreateServerTools()

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -162,6 +164,13 @@ internal sealed class McpTransactionTools(
     private readonly int _maxResultSize = Math.Max(1, config.MaxResultSize);
     private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout));
 
+    // explain_transaction degrades into notes before the executor's hard timeout would discard the whole answer: token metadata
+    // stops at 30% of the tool timeout, the call trace gets at most half of it, and everything must be done by 85%.
+    private readonly TimeSpan _tokenDeadline = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout) * 0.3);
+    private readonly TimeSpan _traceBudget = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout) * 0.5);
+    private readonly TimeSpan _explainDeadline = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout) * 0.85);
+    private readonly TimeSpan _minTraceTime = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout) * 0.05);
+
     /// <inheritdoc/>
     public IEnumerable<McpServerTool> CreateServerTools() => McpToolFactory.Create(this, method => method.Name switch
     {
@@ -299,6 +308,14 @@ internal sealed class McpTransactionTools(
         }
 
         UInt256 maxCost = maxPrice * (UInt256)(tx.Gas ?? 0);
+        if (tx is BlobTransactionForRpc { MaxFeePerBlobGas: { } maxBlobPrice } && context.BlobCount > 0)
+        {
+            UInt256 maxBlobFee = maxBlobPrice * (UInt256)((ulong)context.BlobCount * Eip4844Constants.GasPerBlob);
+            fees["maxFeePerBlobGasGwei"] = McpEthHelpers.Gwei(maxBlobPrice);
+            fees["maxBlobFee"] = Amount(maxBlobFee);
+            maxCost += maxBlobFee;
+        }
+
         fees["maxFee"] = Amount(maxCost);
         json["fees"] = fees;
         context.Notes.Add("The transaction is in this node's mempool and has not been mined; status, fees paid and effects are not known yet. Use simulate_transaction to preview it.");
@@ -382,10 +399,10 @@ internal sealed class McpTransactionTools(
         Dictionary<AddressAsKey, McpTokenInfo> tokens = [];
         if (movements.Count > 0)
         {
-            (tokens, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, TokensOf(movements), MaxTokenLookups, token);
+            (tokens, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, TokensOf(movements), MaxTokenLookups, token, () => context.Clock.Elapsed > _tokenDeadline);
             if (skipped > 0)
             {
-                context.Notes.Add($"Metadata was read for the first {MaxTokenLookups} tokens only; {skipped} more tokens show raw amounts.");
+                context.Notes.Add($"Token metadata was not read for {skipped} token(s) (at most {MaxTokenLookups} per call, within the time budget); they show raw amounts.");
             }
 
             JsonArray transfers = [];
@@ -497,12 +514,13 @@ internal sealed class McpTransactionTools(
         }
     }
 
-    private JsonObject Fees(LegacyTransactionForRpc tx, ReceiptForRpc receipt, BlockHeaderForRpc? header, ulong blockNumber, ulong timestamp)
+    internal JsonObject Fees(LegacyTransactionForRpc tx, ReceiptForRpc receipt, BlockHeaderForRpc? header, ulong blockNumber, ulong timestamp)
     {
         ulong gasLimit = tx.Gas ?? 0;
         ulong gasUsed = receipt.GasUsed;
         UInt256 price = receipt.EffectiveGasPrice ?? tx.GasPrice ?? UInt256.Zero;
         UInt256 total = price * (UInt256)gasUsed;
+        UInt256 blobFee = BlobFee(receipt);
 
         JsonObject fees = new()
         {
@@ -511,8 +529,14 @@ internal sealed class McpTransactionTools(
             ["gasUsedPercent"] = McpTxFormat.Percent(gasUsed, gasLimit),
             ["effectiveGasPrice"] = McpTxFormat.Hex(price),
             ["effectiveGasPriceGwei"] = McpEthHelpers.Gwei(price),
-            ["total"] = Amount(total)
+            ["total"] = Amount(total + blobFee)
         };
+
+        if (!blobFee.IsZero)
+        {
+            // The blob fee is burnt separately from execution gas, so the total is split into both parts.
+            fees["executionFee"] = Amount(total);
+        }
 
         if (tx is EIP1559TransactionForRpc eip1559)
         {
@@ -544,12 +568,19 @@ internal sealed class McpTransactionTools(
             {
                 ["blobGasUsed"] = blobGasUsed,
                 ["blobGasPriceGwei"] = McpEthHelpers.Gwei(blobPrice),
-                ["fee"] = Amount(blobPrice * (UInt256)blobGasUsed)
+                ["fee"] = Amount(blobFee)
             };
         }
 
         return fees;
     }
+
+    /// <summary>Returns everything a mined transaction paid: execution gas at the effective price plus the EIP-4844 blob fee.</summary>
+    internal static UInt256 PaidFee(LegacyTransactionForRpc tx, ReceiptForRpc receipt) =>
+        (receipt.EffectiveGasPrice ?? tx.GasPrice ?? UInt256.Zero) * (UInt256)receipt.GasUsed + BlobFee(receipt);
+
+    private static UInt256 BlobFee(ReceiptForRpc receipt) =>
+        receipt is { BlobGasUsed: { } blobGas and > 0, BlobGasPrice: { } blobPrice } ? blobPrice * (UInt256)blobGas : UInt256.Zero;
 
     private async Task<TraceFacts?> TraceAsync(ExplainContext context, ulong blockNumber, CancellationToken token)
     {
@@ -566,30 +597,39 @@ internal sealed class McpTransactionTools(
         }
 
         token.ThrowIfCancellationRequested();
+        TimeSpan traceTimeout = TraceTimeout(context.Clock.Elapsed);
+        if (traceTimeout < _minTraceTime)
+        {
+            context.Notes.Add("Call trace skipped: the rest of this call used up the time budget. Use trace_transaction for internal transfers and the failing frame.");
+            return null;
+        }
+
+        // The native tracer is bounded only by JsonRpc.Timeout, so it runs on its own task and the answer stops waiting for it
+        // after the trace budget; an abandoned trace keeps its debug module until it finishes and stays tracked for shutdown.
+        Task<(bool Available, TraceFacts? Facts, IResultWrapper? Failure)> trace = Task.Run(() => RunTraceAsync(context.Hash), CancellationToken.None);
+        using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(token);
         try
         {
-            using ModuleLease<IDebugRpcModule> debug = await executor.RentAsync<IDebugRpcModule>(nameof(IDebugRpcModule.debug_traceTransaction));
-            if (debug.Module is null)
+            Task finished = await Task.WhenAny(trace, Task.Delay(traceTimeout, wait.Token));
+            await wait.CancelAsync();
+            if (finished != trace)
+            {
+                executor.TrackDetached(trace);
+                token.ThrowIfCancellationRequested();
+                context.Notes.Add($"Call trace did not finish within {(long)traceTimeout.TotalMilliseconds} ms and was left out. Use trace_transaction for internal transfers and the failing frame.");
+                return null;
+            }
+
+            (bool available, TraceFacts? facts, IResultWrapper? failure) = await trace;
+            if (!available)
             {
                 context.Notes.Add("Call trace skipped: the debug module is not available on this node.");
                 return null;
             }
 
-            (TraceFacts? facts, IResultWrapper? failure) = McpTxCallTree.Run(debug.Module, context.Hash, _timeout, static root =>
-            {
-                if (root is null)
-                {
-                    return new TraceFacts([], 0, null, null);
-                }
-
-                List<McpValueTransfer> transfers = [];
-                int total = McpTxCallTree.CollectValueTransfers(root, transfers, MaxInternalTransfers);
-                return new TraceFacts(transfers, total, McpTxCallTree.FindFailingFrame(root), root.Error);
-            });
-
             if (failure is not null)
             {
-                context.Notes.Add($"Call trace failed: {failure.Result.Error}");
+                context.Notes.Add($"Call trace failed: {McpToolExecutor.SanitizeMessage(failure.Result.Error)}");
                 return null;
             }
 
@@ -600,6 +640,36 @@ internal sealed class McpTransactionTools(
             context.Notes.Add("Call trace skipped: the node's debug modules are busy; retry later for internal transfers and the failing frame.");
             return null;
         }
+    }
+
+    private async Task<(bool Available, TraceFacts? Facts, IResultWrapper? Failure)> RunTraceAsync(Hash256 hash)
+    {
+        using ModuleLease<IDebugRpcModule> debug = await executor.RentAsync<IDebugRpcModule>(nameof(IDebugRpcModule.debug_traceTransaction));
+        if (debug.Module is null)
+        {
+            return (false, null, null);
+        }
+
+        (TraceFacts? facts, IResultWrapper? failure) = McpTxCallTree.Run(debug.Module, hash, _timeout, static root =>
+        {
+            if (root is null)
+            {
+                return new TraceFacts([], 0, null, null);
+            }
+
+            List<McpValueTransfer> transfers = [];
+            int total = McpTxCallTree.CollectValueTransfers(root, transfers, MaxInternalTransfers);
+            return new TraceFacts(transfers, total, McpTxCallTree.FindFailingFrame(root), root.Error);
+        });
+        return (true, facts, failure);
+    }
+
+    /// <summary>Returns the time the call trace of <c>explain_transaction</c> may take after <paramref name="elapsed"/> of the call.</summary>
+    /// <remarks>At most half of the tool timeout, and never past 85% of it, so a slow trace ends in a note instead of a lost result.</remarks>
+    internal TimeSpan TraceTimeout(TimeSpan elapsed)
+    {
+        TimeSpan left = _explainDeadline - elapsed;
+        return left < _traceBudget ? left : _traceBudget;
     }
 
     private static JsonObject Failure(ExplainContext context, ReceiptForRpc receipt, TraceFacts? trace)
@@ -650,8 +720,17 @@ internal sealed class McpTransactionTools(
 
         if (receipt is not null)
         {
-            UInt256 fee = (receipt.EffectiveGasPrice ?? tx.GasPrice ?? UInt256.Zero) * (UInt256)receipt.GasUsed;
-            summary.Append(" and paid ").Append(Human(fee)).Append(" in fees");
+            summary.Append(" and paid ").Append(Human(PaidFee(tx, receipt))).Append(" in fees");
+            if (BlobFee(receipt) is { IsZero: false } blobFee)
+            {
+                summary.Append(" (").Append(Human(blobFee)).Append(" of it for blob gas)");
+            }
+        }
+
+        // Bots and smart accounts move tokens from the called contract, not the sender: then its net flows tell the story.
+        if (succeeded != false && tx.To is not null && (tx.From is null || McpTxTokens.NetFor(movements, tx.From).Count == 0))
+        {
+            AppendContractFlows(summary, tx.To, movements, tokens);
         }
 
         string blockText = $"block {McpTxFormat.Thousands(blockNumber)}";
@@ -761,6 +840,29 @@ internal sealed class McpTransactionTools(
         }
     }
 
+    /// <summary>Appends what <paramref name="contract"/> gave and got in fungible tokens, such as <c>; 0xAb…12 swapped 100 USDC for 0.04 WETH</c>.</summary>
+    internal void AppendContractFlows(StringBuilder summary, Address contract, List<McpTokenMovement> movements, Dictionary<AddressAsKey, McpTokenInfo> tokens)
+    {
+        const int maxPerSide = 2;
+        List<string> gave = [];
+        List<string> got = [];
+        foreach ((Address token, BigInteger change) in McpTxTokens.NetFor(movements, contract))
+        {
+            List<string> side = change.Sign < 0 ? gave : got;
+            if (side.Count < maxPerSide) side.Add(TokenAmountText(token, (UInt256)BigInteger.Abs(change), tokens));
+        }
+
+        if (gave.Count == 0 && got.Count == 0)
+        {
+            return;
+        }
+
+        summary.Append("; ").Append(Display(contract));
+        if (gave.Count > 0 && got.Count > 0) summary.Append(" swapped ").AppendJoin(" and ", gave).Append(" for ").AppendJoin(" and ", got);
+        else if (gave.Count > 0) summary.Append(" sent out ").AppendJoin(" and ", gave);
+        else summary.Append(" received ").AppendJoin(" and ", got);
+    }
+
     private static List<McpTokenMovement> SenderMovements(Address? sender, List<McpTokenMovement> movements)
     {
         List<McpTokenMovement> sent = [];
@@ -775,19 +877,25 @@ internal sealed class McpTransactionTools(
         return sent;
     }
 
-    private string TokenText(McpTokenMovement movement, Dictionary<AddressAsKey, McpTokenInfo> tokens)
-    {
-        tokens.TryGetValue(movement.Token, out McpTokenInfo? info);
-        string label = info?.Symbol is { } symbol && !IsWellKnownToken(movement.Token)
-            ? $"{symbol} (unverified token {McpTxFormat.Short(movement.Token)})"
-            : McpTxTokens.Label(movement.Token, info);
-        if (!movement.IsFungible)
-        {
-            return $"{movement.Standard} {label} #{movement.TokenId}";
-        }
+    private string TokenText(McpTokenMovement movement, Dictionary<AddressAsKey, McpTokenInfo> tokens) =>
+        movement.IsFungible
+            ? TokenAmountText(movement.Token, movement.Amount, tokens)
+            : $"{movement.Standard} {TokenLabel(movement.Token, tokens)} #{movement.TokenId}";
 
-        string amount = info?.Decimals is { } decimals ? McpTxFormat.Human(McpTokenMetadata.FormatUnits(movement.Amount, decimals)) : movement.Amount.ToString();
-        return $"{amount} {label}";
+    private string TokenAmountText(Address token, UInt256 amount, Dictionary<AddressAsKey, McpTokenInfo> tokens)
+    {
+        tokens.TryGetValue(token, out McpTokenInfo? info);
+        string formatted = info?.Decimals is { } decimals ? McpTxFormat.Human(McpTokenMetadata.FormatUnits(amount, decimals)) : amount.ToString();
+        return $"{formatted} {TokenLabel(token, tokens)}";
+    }
+
+    // A symbol is chosen by whoever deployed the token, so only well-known tokens are named without a warning.
+    private string TokenLabel(Address token, Dictionary<AddressAsKey, McpTokenInfo> tokens)
+    {
+        tokens.TryGetValue(token, out McpTokenInfo? info);
+        return info?.Symbol is { } symbol && !IsWellKnownToken(token)
+            ? $"{symbol} (unverified token {McpTxFormat.Short(token)})"
+            : McpTxTokens.Label(token, info);
     }
 
     // ---- simulate_transaction ----
@@ -883,7 +991,7 @@ internal sealed class McpTransactionTools(
 
             if (!ok)
             {
-                JsonObject error = new() { ["message"] = call.Error?.Message ?? "execution failed" };
+                JsonObject error = new() { ["message"] = call.Error?.Message is { } callError ? McpToolExecutor.SanitizeMessage(callError) : "execution failed" };
                 bool reverted = call.Error is null || call.Error.EvmException == EvmExceptionType.Revert;
                 if (reverted)
                 {
@@ -894,7 +1002,7 @@ internal sealed class McpTransactionTools(
                 else
                 {
                     json["status"] = "failed";
-                    failureText ??= call.Error!.Message;
+                    failureText ??= McpToolExecutor.SanitizeMessage(call.Error!.Message);
                 }
 
                 json["error"] = error;
@@ -1044,7 +1152,7 @@ internal sealed class McpTransactionTools(
     private CallToolResult SimulateFailure(IResultWrapper result)
     {
         int code = result.ErrorCode;
-        string message = result.Result.Error ?? "The simulation failed.";
+        string message = result.Result.Error is { Length: > 0 } error ? McpToolExecutor.SanitizeMessage(error) : "The simulation failed.";
         if (code == ErrorCodes.ClientLimitExceededError)
         {
             return McpToolExecutor.Error(McpToolErrorCodes.ResourceExhausted, message);
@@ -1057,7 +1165,7 @@ internal sealed class McpTransactionTools(
 
         // Transaction-level rejections (nonce, intrinsic gas, funds, block gas) are caused by the request, so say so.
         return code is <= -38000 and > -39000
-            ? McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, message.Length > 512 ? message[..512] : message)
+            ? McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, message)
             : executor.Failure("simulate_transaction", result);
     }
 
@@ -1648,6 +1756,8 @@ internal sealed class McpTransactionTools(
         public JsonObject Json { get; } = new() { ["hash"] = hash.ToString() };
         public List<string> Notes { get; } = [];
         public int BlobCount { get; set; }
+
+        public Stopwatch Clock { get; } = Stopwatch.StartNew();
     }
 
     private sealed record TraceFacts(List<McpValueTransfer> Transfers, int TransfersTotal, McpFailingFrame? FailingFrame, string? RootError);

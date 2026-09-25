@@ -37,6 +37,10 @@ public class McpContractToolsTests
     private static readonly Address EnsTarget = TestItem.AddressB;
     private static readonly Address Implementation = new("0x1234567890123456789012345678901234567890");
     private static readonly UInt256 Supply = 1_000_000_000;
+    private const string ZosImplementationSlot = "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3";
+
+    // A name with an invisible Unicode TAG payload ("ASCII smuggling"), a bidi override, a zero-width joiner and an emoji.
+    private const string EvilName = "Good󠁉󠁇󠁎‮gnp.exe‍ Token 🚀";
 
     private McpTestNode _node = null!;
     private McpClient _client = null!;
@@ -196,6 +200,37 @@ public class McpContractToolsTests
             Assert.That(nft.GetProperty("standardEvidence").GetString(), Does.Contain("0x80ac58cd"));
             Assert.That(proxy.GetProperty("proxy").GetProperty("type").GetString(), Is.EqualTo("EIP-1967"));
             Assert.That(proxy.GetProperty("proxy").GetProperty("implementation").GetString(), Is.EqualTo(Implementation.ToString(true, true)));
+        }
+    }
+
+    [Test]
+    public async Task Token_info_detects_zeppelinos_and_eip897_proxies()
+    {
+        JsonElement zos = (await Success("token_info", ("token", Hex(_deployed.ZosProxyToken)))).GetProperty("proxy");
+        JsonElement getter = (await Success("token_info", ("token", Hex(_deployed.GetterProxyToken)))).GetProperty("proxy");
+        JsonElement lookup = (await Success("lookup_address", ("address", Hex(_deployed.ZosProxyToken)))).GetProperty("proxy");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(zos.GetProperty("type").GetString(), Is.EqualTo("ZeppelinOS"));
+            Assert.That(zos.GetProperty("implementation").GetString(), Is.EqualTo(Implementation.ToString(true, true)));
+            Assert.That(getter.GetProperty("type").GetString(), Is.EqualTo("EIP-897"));
+            Assert.That(getter.GetProperty("implementation").GetString(), Is.EqualTo(Implementation.ToString(true, true)));
+            Assert.That(lookup.GetProperty("type").GetString(), Is.EqualTo("ZeppelinOS"));
+        }
+    }
+
+    [Test]
+    public async Task Untrusted_contract_strings_are_sanitized_in_every_output()
+    {
+        JsonElement call = await Success("call_function", ("to", Hex(_deployed.EvilToken)), ("signature", "name()(string)"));
+        JsonElement info = await Success("token_info", ("token", Hex(_deployed.EvilToken)));
+
+        string decoded = call.GetProperty("outputs")[0].GetProperty("value").GetString()!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Is.EqualTo("Goodgnp.exe Token 🚀"), "TAG characters, the bidi override and the joiner are removed; the emoji stays");
+            Assert.That(info.GetProperty("name").GetString(), Is.EqualTo("Goodgnp.exe Token 🚀"));
         }
     }
 
@@ -403,6 +438,9 @@ public class McpContractToolsTests
             DeployTx(nonce + 1, TestContracts.TokenInit(TestContracts.Token("Maker", "MKR", bytes32Symbol: true, erc721: false), Holder, Supply)),
             DeployTx(nonce + 2, TestContracts.TokenInit(TestContracts.Token("Test NFT", "NFT", bytes32Symbol: false, erc721: true), Holder, 1)),
             DeployTx(nonce + 3, TestContracts.TokenInit(TestContracts.Token("Test Token", "TST", bytes32Symbol: false, erc721: false), Holder, Supply, Implementation)),
+            DeployTx(nonce + 4, TestContracts.TokenInit(TestContracts.Token("USD Coin", "USDC", bytes32Symbol: false, erc721: false), Holder, Supply, Implementation, ZosImplementationSlot)),
+            DeployTx(nonce + 5, TestContracts.TokenInit(TestContracts.Token("Getter", "GET", bytes32Symbol: false, erc721: false, implementationGetter: Implementation), Holder, Supply)),
+            DeployTx(nonce + 6, TestContracts.TokenInit(TestContracts.Token(EvilName, "EVIL", bytes32Symbol: false, erc721: false), Holder, Supply)),
         ];
 
         Block block = await node.Chain.AddBlock(transactions);
@@ -412,6 +450,9 @@ public class McpContractToolsTests
             ContractAddress.From(sender.Address, nonce + 1),
             ContractAddress.From(sender.Address, nonce + 2),
             ContractAddress.From(sender.Address, nonce + 3),
+            ContractAddress.From(sender.Address, nonce + 4),
+            ContractAddress.From(sender.Address, nonce + 5),
+            ContractAddress.From(sender.Address, nonce + 6),
             transactions[0]);
 
         Transaction DeployTx(ulong txNonce, byte[] initCode) =>
@@ -419,7 +460,8 @@ public class McpContractToolsTests
                 .SignedAndResolved(node.Chain.EthereumEcdsa, sender).TestObject;
     }
 
-    private sealed record Deployed(Address Token, Address Bytes32Token, Address NftToken, Address ProxyToken, Transaction TokenDeploy);
+    private sealed record Deployed(Address Token, Address Bytes32Token, Address NftToken, Address ProxyToken, Address ZosProxyToken, Address GetterProxyToken,
+        Address EvilToken, Transaction TokenDeploy);
 
     /// <summary>Puts a minimal ENS registry and resolver in genesis: alice.eth resolves to <see cref="EnsTarget"/>, whose reverse record is alice.eth.</summary>
     private sealed class EnsGenesis(IWorldState state, ISpecProvider specProvider) : IGenesisPostProcessor
@@ -462,7 +504,7 @@ internal static class TestContracts
     /// getReserves returning (1000, 2000, 3), fail() reverting with Error("nope"), boom() reverting with Panic(0x11), optional ERC-165/ERC-721
     /// supportsInterface, and an empty revert for anything else.
     /// </summary>
-    public static byte[] Token(string name, string symbol, bool bytes32Symbol, bool erc721)
+    public static byte[] Token(string name, string symbol, bool bytes32Symbol, bool erc721, Address? implementationGetter = null)
     {
         EvmAssembler asm = new EvmAssembler().Selector()
             .JumpIfSelector("name()", "name")
@@ -474,6 +516,7 @@ internal static class TestContracts
             .JumpIfSelector("fail()", "fail")
             .JumpIfSelector("boom()", "boom");
         if (erc721) asm.JumpIfSelector("supportsInterface(bytes4)", "supportsInterface");
+        if (implementationGetter is not null) asm.JumpIfSelector("implementation()", "implementation");
         asm.Push(0).Push(0).Op(Instruction.REVERT);
 
         asm.Label("name").ReturnBlob(AbiString(name));
@@ -484,6 +527,13 @@ internal static class TestContracts
         asm.Label("getReserves").ReturnBlob([.. Word(1000), .. Word(2000), .. Word(3)]);
         asm.Label("fail").RevertBlob([.. Bytes.FromHexString("0x08c379a0"), .. AbiString("nope")]);
         asm.Label("boom").RevertBlob([.. Bytes.FromHexString("0x4e487b71"), .. Word(0x11)]);
+        if (implementationGetter is not null)
+        {
+            byte[] word = new byte[32];
+            implementationGetter.Bytes.CopyTo(word.AsSpan(12));
+            asm.Label("implementation").ReturnBlob(word);
+        }
+
         if (erc721)
         {
             asm.Label("supportsInterface").Push(4).Op(Instruction.CALLDATALOAD)
@@ -495,8 +545,9 @@ internal static class TestContracts
         return asm.Build();
     }
 
-    /// <summary>Init code: stores the supply in slot 0 and the holder's balance, emits a mint Transfer, optionally sets the EIP-1967 implementation slot.</summary>
-    public static byte[] TokenInit(byte[] runtime, Address holder, UInt256 supply, Address? implementation = null)
+    /// <summary>Init code: stores the supply in slot 0 and the holder's balance, emits a mint Transfer, optionally sets a proxy implementation slot (EIP-1967 by default).</summary>
+    public static byte[] TokenInit(byte[] runtime, Address holder, UInt256 supply, Address? implementation = null,
+        string implementationSlot = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc")
     {
         byte[] holderTopic = new byte[32];
         holder.Bytes.CopyTo(holderTopic.AsSpan(12));
@@ -508,7 +559,7 @@ internal static class TestContracts
             .Log(32, 0, [new Hash256(holderTopic), Keccak.Zero, TransferTopic]);
         if (implementation is not null)
         {
-            init.PushData(implementation).PushData("0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc").Op(Instruction.SSTORE);
+            init.PushData(implementation).PushData(implementationSlot).Op(Instruction.SSTORE);
         }
 
         return init.ForInitOf(runtime).Done;

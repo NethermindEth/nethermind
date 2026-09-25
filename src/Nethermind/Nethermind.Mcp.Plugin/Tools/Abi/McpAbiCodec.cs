@@ -653,7 +653,10 @@ public static class McpAbiCodec
                         }
 
                         ReadOnlySpan<byte> bytes = data.AsSpan(position + WordSize, length);
-                        value = type.Kind == McpAbiTypeKind.String ? Encoding.UTF8.GetString(bytes) : "0x" + Convert.ToHexStringLower(bytes);
+                        // Decoded strings are untrusted contract output shown to an LLM, so they are sanitized and capped here, once for every tool.
+                        value = type.Kind == McpAbiTypeKind.String
+                            ? McpText.Sanitize(Encoding.UTF8.GetString(bytes), McpText.MaxDecodedStringLength, controlsAsSpace: true, truncationMarker: McpText.TruncationMarker)
+                            : "0x" + Convert.ToHexStringLower(bytes);
                         return true;
                     }
                 case McpAbiTypeKind.Array:

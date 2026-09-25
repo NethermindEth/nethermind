@@ -174,27 +174,16 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
     }
 
     /// <summary>
-    /// Makes untrusted contract text safe to show: no control or Unicode format characters (bidi overrides, zero-width marks),
-    /// trimmed, at most <see cref="MaxTextLength"/> characters.
+    /// Makes untrusted contract text safe to show (see <see cref="McpText"/>): no control, format, private-use or unassigned
+    /// characters, no variation selectors, trimmed, at most <see cref="MaxTextLength"/> characters.
     /// </summary>
+    /// <returns>The sanitized text, or <see langword="null"/> if nothing visible remains.</returns>
     public static string? Sanitize(string text)
     {
-        StringBuilder builder = new(Math.Min(text.Length, MaxTextLength));
-        foreach (char c in text)
-        {
-            if (builder.Length >= MaxTextLength) break;
-            if (!IsUnsafeChar(c) && c != '\uFFFD') builder.Append(c);
-        }
-
-        string result = builder.ToString().Trim();
+        // Trimmed before the cut, so leading blanks (such as control characters turned into spaces) take no room.
+        string result = McpText.Sanitize(McpText.Sanitize(text, text.Length).Trim(), MaxTextLength).TrimEnd();
         return result.Length == 0 ? null : result;
     }
-
-    /// <summary>
-    /// Returns whether <paramref name="c"/> must not reach a client verbatim from untrusted on-chain text: control characters and
-    /// Unicode format characters (bidi overrides and isolates, zero-width joiners and spaces), which can hide or reorder text.
-    /// </summary>
-    public static bool IsUnsafeChar(char c) => char.IsControl(c) || CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.Format;
 
     /// <summary>Executes a bounded read-only call and classifies the outcome.</summary>
     /// <returns>The return data, or <see langword="null"/> on failure; <paramref name="transient"/> is set when the failure may go away on retry.</returns>

@@ -51,7 +51,7 @@ internal sealed class McpEthExtraTools(
     public const int MaxReceiptsPage = 1000;
 
     private const int DefaultFeeHistoryBlocks = 20;
-    private const int DefaultReceiptsPage = 100;
+    private const int DefaultReceiptsPage = 20;
     private const int RecentRatioCount = 10;
     private const ulong TransferGas = 21_000;
     private const ulong GasPerBlob = 131_072;
@@ -339,8 +339,8 @@ internal sealed class McpEthExtraTools(
     /// <summary>Returns a page of the receipts of a block.</summary>
     [McpServerTool(Name = "get_block_receipts", Title = "Get block receipts", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Returns the raw receipts of every transaction in a block (eth_getBlockReceipts format: status, gasUsed, effectiveGasPrice, logs...) in pages: " +
-        "{blockNumber, blockHash, total, offset, receipts: [...], truncated, nextOffset (only when truncated)}. A mainnet block has hundreds of receipts, so pass " +
-        "offset=nextOffset to continue. For one transaction use get_transaction_receipt; for a readable block overview prefer block_summary. " +
+        "{blockNumber, blockHash, total, offset, receipts: [...], truncated, nextOffset (only when truncated)}. A mainnet block has hundreds of receipts " +
+        "of several KB each, so pages hold 20 receipts (and at most about 128 KB) by default to fit in an LLM context; pass offset=nextOffset to continue, or a larger limit. For one transaction use get_transaction_receipt; for a readable block overview prefer block_summary. " +
         "Fails with unavailable if the node no longer stores receipts for the block, and not_found if the block is unknown.")]
     [McpToolOutputSchema("""
         {"type":"object","required":["result"],"properties":{"result":{"type":"object","required":["blockNumber","blockHash","total","offset","receipts","truncated"],
@@ -354,7 +354,7 @@ internal sealed class McpEthExtraTools(
     public Task<CallToolResult> GetBlockReceipts(
         [Description(McpEthTools.BlockSelectorDescription)] string block,
         [Description("Index of the first receipt to return. Default 0.")] int offset = 0,
-        [Description("Maximum number of receipts to return, 1 to 1000. Default 100.")] int limit = DefaultReceiptsPage,
+        [Description("Maximum number of receipts to return, 1 to 1000. Default 20; an explicit limit also lifts the default 128 KB page budget to the node's result limit.")] int? limit = null,
         CancellationToken cancellationToken = default)
     {
         if (!McpToolInput.TryParseBlock(block, nameof(block), out BlockParameter? blockParameter, out string? error))
@@ -401,7 +401,8 @@ internal sealed class McpEthExtraTools(
                 return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, $"'offset' ({offset}) is beyond the {receipts.Length} receipts of this block."));
             }
 
-            ReceiptPage page = new(receipts, number, offset, limit, Math.Max(1, _maxResultSize / 4 * 3), token);
+            long hardBudget = Math.Max(1, _maxResultSize / 4 * 3);
+            ReceiptPage page = new(receipts, number, offset, limit ?? DefaultReceiptsPage, limit is null ? Math.Min(McpEthTools.DefaultLogPageBytes, hardBudget) : hardBudget, token);
             return Task.FromResult(executor.Success(page, static (writer, state) => WriteReceiptPage(writer, state)));
         }, cancellationToken);
     }

@@ -174,7 +174,92 @@ public class McpLimitsTests
     }
 
     [Test]
-    public async Task Calls_beyond_concurrency_limit_fail_fast_while_others_succeed()
+    public async Task Call_waits_briefly_for_a_busy_slot()
+    {
+        BlockingEthModule blocking = new();
+        await using McpTestNode node = await CreateWithFaults(c => c.MaxConcurrentToolCalls = 1);
+        FaultInjectingRpcModuleProvider provider = Faults(node);
+        provider.Override(nameof(IEthRpcModule.eth_getBalance), blocking.Module);
+        await using McpClient client = await node.CreateClient();
+
+        Task<CallToolResult> inFlight = GetBalance(client);
+        await blocking.Entered.WaitAsync(WaitLimit);
+        Task<CallToolResult> queued = McpToolCalls.Call(client, "chain_info", []);
+        await Task.Delay(300);
+        blocking.Release();
+
+        using (Assert.EnterMultipleScope())
+        {
+            McpAssert.Success(await queued.WaitAsync(WaitLimit));
+            McpAssert.Success(await inFlight.WaitAsync(WaitLimit));
+        }
+    }
+
+    [Test]
+    public async Task Shutdown_rejects_new_calls_and_waits_for_running_bodies()
+    {
+        await using McpTestNode node = await McpTestNode.Create(start: false);
+        McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool observedCancellation = false;
+
+        Task<CallToolResult> running = executor.ExecuteLocalAsync("test", async token =>
+        {
+            entered.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Simulates a body that still reads node services briefly after its token fires.
+                await Task.Delay(200, CancellationToken.None);
+                observedCancellation = true;
+                throw;
+            }
+
+            return McpToolExecutor.Error(McpToolErrorCodes.InternalError, "unreachable");
+        }, CancellationToken.None);
+        await entered.Task.WaitAsync(WaitLimit);
+
+        using CancellationTokenSource budget = new(WaitLimit);
+        bool drained = await executor.StopAsync(budget.Token);
+        CallToolResult rejected = await executor.ExecuteLocalAsync("test", static _ => Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InternalError, "must not run")), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(drained, Is.True);
+            Assert.That(observedCancellation, Is.True, "stop must cancel the body token and wait until the body has finished");
+            Assert.That(McpAssert.Error(rejected, McpAssert.Unavailable).GetProperty("message").GetString(), Does.Contain("shutting down"));
+            McpAssert.Error(await running.WaitAsync(WaitLimit), McpAssert.Unavailable);
+        }
+    }
+
+    [Test]
+    public async Task Shutdown_gives_up_on_a_body_stuck_in_the_node()
+    {
+        await using McpTestNode node = await McpTestNode.Create(start: false);
+        McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<CallToolResult> gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Task<CallToolResult> stuck = executor.ExecuteLocalAsync("test", _ =>
+        {
+            entered.TrySetResult();
+            return gate.Task;
+        }, CancellationToken.None);
+        await entered.Task.WaitAsync(WaitLimit);
+
+        using CancellationTokenSource budget = new(TimeSpan.FromMilliseconds(200));
+        bool drained = await executor.StopAsync(budget.Token);
+        gate.SetResult(McpToolExecutor.Error(McpToolErrorCodes.InternalError, "done"));
+        await stuck.WaitAsync(WaitLimit);
+
+        Assert.That(drained, Is.False, "an uninterruptible body is logged and left behind once the stop budget is spent");
+    }
+
+    [Test]
+    public async Task Calls_beyond_concurrency_limit_fail_after_a_short_wait_while_others_succeed()
     {
         BlockingEthModule blocking = new();
         await using McpTestNode node = await CreateWithFaults(c => c.MaxConcurrentToolCalls = 1);

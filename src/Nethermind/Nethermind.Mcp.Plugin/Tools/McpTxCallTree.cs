@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -27,8 +28,10 @@ internal sealed record McpFailingFrame(int Depth, string Type, Address? From, Ad
 
 /// <summary>Runs the native <c>callTracer</c> over a mined transaction and reads its call tree.</summary>
 /// <remarks>
-/// The tracer is a non-streaming <c>debug_traceTransaction</c> call (a named tracer never streams), so the whole tree
-/// is materialised by the debug module before it returns. The frames are pooled and released when the result wrapper
+/// The tracer is a non-streaming <c>debug_traceTransaction</c> call (a named tracer never streams), so the whole tree,
+/// with each frame's full input and output, is materialised by the debug module before it returns; callers cut it only
+/// afterwards. <c>onlyTopCall</c> is the tracer's only bound, so a transaction with very many frames costs node memory for
+/// the duration of the call. The frames are pooled and released when the result wrapper
 /// is disposed, so every reader here runs inside <see cref="Run{T}"/>, before that happens.
 /// </remarks>
 internal static class McpTxCallTree
@@ -36,11 +39,24 @@ internal static class McpTxCallTree
     /// <summary>Output bytes kept per frame unless the caller asks for more.</summary>
     public const int DefaultOutputBytes = 256;
 
+    private static readonly JsonElement OnlyTopCallConfig = JsonSerializer.SerializeToElement(new { onlyTopCall = true });
+
     /// <summary>Traces <paramref name="txHash"/> with the call tracer and passes the root frame to <paramref name="read"/>.</summary>
+    /// <param name="debug">The rented debug module.</param>
+    /// <param name="txHash">The mined transaction.</param>
+    /// <param name="timeout">The tracer's own time limit.</param>
+    /// <param name="read">Reads the tree before its pooled frames are released.</param>
+    /// <param name="onlyTopCall">Whether the tracer records only the top-level frame (callTracer <c>onlyTopCall</c>), so nested frames are never built.</param>
     /// <returns>The value read, or the failed JSON-RPC wrapper; the root is <see langword="null"/> for a transaction with no frames.</returns>
-    public static (T? Value, IResultWrapper? Failure) Run<T>(IDebugRpcModule debug, Hash256 txHash, TimeSpan timeout, Func<NativeCallTracerCallFrame?, T> read)
+    public static (T? Value, IResultWrapper? Failure) Run<T>(IDebugRpcModule debug, Hash256 txHash, TimeSpan timeout, Func<NativeCallTracerCallFrame?, T> read, bool onlyTopCall = false)
     {
-        GethTraceOptions options = new() { Tracer = NativeCallTracer.CallTracer, StreamMode = false, Timeout = timeout };
+        GethTraceOptions options = new()
+        {
+            Tracer = NativeCallTracer.CallTracer,
+            StreamMode = false,
+            Timeout = timeout,
+            TracerConfig = onlyTopCall ? OnlyTopCallConfig : null
+        };
         using ResultWrapper<GethLikeTxTrace> result = debug.debug_traceTransaction(txHash, options);
         if (result.Result.ResultType != ResultType.Success)
         {

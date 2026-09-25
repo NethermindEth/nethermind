@@ -142,6 +142,63 @@ public class McpNodeCapabilitiesTests
     }
 
     [Test]
+    public void Fast_sync_without_old_bodies_and_receipts_reports_the_pivot_as_the_history_floor()
+    {
+        NodeFixture node = new()
+        {
+            Sync = { FastSync = true, SnapSync = true, PivotNumber = 1_000_000, DownloadBodiesInFastSync = false, DownloadReceiptsInFastSync = false }
+        };
+        McpNodeCapabilities capabilities = node.Create();
+
+        McpDataAvailability availability = capabilities.GetAvailability();
+        string body = Unavailable(capabilities.CheckBody(100));
+        string receipts = Unavailable(capabilities.CheckReceipts(100));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(availability.OldestBodyBlock, Is.EqualTo(1_000_001), "eth_capabilities reports these as disabled, yet blocks after the pivot are stored");
+            Assert.That(availability.OldestReceiptBlock, Is.EqualTo(1_000_001));
+            Assert.That(body, Does.Contain("keeps bodies for blocks 1000001..20000128"));
+            Assert.That(body, Does.Contain("Sync.DownloadBodiesInFastSync=false"));
+            Assert.That(receipts, Does.Contain("keeps receipts for blocks 1000001..20000128"));
+            Assert.That(capabilities.DescribeTransactionHistoryLimit(), Does.Contain("from block 1000001"));
+        }
+    }
+
+    [Test]
+    public void Fast_sync_without_old_receipts_keeps_the_downloaded_body_floor()
+    {
+        NodeFixture node = new()
+        {
+            Sync = { FastSync = true, SnapSync = true, PivotNumber = 1_000_000, DownloadReceiptsInFastSync = false, AncientBodiesBarrier = 500_000 }
+        };
+        node.Pointers.LowestInsertedBodyNumber.Returns(500_000UL);
+
+        McpDataAvailability availability = node.Create().GetAvailability();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(availability.OldestBodyBlock, Is.EqualTo(500_000));
+            Assert.That(availability.OldestReceiptBlock, Is.EqualTo(1_000_001));
+        }
+    }
+
+    [Test]
+    public void Memory_pruned_state_summary_names_the_actual_retention_window()
+    {
+        NodeFixture node = new() { Pruning = { Mode = PruningMode.Hybrid, PruningBoundary = 128 } };
+        node.StateBoundary.RetentionWindowBlocks.Returns(64UL);
+
+        McpDataAvailability availability = node.Create().GetAvailability();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(availability.StateRetentionBlocks, Is.EqualTo(64));
+            Assert.That(availability.Storage?.Summary, Is.EqualTo("pruned, HalfPath: about the last 64 blocks"));
+        }
+    }
+
+    [Test]
     public void History_expiry_is_named_when_an_expired_body_is_missing()
     {
         NodeFixture node = new() { History = { Pruning = PruningModes.Rolling } };
@@ -308,7 +365,7 @@ public class McpNodeCapabilitiesTests
                 ? new EthCapabilitiesProvider(BlockTree, StateBoundary, Sync, Pointers, History, HistoryPruner)
                 : null;
             return new McpNodeCapabilities(BlockTree, Sync, Receipts, Pruning, Flat, Init, LimboLogs.Instance,
-                provider, StateReader, ReceiptStorage, worldStateManager: null, SyncingInfo, HistoryPruner);
+                provider, StateReader, ReceiptStorage, worldStateManager: null, SyncingInfo, HistoryPruner, syncPointers: Pointers);
         }
 
         private BlockHeader Header(ulong number)

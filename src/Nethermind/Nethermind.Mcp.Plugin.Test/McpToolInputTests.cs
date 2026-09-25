@@ -22,6 +22,7 @@ public class McpToolInputTests
     [TestCase("safe", BlockParameterType.Safe)]
     [TestCase("finalized", BlockParameterType.Finalized)]
     [TestCase("0x10", BlockParameterType.BlockNumber)]
+    [TestCase("0X10", BlockParameterType.BlockNumber)]
     [TestCase("16", BlockParameterType.BlockNumber)]
     [TestCase(Hash, BlockParameterType.BlockHash)]
     public void Block_selector_is_parsed(string input, BlockParameterType expected)
@@ -37,6 +38,22 @@ public class McpToolInputTests
         }
     }
 
+    [Test]
+    public void Uppercase_hex_prefix_is_accepted()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(McpToolInput.TryParseAddress("0X" + new string('A', 40), "address", out Address? address, out _), Is.True);
+            Assert.That(address, Is.EqualTo(new Address("0x" + new string('a', 40))));
+            Assert.That(McpToolInput.TryParseHash("0X" + Hash[2..], "hash", out Hash256? hash, out _), Is.True);
+            Assert.That(hash, Is.EqualTo(new Hash256(Hash)));
+            Assert.That(McpToolInput.TryParseData("0XABCD", "data", 8, out byte[]? data, out _), Is.True);
+            Assert.That(data, Is.EqualTo(new byte[] { 0xab, 0xcd }));
+            Assert.That(McpToolInput.TryParseUInt256("0XFF", "value", out UInt256 value, out _), Is.True);
+            Assert.That(value, Is.EqualTo((UInt256)255));
+        }
+    }
+
     [TestCase("pending", "pending")]
     [TestCase(null, "block")]
     [TestCase("", "block")]
@@ -48,7 +65,6 @@ public class McpToolInputTests
     [TestCase("+1", "block")]
     [TestCase(" 1", "block")]
     [TestCase("1_000", "block")]
-    [TestCase("0X10", "block")]
     public void Invalid_block_selector_names_the_parameter(string? input, string expectedInMessage)
     {
         bool parsed = McpToolInput.TryParseBlock(input, "block", out _, out string? error);

@@ -153,19 +153,8 @@ public static class McpKnownAbi
         _ => "unknown panic code"
     };
 
-    /// <summary>Makes an untrusted revert string safe to show: control and format characters become spaces, and it is cut to a bounded length.</summary>
-    public static string SanitizeRevertText(string text)
-    {
-        Span<char> buffer = stackalloc char[Math.Min(text.Length, MaxRevertMessageLength)];
-        for (int i = 0; i < buffer.Length; i++)
-        {
-            char c = text[i];
-            buffer[i] = McpTokenMetadata.IsUnsafeChar(c) ? ' ' : c;
-        }
-
-        string result = new(buffer);
-        return text.Length > MaxRevertMessageLength ? result + "..." : result;
-    }
+    /// <summary>Makes an untrusted revert string safe to show (see <see cref="McpText"/>): control characters become spaces, and it is cut to a bounded length.</summary>
+    public static string SanitizeRevertText(string text) => McpText.Sanitize(text, MaxRevertMessageLength, controlsAsSpace: true, truncationMarker: "...");
 
     private static Dictionary<Hash256, KnownEvent[]> BuildEvents()
     {

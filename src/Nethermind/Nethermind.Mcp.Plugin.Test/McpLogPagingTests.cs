@@ -211,6 +211,23 @@ public class McpLogPagingTests
     }
 
     [Test]
+    public async Task Page_byte_budget_is_caller_adjustable_within_the_node_limit()
+    {
+        (string, object?)[] filter = [("fromBlock", Hex(_seeded.First)), ("toBlock", Hex(_seeded.Last)), ("topics", Json(new object?[] { PagingTopic.ToString() }))];
+
+        JsonElement small = McpAssert.Success(await McpToolCalls.Call(_client, "get_logs", [.. filter, ("maxBytes", 1024)]));
+        JsonElement standard = McpAssert.Success(await McpToolCalls.Call(_client, "get_logs", filter));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(small.GetProperty("logs").GetArrayLength(), Is.GreaterThan(0).And.LessThan(standard.GetProperty("logs").GetArrayLength()));
+            Assert.That(small.GetProperty("truncated").GetBoolean(), Is.True);
+            McpAssert.Error(await McpToolCalls.Call(_client, "get_logs", [.. filter, ("maxBytes", 100)]), McpAssert.InvalidInput);
+            McpAssert.Error(await McpToolCalls.Call(_client, "get_logs", [.. filter, ("maxBytes", MaxResultSize)]), McpAssert.InvalidInput);
+        }
+    }
+
+    [Test]
     public async Task Cursor_ignores_address_and_topic_alternative_order()
     {
         string a = _seeded.Expected[0].Emitter.ToString();

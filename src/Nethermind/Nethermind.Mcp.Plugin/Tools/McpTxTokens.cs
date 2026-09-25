@@ -82,9 +82,15 @@ internal static class McpTxTokens
     }
 
     /// <summary>Looks up metadata for at most <paramref name="maxLookups"/> distinct tokens, in order of first appearance.</summary>
+    /// <param name="metadata">The metadata reader.</param>
+    /// <param name="eth">The rented eth module.</param>
+    /// <param name="tokens">The token addresses, possibly repeated.</param>
+    /// <param name="maxLookups">The most distinct tokens to look up.</param>
+    /// <param name="cancellationToken">Cancels between lookups.</param>
+    /// <param name="stop">Returns <see langword="true"/> once the caller's time budget is spent; the remaining tokens are then skipped.</param>
     /// <returns>The metadata found, and how many tokens were not looked up.</returns>
     public static (Dictionary<AddressAsKey, McpTokenInfo> Tokens, int Skipped) LookUp(
-        McpTokenMetadata metadata, IEthRpcModule eth, IEnumerable<Address> tokens, int maxLookups, CancellationToken cancellationToken)
+        McpTokenMetadata metadata, IEthRpcModule eth, IEnumerable<Address> tokens, int maxLookups, CancellationToken cancellationToken, Func<bool>? stop = null)
     {
         Dictionary<AddressAsKey, McpTokenInfo> found = [];
         HashSet<AddressAsKey> seen = [];
@@ -96,7 +102,7 @@ internal static class McpTxTokens
                 continue;
             }
 
-            if (seen.Count > maxLookups)
+            if (seen.Count > maxLookups || stop?.Invoke() == true)
             {
                 skipped++;
                 continue;
@@ -187,6 +193,27 @@ internal static class McpTxTokens
 
         void Add((AddressAsKey, AddressAsKey) key, BigInteger delta) =>
             net[key] = net.TryGetValue(key, out BigInteger current) ? current + delta : delta;
+    }
+
+    /// <summary>Returns the non-zero net change of each fungible token held by <paramref name="holder"/>, in order of first appearance.</summary>
+    public static List<(Address Token, BigInteger Change)> NetFor(IReadOnlyList<McpTokenMovement> movements, Address holder)
+    {
+        List<(Address Token, BigInteger Change)> result = [];
+        foreach (McpTokenMovement movement in movements)
+        {
+            if (!movement.IsFungible || (movement.From != holder && movement.To != holder) || movement.From == movement.To)
+            {
+                continue;
+            }
+
+            BigInteger delta = movement.To == holder ? (BigInteger)movement.Amount : -(BigInteger)movement.Amount;
+            int index = result.FindIndex(entry => entry.Token == movement.Token);
+            if (index < 0) result.Add((movement.Token, delta));
+            else result[index] = (movement.Token, result[index].Change + delta);
+        }
+
+        result.RemoveAll(static entry => entry.Change.IsZero);
+        return result;
     }
 
     /// <summary>Converts a decoded log into JSON: <c>{event, signature, standard?, params: [{name, type, value}]}</c>.</summary>

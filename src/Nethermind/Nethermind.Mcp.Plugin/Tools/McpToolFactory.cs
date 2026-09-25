@@ -4,7 +4,6 @@
 using System.ComponentModel;
 using System.Reflection;
 using System.Text.Json;
-using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace Nethermind.Mcp.Plugin.Tools;
@@ -24,7 +23,7 @@ public sealed class McpToolOutputSchemaAttribute(string json) : Attribute
     public string Json { get; } = json;
 }
 
-/// <summary>Builds MCP tool descriptors from methods annotated with <see cref="McpServerToolAttribute"/>.</summary>
+/// <summary>Builds MCP tool descriptors from methods annotated with <see cref="McpServerToolAttribute"/>, with lenient argument binding (see <see cref="McpArgumentBinder"/>).</summary>
 internal static class McpToolFactory
 {
     /// <summary>
@@ -50,38 +49,16 @@ internal static class McpToolFactory
             };
 
             McpServerTool tool = McpServerTool.Create(method, target, options);
+            JsonElement? outputSchema = null;
             if (method.GetCustomAttribute<McpToolOutputSchemaAttribute>() is { } schema && tool.ProtocolTool.OutputSchema is null)
             {
                 using JsonDocument document = JsonDocument.Parse(schema.Json);
-                tool = new DeclaredSchemaTool(tool, document.RootElement.Clone());
+                outputSchema = document.RootElement.Clone();
             }
 
-            tools.Add(tool);
+            tools.Add(new McpBoundTool(tool, method, outputSchema));
         }
 
         return tools;
-    }
-
-    /// <summary>Advertises a declared output schema for a tool that builds its own <c>structuredContent</c>.</summary>
-    /// <remarks>
-    /// <see cref="McpServerTool.Create(MethodInfo, object?, McpServerToolCreateOptions?)"/> overwrites
-    /// <see cref="McpServerToolCreateOptions.UseStructuredContent"/> with the value on <see cref="McpServerToolAttribute"/>
-    /// (false by default) and then drops <see cref="McpServerToolCreateOptions.OutputSchema"/>. Setting the schema on the
-    /// inner descriptor instead would make the SDK serialize every returned <see cref="CallToolResult"/> into a structured
-    /// response it then discards, so the schema lives on a separate descriptor copy and invocation passes straight through.
-    /// </remarks>
-    private sealed class DeclaredSchemaTool(McpServerTool inner, JsonElement outputSchema) : DelegatingMcpServerTool(inner)
-    {
-        public override Tool ProtocolTool { get; } = new()
-        {
-            Name = inner.ProtocolTool.Name,
-            Title = inner.ProtocolTool.Title,
-            Description = inner.ProtocolTool.Description,
-            InputSchema = inner.ProtocolTool.InputSchema,
-            OutputSchema = outputSchema,
-            Annotations = inner.ProtocolTool.Annotations,
-            Icons = inner.ProtocolTool.Icons,
-            Meta = inner.ProtocolTool.Meta
-        };
     }
 }

@@ -44,7 +44,7 @@ internal static class McpToolInput
             return false;
         }
 
-        address = new Address(Bytes.FromHexString(input));
+        address = new Address(Convert.FromHexString(input.AsSpan(2)));
         error = null;
         return true;
     }
@@ -58,7 +58,7 @@ internal static class McpToolInput
             return false;
         }
 
-        hash = new Hash256(Bytes.FromHexString(input));
+        hash = new Hash256(Convert.FromHexString(input.AsSpan(2)));
         error = null;
         return true;
     }
@@ -74,7 +74,7 @@ internal static class McpToolInput
             _ when input.Equals("earliest", StringComparison.OrdinalIgnoreCase) => BlockParameter.Earliest,
             _ when input.Equals("safe", StringComparison.OrdinalIgnoreCase) => BlockParameter.Safe,
             _ when input.Equals("finalized", StringComparison.OrdinalIgnoreCase) => BlockParameter.Finalized,
-            _ when IsHash(input) => new BlockParameter(new Hash256(Bytes.FromHexString(input))),
+            _ when IsHash(input) => new BlockParameter(new Hash256(Convert.FromHexString(input.AsSpan(2)))),
             _ when TryParseULong(input, out ulong number) => new BlockParameter(number),
             _ => null
         };
@@ -156,7 +156,7 @@ internal static class McpToolInput
             return false;
         }
 
-        data = Bytes.FromHexString(input);
+        data = Convert.FromHexString(input.AsSpan(2));
         error = null;
         return true;
     }
@@ -359,7 +359,7 @@ internal static class McpToolInput
     private static bool IsHash([NotNullWhen(true)] string? input) =>
         input is { Length: HashHexLength } && HasHexPrefix(input) && IsHexDigits(input.AsSpan(2));
 
-    private static bool HasHexPrefix(string input) => input.StartsWith("0x", StringComparison.Ordinal);
+    private static bool HasHexPrefix(string input) => input is ['0', 'x' or 'X', ..];
 
     private static bool IsHexDigits(ReadOnlySpan<char> input)
     {

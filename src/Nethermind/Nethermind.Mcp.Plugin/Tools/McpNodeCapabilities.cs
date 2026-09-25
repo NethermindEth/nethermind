@@ -15,6 +15,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Synchronization;
 using Nethermind.Trie;
 
 namespace Nethermind.Mcp.Plugin.Tools;
@@ -58,7 +59,9 @@ public sealed record McpStateStorage(string Backend, bool Archive, string Summar
 /// <see cref="IStateReader.HasStateForBlock"/> for state (the guard of <c>eth_call</c>/<c>eth_getBalance</c>), block-store
 /// and receipt-store key lookups for bodies and receipts. Ranges in messages and in <see cref="GetAvailability"/> come from
 /// <see cref="IEthCapabilitiesProvider"/> (<c>eth_capabilities</c>: sync pivot, ancient barriers, history expiry, trie
-/// pruning window), adjusted for flat-state history, and are informational: state availability is not monotonic (a HalfPath
+/// pruning window), adjusted for flat-state history and for fast sync without old bodies or receipts (which
+/// <c>eth_capabilities</c> reports as disabled although the blocks synced after the pivot are stored), and are informational:
+/// state availability is not monotonic (a HalfPath
 /// node may still hold an old checkpoint root, a flat node serves only its persisted block plus the in-memory snapshots above
 /// it), so the range is never used to reject a query on its own.
 /// </para>
@@ -77,7 +80,8 @@ public sealed class McpNodeCapabilities(
     IWorldStateManager? worldStateManager = null,
     IEthSyncingInfo? syncingInfo = null,
     IHistoryPruner? historyPruner = null,
-    Lazy<INodeStorageFactory>? nodeStorageFactory = null)
+    Lazy<INodeStorageFactory>? nodeStorageFactory = null,
+    ISyncPointers? syncPointers = null)
 {
     // Availability is read on every failing check and by node_status; a short cache keeps bursts cheap while staying fresh.
     private const long CacheMilliseconds = 1000;
@@ -278,17 +282,62 @@ public sealed class McpNodeCapabilities(
             oldestState = oldestState is { } o ? Math.Min(o, historyFloor) : historyFloor;
         }
 
-        return new McpDataAvailability(headNumber, isSyncing, oldestState, Oldest(capabilities?.Blocks),
-            receiptConfig.StoreReceipts ? Oldest(capabilities?.Receipts) : null)
+        long? oldestBody = Oldest(capabilities?.Blocks) ?? (capabilities is null ? null : SkippedHistoryFloor(receipts: false));
+        long? oldestReceipt = !receiptConfig.StoreReceipts ? null
+            : Oldest(capabilities?.Receipts) ?? (capabilities is null ? null : SkippedHistoryFloor(receipts: true));
+        long? stateRetention = capabilities?.State.DeleteStrategy is { } stateWindow ? ToLong(stateWindow.RetentionBlocks) : null;
+
+        // The detected summary names the configured boundary; the window actually kept is what eth_capabilities reports.
+        if (storage is { Archive: false } && storage.Backend != FlatBackend && pruningConfig.Mode.IsMemory() && stateRetention is { } retention)
+        {
+            storage = storage with { Summary = $"pruned, {storage.Backend}: about the last {retention} blocks" };
+        }
+
+        return new McpDataAvailability(headNumber, isSyncing, oldestState, oldestBody, oldestReceipt)
         {
             Storage = storage,
             ReceiptsStored = receiptConfig.StoreReceipts,
-            StateRetentionBlocks = capabilities?.State.DeleteStrategy is { } stateWindow ? ToLong(stateWindow.RetentionBlocks) : null,
+            StateRetentionBlocks = stateRetention,
             HistoryRetentionBlocks = capabilities?.Blocks.DeleteStrategy is { } historyWindow ? ToLong(historyWindow.RetentionBlocks) : null,
         };
 
         static long? Oldest(ResourceAvailability? resource) =>
             resource is { Disabled: false, OldestBlock: { } oldest } ? ToLong(oldest) : null;
+    }
+
+    /// <summary>
+    /// Returns the oldest stored body or receipt block of a node that fast-synced without downloading old bodies or receipts
+    /// (<c>Sync.DownloadBodiesInFastSync</c>/<c>Sync.DownloadReceiptsInFastSync</c> false), or <see langword="null"/> otherwise.
+    /// </summary>
+    /// <remarks>
+    /// Such a node stores the blocks it processed after the sync pivot, plus anything a backward download inserted before it,
+    /// raised to the history-expiry floor. Receipts never start below bodies.
+    /// </remarks>
+    private long? SkippedHistoryFloor(bool receipts)
+    {
+        bool skipsBodies = !syncConfig.DownloadBodiesInFastSync;
+        bool skips = receipts ? skipsBodies || !syncConfig.DownloadReceiptsInFastSync : skipsBodies;
+        if (!syncConfig.FastSync || !skips)
+        {
+            return null;
+        }
+
+        ulong pivot = TryValue<ulong>(() => blockTree.SyncPivot.BlockNumber) is { } treePivot and > 0 ? treePivot : syncConfig.PivotNumber;
+        if (pivot == 0)
+        {
+            return null;
+        }
+
+        ulong? lowestBody = TryValue<ulong>(() => syncPointers?.LowestInsertedBodyNumber);
+        ulong floor = Math.Min(lowestBody ?? pivot + 1, pivot + 1);
+        if (receipts)
+        {
+            ulong? lowestReceipt = TryValue<ulong>(() => syncPointers?.LowestInsertedReceiptBlockNumber);
+            floor = Math.Max(floor, Math.Min(lowestReceipt ?? pivot + 1, pivot + 1));
+        }
+
+        ulong expired = TryValue<ulong>(() => historyPruner?.OldestBlockHeader?.Number) ?? 0;
+        return ToLong(Math.Max(floor, expired));
     }
 
     private McpStateStorage DetectStorage()

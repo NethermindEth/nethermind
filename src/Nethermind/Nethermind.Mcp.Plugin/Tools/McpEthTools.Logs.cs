@@ -20,13 +20,23 @@ internal sealed partial class McpEthTools
 {
     private const int LogCancellationCheckInterval = 64;
 
+    /// <summary>The default number of logs per <c>get_logs</c> page, sized for LLM clients' tool-result limits.</summary>
+    public const int DefaultLogPageLimit = 100;
+
+    /// <summary>The default byte budget of a <c>get_logs</c> page (about 128 KB, roughly 35k tokens).</summary>
+    public const int DefaultLogPageBytes = 128 * 1024;
+
+    /// <summary>The smallest byte budget a caller may ask for.</summary>
+    public const int MinLogPageBytes = 1024;
+
     /// <summary>Returns one page of logs matching a filter, with a cursor to the next page.</summary>
     /// <remarks>
     /// <para>
     /// Each page queries <c>eth_getLogs</c> for at most <see cref="IMcpConfig.MaxLogBlockRange"/> blocks, or up to
     /// <see cref="IMcpConfig.MaxIndexedLogBlockRange"/> blocks when the filter is selective (an address or topic) and the log
     /// index covers the page start, because the eth module then answers from the index instead of reading every block's
-    /// receipts. The page then keeps at most <c>limit</c> logs and a byte budget below <see cref="IMcpConfig.MaxResultSize"/>.
+    /// receipts. The page then keeps at most <c>limit</c> logs (default <see cref="DefaultLogPageLimit"/>) and <c>maxBytes</c> bytes
+    /// (default <see cref="DefaultLogPageBytes"/>), both capped by the node's limits.
     /// </para>
     /// <para>
     /// The eth module buffers the whole matching set and fails with <see cref="ErrorCodes.LimitExceeded"/> above
@@ -44,6 +54,7 @@ internal sealed partial class McpEthTools
         "Filtering by address or topic is much faster, especially on nodes with the log index enabled. " +
         "If fromBlock is below the oldest block this node keeps receipts for, the scan starts at that block and the page reports clampedFromBlock (the requested start) and a note; " +
         "a range entirely below it fails with unavailable. A cursor becomes invalid if the chain reorganises past its position; then restart the query. " +
+        "Pages are kept small by default (at most 100 logs and about 128 KB) so they fit in an LLM context; pass limit and maxBytes (up to this node's limits below) for larger pages. " +
         "To decode logs into named events (Transfer, Approval, ...) pass them to decode_logs, or use explain_transaction for a single transaction.")]
     [McpToolOutputSchema("""
         {"type":"object","required":["result"],"properties":{"result":{"type":"object","required":["logs","fromBlock","toBlock","truncated","indexed"],
@@ -64,7 +75,8 @@ internal sealed partial class McpEthTools
             "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef). Each position is null (any topic), " +
             "a 32-byte hash (0x followed by 64 hex characters), or an array of up to 32 such hashes (any of them). At most 4 positions.")] JsonElement[]? topics = null,
         [Description("Opaque nextCursor from a previous get_logs page with the same fromBlock, toBlock, address and topics; omit for the first page.")] string? cursor = null,
-        [Description("Optional maximum number of logs in this page, from 1 up to the node's limit (the default).")] int? limit = null,
+        [Description("Optional maximum number of logs in this page, from 1 up to the node's limit. Default 100.")] int? limit = null,
+        [Description("Optional byte budget of this page's logs, from 1024 up to the node's limit. Default 131072 (128 KB).")] int? maxBytes = null,
         CancellationToken cancellationToken = default)
     {
         if (!McpToolInput.TryParseBlock(fromBlock, nameof(fromBlock), out BlockParameter? from, out string? error)
@@ -78,6 +90,12 @@ internal sealed partial class McpEthTools
         if (limit is < 1 || limit > _maxLogs)
         {
             return McpEthHelpers.InvalidInput($"'limit' must be between 1 and {_maxLogs}.");
+        }
+
+        long maxPageBytes = MaxLogPageBytes;
+        if (maxBytes is { } requestedBytes && (requestedBytes < Math.Min(MinLogPageBytes, maxPageBytes) || requestedBytes > maxPageBytes))
+        {
+            return McpEthHelpers.InvalidInput($"'maxBytes' must be between {Math.Min(MinLogPageBytes, maxPageBytes)} and {maxPageBytes}.");
         }
 
         byte[] filterHash = McpLogCursor.ComputeFilterHash(from, to, addresses, topicFilter);
@@ -98,7 +116,8 @@ internal sealed partial class McpEthTools
             resume = decoded;
         }
 
-        int pageLimit = limit ?? _maxLogs;
+        int pageLimit = limit ?? Math.Min(DefaultLogPageLimit, _maxLogs);
+        long pageBytes = maxBytes ?? Math.Min(DefaultLogPageBytes, maxPageBytes);
         bool selective = addresses is { Count: > 0 } || HasTopic(topicFilter);
 
         return _executor.ExecuteAsync("get_logs", nameof(IEthRpcModule.eth_getLogs), (eth, token) =>
@@ -170,7 +189,7 @@ internal sealed partial class McpEthTools
                 }
 
                 // The logs may be produced lazily, so they are enumerated here, while the module is still rented.
-                LogPage page = new(result.Data, start, startLogIndex, scanTo, end, pageLimit, filterHash, indexed, clampedFrom, token);
+                LogPage page = new(result.Data, start, startLogIndex, scanTo, end, pageLimit, pageBytes, filterHash, indexed, clampedFrom, token);
                 return Task.FromResult(_executor.Success((Page: page, Tools: this), static (writer, state) => state.Tools.WriteLogPage(writer, state.Page)));
             }
         }, cancellationToken);
@@ -201,7 +220,7 @@ internal sealed partial class McpEthTools
 
     private CallToolResult? WriteLogPage(Utf8JsonWriter writer, LogPage page)
     {
-        long budget = Math.Max(1, _maxResultSize / 4 * 3);
+        long budget = page.ByteBudget;
         int emitted = 0;
         int enumerated = 0;
         long bytes = 0;
@@ -286,6 +305,9 @@ internal sealed partial class McpEthTools
         return null;
     }
 
+    // The page's logs stay well below MaxResultSize, leaving room for the envelope and the cursor.
+    private long MaxLogPageBytes => Math.Max(1, _maxResultSize / 4 * 3);
+
     private static bool HasTopic(Hash256[]?[]? topics)
     {
         if (topics is null)
@@ -312,6 +334,7 @@ internal sealed partial class McpEthTools
         ulong ScanTo,
         ulong End,
         int Limit,
+        long ByteBudget,
         byte[] FilterHash,
         bool Indexed,
         ulong? ClampedFrom,

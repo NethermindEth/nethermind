@@ -172,6 +172,40 @@ public class McpToolsTests
         }
     }
 
+    [TestCase("get_logs", "100 logs")]
+    [TestCase("get_logs", "128 KB")]
+    [TestCase("get_block_receipts", "20 receipts")]
+    [TestCase("trace_transaction", "300 frames")]
+    [TestCase("get_block", "first 50")]
+    public async Task Large_result_tools_describe_their_llm_sized_defaults(string toolName, string expected)
+    {
+        McpClientTool tool = (await _client.ListToolsAsync()).Single(t => t.Name == toolName);
+
+        Assert.That(tool.Description, Does.Contain(expected));
+    }
+
+    [Test]
+    public async Task Get_block_pages_full_transactions()
+    {
+        JsonElement first = McpAssert.Success(await Call("get_block", ("block", "latest"), ("fullTransactions", true), ("transactionLimit", 3)));
+        JsonElement rest = McpAssert.Success(await Call("get_block", ("block", "latest"), ("fullTransactions", true), ("transactionOffset", 3)));
+        JsonElement hashes = McpAssert.Success(await Call("get_block", ("block", "latest")));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.GetProperty("transactions").GetArrayLength(), Is.EqualTo(3));
+            Assert.That(first.GetProperty("totalTransactions").GetInt32(), Is.EqualTo(4));
+            Assert.That(first.GetProperty("transactionsTruncated").GetBoolean(), Is.True);
+            Assert.That(first.GetProperty("nextTransactionOffset").GetInt32(), Is.EqualTo(3));
+            Assert.That(rest.GetProperty("transactions").GetArrayLength(), Is.EqualTo(1));
+            Assert.That(rest.GetProperty("transactions")[0].GetProperty("hash").GetString(), Is.EqualTo(_seeded.Block.Transactions[3].Hash!.ToString()));
+            Assert.That(rest.GetProperty("transactionsTruncated").GetBoolean(), Is.False);
+            Assert.That(hashes.TryGetProperty("totalTransactions", out _), Is.False, "hash-only blocks are not paged");
+            McpAssert.Error(await Call("get_block", ("block", "latest"), ("fullTransactions", true), ("transactionOffset", 5)), McpAssert.InvalidInput);
+            McpAssert.Error(await Call("get_block", ("block", "latest"), ("fullTransactions", true), ("transactionLimit", 0)), McpAssert.InvalidInput);
+        }
+    }
+
     [TestCase("earliest", 0)]
     [TestCase("0x0", 0)]
     [TestCase("0", 0)]

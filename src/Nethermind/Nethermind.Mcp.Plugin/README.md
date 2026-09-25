@@ -421,8 +421,23 @@ descriptions include this node's actual limits, so an agent can plan within them
 
 **Block selectors** (the `block`, `fromBlock` and `toBlock` arguments): `latest`, `earliest`, `safe`, `finalized`, a
 block number as decimal (`"19553778"`) or hex (`"0x12a05f2"`), or a 32-byte block hash. `pending` isn't supported.
-**Addresses** are `0x` plus 40 hex characters in any letter case. **Amounts** passed in (`value`, `gas`) are decimal
-or `0x` hex strings.
+**Addresses** are `0x` plus 40 hex characters in any letter case (an uppercase `0X` prefix is accepted too).
+**Amounts** passed in (`value`, `gas`) are decimal or `0x` hex strings.
+
+**Lenient arguments.** Agents often send slightly wrong JSON, so arguments are normalised before binding: a JSON
+number or boolean where a string is expected becomes that string (`"block": 19553778` works), a single value where an
+array is expected is wrapped (`"address": "0x…"` for `get_logs`, `"tokens": "0x…"` for `token_balances`), a string
+holding a JSON array or object is parsed (`args`, `calls`, `topics`, `stateOverrides`), `"true"`/`"false"` strings
+become booleans, and an explicit `null` for an optional argument counts as omitted. `decode_logs` accepts `hash` for
+`txHash`. Anything that still doesn't fit fails with `invalid_input` naming the argument and the expected type,
+never with a generic SDK error.
+
+**LLM-sized defaults.** Clients such as Claude Code cap a tool result at roughly 25k tokens, so the tools that can
+return a lot default to small pages and say in their descriptions how to get more: `get_logs` returns at most 100 logs
+and about 128 KB per page (`limit` up to `Mcp.MaxLogs`, `maxBytes` up to three quarters of `Mcp.MaxResultSize`),
+`get_block_receipts` 20 receipts (`limit` up to 1,000), `trace_transaction` 300 frames (`maxFrames` up to
+`Mcp.MaxTraceCalls`), and `get_block` with `fullTransactions` the first 50 transactions (`transactionOffset` and
+`transactionLimit` up to 1,000 page through the rest).
 
 | Tool | Answers | Key arguments |
 |---|---|---|
@@ -431,13 +446,13 @@ or `0x` hex strings.
 | `chain_info` | Which network is this, and what's the head block? | none |
 | **Transactions and blocks** | | |
 | `explain_transaction` | What did this transaction do, and why did it fail? | `hash` |
-| `trace_transaction` | Which internal calls did it make, and where did it revert? | `hash`, `maxDepth` (0 to 24), `includeInput` |
+| `trace_transaction` | Which internal calls did it make, and where did it revert? | `hash`, `maxDepth` (0 to 24), `maxFrames` (default 300), `includeInput` |
 | `simulate_transaction` | What would happen if I sent this (or this sequence)? | `to`, `data`, `from`, `value`, `gas`, `block`, `stateOverrides`, `calls` (up to 8) |
 | `block_summary` | What happened in this block? | `block` |
 | `get_transaction` | Raw transaction (`eth_getTransactionByHash`) | `hash` |
 | `get_transaction_receipt` | Raw receipt (`eth_getTransactionReceipt`) | `hash` |
-| `get_block` | Raw block (`eth_getBlockBy*`) | `block`, `fullTransactions` |
-| `get_block_receipts` | Raw receipts of a block, paged | `block`, `offset`, `limit` (1 to 1000, default 100) |
+| `get_block` | Raw block (`eth_getBlockBy*`) | `block`, `fullTransactions`, `transactionOffset`, `transactionLimit` (1 to 1000, default 50) |
+| `get_block_receipts` | Raw receipts of a block, paged | `block`, `offset`, `limit` (1 to 1000, default 20) |
 | **Addresses, tokens and names** | | |
 | `lookup_address` | What is this address: EOA, contract, token, proxy, ENS name? | `address`, `block` |
 | `token_balances` | What does this address hold? | `owner`, `tokens` (up to 50; default: this chain's well-known tokens), `block` |
@@ -451,8 +466,8 @@ or `0x` hex strings.
 | **Contracts and events** | | |
 | `call_function` | Call a view function by signature, with decoded results | `to`, `signature`, `args`, `block`, `from`, `gas` |
 | `call` | Raw `eth_call` with ABI-encoded calldata | `to`, `data`, `gas` (required), `from`, `value`, `block` |
-| `get_logs` | Raw event logs in a block range, paged | `fromBlock`, `toBlock`, `address` (up to 32), `topics` (up to 4 positions), `cursor`, `limit` |
-| `decode_logs` | Turn logs into named events with formatted amounts | `txHash` or `logs` (up to 256), `abi` (extra event signatures, up to 32) |
+| `get_logs` | Raw event logs in a block range, paged | `fromBlock`, `toBlock`, `address` (up to 32), `topics` (up to 4 positions), `cursor`, `limit` (default 100), `maxBytes` (default 128 KB) |
+| `decode_logs` | Turn logs into named events with formatted amounts | `txHash` (or `hash`) or `logs` (up to 256), `abi` (extra event signatures, up to 32) |
 | `get_storage_at` | One raw storage slot (for example an EIP-1967 proxy slot) | `address`, `slot`, `block` |
 | `get_proof` | EIP-1186 Merkle proof of an account and slots | `address`, `storageKeys` (up to 64), `block` |
 
@@ -472,12 +487,19 @@ whenever another tool returns `unavailable`.
 *"What happened in the latest block?"*
 
 - `explain_transaction` gives a plain-English `summary` plus status, fees (base fee burnt, or sent to the fee
-  collector on Gnosis, and the priority tip), the called method, decoded token movements with net flows per address,
+  collector on Gnosis, and the priority tip; for blob transactions `total` includes the blob fee, which is also shown
+  on its own next to `executionFee`), the called method, decoded token movements with net flows per address,
   internal native transfers, and for failures the decoded revert reason, failing call frame and out-of-gas detection.
-  Parts the node can't serve are listed in `notes` instead of failing the whole call. A transaction still in the
-  mempool is reported as `pending`.
-- `trace_transaction` replays the transaction and returns its call tree, capped at `Mcp.MaxTraceCalls` frames, 24
-  levels and a byte budget below `Mcp.MaxResultSize`. `truncated` and per-frame `omittedCalls` say what was cut.
+  When the sender itself moved no tokens (a bot or smart account calling a contract), the summary names what the
+  called contract swapped instead. Parts the node can't serve are listed in `notes` instead of failing the whole call,
+  and so are parts that don't fit the time budget: token metadata stops at about 30% of `Mcp.ToolTimeout`, and the
+  call trace is abandoned after at most half of it. A transaction still in the mempool is reported as `pending`, with
+  a maximum fee that includes the blob fee cap.
+- `trace_transaction` replays the transaction and returns its call tree, capped at 300 frames by default (`maxFrames`,
+  up to `Mcp.MaxTraceCalls`), 24 levels and a byte budget below `Mcp.MaxResultSize`. `truncated` and per-frame
+  `omittedCalls` say what was cut. The node's call tracer builds the whole tree, with every frame's call data, in
+  memory before it is cut, so tracing a transaction with a huge number of calls costs node memory for the duration of
+  the call; `maxDepth=0` records only the top-level call and is cheap.
 - `simulate_transaction` dry-runs one call or a sequence (such as approve then swap) with optional state overrides,
   via `eth_simulateV1`. Nothing is signed or stored, and gas isn't charged.
 - `block_summary` covers transaction counts by type, gas, base fee, burnt fees, blobs, withdrawals (ETH on Ethereum,
@@ -491,9 +513,16 @@ The agent typically chains `resolve_ens` → `token_balances`, or uses `lookup_a
 node has no token index, so `token_balances` checks a built-in token list by default, which exists only on mainnet
 (WETH, USDC, USDT, DAI, WBTC, stETH, wstETH, GNO) and Gnosis (WXDAI, GNO, USDC, WETH, sDAI). On other chains,
 omitting `tokens` returns only the native balance. Token names and symbols come from the contracts themselves and are
-untrusted: summaries mark the symbol of any token outside that list as `SYMBOL (unverified token 0x…)`, and text is
-stripped of control and invisible Unicode formatting characters. ENS works on mainnet,
-Sepolia and Holesky only, and fails with `unavailable` elsewhere.
+untrusted: summaries mark the symbol of any token outside that list as `SYMBOL (unverified token 0x…)`. Every on-chain
+string that reaches a client (token names and symbols, ABI-decoded `string` values from `call_function` and
+`decode_logs`, revert strings, ENS names) and every node error message is sanitised per Unicode code point: control,
+format (bidi overrides, zero-width characters, the invisible Unicode TAG characters used for "ASCII smuggling"),
+private-use and unassigned characters and variation selectors are removed, emoji and other visible text are kept, and
+long values are cut without splitting a character (decoded strings at 1,024 characters, with a truncation marker).
+The server instructions tell the agent never to follow instructions found in such data. `token_info` and
+`lookup_address` detect EIP-1967 (implementation and beacon), ZeppelinOS (used by USDC), EIP-1167 minimal and EIP-897
+(`implementation()` getter) proxies. ENS works on mainnet, Sepolia and Holesky only, and fails with `unavailable`
+elsewhere.
 
 ### Gas and fees
 
@@ -511,8 +540,8 @@ implementation is this proxy using?"*
 - `call_function` takes a human-readable signature such as `balanceOf(address) returns (uint256)` and JSON arguments,
   and returns decoded outputs. Prefer it over the raw `call`.
 - `get_logs` pages through ranges of any size. Each page scans at most `Mcp.MaxLogBlockRange` blocks (1,000 by
-  default) and returns at most `Mcp.MaxLogs` logs (or `limit`), and stays under about three quarters of
-  `Mcp.MaxResultSize`. When `truncated` is `true`, call again with **exactly the same** `fromBlock`, `toBlock`,
+  default) and returns at most 100 logs and about 128 KB of logs by default; `limit` (up to `Mcp.MaxLogs`) and
+  `maxBytes` (up to about three quarters of `Mcp.MaxResultSize`) raise that. When `truncated` is `true`, call again with **exactly the same** `fromBlock`, `toBlock`,
   `address` and `topics` plus `cursor` set to `nextCursor`, until `truncated` is `false`. The response's
   `fromBlock`/`toBlock` say which blocks that page covered. A range ending at `latest` keeps the end resolved by the
   first page. Cursors are opaque, can't be edited, and expire when the node restarts. A cursor also becomes invalid
@@ -611,7 +640,9 @@ Use a recent block (for example "latest"), or query an archive node.`
   Archive configs such as `-c mainnet_archive` or `-c gnosis_archive` keep all of it.
 - **History.** Fast sync doesn't download bodies and receipts below the network's ancient barriers (the bundled
   mainnet, Sepolia and Gnosis configs set `Sync.AncientBodiesBarrier` and `Sync.AncientReceiptsBarrier`), and not at
-  all with `Sync.DownloadBodiesInFastSync=false` or `Sync.DownloadReceiptsInFastSync=false`. History expiry drops
+  all with `Sync.DownloadBodiesInFastSync=false` or `Sync.DownloadReceiptsInFastSync=false` (then the node keeps
+  bodies and receipts from the block after the sync pivot, and `node_status`, the `get_logs` clamp and the error
+  messages name that block). History expiry drops
   old bodies and receipts too. With `Receipt.StoreReceipts=false`, receipt, log and status queries fail. Error
   messages name the setting that caused the gap.
 - **Old transactions by hash.** When a node never stored a transaction's block body, looking it up by hash returns
@@ -643,30 +674,31 @@ variables). Arrays are comma-separated on the command line. All numeric limits m
 | `TlsCertificatePath` | `null` | PEM certificate (plus optional chain). Required in remote mode. Enables HTTPS on loopback. |
 | `TlsCertificateKeyPath` | `null` | Unencrypted PEM private key (PKCS#8, PKCS#1 or SEC1) of the certificate. Required whenever `TlsCertificatePath` is set. |
 | `MaxRequestBodySize` | `262144` | Maximum HTTP request body, in bytes. Larger requests get HTTP 413. |
-| `MaxConcurrentToolCalls` | `4` | Tool calls running at once. Further calls fail immediately with `resource_exhausted` and aren't queued. `node_status` has its own reserved slot and still answers when all of them are busy. |
+| `MaxConcurrentToolCalls` | `4` | Tool calls running at once. A further call waits up to 2 seconds for a free slot (clients often issue several calls in parallel), then fails with `resource_exhausted`. `node_status` has its own reserved slot and still answers when all of them are busy. |
 | `ToolTimeout` | `10000` | Wall-clock limit per tool call, in ms. Must not exceed `JsonRpc.Timeout` (default 20000). |
 | `MaxResultSize` | `4194304` | Maximum serialized tool result, in bytes. Larger results fail with `resource_exhausted`. |
 | `MaxLogBlockRange` | `1000` | Blocks one `get_logs` page scans when the log index doesn't cover it. Larger ranges are paged. |
 | `MaxIndexedLogBlockRange` | `1000000` | Blocks one `get_logs` page may scan when the filter has an address or topic and the log index covers the range. |
-| `MaxLogs` | `10000` | Maximum logs per `get_logs` page. It's also the default and the upper bound of `limit`. |
+| `MaxLogs` | `10000` | Maximum logs per `get_logs` page: the upper bound of `limit` (whose default is 100). |
 | `MaxCallGas` | `50000000` | Gas cap for `call`, `call_function`, `estimate_gas` and `simulate_transaction`. Must not exceed `JsonRpc.GasCap` (default 100000000); the effective cap is the smaller of the two. |
 | `MaxCallDataSize` | `131072` | Maximum call data, in bytes, for the call-style tools. |
-| `MaxTraceCalls` | `2000` | Maximum call frames returned by `trace_transaction`. Larger trees are truncated and flagged. |
+| `MaxTraceCalls` | `2000` | Maximum call frames returned by `trace_transaction`: the upper bound of `maxFrames` (whose default is 300). Larger trees are truncated and flagged. |
 | `EnableTracing` | `true` | Allows `trace_transaction` and the call-trace parts of `explain_transaction`, which use the debug module in-process regardless of `JsonRpc.EnabledModules`. When `false`, `trace_transaction` fails with `unavailable` and `explain_transaction` skips the trace with a note. |
 
 Fixed limits that aren't configurable: 32 `get_logs` addresses, 4 topic positions and 32 hashes per position; 50
 tokens in `token_balances`; 256 logs and 32 signatures in `decode_logs`; 64 proof keys; 8 simulated calls and 8
-overridden accounts (64 slots each); 24 trace levels; 1,000 receipts per `get_block_receipts` page; 1,024 blocks and
-10 percentiles in `fee_estimate`.
+overridden accounts (64 slots each); 24 trace levels; 1,000 receipts per `get_block_receipts` page; 1,000 full
+transactions per `get_block` page; 1,024 blocks and 10 percentiles in `fee_estimate`.
 
 **Tuning:**
 
-- LLM clients pay for every byte. The 4 MiB `MaxResultSize` is generous. Lowering it to around 1 MiB makes the
-  paged tools return smaller pages and keeps agents from flooding their context.
+- LLM clients pay for every byte. The paged tools already default to small pages; the 4 MiB `MaxResultSize` only
+  bounds what an agent can ask for explicitly. Lowering it to around 1 MiB also caps those explicit requests.
 - On a small machine, or when several people share one node, keep `MaxConcurrentToolCalls` low. Tool calls rent
   the same JSON-RPC module pools as your public RPC traffic.
 - If traces or simulations time out on busy blocks, raise `ToolTimeout`, and `JsonRpc.Timeout` with it if needed.
-  Multi-part tools (`lookup_address`, `token_balances`) stop at about 70% of the timeout and report what they skipped.
+  Multi-part tools (`lookup_address`, `token_balances`) stop at about 70% of the timeout and report what they skipped,
+  and `explain_transaction` leaves out token metadata or the call trace with a note rather than timing out.
 - Enable the log index if agents often search events over long ranges.
 
 ## Security model
@@ -688,11 +720,14 @@ overridden accounts (64 slots each); 24 trace levels; 1,000 receipts per `get_bl
 - **No secrets in logs.** Tokens and request bodies are never logged. The embedded web server logs at warning level
   and above only, because lower levels can include request content. Clients never see stack traces.
 - **Read-only tools.** All tools read state or run calls in memory. Nothing is signed, broadcast or persisted.
-- **Bounded work.** Per-tool timeout, a concurrency cap (extra calls fail fast), result and request size caps, input
+- **Bounded work.** Per-tool timeout, a concurrency cap (extra calls wait up to 2 seconds, then fail), result and request size caps, input
   caps (see [Configuration](#configuration-reference)), and HTTP limits: HTTP/1.1 only, 64 concurrent connections, a
   32 KB header budget with at most 64 headers, and a 10-second header timeout. When a call times out, the client
   gets `timeout` right away, but the work keeps its concurrency slot until the underlying RPC call returns (bounded
   by `JsonRpc.Timeout`), so runaway work can't pile up.
+- **Clean shutdown.** When the node stops, the MCP server first rejects new tool calls (`unavailable`: the node is
+  shutting down), cancels running ones and waits for them within the 5-second stop budget, so no tool call still reads
+  the databases while the node closes them. A call stuck inside an uninterruptible RPC method is logged instead.
 
 ## Troubleshooting
 
@@ -712,7 +747,7 @@ overridden accounts (64 slots each); 24 trace levels; 1,000 receipts per `get_bl
 | `unavailable` while syncing | The node doesn't have head state yet. | Wait for sync. `node_status` shows progress and warnings. |
 | `not_found` for an old transaction | The node never stored that block's body. | See [Node types](#node-types-and-data-availability). |
 | `timeout` | Heavy trace, simulation, large block or wide log range. | Narrow the request, page with the cursor, or raise `Mcp.ToolTimeout` (at most `JsonRpc.Timeout`). |
-| `resource_exhausted: Too many concurrent tool calls` | The agent fires tools in parallel beyond `Mcp.MaxConcurrentToolCalls`. | Retry, or raise the limit. |
+| `resource_exhausted: Too many concurrent tool calls` | The agent fires tools in parallel beyond `Mcp.MaxConcurrentToolCalls`, and no slot freed up within 2 seconds. | Retry, or raise the limit. |
 | `resource_exhausted: The node is busy serving other RPC requests` | The JSON-RPC module pool is saturated by other traffic. | Retry later. |
 
 ## Building the plugin

@@ -37,6 +37,9 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
     /// <summary>The maximum number of input bytes returned per frame when <c>includeInput</c> is set.</summary>
     public const int MaxInputBytes = 1024;
 
+    /// <summary>The default number of frames returned, sized for LLM clients' tool-result limits.</summary>
+    public const int DefaultMaxFrames = 300;
+
     private const string TraceOutputSchema = """
         {"type":"object","properties":{"result":{"type":"object","properties":{
           "transactionHash":{"type":"string"},
@@ -48,6 +51,7 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
           "truncated":{"type":"boolean"},
           "maxDepth":{"type":"integer"},
           "maxFrames":{"type":"integer"},
+          "note":{"type":"string"},
           "root":{"type":["object","null"],"properties":{
             "type":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"},
             "value":{"type":"string"},"valueFormatted":{"type":"string"},
@@ -68,7 +72,7 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
 
     /// <inheritdoc/>
     public IEnumerable<McpServerTool> CreateServerTools() =>
-        McpToolFactory.Create(this, _ => $" Limits on this node: at most {_maxFrames} frames and {MaxTreeDepth} levels per trace.", _maxResultSize);
+        McpToolFactory.Create(this, _ => $" Limits on this node: at most {_maxFrames} frames (maxFrames) and {MaxTreeDepth} levels per trace.", _maxResultSize);
 
     /// <summary>Returns the bounded call tree of a mined transaction.</summary>
     [McpServerTool(Name = "trace_transaction", Title = "Trace transaction calls", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
@@ -79,11 +83,15 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
         "the error and a decoded revert reason ({kind, message, selector}), and nested calls. Use it to see which contracts a transaction " +
         "touched and where it failed; for a one-call plain-English overview prefer explain_transaction. The tree is capped by frame count " +
         "and depth: result.truncated is true and frames list omittedCalls when parts were cut; totalFrames counts every frame. " +
+        "By default at most 300 frames are returned so the result fits in an LLM context; pass maxFrames (up to this node's limit) for more, " +
+        "or maxDepth to see the top levels only (maxDepth=0 traces just the top-level call, which is also much cheaper for the node). " +
+        "The node builds the whole call tree in memory before it is cut, so very large transactions are expensive to trace. " +
         "Pending transactions cannot be traced. Replaying needs the state of the parent block, so old blocks on pruned nodes fail with unavailable.")]
     public Task<CallToolResult> TraceTransaction(
         [Description("32-byte transaction hash: 0x followed by 64 hex characters.")] string hash,
         [Description("Optional maximum call depth to expand (0 = only the top-level call), at most 24. Default 24.")] int? maxDepth = null,
         [Description("If true, include each frame's call data (truncated to 1024 bytes) and longer output. Default false: only the selector and sizes.")] bool includeInput = false,
+        [Description("Optional maximum number of frames to return, from 1 up to this node's limit. Default 300.")] int? maxFrames = null,
         CancellationToken cancellationToken = default)
     {
         if (!McpToolInput.TryParseHash(hash, nameof(hash), out Hash256? txHash, out string? error))
@@ -96,6 +104,11 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
             return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, $"'maxDepth' must be between 0 and {MaxTreeDepth}."));
         }
 
+        if (maxFrames is < 1 || maxFrames > _maxFrames)
+        {
+            return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, $"'maxFrames' must be between 1 and {_maxFrames}."));
+        }
+
         if (!_tracingEnabled)
         {
             return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.Unavailable,
@@ -103,6 +116,7 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
         }
 
         int depthLimit = maxDepth ?? MaxTreeDepth;
+        int frameLimit = maxFrames ?? Math.Min(DefaultMaxFrames, _maxFrames);
         return executor.ExecuteAsync<IDebugRpcModule>("trace_transaction", nameof(IDebugRpcModule.debug_traceTransaction), async (debug, token) =>
         {
             ulong blockNumber;
@@ -142,7 +156,7 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
 
             token.ThrowIfCancellationRequested();
             (JsonObject? payload, IResultWrapper? failure) = McpTxCallTree.Run(debug, txHash, _timeout,
-                root => BuildTrace(txHash, blockNumber, root, depthLimit, includeInput));
+                root => BuildTrace(txHash, blockNumber, root, depthLimit, frameLimit, includeInput), onlyTopCall: depthLimit == 0);
             if (failure is not null)
             {
                 return executor.Failure("trace_transaction", failure);
@@ -152,16 +166,16 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
         }, cancellationToken);
     }
 
-    private JsonObject BuildTrace(Hash256 txHash, ulong blockNumber, NativeCallTracerCallFrame? root, int depthLimit, bool includeInput)
+    private JsonObject BuildTrace(Hash256 txHash, ulong blockNumber, NativeCallTracerCallFrame? root, int depthLimit, int frameLimit, bool includeInput)
     {
         int emitted = 0;
         bool truncated = false;
         // Frames stop once their estimated size would take the result near MaxResultSize, instead of failing the whole trace.
         long budget = Math.Max(1, _maxResultSize / 4 * 3);
         int total = root is null ? 0 : McpTxCallTree.CountFrames(root);
-        JsonNode? rootJson = root is null ? null : Frame(root, 0, depthLimit, includeInput, ref emitted, ref truncated, ref budget);
+        JsonNode? rootJson = root is null ? null : Frame(root, 0, depthLimit, frameLimit, includeInput, ref emitted, ref truncated, ref budget);
 
-        return new JsonObject
+        JsonObject result = new()
         {
             ["transactionHash"] = txHash.ToString(),
             ["blockNumber"] = blockNumber,
@@ -171,12 +185,19 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
             ["returnedFrames"] = emitted,
             ["truncated"] = truncated,
             ["maxDepth"] = depthLimit,
-            ["maxFrames"] = _maxFrames,
+            ["maxFrames"] = frameLimit,
             ["root"] = rootJson
         };
+
+        if (depthLimit == 0)
+        {
+            result["note"] = "maxDepth=0 traced only the top-level call: nested frames were not recorded, so totalFrames counts only that call.";
+        }
+
+        return result;
     }
 
-    private JsonObject Frame(NativeCallTracerCallFrame frame, int depth, int depthLimit, bool includeInput, ref int emitted, ref bool truncated, ref long budget)
+    private JsonObject Frame(NativeCallTracerCallFrame frame, int depth, int depthLimit, int frameLimit, bool includeInput, ref int emitted, ref bool truncated, ref long budget)
     {
         emitted++;
         budget -= EstimateFrameSize(frame, includeInput);
@@ -233,14 +254,14 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
             int omitted = 0;
             foreach (NativeCallTracerCallFrame child in children)
             {
-                if (depth + 1 > depthLimit || emitted >= _maxFrames || budget <= 0)
+                if (depth + 1 > depthLimit || emitted >= frameLimit || budget <= 0)
                 {
                     omitted += McpTxCallTree.CountFrames(child);
                     truncated = true;
                     continue;
                 }
 
-                calls.Add(Frame(child, depth + 1, depthLimit, includeInput, ref emitted, ref truncated, ref budget));
+                calls.Add(Frame(child, depth + 1, depthLimit, frameLimit, includeInput, ref emitted, ref truncated, ref budget));
             }
 
             if (calls.Count > 0) json["calls"] = calls;

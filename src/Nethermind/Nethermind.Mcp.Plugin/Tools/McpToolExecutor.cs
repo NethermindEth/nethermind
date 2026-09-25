@@ -33,8 +33,8 @@ internal delegate CallToolResult? McpPayloadWriter<in TState>(Utf8JsonWriter wri
 /// body therefore runs on the thread pool while the caller waits at most <see cref="IMcpConfig.ToolTimeout"/> for it:
 /// when that elapses the client gets a <c>timeout</c> error, but the body keeps its concurrency slot and its rented
 /// module until the underlying call actually returns. Runaway work thus stays counted against
-/// <see cref="IMcpConfig.MaxConcurrentToolCalls"/> (new calls fail fast with <c>resource_exhausted</c>) instead of
-/// piling up, and a module is never returned to its pool while still in use. The underlying call itself is bounded by
+/// <see cref="IMcpConfig.MaxConcurrentToolCalls"/> (new calls wait up to <see cref="SlotWait"/> for a slot, then fail with
+/// <c>resource_exhausted</c>) instead of piling up, and a module is never returned to its pool while still in use. The underlying call itself is bounded by
 /// the module's own <c>JsonRpc.Timeout</c>, which the configuration keeps at or above the tool timeout.
 /// </para>
 /// <para>
@@ -71,6 +71,17 @@ internal sealed class McpToolExecutor(
     private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout));
     private readonly int _maxResultSize = Math.Max(1, config.MaxResultSize);
     private readonly ILogger _logger = logManager.GetClassLogger<McpToolExecutor>();
+
+    // Cancelled at shutdown so running bodies stop at their next checkpoint.
+    private readonly CancellationTokenSource _shutdown = new();
+    private readonly Lock _bodiesLock = new();
+    private readonly TaskCompletionSource _bodiesDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _runningBodies;
+    private bool _stopping;
+
+    /// <summary>How long a call waits for a free concurrency slot before failing with <c>resource_exhausted</c>.</summary>
+    /// <remarks>Clients such as Claude Code issue several tool calls at once; a short wait queues them instead of failing them.</remarks>
+    internal static readonly TimeSpan SlotWait = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// Rents the eth module for <paramref name="rpcMethod"/>, runs <paramref name="body"/> on it and returns its result.
@@ -125,10 +136,25 @@ internal sealed class McpToolExecutor(
     private async Task<CallToolResult> RunLimitedAsync(SemaphoreSlim slots, int limit, Func<CancellationToken, Task<CallToolResult>> run, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (Volatile.Read(ref _stopping))
+        {
+            return ShuttingDownError();
+        }
 
-        if (!slots.Wait(0))
+        if (!await slots.WaitAsync(SlotWait, cancellationToken))
         {
             return Error(McpToolErrorCodes.ResourceExhausted, $"Too many concurrent tool calls (limit {limit}); retry later.");
+        }
+
+        lock (_bodiesLock)
+        {
+            if (_stopping)
+            {
+                slots.Release();
+                return ShuttingDownError();
+            }
+
+            _runningBodies++;
         }
 
         // Deliberately not passing the token to Task.Run: the delegate must run to release the slot.
@@ -144,7 +170,7 @@ internal sealed class McpToolExecutor(
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return TimeoutError();
+            return Volatile.Read(ref _stopping) ? ShuttingDownError() : TimeoutError();
         }
     }
 
@@ -199,7 +225,7 @@ internal sealed class McpToolExecutor(
     public CallToolResult Failure(string toolName, IResultWrapper wrapper)
     {
         int code = wrapper.ErrorCode;
-        string message = Sanitize(wrapper.Result.Error);
+        string message = SanitizeMessage(wrapper.Result.Error);
 
         string mapped = code switch
         {
@@ -302,13 +328,76 @@ internal sealed class McpToolExecutor(
     {
         try
         {
-            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
             cts.CancelAfter(_timeout);
             return await run(cts.Token);
         }
         finally
         {
             slots.Release();
+            EndBody();
+        }
+    }
+
+    /// <summary>Counts <paramref name="task"/>, work a body started but stopped waiting for, as running until it completes.</summary>
+    /// <remarks>
+    /// Such work (for example an abandoned call trace) may still use rented modules after its body returned, so
+    /// <see cref="StopAsync"/> waits for it like for a body. It does not hold a concurrency slot.
+    /// </remarks>
+    public void TrackDetached(Task task)
+    {
+        lock (_bodiesLock) _runningBodies++;
+        task.ContinueWith(static (finished, state) =>
+        {
+            // Nobody awaits detached work, so its failure is observed here instead of surfacing as an unobserved exception.
+            _ = finished.Exception;
+            ((McpToolExecutor)state!).EndBody();
+        }, this, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    private void EndBody()
+    {
+        lock (_bodiesLock)
+        {
+            if (--_runningBodies == 0 && _stopping)
+            {
+                _bodiesDrained.TrySetResult();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Stops accepting tool calls (new calls fail with <c>unavailable</c>), cancels the tokens of running bodies and waits for them
+    /// to finish, so none still reads node services after the node starts disposing them.
+    /// </summary>
+    /// <remarks>
+    /// Most RPC module methods cannot be interrupted, so a body stuck in one keeps running until it returns; the wait therefore
+    /// ends when <paramref name="cancellationToken"/> fires, and bodies still running are logged.
+    /// </remarks>
+    /// <returns><see langword="true"/> if every body finished.</returns>
+    public async Task<bool> StopAsync(CancellationToken cancellationToken)
+    {
+        lock (_bodiesLock)
+        {
+            _stopping = true;
+            if (_runningBodies == 0)
+            {
+                _bodiesDrained.TrySetResult();
+            }
+        }
+
+        await _shutdown.CancelAsync();
+        try
+        {
+            await _bodiesDrained.Task.WaitAsync(cancellationToken);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            int running;
+            lock (_bodiesLock) running = _runningBodies;
+            if (_logger.IsWarn) _logger.Warn($"MCP stopped with {running} tool call(s) still running inside the node; they end when their RPC call returns.");
+            return false;
         }
     }
 
@@ -464,6 +553,8 @@ internal sealed class McpToolExecutor(
         return default;
     }
 
+    private static CallToolResult ShuttingDownError() => Error(McpToolErrorCodes.Unavailable, "The node is shutting down; no new tool calls are accepted.");
+
     private CallToolResult TimeoutError() =>
         Error(McpToolErrorCodes.Timeout, $"The tool did not complete within {(long)_timeout.TotalMilliseconds} ms; request less data or retry later.");
 
@@ -498,23 +589,9 @@ internal sealed class McpToolExecutor(
         return Error(code, $"The error details exceed the {_maxResultSize}-byte result limit.");
     }
 
-    private static string Sanitize(string? message)
-    {
-        if (string.IsNullOrEmpty(message))
-        {
-            return string.Empty;
-        }
-
-        int length = Math.Min(message.Length, MaxClientMessageLength);
-        StringBuilder builder = new(length);
-        for (int i = 0; i < length; i++)
-        {
-            char c = message[i];
-            builder.Append(McpTokenMetadata.IsUnsafeChar(c) ? ' ' : c);
-        }
-
-        return builder.ToString();
-    }
+    /// <summary>Makes a node error message safe to show: unsafe characters removed (see <see cref="McpText"/>), line breaks as spaces, bounded length.</summary>
+    public static string SanitizeMessage(string? message) =>
+        string.IsNullOrEmpty(message) ? string.Empty : McpText.Sanitize(message, MaxClientMessageLength, controlsAsSpace: true);
 }
 
 /// <summary>A module rented by <see cref="McpToolExecutor.RentAsync{TModule}"/>; disposing it returns the module to its pool.</summary>

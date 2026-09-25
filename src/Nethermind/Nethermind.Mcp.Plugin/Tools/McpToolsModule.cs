@@ -17,7 +17,8 @@ public sealed class McpToolsModule : Module
             .AddSingleton<McpChainProfile>()
             .AddSingleton<McpNodeCapabilities>()
             .AddSingleton<McpTokenMetadata>()
-            .AddSingleton<McpToolCatalog>();
+            .AddSingleton<McpToolCatalog>(static context =>
+                new McpToolCatalog(context.Resolve<IEnumerable<IMcpToolSet>>()) { Executor = context.Resolve<McpToolExecutor>() });
 
         // Every tool set in this assembly is served, so adding a tool set needs no registration change.
         builder.RegisterAssemblyTypes(typeof(McpToolsModule).Assembly)

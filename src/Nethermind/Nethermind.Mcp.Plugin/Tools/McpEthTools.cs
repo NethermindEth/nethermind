@@ -3,6 +3,8 @@
 
 using System.ComponentModel;
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Nethermind.Blockchain.Find;
@@ -16,6 +18,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Mcp.Plugin.Tools;
 
@@ -51,6 +54,12 @@ internal sealed partial class McpEthTools(
     internal const string AddressDescription = "20-byte account address: 0x followed by 40 hex characters (any letter case).";
     private const string TransactionHashDescription = "32-byte transaction hash: 0x followed by 64 hex characters.";
 
+    /// <summary>The default number of full transactions <c>get_block</c> returns, sized for LLM clients' tool-result limits.</summary>
+    public const int DefaultBlockTransactions = 50;
+
+    /// <summary>The most full transactions one <c>get_block</c> page may return.</summary>
+    public const int MaxBlockTransactions = 1000;
+
     private readonly McpToolExecutor _executor = executor;
     private readonly ulong _maxCallGas = Math.Min((ulong)Math.Max(1, config.MaxCallGas), rpcConfig.GasCap.EffectiveGasCap());
     private readonly int _maxCallDataSize = Math.Max(0, config.MaxCallDataSize);
@@ -67,7 +76,7 @@ internal sealed partial class McpEthTools(
     private string DescribeLimits(MethodInfo method) => method.Name switch
     {
         nameof(GetLogs) => $" Limits on this node: each page scans at most {_maxLogBlockRange} blocks ({_maxIndexedLogBlockRange} when the log index covers them) " +
-            $"and returns at most {_maxLogs} logs.",
+            $"and returns at most {_maxLogs} logs and {Math.Max(1, _maxResultSize / 4 * 3)} bytes of logs.",
         nameof(Call) => $" Limits on this node: gas at most {_maxCallGas}, data at most {_maxCallDataSize} bytes.",
         _ => string.Empty
     };
@@ -153,7 +162,10 @@ internal sealed partial class McpEthTools(
     [Description("Returns a raw block exactly as eth_getBlockByNumber/eth_getBlockByHash: header fields (number, hash, parentHash, timestamp, gasUsed, gasLimit, " +
         "baseFeePerGas, miner...), uncles, withdrawals and either transaction hashes (default) or full transaction objects. Quantities are 0x-prefixed hex; gas in gas units, amounts in wei. " +
         "For a readable overview of a block (top transfers, gas, fees) prefer block_summary; for all receipts of a block use get_block_receipts. " +
-        "Fails with not_found if the block is unknown; if the result is too large, retry with fullTransactions=false.")]
+        "With fullTransactions=true the transactions are paged: by default the first 50 (a mainnet block holds hundreds, which would not fit in an LLM context), " +
+        "with totalTransactions, transactionsOffset, transactionsTruncated and nextTransactionOffset (when truncated) added to the block; pass " +
+        "transactionOffset=nextTransactionOffset to continue, or a larger transactionLimit (up to 1000). " +
+        "Fails with not_found if the block is unknown; if the result is too large, retry with fullTransactions=false or a smaller transactionLimit.")]
     [McpToolOutputSchema("""
         {"type":"object","required":["result"],"properties":{"result":{"type":"object",
           "required":["number","hash","parentHash","timestamp","gasUsed","gasLimit","transactions","stateRoot","receiptsRoot","transactionsRoot","logsBloom","miner"],
@@ -166,17 +178,33 @@ internal sealed partial class McpEthTools(
             "transactions":{"type":"array","items":{"type":["string","object"]}},
             "uncles":{"type":"array","items":{"type":"string"}},
             "withdrawals":{"type":"array","items":{"type":"object"}},"withdrawalsRoot":{"type":"string"},
-            "blobGasUsed":{"type":"string"},"excessBlobGas":{"type":"string"},"parentBeaconBlockRoot":{"type":"string"},"requestsHash":{"type":"string"}}}}}
+            "blobGasUsed":{"type":"string"},"excessBlobGas":{"type":"string"},"parentBeaconBlockRoot":{"type":"string"},"requestsHash":{"type":"string"},
+            "totalTransactions":{"type":"integer"},"transactionsOffset":{"type":"integer"},"transactionsTruncated":{"type":"boolean"},"nextTransactionOffset":{"type":"integer"}}}}}
         """)]
     public Task<CallToolResult> GetBlock(
         [Description(BlockSelectorDescription)] string block,
-        [Description("If true, include full transaction objects instead of only their hashes. Default false. Full blocks on mainnet can be hundreds of KB.")] bool fullTransactions = false,
+        [Description("If true, include full transaction objects instead of only their hashes, paged by transactionOffset/transactionLimit. Default false.")] bool fullTransactions = false,
+        [Description("With fullTransactions: index of the first transaction to return. Default 0.")] int? transactionOffset = null,
+        [Description("With fullTransactions: maximum number of transactions to return, 1 to 1000. Default 50.")] int? transactionLimit = null,
         CancellationToken cancellationToken = default)
     {
         if (!McpToolInput.TryParseBlock(block, nameof(block), out BlockParameter? blockParameter, out string? error))
         {
             return McpEthHelpers.InvalidInput(error);
         }
+
+        if (transactionOffset is < 0)
+        {
+            return McpEthHelpers.InvalidInput("'transactionOffset' must be 0 or greater.");
+        }
+
+        if (transactionLimit is < 1 or > MaxBlockTransactions)
+        {
+            return McpEthHelpers.InvalidInput($"'transactionLimit' must be between 1 and {MaxBlockTransactions}.");
+        }
+
+        int offset = transactionOffset ?? 0;
+        int limit = transactionLimit ?? DefaultBlockTransactions;
 
         bool byHash = blockParameter.Type == BlockParameterType.BlockHash;
         return _executor.ExecuteAsync(
@@ -187,8 +215,13 @@ internal sealed partial class McpEthTools(
                 using ResultWrapper<BlockForRpc> result = byHash
                     ? eth.eth_getBlockByHash(blockParameter.BlockHash!, fullTransactions)
                     : eth.eth_getBlockByNumber(blockParameter, fullTransactions);
-                return Task.FromResult(result.Result.ResultType == ResultType.Success && result.Data is null
-                    ? McpEthHelpers.MissingBlock(eth, blockParameter, capabilities, "Block not found; check the number is not above the head (see chain_info).")
+                if (result.Result.ResultType == ResultType.Success && result.Data is null)
+                {
+                    return Task.FromResult(McpEthHelpers.MissingBlock(eth, blockParameter, capabilities, "Block not found; check the number is not above the head (see chain_info)."));
+                }
+
+                return Task.FromResult(fullTransactions && result.Result.ResultType == ResultType.Success
+                    ? PagedBlock(result.Data, offset, limit)
                     : SuccessOrNotFound("get_block", result, string.Empty));
             },
             cancellationToken);
@@ -382,6 +415,29 @@ internal sealed partial class McpEthTools(
                 ? _executor.Success(result.Data)
                 : McpEthHelpers.WithRevertReason(_executor.Failure("call", result), result));
         }, cancellationToken);
+    }
+
+    /// <summary>Returns a block with one page of its full transactions and the paging fields.</summary>
+    private CallToolResult PagedBlock(BlockForRpc block, int offset, int limit)
+    {
+        object[] transactions = block.Transactions;
+        if (offset > transactions.Length)
+        {
+            return McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, $"'transactionOffset' ({offset}) is beyond the {transactions.Length} transactions of this block.");
+        }
+
+        int end = (int)Math.Min((long)offset + limit, transactions.Length);
+        block.Transactions = transactions[offset..end];
+        JsonObject json = JsonSerializer.SerializeToNode(block, EthereumJsonSerializer.JsonOptions)!.AsObject();
+        json["totalTransactions"] = transactions.Length;
+        json["transactionsOffset"] = offset;
+        json["transactionsTruncated"] = end < transactions.Length;
+        if (end < transactions.Length) json["nextTransactionOffset"] = end;
+        return _executor.Success(json, static (writer, node) =>
+        {
+            node.WriteTo(writer);
+            return null;
+        });
     }
 
     /// <summary>Maps a JSON-RPC result to a success, its mapped failure, or <c>not_found</c> when it holds no data.</summary>

@@ -156,10 +156,26 @@ public class McpTraceToolsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.GetProperty("returnedFrames").GetInt32(), Is.EqualTo(1));
-            Assert.That(result.GetProperty("truncated").GetBoolean(), Is.True);
             Assert.That(root.TryGetProperty("calls", out _), Is.False);
-            Assert.That(root.GetProperty("omittedCalls").GetInt32(), Is.EqualTo(1));
+            Assert.That(result.GetProperty("totalFrames").GetInt32(), Is.EqualTo(1), "the tracer records only the top call (onlyTopCall)");
+            Assert.That(result.GetProperty("note").GetString(), Does.Contain("only the top-level call"));
         }
+    }
+
+    [Test]
+    public async Task Trace_frames_are_capped_by_max_frames()
+    {
+        JsonElement result = await Success(("hash", _scenario.ForwardCall.Hash!.ToString()), ("maxFrames", 1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("returnedFrames").GetInt32(), Is.EqualTo(1));
+            Assert.That(result.GetProperty("maxFrames").GetInt32(), Is.EqualTo(1));
+            Assert.That(result.GetProperty("truncated").GetBoolean(), Is.True);
+            Assert.That(result.GetProperty("totalFrames").GetInt32(), Is.GreaterThan(1));
+        }
+
+        McpAssert.Error(await Call(("hash", _scenario.ForwardCall.Hash!.ToString()), ("maxFrames", 0)), McpAssert.InvalidInput);
     }
 
     [Test]

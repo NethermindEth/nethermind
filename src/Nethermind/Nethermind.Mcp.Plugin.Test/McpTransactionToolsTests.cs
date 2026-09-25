@@ -3,6 +3,8 @@
 
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using Autofac;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Nethermind.Core;
@@ -13,10 +15,15 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Mcp.Plugin.Tools;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Mcp.Plugin.Test;
@@ -133,6 +140,87 @@ public class McpTransactionToolsTests
             Assert.That(transfers[0].GetProperty("amount").GetString(), Is.EqualTo(McpTxScenario.TokenAmount.ToString()));
             Assert.That(result.GetProperty("netTokenFlows").GetArrayLength(), Is.EqualTo(2));
             Assert.That(result.GetProperty("summary").GetString(), Does.Contain("sent " + McpTxScenario.TokenAmount));
+        }
+    }
+
+    [Test]
+    public void Blob_fee_is_part_of_the_total_and_shown_separately()
+    {
+        McpTransactionTools tools = _node.Chain.Container.Resolve<McpTransactionTools>();
+        LegacyTransactionForRpc tx = new() { Gas = 100_000, GasPrice = 10 };
+        ReceiptForRpc receipt = new() { GasUsed = 21_000, EffectiveGasPrice = 10, BlobGasUsed = 131_072, BlobGasPrice = 3 };
+
+        JsonObject fees = tools.Fees(tx, receipt, header: null, blockNumber: 1, timestamp: 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fees["total"]!["wei"]!.GetValue<string>(), Is.EqualTo(McpAssert.Hex(210_000 + 393_216UL)));
+            Assert.That(fees["executionFee"]!["wei"]!.GetValue<string>(), Is.EqualTo(McpAssert.Hex(210_000UL)));
+            Assert.That(fees["blob"]!["fee"]!["wei"]!.GetValue<string>(), Is.EqualTo(McpAssert.Hex(393_216UL)));
+            Assert.That(McpTransactionTools.PaidFee(tx, receipt), Is.EqualTo((UInt256)(210_000 + 393_216)));
+        }
+    }
+
+    [Test]
+    public void Summary_names_the_called_contracts_swap_when_the_sender_moved_no_tokens()
+    {
+        McpTransactionTools tools = _node.Chain.Container.Resolve<McpTransactionTools>();
+        Address bot = new("0x51C72848c68a965f66FA7a88855F9f7784502a7F");
+        Address pool = new("0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640");
+        Address usdc = new("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+        Address weth = new("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
+        Address fake = new("0x00000000000000000000000000000000000fa4e1");
+        List<McpTokenMovement> movements =
+        [
+            new(usdc, "ERC-20", bot, pool, 33_522_696_356, null),
+            new(weth, "ERC-20", pool, bot, UInt256.Parse("12450000000000000000"), null),
+            new(fake, "ERC-20", pool, bot, 5, null),
+        ];
+        Dictionary<AddressAsKey, McpTokenInfo> tokens = new()
+        {
+            [usdc] = new McpTokenInfo(usdc, "USD Coin", "USDC", 6),
+            [weth] = new McpTokenInfo(weth, "Wrapped Ether", "WETH", 18),
+            [fake] = new McpTokenInfo(fake, "Tether", "USDT", 0),
+        };
+        StringBuilder summary = new();
+
+        tools.AppendContractFlows(summary, bot, movements, tokens);
+
+        string text = summary.ToString();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(text, Does.StartWith("; "));
+            Assert.That(text, Does.Contain("swapped 33,522.6963 USDC for 12.45 WETH and 5 USDT (unverified token"));
+        }
+    }
+
+    [Test]
+    public void Explain_trace_gets_half_the_tool_timeout_and_never_runs_past_85_percent()
+    {
+        McpTransactionTools tools = _node.Chain.Container.Resolve<McpTransactionTools>();
+        TimeSpan timeout = TimeSpan.FromMilliseconds(_node.Config.ToolTimeout);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tools.TraceTimeout(TimeSpan.Zero), Is.EqualTo(timeout * 0.5));
+            Assert.That(tools.TraceTimeout(timeout * 0.6), Is.EqualTo(timeout * 0.85 - timeout * 0.6));
+            Assert.That(tools.TraceTimeout(timeout * 0.9), Is.LessThan(TimeSpan.Zero));
+        }
+    }
+
+    [Test]
+    public void Token_lookups_stop_when_the_time_budget_is_spent()
+    {
+        IEthRpcModule eth = Substitute.For<IEthRpcModule>();
+        Address[] tokens = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressA];
+
+        (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(new McpTokenMetadata(), eth, tokens, 10, CancellationToken.None, static () => true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.Empty);
+            Assert.That(skipped, Is.EqualTo(2));
+            Assert.That(eth.ReceivedCalls(), Is.Empty, "no metadata call is made once the budget is spent");
         }
     }
 
