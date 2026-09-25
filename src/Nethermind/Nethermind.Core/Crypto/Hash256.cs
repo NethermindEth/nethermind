@@ -15,6 +15,10 @@ namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     [DebuggerDisplay("{ToString()}")]
+    // Vector256 would otherwise give the struct 32-byte alignment, padding every struct that embeds it
+    // (TreePath 36 -> 64 bytes, a HashedKey<TreePath> dictionary entry 64 -> 128). The GC heap only
+    // aligns objects to 8 bytes, so the 32-byte alignment never made heap-resident vectors aligned.
+    [StructLayout(LayoutKind.Sequential, Pack = 8)]
     public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>, IHash64bit<ValueHash256>
     {
         public static GenericEqualityComparer<ValueHash256> EqualityComparer { get; } = new();
