@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -31,8 +32,10 @@ public class ReceiptTrieTests
         [ValueSource(nameof(RootCounts))] int count,
         [Values] bool eip658,
         [Values] bool skipStateAndStatus,
-        [Values(99, 2176)] int dataLengthRange)
+        [Values(99, 2176)] int dataLengthRange,
+        [Values(0, 2)] int workers)
     {
+        using ParallelUnbalancedWork.WorkerScope? scope = workers == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(workers);
         IReleaseSpec spec = eip658 ? Osaka.Instance : Frontier.Instance;
         TxReceipt[] receipts = new TxReceipt[count];
         Random random = new(42);

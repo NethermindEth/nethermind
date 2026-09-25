@@ -4,9 +4,7 @@
 using System;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Optimism;
 
@@ -39,34 +37,13 @@ public class OptimismBlockReceiptTracer(IOptimismSpecHelper opSpecHelper, IWorld
         return (depositNonce, version);
     }
 
-    protected override TxReceipt BuildReceipt(Address recipient, in GasConsumed gasConsumed, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
+    protected override TxReceipt CreateReceipt()
     {
-        // Update cumulative gas tracking without creating a throwaway receipt
-        ulong cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
-
         (ulong? depositNonce, ulong? version) = GetDepositReceiptData(Block.Header);
-
-        Transaction transaction = CurrentTx!;
-        OptimismTxReceipt txReceipt = new()
+        return new OptimismTxReceipt
         {
-            Logs = logEntries,
-            TxType = transaction.Type,
-            // Bloom calculated in parallel with other receipts
-            GasUsedTotal = cumulativeReceiptGas,  // Use cumulative post-refund
-            StatusCode = statusCode,
-            Recipient = transaction.IsContractCreation ? null : recipient,
-            BlockHash = Block.Hash,
-            BlockNumber = Block.Number,
-            Index = _currentIndex,
-            GasUsed = gasConsumed.SpentGas,  // Post-refund for this tx
-            Sender = transaction.SenderAddress,
-            ContractAddress = transaction.IsContractCreation ? recipient : null,
-            TxHash = transaction.Hash,
-            PostTransactionState = stateRoot,
             DepositNonce = depositNonce,
             DepositReceiptVersion = version
         };
-
-        return txReceipt;
     }
 }

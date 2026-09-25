@@ -28,8 +28,10 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     private readonly SocketSendLock _sendSemaphore = new();
     private readonly CancellationTokenSource _sendFailure = new();
-    private bool _disposed;
+    private int _disposed;
     private readonly Channel<ProcessRequest> _processChannel;
+
+    private readonly int _workerTaskCount = 1;
 
     private sealed record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner) : IAsyncDisposable
     {
@@ -41,8 +43,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             return ValueTask.CompletedTask;
         }
     }
-
-    private readonly int _workerTaskCount = 1;
 
     public JsonRpcSocketsClient(
         string clientName,
@@ -67,13 +67,15 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         _workerTaskCount = concurrency;
     }
 
+    /// <remarks>Idempotent: a subscription can disconnect a lagging client while its owner still holds it.</remarks>
     public override void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+
         base.Dispose();
         _sendSemaphore.Dispose();
         lock (_sendFailure)
         {
-            _disposed = true;
             _sendFailure.Dispose();
         }
         _jsonRpcContext.Dispose();
@@ -187,7 +189,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             {
                 lock (_sendFailure)
                 {
-                    if (!_disposed) _sendFailure.Cancel();
+                    if (_disposed == 0) _sendFailure.Cancel();
                 }
             }
         }

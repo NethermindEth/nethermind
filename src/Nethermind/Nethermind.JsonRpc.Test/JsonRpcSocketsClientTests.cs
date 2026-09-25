@@ -260,6 +260,43 @@ public class JsonRpcSocketsClientTests
     }
 
     [Test]
+    public async Task Concurrent_disposal_does_not_extend_an_incomplete_notification()
+    {
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        using MemoryMessageStream stream = new();
+        using TestClient<MemoryMessageStream> server = new(stream);
+        TaskCompletionSource prefixWritten = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource failWrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using JsonRpcResult failed = JsonRpcResult.Single(new JsonRpcSuccessResponse
+        {
+            Result = new TimedOutStreamable(true, async () =>
+            {
+                prefixWritten.SetResult();
+                await failWrite.Task.WaitAsync(deadline.Token);
+            })
+        }, default);
+        int closed = 0;
+        server.Client.Closed += (_, _) => Interlocked.Increment(ref closed);
+
+        Task<int> send = server.Client.SendJsonRpcResult(failed);
+        await prefixWritten.Task.WaitAsync(deadline.Token);
+        byte[] partial = stream.ToArray();
+
+        await Task.WhenAll(Task.Run(server.Client.Dispose), Task.Run(server.Client.Dispose)).WaitAsync(deadline.Token);
+        failWrite.SetResult();
+
+        Assert.CatchAsync(async () => await send.WaitAsync(deadline.Token));
+        using JsonRpcResult next = JsonRpcResult.Single(new JsonRpcSuccessResponse { Result = "next" }, default);
+        Assert.CatchAsync(async () => await server.Client.SendJsonRpcResult(next).WaitAsync(deadline.Token));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deadline.IsCancellationRequested, Is.False);
+            Assert.That(closed, Is.EqualTo(1));
+            AssertIncompleteMessageNotExtended(stream, partial);
+        }
+    }
+
+    [Test]
     public async Task Missing_notification_response_does_not_fault_the_connection()
     {
         using MemoryMessageStream stream = new();
@@ -420,6 +457,20 @@ public class JsonRpcSocketsClientTests
             int received = receiveMessages.Result;
 
             Assert.That(received, Is.EqualTo(sent));
+        }
+
+        [Test]
+        public async Task Dispose_raises_Closed_once_when_called_twice()
+        {
+            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
+            using TestClient<IpcSocketMessageStream> tc = new(new IpcSocketMessageStream(pair.SendSocket));
+            int closed = 0;
+            tc.Client.Closed += (_, _) => closed++;
+
+            tc.Client.Dispose();
+            tc.Client.Dispose();
+
+            Assert.That(closed, Is.EqualTo(1));
         }
 
         [Test]
