@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Security.Authentication;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -25,8 +28,11 @@ using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Mcp.Plugin;
 
-/// <summary>Hosts the MCP Streamable HTTP endpoint on a dedicated loopback Kestrel listener.</summary>
+/// <summary>Hosts the MCP Streamable HTTP endpoint on a dedicated Kestrel listener.</summary>
 /// <remarks>
+/// The listener binds a loopback address by default (plain HTTP, or HTTPS when a certificate is configured). A non-loopback
+/// address is remote mode: HTTPS only, bearer token required, and only <see cref="IMcpConfig.AllowedHosts"/> accepted as
+/// <c>Host</c>, as enforced by <see cref="McpConfigValidator"/> and <see cref="McpSecurityMiddleware"/>.
 /// The listener is independent of the JSON-RPC host and uses its own service container. It is started once by
 /// <see cref="StartMcpServer"/> and stopped at node shutdown through <see cref="IStoppableService"/>, with
 /// <see cref="DisposeAsync"/> as the final guarantee when the node container is disposed.
@@ -35,6 +41,9 @@ public sealed class McpHost(
     IMcpConfig config,
     IJsonRpcConfig jsonRpcConfig,
     McpToolCatalog tools,
+    McpResources resources,
+    McpPrompts prompts,
+    McpChainProfile chainProfile,
     ILogManager logManager,
     IMetricsConfig? metricsConfig = null) : IAsyncDisposable, IDisposable, IStoppableService
 {
@@ -46,10 +55,11 @@ public sealed class McpHost(
     private readonly ILogger _logger = logManager.GetClassLogger<McpHost>();
     private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
     private WebApplication? _app;
+    private McpListenerSettings? _settings;
     private bool _started;
     private bool _disposed;
 
-    /// <summary>Gets the bound endpoint, such as <c>http://127.0.0.1:8555/mcp</c>, or <see langword="null"/> when not running.</summary>
+    /// <summary>Gets the bound endpoint, such as <c>http://127.0.0.1:8555/mcp</c> (or <c>https://</c> with TLS, <c>https://0.0.0.0:8555/mcp</c> when bound to all interfaces), or <see langword="null"/> when not running.</summary>
     public Uri? Endpoint { get; private set; }
 
     /// <inheritdoc/>
@@ -71,13 +81,27 @@ public sealed class McpHost(
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            McpConfigValidator.Validate(config, jsonRpcConfig, metricsConfig);
-            IPAddress address = McpConfigValidator.ParseLoopbackAddress(config.Host);
+            McpListenerSettings settings = McpConfigValidator.Load(config, jsonRpcConfig, metricsConfig);
+            IPAddress address = settings.Address;
             McpSecurityMiddleware security = new(
-                McpConfigValidator.NormalizeOrigins(config.AllowedOrigins),
-                McpConfigValidator.LoadAuthToken(config.AuthTokenFile));
+                settings.AllowedOrigins,
+                settings.AuthToken,
+                settings.IsRemote
+                    ? McpHostPolicy.Remote(address, settings.AllowedHosts)
+                    : McpHostPolicy.Loopback(settings.Certificate is null ? McpHostPolicy.DefaultHttpPort : McpHostPolicy.DefaultHttpsPort, settings.AllowedHosts),
+                settings.IsRemote ? new McpAuthFailureLimiter() : null);
 
-            WebApplication app = Build(address, security);
+            WebApplication app;
+            try
+            {
+                app = Build(settings, security);
+            }
+            catch
+            {
+                settings.Dispose();
+                throw;
+            }
+
             try
             {
                 await app.StartAsync(cancellationToken);
@@ -85,21 +109,30 @@ public sealed class McpHost(
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 await app.DisposeAsync();
+                settings.Dispose();
                 throw;
             }
             catch (Exception e)
             {
                 await app.DisposeAsync();
+                settings.Dispose();
                 string message = $"Failed to start the MCP server on {FormatAuthority(address, config.Port)}: {e.Message}";
                 if (_logger.IsError) _logger.Error(message);
                 throw new InvalidOperationException(message, e);
             }
 
             _app = app;
-            Endpoint = ResolveEndpoint(app, address);
+            _settings = settings;
+            Endpoint = ResolveEndpoint(_app, address);
 
-            if (_logger.IsInfo)
-                _logger.Info($"MCP server is listening on {Endpoint} ({(security.RequiresAuth ? "bearer token required" : "no authentication")})");
+            foreach (string warning in settings.Warnings)
+            {
+                if (_logger.IsWarn) _logger.Warn(warning);
+            }
+
+            if (_logger.IsInfo) _logger.Info($"MCP server listening on {Endpoint} ({DescribeMode(settings)})");
+            if (settings.IsRemote && _logger.IsWarn)
+                _logger.Warn($"MCP remote mode is on: read-only node data is served to the network at {Endpoint}. Keep Mcp.AuthTokenFile secret and firewall the port to trusted clients.");
         }
         finally
         {
@@ -154,7 +187,9 @@ public sealed class McpHost(
         WebApplication? app = _app;
         if (app is null) return;
 
+        McpListenerSettings? settings = _settings;
         _app = null;
+        _settings = null;
         Endpoint = null;
         try
         {
@@ -163,12 +198,13 @@ public sealed class McpHost(
         finally
         {
             await app.DisposeAsync();
+            settings?.Dispose();
         }
 
         if (_logger.IsInfo) _logger.Info("MCP server stopped");
     }
 
-    private WebApplication Build(IPAddress address, McpSecurityMiddleware security)
+    private WebApplication Build(McpListenerSettings settings, McpSecurityMiddleware security)
     {
         // The empty builder reads no appsettings, environment variables or command line, so nothing outside the
         // Nethermind config can add listeners or change behaviour.
@@ -177,8 +213,9 @@ public sealed class McpHost(
             ApplicationName = "Nethermind.Mcp",
         });
 
+        builder.WebHost.UseKestrelCore();
+        if (settings.Certificate is not null) builder.WebHost.UseKestrelHttpsConfiguration();
         builder.WebHost
-            .UseKestrelCore()
             .ConfigureKestrel(options =>
             {
                 options.AddServerHeader = false;
@@ -188,7 +225,11 @@ public sealed class McpHost(
                 options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(10);
                 options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(60);
                 options.Limits.MaxConcurrentConnections = 64;
-                options.Listen(address, config.Port, listen => listen.Protocols = HttpProtocols.Http1);
+                options.Listen(settings.Address, config.Port, listen =>
+                {
+                    listen.Protocols = HttpProtocols.Http1;
+                    if (settings.Certificate is not null) listen.UseHttps(CreateHttpsOptions(settings));
+                });
             });
 
         IServiceCollection services = builder.Services;
@@ -207,15 +248,53 @@ public sealed class McpHost(
         });
         services.AddRouting();
         services
-            .AddMcpServer(o => o.ServerInfo = new Implementation { Name = "Nethermind", Version = ProductInfo.Version })
+            .AddMcpServer(o =>
+            {
+                o.ServerInfo = new Implementation { Name = "Nethermind", Title = "Nethermind execution client (read-only)", Version = ProductInfo.Version };
+                o.ServerInstructions = CreateInstructions(chainProfile);
+            })
             .WithHttpTransport(o => o.Stateless = true)
-            .WithTools(tools.CreateServerTools());
+            .WithTools(tools.CreateServerTools())
+            .WithResources(resources.CreateServerResources())
+            .WithPrompts(prompts.CreateServerPrompts());
 
         WebApplication app = builder.Build();
         app.Use(security.InvokeAsync);
         app.Use(RejectBadRequestsAsync);
         app.MapMcp(EndpointPath);
         return app;
+    }
+
+    /// <summary>Builds the instructions sent to clients at initialization, orienting the agent on this node and chain.</summary>
+    internal static string CreateInstructions(McpChainProfile profile)
+    {
+        StringBuilder text = new();
+        text.Append($"Read-only access to a Nethermind node on {profile.NetworkName} (chain id {profile.ChainId}, native currency {profile.NativeCurrencySymbol}");
+        text.Append(profile.IsTestnet ? ", a testnet whose coins have no value). " : "). ");
+        text.Append("Start with node_status to learn whether the node is synced and which blocks still have state, bodies and receipts (pruned nodes serve recent history only), ");
+        text.Append("then read the nethermind://guide resource for which tool answers which question, block selectors, units and error codes. ");
+        text.Append("Amounts are hex quantities in wei with formatted fields next to them: present the formatted amounts with their symbols. ");
+        if (profile.IsGnosisFamily)
+            text.Append("This is a Gnosis chain: gas and native balances are in xDAI, never ETH; validators stake GNO, an ERC-20 token. ");
+        text.Append("Nothing here can send transactions, sign, or change the node.");
+        return text.ToString();
+    }
+
+    private static HttpsConnectionAdapterOptions CreateHttpsOptions(McpListenerSettings settings) => new()
+    {
+        ServerCertificate = settings.Certificate,
+        ServerCertificateChain = settings.CertificateChain.Count > 0 ? settings.CertificateChain : null,
+        SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+        ClientCertificateMode = ClientCertificateMode.NoCertificate,
+        HandshakeTimeout = TimeSpan.FromSeconds(10),
+    };
+
+    private static string DescribeMode(McpListenerSettings settings)
+    {
+        StringBuilder mode = new(settings.IsRemote ? "remote mode" : "loopback");
+        mode.Append(settings.AuthToken is null ? ", no authentication" : ", bearer auth");
+        if (settings.AllowedHosts.Length > 0) mode.Append(", allowed hosts: ").AppendJoin(", ", (object[])settings.AllowedHosts);
+        return mode.ToString();
     }
 
     /// <summary>Answers oversized or malformed bodies with their status code instead of letting Kestrel log each one as an unhandled error.</summary>

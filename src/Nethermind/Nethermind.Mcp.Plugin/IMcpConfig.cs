@@ -6,7 +6,7 @@ using Nethermind.Config;
 namespace Nethermind.Mcp.Plugin;
 
 /// <summary>Configuration of the Model Context Protocol (MCP) server exposing read-only node tools.</summary>
-[ConfigCategory(Description = "Configuration of the Model Context Protocol (MCP) server that exposes read-only execution-client tools over Streamable HTTP on a loopback listener.")]
+[ConfigCategory(Description = "Configuration of the Model Context Protocol (MCP) server that exposes read-only execution-client tools over Streamable HTTP. Loopback-only by default; a non-loopback `Host` enables remote mode (HTTPS, bearer token and `AllowedHosts` required).")]
 public interface IMcpConfig : IConfig
 {
     /// <summary>Gets or sets whether the MCP server is started.</summary>
@@ -14,15 +14,15 @@ public interface IMcpConfig : IConfig
     bool Enabled { get; set; }
 
     /// <summary>Gets or sets the IP address the MCP listener binds to.</summary>
-    [ConfigItem(Description = "The IP address the MCP listener binds to. A non-loopback address enables remote mode, which requires `TlsCertificatePath`, `TlsCertificateKeyPath`, `AuthTokenFile` and `AllowedHosts`.", DefaultValue = "127.0.0.1")]
+    [ConfigItem(Description = "The IP address literal the MCP listener binds to (host names are rejected). A loopback address (`127.0.0.1`, `::1`) serves local clients only. Any other address, including `0.0.0.0` and `::`, enables remote mode, which requires `TlsCertificatePath`, `TlsCertificateKeyPath`, `AuthTokenFile` and `AllowedHosts`; plain HTTP is never served on a non-loopback address.", DefaultValue = "127.0.0.1")]
     string Host { get; set; }
 
     /// <summary>Gets or sets the TCP port of the MCP listener.</summary>
-    [ConfigItem(Description = "The TCP port of the MCP listener. The endpoint is served at `http://<Host>:<Port>/mcp`. Must differ from every JSON-RPC, Engine API, WebSocket and metrics port.", DefaultValue = "8555")]
+    [ConfigItem(Description = "The TCP port of the MCP listener. The endpoint is served at `http(s)://<Host>:<Port>/mcp` (HTTPS when `TlsCertificatePath` is set). Must differ from every JSON-RPC, Engine API, WebSocket and metrics port.", DefaultValue = "8555")]
     int Port { get; set; }
 
     /// <summary>Gets or sets the path to a file holding the bearer token clients must present.</summary>
-    [ConfigItem(Description = "Path to a file whose trimmed content is the bearer token MCP clients must send as `Authorization: Bearer <token>`. The token must be at least 32 characters. If empty, no authentication is required, and access is limited to local processes by the loopback binding.", DefaultValue = "null")]
+    [ConfigItem(Description = "Path to a file whose trimmed content is the bearer token MCP clients must send as `Authorization: Bearer <token>`. The token must be at least 32 characters. Mandatory in remote mode. If empty on a loopback `Host`, no authentication is required and access is limited to local processes. In remote mode, a client IP (IPv6: its /64) with 10 failed authentications within 60 seconds is answered with HTTP 429 until the window passes.", DefaultValue = "null")]
     string? AuthTokenFile { get; set; }
 
     /// <summary>Gets or sets the browser origins allowed to call the MCP endpoint.</summary>
@@ -62,15 +62,15 @@ public interface IMcpConfig : IConfig
     int MaxCallDataSize { get; set; }
 
     /// <summary>Gets or sets the path to the PEM certificate served in remote mode.</summary>
-    [ConfigItem(Description = "Path to the PEM-encoded TLS certificate (chain) served by the MCP listener. Required in remote mode; also enables HTTPS on loopback.", DefaultValue = "null")]
+    [ConfigItem(Description = "Path to the PEM-encoded TLS certificate served by the MCP listener; further certificates in the file are sent as the chain. Required in remote mode; on a loopback `Host` it enables HTTPS. Loaded at startup: an unreadable file or a key mismatch aborts startup, and a certificate that is expired or expires within 14 days logs a warning.", DefaultValue = "null")]
     string? TlsCertificatePath { get; set; }
 
     /// <summary>Gets or sets the path to the PEM private key of <see cref="TlsCertificatePath"/>.</summary>
-    [ConfigItem(Description = "Path to the PEM-encoded private key of `TlsCertificatePath`.", DefaultValue = "null")]
+    [ConfigItem(Description = "Path to the PEM-encoded private key (PKCS#8, PKCS#1 or SEC1, unencrypted) of `TlsCertificatePath`. Required whenever `TlsCertificatePath` is set.", DefaultValue = "null")]
     string? TlsCertificateKeyPath { get; set; }
 
     /// <summary>Gets or sets the additional <c>Host</c> header values accepted, such as the node's DNS name in remote mode.</summary>
-    [ConfigItem(Description = "Additional `Host` header values (host or host:port, for example `node.example.com`) the MCP endpoint accepts besides loopback names. Required in remote mode.", DefaultValue = "[]")]
+    [ConfigItem(Description = "`Host` header values the MCP endpoint accepts, as host or host:port (for example `node.example.com` or `[2001:db8::1]:8555`, no scheme or path). An entry without a port matches any port. On a loopback `Host` they are accepted besides the loopback names; in remote mode only these (and the bound IP literal) are accepted, and at least one is required.", DefaultValue = "[]")]
     string[] AllowedHosts { get; set; }
 
     /// <summary>Gets or sets the maximum <c>get_logs</c> block span when the node's log index covers the range.</summary>

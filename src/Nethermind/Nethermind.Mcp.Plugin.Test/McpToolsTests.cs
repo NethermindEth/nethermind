@@ -94,6 +94,15 @@ public class McpToolsTests
             McpAssert.Quantity(result.GetProperty("chainId"), McpAssert.Hex(_node.Chain.SpecProvider.ChainId));
             McpAssert.Quantity(result.GetProperty("headNumber"), McpAssert.Hex(head.Number));
             Assert.That(result.GetProperty("headHash").GetString(), Is.EqualTo(head.Hash!.ToString()));
+            Assert.That(result.GetProperty("chainIdDecimal").GetUInt64(), Is.EqualTo(_node.Chain.SpecProvider.ChainId));
+            Assert.That(result.GetProperty("headNumberDecimal").GetUInt64(), Is.EqualTo(head.Number));
+            Assert.That(result.GetProperty("networkName").GetString(), Is.Not.Empty);
+            Assert.That(result.GetProperty("nativeCurrency").GetString(), Is.EqualTo("ETH"));
+            Assert.That(result.GetProperty("isGnosisFamily").GetBoolean(), Is.False);
+            McpAssert.Quantity(result.GetProperty("headTimestamp"), McpAssert.Hex(head.Timestamp));
+            Assert.That(result.GetProperty("headTimestampIso").GetString(),
+                Is.EqualTo(DateTimeOffset.FromUnixTimeSeconds((long)head.Timestamp).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")));
+            Assert.That(result.GetProperty("wellKnownContracts").ValueKind, Is.EqualTo(JsonValueKind.Array));
         }
     }
 
@@ -205,17 +214,26 @@ public class McpToolsTests
     {
         JsonElement balance = McpAssert.Success(await Call("get_balance", ("address", TestItem.AddressC.ToString()), ("block", Selector(selector))));
 
-        McpAssert.Quantity(balance, McpAssert.Hex(afterTransfer ? TestBlockchain.InitialValue + SeededChain.TransferValue : TestBlockchain.InitialValue));
+        using (Assert.EnterMultipleScope())
+        {
+            McpAssert.Quantity(balance.GetProperty("balance"), McpAssert.Hex(afterTransfer ? TestBlockchain.InitialValue + SeededChain.TransferValue : TestBlockchain.InitialValue));
+            Assert.That(balance.GetProperty("balanceFormatted").GetString(), Is.EqualTo(afterTransfer ? "1000.000000000000001234" : "1000"));
+            Assert.That(balance.GetProperty("symbol").GetString(), Is.EqualTo("ETH"));
+            Assert.That(balance.GetProperty("decimals").GetInt32(), Is.EqualTo(18));
+        }
     }
 
     [Test]
     public async Task Get_balance_defaults_to_latest_and_encodes_zero_as_0x0()
     {
+        JsonElement latest = McpAssert.Success(await Call("get_balance", ("address", TestItem.AddressC.ToString())));
+        JsonElement empty = McpAssert.Success(await Call("get_balance", ("address", TestItem.GetRandomAddress().ToString())));
+
         using (Assert.EnterMultipleScope())
         {
-            McpAssert.Quantity(McpAssert.Success(await Call("get_balance", ("address", TestItem.AddressC.ToString()))),
-                McpAssert.Hex(TestBlockchain.InitialValue + SeededChain.TransferValue));
-            McpAssert.Quantity(McpAssert.Success(await Call("get_balance", ("address", TestItem.GetRandomAddress().ToString()))), "0x0");
+            McpAssert.Quantity(latest.GetProperty("balance"), McpAssert.Hex(TestBlockchain.InitialValue + SeededChain.TransferValue));
+            McpAssert.Quantity(empty.GetProperty("balance"), "0x0");
+            Assert.That(empty.GetProperty("balanceFormatted").GetString(), Is.EqualTo("0"));
         }
     }
 
@@ -267,9 +285,17 @@ public class McpToolsTests
         if (addresses is not null) args.Add(("address", Json(addresses.Select(a => (a == "log" ? _seeded.LogContract : _seeded.ReturnContract).ToString()).ToArray())));
         if (topics is not null) args.Add(("topics", Json(topics)));
 
-        JsonElement logs = McpAssert.Success(await Call("get_logs", [.. args]));
+        JsonElement page = McpAssert.Success(await Call("get_logs", [.. args]));
+        JsonElement logs = page.GetProperty("logs");
 
-        Assert.That(logs.GetArrayLength(), Is.EqualTo(expectedCount));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs.GetArrayLength(), Is.EqualTo(expectedCount));
+            Assert.That(page.GetProperty("truncated").GetBoolean(), Is.False);
+            Assert.That(page.TryGetProperty("nextCursor", out _), Is.False);
+            McpAssert.Quantity(page.GetProperty("fromBlock"), "0x0");
+            McpAssert.Quantity(page.GetProperty("toBlock"), McpAssert.Hex(_node.Chain.BlockTree.Head!.Number));
+        }
         foreach (JsonElement log in logs.EnumerateArray())
         {
             using (Assert.EnterMultipleScope())
@@ -324,6 +350,7 @@ public class McpToolsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(error.GetProperty("data").GetString(), Is.EqualTo(Bytes.ToHexString(SeededChain.RevertData, true)));
+            Assert.That(error.GetProperty("reason").GetProperty("kind").GetString(), Is.Not.Empty);
             McpAssert.NoInternals(error);
         }
     }
@@ -442,6 +469,48 @@ public class McpToolsTests
 
         Assert.That(protocolError is not null || result?.IsError == true, Is.True,
             "a call without its required arguments must fail, either as a protocol error or as a tool error");
+    }
+
+    private static IEnumerable<TestCaseData> SchemaCases()
+    {
+        yield return new TestCaseData("chain_info", Array.Empty<string>()).SetName("Output_schema_chain_info");
+        yield return new TestCaseData("get_block", new[] { "block", "latest" }).SetName("Output_schema_get_block");
+        yield return new TestCaseData("get_block", new[] { "block", "latest", "fullTransactions", "true" }).SetName("Output_schema_get_block_full");
+        yield return new TestCaseData("get_transaction", new[] { "hash", "{transfer}" }).SetName("Output_schema_get_transaction");
+        yield return new TestCaseData("get_transaction_receipt", new[] { "hash", "{logDeploy}" }).SetName("Output_schema_get_transaction_receipt");
+        yield return new TestCaseData("get_transaction_receipt", new[] { "hash", "{transfer}" }).SetName("Output_schema_get_transaction_receipt_transfer");
+        yield return new TestCaseData("get_balance", new[] { "address", "{addressC}" }).SetName("Output_schema_get_balance");
+        yield return new TestCaseData("get_code", new[] { "address", "{return}" }).SetName("Output_schema_get_code");
+        yield return new TestCaseData("get_logs", new[] { "fromBlock", "earliest", "toBlock", "latest" }).SetName("Output_schema_get_logs");
+        yield return new TestCaseData("get_logs", new[] { "fromBlock", "earliest", "toBlock", "latest", "limit", "1" }).SetName("Output_schema_get_logs_truncated");
+        yield return new TestCaseData("call", new[] { "to", IdentityPrecompile, "data", "0x01", "gas", "100000" }).SetName("Output_schema_call");
+    }
+
+    [TestCaseSource(nameof(SchemaCases))]
+    public async Task Output_conforms_to_the_declared_schema(string toolName, string[] args)
+    {
+        (string Name, object? Value)[] pairs = Pairs(args);
+        for (int i = 0; i < pairs.Length; i++)
+        {
+            pairs[i].Value = pairs[i].Value switch
+            {
+                "{transfer}" => _seeded.Transfer.Hash!.ToString(),
+                "{logDeploy}" => _seeded.LogDeploy.Hash!.ToString(),
+                "{addressC}" => TestItem.AddressC.ToString(),
+                "{return}" => _seeded.ReturnContract.ToString(),
+                "true" => true,
+                "1" => 1,
+                string other => other,
+                _ => null
+            };
+        }
+
+        McpClientTool tool = (await _client.ListToolsAsync()).Single(t => t.Name == toolName);
+        CallToolResult result = await Call(toolName, pairs);
+        McpAssert.Success(result);
+
+        Assert.That(tool.ProtocolTool.OutputSchema, Is.Not.Null, $"{toolName} must declare an output schema");
+        McpSchemaValidator.AssertConforms(tool.ProtocolTool.OutputSchema!.Value, result.StructuredContent!.Value);
     }
 
     private void AssertSeededBlock(JsonElement block)

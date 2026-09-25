@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
@@ -12,6 +13,8 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
+using Nethermind.Trie;
 
 namespace Nethermind.Mcp.Plugin.Tools;
 
@@ -19,18 +22,20 @@ namespace Nethermind.Mcp.Plugin.Tools;
 internal delegate CallToolResult? McpPayloadWriter<in TState>(Utf8JsonWriter writer, TState state);
 
 /// <summary>
-/// Runs MCP tool bodies against a rented production <see cref="IEthRpcModule"/> under the MCP concurrency, time and
-/// result-size limits, and converts outcomes into <see cref="CallToolResult"/>s.
+/// Runs MCP tool bodies under the MCP concurrency, time and result-size limits, either against a production JSON-RPC
+/// module rented from <see cref="IRpcModuleProvider"/> (<c>eth</c>, <c>trace</c>, <c>debug</c>, ...) or, for tools that
+/// only read in-process services, without a module (<see cref="ExecuteLocalAsync"/>), and converts outcomes into
+/// <see cref="CallToolResult"/>s.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The eth module methods are synchronous and do not accept a cancellation token, so a body cannot be interrupted. Each
+/// Most RPC module methods are synchronous and do not accept a cancellation token, so a body cannot be interrupted. Each
 /// body therefore runs on the thread pool while the caller waits at most <see cref="IMcpConfig.ToolTimeout"/> for it:
 /// when that elapses the client gets a <c>timeout</c> error, but the body keeps its concurrency slot and its rented
 /// module until the underlying call actually returns. Runaway work thus stays counted against
 /// <see cref="IMcpConfig.MaxConcurrentToolCalls"/> (new calls fail fast with <c>resource_exhausted</c>) instead of
 /// piling up, and a module is never returned to its pool while still in use. The underlying call itself is bounded by
-/// the eth module's own <c>JsonRpc.Timeout</c>, which the configuration keeps at or above the tool timeout.
+/// the module's own <c>JsonRpc.Timeout</c>, which the configuration keeps at or above the tool timeout.
 /// </para>
 /// <para>
 /// The body also receives a token that is cancelled on client cancellation or at the tool timeout, so it can stop at
@@ -38,11 +43,23 @@ internal delegate CallToolResult? McpPayloadWriter<in TState>(Utf8JsonWriter wri
 /// <see cref="OperationCanceledException"/>; every other failure becomes an error result, and unexpected exceptions are
 /// only logged, never sent to the client.
 /// </para>
+/// <para>
+/// Data this node does not hold maps to <c>unavailable</c> with a hint naming what the node does keep (from
+/// <see cref="McpNodeCapabilities"/>): JSON-RPC <c>-32002</c> "No state available", EIP-4444 <c>4444</c> pruned history,
+/// <c>-32000</c> "missing trie node", and the <see cref="MissingTrieNodeException"/>, <see cref="StateUnavailableException"/>
+/// and <see cref="ResourceNotFoundException"/> exceptions a body may throw.
+/// </para>
 /// </remarks>
-internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcpConfig config, ILogManager logManager)
+internal sealed class McpToolExecutor(
+    IRpcModuleProvider rpcModuleProvider,
+    IMcpConfig config,
+    ILogManager logManager,
+    McpNodeCapabilities? capabilities = null)
 {
     private const int MaxClientMessageLength = 512;
     private const string GenericInternalError = "The node failed to process the request.";
+    private const string StateAdvice = "Use a recent block (for example \"latest\"), or query an archive node.";
+    private const string HistoryAdvice = "Use a more recent block, or query a node that keeps full history.";
 
     private readonly int _maxConcurrentCalls = Math.Max(1, config.MaxConcurrentToolCalls);
     private readonly SemaphoreSlim _slots = new(Math.Max(1, config.MaxConcurrentToolCalls));
@@ -75,11 +92,31 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
     /// <param name="body">The tool body; it must finish using the module (including lazy results) before returning.</param>
     /// <param name="cancellationToken">The MCP request token.</param>
     /// <exception cref="OperationCanceledException">The client cancelled the request.</exception>
-    public async Task<CallToolResult> ExecuteAsync<TModule>(
+    public Task<CallToolResult> ExecuteAsync<TModule>(
         string toolName,
         string rpcMethod,
         Func<TModule, CancellationToken, Task<CallToolResult>> body,
-        CancellationToken cancellationToken) where TModule : class, IRpcModule
+        CancellationToken cancellationToken) where TModule : class, IRpcModule =>
+        RunLimitedAsync(token => RunRentedAsync(toolName, rpcMethod, body, token), cancellationToken);
+
+    /// <summary>
+    /// Runs a module-less <paramref name="body"/> (one that only reads in-process services such as the block tree or sync
+    /// state) under the same concurrency slot, timeout and error mapping as <see cref="ExecuteAsync{TModule}"/>.
+    /// </summary>
+    /// <remarks>
+    /// Meant for cheap bodies: the slot is held only while the body runs, so a quick read never starves module-backed tools.
+    /// </remarks>
+    /// <param name="toolName">The MCP tool name, used in log messages.</param>
+    /// <param name="body">The tool body.</param>
+    /// <param name="cancellationToken">The MCP request token.</param>
+    /// <exception cref="OperationCanceledException">The client cancelled the request.</exception>
+    public Task<CallToolResult> ExecuteLocalAsync(
+        string toolName,
+        Func<CancellationToken, Task<CallToolResult>> body,
+        CancellationToken cancellationToken) =>
+        RunLimitedAsync(token => RunLocalAsync(toolName, body, token), cancellationToken);
+
+    private async Task<CallToolResult> RunLimitedAsync(Func<CancellationToken, Task<CallToolResult>> run, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -89,7 +126,7 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
         }
 
         // Deliberately not passing the token to Task.Run: the delegate must run to release the slot.
-        Task<CallToolResult> work = Task.Run(() => RunAndReleaseAsync(toolName, rpcMethod, body, cancellationToken));
+        Task<CallToolResult> work = Task.Run(() => RunAndReleaseAsync(run, cancellationToken));
 
         try
         {
@@ -162,6 +199,8 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
         {
             ErrorCodes.ExecutionReverted => McpToolErrorCodes.ExecutionReverted,
             _ when wrapper.IsTemporary => McpToolErrorCodes.Unavailable,
+            // A trie node pruned under a state root that passed the HasStateForBlock guard is answered with -32000.
+            ErrorCodes.Default when message.Contains("missing trie node", StringComparison.OrdinalIgnoreCase) => McpToolErrorCodes.Unavailable,
             // -32000 is shared by "resource not found", "invalid input" and EVM execution errors.
             ErrorCodes.Default => message == BlockFinderExtensions.HeaderNotFound ? McpToolErrorCodes.NotFound : McpToolErrorCodes.InvalidInput,
             ErrorCodes.InvalidParams or ErrorCodes.InvalidRequest or ErrorCodes.ParseError => McpToolErrorCodes.InvalidInput,
@@ -178,9 +217,14 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
             return Error(McpToolErrorCodes.InternalError, GenericInternalError);
         }
 
-        if (mapped == McpToolErrorCodes.Unavailable && wrapper.IsTemporary)
+        if (mapped == McpToolErrorCodes.Unavailable)
         {
-            message = $"{message} (the node is still syncing)";
+            if (wrapper.IsTemporary)
+            {
+                message = $"{message} (the node is still syncing)";
+            }
+
+            message = AddAvailabilityHint(code, message);
         }
 
         string? data = mapped == McpToolErrorCodes.ExecutionReverted && wrapper.HasErrorData && wrapper.Data is string revertData
@@ -212,17 +256,13 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
         return CreateResult(buffer.WrittenSpan, isError: true);
     }
 
-    private async Task<CallToolResult> RunAndReleaseAsync<TModule>(
-        string toolName,
-        string rpcMethod,
-        Func<TModule, CancellationToken, Task<CallToolResult>> body,
-        CancellationToken cancellationToken) where TModule : class, IRpcModule
+    private async Task<CallToolResult> RunAndReleaseAsync(Func<CancellationToken, Task<CallToolResult>> run, CancellationToken cancellationToken)
     {
         try
         {
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(_timeout);
-            return await RunRentedAsync(toolName, rpcMethod, body, cts.Token);
+            return await run(cts.Token);
         }
         finally
         {
@@ -262,18 +302,9 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
         {
             throw;
         }
-        catch (Exception ex) when (ex is ModuleRentalTimeoutException or LimitExceededException)
-        {
-            return Error(McpToolErrorCodes.ResourceExhausted, "The node is busy serving other RPC requests; retry later.");
-        }
-        catch (ResourceNotFoundException)
-        {
-            return Error(McpToolErrorCodes.Unavailable, "The requested history is not available on this node.");
-        }
         catch (Exception ex)
         {
-            if (_logger.IsWarn) _logger.Warn($"MCP tool {toolName} failed: {ex}");
-            return Error(McpToolErrorCodes.InternalError, GenericInternalError);
+            return MapException(toolName, ex);
         }
         finally
         {
@@ -281,6 +312,82 @@ internal sealed class McpToolExecutor(IRpcModuleProvider rpcModuleProvider, IMcp
             {
                 rpcModuleProvider.Return(method!, module);
             }
+        }
+    }
+
+    private async Task<CallToolResult> RunLocalAsync(string toolName, Func<CancellationToken, Task<CallToolResult>> body, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return await body(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return MapException(toolName, ex);
+        }
+    }
+
+    private CallToolResult MapException(string toolName, Exception ex)
+    {
+        switch (ex is TargetInvocationException { InnerException: { } inner } ? inner : ex)
+        {
+            case ModuleRentalTimeoutException or LimitExceededException:
+                return Error(McpToolErrorCodes.ResourceExhausted, "The node is busy serving other RPC requests; retry later.");
+            case ResourceNotFoundException:
+                return Error(McpToolErrorCodes.Unavailable, $"The requested history is not available on this node{HistoryHint()}");
+            case MissingTrieNodeException { InnerException: not StateNotRetainedException } missing:
+                // Unlike state that was never retained, a node missing under a root that passed the state guard may be
+                // corruption, so operators get the same warning the JSON-RPC service logs.
+                if (_logger.IsWarn) _logger.Warn($"Missing trie node during MCP tool {toolName}: {missing.Message}");
+                return Error(McpToolErrorCodes.Unavailable, $"Part of the state needed for this request is not available on this node{StateHint()}");
+            case MissingTrieNodeException or StateUnavailableException:
+                if (_logger.IsDebug) _logger.Debug($"MCP tool {toolName}: state unavailable: {ex.Message}");
+                return Error(McpToolErrorCodes.Unavailable, $"The state needed for this request is not available on this node{StateHint()}");
+            default:
+                if (_logger.IsWarn) _logger.Warn($"MCP tool {toolName} failed: {ex}");
+                return Error(McpToolErrorCodes.InternalError, GenericInternalError);
+        }
+    }
+
+    // Appends what the node does keep to an unavailable-data message from a JSON-RPC module.
+    private string AddAvailabilityHint(int code, string message)
+    {
+        if (code == ErrorCodes.PrunedHistoryUnavailable || message.StartsWith(ErrorMessages.PrunedHistoryUnavailable, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{message}{HistoryHint()}";
+        }
+
+        return message.Contains("state", StringComparison.OrdinalIgnoreCase) || message.Contains("trie node", StringComparison.OrdinalIgnoreCase)
+            ? $"{message}{StateHint()}"
+            : message;
+    }
+
+    private string StateHint() =>
+        TryGetAvailability() is { } availability
+            ? $": this node {McpNodeCapabilities.DescribeStateRange(availability)}. {StateAdvice}"
+            : $". {StateAdvice}";
+
+    private string HistoryHint() =>
+        TryGetAvailability() is { } availability
+            ? $": this node {McpNodeCapabilities.DescribeHistoryRange(availability)}. {HistoryAdvice}"
+            : $". {HistoryAdvice}";
+
+    private McpDataAvailability? TryGetAvailability()
+    {
+        try
+        {
+            return capabilities?.GetAvailability();
+        }
+        catch (Exception ex)
+        {
+            // A hint must never turn a clean unavailable error into an internal error.
+            if (_logger.IsDebug) _logger.Debug($"MCP could not read data availability: {ex.Message}");
+            return null;
         }
     }
 

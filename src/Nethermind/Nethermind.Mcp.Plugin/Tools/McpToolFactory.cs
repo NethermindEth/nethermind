@@ -52,6 +52,8 @@ internal static class McpToolFactory
             {
                 using JsonDocument document = JsonDocument.Parse(schema.Json);
                 options.OutputSchema = document.RootElement.Clone();
+                // The SDK only advertises OutputSchema when structured content is enabled.
+                options.UseStructuredContent = true;
             }
 
             tools.Add(McpServerTool.Create(method, target, options));

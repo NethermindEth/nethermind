@@ -89,6 +89,24 @@ public class McpPluginTests
     }
 
     [Test]
+    public async Task Module_registers_resources_and_prompts_as_singletons()
+    {
+        await using McpTestNode node = await McpTestNode.Create(start: false);
+        IContainer container = node.Chain.Container;
+
+        McpResources resources = container.Resolve<McpResources>();
+        McpPrompts prompts = container.Resolve<McpPrompts>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<McpResources>(), Is.SameAs(resources));
+            Assert.That(container.Resolve<McpPrompts>(), Is.SameAs(prompts));
+            Assert.That(resources.CreateServerResources(), Has.Count.EqualTo(3));
+            Assert.That(prompts.CreateServerPrompts(), Has.Count.EqualTo(6));
+        }
+    }
+
+    [Test]
     public async Task Startup_step_starts_the_listener()
     {
         await using McpTestNode node = await McpTestNode.Create(start: false);
@@ -104,6 +122,9 @@ public class McpPluginTests
     {
         yield return new TestCaseData((Action<McpConfig>)(c => c.Host = "0.0.0.0")).SetName("Start_fails_on_wildcard_host");
         yield return new TestCaseData((Action<McpConfig>)(c => c.Host = "192.168.1.10")).SetName("Start_fails_on_lan_host");
+        yield return new TestCaseData((Action<McpConfig>)(c => c.Host = "localhost")).SetName("Start_fails_on_host_name");
+        yield return new TestCaseData((Action<McpConfig>)(c => c.AllowedHosts = ["http://node.example.com"])).SetName("Start_fails_on_malformed_allowed_host");
+        yield return new TestCaseData((Action<McpConfig>)(c => c.TlsCertificatePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()))).SetName("Start_fails_on_certificate_without_key");
         yield return new TestCaseData((Action<McpConfig>)(c => c.MaxConcurrentToolCalls = 0)).SetName("Start_fails_on_zero_concurrency");
         yield return new TestCaseData((Action<McpConfig>)(c => c.ToolTimeout = int.MaxValue)).SetName("Start_fails_on_tool_timeout_above_rpc_timeout");
         yield return new TestCaseData((Action<McpConfig>)(c => c.AuthTokenFile = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()))).SetName("Start_fails_on_missing_token_file");

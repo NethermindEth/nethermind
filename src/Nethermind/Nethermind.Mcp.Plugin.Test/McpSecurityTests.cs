@@ -44,6 +44,39 @@ public class McpSecurityTests
     public void Foreign_or_rebound_host_header_is_rejected(string? host) =>
         Assert.That(McpSecurityMiddleware.IsAllowedHost(host, Port), Is.False);
 
+    [TestCase("node.example.com:8555", ExpectedResult = true)]
+    [TestCase("node.example.com", ExpectedResult = true)] // an entry without a port matches any port
+    [TestCase("NODE.Example.com:9999", ExpectedResult = true)]
+    [TestCase("pinned.example.com:9000", ExpectedResult = true)]
+    [TestCase("pinned.example.com:8555", ExpectedResult = false)] // an entry with a port matches only that port
+    [TestCase("pinned.example.com", ExpectedResult = false)] // no port means the scheme default (80)
+    [TestCase("other.example.com:8555", ExpectedResult = false)]
+    [TestCase("node.example.com.evil:8555", ExpectedResult = false)]
+    [TestCase("127.0.0.1:8555", ExpectedResult = true)] // loopback names stay accepted on loopback
+    public bool Loopback_policy_accepts_allowed_hosts(string host) =>
+        McpHostPolicy.Loopback(McpHostPolicy.DefaultHttpPort, McpConfigValidator.ParseAllowedHosts(["node.example.com", "pinned.example.com:9000"])).IsAllowed(host, Port);
+
+    [TestCase("127.0.0.1", 443, ExpectedResult = true)]
+    [TestCase("localhost", 443, ExpectedResult = true)]
+    [TestCase("127.0.0.1", 80, ExpectedResult = false)] // over HTTPS, a portless host means 443
+    public bool Https_loopback_policy_uses_443_as_default_port(string host, int localPort) =>
+        McpHostPolicy.Loopback(McpHostPolicy.DefaultHttpsPort, []).IsAllowed(host, localPort);
+
+    [TestCase("203.0.113.7", "203.0.113.7:8555", ExpectedResult = true)] // the bound IP literal
+    [TestCase("203.0.113.7", "node.example.com:8555", ExpectedResult = true)]
+    [TestCase("203.0.113.7", "node.example.com", ExpectedResult = true)]
+    [TestCase("203.0.113.7", "127.0.0.1:8555", ExpectedResult = false)]
+    [TestCase("203.0.113.7", "localhost:8555", ExpectedResult = false)]
+    [TestCase("203.0.113.7", "[::1]:8555", ExpectedResult = false)]
+    [TestCase("203.0.113.7", "203.0.113.8:8555", ExpectedResult = false)]
+    [TestCase("0.0.0.0", "0.0.0.0:8555", ExpectedResult = false)] // a wildcard is not a name clients use
+    [TestCase("::", "[::]:8555", ExpectedResult = false)]
+    [TestCase("2001:db8::1", "[2001:DB8:0::1]:8555", ExpectedResult = true)] // IPv6 literals compare canonically
+    [TestCase("0.0.0.0", "evil.com:8555", ExpectedResult = false)]
+    [TestCase("0.0.0.0", "", ExpectedResult = false)]
+    public bool Remote_policy_accepts_only_allowed_hosts_and_the_bound_literal(string bound, string host) =>
+        McpHostPolicy.Remote(IPAddress.Parse(bound), McpConfigValidator.ParseAllowedHosts(["node.example.com"])).IsAllowed(host, Port);
+
     [TestCase(null, ExpectedResult = nameof(McpRequestVerdict.Allowed))]
     [TestCase(AllowedOrigin, ExpectedResult = nameof(McpRequestVerdict.Allowed))]
     [TestCase("HTTP://LOCALHOST:6274", ExpectedResult = nameof(McpRequestVerdict.Allowed))]

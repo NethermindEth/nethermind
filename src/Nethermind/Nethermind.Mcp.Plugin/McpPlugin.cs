@@ -18,7 +18,7 @@ public class McpPlugin(IMcpConfig config) : INethermindPlugin
     public string Name => "Mcp";
 
     /// <inheritdoc/>
-    public string Description => "Model Context Protocol server exposing read-only chain tools on a loopback listener";
+    public string Description => "Model Context Protocol server exposing read-only chain tools, resources and prompts (loopback by default, optional HTTPS remote mode)";
 
     /// <inheritdoc/>
     public string Author => "Nethermind";
@@ -30,13 +30,15 @@ public class McpPlugin(IMcpConfig config) : INethermindPlugin
     public IModule Module => new McpModule();
 }
 
-/// <summary>Registers the MCP host, its startup step and the MCP tools.</summary>
+/// <summary>Registers the MCP host, its startup step, the MCP tools, resources and prompts.</summary>
 public class McpModule : Module
 {
     /// <inheritdoc/>
     protected override void Load(ContainerBuilder builder) =>
         builder
             .AddModule(new McpToolsModule())
+            .AddSingleton<McpResources>()
+            .AddSingleton<McpPrompts>()
             .AddSingleton<McpHost>()
             .AddStep(typeof(StartMcpServer));
 }

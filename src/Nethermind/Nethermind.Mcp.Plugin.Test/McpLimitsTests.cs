@@ -58,21 +58,23 @@ public class McpLimitsTests
     }
 
     [Test]
-    public async Task Log_range_above_limit_is_refused_before_querying()
+    public async Task Log_range_above_limit_is_paged()
     {
-        JsonElement error = McpAssert.Error(
-            await Limited("get_logs", ("fromBlock", "earliest"), ("toBlock", "latest")),
-            McpAssert.ResourceExhausted, McpAssert.InvalidInput);
+        JsonElement page = McpAssert.Success(await Limited("get_logs", ("fromBlock", "earliest"), ("toBlock", "latest")));
 
-        Assert.That(error.GetProperty("message").GetString(), Does.Contain("1"), "the message should state the limit");
+        Assert.That(page.GetProperty("truncated").GetBoolean(), Is.True);
+        Assert.That(page.GetProperty("nextCursor").GetString(), Is.Not.Empty);
     }
 
     [Test]
-    public async Task Log_count_above_limit_is_refused()
+    public async Task Log_count_above_limit_is_paged()
     {
         string block = McpAssert.Hex(_seeded.Block.Number);
 
-        McpAssert.Error(await Limited("get_logs", ("fromBlock", block), ("toBlock", block)), McpAssert.ResourceExhausted);
+        JsonElement page = McpAssert.Success(await Limited("get_logs", ("fromBlock", block), ("toBlock", block)));
+
+        Assert.That(page.GetProperty("truncated").GetBoolean(), Is.True);
+        Assert.That(page.GetProperty("nextCursor").GetString(), Is.Not.Empty);
     }
 
     [Test]
@@ -83,7 +85,7 @@ public class McpLimitsTests
         JsonElement logs = McpAssert.Success(await Limited("get_logs",
             ("fromBlock", block), ("toBlock", block), ("topics", JsonSerializer.SerializeToElement(new object?[] { null, SeededChain.TopicB.ToString() }))));
 
-        Assert.That(logs.GetArrayLength(), Is.EqualTo(1));
+        Assert.That(logs.GetProperty("logs").GetArrayLength(), Is.EqualTo(1));
     }
 
     [TestCase(MaxCallGas, true)]
@@ -159,7 +161,7 @@ public class McpLimitsTests
         McpAssert.Error(rejected, McpAssert.ResourceExhausted);
 
         blocking.Release();
-        McpAssert.Quantity(McpAssert.Success(await inFlight.WaitAsync(WaitLimit)), McpAssert.Hex(BlockingEthModule.Balance));
+        McpAssert.Quantity(McpAssert.Success(await inFlight.WaitAsync(WaitLimit)).GetProperty("balance"), McpAssert.Hex(BlockingEthModule.Balance));
 
         await WaitUntil(() => provider.Returned == 1, "the module must be returned");
         McpAssert.Success(await McpToolCalls.Call(client, "chain_info", []));

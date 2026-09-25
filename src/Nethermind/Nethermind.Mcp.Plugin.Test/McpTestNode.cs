@@ -285,7 +285,12 @@ internal sealed class FaultInjectingRpcModuleProvider(IRpcModuleProvider inner) 
 internal static partial class McpAssert
 {
     public static readonly string[] ToolNames =
-        ["call", "chain_info", "get_balance", "get_block", "get_code", "get_logs", "get_transaction", "get_transaction_receipt"];
+    [
+        "block_summary", "call", "call_function", "chain_info", "decode_logs", "estimate_gas", "explain_transaction", "fee_estimate",
+        "get_balance", "get_block", "get_block_receipts", "get_code", "get_logs", "get_proof", "get_storage_at", "get_transaction",
+        "get_transaction_receipt", "lookup_address", "node_status", "resolve_ens", "simulate_transaction", "token_balances", "token_info",
+        "trace_transaction"
+    ];
 
     public const string InvalidInput = "invalid_input";
     public const string NotFound = "not_found";

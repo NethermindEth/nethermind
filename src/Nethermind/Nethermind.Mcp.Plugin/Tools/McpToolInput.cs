@@ -267,6 +267,69 @@ internal static class McpToolInput
         return true;
     }
 
+    /// <summary>Parses a storage slot: a 0x-hex value of up to 32 bytes (such as a keccak-derived slot) or a decimal slot index.</summary>
+    public static bool TryParseStorageSlot(string? input, string parameter, out UInt256 slot, [NotNullWhen(false)] out string? error)
+    {
+        if (!TryParseUInt256(input, parameter, out slot, out _))
+        {
+            error = $"'{parameter}' must be a storage slot: 0x followed by up to 64 hex characters (for example a 32-byte keccak slot), or a decimal slot index such as \"0\".";
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    /// <summary>Parses a list of at most <paramref name="maxKeys"/> storage slots; duplicates are allowed and collapse.</summary>
+    public static bool TryParseStorageSlots(string[]? input, string parameter, int maxKeys, [NotNullWhen(true)] out UInt256[]? slots, [NotNullWhen(false)] out string? error)
+    {
+        slots = null;
+        input ??= [];
+        if (input.Length > maxKeys)
+        {
+            error = $"'{parameter}' has {input.Length} entries; the maximum is {maxKeys}.";
+            return false;
+        }
+
+        UInt256[] result = new UInt256[input.Length];
+        for (int i = 0; i < input.Length; i++)
+        {
+            if (!TryParseStorageSlot(input[i], $"{parameter}[{i}]", out result[i], out error))
+            {
+                return false;
+            }
+        }
+
+        slots = result;
+        error = null;
+        return true;
+    }
+
+    /// <summary>Parses fee-history reward percentiles: 1 to <paramref name="maxCount"/> values in [0, 100], in ascending order.</summary>
+    public static bool TryParsePercentiles(double[]? input, string parameter, int maxCount, [NotNullWhen(true)] out double[]? percentiles, [NotNullWhen(false)] out string? error)
+    {
+        percentiles = null;
+        if (input is null || input.Length == 0 || input.Length > maxCount)
+        {
+            error = $"'{parameter}' must have between 1 and {maxCount} values.";
+            return false;
+        }
+
+        for (int i = 0; i < input.Length; i++)
+        {
+            double value = input[i];
+            if (!double.IsFinite(value) || value < 0 || value > 100 || (i > 0 && value < input[i - 1]))
+            {
+                error = $"'{parameter}' values must be numbers between 0 and 100 in ascending order, such as [10, 50, 90].";
+                return false;
+            }
+        }
+
+        percentiles = input;
+        error = null;
+        return true;
+    }
+
     private static bool TryParseULong(string? input, out ulong value)
     {
         value = 0;
