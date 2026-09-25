@@ -32,6 +32,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly StateProvider _stateProvider = stateProvider;
     private readonly LocalMetrics _metrics = metrics;
     private const int StoragesInitialCapacity = 4_096;
+    /// <summary>The change-map capacity a per-contract state is trimmed to when it goes back to the pool.</summary>
+    internal const int PooledDictionaryCapacity = 512;
 
     private Dictionary<AddressAsKey, PerContractState> _storages = new(StoragesInitialCapacity);
     // Handed back by a detached write-back once it is done with the map it took.
@@ -966,7 +968,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         /// <summary>Moves the entries into a pooled large map instead of rehashing the full one upwards.</summary>
-        /// <remarks>Per-contract maps are trimmed back to <c>PooledDictionaryCapacity</c>, so a heavy contract would
+        /// <remarks>Per-contract maps are trimmed back to <see cref="PooledDictionaryCapacity"/>, so a heavy contract would
         /// otherwise regrow on the LOH every block or call.</remarks>
         private void GrowIntoLarge()
         {
@@ -1443,7 +1445,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             public static void Return(PerContractState item)
             {
-                const int PooledDictionaryCapacity = 512;
                 const int MaxPooledCount = 2048;
 
                 // shared pool fallback

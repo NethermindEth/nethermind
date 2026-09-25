@@ -423,7 +423,7 @@ public class StorageProviderTests(bool useFlat)
         object parkedMap = GetPrivateField(blockChange, "_parked");
         Assert.That(parkedMap, Is.Not.Null, "moving into a large map parks the contract's own map");
         // Exercise the pool's reset while we still own the state; returned objects can be rented by background work.
-        blockChange.GetType().GetMethod(nameof(provider.Reset))!.Invoke(blockChange, [512]);
+        blockChange.GetType().GetMethod(nameof(provider.Reset))!.Invoke(blockChange, [PersistentStorageProvider.PooledDictionaryCapacity]);
 
         // The large maps are back in the pool; a heavy second contract can rent them.
         const int OtherFrom = 20_000;
