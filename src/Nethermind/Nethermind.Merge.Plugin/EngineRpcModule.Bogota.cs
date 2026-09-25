@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,13 +21,17 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
     /// <summary>An inclusion list retained for a payload that could not yet be validated.</summary>
-    private readonly record struct RetainedInclusionList(Hash256 ParentHash, byte[][] Transactions, bool Accepted);
-    private readonly record struct InclusionListAnswer(Hash256 ParentHash, bool Satisfied);
+    private readonly record struct RetainedInclusionList(Hash256 ParentHash, ulong Number, byte[][] Transactions, bool Accepted);
+    private readonly record struct InclusionListAnswer(Hash256 ParentHash, ulong Number, bool Satisfied);
 
-    // Bogota requires retaining a branch tip's list when newPayload cannot answer yet. Forkchoice must also
-    // report an already-computed answer for a VALID tip. Neither can be evicted by unrelated branch activity.
+    private const int MaxInclusionListCacheEntries = 256;
+
+    // Retain branch-tip lists and answers through finality, with a fixed ceiling if finality stalls.
     private readonly Dictionary<Hash256, InclusionListAnswer> _inclusionListAnswers = [];
     private readonly Dictionary<Hash256, RetainedInclusionList> _retainedInclusionLists = [];
+    private readonly IBlockTree? _inclusionListBlockTree = blockTree;
+    private ulong _finalizedInclusionListNumber;
+    private Hash256? _finalizedInclusionListHash;
 
     // A concurrent engine_newPayloadV6 must not have its newer list overwritten by an earlier evaluation.
     private readonly Lock _inclusionListLock = new();
@@ -73,12 +78,14 @@ public partial class EngineRpcModule : IEngineRpcModule
 
         if (inclusionListSatisfied is { } satisfied && status.LatestValidHash is { } validHash)
         {
-            SetInclusionListAnswer(validHash, executionPayloadParams.ExecutionPayload.ParentHash, satisfied);
+            SetInclusionListAnswer(validHash, executionPayloadParams.ExecutionPayload.ParentHash,
+                executionPayloadParams.ExecutionPayload.BlockNumber, satisfied);
         }
         else if (status.Status is PayloadStatus.Accepted or PayloadStatus.Syncing
             && executionPayloadParams is { InclusionListTransactions: { } retained, ExecutionPayload.BlockHash: { } blockHash })
         {
-            SetRetainedInclusionList(blockHash, executionPayloadParams.ExecutionPayload.ParentHash, retained,
+            SetRetainedInclusionList(blockHash, executionPayloadParams.ExecutionPayload.ParentHash,
+                executionPayloadParams.ExecutionPayload.BlockNumber, retained,
                 status.Status == PayloadStatus.Accepted);
         }
 
@@ -123,6 +130,9 @@ public partial class EngineRpcModule : IEngineRpcModule
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await ForkchoiceUpdated(forkchoiceState, payloadAttributes, version);
         if (result.Result.ResultType != ResultType.Success)
             return ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(result.Result.Error!, result.ErrorCode, result.IsTemporary);
+
+        if (result.Data.PayloadStatus.Status is PayloadStatus.Valid or PayloadStatus.Syncing)
+            PruneFinalizedInclusionLists(forkchoiceState.FinalizedBlockHash);
 
         bool? inclusionListSatisfied = result.Data.PayloadStatus.Status == PayloadStatus.Valid
             ? GetInclusionListSatisfied(forkchoiceState.HeadBlockHash)
@@ -186,22 +196,25 @@ public partial class EngineRpcModule : IEngineRpcModule
         return answer;
     }
 
-    private void SetInclusionListAnswer(Hash256 blockHash, Hash256 parentHash, bool answer)
+    private void SetInclusionListAnswer(Hash256 blockHash, Hash256 parentHash, ulong number, bool answer)
     {
         lock (_inclusionListLock)
         {
+            if (!IsAfterFinalization(blockHash, number)) return;
             _retainedInclusionLists.Remove(blockHash);
             _retainedInclusionLists.Remove(parentHash);
             _inclusionListAnswers.Remove(parentHash);
-            _inclusionListAnswers[blockHash] = new InclusionListAnswer(parentHash, answer);
+            _inclusionListAnswers[blockHash] = new InclusionListAnswer(parentHash, number, answer);
+            TrimInclusionListCache(blockHash);
         }
     }
 
-    private void SetRetainedInclusionList(Hash256 blockHash, Hash256 parentHash, byte[][] retained, bool accepted)
+    private void SetRetainedInclusionList(Hash256 blockHash, Hash256 parentHash, ulong number, byte[][] retained, bool accepted)
     {
         lock (_inclusionListLock)
         {
             _inclusionListAnswers.Remove(blockHash);
+            if (!IsAfterFinalization(blockHash, number)) return;
             if (accepted)
             {
                 _retainedInclusionLists.Remove(parentHash);
@@ -216,7 +229,8 @@ public partial class EngineRpcModule : IEngineRpcModule
             {
                 if (child.ParentHash == blockHash) return;
             }
-            _retainedInclusionLists[blockHash] = new RetainedInclusionList(parentHash, retained, accepted);
+            _retainedInclusionLists[blockHash] = new RetainedInclusionList(parentHash, number, retained, accepted);
+            TrimInclusionListCache(blockHash);
         }
     }
 
@@ -236,9 +250,65 @@ public partial class EngineRpcModule : IEngineRpcModule
                 {
                     _retainedInclusionLists.Remove(current.ParentHash);
                     _inclusionListAnswers.Remove(current.ParentHash);
-                    _inclusionListAnswers[blockHash] = new InclusionListAnswer(current.ParentHash, satisfied);
+                    if (IsAfterFinalization(blockHash, current.Number))
+                        _inclusionListAnswers[blockHash] = new InclusionListAnswer(current.ParentHash, current.Number, satisfied);
                 }
             }
+        }
+    }
+
+    private bool IsAfterFinalization(Hash256 blockHash, ulong number) =>
+        _finalizedInclusionListHash is null || number > _finalizedInclusionListNumber || blockHash == _finalizedInclusionListHash;
+
+    private void PruneFinalizedInclusionLists(Hash256 finalizedHash)
+    {
+        if (finalizedHash == Hash256.Zero || _inclusionListBlockTree?.FindHeader(finalizedHash,
+                BlockTreeLookupOptions.DoNotCreateLevelIfMissing) is not { Number: ulong number }) return;
+
+        lock (_inclusionListLock)
+        {
+            if (_finalizedInclusionListHash == finalizedHash) return;
+            if (_finalizedInclusionListHash is not null && number < _finalizedInclusionListNumber) return;
+            _finalizedInclusionListNumber = number;
+            _finalizedInclusionListHash = finalizedHash;
+
+            foreach ((Hash256 hash, RetainedInclusionList entry) in _retainedInclusionLists)
+                if (entry.Number <= number && hash != finalizedHash) _retainedInclusionLists.Remove(hash);
+            foreach ((Hash256 hash, InclusionListAnswer entry) in _inclusionListAnswers)
+                if (entry.Number <= number && hash != finalizedHash) _inclusionListAnswers.Remove(hash);
+        }
+    }
+
+    private void TrimInclusionListCache(Hash256 newestHash)
+    {
+        while (_retainedInclusionLists.Count + _inclusionListAnswers.Count > MaxInclusionListCacheEntries)
+        {
+            Hash256? oldestHash = null;
+            ulong oldestNumber = ulong.MaxValue;
+            foreach ((Hash256 hash, InclusionListAnswer entry) in _inclusionListAnswers)
+                if (hash != newestHash && hash != _finalizedInclusionListHash && entry.Number < oldestNumber)
+                {
+                    oldestHash = hash;
+                    oldestNumber = entry.Number;
+                }
+            if (oldestHash is not null)
+            {
+                _inclusionListAnswers.Remove(oldestHash);
+                continue;
+            }
+
+            bool oldestAccepted = true;
+            foreach ((Hash256 hash, RetainedInclusionList entry) in _retainedInclusionLists)
+                if (hash != newestHash && hash != _finalizedInclusionListHash
+                    && (oldestHash is null || oldestAccepted && !entry.Accepted
+                        || oldestAccepted == entry.Accepted && entry.Number < oldestNumber))
+                {
+                    oldestHash = hash;
+                    oldestNumber = entry.Number;
+                    oldestAccepted = entry.Accepted;
+                }
+            if (oldestHash is null) break;
+            _retainedInclusionLists.Remove(oldestHash);
         }
     }
 

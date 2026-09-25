@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
@@ -827,6 +829,102 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task ForkchoiceUpdatedV5_prunes_earlier_syncing_lists_when_a_descendant_is_finalized()
+    {
+        HeadStateInterceptor headState = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner
+                .AddSingleton<IStateReader>(headState)));
+        headState.Inner = chain.StateReader;
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 genesis = chain.BlockTree.HeadHash;
+
+        ExecutionPayloadV4 first = await BuildAndInsertEmptyBlock(rpc, genesis, slot: 2, finalize: false, finalizedHash: genesis);
+        ExecutionPayloadV4 second = await BuildAndInsertEmptyBlock(rpc, first.BlockHash, slot: 3, finalize: false, finalizedHash: genesis);
+        ExecutionPayloadV4 third = await BuildAndInsertEmptyBlock(rpc, second.BlockHash, slot: 4, finalize: false, finalizedHash: genesis);
+        ExecutionPayloadV4 sibling = await BuildAndInsertEmptyBlock(rpc, second.BlockHash, slot: 5, finalize: false, finalizedHash: genesis);
+
+        Transaction censoredTx = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        byte[][] inclusionList = [Rlp.Encode(censoredTx).Bytes];
+
+        headState.PrunedBlock = first.BlockHash;
+        ResultWrapper<PayloadStatusV2> firstResend = await rpc.engine_newPayloadV6(first, [], Keccak.Zero, [], inclusionList);
+        headState.PrunedBlock = second.BlockHash;
+        ResultWrapper<PayloadStatusV2> secondResend = await rpc.engine_newPayloadV6(second, [], Keccak.Zero, [], inclusionList);
+        headState.PrunedBlock = null;
+        ResultWrapper<PayloadStatusV2> thirdResend = await rpc.engine_newPayloadV6(third, [], Keccak.Zero, [], []);
+
+        Assert.That(firstResend.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+        Assert.That(secondResend.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+        Assert.That(thirdResend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(CachedInclusionLists(rpc).Contains(first.BlockHash), Is.True,
+            "a VALID grandchild alone does not make the earlier SYNCING list disappear");
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> syncingFcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(Keccak.Compute("unknown-head"), third.BlockHash, third.BlockHash), payloadAttributes: null);
+        Assert.That(syncingFcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        Assert.That(CachedInclusionLists(rpc).Contains(first.BlockHash), Is.False,
+            "a SYNCING forkchoice update must still prune blocks behind its finalized marker");
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> finalizing = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(third.BlockHash, third.BlockHash, third.BlockHash), payloadAttributes: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finalizing.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(CachedInclusionLists(rpc).Contains(first.BlockHash), Is.False);
+            Assert.That(CachedInclusionLists(rpc).Contains(second.BlockHash), Is.False);
+            Assert.That(CachedInclusionListAnswers(rpc).Contains(third.BlockHash), Is.True);
+            Assert.That(CachedInclusionListAnswers(rpc).Contains(sibling.BlockHash), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Inclusion_list_cache_is_bounded_when_finality_stalls()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        MethodInfo retain = typeof(EngineRpcModule).GetMethod("SetRetainedInclusionList", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Hash256 first = Keccak.Compute(BitConverter.GetBytes(0));
+        Hash256 newest = first;
+
+        retain.Invoke(rpc, [first, chain.BlockTree.HeadHash, 1UL, new byte[][] { new byte[1] }, true]);
+        for (int i = 1; i < 300; i++)
+        {
+            newest = Keccak.Compute(BitConverter.GetBytes(i));
+            retain.Invoke(rpc, [newest, chain.BlockTree.HeadHash, (ulong)i + 1, new byte[][] { new byte[1] }, false]);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CachedInclusionLists(rpc).Count, Is.EqualTo(256));
+            Assert.That(CachedInclusionLists(rpc).Contains(first), Is.True, "an ACCEPTED tip outranks SYNCING entries");
+            Assert.That(CachedInclusionLists(rpc).Contains(newest), Is.True);
+        }
+
+        for (int i = 300; i < 600; i++)
+        {
+            newest = Keccak.Compute(BitConverter.GetBytes(i));
+            retain.Invoke(rpc, [newest, chain.BlockTree.HeadHash, (ulong)i + 1, new byte[][] { new byte[1] }, true]);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CachedInclusionLists(rpc).Count, Is.EqualTo(256));
+            Assert.That(CachedInclusionLists(rpc).Contains(first), Is.False);
+            Assert.That(CachedInclusionLists(rpc).Contains(newest), Is.True);
+        }
+    }
+
+    private static IDictionary CachedInclusionLists(IEngineRpcModule rpc) =>
+        (IDictionary)typeof(EngineRpcModule).GetField("_retainedInclusionLists", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(rpc)!;
+
+    private static IDictionary CachedInclusionListAnswers(IEngineRpcModule rpc) =>
+        (IDictionary)typeof(EngineRpcModule).GetField("_inclusionListAnswers", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(rpc)!;
+
     // A newPayloadV6 landing while forkchoiceUpdatedV5 evaluates the retained list wins: the answer being
     // computed is already stale, so publishing it would shadow the newer list on every later update.
     [Test]
@@ -985,16 +1083,17 @@ public partial class EngineModuleTests
         private static bool Matches(BlockHeader? header, Hash256? hash) => hash is not null && header?.Hash == hash;
     }
 
-    private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot, bool finalize = true)
+    private async Task<ExecutionPayloadV4> BuildAndInsertEmptyBlock(IEngineRpcModule rpc, Hash256 parent, ulong slot,
+        bool finalize = true, Hash256? finalizedHash = null)
     {
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
-            new ForkchoiceStateV1(parent, Keccak.Zero, parent),
+            new ForkchoiceStateV1(parent, Keccak.Zero, finalizedHash ?? parent),
             BuildBogotaPayloadAttributes(inclusionList: [], timestamp: Timestamper.UnixTime.Seconds + slot, slotNumber: slot));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
 
         await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
-        Hash256 checkpoint = finalize ? payload.BlockHash : parent;
+        Hash256 checkpoint = finalize ? payload.BlockHash : finalizedHash ?? parent;
         await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(payload.BlockHash, checkpoint, checkpoint), payloadAttributes: null);
         return payload;

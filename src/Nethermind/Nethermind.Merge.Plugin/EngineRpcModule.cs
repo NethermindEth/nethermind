@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -48,7 +49,8 @@ public partial class EngineRpcModule(
     ISpecProvider specProvider,
     GCKeeper gcKeeper,
     IBlockProcessingQueue processingQueue,
-    ILogManager logManager) : IEngineRpcModule
+    ILogManager logManager,
+    IBlockTree? blockTree = null) : IEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
     /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>
