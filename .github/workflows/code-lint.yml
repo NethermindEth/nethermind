@@ -139,3 +139,22 @@ jobs:
       # were production bugs, and nothing else exercises them without a multi-hour run.
       - name: Run script test suites
         run: python -m unittest discover -s scripts/sync -p 'test*.py' -v
+
+  docker-image-labels:
+    name: Check Docker image labels
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Without a LABEL in its final stage, a published image carries the base image's OCI
+      # metadata (Ubuntu's), and a label fed by an ARG that the final stage forgot to redeclare
+      # is silently empty. Neither is visible in the Dockerfile diff, only on a built image, so
+      # this builds the final stage of every published Dockerfile and inspects the result.
+      - name: Check the published images' OCI labels
+        run: scripts/check-docker-labels.sh
