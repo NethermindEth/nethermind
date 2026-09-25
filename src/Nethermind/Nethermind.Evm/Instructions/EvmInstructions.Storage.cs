@@ -479,7 +479,10 @@ public static partial class EvmInstructions
             if (vm.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - gasCosts.NetMeteredSStoreCost + 1);
             if (TGasPolicy.GetRemainingGas(in gas) <= GasCostOf.CallStipend)
+            {
+                vm.TraceActionErrorDetails("out of gas: not enough gas for reentrancy sentry");
                 goto OutOfGas;
+            }
         }
 
         if (!stack.PopUInt256(out UInt256 result, out UInt256 newValue)) goto StackUnderflow;
