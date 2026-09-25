@@ -1035,7 +1035,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     public void Create_depth_limit_callbacks_are_paired()
     {
         byte[] code = Prepare.EvmCode.Create([], UInt256.Zero).Op(Instruction.STOP).Done;
-        CodeInfo codeInfo = CodeInfoFactory.CreateCodeInfo(code);
+        CodeInfo codeInfo = new(code);
         ExecutionEnvironment env = ExecutionEnvironment.Rent(
             codeInfo,
             executingAccount: Recipient,
