@@ -123,7 +123,6 @@ namespace Nethermind.Serialization.Json
                     new DoubleArrayConverter(),
                     new BooleanConverter(),
                     new AddressConverter(strictHexFormat),
-                    new AddressKeyedDictionaryConverterFactory(strictHexFormat),
                     new AddressAsKeyConverter(),
                     new MemoryByteConverter(),
                     new BigIntegerConverter(),
