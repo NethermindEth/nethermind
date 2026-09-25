@@ -32,13 +32,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [TestCase("0x0100", "0x100")]
         [TestCase("0x8000000000000000000000000000000000000000000000000000000000000000", "0x8000000000000000000000000000000000000000000000000000000000000000")]
         [TestCase("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")]
-        public void Vm_stack_words_are_quantities_while_code_and_memory_are_data(string input, string expected)
+        public void Vm_stack_and_storage_words_are_quantities_while_code_and_memory_are_data(string input, string expected)
         {
             byte[] word = Bytes.FromHexString(input).PadLeft(32);
             ParityVmOperationTrace operation = new()
             {
                 Push = [word],
                 Memory = new ParityMemoryChangeTrace { Data = [0, 1], Offset = 0 },
+                Store = new ParityStorageChangeTrace { Key = word, Value = Bytes.FromHexString(input) },
                 Sub = new ParityVmTrace
                 {
                     Code = [0, 1],
@@ -57,6 +58,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(op.GetProperty("ex").GetProperty("push")[0].GetString(), Is.EqualTo(expected));
+                Assert.That(op.GetProperty("ex").GetProperty("store").GetProperty("key").GetString(), Is.EqualTo(expected));
+                Assert.That(op.GetProperty("ex").GetProperty("store").GetProperty("val").GetString(), Is.EqualTo(expected));
                 Assert.That(op.GetProperty("sub").GetProperty("ops")[0].GetProperty("ex").GetProperty("push")[0].GetString(), Is.EqualTo(expected));
                 Assert.That(vm.GetProperty("code").GetString(), Is.EqualTo("0x0001"));
                 Assert.That(op.GetProperty("sub").GetProperty("code").GetString(), Is.EqualTo("0x0001"));

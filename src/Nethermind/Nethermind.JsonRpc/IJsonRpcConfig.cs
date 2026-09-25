@@ -39,7 +39,8 @@ public interface IJsonRpcConfig : IConfig
             Caps heavy methods promoted to sharable — `eth_call`, `eth_estimateGas`,
             `eth_createAccessList` — preventing unbounded concurrency from exhausting memory.
             Light sharable methods (e.g. `eth_blockNumber`, `eth_getBalance`) complete in <1 ms and
-            effectively never approach this limit. `0` to lift the limit.
+            effectively never approach this limit. `eth_sendRawTransactionSync` holds a slot for as long
+            as it waits for inclusion; see `RpcTxSyncMaxConcurrentRequests`. `0` to lift the limit.
             """,
         DefaultValue = "10000")]
     int MaxConcurrentSharedRequests { get; set; }
@@ -241,6 +242,12 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "Maximum server-side wait, in milliseconds, that eth_sendRawTransactionSync will accept; client-supplied timeouts above this are clamped down.", DefaultValue = "60000")]
     int RpcTxSyncMaxTimeoutMs { get; set; }
+
+    /// <summary>
+    /// Maximum number of concurrent eth_sendRawTransactionSync calls. Defaults to 128; 0 disables this limit.
+    /// </summary>
+    [ConfigItem(Description = "Maximum number of concurrent eth_sendRawTransactionSync calls, independent of EthModuleConcurrentInstances. Excess calls are rejected before submitting the transaction. Each pending call also counts against MaxConcurrentSharedRequests for up to RpcTxSyncMaxTimeoutMs, so keep this well below MaxConcurrentSharedRequests. 0 disables this limit; MaxConcurrentSharedRequests then remains the only bound (none if it is 0 too).", DefaultValue = "128")]
+    int RpcTxSyncMaxConcurrentRequests { get; set; }
 
     [ConfigItem(
         Description = """
