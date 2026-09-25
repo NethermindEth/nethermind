@@ -1535,7 +1535,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (tracer.IsTracingReturnData)
         {
-            tracer.SetOperationReturnData(ReturnDataBuffer);
+            tracer.SetOperationReturnData(ReturnDataBuffer.Span);
         }
     }
 

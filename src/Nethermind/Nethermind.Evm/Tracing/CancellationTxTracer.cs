@@ -298,7 +298,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    public void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingReturnData)
