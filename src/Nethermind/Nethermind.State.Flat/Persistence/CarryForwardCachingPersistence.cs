@@ -31,7 +31,9 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private StateId _basis;
     private long _generation;
 
-    // Handed from one write batch to the next, so a persist does not grow fresh sets on the LOH.
+    // Handed from one write batch to the next, so a persist does not grow fresh sets on the LOH. A spare keeps the
+    // capacity of the batch that filled it for the node's lifetime, so only sets within the cache's own per-kind
+    // capacity are kept.
     private HashSet<Address>? _spareWrittenAccounts;
     private HashSet<(Address, UInt256)>? _spareWrittenSlots;
 
@@ -39,19 +41,15 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private HashSet<(Address, UInt256)> RentWrittenSlots() => Interlocked.Exchange(ref _spareWrittenSlots, null) ?? [];
 
-    /// <summary>The largest written-key set kept for the next batch: what the cache itself holds per kind.</summary>
-    /// <remarks>A spare keeps the capacity of the batch that filled it for the node's lifetime.</remarks>
-    private int MaxSpareWrittenSetCount => _maxEntriesPerKind;
-
     private void ReturnWrittenSets(HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots)
     {
-        if (writtenAccounts is not null && writtenAccounts.Count <= MaxSpareWrittenSetCount)
+        if (writtenAccounts is not null && writtenAccounts.Count <= _maxEntriesPerKind)
         {
             writtenAccounts.Clear();
             Volatile.Write(ref _spareWrittenAccounts, writtenAccounts);
         }
 
-        if (writtenSlots is not null && writtenSlots.Count <= MaxSpareWrittenSetCount)
+        if (writtenSlots is not null && writtenSlots.Count <= _maxEntriesPerKind)
         {
             writtenSlots.Clear();
             Volatile.Write(ref _spareWrittenSlots, writtenSlots);
