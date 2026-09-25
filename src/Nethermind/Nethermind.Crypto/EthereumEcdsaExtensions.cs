@@ -15,9 +15,6 @@ public static class EthereumEcdsaExtensions
 {
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
-    /// <summary>The RLP encoding of an empty byte array, which a legacy signing payload uses for r and s.</summary>
-    private const byte EmptyArrayByte = 128;
-
     /// <remarks>
     /// Cross-context cache of recovered senders keyed by transaction hash: a transaction recovered
     /// on mempool ingress becomes a lookup on block arrival. Legacy transactions are excluded —
@@ -219,8 +216,8 @@ public static class EthereumEcdsaExtensions
         {
             writer.Encode(chainId);
             // The two empty byte arrays standing in for r and s, as LegacyTxDecoder encodes them.
-            WriteByte(ref writer, EmptyArrayByte);
-            WriteByte(ref writer, EmptyArrayByte);
+            WriteByte(ref writer, Rlp.EmptyByteArrayByte);
+            WriteByte(ref writer, Rlp.EmptyByteArrayByte);
         }
 
         return writer.GetValueHash();

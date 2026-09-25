@@ -21,6 +21,7 @@ public sealed class TxDecoder : TxDecoder<Transaction>
     /// The signed payload is verbatim wire bytes, so a caller can hash it behind its own sequence header instead of
     /// encoding the transaction a second time. It excludes the type byte, which the caller re-emits, and the EIP-155
     /// chain id triplet a legacy signing payload carries in place of the signature.
+    /// Expects bytes that already decoded as a transaction: a length prefix that runs past the end may still throw.
     /// </remarks>
     public static bool TryGetSignedPayload(ReadOnlySpan<byte> encoded, TxType txType, out ReadOnlySpan<byte> signedPayload)
     {
@@ -39,6 +40,8 @@ public sealed class TxDecoder : TxDecoder<Transaction>
             if (encoded.IsEmpty || encoded[0] != (byte)txType) return false;
             encoded = encoded[1..];
         }
+
+        if (encoded.IsEmpty || encoded[0] < Rlp.EmptyListByte) return false;
 
         LiteRlpReader reader = new(encoded);
         (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength(0);
