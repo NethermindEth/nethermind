@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto
@@ -23,6 +25,55 @@ namespace Nethermind.Core.Test.Crypto
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
             ecdsa.Verify(testCase.Tx.SenderAddress!, testCase.Tx);
+        }
+
+        /// <summary>
+        /// The wire-bytes recovery must agree with the re-encoding one on every transaction shape, including the
+        /// legacy EIP-155 chain id triplet and a pre-155 signature that carries none.
+        /// </summary>
+        [TestCase(TxType.Legacy, true)]
+        [TestCase(TxType.Legacy, false)]
+        [TestCase(TxType.AccessList, true)]
+        [TestCase(TxType.EIP1559, true)]
+        [TestCase(TxType.Blob, true)]
+        [TestCase(TxType.SetCode, true)]
+        public void TryRecoverPublicKey_from_the_encoding_matches_recovery_from_the_transaction(TxType txType, bool eip155)
+        {
+            EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId);
+            PrivateKey key = Build.A.PrivateKey.TestObject;
+            TransactionBuilder<Transaction> builder = Build.A.Transaction.WithType(txType).WithChainId(TestBlockchainIds.ChainId);
+
+            if (txType == TxType.Blob) builder = builder.WithBlobVersionedHashes(1).WithMaxFeePerBlobGas(1);
+            if (txType == TxType.SetCode) builder = builder.WithAuthorizationCodeIfAuthorizationListTx();
+
+            Transaction tx = builder.TestObject;
+            ecdsa.Sign(key, tx, isEip155Enabled: eip155);
+
+            byte[] encoded = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+            Span<byte> recovered = stackalloc byte[PublicKey.PrefixedLengthInBytes];
+
+            bool result = ecdsa.TryRecoverPublicKey(tx, encoded, recovered);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.True);
+                Assert.That(recovered.ToArray(), Is.EqualTo(ecdsa.RecoverPublicKey(tx)!.PrefixedBytes));
+                Assert.That(PublicKey.ComputeAddress(recovered[1..]), Is.EqualTo(key.Address));
+            }
+        }
+
+        [Test]
+        public void TryRecoverPublicKey_rejects_an_encoding_of_another_transaction()
+        {
+            EthereumEcdsa ecdsa = new(TestBlockchainIds.ChainId);
+            Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
+            Transaction other = Build.A.Transaction.WithNonce(2).SignedAndResolved().TestObject;
+            Span<byte> recovered = stackalloc byte[PublicKey.PrefixedLengthInBytes];
+
+            byte[] otherEncoded = TxDecoder.Instance.Encode(other, RlpBehaviors.SkipTypedWrapping).Bytes;
+
+            Assert.That(!ecdsa.TryRecoverPublicKey(tx, otherEncoded, recovered)
+                || !recovered.SequenceEqual(ecdsa.RecoverPublicKey(tx)!.PrefixedBytes), Is.True);
         }
 
         [Test]
