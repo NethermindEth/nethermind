@@ -356,9 +356,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _hasMemory = true;
     }
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
-        if (!_streamVmTrace) { base.ReportStorageChange(key, value); return; }
+        if (!_streamVmTrace) { base.ReportOperationStorageChange(key, value); return; }
 
         EnsureBuffer(ref _storageKeyBuffer, key.Length);
         key.CopyTo(_storageKeyBuffer);

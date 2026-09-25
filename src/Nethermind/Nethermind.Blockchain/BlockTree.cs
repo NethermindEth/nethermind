@@ -495,7 +495,7 @@ namespace Nethermind.Blockchain
             if (block is not null)
             {
                 bool bestSuggestedImprovementSatisfied = BestSuggestedImprovementRequirementsSatisfied(header);
-                if (bestSuggestedImprovementSatisfied)
+                if (bestSuggestedImprovementSatisfied && !IsLighterPreMergeThanBestSuggestedHeader(header))
                 {
                     if (Logger.IsTrace) Logger.Trace($"New best suggested block. PreviousBestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}");
                     BestSuggestedHeader = block.Header;
@@ -515,6 +515,12 @@ namespace Nethermind.Blockchain
 
             return AddBlockResult.Added;
         }
+
+        /// <summary>Tells whether pre-merge <paramref name="header"/> is lighter than <see cref="BestSuggestedHeader"/>.</summary>
+        /// <remarks>The improvement check compares against <see cref="BestSuggestedBody"/>, which unprocessed
+        /// suggestions never advance, so any lighter pre-merge block would otherwise replace the header.</remarks>
+        private bool IsLighterPreMergeThanBestSuggestedHeader(BlockHeader header) =>
+            !header.IsPostTTD(SpecProvider) && header.TotalDifficulty < BestSuggestedHeader?.TotalDifficulty;
 
         /// <summary>Tells whether <paramref name="header"/> is one <see cref="Suggest"/> answers with
         /// <see cref="AddBlockResult.AlreadyKnown"/> rather than adding.</summary>
