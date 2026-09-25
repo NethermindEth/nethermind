@@ -57,6 +57,23 @@ public class GuestJumpDestinationTests
     public void Scan_matches_the_reference(byte[] code) => AssertMatchesReference(code);
 
     [Test]
+    public void Full_analysis_reuses_the_completed_bitmap()
+    {
+        CodeInfo codeInfo = new(new byte[] { PUSH1, JUMPDEST, JUMPDEST });
+        long[] bitmap = codeInfo.JumpDestinationBitmap;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeInfo.JumpDestinationBitmap, Is.SameAs(bitmap));
+            Assert.That(codeInfo.ValidateJump(-1), Is.False);
+            Assert.That(codeInfo.ValidateJump(0), Is.False);
+            Assert.That(codeInfo.ValidateJump(1), Is.False);
+            Assert.That(codeInfo.ValidateJump(2), Is.True);
+            Assert.That(codeInfo.ValidateJump(3), Is.False);
+        }
+    }
+
+    [Test]
     public void Stack_without_code_info_has_no_jump_destinations()
     {
         byte stackMemory = 0;

@@ -177,6 +177,7 @@ public class BeaconHeadersSyncTests
     public async Task Finishes_when_all_downloaded()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(2000).TestObject);
         blockTree.SyncPivot.Returns((1000UL, Keccak.Zero));
         ISyncReport report = Substitute.For<ISyncReport>();
@@ -310,6 +311,7 @@ public class BeaconHeadersSyncTests
         // PivotDestinationNumber rising above _lowestRequestedHeaderNumber mid-sync must not produce
         // a batch with negative RequestSize.
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         blockTree.SyncPivot.Returns((1000UL, Keccak.Zero));
         blockTree.LowestInsertedBeaconHeader.Returns((BlockHeader?)null);
 

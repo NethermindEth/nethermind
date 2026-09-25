@@ -102,6 +102,41 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void InterruptedWalk_WithIncompatibleMode_ReplaysCompletedStorageItems([Values] bool legacyCheckpoint)
+    {
+        ArchiveProofRetrofit retrofit = CreateRetrofit(TestPolicy);
+        CommitmentMetadata metadata = retrofit.Metadata;
+        retrofit.Prepare();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(
+            _historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true,
+            LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit, metadata);
+        HistoryWalkVerifier interruptedVerifier = legacyCheckpoint ? verifier : CreateVerifyOnlyVerifier(metadata);
+        using CancellationTokenSource interrupt = new();
+        Assert.That(() => interruptedVerifier.VerifyRangeParallel(
+            0, _chain.Head, workers: 1, AccountSubtreeReplayer.DefaultCheckpointBlocks,
+            onCheckpoint: null, interrupt.Token,
+            onItemDone: item => { if (item == ContractStorageItem) interrupt.Cancel(); }),
+            Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(metadata.IsWalkItemDone(ContractStorageItem), Is.True);
+        if (legacyCheckpoint)
+            WalkCheckpointTestHelper.RemoveMode(_historyColumns, metadata);
+        bool storageReplayed = false;
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(
+            0, _chain.Head, workers: 1, AccountSubtreeReplayer.DefaultCheckpointBlocks,
+            onCheckpoint: null, CancellationToken.None,
+            onItemDone: item => { if (item == ContractStorageItem) storageReplayed = true; });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Verified, Is.True);
+            Assert.That(storageReplayed, Is.True, "completed items are reusable only with a known matching mode");
+            Assert.That(retrofit.PublishCoverage(0, _chain.Head), Is.True);
+        }
+        AssertProofMatchesTheTrie(Contract, 65, ContractSlots);
+    }
+
+    [Test]
     public void A_build_interrupted_inside_a_subtree_resumes_from_its_last_checkpoint_and_yields_the_same_proofs()
     {
         ArchiveProofRetrofit retrofit = CreateRetrofit(TestPolicy);
@@ -972,23 +1007,65 @@ public class ArchiveProofTests
     }
 
     [Test]
-    public void An_epoch_start_snapshot_anchors_storage_nodes_down_to_the_record_depth()
+    public void With_pruning_an_epoch_start_snapshot_anchors_storage_nodes_down_to_the_record_depth()
+    {
+        _policy = EpochPolicy;
+        _recentEpochs = 1;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = AddQuietContract(quiet);
+        BuildCommitments();
+        ulong epochStart = QuietEpochStart();
+        (UInt256 slot, byte[][] path) = SlotWithBranchesDownToCheckpointDepth(quiet, slots, epochStart);
+
+        ChildVector children = ChildVector.Rent();
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                for (int depth = 2; depth <= EpochPolicy.StorageCheckpointDepth; depth++)
+                {
+                    byte[]? row = EpochStartRow(quiet, slot, depth, epochStart);
+                    Assert.That(row is not null && ParentRowCodec.IsBranchRow(row), Is.True,
+                        $"depth {depth}: a contract that stands still gets no row from its changes; the epoch-start snapshot is the only anchor its checkpoint nodes have, so it must reach the record depth as the account snapshot does, or every drop re-composes them");
+                    if (row is null || !ParentRowCodec.IsBranchRow(row)) continue;
+
+                    children.Clear();
+                    ParentRowCodec.Fill(row, ParentRowCodec.Presence(row), children);
+                    Assert.That(BranchRlp.Encode(children), Is.EqualTo(path[depth]),
+                        $"depth {depth}: the epoch-start anchor must hold the node the independent trie has at that path");
+                }
+            }
+        }
+        finally
+        {
+            ChildVector.Return(children);
+        }
+    }
+
+    [Test]
+    public void Without_pruning_an_epoch_start_snapshot_stops_at_the_root_children_and_proofs_still_resolve()
     {
         _policy = EpochPolicy;
         Address quiet = TestItem.AddressD;
         UInt256[] slots = AddQuietContract(quiet);
         BuildCommitments();
+        ulong epochStart = QuietEpochStart();
+        (UInt256 slot, byte[][] _) = SlotWithBranchesDownToCheckpointDepth(quiet, slots, epochStart);
 
-        ulong epochStart = 2 * EpochPolicy.EpochBlocks;
-        Assert.That(epochStart, Is.LessThanOrEqualTo(_chain.Head), "precondition: the chain crosses an epoch start after the contract stood still");
-        byte firstSlotByte = Keccak.Compute(slots[0].ToBigEndian()).Bytes[0];
-        TreePath depthTwo = TreePath.FromNibble([(byte)(firstSlotByte >> 4), (byte)(firstSlotByte & 0x0F)]);
-        CommitmentStore storages = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), EpochPolicy, CommitmentKeyLayout.IdentityLength);
-        byte[] prefix = new byte[CommitmentKeyLayout.MaxKeyLength];
-        int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, Keccak.Compute(quiet.Bytes).Bytes[..CommitmentKeyLayout.IdentityLength], depthTwo, exact: false);
+        using (Assert.EnterMultipleScope())
+        {
+            for (int depth = 2; depth <= EpochPolicy.StorageCheckpointDepth; depth++)
+            {
+                Assert.That(EpochStartRow(quiet, slot, depth, epochStart), Is.Null,
+                    $"depth {depth}: a node that never drops an epoch has no carry to spare, so the checkpoint nodes below the root children get no epoch-start copy, which on mainnet is about 25GB per epoch");
+            }
 
-        Assert.That(storages.TryGetExact(prefix.AsSpan(0, prefixLength), EpochPolicy.WindowClosingAt(epochStart)), Is.Not.Null,
-            "a contract that stands still gets no row from its changes; the epoch-start snapshot is the only anchor its checkpoint nodes have, so it must reach the record depth as the account snapshot does, or every drop re-composes them");
+            foreach (ulong block in (ulong[])[epochStart, _chain.Head])
+            {
+                AssertStorageProofsMatch(ProveFromArchive(quiet, block, maxScannedRows: 192, slots[..4]), _chain.ExpectedProof(quiet, block, slots[..4]),
+                    $"at block {block}: without the epoch-start copy the checkpoint nodes resolve through the chain of the epoch they last changed in, inside a budget a subtree rebuild would exceed");
+            }
+        }
     }
 
     [Test]
@@ -1059,6 +1136,41 @@ public class ArchiveProofTests
             Assert.That(storages.Any(key => IsStorageRow(key, identity, pathLength: 2) && SuffixOf(key) == carriedWindow), Is.False,
                 "the storage snapshot reaches the record depth like the account snapshot, so the checkpoint nodes below the root are anchored at the epoch start and the carry has nothing left to write for a walk-built epoch");
         }
+    }
+
+    private ulong QuietEpochStart()
+    {
+        ulong epochStart = 2 * EpochPolicy.EpochBlocks;
+        Assert.That(epochStart, Is.LessThanOrEqualTo(_chain.Head), "precondition: the chain crosses an epoch start after the contract stood still");
+        return epochStart;
+    }
+
+    private (UInt256 Slot, byte[][] Path) SlotWithBranchesDownToCheckpointDepth(Address contract, UInt256[] slots, ulong block)
+    {
+        foreach (UInt256 slot in slots)
+        {
+            byte[][] path = _chain.ExpectedProof(contract, block, slot).StorageProofs![0].Proof;
+            if (path.Length <= EpochPolicy.StorageCheckpointDepth) continue;
+
+            bool allBranches = true;
+            for (int depth = 0; depth <= EpochPolicy.StorageCheckpointDepth && allBranches; depth++) allBranches = BranchRlp.IsBranch(path[depth]);
+            if (allBranches) return (slot, path);
+        }
+
+        Assert.Fail($"precondition: some slot has branch nodes on every depth down to {EpochPolicy.StorageCheckpointDepth} before the epoch start");
+        return default;
+    }
+
+    private byte[]? EpochStartRow(Address contract, UInt256 slot, int depth, ulong epochStart)
+    {
+        byte[] slotKey = Keccak.Compute(slot.ToBigEndian()).BytesToArray();
+        byte[] nibbles = new byte[depth];
+        for (int i = 0; i < depth; i++) nibbles[i] = (byte)((i & 1) == 0 ? slotKey[i / 2] >> 4 : slotKey[i / 2] & 0x0F);
+
+        CommitmentStore storages = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), EpochPolicy, CommitmentKeyLayout.IdentityLength);
+        byte[] prefix = new byte[CommitmentKeyLayout.MaxKeyLength];
+        int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, Keccak.Compute(contract.Bytes).Bytes[..CommitmentKeyLayout.IdentityLength], TreePath.FromNibble(nibbles), exact: false);
+        return storages.TryGetExact(prefix.AsSpan(0, prefixLength), EpochPolicy.WindowClosingAt(epochStart));
     }
 
     private UInt256[] AddQuietContract(Address quiet, Action<ArchiveProofTestChain.BlockBuilder, ulong>? onLaterBlock = null)
@@ -1242,7 +1354,7 @@ public class ArchiveProofTests
         bool joined = HoldingTheReclaimTurn(metadata, () =>
         {
             using CancellationTokenSource giveUp = new(TimeSpan.FromMilliseconds(200));
-            Assert.That(() => metadata.BeginWalk(0, 10, HistoryWalkRun.WorkItems, giveUp.Token), Throws.InstanceOf<OperationCanceledException>(),
+            Assert.That(() => metadata.BeginWalk(0, 10, HistoryWalkRun.WorkItems, buildCommitments: false, giveUp.Token), Throws.InstanceOf<OperationCanceledException>(),
                 "a walk waits for a running carry-forward, but a node stopping in that wait must not park behind it");
         });
 

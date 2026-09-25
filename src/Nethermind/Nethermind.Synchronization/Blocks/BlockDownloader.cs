@@ -131,6 +131,11 @@ namespace Nethermind.Synchronization.Blocks
                 // catch-all below, so a single bad response cannot finish the feed.
                 throw;
             }
+            catch (BlockTreeNotReadyException e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block download deferred: {e.Message}");
+                return null;
+            }
             catch (Exception ex)
             {
                 _logger.DebugError($"Unhandled exception in {nameof(BlockDownloader)}: {ex}");
@@ -649,30 +654,26 @@ namespace Nethermind.Synchronization.Blocks
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
             if (_logger.IsDebug) _logger.Debug($"Suggesting block {currentBlock.Header.ToString(BlockHeader.Format.Short)} with option {suggestOptions}");
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
-            bool handled = false;
-            if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
+            bool handled = HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult);
+
+            if (downloadReceipts && addResult is AddBlockResult.Added or AddBlockResult.AlreadyKnown)
             {
-                if (downloadReceipts)
+                if (receipts is not null)
                 {
-                    if (receipts is not null)
-                    {
-                        _receiptStorage.Insert(currentBlock, receipts);
-                    }
-                    else
-                    {
-                        // this shouldn't now happen with new validation above, still lets keep this check
-                        if (currentBlock.Header.HasTransactions)
-                        {
-                            if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
-                        }
-                    }
+                    _receiptStorage.Insert(currentBlock, receipts);
                 }
-                handled = true;
+                else if (currentBlock.Header.HasTransactions)
+                {
+                    if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
+                }
             }
 
             if (!shouldProcess)
             {
-                _blockTree.TryUpdateMainChain(currentBlock.Header, wereProcessed: false, preloadedBlocks: [currentBlock]);
+                if (!_blockTree.TryUpdateMainChain(currentBlock.Header, wereProcessed: false, preloadedBlocks: [currentBlock]))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Canonical update deferred for {currentBlock.Header.ToString(BlockHeader.Format.Short)}: a predecessor is missing or chain maintenance overlapped.");
+                }
             }
 
             _forwardHeaderProvider.OnSuggestBlock(suggestOptions, currentBlock, addResult);
@@ -736,9 +737,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 case AddBlockResult.CannotAccept:
                     {
-                        string message = $"Block tree rejected block/header from peer {peerInfo}: " +
-                                         $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
-                        throw new EthSyncException(message);
+                        throw new BlockTreeNotReadyException($"Block tree cannot accept block/header from peer {peerInfo}: #{block.Number} ({block.Hash}, parent {block.ParentHash})");
                     }
                 case AddBlockResult.InvalidBlock:
                     {

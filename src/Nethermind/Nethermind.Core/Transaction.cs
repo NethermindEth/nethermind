@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.ObjectPool;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -54,6 +55,11 @@ namespace Nethermind.Core
         public bool Supports1559 => Type.Supports1559();
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
+        public bool SupportsFrames => Type.SupportsFrames();
+
+        /// <summary>Whether this instance actually carries blobs, unlike <see cref="SupportsBlobs"/>, which is a
+        /// capability of the transaction type: an EIP-8141 frame transaction may carry blobs too.</summary>
+        public bool CarriesBlobs => BlobVersionedHashes is { Length: > 0 };
         public ulong GasLimit { get; set; }
         private ulong _spentGas;
         private ulong _blockGasUsed;
@@ -76,6 +82,11 @@ namespace Nethermind.Core
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
+
+        /// <summary>Whether the transaction creates a contract at the top level, so a receipt names a <c>contractAddress</c>.</summary>
+        /// <remarks>An EIP-8141 frame transaction has no <c>to</c> field, making <see cref="IsContractCreation"/> true
+        /// for it, yet it creates nothing at the top level — any creation happens inside a deploy frame.</remarks>
+        public bool CreatesTopLevelContract => IsContractCreation && !SupportsFrames;
 
         [MemberNotNullWhen(true, nameof(AuthorizationList))]
         public bool HasAuthorizationList =>
@@ -200,13 +211,85 @@ namespace Nethermind.Core
 
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
-        public object? NetworkWrapper { get; set; }
+        private object? _networkWrapper;
+
+        /// <remarks>Replacing the sidecar changes the mempool-form length, so the memoized size is dropped.</remarks>
+        public object? NetworkWrapper
+        {
+            get => _networkWrapper;
+            set
+            {
+                _networkWrapper = value;
+                _size = null;
+            }
+        }
 
         /// <summary>
         /// List of EOA code authorizations.
         /// https://eips.ethereum.org/EIPS/eip-7702
         /// </summary>
         public AuthorizationTuple[]? AuthorizationList { get; set; }
+
+        /// <summary>
+        /// List of frames of a frame transaction.
+        /// https://eips.ethereum.org/EIPS/eip-8141
+        /// </summary>
+        public TxFrame[]? Frames { get; set; }
+
+        /// <summary>
+        /// List of protocol-validated signatures available to a frame transaction.
+        /// https://eips.ethereum.org/EIPS/eip-8141
+        /// </summary>
+        public TxFrameSignature[]? FrameSignatures { get; set; }
+
+        /// <summary>
+        /// Fee-payer resolved at mempool admission for an EIP-8141 frame transaction; <c>null</c> until
+        /// resolved or when it cannot be resolved natively. In-memory only (not encoded).
+        /// </summary>
+        public Address? PayerAddress { get; set; }
+
+        /// <summary>
+        /// The maximum cost mempool admission priced this transaction at, released unchanged from
+        /// <see cref="PayerAddress"/>'s exposure when the transaction leaves the pool. Recorded with no payer too,
+        /// where it reserves nothing and only prices the sender's pending total. In-memory only (not encoded).
+        /// </summary>
+        /// <remarks>
+        /// Held rather than re-derived on release: the pool keeps a blob-carrying frame transaction as a light
+        /// record with no frames, which cannot be priced, and the pricing spec moves with the head besides.
+        /// </remarks>
+        public UInt256? PayerExposure { get; set; }
+
+        /// <summary>The EIP-8141 expiry deadline recovered from storage, for a transaction reloaded without
+        /// its frames. Null for every in-memory transaction, which carries the deadline in its frames.</summary>
+        public virtual ulong? PersistedExpiryDeadline => null;
+
+        /// <summary>The EIP-8141 prefix paymaster frozen onto a pool record held without its frames. Null for an
+        /// in-memory transaction, which derives it from the frames, and after a reload: it is not encoded.</summary>
+        public virtual Address? PersistedPaymaster => null;
+
+        /// <summary>
+        /// Nonce keys selected by a frame transaction, sharing the sequence number held by <see cref="Nonce"/>.
+        /// https://eips.ethereum.org/EIPS/eip-8250
+        /// </summary>
+        /// <remarks><see langword="null"/> for the EIP-8141 envelope, whose single nonce is the sender's
+        /// linear account nonce — the same domain EIP-8250 addresses as the key <c>0</c>.</remarks>
+        public UInt256[]? NonceKeys { get; set; }
+
+        /// <summary>
+        /// Recent-root references declared by a frame transaction.
+        /// https://eips.ethereum.org/EIPS/eip-8272
+        /// </summary>
+        /// <remarks><see langword="null"/> for an envelope that predates EIP-8272, which is a different
+        /// signing payload from one carrying an empty reference list.</remarks>
+        public RecentRootReference[]? RecentRootReferences { get; set; }
+
+        /// <summary>Zero and non-zero byte counts of the EIP-8272 recent-root reference calldata, priced in addition to
+        /// frame and signature data. In-memory only; set from the canonical encoding rather than recomputed.</summary>
+        public (int ZeroBytes, int NonZeroBytes) ReferenceCalldataStats { get; set; }
+
+        /// <summary>Zero and non-zero byte counts of EIP-8250's <c>nonce_calldata</c>, priced in addition to frame and
+        /// signature data. In-memory only; set from the canonical encoding rather than recomputed.</summary>
+        public (int ZeroBytes, int NonZeroBytes) FrameCalldataStats { get; set; }
 
         /// <summary>
         /// Service transactions are free. The field added to handle baseFee validation after 1559
@@ -286,7 +369,7 @@ namespace Nethermind.Core
 
         public override string ToString() => ToString(string.Empty);
 
-        public bool MayHaveNetworkForm => Type is TxType.Blob;
+        public bool MayHaveNetworkForm => Type is TxType.Blob or TxType.FrameTx;
 
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
@@ -325,11 +408,20 @@ namespace Nethermind.Core
                 obj.AccessList = default;
                 obj.MaxFeePerBlobGas = default;
                 obj.BlobVersionedHashes = default;
+                PooledBlobBuffers.Return(obj);
                 obj.NetworkWrapper = default;
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
                 obj._size = default;
                 obj.AuthorizationList = default;
+                obj.Frames = default;
+                obj.FrameSignatures = default;
+                obj.PayerAddress = default;
+                obj.PayerExposure = default;
+                obj.NonceKeys = default;
+                obj.RecentRootReferences = default;
+                obj.ReferenceCalldataStats = default;
+                obj.FrameCalldataStats = default;
 
                 return true;
             }
@@ -348,6 +440,8 @@ namespace Nethermind.Core
         /// <param name="copyHash">Whether to copy the cached transaction hash.</param>
         public void CopyTo(Transaction tx, bool copyHash)
         {
+            // Copies share the network payload and can outlive the original transaction.
+            PooledBlobBuffers.Disown(this);
             if (copyHash)
             {
                 tx.Hash = Hash;
@@ -378,10 +472,18 @@ namespace Nethermind.Core
             tx.PoolIndex = PoolIndex;
             tx._size = _size;
             tx.AuthorizationList = AuthorizationList;
+            tx.Frames = Frames;
+            tx.FrameSignatures = FrameSignatures;
+            tx.PayerAddress = PayerAddress;
+            tx.PayerExposure = PayerExposure;
+            tx.NonceKeys = NonceKeys;
+            tx.RecentRootReferences = RecentRootReferences;
+            tx.ReferenceCalldataStats = ReferenceCalldataStats;
+            tx.FrameCalldataStats = FrameCalldataStats;
         }
 
         public virtual ProofVersion? GetProofVersion() =>
-            SupportsBlobs && this is { NetworkWrapper: ShardBlobNetworkWrapper { Version: var version } }
+            NetworkWrapper is ShardBlobNetworkWrapper { Version: var version }
                 ? version
                 : null;
     }
@@ -430,6 +532,28 @@ namespace Nethermind.Core
         BlobCellMask CellMask = default,
         byte[][]? Cells = null)
     {
+        /// <remarks>
+        /// Record copies share this token. Disown the transaction before publishing any additional
+        /// reference to its wrapper or blob arrays; idempotent returns alone do not prevent use after return.
+        /// </remarks>
+        internal PooledBlobBuffers? PooledBuffers { get; init; }
+
+        /// <inheritdoc/>
+        /// <remarks>Pool ownership is excluded so equality depends only on the payload and record type.</remarks>
+        public virtual bool Equals(ShardBlobNetworkWrapper? other) =>
+            ReferenceEquals(this, other)
+            || (other is not null
+                && EqualityContract == other.EqualityContract
+                && Blobs == other.Blobs
+                && Commitments == other.Commitments
+                && Proofs == other.Proofs
+                && Version == other.Version
+                && CellMask.Equals(other.CellMask)
+                && Cells == other.Cells);
+
+        /// <inheritdoc/>
+        public override int GetHashCode() => HashCode.Combine(EqualityContract, Blobs, Commitments, Proofs, Version, CellMask, Cells);
+
         /// <summary>
         /// Creates a blob network wrapper without sparse-cell data.
         /// </summary>

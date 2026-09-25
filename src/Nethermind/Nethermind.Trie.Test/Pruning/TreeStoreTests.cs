@@ -40,7 +40,7 @@ namespace Nethermind.Trie.Test.Pruning
             IKeyValueStoreWithBatching? kvStore = null,
             IPersistenceStrategy? persistenceStrategy = null,
             IPruningConfig? pruningConfig = null,
-            IFinalizedStateProvider? finalizedStateProvider = null
+            IStateHeaderProvider? finalizedStateProvider = null
         )
         {
             pruningStrategy ??= No.Pruning;
@@ -1133,7 +1133,7 @@ namespace Nethermind.Trie.Test.Pruning
                 });
 
             WorldState worldState = new(
-                new TrieStoreScopeProvider(fullTrieStore, memDbProvider.CodeDb, _logManager),
+                new TrieStoreScopeProvider(fullTrieStore, memDbProvider.CodeDb, UnavailableStateHeaderProvider.Instance, _logManager),
                 LimboLogs.Instance);
 
             // Simulate some kind of cache access which causes unresolved node to remain.
@@ -1155,10 +1155,10 @@ namespace Nethermind.Trie.Test.Pruning
             (Hash256, ValueHash256) SetupStartingState()
             {
                 WorldState worldState = new(
-                    new TrieStoreScopeProvider(new TestRawTrieStore(nodeStorage), memDbProvider.CodeDb, LimboLogs.Instance), LimboLogs.Instance);
+                    new TrieStoreScopeProvider(new TestRawTrieStore(nodeStorage), memDbProvider.CodeDb, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance), LimboLogs.Instance);
                 using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
-                worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());
+                worldState.Set(new StorageCell(address, slot), new UInt256(TestItem.KeccakB.BytesToArray(), isBigEndian: true));
                 worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
                 worldState.CommitTree(1);
 
@@ -1542,21 +1542,29 @@ namespace Nethermind.Trie.Test.Pruning
                 fullTrieStore.SyncPruneQueue();
                 testPruningStrategy.ShouldPruneEnabled = false;
             });
-            Assert.That(writeReached.Wait(1000), Is.True, "Pruning task did not reach database write");
-
-            // Bring block 5's node to block 12
-            // This is done in commit buffer.
-            using (fullTrieStore.BeginScope(Build.A.BlockHeader.WithStateRoot(ptree.RootHash).TestObject))
+            try
             {
-                Assert.That(fullTrieStore.IsInCommitBufferMode, Is.True);
-                using (fullTrieStore.BeginBlockCommit(12UL))
+                // Wake on the task ending too, so a pruning failure surfaces instead of waiting out the timeout.
+                int signalled = WaitHandle.WaitAny([writeReached.WaitHandle, ((IAsyncResult)persistTask).AsyncWaitHandle], TimeSpan.FromSeconds(30));
+                Assert.That(signalled, Is.Zero, () => $"Pruning task did not reach database write: {persistTask.Status} {persistTask.Exception}");
+
+                // Bring block 5's node to block 12
+                // This is done in commit buffer.
+                using (fullTrieStore.BeginScope(Build.A.BlockHeader.WithStateRoot(ptree.RootHash).TestObject))
                 {
-                    WriteRandomData(5);
-                    Assert.That(ptree.RootHash, Is.EqualTo(persistedRootHash));
+                    Assert.That(fullTrieStore.IsInCommitBufferMode, Is.True);
+                    using (fullTrieStore.BeginBlockCommit(12UL))
+                    {
+                        WriteRandomData(5);
+                        Assert.That(ptree.RootHash, Is.EqualTo(persistedRootHash));
+                    }
                 }
             }
-
-            writeBlocker.Set();
+            finally
+            {
+                // A failed assert must not leave the pruning thread blocked on the write forever.
+                writeBlocker.Set();
+            }
 
             await persistTask;
 

@@ -31,9 +31,11 @@ using Nethermind.Evm.State;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Ssz;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
 using Nethermind.Trie.Pruning;
@@ -43,6 +45,132 @@ namespace Nethermind.Consensus.Test.Stateless;
 
 public class StatelessInputGeneratorTests
 {
+    [Test]
+    [NonParallelizable]
+    public async Task Encoded_execution_checks_reconstructed_header_hash(
+        [Values] bool amsterdam, [Values("valid", "hash", "transactions", "withdrawals", "otherKey", "flippedByte", "prefix")] string mutation)
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam, currentChainActivation: true);
+        using (witness)
+        {
+            byte[] encoded = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
+            if (amsterdam) Mutate<SszExecutionPayloadAmsterdam>();
+            else Mutate<SszExecutionPayload>();
+
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(encoded), out StatelessValidationResult result);
+            Assert.That(result.IsSuccess, Is.EqualTo(mutation == "valid"));
+
+            void Mutate<TPayload>() where TPayload : SszExecutionPayload, ISszCodec<TPayload>, new()
+            {
+                StatelessInput<TPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<TPayload> input);
+                TPayload payload = input.NewPayloadRequest.ExecutionPayload;
+                byte[] key = [.. input.PublicKeys[0].AsSpan()];
+                switch (mutation)
+                {
+                    case "hash": payload.BlockHash = TestItem.KeccakA; break;
+                    case "transactions": payload.AsExecutionPayload().Transactions[0][^1] ^= 1; break;
+                    case "withdrawals":
+                        payload.Withdrawals = [new SszWithdrawal { Address = TestItem.PrivateKeyA.Address, Amount = 0 }];
+                        break;
+                    case "otherKey": key = TestItem.PrivateKeyB.PublicKey.PrefixedBytes; break;
+                    case "flippedByte": key[^1] ^= 1; break;
+                    case "prefix": key[0] = 0x02; break;
+                }
+                input.PublicKeys[0] = SszPublicKey.FromSpan(key);
+                Block reconstructed = input.NewPayloadRequest.ToBlock(requestsEnabled: true)!;
+                Assert.That(HeaderValidator.ValidateHash(reconstructed.Header),
+                    Is.EqualTo(mutation is not ("hash" or "transactions" or "withdrawals")));
+                byte[] body = StatelessInput<TPayload>.Encode(input);
+                byte[] modified = new byte[body.Length + sizeof(ushort)];
+                encoded.AsSpan(0, sizeof(ushort)).CopyTo(modified);
+                body.CopyTo(modified, sizeof(ushort));
+                encoded = modified;
+            }
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Encoded_execution_checks_transaction_public_keys(
+        [Values("valid", "otherKey", "flippedByte", "prefix")] string mutation)
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: false, currentChainActivation: true);
+        using (witness)
+        {
+            byte[] encoded = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
+            StatelessInput<SszExecutionPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> input);
+
+            byte[] key = [.. input.PublicKeys[0].AsSpan()];
+            switch (mutation)
+            {
+                case "otherKey": key = TestItem.PrivateKeyB.PublicKey.PrefixedBytes; break;
+                case "flippedByte": key[^1] ^= 1; break;
+                case "prefix": key[0] = 0x02; break;
+            }
+            input.PublicKeys[0] = SszPublicKey.FromSpan(key);
+
+            byte[] body = StatelessInput<SszExecutionPayload>.Encode(input);
+            byte[] modified = new byte[body.Length + sizeof(ushort)];
+            encoded.AsSpan(0, sizeof(ushort)).CopyTo(modified);
+            body.CopyTo(modified, sizeof(ushort));
+
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(modified), out StatelessValidationResult result);
+            Assert.That(result.IsSuccess, Is.EqualTo(mutation == "valid"));
+        }
+    }
+
+    [Test]
+    public void Direct_execution_validates_body_roots([Values("valid", "transactions", "withdrawals", "uncles", "hash")] string mutation)
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: false);
+        using (witness)
+        {
+            switch (mutation)
+            {
+                case "transactions": block.Header.TxRoot = TestItem.KeccakA; break;
+                case "withdrawals": block.Header.WithdrawalsRoot = TestItem.KeccakA; break;
+                case "uncles": block.Header.UnclesHash = TestItem.KeccakA; break;
+            }
+            block.Header.Hash = mutation == "hash" ? TestItem.KeccakA : block.Header.CalculateHash();
+
+            Assert.That(StatelessExecutor.Execute(block, witness, specProvider), Is.EqualTo(mutation == "valid"));
+        }
+    }
+
+    [Test]
+    public void Direct_execution_rejects_missing_or_unrelated_parent([Values] bool unrelatedParent)
+    {
+        Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).TestObject;
+        using Witness witness = EmptyWitness(unrelatedParent ? [Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes] : []);
+
+        Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance)), Is.False);
+    }
+
+    [Test]
+    public void Direct_execution_rejects_an_invalid_suggested_block()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        block.Header.TxRoot = TestItem.KeccakA;
+        using Witness witness = EmptyWitness([Rlp.Encode(parent).Bytes]);
+
+        Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance)), Is.False);
+    }
+
+    [Test]
+    public void Malformed_input_returns_failure([Values(0, 1, 2, 3)] int length)
+    {
+        byte[] output = StatelessExecutor.Execute(new byte[length]);
+        StatelessValidationResult.Decode(output, out StatelessValidationResult result);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.SchemaId, Is.Zero);
+            Assert.That(result.NewPayloadRequestRoot, Is.EqualTo(Hash256.Zero));
+        }
+    }
+
     [Test]
     public async Task Raw_block_input_recovers_requests_and_public_keys([Values] bool amsterdam)
     {
@@ -172,7 +300,7 @@ public class StatelessInputGeneratorTests
             new TestSpecProvider(Osaka.Instance), new CancellationToken(canceled: true)), Throws.InstanceOf<OperationCanceledException>());
     }
 
-    private static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam)
+    private static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false)
     {
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
         ISpecProvider specProvider = new TestSpecProvider(spec);
@@ -204,7 +332,8 @@ public class StatelessInputGeneratorTests
             }
             state.Commit(spec);
             state.CommitTree(0);
-            parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(state.StateRoot).TestObject;
+            parent = Build.A.BlockHeader.WithNumber(currentChainActivation ? 30_000_000 : 0)
+                .WithTimestamp(currentChainActivation ? MainnetSpecProvider.OsakaBlockTimestamp : 1_000_000UL).WithStateRoot(state.StateRoot).TestObject;
         }
 
         using TrieStore.StableLockScope stableState = container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.PrepareStableState(CancellationToken.None);

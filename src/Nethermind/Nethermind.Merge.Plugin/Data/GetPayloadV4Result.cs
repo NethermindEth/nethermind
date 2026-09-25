@@ -22,7 +22,7 @@ public class GetPayloadV4Result<TVersionedExecutionPayload>(Block block, UInt256
     public override bool ValidateFork(ISpecProvider specProvider)
     {
         IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(ExecutionPayload.BlockNumber, ExecutionPayload.Timestamp));
-        return spec.IsEip7623Enabled && !spec.IsEip7594Enabled;
+        return spec.RequestsEnabled && !spec.IsEip7594Enabled;
     }
 }
 

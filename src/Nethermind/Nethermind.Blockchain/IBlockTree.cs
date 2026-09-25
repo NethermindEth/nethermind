@@ -73,6 +73,7 @@ namespace Nethermind.Blockchain
         /// <param name="headers">Header batch to add</param>
         /// <param name="headerOptions"></param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
+        /// <exception cref="BlockTreeNotReadyException">The tree temporarily cannot accept headers; retry after it becomes available.</exception>
         void BulkInsertHeader(IReadOnlyList<BlockHeader> headers, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
 
         /// <summary>
@@ -83,7 +84,20 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None);
 
+        /// <summary>Writes the persisted head pointer without moving the live head.</summary>
         void UpdateHeadBlock(Hash256 blockHash);
+
+        /// <summary>
+        /// Rewinds the canonical head to <paramref name="blockHash"/>.
+        /// </summary>
+        /// <remarks>
+        /// Requires a canonical target at or below the current head. Retains block bodies and state,
+        /// clears canonical markers above the target, and resets the best-suggested pointers.
+        /// The caller must check state availability before rewinding.
+        /// The default implementation returns false.
+        /// </remarks>
+        /// <returns>Whether the head could be rewound.</returns>
+        bool TryRewindHead(Hash256 blockHash) => false;
 
         void NewOldestBlock(ulong oldestBlock);
 
@@ -148,7 +162,7 @@ namespace Nethermind.Blockchain
         /// <param name="wereProcessed">Whether the branch blocks have been processed (full sync) or not (fast sync).</param>
         /// <param name="forceUpdateHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> regardless of <see cref="Block.TotalDifficulty"/>.</param>
         /// <param name="preloadedBlocks">Optional blocks the caller already holds, used as a hash→block cache during the walk.</param>
-        /// <returns><value>True</value> if the chain was updated; <value>False</value> if the branch could not be walked back to the main chain (a predecessor was missing) — in which case nothing is mutated.</returns>
+        /// <returns><value>True</value> if the chain was updated; <value>False</value> if a predecessor is missing or debug maintenance overlaps the update; neither refusal mutates the chain.</returns>
         bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks);
 
         void MarkChainAsProcessed(IReadOnlyList<Block> blocks);
@@ -217,6 +231,13 @@ namespace Nethermind.Blockchain
         event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
 
         /// <summary>
+        /// A block left the canonical chain without a block at its number replacing it, because the head moved
+        /// to a lower block (a rewind or a reorg onto a shorter branch).
+        /// </summary>
+        /// <remarks>Raised from the tip down, before the <see cref="BlockAddedToMain"/> events of the same update.</remarks>
+        event EventHandler<BlockHeaderEventArgs> BlockRemovedFromMain { add { } remove { } }
+
+        /// <summary>
         /// A block is now set as head
         /// </summary>
         event EventHandler<BlockEventArgs> NewHeadBlock;
@@ -228,6 +249,16 @@ namespace Nethermind.Blockchain
         event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
         event EventHandler<ForkChoiceUpdateEventArgs> OnForkChoiceUpdated;
 
+        /// <summary>Maximum difference between the last and first levels in a deletion slice; the inclusive level count is this value plus one.</summary>
+        const ulong MaxDeletionSpan = 50_000;
+
+        /// <summary>Deletes the requested chain levels and updates the head if necessary.</summary>
+        /// <remarks>
+        /// Callers must coordinate synchronization and preserve external body, receipt and block-access-list progress;
+        /// this operation clears only deleted execution and beacon header pointers.
+        /// </remarks>
+        /// <exception cref="ArgumentException">The range does not satisfy the slice position rules.</exception>
+        /// <exception cref="InvalidOperationException">Chain maintenance overlaps the deletion or the replacement head block is unavailable.</exception>
         int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false);
 
         bool IsBetterThanHead(BlockHeader? header);

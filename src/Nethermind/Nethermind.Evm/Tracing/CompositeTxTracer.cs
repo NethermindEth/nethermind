@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class CompositeTxTracer : ITxTracer
+public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
 {
     internal readonly IList<ITxTracer> _txTracers;
 
@@ -65,16 +65,32 @@ public class CompositeTxTracer : ITxTracer
     public bool IsCollectingLogs { get; }
     public bool IsTracingActions { get; }
     public bool IsTracingOpLevelStorage { get; }
-    public bool IsTracingMemory { get; }
+    public bool IsTracingMemory { get; private set; }
     public bool IsTracingInstructions { get; }
     public bool IsTracingRefunds { get; }
     public bool IsTracingReturnData { get; }
     public bool IsTracingCode { get; }
-    public bool IsTracingStack { get; }
+    public bool IsTracingStack { get; private set; }
     public bool IsTracingBlockHash { get; }
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
     public bool IsTracingLogs { get; }
+
+    public UInt256 InstructionMask
+    {
+        get
+        {
+            UInt256 mask = UInt256.Zero;
+            for (int index = 0; index < _txTracers.Count; index++)
+            {
+                ITxTracer tracer = _txTracers[index];
+                if (!tracer.IsTracingInstructions && !tracer.IsTracingStack && !tracer.IsTracingMemory && !tracer.IsTracingReturnData) continue;
+                if (tracer is not IInstructionTracingFilter filter) return UInt256.MaxValue;
+                mask |= filter.InstructionMask;
+            }
+            return mask;
+        }
+    }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -136,6 +152,24 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
+    public void ReportStorageClear(Address address)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingStorage) innerTracer.ReportStorageClear(address);
+        }
+    }
+
+    public void ReportStorageRestore(in StorageCell storageCell, byte[] value)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingStorage) innerTracer.ReportStorageRestore(storageCell, value);
+        }
+    }
+
     public void ReportStorageRead(in StorageCell storageCell)
     {
         for (int index = 0; index < _txTracers.Count; index++)
@@ -174,6 +208,8 @@ public class CompositeTxTracer : ITxTracer
 
     public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
+        bool tracingMemory = false;
+        bool tracingStack = false;
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
@@ -181,7 +217,11 @@ public class CompositeTxTracer : ITxTracer
             {
                 innerTracer.StartOperation(pc, opcode, gas, env);
             }
+            tracingMemory |= innerTracer.IsTracingMemory;
+            tracingStack |= innerTracer.IsTracingStack;
         }
+        IsTracingMemory = tracingMemory;
+        IsTracingStack = tracingStack;
     }
 
     public void ReportOperationError(EvmExceptionType error)
@@ -280,7 +320,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    public void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -316,14 +356,14 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingStorage)
+            if (innerTracer.IsTracingInstructions)
             {
-                innerTracer.ReportStorageChange(key, value);
+                innerTracer.ReportOperationStorageChange(key, value);
             }
         }
     }
@@ -420,6 +460,18 @@ public class CompositeTxTracer : ITxTracer
             if (innerTracer.IsTracingActions)
             {
                 innerTracer.ReportActionError(evmExceptionType);
+            }
+        }
+    }
+
+    public void ReportActionRemainingGas(ulong gas)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
+            {
+                innerTracer.ReportActionRemainingGas(gas);
             }
         }
     }
