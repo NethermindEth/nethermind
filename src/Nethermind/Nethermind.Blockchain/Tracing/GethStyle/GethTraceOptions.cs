@@ -70,12 +70,18 @@ public record GethTraceOptions
         public override ulong Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType != JsonTokenType.String) ThrowInvalidToken();
+            if (!reader.HasValueSequence && !reader.ValueIsEscaped) return ParseQuantity(reader.ValueSpan);
             const int maxQuantityLength = 18;
             const int maxEscapedLength = maxQuantityLength * 6;
             long length = reader.HasValueSequence ? reader.ValueSequence.Length : reader.ValueSpan.Length;
             if (length > maxEscapedLength) ThrowInvalidQuantity();
             Span<byte> buffer = stackalloc byte[maxEscapedLength];
-            ReadOnlySpan<byte> value = buffer[..reader.CopyString(buffer)];
+            return ParseQuantity(buffer[..reader.CopyString(buffer)]);
+        }
+
+        private static ulong ParseQuantity(ReadOnlySpan<byte> value)
+        {
+            const int maxQuantityLength = 18;
             if (value.Length is < 3 or > maxQuantityLength || value[0] != '0' || (value[1] != 'x' && value[1] != 'X')
                 || (value.Length > 3 && value[2] == '0'))
                 ThrowInvalidQuantity();
@@ -91,7 +97,7 @@ public record GethTraceOptions
         private static void ThrowInvalidQuantity() => throw new JsonException("Invalid transaction index hex quantity.");
 
         /// <inheritdoc/>
-        public override void Write(Utf8JsonWriter writer, ulong value, JsonSerializerOptions options) => writer.WriteStringValue($"0x{value:x}");
+        public override void Write(Utf8JsonWriter writer, ulong value, JsonSerializerOptions options) => Nethermind.Serialization.Json.HexWriter.WriteUlongHexStringValue(writer, value);
     }
 
     /// <summary>
