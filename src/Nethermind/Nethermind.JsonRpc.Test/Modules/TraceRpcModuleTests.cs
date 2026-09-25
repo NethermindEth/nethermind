@@ -122,15 +122,31 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task Trace_replayBlockTransactions_rejects_unknown_trace_type_for_genesis()
+    public async Task Rejects_unknown_trace_type_as_invalid_params(
+        [Values("trace_replayBlockTransactions", "trace_call", "trace_callMany", "trace_simulateV1")] string method)
     {
         Context context = new();
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
+        string[] traceTypes = ["unknown"];
+        object transaction = new { from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x186a0" };
+        object[] parameters = method switch
+        {
+            // Genesis short-circuits replay, so this also checks the types are validated before that.
+            "trace_replayBlockTransactions" => ["earliest", traceTypes],
+            "trace_call" => [transaction, traceTypes, "latest"],
+            "trace_callMany" => [new[] { new object[] { transaction, traceTypes } }, "latest"],
+            _ => [new { blockStateCalls = new[] { new { calls = new[] { transaction } } } }, "latest", traceTypes],
+        };
 
-        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_replayBlockTransactions", "earliest", new[] { "unknown" });
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
         using JsonDocument document = JsonDocument.Parse(response);
-        Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
+        JsonElement error = document.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
+            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("Invalid trace types"), response);
+        }
     }
 
     [Test]

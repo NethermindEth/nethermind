@@ -125,7 +125,7 @@ public class TraceStoreRpcModuleTests
         Replay(new DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer>(
             new ParityLikeBlockTracer(new TraceStoreConfig().TraceTypes), test.Store, new ParityLikeTraceSerializer(LimboLogs.Instance), LimboLogs.Instance), block);
         string[] types = selection.Split(',');
-        ParityTraceTypes liveTypes = TraceRpcModule.GetParityTypes(types);
+        Assert.That(TraceRpcModule.TryGetParityTypes(types, out ParityTraceTypes liveTypes), Is.True);
         JToken expected;
         if (streaming)
         {
