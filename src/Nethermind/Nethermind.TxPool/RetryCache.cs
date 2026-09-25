@@ -407,7 +407,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     {
         using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_checkMs), _timeProvider);
 
-        while (await timer.WaitForNextTickAsync(_token))
+        while (await timer.WaitForNextTickAsync(_token).ConfigureAwait(false))
         {
             ProcessRetryTick();
         }
