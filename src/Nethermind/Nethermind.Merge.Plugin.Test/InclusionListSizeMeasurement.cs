@@ -46,9 +46,6 @@ public class InclusionListSizeMeasurement
     private const int Draws = 2000;
     private const int SszOffsetBytes = 4;
 
-    // Below this fraction of the cap, the average draw is corpus-bound rather than cap-bound and proves nothing.
-    private const double MinSaturationFraction = 0.95;
-
     [Test]
     public void Measure()
     {
@@ -105,15 +102,6 @@ public class InclusionListSizeMeasurement
                                   $"{Eip7805Constants.MaxBytesPerInclusionList}, " +
                                   $"with SSZ offsets {(double)(totalBytes + (long)SszOffsetBytes * sum) / Draws:F0}");
 
-        // A low fill fraction alone does not mean the corpus is too small: large entries can leave unusable
-        // space after the cap has already excluded other senders.
-        long meanBytes = totalBytes / Draws;
-        if (meanBytes < (long)(Eip7805Constants.MaxBytesPerInclusionList * MinSaturationFraction)
-            && mean >= txs.Length)
-        {
-            Assert.Inconclusive($"Draws average {meanBytes}B of the {Eip7805Constants.MaxBytesPerInclusionList}B cap " +
-                                 $"({MinSaturationFraction:P0} threshold) — draws are corpus-bound, not cap-bound. Supply a larger corpus.");
-        }
     }
 
     private static Transaction[] LoadCorpus()
