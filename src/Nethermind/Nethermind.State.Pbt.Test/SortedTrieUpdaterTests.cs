@@ -78,12 +78,42 @@ public class SortedTrieUpdaterTests
             Throws.ArgumentException.With.Message.Contains("prefix-free"));
     }
 
+    [Test]
+    public void Partitioned_sorted_zone_fold_matches_bucketing([Values] PbtPrefixlessBranchOmission omission, [Values(1, 2, 3)] int seed)
+    {
+        using PbtNodeGroupStore bucketingStore = new();
+        using PbtNodeGroupStore sortedStore = new();
+        ValueHash256 bucketingRoot = default;
+        ValueHash256 sortedRoot = default;
+        foreach ((byte[] Key, byte[]? Value)[] writes in RandomRounds(new Random(seed), ZoneKey))
+        {
+            // A single-operation minimum splits every zone and frame, so shards sort and slots fold across threads even for small batches.
+            using (PbtPartitionBatches changes = PbtStoreTestExtensions.PreparePartitions(writes))
+                bucketingRoot = TrieUpdater.UpdateRoot(bucketingStore, bucketingRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.FanOut(1), omission, false, null);
+            using (PbtPartitionBatches changes = PbtStoreTestExtensions.PreparePartitions(writes))
+                sortedRoot = TrieUpdater.UpdateRoot(sortedStore, sortedRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.FanOut(1), omission, true, null);
+
+            IReadOnlyList<PbtPhysicalPayload> actual = sortedStore.ExportPhysicalPayloads();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sortedRoot, Is.EqualTo(bucketingRoot));
+                Assert.That(actual.Select(Describe), Is.EqualTo(bucketingStore.ExportPhysicalPayloads().Select(Describe)));
+            }
+            PbtStoreTestExtensions.AssertSubtreeBytes(actual);
+        }
+    }
+
     private static void RunRandom<TKey, TPath>(PbtPrefixlessBranchOmission omission, int seed, Func<Random, byte[]> newKey)
         where TKey : unmanaged, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
     {
-        Random random = new(seed);
         using DifferentialTree<TKey, TPath> tree = new(omission);
+        foreach ((byte[] Key, byte[]? Value)[] writes in RandomRounds(new Random(seed), newKey)) tree.Apply(writes);
+    }
+
+    /// <summary>Rounds of distinct writes mixing inserts, updates, clustered keys and deletes, with every sixth round deleting everything.</summary>
+    private static IEnumerable<(byte[] Key, byte[]? Value)[]> RandomRounds(Random random, Func<Random, byte[]> newKey)
+    {
         List<byte[]> live = [];
         HashSet<string> liveSet = [];
         for (int round = 0; round < 24; round++)
@@ -108,7 +138,7 @@ public class SortedTrieUpdaterTests
                 writes[key.ToHexString()] = (key, delete ? null : Value((byte)random.Next(1, 4)));
             }
 
-            tree.Apply([.. writes.Values]);
+            yield return [.. writes.Values];
             foreach ((byte[] key, byte[]? value) in writes.Values)
             {
                 string hex = key.ToHexString();
@@ -122,6 +152,20 @@ public class SortedTrieUpdaterTests
                 }
             }
         }
+    }
+
+    /// <summary>A key in the account, code or storage zone, at that zone's key length.</summary>
+    private static byte[] ZoneKey(Random random)
+    {
+        byte zone = random.Next(3) switch
+        {
+            0 => Eip8297KeyDerivation.AccountZone,
+            1 => Eip8297KeyDerivation.CodeZone,
+            _ => Eip8297KeyDerivation.StorageZone,
+        };
+        byte[] key = RandomBytes(random, zone == Eip8297KeyDerivation.StorageZone ? PbtStoragePath.KeyLength : PbtPath.KeyLength);
+        key[0] = zone;
+        return key;
     }
 
     /// <summary>A key sharing a random-length prefix with <paramref name="existing"/>, so branches span groups and split deep.</summary>
@@ -149,6 +193,9 @@ public class SortedTrieUpdaterTests
         random.NextBytes(bytes);
         return bytes;
     }
+
+    private static string Describe(PbtPhysicalPayload payload) =>
+        $"{payload.Key.ToEncodedArray().ToHexString()}:{payload.Payload.Span.ToHexString()}";
 
     private static byte[] Value(byte seed)
     {
@@ -204,9 +251,6 @@ public class SortedTrieUpdaterTests
             }
             PbtStoreTestExtensions.AssertSubtreeBytes(actual);
         }
-
-        private static string Describe(PbtPhysicalPayload payload) =>
-            $"{payload.Key.ToEncodedArray().ToHexString()}:{payload.Payload.Span.ToHexString()}";
 
         public void Dispose()
         {

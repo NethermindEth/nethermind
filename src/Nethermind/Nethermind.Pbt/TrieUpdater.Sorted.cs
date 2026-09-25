@@ -3,6 +3,7 @@
 
 using System.Buffers;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
@@ -192,7 +193,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (ownerReader.BitDepth == bitDepth)
         {
             // Only the tree root folds in the frame it was handed; its root is detached for the caller to write back.
-            ComposedNode root = WalkFrame(context, ref ownerReader, ref ownerHashes, ownerWriter, current, operations, path);
+            ComposedNode root = WalkFrame(context, ref ownerReader, ref ownerHashes, ownerWriter, current, operations, path, default);
             if (root.IsEmpty) return default;
             ownerWriter.Entry(root.Offset, root.Length).Span.CopyTo(encoding);
             ownerWriter.DropLast(PbtFourLevelGroupGeometry.RootPosition);
@@ -263,7 +264,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         TrieUpdaterMetrics? metrics = context.Metrics;
         using PbtNodeGroupWriter<TPath> writer = new(bitDepth, context.MemoryProvider, context.PrefixlessBranchOmission);
         StoredGroupHashes hashes = default;
-        ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path);
+        ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path, default);
         SlotNode result = default;
         ValueHash256 groupHash = default;
         if (!root.IsEmpty)
@@ -280,8 +281,12 @@ internal static partial class TrieUpdater<TKey, TPath>
     }
 
     /// <summary>Rebuilds the open frame's group from <paramref name="input"/> and the range, leaving its root as the last entry, at the root position.</summary>
+    /// <param name="shardTable">
+    /// The producer's shard table when the operations are grouped by this frame's slot nibble: the used-slot mask, then
+    /// each used slot's count. Slot ranges are then read from it rather than from the keys. Empty otherwise.
+    /// </param>
     private static ComposedNode WalkFrame<TFrame>(FoldContext context, ref TFrame reader, ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
-        scoped in BoundaryNode input, ReadOnlySpan<PbtWriteOperation<TKey>> operations, PbtTraversalPath path)
+        scoped in BoundaryNode input, ReadOnlySpan<PbtWriteOperation<TKey>> operations, PbtTraversalPath path, ReadOnlySpan<int> shardTable)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         int bitDepth = path.BitDepth;
@@ -290,7 +295,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             ? reader.StoredPositions & ~(1u << PbtFourLevelGroupGeometry.RootPosition)
             : 0;
         writer.ReserveFirstBuffer(reader.PayloadLength);
-        SortedWalk<TFrame> walk = new(context, ref reader, ref hashes, writer, path, input, stored, operations);
+        SortedWalk<TFrame> walk = new(context, ref reader, ref hashes, writer, path, input, stored, operations, shardTable);
         try
         {
             if (context.FoldQuota is not null) TryFoldSlotsInParallel(ref walk);
@@ -334,9 +339,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         int foldCount = 0;
         for (int index = 0; index < operations.Length;)
         {
-            int slot = BoundarySlot(operations[index].Key.Bytes, bitDepth);
+            int slot = walk.SlotAt(index);
             int start = index;
-            while (++index < operations.Length && BoundarySlot(operations[index].Key.Bytes, bitDepth) == slot) { }
+            index = walk.SlotEnd(start, slot);
             Cover cover = walk.CoverAt(slot);
             if (index - start == 1 && (cover.IsEmpty || walk.IsLeaf(cover))) continue;
             slots[foldCount] = slot;
@@ -386,21 +391,34 @@ internal static partial class TrieUpdater<TKey, TPath>
     private static void FoldSlotRuns(FoldContext context, SortedSlotFold[] folds, scoped ReadOnlySpan<int> runEnds, TPath groupPath, int bitDepth, byte[] foldedAhead)
     {
         using ArrayPoolList<int> runs = new(runEnds);
-        ConcurrencyController quota = context.FoldQuota!;
-        int nextRun = 0;
-        for (; nextRun < runs.Count - 1 && !quota.TryRequestConcurrencyQuota(); nextRun++)
-            FoldRun(nextRun);
-        if (nextRun < runs.Count - 1)
+        ForEachOnQuota(context.FoldQuota!, runs.Count, run =>
+        {
+            for (int fold = run == 0 ? 0 : runs[run - 1]; fold < runs[run]; fold++)
+                folds[fold].Fold(context, groupPath, bitDepth, foldedAhead);
+        });
+    }
+
+    /// <summary>Runs <paramref name="work"/> for every index below <paramref name="count"/>, across threads as <paramref name="quota"/> allows.</summary>
+    /// <remarks>
+    /// Work runs on the calling thread while the quota has no free slot; the first slot taken admits a parallel loop over
+    /// the indices still left, whose workers charge themselves as they start, as <see cref="FoldBoundaryFromPartition"/> does.
+    /// </remarks>
+    private static void ForEachOnQuota(ConcurrencyController quota, int count, Action<int> work)
+    {
+        int next = 0;
+        for (; next < count - 1 && !quota.TryRequestConcurrencyQuota(); next++)
+            work(next);
+        if (next < count - 1)
         {
             int callerThreadId = Environment.CurrentManagedThreadId;
             int admissionSlotClaimed = 0;
             try
             {
-                ParallelUnbalancedWork.For(nextRun, runs.Count, ParallelUnbalancedWork.DefaultOptions,
+                ParallelUnbalancedWork.For(next, count, ParallelUnbalancedWork.DefaultOptions,
                     () => TakeWorkerQuota(quota, callerThreadId, ref admissionSlotClaimed),
                     (index, tookQuota) =>
                     {
-                        FoldRun(index);
+                        work(index);
                         return tookQuota;
                     },
                     tookQuota => ReturnWorkerQuota(quota, tookQuota));
@@ -410,16 +428,58 @@ internal static partial class TrieUpdater<TKey, TPath>
                 ReturnAdmissionSlot(quota, ref admissionSlotClaimed);
             }
         }
-        else if (nextRun < runs.Count)
+        else if (next < count)
         {
-            FoldRun(nextRun);
+            work(next);
+        }
+    }
+
+    /// <summary>Sorts a zone's operations, which the producer grouped by <paramref name="shardTable"/>'s shards, by sorting each shard in place.</summary>
+    /// <remarks>
+    /// The shards lie in ascending shard order and every key in one shard shares the shard nibble, so sorted shards make a
+    /// sorted zone. A zone wide enough for two workers sorts its shards across threads under the fold quota.
+    /// </remarks>
+    /// <param name="shardTable">The used-shard mask, then each used shard's count.</param>
+    internal static void SortShards(FoldContext context, Span<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> shardTable)
+    {
+        int shardCount = BitOperations.PopCount((uint)shardTable[0]);
+        if (context.FoldQuota is null || shardCount < 2 || operations.Length < 2 * context.FanOut.MinOperationsPerWorker)
+        {
+            int offset = 0;
+            foreach (int count in shardTable.Slice(1, shardCount))
+            {
+                operations.Slice(offset, count).Sort(OperationComparer.Instance);
+                offset += count;
+            }
+            return;
         }
 
-        void FoldRun(int run)
-        {
-            for (int fold = run == 0 ? 0 : runs[run - 1]; fold < runs[run]; fold++)
-                folds[fold].Fold(context, groupPath, bitDepth, foldedAhead);
-        }
+        PbtWriteOperation<TKey>[] array = context.Operations!;
+        int[] starts = new int[shardCount + 1];
+        starts[0] = OffsetOf(array, operations);
+        for (int shard = 0; shard < shardCount; shard++) starts[shard + 1] = starts[shard] + shardTable[1 + shard];
+        ForEachOnQuota(context.FoldQuota, shardCount, shard => array.AsSpan(starts[shard], starts[shard + 1] - starts[shard]).Sort(OperationComparer.Instance));
+    }
+
+    /// <summary>Folds a zone group whose operations <see cref="SortShards"/> sorted, leaving its root in <paramref name="result"/> anchored at <paramref name="resultDepth"/>.</summary>
+    /// <remarks>
+    /// The sorted counterpart of <see cref="FoldBoundary"/> for the partitioned driver: the shard table's counts are this
+    /// frame's slot ranges, which the walk and its slot fan-out take as they are.
+    /// </remarks>
+    internal static void FoldZoneSorted<TFrame>(FoldContext context, ref TFrame reader, ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
+        BoundaryNode current, ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int resultDepth, ReadOnlySpan<int> shardTable,
+        ref FoldResult result)
+        where TFrame : struct, IGroupFrame<TKey, TPath>
+    {
+        AssertSorted(operations);
+        ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path, shardTable);
+        TakeRoot(writer, path, resultDepth, root, ref result);
+    }
+
+    private sealed class OperationComparer : IComparer<PbtWriteOperation<TKey>>
+    {
+        internal static readonly OperationComparer Instance = new();
+        public int Compare(PbtWriteOperation<TKey> left, PbtWriteOperation<TKey> right) => left.Key.CompareTo(right.Key);
     }
 
     private static int OffsetOf(PbtWriteOperation<TKey>[] array, ReadOnlySpan<PbtWriteOperation<TKey>> span)
@@ -928,6 +988,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal int FoldedAheadMask;
         /// <summary>The frame's operations, in key order.</summary>
         internal readonly ReadOnlySpan<PbtWriteOperation<TKey>> Operations;
+        /// <summary>The producer's used-slot mask and per-slot counts when it grouped the operations by this frame's slots, or empty.</summary>
+        private readonly ReadOnlySpan<int> _shardTable;
         /// <summary>The index of the first operation no position has consumed yet.</summary>
         internal int Next;
         /// <summary>The boundary slot of the operation at <see cref="Next"/>, or one past the last slot once every operation is consumed.</summary>
@@ -963,16 +1025,14 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly ReadOnlySpan<PbtWriteOperation<TKey>> Peek(NodeGroupPath local) => Operations.Slice(Next, CountOwned(local));
 
         /// <summary>Consumes the operations at the cursor in the boundary slot <paramref name="local"/>.</summary>
-        /// <remarks>The slot of the first operation past them is the one the cursor moves to, so each key is read once.</remarks>
+        /// <remarks>Each key is read once, to find where the slot ends; a frame with a shard table reads none.</remarks>
         internal ReadOnlySpan<PbtWriteOperation<TKey>> Take(NodeGroupPath local)
         {
             Debug.Assert(local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup && _nextSlot == local.Slot, "Only a touched boundary slot takes its operations.");
             int start = Next;
-            int end = start + 1;
-            int slot;
-            while ((slot = SlotAt(end)) == local.Slot) end++;
+            int end = SlotEnd(start, local.Slot);
             Next = end;
-            _nextSlot = slot;
+            _nextSlot = SlotAt(end);
             _followingSlot = -1;
             return Operations[start..end];
         }
@@ -993,17 +1053,45 @@ internal static partial class TrieUpdater<TKey, TPath>
             return false;
         }
 
-        private readonly int SlotAt(int index) =>
-            index < Operations.Length ? BoundarySlot(Operations[index].Key.Bytes, BitDepth) : PbtFourLevelGroupGeometry.BoundarySlots;
+        /// <summary>The boundary slot of the operation at <paramref name="index"/>, from the shard table when the frame has one.</summary>
+        internal readonly int SlotAt(int index)
+        {
+            if (index >= Operations.Length) return PbtFourLevelGroupGeometry.BoundarySlots;
+            if (_shardTable.IsEmpty) return BoundarySlot(Operations[index].Key.Bytes, BitDepth);
+            int end = 0;
+            int rank = 1;
+            for (int mask = _shardTable[0]; mask != 0; mask &= mask - 1)
+            {
+                end += _shardTable[rank++];
+                if (index < end) return BitOperations.TrailingZeroCount(mask);
+            }
+            return PbtFourLevelGroupGeometry.BoundarySlots;
+        }
+
+        /// <summary>The index past the operations from <paramref name="start"/> on in boundary slot <paramref name="slot"/>.</summary>
+        internal readonly int SlotEnd(int start, int slot)
+        {
+            if (!_shardTable.IsEmpty)
+            {
+                int end = 0;
+                int rank = 1;
+                for (int mask = _shardTable[0] & ((2 << slot) - 1); mask != 0; mask &= mask - 1) end += _shardTable[rank++];
+                return end;
+            }
+            int index = start + 1;
+            while (index < Operations.Length && BoundarySlot(Operations[index].Key.Bytes, BitDepth) == slot) index++;
+            return index;
+        }
 
         /// <summary>Whether a key in boundary slot <paramref name="slot"/> lies under <paramref name="local"/>; no key lies under one past the last slot.</summary>
         private static bool Covers(int slot, NodeGroupPath local) =>
             ((slot ^ local.Slot) >> (PbtFourLevelGroupGeometry.LevelsPerGroup - local.Length)) == 0;
 
         internal SortedWalk(FoldContext context, ref TFrame reader, ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
-            PbtTraversalPath path, in BoundaryNode input, uint stored, ReadOnlySpan<PbtWriteOperation<TKey>> operations)
+            PbtTraversalPath path, in BoundaryNode input, uint stored, ReadOnlySpan<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> shardTable)
         {
             Operations = operations;
+            _shardTable = shardTable;
             Context = context;
             Reader = ref reader;
             Hashes = ref hashes;

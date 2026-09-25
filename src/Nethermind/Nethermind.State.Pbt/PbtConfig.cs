@@ -42,6 +42,7 @@ public class PbtConfig : IPbtConfig
 
     public PbtNodeGroupKeyLayout NodeGroupKeyLayout { get; set; } = PbtNodeGroupKeyLayout.Variable;
     public PbtPrefixlessBranchOmission PrefixlessBranchOmission { get; set; } = PbtPrefixlessBranchOmission.OddLevels;
+    public bool SortedTrieUpdater { get; set; }
     public bool CarryForwardCache { get; set; } = true;
     public bool NativeNodeGroupMemory { get; set; } = true;
 

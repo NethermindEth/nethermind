@@ -37,20 +37,23 @@ public class PbtRootBuildBenchmark
         SortedParallel,
         /// <summary>The bucketing updater through the partitioned driver, folding buckets across threads, building every group from an empty tree.</summary>
         CurrentParallel,
+        /// <summary>The sorted-range updater through the partitioned driver, sorting the shards and folding slots across threads, building every group from an empty tree.</summary>
+        SortedPartitioned,
     }
 
     private PbtOverlayStore _store = null!;
     private readonly ConcurrencyController _foldQuota = new(Environment.ProcessorCount);
     private RebuildEntry[] _entries = null!;
     private PbtWriteOperation<PbtStorageTreeKey>[] _operations = null!;
-    private PbtWriteOperation<PbtPath>[] _accountOperations = null!;
+    /// <summary>The leaves as account operations grouped by zone shard and shuffled within each, as the batch builder leaves them.</summary>
+    private PbtWriteOperation<PbtPath>[] _shardedOperations = null!;
     private int[] _table = null!;
     private int[] _zoneTable = null!;
 
     [Params(10_000, 100_000, 1_000_000)]
     public int LeafCount { get; set; }
 
-    [Params(Variant.ImageRootCalculator, Variant.Sorted, Variant.Current, Variant.SortedParallel, Variant.CurrentParallel)]
+    [Params(Variant.ImageRootCalculator, Variant.Sorted, Variant.Current, Variant.SortedParallel, Variant.CurrentParallel, Variant.SortedPartitioned)]
     public Variant Method { get; set; }
 
     [GlobalSetup]
@@ -71,16 +74,18 @@ public class PbtRootBuildBenchmark
 
         _entries = new RebuildEntry[LeafCount];
         _operations = new PbtWriteOperation<PbtStorageTreeKey>[LeafCount];
-        _accountOperations = new PbtWriteOperation<PbtPath>[LeafCount];
+        PbtWriteOperation<PbtPath>[] accountOperations = new PbtWriteOperation<PbtPath>[LeafCount];
         int index = 0;
         foreach ((PbtStorageTreeKey key, ValueHash256 leaf) in leaves)
         {
             _entries[index] = new RebuildEntry(key, leaf);
-            _accountOperations[index] = new(new PbtPath(key.Bytes), leaf);
+            accountOperations[index] = new(new PbtPath(key.Bytes), leaf);
             _operations[index++] = new(key, leaf);
         }
         _table = PbtTrieUpdaterBenchmark.ShardTable<PbtStorageTreeKey>(_operations, 0);
-        _zoneTable = PbtTrieUpdaterBenchmark.ShardTable<PbtPath>(_accountOperations, PbtTrieUpdaterBenchmark.ZoneShardNibbleIndex);
+        _zoneTable = PbtTrieUpdaterBenchmark.ShardTable<PbtPath>(accountOperations, PbtTrieUpdaterBenchmark.ZoneShardNibbleIndex);
+        random.Shuffle(accountOperations);
+        _shardedOperations = PbtTrieUpdaterBenchmark.GroupByShard(accountOperations, PbtTrieUpdaterBenchmark.ZoneShardNibbleIndex);
         _store = new PbtOverlayStore();
 
         ValueHash256 expected = PbtImageRootCalculator.Calculate(_entries, CancellationToken.None);
@@ -105,20 +110,21 @@ public class PbtRootBuildBenchmark
             Variant.Sorted => TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRootSorted(_store, default, _operations, PbtPrefixlessBranchOmission.Interior),
             Variant.SortedParallel => TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRootSorted(_store, default, _operations.AsMemory(),
                 PbtPrefixlessBranchOmission.Interior, _foldQuota, FoldFanOut.Default),
-            Variant.CurrentParallel => BuildInParallel(),
+            Variant.CurrentParallel => BuildPartitioned(sortedZoneFold: false),
+            Variant.SortedPartitioned => BuildPartitioned(sortedZoneFold: true),
             _ => TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRoot(_store, default,
                 new PbtWriteBatch<PbtStorageTreeKey>(new ArrayPoolList<PbtWriteOperation<PbtStorageTreeKey>>(_operations), new ArrayPoolList<int>(_table), 0),
                 PbtPrefixlessBranchOmission.Interior),
         };
     }
 
-    private ValueHash256 BuildInParallel()
+    private ValueHash256 BuildPartitioned(bool sortedZoneFold)
     {
         using PbtPartitionBatches batches = new()
         {
-            Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(_accountOperations), new ArrayPoolList<int>(_zoneTable),
+            Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(_shardedOperations), new ArrayPoolList<int>(_zoneTable),
                 PbtTrieUpdaterBenchmark.ZoneShardNibbleIndex),
         };
-        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
+        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, sortedZoneFold, null);
     }
 }

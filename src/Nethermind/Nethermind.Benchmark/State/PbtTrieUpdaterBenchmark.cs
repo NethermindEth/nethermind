@@ -33,8 +33,10 @@ public class PbtTrieUpdaterBenchmark
         SortedIncludingSort,
         /// <summary>The sorted-range updater folding each frame's slots across threads, given the sorted batch.</summary>
         SortedParallel,
-        /// <summary>The bucketing updater through the partitioned driver, folding buckets across threads, given the sorted batch as an account-zone batch.</summary>
+        /// <summary>The bucketing updater through the partitioned driver, folding buckets across threads, given the batch grouped by shard as the builder leaves it.</summary>
         CurrentParallel,
+        /// <summary>The sorted-range updater through the partitioned driver, sorting the shards and folding slots across threads, given the same shard-grouped batch.</summary>
+        SortedPartitioned,
     }
 
     private const int BatchVariants = 64;
@@ -52,7 +54,7 @@ public class PbtTrieUpdaterBenchmark
     [Params(1, 16, 256, 4096)]
     public int BatchSize { get; set; }
 
-    [Params(Variant.Current, Variant.Sorted, Variant.SortedIncludingSort, Variant.SortedParallel, Variant.CurrentParallel)]
+    [Params(Variant.Current, Variant.Sorted, Variant.SortedIncludingSort, Variant.SortedParallel, Variant.CurrentParallel, Variant.SortedPartitioned)]
     public Variant Updater { get; set; }
 
     [GlobalSetup]
@@ -97,13 +99,15 @@ public class PbtTrieUpdaterBenchmark
                     return TrieUpdater<PbtPath, PbtNodePath>.UpdateRootSorted(_store, _root, operations.AsSpan(), PbtPrefixlessBranchOmission.Interior);
                 }
             case Variant.CurrentParallel:
+            case Variant.SortedPartitioned:
                 {
                     using PbtPartitionBatches batches = new()
                     {
-                        Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(batch.Sorted), new ArrayPoolList<int>(batch.ZoneTable),
+                        Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(batch.Sharded), new ArrayPoolList<int>(batch.ZoneTable),
                             ZoneShardNibbleIndex),
                     };
-                    return TrieUpdater.UpdateRoot(_store, _root, batches, _foldQuota, FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
+                    return TrieUpdater.UpdateRoot(_store, _root, batches, _foldQuota, FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior,
+                        Updater == Variant.SortedPartitioned, null);
                 }
             case Variant.SortedParallel:
                 {
@@ -138,18 +142,32 @@ public class PbtTrieUpdaterBenchmark
         PbtWriteOperation<PbtPath>[] sorted = (PbtWriteOperation<PbtPath>[])shuffled.Clone();
         Array.Sort(sorted, OperationComparer.Instance);
 
-        return new Batch(sorted, shuffled, ShardTable(sorted, 0), ShardTable(sorted, ZoneShardNibbleIndex));
+        return new Batch(sorted, shuffled, GroupByShard(shuffled, ZoneShardNibbleIndex), ShardTable(sorted, 0), ShardTable(sorted, ZoneShardNibbleIndex));
     }
 
     /// <summary>The partitioned driver shards a zone's batch by the nibble just below the zone byte.</summary>
     internal const int ZoneShardNibbleIndex = 2;
+
+    /// <summary>The operations grouped by the shard nibble at <paramref name="nibbleIndex"/> in shard order, each shard keeping their order, as PbtWriteBatchBuilder lays them out.</summary>
+    internal static PbtWriteOperation<TKey>[] GroupByShard<TKey>(PbtWriteOperation<TKey>[] operations, int nibbleIndex) where TKey : struct, IPbtKey<TKey>
+    {
+        int[] starts = new int[17];
+        foreach (PbtWriteOperation<TKey> operation in operations) starts[ShardOf(operation.Key, nibbleIndex) + 1]++;
+        for (int shard = 0; shard < 16; shard++) starts[shard + 1] += starts[shard];
+        PbtWriteOperation<TKey>[] grouped = new PbtWriteOperation<TKey>[operations.Length];
+        foreach (PbtWriteOperation<TKey> operation in operations) grouped[starts[ShardOf(operation.Key, nibbleIndex)]++] = operation;
+        return grouped;
+    }
+
+    private static int ShardOf<TKey>(TKey key, int nibbleIndex) where TKey : struct, IPbtKey<TKey> =>
+        (key.Bytes[nibbleIndex >> 1] >> ((nibbleIndex & 1) == 0 ? 4 : 0)) & 15;
 
     /// <summary>The shard table PbtWriteBatchBuilder builds at <paramref name="nibbleIndex"/>: the used-shard mask, then each used shard's count.</summary>
     /// <remarks>Sorted operations already lie grouped by shard, in shard order, as the batch expects.</remarks>
     internal static int[] ShardTable<TKey>(ReadOnlySpan<PbtWriteOperation<TKey>> sorted, int nibbleIndex) where TKey : struct, IPbtKey<TKey>
     {
         int[] counts = new int[16];
-        foreach (PbtWriteOperation<TKey> operation in sorted) counts[(operation.Key.Bytes[nibbleIndex >> 1] >> ((nibbleIndex & 1) == 0 ? 4 : 0)) & 15]++;
+        foreach (PbtWriteOperation<TKey> operation in sorted) counts[ShardOf(operation.Key, nibbleIndex)]++;
         List<int> table = [0];
         for (int shard = 0; shard < counts.Length; shard++)
         {
@@ -176,7 +194,7 @@ public class PbtTrieUpdaterBenchmark
         return new ValueHash256(bytes);
     }
 
-    private sealed record Batch(PbtWriteOperation<PbtPath>[] Sorted, PbtWriteOperation<PbtPath>[] Shuffled, int[] Table, int[] ZoneTable);
+    private sealed record Batch(PbtWriteOperation<PbtPath>[] Sorted, PbtWriteOperation<PbtPath>[] Shuffled, PbtWriteOperation<PbtPath>[] Sharded, int[] Table, int[] ZoneTable);
 
     private sealed class OperationComparer : IComparer<PbtWriteOperation<PbtPath>>
     {
