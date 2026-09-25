@@ -329,8 +329,12 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Hash256 txHash, long[] positions)
     {
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
-        List<ParityTxTraceFromStore> traces = TraceRpcModule.ExtractPositionsFromTxTrace(positions, traceTransaction);
-        return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+        if (!traceTransaction.Result) return traceTransaction;
+        using (traceTransaction)
+        {
+            List<ParityTxTraceFromStore> traces = TraceRpcModule.ExtractPositionsFromTxTrace(positions, traceTransaction);
+            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
+        }
     }
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Hash256 txHash, bool traceNonCanonical = false)
@@ -386,15 +390,15 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     private static void FilterTraces(List<ParityLikeTxTrace> traces, ParityTraceTypes traceTypes)
     {
+        if ((traceTypes & ParityTraceTypes.Rewards) == 0)
+        {
+            FilterRewards(traces);
+        }
+
         for (int i = 0; i < traces.Count; i++)
         {
             ParityLikeTxTrace parityLikeTxTrace = traces[i];
             FilterTrace(parityLikeTxTrace, traceTypes);
-        }
-
-        if ((traceTypes & ParityTraceTypes.Rewards) == 0)
-        {
-            FilterRewards(traces);
         }
     }
 
@@ -426,15 +430,23 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         }
     }
 
-    // Trace uses flags IsTracingActions, IsTracingReceipt
-    private static void FilterTrace(ParityLikeTxTrace trace) => trace.Output = null;// trace action?
+    // A reward entry survives FilterRewards only when rewards are requested; its action is the reward itself, as in live replay.
+    private static void FilterTrace(ParityLikeTxTrace trace)
+    {
+        if (!IsReward(trace))
+        {
+            trace.Action = null;
+        }
+    }
+
+    private static bool IsReward(ParityLikeTxTrace trace) => trace.TransactionHash is null && trace.Action?.Type == "reward";
 
     private static void FilterRewards(List<ParityLikeTxTrace> traces)
     {
         for (int i = traces.Count - 1; i >= 0; i--)
         {
             ParityLikeTxTrace trace = traces[i];
-            if (trace.TransactionHash is null && trace.Action?.Type == "reward")
+            if (IsReward(trace))
             {
                 traces.RemoveAt(i);
             }

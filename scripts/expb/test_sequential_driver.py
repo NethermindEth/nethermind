@@ -48,6 +48,9 @@ def environment(**values: str):
         "CLIENT_SNAPSHOT_DIR",
         "CPU_TOPOLOGY_DIR",
         "DELAY_SECONDS",
+        "DOCKER_CPU",
+        "DOCKER_CPUSET",
+        "DOCKER_INFRA_CPUSET",
         "EXPB_CAMPAIGN_DIR",
         "EXPB_DATA_DIR",
         "EXPB_ENV_PASSTHROUGH",
@@ -327,6 +330,37 @@ class RenderTests(unittest.TestCase):
                 driver.render({"resources": {**resources, "cpu": 7}, **self.BASE}, self.IMAGE, 1)
         self.assertEqual(config["resources"], {**resources, "cpu": 0, "cpuset": "2,3,4,5,10,11,12,13"})
         self.assertEqual(base["resources"], resources)
+
+    def test_dispatch_cpu_overrides_feed_the_whole_core_pinning(self) -> None:
+        # docker_cpu_overrides reaches the campaign too, and is applied before the pinning consumes it.
+        resources = {"cpu": 8, "cpuset": "2-7,10-15", "infra_cpuset": "0-1,8-9", "mem": "64g"}
+        base = {"resources": dict(resources), **self.BASE}
+        with tempfile.TemporaryDirectory() as topology:
+            write_smt_topology(Path(topology), cores=8)
+            for label, values, expected in (
+                ("a wider budget and cpuset", {"DOCKER_CPU": "12", "DOCKER_CPUSET": "0-15", "DOCKER_INFRA_CPUSET": "0-1"},
+                 {**resources, "cpu": 0, "cpuset": "0,1,2,3,4,5,8,9,10,11,12,13", "infra_cpuset": "0-1"}),
+                ("all lifts every limit", {"DOCKER_CPU": "all", "DOCKER_CPUSET": "all", "DOCKER_INFRA_CPUSET": "all"},
+                 {"cpu": 0, "mem": "64g"}),
+                ("cpu=all pins the whole cpuset", {"DOCKER_CPU": "all"}, {**resources, "cpu": 0}),
+            ):
+                with self.subTest(case=label), environment(CPU_TOPOLOGY_DIR=topology, **values):
+                    config, _ = driver.render(base, self.IMAGE, 1)
+                    self.assertEqual(config["resources"], expected)
+            for label, values in (("a fractional budget", {"DOCKER_CPU": "1.5"}), ("a malformed cpuset", {"DOCKER_CPUSET": "2-7;10"})):
+                with self.subTest(rejected=label), environment(CPU_TOPOLOGY_DIR=topology, **values), self.assertRaises(ValueError):
+                    driver.render(base, self.IMAGE, 1)
+        self.assertEqual(base["resources"], resources)
+
+    def test_the_cgroup_readout_is_off_without_an_override_and_stops_with_the_sample(self) -> None:
+        with environment():
+            self.assertFalse(driver.cpu_overrides_active())
+        with environment(DOCKER_INFRA_CPUSET="all"):
+            self.assertTrue(driver.cpu_overrides_active())
+        done, report = driver.threading.Event(), []
+        done.set()
+        driver.read_cgroup_limits(done, report)
+        self.assertEqual(report, [])
 
     def test_a_config_without_the_nethermind_scenario_is_rejected(self) -> None:
         with environment(), self.assertRaises(ValueError):

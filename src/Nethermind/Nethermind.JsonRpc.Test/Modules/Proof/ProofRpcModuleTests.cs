@@ -245,7 +245,7 @@ public class ProofRpcModuleTests
             // The starting offset is identical under both scenarios, so the stale stored Index moves nothing; and
             // non-zero, where the retraced block emits no logs at all, so the count came from the stored set the
             // served logs themselves come from. Every log carries it, not just the first.
-            for (int i = 0; i < receiptWithProof.Receipt.Logs.Length; i++)
+            for (int i = 0; i < receiptWithProof.Receipt.Logs!.Length; i++)
             {
                 Assert.That(receiptWithProof.Receipt.Logs[i].LogIndex, Is.EqualTo(StaleReceiptIndexLogsBefore + i), $"log {i} index");
                 Assert.That(receiptWithProof.Receipt.Logs[i].TransactionIndex, Is.EqualTo(StaleReceiptIndexTxIndex), $"log {i} transaction index");
