@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -191,15 +192,27 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
-        TryGetHeaderAndCheckState(blockhash, out ResultWrapper<GethLikeTxTrace>? headerError);
-        return headerError ?? TraceTransactionAtIndex(blockhash, index, options, nameof(debug_traceTransactionByBlockhashAndIndex));
+        BlockHeader? header = TryGetHeader(blockhash, out ResultWrapper<GethLikeTxTrace>? error);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        error = CheckTraceBaseState<GethLikeTxTrace>(header!);
+        return error ?? TraceTransactionAtIndex(blockhash, index, options, nameof(debug_traceTransactionByBlockhashAndIndex));
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
     {
-        BlockHeader? header = TryGetHeaderAndCheckState(blockParameter, out ResultWrapper<GethLikeTxTrace>? headerError);
+        BlockHeader? header = TryGetHeader(blockParameter, out ResultWrapper<GethLikeTxTrace>? error);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        error = CheckTraceBaseState<GethLikeTxTrace>(header!);
         // Trace the block that was resolved, not the canonical one at its height: a block hash parameter need not be canonical
-        return headerError ?? TraceTransactionAtIndex(header!.Hash!, index, options, nameof(debug_traceTransactionByBlockAndIndex));
+        return error ?? TraceTransactionAtIndex(header!.Hash!, index, options, nameof(debug_traceTransactionByBlockAndIndex));
     }
 
     private ResultWrapper<GethLikeTxTrace> TraceTransactionAtIndex(Hash256 blockHash, int index, GethTraceOptions? options, string method)
@@ -872,27 +885,29 @@ public class DebugRpcModule(
     private static ResultWrapper<TResult> GetRlpDecodingFailureResult<TResult>(Rlp blockRlp) =>
         ResultWrapper<TResult>.Fail($"Error decoding block RLP: {blockRlp.Bytes.ToHexString()}", ErrorCodes.InvalidInput);
 
-    private BlockHeader? TryGetHeaderAndCheckState<TResult>(BlockParameter blockParameter, out ResultWrapper<TResult>? error)
+    /// <summary>
+    /// Resolves the header for <paramref name="blockParameter"/>, without checking state availability.
+    /// </summary>
+    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private BlockHeader? TryGetHeader<TResult>(BlockParameter blockParameter, out ResultWrapper<TResult>? error)
     {
         SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
-        BlockHeader? header = searchResult.Object;
 
         if (searchResult.IsError)
         {
             error = GetFailureResult<TResult, BlockHeader>(searchResult, debugBridge.HaveNotSyncedHeadersYet());
             return null;
         }
-        if (!blockchainBridge.HasStateForBlock(header))
-        {
-            error = GetStateFailureResult<TResult>(header);
-            return null;
-        }
 
         error = null;
-        return header;
+        return searchResult.Object;
     }
 
-    private BlockHeader? TryGetHeaderAndCheckState<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error)
+    /// <summary>
+    /// Resolves the header for <paramref name="blockHash"/>, without checking state availability.
+    /// </summary>
+    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private BlockHeader? TryGetHeader<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error)
     {
         BlockHeader? header = blockFinder.FindHeader(blockHash);
 
@@ -903,14 +918,80 @@ public class DebugRpcModule(
                 debugBridge.HaveNotSyncedHeadersYet());
             return null;
         }
+
+        error = null;
+        return header;
+    }
+
+    /// <summary>
+    /// Resolves the header for <paramref name="blockParameter"/> and checks that its own state is available.
+    /// </summary>
+    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private BlockHeader? TryGetHeaderAndCheckState<TResult>(BlockParameter blockParameter, out ResultWrapper<TResult>? error)
+    {
+        BlockHeader? header = TryGetHeader<TResult>(blockParameter, out error);
+        if (header is null)
+        {
+            return null;
+        }
+
         if (!blockchainBridge.HasStateForBlock(header))
         {
             error = GetStateFailureResult<TResult>(header);
             return null;
         }
 
-        error = null;
         return header;
+    }
+
+    /// <summary>
+    /// Resolves the header for <paramref name="blockHash"/> and checks that its own state is available.
+    /// </summary>
+    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private BlockHeader? TryGetHeaderAndCheckState<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error)
+    {
+        BlockHeader? header = TryGetHeader<TResult>(blockHash, out error);
+        if (header is null)
+        {
+            return null;
+        }
+
+        if (!blockchainBridge.HasStateForBlock(header))
+        {
+            error = GetStateFailureResult<TResult>(header);
+            return null;
+        }
+
+        return header;
+    }
+
+    /// <summary>
+    /// Checks that the state a whole-block replay of <paramref name="header"/> starts from is available.
+    /// </summary>
+    /// <returns>The failure to return to the caller, or <see langword="null"/> when the state is available.</returns>
+    /// <remarks>
+    /// Replaying a block re-executes it on top of its parent, so the state that has to be available is the
+    /// parent's and not the block's own: <see cref="GethStyleTracer"/> seeds the processing scope with the
+    /// parent header. Genesis has no parent, so it is replayed from the pre-genesis empty state
+    /// (<see cref="Nethermind.Evm.State.IWorldState.PreGenesis"/>) and needs no committed state at all.
+    /// </remarks>
+    private ResultWrapper<TResult>? CheckTraceBaseState<TResult>(BlockHeader header)
+    {
+        if (header.IsGenesis)
+        {
+            return null;
+        }
+
+        BlockHeader? parent = blockFinder.FindParentHeader(header, BlockTreeLookupOptions.None);
+
+        if (parent is null)
+        {
+            return ResultWrapper<TResult>.Fail(
+                $"Cannot find parent header for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceUnavailable);
+        }
+
+        return blockchainBridge.HasStateForBlock(parent) ? null : GetStateFailureResult<TResult>(parent);
     }
 
     private Block? TryGetBlockAndCheckState<TResult>(Rlp blockRlp, out ResultWrapper<TResult>? error)
