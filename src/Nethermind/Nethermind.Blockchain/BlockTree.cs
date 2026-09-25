@@ -1092,6 +1092,7 @@ namespace Nethermind.Blockchain
             ulong previousHeadNumber = Head?.Number ?? 0UL;
 
             using ArrayPoolListRef<DeferredHeaderEvent> pending = new(headers.Count);
+            using ArrayPoolListRef<(ulong Number, Hash256 Hash)> removedFromMain = new(0);
             Block? headBlock = null;
 
             using (BatchWrite batch = _chainLevelInfoRepository.StartBatch())
@@ -1105,6 +1106,11 @@ namespace Nethermind.Blockchain
                         ChainLevelInfo? level = LoadLevel(levelNumber);
                         if (level is not null)
                         {
+                            if (BlockRemovedFromMain is not null && level.MainChainBlock?.BlockHash is { } removedHash)
+                            {
+                                removedFromMain.Add((levelNumber, removedHash));
+                            }
+
                             level.HasBlockOnMainChain = false;
                             _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
                         }
@@ -1150,6 +1156,16 @@ namespace Nethermind.Blockchain
             }
 
             TryUpdateSyncPivot();
+
+            foreach ((ulong number, Hash256 hash) in removedFromMain.AsSpan())
+            {
+                // Header only, so a deep rewind does not load its whole removed branch here.
+                BlockHeader? removed = FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: number);
+                if (removed is not null)
+                {
+                    BlockRemovedFromMain?.Invoke(this, new BlockHeaderEventArgs(removed));
+                }
+            }
 
             // Events fire only after the chain-level batch is flushed, so subscribers observe committed state.
             // Blocks are loaded one at a time here (cache hit for preloaded/near-head blocks) and released each
@@ -1851,6 +1867,8 @@ namespace Nethermind.Blockchain
         }
 
         public event EventHandler<BlockReplacementEventArgs>? BlockAddedToMain;
+
+        public event EventHandler<BlockHeaderEventArgs>? BlockRemovedFromMain;
 
         public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain;
 

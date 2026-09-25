@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -20,11 +21,33 @@ public interface IWorldStateScopeProvider
     /// <remarks>Does not verify the integrity or availability of every descendant trie node.</remarks>
     bool HasRoot(BlockHeader? baseBlock);
 
+    /// <summary>
+    /// Attempts to open the state required to execute <paramref name="targetBlock"/>.
+    /// </summary>
+    /// <remarks>
+    /// The scope is anchored at the target block's parent, while the target header is retained by the provider for
+    /// backend-specific decisions. Returns <c>false</c> when the parent header or its state is unavailable. This is
+    /// best-effort for backends that cannot pin state; subsequent reads may still report a missing node.
+    /// </remarks>
+    /// <param name="targetBlock">The block that will be executed.</param>
+    /// <param name="scope">The acquired scope, or <c>null</c> when acquisition fails.</param>
+    /// <returns><c>true</c> when a scope was acquired; otherwise <c>false</c>.</returns>
+    bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IScope? scope);
+
+    /// <summary>
+    /// Checks whether the parent state required to execute <paramref name="targetBlock"/> is available.
+    /// </summary>
+    /// <remarks>This check is advisory and does not reserve or pin the state.</remarks>
+    bool HasStateForTargetBlock(BlockHeader targetBlock);
+
+    /// <summary>Attempts to open the state committed at <paramref name="baseBlock"/> (pre-genesis when <c>null</c>).</summary>
     /// <param name="metrics">
     /// Per-scope accumulator the world state folds into the global counters at commit/scope end. Scopes
     /// that record state/storage access metrics (e.g. the prewarmer) increment it; others ignore it.
     /// </param>
-    IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
+    /// <param name="scope">The acquired scope, or <c>null</c> when the state is unavailable.</param>
+    /// <returns><c>true</c> when a scope was acquired; otherwise <c>false</c>.</returns>
+    bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IScope? scope);
 
     public interface IScope : IDisposable
     {

@@ -83,6 +83,7 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = enableFastSync,
+            SnapSync = enableFastSync,
             StateMinDistanceFromHead = fastSynclag
         }));
         Context ctx = node.Resolve<Context>();
@@ -141,6 +142,7 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
+            SnapSync = true,
             StateMinDistanceFromHead = fastSyncLag,
         }));
         Context ctx = node.Resolve<Context>();
@@ -250,6 +252,7 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
+            SnapSync = true,
             StateMinDistanceFromHead = fastSyncLag,
         }),
             configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
@@ -275,7 +278,8 @@ public partial class BlockDownloaderTests
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
-            FastSync = true
+            FastSync = true,
+            SnapSync = true
         }),
             configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
 
@@ -353,7 +357,8 @@ public partial class BlockDownloaderTests
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
-            FastSync = true
+            FastSync = true,
+            SnapSync = true
         }),
             configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
 
@@ -381,7 +386,8 @@ public partial class BlockDownloaderTests
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
-            FastSync = true
+            FastSync = true,
+            SnapSync = true
         }),
             configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
 
@@ -402,7 +408,8 @@ public partial class BlockDownloaderTests
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
-            FastSync = true
+            FastSync = true,
+            SnapSync = true
         }),
             configurer: (builder) => builder
                 .AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider)
@@ -734,6 +741,7 @@ public partial class BlockDownloaderTests
         ISyncConfig syncConfig = new SyncConfig()
         {
             FastSync = true,
+            SnapSync = true,
             StateMinDistanceFromHead = fastSyncLag,
             PivotNumber = syncPivot.Number,
             PivotHash = syncPivot.Hash!.ToString(),
@@ -987,6 +995,7 @@ public partial class BlockDownloaderTests
         CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
+            SnapSync = true,
             StateMinDistanceFromHead = fastSyncLag,
         }));
 

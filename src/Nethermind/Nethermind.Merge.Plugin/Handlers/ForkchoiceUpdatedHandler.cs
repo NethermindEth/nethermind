@@ -51,6 +51,22 @@ public class ForkchoiceUpdatedHandler(
     IBlockProcessingPauseControl pauseControl,
     BlockTreeMutationLock mutationLock) : IForkchoiceUpdatedHandler
 {
+    /// <summary>How long a forkchoice update gives the head block's commit after its verdict before answering SYNCING.</summary>
+    /// <remarks>
+    /// The newPayload budget: before newPayload answered ahead of the commit, it held the engine API's lock through that
+    /// same commit for up to this long, so waiting here holds it no longer than it was held then. A shorter bound turns
+    /// a slow commit into a SYNCING the CL never got before, which leaves it on an optimistic head. Per block the worst
+    /// case is now two budgets rather than one - newPayload's for the execution, this one for the commit - but only a
+    /// commit that is itself that slow spends the second.
+    /// <para>
+    /// Capped at half the lock timeout. The wait holds the engine API's lock, and unlike newPayload's it is a fresh
+    /// budget rather than the rest of one: uncapped, a stalled commit under the 7 s default leaves a newPayload queued
+    /// behind it about a second before it times out, and a raised budget outlasts the lock timeout and the CL's own
+    /// request timeout, turning SYNCING into timeouts. At the cap the call behind gets at least as long as this one waited.
+    /// </para>
+    /// </remarks>
+    private readonly TimeSpan _commitWait = TimeSpan.FromMilliseconds(Math.Clamp(mergeConfig.NewPayloadBlockProcessingTimeout, 0, EngineRpcModule.LockTimeout.TotalMilliseconds / 2));
+
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
@@ -59,6 +75,9 @@ public class ForkchoiceUpdatedHandler(
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         BlockHeader? newHeadHeader = GetBlockHeader(forkchoiceState.HeadBlockHash);
+        // Before ApplyForkchoiceUpdate boosts this thread: an await inside that scope would resume elsewhere and the
+        // boost would never be restored.
+        if (newHeadHeader is not null) await WaitForHeadCommitAsync(newHeadHeader);
         return await ApplyForkchoiceUpdate(newHeadHeader, forkchoiceState, payloadAttributes)
             ?? ValidateAttributes(payloadAttributes, version)
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
@@ -384,6 +403,21 @@ public class ForkchoiceUpdatedHandler(
             cursor = parent;
         }
         return cursor.GetOrCalculateHash() != candidateHeader.GetOrCalculateHash();
+    }
+
+    /// <summary>
+    /// newPayload answers VALID once the block is executed, before it is committed and marked processed, and the CL's
+    /// forkchoice follows at once: a head that has its verdict and is still committing gets its moment here rather than
+    /// the SYNCING that would make the CL retry. A head that is merely queued has no verdict, so the wait completes at
+    /// once and it gets the SYNCING it always got; blocks queued behind a committing head, another copy of it included,
+    /// do not delay its commit, so the wait is for that copy alone.
+    /// </summary>
+    private async Task WaitForHeadCommitAsync(BlockHeader newHeadHeader)
+    {
+        Hash256 hash = newHeadHeader.GetOrCalculateHash();
+        if (_blockTree.GetInfo(newHeadHeader.Number, hash).Info is not { WasProcessed: false }) return;
+
+        await processingQueue.WaitForExecutedCopyAsync(hash, _commitWait);
     }
 
     private BlockHeader? GetBlockHeader(Hash256 headBlockHash)

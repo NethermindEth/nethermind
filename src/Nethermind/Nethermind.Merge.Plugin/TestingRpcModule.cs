@@ -37,6 +37,7 @@ public class TestingRpcModule(
     IBlockFinder blockFinder,
     IBlockTree blockTree,
     IProcessExitSource processExitSource,
+    IBlockProcessingQueue processingQueue,
     ILogManager logManager)
     : ITestingRpcModule, IDisposable
 {
@@ -55,6 +56,9 @@ public class TestingRpcModule(
         Block? parentBlock = blockFinder.FindBlock(parentBlockHash);
         if (parentBlock is null)
             return ResultWrapper<object>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
+
+        // A parent answered VALID a moment ago may still be committing; production needs its state.
+        await processingQueue.WaitForExecutedCopyAsync(parentBlockHash, TimeSpan.FromSeconds(1));
 
         FeesTracer feesTracer = new();
         await using ScopedBlockProducerEnv env = blockProducerEnvFactory.CreateTransient();

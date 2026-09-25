@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -18,7 +19,19 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 {
     public bool HasRoot(BlockHeader? baseBlock) => inner.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => new Scope(inner.BeginScope(baseBlock, metrics), slot);
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => inner.HasStateForTargetBlock(targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        Wrap(inner.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope), innerScope, out scope);
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        Wrap(inner.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope), innerScope, out scope);
+
+    private bool Wrap(bool opened, IWorldStateScopeProvider.IScope? innerScope, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        scope = opened ? new Scope(innerScope!, slot) : null;
+        return opened;
+    }
 
     private sealed class Scope(IWorldStateScopeProvider.IScope inner, StateReadOverlaySlot slot) : IWorldStateScopeProvider.IScope
     {

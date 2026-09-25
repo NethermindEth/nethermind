@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History;
 
@@ -18,8 +20,11 @@ public sealed class HistoricalFlatDbManager(
     ITrieNodeCache trieNodeCache,
     IResourcePool resourcePool,
     bool enableDetailedMetrics,
-    HistoryScopeGate scopeGate) : IFlatDbManager
+    HistoryScopeGate scopeGate,
+    ILogManager logManager) : IFlatDbManager
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<HistoricalFlatDbManager>();
+
     private enum HistoricalReadMode
     {
         NotHistorical,
@@ -38,8 +43,11 @@ public sealed class HistoricalFlatDbManager(
         // blocks on that mix produces a corrupt state root and cascades into invalid-block deletions.
         if (IsBlockProcessing(usage))
         {
-            throw new InvalidOperationException(
-                $"Main block processing requested a writable scope at historical state {baseBlock}; history serves read-only execution.");
+            // The callers map this to a plain "state unavailable", so the reason - a wiring bug, not pruning - is
+            // only ever seen if it is logged where it is decided.
+            string reason = $"Main block processing requested a writable scope at historical state {baseBlock}; history serves read-only execution.";
+            if (_logger.IsError) _logger.Error(reason);
+            throw new StateUnavailableException(reason);
         }
 
         ReadOnlySnapshotBundle bundle = BuildHistoricalBundle(baseBlock, mode);
@@ -54,10 +62,13 @@ public sealed class HistoricalFlatDbManager(
         }
     }
 
-    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
+        GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
+
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock, ReaderFlags readerFlags)
     {
         HistoricalReadMode mode = Classify(baseBlock);
-        if (mode == HistoricalReadMode.NotHistorical) return inner.GatherReadOnlySnapshotBundle(baseBlock);
+        if (mode == HistoricalReadMode.NotHistorical) return inner.GatherReadOnlySnapshotBundle(baseBlock, readerFlags);
         if (mode == HistoricalReadMode.Unavailable) ThrowUnavailable(baseBlock);
         return BuildHistoricalBundle(baseBlock, mode);
     }
@@ -101,7 +112,7 @@ public sealed class HistoricalFlatDbManager(
         usage is ResourcePool.Usage.MainBlockProcessing or ResourcePool.Usage.PostMainBlockProcessing;
 
     private static void ThrowUnavailable(in StateId baseBlock) =>
-        throw new StateUnavailableException(
+        throw new StateNotRetainedException(
             $"Historical state for block {baseBlock.BlockNumber} is below the flat history retention floor.");
 
     // Trie-less bundle: empty snapshot list over a history-backed reader. The reader serves account/storage values

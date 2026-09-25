@@ -3069,6 +3069,22 @@ public class BlockTreeTests
         }
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_WhenHeadRewinds_RaisesBlockRemovedFromMainForEachLevelAbove()
+    {
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis();
+        Block[] chain = BuildAndSuggestChain(blockTree, genesis, 4);
+        blockTree.TryUpdateMainChain(chain[3].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        List<(Hash256?, bool Added)> events = [];
+        blockTree.BlockRemovedFromMain += (_, e) => events.Add((e.Header.Hash, false));
+        blockTree.BlockAddedToMain += (_, e) => events.Add((e.Block.Hash, true));
+
+        blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        Assert.That(events, Is.EqualTo(new[] { (chain[3].Hash, false), (chain[2].Hash, false), (chain[1].Hash, false), (chain[0].Hash, true) }));
+    }
+
     [TestCase(1, TestName = "SingleStaleLevel")]
     [TestCase(3, TestName = "MultipleStaleLevel")]
     [MaxTime(Timeout.MaxTestTime)]
