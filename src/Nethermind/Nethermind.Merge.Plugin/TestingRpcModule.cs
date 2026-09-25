@@ -174,7 +174,7 @@ public class TestingRpcModule(
             return ResultWrapper<Hash256>.Fail("processed block has no hash", ErrorCodes.InternalError);
 
         AddBlockResult addBlockResult = blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceDontSetAsMain);
-        if (addBlockResult != AddBlockResult.Added)
+        if (addBlockResult is not (AddBlockResult.Added or AddBlockResult.AlreadyKnown))
         {
             if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
             return ResultWrapper<Hash256>.Fail($"failed to commit block: {addBlockResult}", ErrorCodes.InternalError);
@@ -183,7 +183,8 @@ public class TestingRpcModule(
         // forceUpdateHeadBlock: true is required for post-merge chains where TotalDifficulty=0
         // and TTD != 0; without it MoveToMain skips UpdateHeadBlock and the next commit
         // reads a stale head.
-        blockTree.TryUpdateMainChain(processedBlock.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [processedBlock]);
+        if (!blockTree.TryUpdateMainChain(processedBlock.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [processedBlock]))
+            return ResultWrapper<Hash256>.Fail("canonical chain update was refused", ErrorCodes.ResourceUnavailable);
 
         if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {processedBlock.Hash}");
         return ResultWrapper<Hash256>.Success(processedBlock.Hash);

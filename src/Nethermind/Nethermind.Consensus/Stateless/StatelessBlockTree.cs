@@ -105,6 +105,9 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
         WriteFlags bodiesWriteFlags = WriteFlags.None)
         => throw new NotSupportedException();
 
+    /// <inheritdoc/>
+    public bool TryRewindHead(Hash256 blockHash) => throw new NotSupportedException();
+
     public void UpdateHeadBlock(Hash256 blockHash)
         => throw new NotSupportedException();
 

@@ -125,7 +125,8 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             specProvider,
             new SyncConfig(),
             NullStateBoundary.Instance,
-            new BlockTreeLogHider(logManager));
+            new BlockTreeLogHider(logManager),
+            new BlockTreeMutationLock());
     }
 
     private class BlockTreeLogHider(ILogManager baseLogManager) : ILogManager

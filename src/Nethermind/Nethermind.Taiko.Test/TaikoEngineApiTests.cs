@@ -50,7 +50,9 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
-            Substitute.For<ILogManager>()
+            Substitute.For<ILogManager>(),
+            Substitute.For<IBlockProcessingPauseControl>(),
+            new BlockTreeMutationLock()
         );
 
         ResultWrapper<ForkchoiceUpdatedV1Result> beforeNewBlockAdded = await forkchoiceUpdatedHandler.Handle(new ForkchoiceStateV1(genesisBlock.Hash!, futureBlock.Hash!, futureBlock.Hash!), null, 2);
@@ -98,7 +100,9 @@ public class TaikoEngineApiTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<ISyncPeerPool>(),
             new MergeConfig(),
-            Substitute.For<ILogManager>()
+            Substitute.For<ILogManager>(),
+            Substitute.For<IBlockProcessingPauseControl>(),
+            new BlockTreeMutationLock()
         );
 
         PayloadAttributes payloadAttributes = new()
