@@ -18,7 +18,9 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     private readonly Context _ctx = new();
     private readonly Db _db = new(worldState);
     private int _index;
-    private TracerRuntime? _runtime;
+    // Validated on construction so an unusable tracer is refused before any transaction; inline code keeps the
+    // runtime it was compiled in, with its script cached.
+    private TracerRuntime? _runtime = TracerRuntime.CreateValidated(options.Tracer);
     private GethLikeJavaScriptTxTracer? _currentTxTracer;
     private Hash256? _blockHash;
     private UInt256 _baseFee;

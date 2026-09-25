@@ -226,9 +226,7 @@ public class GethStyleTracer(
         options switch
         {
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
-            { Tracer.Length: > 0 } => Engine.IsKnownTracer(options.Tracer)
-                ? new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options)
-                : throw new ArgumentException($"Tracer '{options.Tracer}' not found"),
+            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options, (long)specProvider.GetSpec(block).GasCosts.DestroyRefund),
         };
 

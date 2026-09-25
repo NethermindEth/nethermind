@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using Microsoft.ClearScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Logging;
 
@@ -89,7 +90,7 @@ internal sealed class TracerRuntime : IDisposable
     /// Reports whether <paramref name="tracer"/> is inline tracer code or names a tracer shipped under
     /// <c>Data/JSTracers</c>, so a request naming anything else can be refused before a runtime is created.
     /// </summary>
-    public static bool IsKnownTracer(string? tracer)
+    private static bool IsKnownTracer(string? tracer)
     {
         if (tracer is null)
         {
@@ -98,6 +99,41 @@ internal sealed class TracerRuntime : IDisposable
 
         tracer = tracer.Trim();
         return IsInline(tracer) || IsBuiltIn(ToTracerFileName(tracer));
+    }
+
+    /// <summary>
+    /// Refuses a tracer no engine could load, returning the runtime inline code was compiled in so the tracer can
+    /// reuse it and its cached script, or <see langword="null"/> for a shipped tracer, which needs no compile check.
+    /// </summary>
+    /// <exception cref="ArgumentException">The tracer is not found or its code does not compile.</exception>
+    public static TracerRuntime? CreateValidated(string? tracer)
+    {
+        if (!IsKnownTracer(tracer))
+        {
+            throw new ArgumentException($"Tracer '{tracer}' not found");
+        }
+
+        if (!IsInline(tracer!.Trim()))
+        {
+            return null;
+        }
+
+        TracerRuntime runtime = new();
+        try
+        {
+            runtime.GetTracerScript(tracer);
+            return runtime;
+        }
+        catch (ScriptEngineException e) when (!e.IsFatal)
+        {
+            runtime.Dispose();
+            throw new ArgumentException($"Tracer code could not be compiled: {e.Message}", e);
+        }
+        catch
+        {
+            runtime.Dispose();
+            throw;
+        }
     }
 
     public void Dispose()

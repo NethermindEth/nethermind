@@ -54,18 +54,20 @@ public class GethStyleTracerTests
     }
 
     /// <remarks>
-    /// A name that is neither a native tracer nor a shipped JavaScript tracer used to reach the JavaScript
-    /// block tracer, which built a V8 engine per traced transaction only to fail loading the script.
+    /// A tracer that is neither native nor loadable as JavaScript, an unknown name or inline code that does not
+    /// compile, used to reach the JavaScript block tracer, which built a V8 engine per traced transaction only to
+    /// fail loading the script.
     /// </remarks>
-    [TestCase("flatCallTracer")]
-    [TestCase("_bigInteger")]
-    public void Create_options_tracer_rejects_an_unknown_tracer_name(string tracer)
+    [TestCase("flatCallTracer", "not found")]
+    [TestCase("_bigInteger", "not found")]
+    [TestCase("{ ) }", "could not be compiled")]
+    public void Create_options_tracer_rejects_an_unusable_tracer(string tracer, string expectedMessage)
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
         GethTraceOptions options = GethTraceOptions.Default with { Tracer = tracer };
 
         Assert.That(
             () => GethStyleTracer.CreateOptionsTracer(header, options, Substitute.For<IWorldState>(), Substitute.For<ISpecProvider>()),
-            Throws.ArgumentException.With.Message.Contains("not found"));
+            Throws.ArgumentException.With.Message.Contains(expectedMessage));
     }
 }
