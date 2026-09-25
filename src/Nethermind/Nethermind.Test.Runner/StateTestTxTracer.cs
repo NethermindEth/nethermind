@@ -170,7 +170,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
     {
     }
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
     }
 

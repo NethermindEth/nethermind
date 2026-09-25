@@ -22,6 +22,17 @@ public class ReceiptsMessageSerializerTests
         public EmptyTxReceipt() => Logs = []; // Logs are always assumed non-null in decoders
     }
 
+    private const string FrameReceiptHex =
+        "f86c04f869f867" +
+        "f86506" +                                            // receipt, tx-type 6
+        "82022b" +                                            // cumulative-gas
+        "940100000000000000000000000000000000000000" +        // payer
+        "f84a" +                                              // frames
+        "f84201c26414f83c" +                                  // status 1, gas-used [100, 20]
+        "f83a940200000000000000000000000000000000000000" +
+        "e1a01500000000000000000000000000000000000000000000000000000000000000820202" +
+        "c502c28080c0";                                       // status 2, gas-used [0, 0], no logs
+
     private static readonly object[] TestData =
     [
         new object[] // Empty legacy tx
@@ -146,6 +157,34 @@ public class ReceiptsMessageSerializerTests
                 }
             },
             "f8ce03f8cb" + "f8c9f8c7010182022bf8c0f85e940200000000000000000000000000000000000000f842a01500000000000000000000000000000000000000000000000000000000000000a016000000000000000000000000000000000000000000000000000000000000008402022020f85e940300000000000000000000000000000000000000f842a01f00000000000000000000000000000000000000000000000000000000000000a020000000000000000000000000000000000000000000000000000000000000008403032020"
+        },
+        // EIP-8141 pins the frame receipt as [tx-type, cumulative-gas, payer, [[status, gas-used, logs], ...]],
+        // with no status of its own; a roundtrip alone would pass for any self-consistent layout.
+        new object[] // EIP-8141 frame tx
+        {
+            4,
+            new TxReceipt[]
+            {
+                new EmptyTxReceipt
+                {
+                    TxType = TxType.FrameTx,
+                    GasUsedTotal = 555,
+                    Payer = new(new byte[] { 1 }.PadRight(Address.Size)),
+                    FrameReceipts =
+                    [
+                        new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 100, 20,
+                        [
+                            new(
+                                address: new(new byte[] { 2 }.PadRight(Address.Size)),
+                                topics: [new(new byte[] { 21 }.PadRight(Hash256.Size))],
+                                data: [2, 2]
+                            )
+                        ]),
+                        new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, [])
+                    ]
+                }
+            },
+            FrameReceiptHex
         }
     ];
 

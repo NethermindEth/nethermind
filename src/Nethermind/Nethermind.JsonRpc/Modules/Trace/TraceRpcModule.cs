@@ -388,6 +388,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object!;
 
+            if (!TryResolveForkSpec(fork, out IReleaseSpec? forkSpec, out ResultWrapper<IEnumerable<ParityTxTraceFromStore>>? forkError))
+                return forkError!;
+
+            // Genesis has no parent to replay from, and no transactions or rewards to trace.
+            if (block.IsGenesis)
+            {
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]);
+            }
+
             if (!blockchainBridge.HasStateForBlock(block.Header))
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
@@ -402,9 +411,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
             }
-
-            if (!TryResolveForkSpec(fork, out IReleaseSpec? forkSpec, out ResultWrapper<IEnumerable<ParityTxTraceFromStore>>? forkError))
-                return forkError!;
 
             BlockHeader parentHeader = parentSearch.Object!;
             ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.Rewards;

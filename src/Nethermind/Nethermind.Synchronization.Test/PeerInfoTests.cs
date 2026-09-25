@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Stats.Model;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
@@ -338,5 +340,18 @@ namespace Nethermind.Synchronization.Test
             Assert.That(peer.IsAllocationFull(AllocationContexts.Headers), Is.True);
         }
 
+        /// <summary>
+        /// Regression test for #8271: a value present in <see cref="NodeClientType"/> but absent from the
+        /// switch in <see cref="PeerInfoExtensions.MaxHeadersPerRequest"/> used to throw, aborting the sync
+        /// loop when a peer ran e.g. Nimbus. A bare [Values] covers every enum member, future ones included.
+        /// </summary>
+        [Test]
+        public void Header_request_limit_is_defined_for_every_client_type([Values] NodeClientType clientType)
+        {
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.ClientType.Returns(clientType);
+
+            Assert.That(new PeerInfo(syncPeer).MaxHeadersPerRequest(), Is.Positive);
+        }
     }
 }

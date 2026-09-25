@@ -1246,6 +1246,7 @@
           "Nethermind.Crypto": "[2.1.0-preview, )",
           "Nethermind.Db": "[2.1.0-preview, )",
           "Nethermind.Evm": "[2.1.0-preview, )",
+          "Nethermind.Evm.Precompiles": "[2.1.0-preview, )",
           "Nethermind.Network.Contract": "[2.1.0-preview, )",
           "Nethermind.State": "[2.1.0-preview, )",
           "NonBlocking": "[2.1.2, )"

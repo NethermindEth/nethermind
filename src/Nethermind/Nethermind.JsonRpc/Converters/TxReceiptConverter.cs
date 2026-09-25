@@ -49,7 +49,15 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
             writer.WritePropertyName("logsBloom");
             JsonSerializer.Serialize(writer, receipt.LogsBloom, options);
             writer.WritePropertyName("logs");
-            JsonSerializer.Serialize(writer, receipt.Logs.Length == 0 ? null : receipt.Logs, options);
+            JsonSerializer.Serialize(writer, receipt.Logs!.Length == 0 ? null : receipt.Logs, options);
+            // EIP-8141: emitted only for frame transactions, so other receipts keep their existing shape.
+            if (receipt.Type == TxType.FrameTx)
+            {
+                writer.WritePropertyName("payer");
+                JsonSerializer.Serialize(writer, receipt.Payer, options);
+                writer.WritePropertyName("frameReceipts");
+                JsonSerializer.Serialize(writer, receipt.FrameReceipts, options);
+            }
             writer.WritePropertyName("transactionHash");
             JsonSerializer.Serialize(writer, receipt.TransactionHash, options);
             writer.WritePropertyName("contractAddress");
