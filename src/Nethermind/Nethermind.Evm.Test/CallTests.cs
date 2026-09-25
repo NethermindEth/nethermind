@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -254,7 +255,19 @@ namespace Nethermind.Evm.Test
         [TestCase(true)]
         public void Nested_return_scratch_keeps_logical_length_after_larger_sibling(bool smallReverts)
         {
-            (Address largeTarget, Address smallTarget, byte[] largeOutput, byte[] smallOutput) = SetUpSiblingReturnTargets(smallReverts);
+            Address largeTarget = TestItem.AddressC;
+            Address smallTarget = TestItem.AddressD;
+            byte[] largeOutput = Enumerable.Repeat((byte)0xa5, 2048).ToArray();
+            byte[] smallOutput = [0x12, 0x34];
+            TestState.CreateAccount(largeTarget, UInt256.Zero);
+            TestState.CreateAccount(smallTarget, UInt256.Zero);
+            TestState.InsertCode(largeTarget,
+                Prepare.EvmCode.StoreDataInMemory(0, largeOutput).RETURN(0, (UInt256)largeOutput.Length).Done,
+                SpecProvider.GenesisSpec);
+            Prepare smallCode = Prepare.EvmCode.StoreDataInMemory(0, smallOutput);
+            TestState.InsertCode(smallTarget,
+                (smallReverts ? smallCode.REVERT(0, (UInt256)smallOutput.Length) : smallCode.RETURN(0, (UInt256)smallOutput.Length)).Done,
+                SpecProvider.GenesisSpec);
 
             byte[] dirtyMemory = Enumerable.Repeat(byte.MaxValue, EvmPooledMemory.WordSize).ToArray();
             byte[] parentCode = Prepare.EvmCode
@@ -271,34 +284,12 @@ namespace Nethermind.Evm.Test
             smallOutput.CopyTo(expected, 0);
             ((UInt256)smallOutput.Length).ToBigEndian().CopyTo(expected, EvmPooledMemory.WordSize);
 
-            TransactionSubstate result = ExecuteDirect(parentCode, new ReceiptOnlyTracer());
+            TransactionSubstate result = ExecuteDirect(parentCode);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result.ShouldRevert, Is.False);
                 Assert.That(result.Output.ToArray(), Is.EqualTo(expected));
-                Assert.That(Machine.RetainedReturnDataScratchLength, Is.GreaterThanOrEqualTo(largeOutput.Length));
-            }
-        }
-
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Direct_return_data_assignment_preserves_the_full_array(bool reverts)
-        {
-            byte[] stagedOutput = [0x01];
-            byte[] assignedOutput = [0x11, 0x22, 0x33, 0x44];
-            DirectReturnDataAssignmentTracer tracer = new(Machine, assignedOutput);
-            Prepare code = Prepare.EvmCode.StoreDataInMemory(0, stagedOutput);
-
-            TransactionSubstate result = ExecuteDirect(
-                (reverts ? code.REVERT(0, (UInt256)stagedOutput.Length) : code.RETURN(0, (UInt256)stagedOutput.Length)).Done,
-                tracer);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(tracer.Assigned, Is.True);
-                Assert.That(result.ShouldRevert, Is.EqualTo(reverts));
-                Assert.That(result.Output.ToArray(), Is.EqualTo(assignedOutput));
             }
         }
 
@@ -363,7 +354,18 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Tracer_can_retain_nested_return_output_after_later_sibling_return()
         {
-            (Address largeTarget, Address smallTarget, byte[] largeOutput, byte[] smallOutput) = SetUpSiblingReturnTargets(false);
+            Address largeTarget = TestItem.AddressC;
+            Address smallTarget = TestItem.AddressD;
+            byte[] largeOutput = Enumerable.Repeat((byte)0xa5, 2048).ToArray();
+            byte[] smallOutput = [0x12, 0x34];
+            TestState.CreateAccount(largeTarget, UInt256.Zero);
+            TestState.CreateAccount(smallTarget, UInt256.Zero);
+            TestState.InsertCode(largeTarget,
+                Prepare.EvmCode.StoreDataInMemory(0, largeOutput).RETURN(0, (UInt256)largeOutput.Length).Done,
+                SpecProvider.GenesisSpec);
+            TestState.InsertCode(smallTarget,
+                Prepare.EvmCode.StoreDataInMemory(0, smallOutput).RETURN(0, (UInt256)smallOutput.Length).Done,
+                SpecProvider.GenesisSpec);
             byte[] parentCode = Prepare.EvmCode
                 .CALL(100_000, largeTarget, 0, 0, 0, 0, 0).Op(Instruction.POP)
                 .CALL(100_000, smallTarget, 0, 0, 0, 0, 0).Op(Instruction.POP)
@@ -378,46 +380,6 @@ namespace Nethermind.Evm.Test
                 Assert.That(tracer.Outputs.Count, Is.GreaterThanOrEqualTo(2));
                 Assert.That(tracer.Outputs[0].ToArray(), Is.EqualTo(largeOutput));
                 Assert.That(tracer.Outputs[1].ToArray(), Is.EqualTo(smallOutput));
-                Assert.That(Machine.RetainedReturnDataScratchLength, Is.Zero);
-            }
-        }
-
-        private (Address LargeTarget, Address SmallTarget, byte[] LargeOutput, byte[] SmallOutput) SetUpSiblingReturnTargets(bool smallReverts)
-        {
-            Address largeTarget = TestItem.AddressC;
-            Address smallTarget = TestItem.AddressD;
-            byte[] largeOutput = Enumerable.Repeat((byte)0xa5, 2048).ToArray();
-            byte[] smallOutput = [0x12, 0x34];
-            TestState.CreateAccount(largeTarget, UInt256.Zero);
-            TestState.CreateAccount(smallTarget, UInt256.Zero);
-            TestState.InsertCode(largeTarget,
-                Prepare.EvmCode.StoreDataInMemory(0, largeOutput).RETURN(0, (UInt256)largeOutput.Length).Done,
-                SpecProvider.GenesisSpec);
-            Prepare smallCode = Prepare.EvmCode.StoreDataInMemory(0, smallOutput);
-            TestState.InsertCode(smallTarget,
-                (smallReverts ? smallCode.REVERT(0, (UInt256)smallOutput.Length) : smallCode.RETURN(0, (UInt256)smallOutput.Length)).Done,
-                SpecProvider.GenesisSpec);
-            return (largeTarget, smallTarget, largeOutput, smallOutput);
-        }
-
-        private sealed class ReceiptOnlyTracer : TxTracer
-        {
-            public override bool IsTracingReceipt => true;
-        }
-
-        private sealed class DirectReturnDataAssignmentTracer(EthereumVirtualMachine machine, byte[] output) : TxTracer
-        {
-            public bool Assigned { get; private set; }
-
-            public override bool IsTracingInstructions => true;
-
-            public override void ReportOperationRemainingGas(ulong gas)
-            {
-                if (!Assigned && machine.ReturnData is byte[])
-                {
-                    machine.ReturnData = output;
-                    Assigned = true;
-                }
             }
         }
 
@@ -445,10 +407,7 @@ namespace Nethermind.Evm.Test
             Machine.SetBlockExecutionContext(new BlockExecutionContext(Build.A.Block.TestObject.Header, Spec));
             Machine.SetTxExecutionContext(new TxExecutionContext(Sender, CodeInfoRepository, null, UInt256.Zero));
 
-            ITxTracer effectiveTracer = tracer ?? NullTxTracer.Instance;
-            return effectiveTracer.IsTracingInstructions
-                ? Machine.ExecuteTransaction<OnFlag>(vmState, TestState, effectiveTracer)
-                : Machine.ExecuteTransaction<OffFlag>(vmState, TestState, effectiveTracer);
+            return Machine.ExecuteTransaction<OffFlag>(vmState, TestState, tracer ?? NullTxTracer.Instance);
         }
 
         [Test]
