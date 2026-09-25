@@ -308,6 +308,48 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    [Test]
+    public void Heavy_rounds_keep_the_originals_map_below_the_trim_limit()
+    {
+        const int SlotCount = CoreCollectionExtensions.DefaultTrimAboveCapacity * 2;
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        // Read first, so it is captured before the move and later served from the pooled map.
+        StorageCell probe = new(ctx.Address1, UInt256.Zero);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 1);
+            provider.Set(in probe, (UInt256)7);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            int[] capacities = new int[2];
+            for (int round = 0; round < capacities.Length; round++)
+            {
+                for (int i = 0; i < SlotCount; i++) provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
+                provider.GetOriginal(in probe, out UInt256 original);
+                Assert.That(original, Is.EqualTo((UInt256)7));
+
+                provider.Commit(Frontier.Instance);
+                capacities[round] = GetCollectionCapacity(GetPrivateField(provider._persistentStorageProvider, "_originalValues"));
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                // A map past the limit would have been trimmed back to DefaultTrimToCapacity and regrown next round.
+                Assert.That(capacities[0], Is.GreaterThan(CoreCollectionExtensions.DefaultTrimToCapacity * 2));
+                Assert.That(capacities[0], Is.LessThanOrEqualTo(CoreCollectionExtensions.DefaultTrimAboveCapacity));
+                Assert.That(capacities[1], Is.EqualTo(capacities[0]));
+            }
+        }
+    }
+
     private static object GetBlockChange(WorldState provider, Address address)
     {
         FieldInfo storagesField = typeof(PersistentStorageProvider).GetField(

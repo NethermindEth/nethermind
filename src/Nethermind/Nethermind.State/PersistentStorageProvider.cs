@@ -41,7 +41,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
-    private readonly Dictionary<StorageCell, UInt256> _originalValues = [];
+    private Dictionary<StorageCell, UInt256> _originalValues = [];
+    // The provider's own originals map, parked while a pooled large one holds its entries; restored each round.
+    private Dictionary<StorageCell, UInt256>? _parkedOriginalValues;
+    // A map past the trim limit is cut back at the end of every round, so a heavy block or call regrew it on the LOH.
+    // A resize takes the next prime at least twice the capacity, under 2.4 times it at these sizes (3,371 grows to
+    // 7,013 but 4,049 to 8,419), so a full map above 5/12 of the limit moves into a pooled one instead.
+    private const int OriginalsGrowIntoLargeAbove = Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity * 5 / 12;
     // Memoizes captured values only; transaction originals still resolve through the journal.
     private StorageCell _lastCapturedCell;
     private UInt256 _lastCapturedOriginal;
@@ -62,6 +68,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private void EndOriginalsRound()
     {
         _lastCapturedCell = default;
+        if (_parkedOriginalValues is not null)
+        {
+            LargeMapPool<StorageCell, UInt256>.Return(_originalValues);
+            _originalValues = _parkedOriginalValues;
+            _parkedOriginalValues = null;
+        }
+
         _originalValues.ClearAndTrim();
         if ((_originalsRound += 2) == (1UL << 33)) _originalsRound = 2;
     }
@@ -615,6 +628,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     private void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
     {
+        Dictionary<StorageCell, UInt256> originals = _originalValues;
+        if (originals.Count == originals.Capacity && originals.Capacity > OriginalsGrowIntoLargeAbove && !originals.ContainsKey(cell))
+        {
+            GrowOriginalsIntoLarge();
+        }
+
         ref UInt256 slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_originalValues, cell, out bool exists);
         if (!exists)
         {
@@ -622,6 +641,25 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
         _lastCapturedCell = cell;
         _lastCapturedOriginal = slot;
+    }
+
+    private void GrowOriginalsIntoLarge()
+    {
+        Dictionary<StorageCell, UInt256> current = _originalValues;
+        Dictionary<StorageCell, UInt256> large = LargeMapPool<StorageCell, UInt256>.Rent(current.Count * 4, comparer: null);
+        foreach (KeyValuePair<StorageCell, UInt256> entry in current) large.Add(entry.Key, entry.Value);
+
+        if (_parkedOriginalValues is null)
+        {
+            current.Clear();
+            _parkedOriginalValues = current;
+        }
+        else
+        {
+            LargeMapPool<StorageCell, UInt256>.Return(current); // an earlier large map that filled up
+        }
+
+        _originalValues = large;
     }
 
     [SkipLocalsInit]
@@ -815,7 +853,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private sealed class DefaultableDictionary()
     {
-        /// <summary>A full map of at least this many entries moves into one from <see cref="LargeTraceMapPool"/>.</summary>
+        /// <summary>A full map of at least this many entries moves into one from <see cref="LargeMapPool{TKey, TValue}"/>.</summary>
         private const int GrowIntoLargeAt = 512;
         private const int LargeMapMinCapacity = 4096;
 
@@ -835,8 +873,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 // The large map goes back to the shared pool and the contract keeps its own small one, so a
                 // contract that outgrew the pooled size costs no allocation here or on its next heavy use.
-                if (_dictionary.Capacity > capacity) LargeTraceMapPool.Return(_dictionary);
-                if (_spare is not null && _spare.Capacity > capacity) LargeTraceMapPool.Return(_spare);
+                if (_dictionary.Capacity > capacity) LargeMapPool<UInt256, StorageChangeTrace>.Return(_dictionary);
+                if (_spare is not null && _spare.Capacity > capacity) LargeMapPool<UInt256, StorageChangeTrace>.Return(_spare);
                 _dictionary = _parked;
                 _parked = null;
                 _spare = null;
@@ -927,7 +965,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         private void GrowIntoLarge()
         {
             Dictionary<UInt256, StorageChangeTrace> current = _dictionary;
-            Dictionary<UInt256, StorageChangeTrace> large = LargeTraceMapPool.Rent(Math.Max(current.Count * 4, LargeMapMinCapacity));
+            Dictionary<UInt256, StorageChangeTrace> large =
+                LargeMapPool<UInt256, StorageChangeTrace>.Rent(Math.Max(current.Count * 4, LargeMapMinCapacity), UInt256Comparer.Instance);
             foreach (KeyValuePair<UInt256, StorageChangeTrace> entry in current) large.Add(entry.Key, entry.Value);
 
             if (_parked is null)
@@ -937,7 +976,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
             else
             {
-                LargeTraceMapPool.Return(current); // an earlier large map that filled up
+                LargeMapPool<UInt256, StorageChangeTrace>.Return(current); // an earlier large map that filled up
             }
 
             _dictionary = large;
@@ -961,19 +1000,20 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     /// <summary>
-    /// Large per-contract change maps shared by all providers. Retention is bounded: at most
-    /// <see cref="MaxRetainedEntries"/> entries of capacity in total (about 27 MB), none above <see cref="MaxRetainedCapacity"/>.
+    /// Large maps shared by all providers, for maps that outgrow what their owners keep between blocks or calls.
+    /// Retention is bounded per map type: at most <see cref="MaxRetainedEntries"/> entries of capacity in total, none
+    /// above <see cref="MaxRetainedCapacity"/> (about 27 MB for change maps, 23 MB for original values).
     /// </summary>
-    private static class LargeTraceMapPool
+    private static class LargeMapPool<TKey, TValue> where TKey : notnull
     {
         private const int MaxRetainedEntries = 256 * 1024;
         private const int MaxRetainedCapacity = 128 * 1024;
         private static readonly Lock Lock = new();
-        private static readonly List<Dictionary<UInt256, StorageChangeTrace>> Retained = [];
+        private static readonly List<Dictionary<TKey, TValue>> Retained = [];
         private static int _retainedEntries;
 
         /// <summary>The smallest retained map with at least <paramref name="minCapacity"/> capacity, or a new one.</summary>
-        public static Dictionary<UInt256, StorageChangeTrace> Rent(int minCapacity)
+        public static Dictionary<TKey, TValue> Rent(int minCapacity, IEqualityComparer<TKey>? comparer)
         {
             lock (Lock)
             {
@@ -986,17 +1026,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
                 if (best >= 0)
                 {
-                    Dictionary<UInt256, StorageChangeTrace> retained = Retained[best];
+                    Dictionary<TKey, TValue> retained = Retained[best];
                     Retained.RemoveAt(best);
                     _retainedEntries -= retained.Capacity;
                     return retained;
                 }
             }
 
-            return new Dictionary<UInt256, StorageChangeTrace>(minCapacity, UInt256Comparer.Instance);
+            return new Dictionary<TKey, TValue>(minCapacity, comparer);
         }
 
-        public static void Return(Dictionary<UInt256, StorageChangeTrace> map)
+        public static void Return(Dictionary<TKey, TValue> map)
         {
             int capacity = map.Capacity;
             if (capacity > MaxRetainedCapacity) return;
