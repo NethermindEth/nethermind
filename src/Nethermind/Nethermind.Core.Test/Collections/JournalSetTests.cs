@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Collections;
@@ -121,7 +122,7 @@ namespace Nethermind.Core.Test.Collections
 
         private static int[] EnumerateConcrete(JournalSet<int> journalSet)
         {
-            using HashSet<int>.Enumerator enumerator = journalSet.GetEnumerator();
+            using JournalSet<int>.Enumerator enumerator = journalSet.GetEnumerator();
             List<int> items = [];
             while (enumerator.MoveNext())
             {
@@ -129,6 +130,45 @@ namespace Nethermind.Core.Test.Collections
             }
 
             return items.ToArray();
+        }
+
+        [Test]
+        public void Sparse_clear_enumerates_restored_items_without_hash_set_normalization()
+        {
+            JournalSet<int> journalSet = CreateJournalSet(useSparseClear: true);
+            journalSet.AddRange(Enumerable.Range(0, 8192));
+            journalSet.Restore(1);
+            journalSet.Clear();
+            journalSet.AddRange([8, 9, 10]);
+
+            // Consume the sparse-clear state before exercising restored and reused entries.
+            Assert.That(EnumerateConcrete(journalSet), Is.EqualTo([8, 9, 10]));
+            int snapshot = journalSet.TakeSnapshot();
+            journalSet.AddRange([11, 12]);
+            journalSet.Restore(snapshot);
+            journalSet.AddRange([13, 14]);
+
+            int[] expected = [8, 9, 10, 13, 14];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(EnumerateConcrete(journalSet), Is.EqualTo(expected));
+
+                int[] copied = Enumerable.Repeat(-1, expected.Length + 1).ToArray();
+                journalSet.CopyTo(copied, 1);
+                Assert.That(copied, Is.EqualTo([-1, .. expected]));
+
+                IEnumerable<int> generic = journalSet;
+                Assert.That(generic, Is.EqualTo(expected));
+
+                IEnumerable nongeneric = journalSet;
+                List<int> enumerated = [];
+                foreach (object item in nongeneric)
+                {
+                    enumerated.Add((int)item);
+                }
+
+                Assert.That(enumerated, Is.EqualTo(expected));
+            }
         }
 
         [Test]

@@ -21,8 +21,12 @@ namespace Nethermind.Core.Collections
         private readonly List<T> _items = [];
         private readonly HashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
         private readonly bool _useSparseClear;
-        private bool _enumerationNeedsNormalization;
 
+        /// <summary>
+        /// Initializes a journal set, optionally retaining sparse clear storage for reuse.
+        /// </summary>
+        /// <param name="equalityComparer">Comparer used to determine whether items are already present.</param>
+        /// <param name="useSparseClear">Whether to remove individual items on small clears and enumerate from the insertion journal.</param>
         public JournalSet(EqualityComparer<T> equalityComparer, bool useSparseClear) : this(equalityComparer)
             => _useSparseClear = useSparseClear;
 
@@ -71,23 +75,20 @@ namespace Nethermind.Core.Collections
                 {
                     _set.Remove(item);
                 }
-
-                _enumerationNeedsNormalization = true;
             }
             else
             {
                 _set.Clear();
-                _enumerationNeedsNormalization = false;
             }
 
             _items.Clear();
         }
 
-        public HashSet<T>.Enumerator GetEnumerator()
-        {
-            NormalizeForEnumeration();
-            return _set.GetEnumerator();
-        }
+        /// <summary>Enumerates the set using its configured ordering.</summary>
+        /// <remarks>Sparse journals enumerate their insertion journal directly; dense journals retain the backing <see cref="HashSet{T}"/> ordering.</remarks>
+        public Enumerator GetEnumerator() => _useSparseClear
+            ? new(_items.GetEnumerator())
+            : new(_set.GetEnumerator());
         IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
@@ -102,25 +103,56 @@ namespace Nethermind.Core.Collections
         public T First => _items[0];
         public void CopyTo(T[] array, int arrayIndex)
         {
-            NormalizeForEnumeration();
-            _set.CopyTo(array, arrayIndex);
+            if (_useSparseClear)
+            {
+                _items.CopyTo(array, arrayIndex);
+            }
+            else
+            {
+                _set.CopyTo(array, arrayIndex);
+            }
         }
 
-        private void NormalizeForEnumeration()
+        /// <summary>Enumerates the items in the journal set.</summary>
+        public struct Enumerator : IEnumerator<T>
         {
-            if (!_enumerationNeedsNormalization)
+            private readonly bool _useItems;
+            private HashSet<T>.Enumerator _setEnumerator;
+            private List<T>.Enumerator _itemsEnumerator;
+
+            internal Enumerator(HashSet<T>.Enumerator setEnumerator)
             {
-                return;
+                _useItems = false;
+                _setEnumerator = setEnumerator;
+                _itemsEnumerator = default;
             }
 
-            // Sparse clears leave reusable HashSet slots whose order can reverse later additions; rebuild only when enumeration is requested.
-            _set.Clear();
-            foreach (T item in _items)
+            internal Enumerator(List<T>.Enumerator itemsEnumerator)
             {
-                _set.Add(item);
+                _useItems = true;
+                _setEnumerator = default;
+                _itemsEnumerator = itemsEnumerator;
             }
 
-            _enumerationNeedsNormalization = false;
+            /// <inheritdoc/>
+            public T Current => _useItems ? _itemsEnumerator.Current : _setEnumerator.Current;
+            object IEnumerator.Current => Current!;
+            /// <inheritdoc/>
+            public bool MoveNext() => _useItems ? _itemsEnumerator.MoveNext() : _setEnumerator.MoveNext();
+            /// <inheritdoc/>
+            public void Reset() => throw new NotSupportedException();
+            /// <inheritdoc/>
+            public void Dispose()
+            {
+                if (_useItems)
+                {
+                    _itemsEnumerator.Dispose();
+                }
+                else
+                {
+                    _setEnumerator.Dispose();
+                }
+            }
         }
     }
 }
