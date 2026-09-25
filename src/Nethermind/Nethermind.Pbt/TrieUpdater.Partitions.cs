@@ -291,6 +291,7 @@ public static partial class TrieUpdater
             TrieUpdater<TKey, TPath>.StoredGroupHashes hashes = default;
             TrieUpdater<TKey, TPath>.FoldResult result = default;
             // The producer grouped the zone by the slot nibble of this group, so sorted shards sort the zone and keep its slot ranges.
+            // Each shard's leaves are hashed with its sort, so the fold reads leaf hashes in place of values.
             TrieUpdater<TKey, TPath>.SortShards(context, operations.AsSpan(), table.AsSpan());
             TrieUpdater<TKey, TPath>.FoldZoneSorted(context, ref reader, ref hashes, writer, current, operations.AsSpan(), ref path, 4, table.AsSpan(), ref result);
             // The result is anchored at the zone cursor its boundary slot sits on, four bits above this group.
