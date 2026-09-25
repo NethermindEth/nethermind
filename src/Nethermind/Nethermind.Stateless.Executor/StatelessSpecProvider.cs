@@ -71,15 +71,37 @@ internal sealed class StatelessSpecProvider(
         // replay future rules on a mainnet-shaped chain. Pinning one the chain has already left is the
         // opposite case and would validate the payload under superseded rules, so reject it. Unreachable
         // while the newest fork is the only pinnable one, but the schema id is chosen by the prover.
-        if (protocolFork != ProtocolFork.Current &&
-            ProtocolForkExtensions.TryGetByName(baseProvider.GetSpec(payloadActivation).Name, out ProtocolFork scheduledFork) &&
-            protocolFork < scheduledFork)
+        if (protocolFork != ProtocolFork.Current && IsSuperseded(baseProvider, protocolFork, payloadActivation))
         {
             throw new InvalidDataException(
-                $"The input pins {protocolFork.GetName()}, superseded by {scheduledFork.GetName()} at this payload's activation");
+                $"The input pins {protocolFork.GetName()}, which the chain has left by this payload's activation");
         }
 
         return new(baseProvider, chainId, payloadActivation, GetPayloadSpec(baseProvider, chainId, protocolFork, payloadActivation));
+    }
+
+    /// <summary>Whether the chain has moved past <paramref name="pinnedFork"/> by <paramref name="payloadActivation"/>.</summary>
+    /// <remarks>
+    /// A scheduled fork newer than every <see cref="ProtocolFork"/> has no enum value to compare against, so the
+    /// chain having already run the pinned fork, or a later one, is what shows it moved past it.
+    /// </remarks>
+    internal static bool IsSuperseded(ISpecProvider specProvider, ProtocolFork pinnedFork, ForkActivation payloadActivation)
+    {
+        IReleaseSpec scheduledSpec = specProvider.GetSpec(payloadActivation);
+        if (ProtocolForkExtensions.TryGetByName(scheduledSpec.Name, out ProtocolFork scheduledFork))
+            return pinnedFork < scheduledFork;
+
+        foreach (ForkActivation transition in specProvider.TransitionActivations)
+        {
+            if (transition <= payloadActivation &&
+                ProtocolForkExtensions.TryGetByName(specProvider.GetSpec(transition).Name, out ProtocolFork fork) &&
+                fork >= pinnedFork)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static IReleaseSpec GetPayloadSpec(
