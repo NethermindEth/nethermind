@@ -105,6 +105,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
+            .Add<CarryForwardCachingPersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
@@ -119,7 +120,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 };
 
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
-                return flatDbConfig.EnableCarryForwardCache ? new CarryForwardCachingPersistence(cachedReader) : cachedReader;
+                return flatDbConfig.EnableCarryForwardCache
+                    ? ctx.Resolve<CarryForwardCachingPersistence>(TypedParameter.From<IPersistence>(cachedReader))
+                    : cachedReader;
             })
             ;
 

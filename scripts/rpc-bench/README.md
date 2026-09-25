@@ -13,25 +13,39 @@ and post-process it to XML.
 path below follows that choice. **Never compare timings across the two boxes.**
 
 The amd64 box holds the full snapshot set, so it serves every `client`,
-`reference_client` and `state_layout`. The arm64 box carries exactly one kind of
-snapshot set — Nethermind in the **flat** layout — so there `client`,
-`reference_client` and `state_layout` are held to `nethermind` / `none` / `flat`,
-and an image it would have to build is refused as well (that box's ~19G root disk
-dies under a build). `resolve` checks those limits against the selected runner.
+`reference_client` and `state_layout`. The arm64 box carries the Nethermind
+**flat** set plus one directory per additionally provisioned client
+(`/data/<client>/<client>-<block>`), so there any single provisioned `client`
+runs in single-node mode, `reference_client` is held to `none`, `state_layout`
+to `flat`, and an image it would have to build is refused as well (that box's
+small root disk dies under a build). Sweeps resolve their sets differently
+(below), so those per-client sets serve single-node runs only. `resolve` checks
+those limits against the selected runner, and the benchmark job's
+`Validate snapshot and output paths` step checks that every set the run will
+mount exists before anything is pulled.
 
-**Sweep mode** (`jsonbench-sweep`) resolves a snapshot set per client type, the
-same `<snapshot root>/<client>-<block>` layout the single-node path uses (the
-Nethermind set follows the sweep's `state_layout`: `nethermind-flat-<block>` for
-`flat`, `nethermind-<block>` for `halfpath`), so `tool_config.clients` may name
-`geth` and `reth` entries alongside Nethermind ones. `run-rpc-sweep.sh` checks
-every requested type's set exists before it starts a node, so a type the selected
-box cannot serve is one clear error rather than a per-client warning and a
-partly-empty matrix reported as success. Scratch is wiped between arms, so the
-sweep also canonicalizes `scratch_root` and refuses one that equals, contains or
-sits inside any requested type's snapshot. As of 2026-08 the amd64 box carries
-`nethermind-flat-25490000`, `nethermind-25490000`, `nethermind-flat-snapshot`,
-`geth-25490000` and `reth-25490000`; the arm64 box carries the Nethermind flat
-set only.
+Benchmark output and profiling archives are staged in a per-run directory
+(`rpcbench.XXXXXX`) that the job removes at the end: under the runner's
+temporary directory on amd64, and on the scratch volume on arm64, whose small
+root disk cannot hold them. The ARM disk guard requires 6 GiB free on each
+Docker/containerd filesystem and on the output filesystem, plus 1 GiB on `/`,
+and sweeps per-run directories that a killed job left on the scratch volume.
+
+Independently of the runner, **sweep mode** (the corpus presets and
+`jsonbench-sweep`) resolves a snapshot set per client type under the runner's
+Nethermind snapshot root, at `<root>/<client>-<block>` (the Nethermind set
+follows the sweep's `state_layout`: `nethermind-flat-<block>` for `flat`, the
+default, and `nethermind-<block>` for `halfpath`), so `tool_config.clients` may
+name `geth` and `reth` entries alongside Nethermind ones. `run-rpc-sweep.sh`
+checks every requested type's set exists before it starts a node, so a type the
+selected box cannot serve is one clear error rather than a per-client warning
+and a partly-empty matrix reported as success. Scratch is wiped between arms, so
+the sweep also canonicalizes `scratch_root` and refuses one that equals,
+contains or sits inside any requested type's snapshot. As of 2026-08 the amd64
+box carries `nethermind-flat-25490000`, `nethermind-25490000`,
+`nethermind-flat-snapshot`, `geth-25490000` and `reth-25490000`. The arm64 box
+keeps its other clients' sets under `/data/<client>/`, outside that root, which
+leaves geth/reth sweep arms to amd64.
 
 Isolation is per client type too. reth's DB is a single large `mdbx.dat` whose
 first write forces overlayfs to copy the whole file up before the node opens, so
@@ -223,8 +237,8 @@ the workflow's defensive-cleanup step).
 | Input | Meaning |
 |---|---|
 | `benchmark_tool` | `flood`, `ethcallchaos`, `jsonbench`, or `jsonbench-sweep`. |
-| `client` | `nethermind`, `geth` or `reth` — whichever has a snapshot set on the selected runner (arm64 serves Nethermind only). |
-| `reference_client` | Second client to compare against, or `none`. Needs that client's same-block set on the selected runner. For a perf A/B prefer two single-node runs or a `jsonbench-sweep`; a comparison run shares the box between both nodes, so it measures correctness rather than clean latency. |
+| `client` | `nethermind`, `geth` or `reth` — whichever has a snapshot set on the selected runner (arm64 runs a non-Nethermind client single-node from `/data/<client>/<client>-<block>`). |
+| `reference_client` | Second client to compare against, or `none`. Needs that client's same-block set on the selected runner (amd64 only). For a perf A/B prefer two single-node runs or a `jsonbench-sweep`; a comparison run shares the box between both nodes, so it measures correctness rather than clean latency. |
 | `arch` | Benchmark runner: `amd64` (default, `/mnt/sda`) or `arm64` (`/data`). Drives every path. |
 | `snapshot_block` | Snapshot set tag (`<snapshot root>/<client>-<tag>`, or `<snapshot root>/nethermind-flat-<tag>` for Nethermind's flat set); empty = `25490000`. |
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |

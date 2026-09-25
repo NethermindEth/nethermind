@@ -177,15 +177,30 @@ public abstract class StateSyncFeedTestsBase(
 
     protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength, bool failOnTimeout = true)
     {
-        Task feedTask = safeContext.RunFeed(safeContext.CancellationToken);
+        using CancellationTokenSource roundCancellation = CancellationTokenSource.CreateLinkedTokenSource(safeContext.CancellationToken);
+        Task feedTask = safeContext.RunFeed(roundCancellation.Token);
 
         Task completed = await Task.WhenAny(
             feedTask,
             Task.Delay(timeout));
 
-        if (failOnTimeout && completed != feedTask)
+        if (completed == feedTask) return;
+
+        if (failOnTimeout)
         {
             Assert.Fail($"State sync did not complete within {timeout}ms.");
+        }
+
+        // TreeSync may only be reset outside dispatcher.Run, so a timed-out round has to drain before the caller
+        // resets the feed or starts another round on it.
+        await roundCancellation.CancelAsync();
+        try
+        {
+            await feedTask;
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected: the round was cancelled above.
         }
     }
 

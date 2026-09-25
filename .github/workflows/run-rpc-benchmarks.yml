@@ -26,8 +26,9 @@ on:
         default: corpus-ab
       arch:
         description: >-
-          Runner. amd64 = EPYC box (all clients/layouts, builds images); arm64 = Axion box (Nethermind flat only,
-          prebuilt images only). Never compare timings across boxes.
+          Runner. amd64 = EPYC box (all clients/layouts, builds images); arm64 = Axion box (flat only, no reference client,
+          prebuilt images only; a non-Nethermind client runs single-node from its own provisioned set). Never compare
+          timings across boxes.
         required: false
         type: choice
         options:
@@ -362,8 +363,10 @@ jobs:
             jsonbench|flood|ethcallchaos) benchmark_tool="${preset}" ;;
             *) fail "Unknown benchmark_tool '${preset}'." ;;
           esac
-          if [[ "${arch}" == "arm64" ]] && [[ "${client}" != "nethermind" || "${reference_client}" != "none" ]]; then
-            fail "The arm64 runner only supports a single Nethermind client — use arch=amd64 for geth/reth or a reference client."
+          # The ARM box runs one node at a time, any client from its own provisioned snapshot set (the sweep presets pin
+          # client=nethermind above); `Validate snapshot and output paths` checks that set exists before anything is pulled.
+          if [[ "${arch}" == "arm64" && "${reference_client}" != "none" ]]; then
+            fail "The arm64 runner only supports a single client — use arch=amd64 for a reference client."
           fi
           [[ "${arch}" != "arm64" || "${state_layout}" == "flat" ]] || fail "The arm64 runner only supports the flat state layout."
           comparison="false"; [[ "${reference_client}" != "none" ]] && comparison="true"
@@ -579,6 +582,9 @@ jobs:
             if [[ -n "${snapshot_block}" ]]; then
               if [[ "$1" == "nethermind" ]]; then
                 [[ "${state_layout}" == "flat" ]] && echo "${snapshot_root}/nethermind-flat-${snapshot_block}" || echo "${snapshot_root}/nethermind-${snapshot_block}"
+              elif [[ "${arch}" == "arm64" ]]; then
+                # The ARM box keeps one directory per client under /data; its snapshot root is the Nethermind one.
+                echo "$(dirname "${snapshot_root}")/$1/$1-${snapshot_block}"
               else
                 echo "${snapshot_root}/$1-${snapshot_block}"
               fi
@@ -862,6 +868,75 @@ jobs:
           echo "Baseline:    ${{ needs.resolve.outputs.baseline_mode }} (${{ needs.resolve.outputs.baseline_image }})"
           printf 'tool_config: %s\n' "${TOOL_CONFIG}"
 
+      # `Set up run paths` creates the per-run output dirs before checkout so early failures still get a summary; this checks
+      # them, and every snapshot set the run will mount, before the reclaim, the pull or any node touches the disk.
+      - name: Validate snapshot and output paths
+        shell: bash
+        env:
+          BENCHMARK_TOOL: ${{ needs.resolve.outputs.benchmark_tool }}
+          DB_SOURCE: ${{ needs.resolve.outputs.db_source }}
+          REFERENCE_DB_SOURCE: ${{ needs.resolve.outputs.ref_db_source }}
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          SNAPSHOT_ROOT: ${{ needs.resolve.outputs.snapshot_root }}
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+        run: |
+          set -euo pipefail
+          fail_path() { echo "::error::$*"; exit 1; }
+          canonical_existing() { realpath -e -- "$1"; }
+          canonical_planned() { realpath -m -- "$1"; }
+          is_under() { [[ "$1/" == "$2/"* ]]; }
+          path_overlaps() { is_under "$1" "$2" || is_under "$2" "$1"; }
+
+          # `db_source` is resolved for every dispatch but only `Start node` mounts it, and that step does not run in sweep
+          # mode: run-rpc-sweep.sh mounts one set per client type in tool_config.clients, all at one block under SNAPSHOT_ROOT -
+          # Nethermind's in the sweep's state_layout, any other type's as `<type>-<block>`. Checking `db_source` there would
+          # abort the run over a directory it was never going to mount, so check what the sweep resolves instead.
+          if [[ "${BENCHMARK_TOOL}" == "jsonbench-sweep" ]]; then
+            sweep_get() { printf '%s' "${TOOL_CONFIG:-}" | jq -r "$1 // empty" 2>/dev/null || true; }
+            sweep_block="$(sweep_get .snapshot_block)"; sweep_block="${sweep_block:-25490000}"
+            sweep_nethermind="${SNAPSHOT_ROOT}/nethermind-flat-${sweep_block}"
+            [[ "$(sweep_get .state_layout)" != "halfpath" ]] || sweep_nethermind="${SNAPSHOT_ROOT}/nethermind-${sweep_block}"
+            # Nethermind's set always: it is the sweep's default arm, and a cache miss prepends a master arm.
+            declare -A sweep_sets=(["${sweep_nethermind}"]=1)
+            read -ra sweep_arms <<< "$(sweep_get .clients)"
+            for arm in "${sweep_arms[@]}"; do
+              ctype="${arm%%#*}"; ctype="${ctype%%@*}"
+              [[ "${ctype}" == "nethermind" ]] || sweep_sets["${SNAPSHOT_ROOT}/${ctype}-${sweep_block}"]=1
+            done
+            db_sources=("${!sweep_sets[@]}")
+            db_fix="set tool_config.snapshot_block, state_layout and clients to a snapshot set this runner holds"
+          else
+            db_sources=("${DB_SOURCE}")
+            db_fix="set node_config.db_source to an existing snapshot path"
+          fi
+          scratch_canonical="$(canonical_planned "${SCRATCH_ROOT}")" || fail_path "cannot canonicalize SCRATCH_ROOT '${SCRATCH_ROOT}'"
+          db_canonicals=(); db_labels=()
+          for db_source in "${db_sources[@]}"; do
+            db_canonical="$(canonical_existing "${db_source}")" || fail_path "DB source '${db_source}' is missing or unresolvable; ${db_fix}."
+            db_canonicals+=("${db_canonical}"); db_labels+=("the DB source '${db_source}'")
+          done
+          if [[ -n "${REFERENCE_DB_SOURCE}" ]]; then
+            ref_db_canonical="$(canonical_existing "${REFERENCE_DB_SOURCE}")" || fail_path "Reference DB source '${REFERENCE_DB_SOURCE}' is missing or unresolvable; set node_config.reference_db_source to an existing snapshot path."
+            db_canonicals+=("${ref_db_canonical}"); db_labels+=("the reference DB source '${REFERENCE_DB_SOURCE}'")
+          fi
+          for i in "${!db_canonicals[@]}"; do
+            [[ -d "${db_canonicals[i]}" ]] || fail_path "${db_labels[i]} is not a directory"
+            if path_overlaps "${scratch_canonical}" "${db_canonicals[i]}"; then fail_path "SCRATCH_ROOT must be disjoint from ${db_labels[i]}"; fi
+          done
+
+          # DIAG_DIR must remain below the canonical scratch root, and every generated path (the per-run output dir sits on
+          # RUNNER_TEMP or the scratch root) must stay disjoint from every pristine DB tree; lexical resolver checks cannot see
+          # a symlinked component.
+          diag_canonical="$(canonical_planned "${DIAG_DIR}")" || fail_path "cannot canonicalize output path '${DIAG_DIR}'"
+          is_under "${diag_canonical}" "${scratch_canonical}" && [[ "${diag_canonical}" != "${scratch_canonical}" ]] || fail_path "output path '${DIAG_DIR}' escapes SCRATCH_ROOT"
+          for planned in "${DIAG_DIR}" "${BENCH_TEMP}" "${OUT_DIR}" "${STATE_DIR}"; do
+            canonical="$(canonical_planned "${planned}")" || fail_path "cannot canonicalize output path '${planned}'"
+            for i in "${!db_canonicals[@]}"; do
+              if path_overlaps "${canonical}" "${db_canonicals[i]}"; then fail_path "output path '${planned}' overlaps ${db_labels[i]}"; fi
+            done
+          done
+          echo "Snapshot sets: ${db_sources[*]}${REFERENCE_DB_SOURCE:+ (reference: ${REFERENCE_DB_SOURCE})}; outputs under ${BENCH_TEMP} and ${DIAG_DIR}"
+
       - name: Reclaim root disk before pulling
         if: needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
         shell: bash
@@ -873,6 +948,7 @@ jobs:
             ${{ needs.resolve.outputs.image_ref }}
             ${{ needs.resolve.outputs.ref_image_ref }}
           KEEP_TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
         run: |
           set -uo pipefail
           source scripts/rpc-bench/lib.sh   # arm_image: the sweep's own `clients` entry -> image ref normalisation
@@ -908,6 +984,9 @@ jobs:
           docker image prune -f || true
           docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
           find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete 2>/dev/null || true
+          # On this box each run's output dir sits on the scratch disk, and only `Remove run output` deletes it -
+          # which never runs if the job dies with the box. Sweep dirs older than any live run can be.
+          find "${SCRATCH_ROOT}" -mindepth 1 -maxdepth 1 -type d -name 'rpcbench.*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
           apt-get clean 2>/dev/null || true
           journalctl --vacuum-size=200M 2>/dev/null || true
 
