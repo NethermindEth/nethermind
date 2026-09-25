@@ -8,9 +8,12 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -118,5 +121,25 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         Assert.That(result.Result.Error, Does.Contain("No state available for block"));
         // Verify the error message includes both block number and hash (format: "{number} ({hash})")
         Assert.That(result.Result.Error, Does.Match(@"No state available for block \d+ \(0x[a-fA-F0-9]{64}\)"));
+    }
+
+    [Test]
+    public async Task Simulate_disposes_the_block_tracer_it_created([Values] bool tracerThrows)
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        IBlockTracer<GethLikeTxTrace> tracer = Substitute.For<IBlockTracer<GethLikeTxTrace>, IDisposable>();
+        if (tracerThrows)
+        {
+            tracer.When(static t => t.StartNewBlockTrace(Arg.Any<Block>())).Do(static _ => throw new ArgumentException("invalid tracer"));
+        }
+
+        ISimulateBlockTracerFactory<GethLikeTxTrace> tracerFactory = Substitute.For<ISimulateBlockTracerFactory<GethLikeTxTrace>>();
+        tracerFactory.CreateSimulateBlockTracer(Arg.Any<bool>(), Arg.Any<IWorldState>(), Arg.Any<ISpecProvider>(), Arg.Any<BlockHeader>()).Returns(tracer);
+        SimulatePayload<TransactionWithSourceDetails> payload = new() { BlockStateCalls = [new BlockStateCall<TransactionWithSourceDetails>()] };
+
+        SimulateOutput<GethLikeTxTrace> result = chain.Bridge.Simulate(chain.BlockFinder.Head!.Header, payload, tracerFactory, 10_000_000, default);
+
+        Assert.That(result.IsInvalidInput, Is.EqualTo(tracerThrows));
+        ((IDisposable)tracer).Received(1).Dispose();
     }
 }
