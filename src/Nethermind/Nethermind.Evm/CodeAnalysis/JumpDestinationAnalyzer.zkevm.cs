@@ -43,8 +43,12 @@ public sealed partial class JumpDestinationAnalyzer
         long currentFlags = 0;
         nuint flagsPosition = 0;
         ref int thresholds = ref MemoryMarshal.GetArrayDataReference(_byteScanThresholds);
-        int jumpDest = thresholds;
-        int push1 = Unsafe.Add(ref thresholds, 1);
+        // Held as nint, not int: a 32-bit comparand makes the JIT canonicalise both operands with a
+        // sext.w before every compare, which on this loop was four extensions per byte - two of them
+        // re-extending these loop-invariant thresholds, two re-extending a byte `lb` had already
+        // sign-extended. Widening the comparison removes all four.
+        nint jumpDest = thresholds;
+        nint push1 = Unsafe.Add(ref thresholds, 1);
         // The PUSH skip below steps up to 32 bytes past the end of the code, so the walk pins and moves
         // an unmanaged pointer: the same overshoot on a `ref byte` is a managed pointer outside its
         // object, which a relocating GC may adjust wrongly even though it is only ever compared - and
@@ -58,7 +62,7 @@ public sealed partial class JumpDestinationAnalyzer
             {
                 // Sign extension folds everything above PUSH32 below JUMPDEST, so one signed comparison
                 // covers the whole [JUMPDEST, PUSH32] window that the rebase-and-range-test needed two for.
-                int op = (sbyte)*position;
+                nint op = (sbyte)*position;
                 if (op >= jumpDest)
                 {
                     if (op >= push1)
