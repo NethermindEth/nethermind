@@ -618,13 +618,13 @@ jobs:
           if [ "${#KNOWN_FAILURES[@]}" -gt 0 ]; then
             EXCLUSIONS="$(IFS='|'; echo "${KNOWN_FAILURES[*]}")"
             echo "extra_filter=(?!(?:$EXCLUSIONS)).*" >> "$GITHUB_OUTPUT"
+          fi
 
-            # Every for_bogota fixture states inclusionListSatisfied, so a release that stopped stating it
-            # would leave the EIP-7805 fork-choice rule uncovered with the lane still green. An explicit
-            # `filter` input may legitimately narrow the run to nothing, so it opts out.
-            if [ -z "$FILTER" ]; then
-              echo "min_il_assertions=1" >> "$GITHUB_OUTPUT"
-            fi
+          # Every for_bogota fixture states inclusionListSatisfied, so a release that stopped stating it
+          # would leave the EIP-7805 fork-choice rule uncovered with the lane still green. An explicit
+          # `filter` input may legitimately narrow the run to nothing, so it opts out.
+          if [ "$TEST_TYPE" = "focilTest" ] && [ -z "$FILTER" ]; then
+            echo "min_il_assertions=1" >> "$GITHUB_OUTPUT"
           fi
 
           echo "fixture_dir=$FIXTURE_DIR" >> "$GITHUB_OUTPUT"
@@ -667,6 +667,7 @@ jobs:
           if [ -n "$BATCHREAD" ]; then
             SETUP_ARGS="$SETUP_ARGS --batchRead $BATCHREAD"
           fi
+
           RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
           if command -v cygpath >/dev/null 2>&1; then
             RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
