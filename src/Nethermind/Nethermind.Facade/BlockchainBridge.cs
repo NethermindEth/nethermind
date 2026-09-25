@@ -517,7 +517,11 @@ namespace Nethermind.Facade
             }
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
-            transaction.Hash = transaction.CalculateHash();
+            // An RPC call's transaction is never signed, included or broadcast, and nothing on this path reads
+            // its hash (the tracers here do not; the processor only logs it at TRACE), so it is not computed:
+            // that would RLP-encode and hash the whole transaction on every call. The setter still drops a stale
+            // pre-hash and intrinsic-gas memo. eth_createAccessList computes the hash for its error text.
+            transaction.Hash = null;
             BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, blobBaseFee);
             return txProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
         }
