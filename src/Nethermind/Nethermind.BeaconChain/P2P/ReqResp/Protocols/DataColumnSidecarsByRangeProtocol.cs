@@ -8,7 +8,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Core;
 
 namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
@@ -16,10 +18,13 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 /// <summary>The Fulu <c>data_column_sidecars_by_range</c> v1 protocol.</summary>
 /// <remarks>
 /// The listen side serves custodied columns from the local <see cref="DataColumnSidecarPool"/>,
-/// skipping slots or columns it does not hold. The dial side validates per-chunk fork-digest context
+/// skipping slots or columns it does not hold. It serves only the block <see cref="BeaconChainStore"/>
+/// records as canonical at each slot, since fulu/p2p-interface.md requires the response to follow the
+/// responder's view of the current fork choice; a competing block's columns are never served.
+/// The dial side validates per-chunk fork-digest context
 /// bytes (in the shared base) and that every returned sidecar's slot and column were actually asked for.
 /// </remarks>
-public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, DataColumnSidecarPool pool) : DataColumnSidecarsProtocolBase(spec),
+public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, DataColumnSidecarPool pool, BeaconChainStore store) : DataColumnSidecarsProtocolBase(spec),
     ISessionProtocol<DataColumnSidecarsByRangeRequest, IReadOnlyList<DataColumnSidecar>>
 {
     /// <summary>Fixed part (2 x Uint64 + a 4-byte list offset) plus the variable columns list, bounded by NUMBER_OF_COLUMNS: an upper bound for framing, not an exact length (the columns list may be shorter).</summary>
@@ -51,7 +56,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         foreach (DataColumnSidecar sidecar in sidecars)
         {
             ulong slot = sidecar.SignedBlockHeader!.Message!.Slot;
-            if (slot < request.StartSlot || slot >= request.StartSlot + request.Count || !requestedColumnSet.Contains(sidecar.Index))
+            if (slot < request.StartSlot || slot - request.StartSlot >= request.Count || !requestedColumnSet.Contains(sidecar.Index))
             {
                 RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
                 throw new Eth2ReqRespException($"Data column sidecar at slot {slot} index {sidecar.Index} outside the requested range or columns");
@@ -90,12 +95,19 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
                 throw new Eth2ReqRespException($"Request must have a positive count and 1..{Eip7594DasConstants.NumberOfColumns} columns");
             }
 
+            // fulu/p2p-interface.md: sidecars MUST be sent in (slot, column_index) order.
+            ulong[] orderedColumns = [.. new SortedSet<ulong>(columns)];
             ulong count = Math.Min(request.Count, BlocksProtocolBase.MaxRequestBlocks);
             for (ulong slot = request.StartSlot; slot < request.StartSlot + count; slot++)
             {
-                foreach (ulong column in columns)
+                if (!store.TryGetCanonicalRoot(slot, out Hash256? root))
                 {
-                    if (pool.TryGet(slot, column, out DataColumnSidecar? sidecar))
+                    continue;
+                }
+
+                foreach (ulong column in orderedColumns)
+                {
+                    if (pool.TryGet(root, column, out DataColumnSidecar? sidecar))
                     {
                         await WriteSidecarChunkAsync(stream, sidecar!, cts);
                     }

@@ -104,7 +104,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new MetaDataProtocolV3(metadataSource))
             .AddSingleton(new BeaconBlocksByRangeProtocolV2(spec, store))
             .AddSingleton(new BeaconBlocksByRootProtocolV2(spec, store))
-            .AddSingleton(new DataColumnSidecarsByRangeProtocol(spec, dataColumnSidecarPool))
+            .AddSingleton(new DataColumnSidecarsByRangeProtocol(spec, dataColumnSidecarPool, store))
             .AddSingleton(new DataColumnSidecarsByRootProtocol(spec, dataColumnSidecarPool))
             .AddSingleton(new ExecutionPayloadEnvelopesByRangeProtocol(spec, executionPayloadEnvelopePool))
             .AddSingleton(new ExecutionPayloadEnvelopesByRootProtocol(spec, executionPayloadEnvelopePool))
