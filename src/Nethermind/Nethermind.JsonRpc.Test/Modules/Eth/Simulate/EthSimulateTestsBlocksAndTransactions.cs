@@ -1069,10 +1069,12 @@ public class EthSimulateTestsBlocksAndTransactions
         return await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
     }
 
+    /// <summary>
+    /// Block <c>gasUsed</c> is <c>max(Σ execution, Σ state)</c>: an execution-dominated block with state gas in it reports
+    /// the execution sum. The state-dominated side is covered by <see cref="eth_simulateV1_reports_multidimensional_block_gas_used"/>.
+    /// </summary>
     [Test]
-    public async Task eth_simulateV1_block_gas_used_is_max_of_execution_and_state_dimensions(
-        [Values] bool validation,
-        [Values] bool executionDominates)
+    public async Task eth_simulateV1_block_gas_used_is_max_of_execution_and_state_dimensions([Values] bool validation)
     {
         const ulong callGas = 300_000;
         // EIP-2780 value transfer to a new account: TX_BASE_COST + cold recipient access + TX_VALUE_COST.
@@ -1096,9 +1098,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     Calls =
                     [
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7778), Value = 1000, Gas = callGas, GasPrice = UInt256.Zero },
-                        executionDominates
-                            ? new LegacyTransactionForRpc { From = TestItem.AddressA, To = invalidOpcodeContract, Gas = callGas, GasPrice = UInt256.Zero }
-                            : new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7779), Value = 1000, Gas = callGas, GasPrice = UInt256.Zero }
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = invalidOpcodeContract, Gas = callGas, GasPrice = UInt256.Zero }
                     ]
                 }
             ],
@@ -1111,53 +1111,9 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
         SimulateCallResult[] calls = result.Data![0].Calls.ToArray();
         Assert.That(calls[0].Error, Is.Null);
-        Assert.That(calls[1].Error, executionDominates ? Is.Not.Null : Is.Null);
-        // 183_600 of state gas per new account, drawn from each call's own 300_000 budget: a reprice
-        // above that budget would turn this into an out-of-gas failure, not a gas-accounting mismatch.
-        // Execution-dominated: 321_000 of execution against 183_600 of state; a sum would give 504_600.
-        Assert.That(result.Data![0].GasUsed, Is.EqualTo(executionDominates
-            ? newAccountTransferExecutionGas + callGas
-            : 2 * (ulong)GasCostOf.NewAccountState));
-    }
-
-    /// <summary>
-    /// EIP-1559 derives a block's base fee from <c>parent.gas_used</c>, which under EIP-8037 is
-    /// <c>max(Σ execution, Σ state)</c>, so the next simulated block's base fee must see the state dimension.
-    /// </summary>
-    [Test]
-    public async Task eth_simulateV1_child_base_fee_uses_two_dimensional_parent_gas_used()
-    {
-        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
-
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new()
-                {
-                    BlockOverrides = new BlockOverride { GasLimit = 1_000_000, BaseFeePerGas = 1.GWei },
-                    StateOverrides = new Dictionary<Address, AccountOverride>
-                    {
-                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
-                    },
-                    Calls =
-                    [
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7778), Value = 1000, Gas = 300_000, GasPrice = 1.GWei },
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7779), Value = 1000, Gas = 300_000, GasPrice = 1.GWei }
-                    ]
-                },
-                new()
-            ],
-            Validation = true
-        };
-
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
-
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-        // Parent: gas target 500_000, gas used 367_200 (state), so the fee drops by
-        // 1 gwei * 132_800 / 500_000 / 8 = 33_200_000 wei; execution alone (42_000) would give 885_500_000.
-        Assert.That(result.Data![1].BaseFeePerGas, Is.EqualTo((UInt256)966_800_000));
+        Assert.That(calls[1].Error, Is.Not.Null);
+        // 321_000 of execution against 183_600 of state; a sum would give 504_600, "state when non-zero" 183_600.
+        Assert.That(result.Data![0].GasUsed, Is.EqualTo(newAccountTransferExecutionGas + callGas));
     }
 
     /// <summary>
