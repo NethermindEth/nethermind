@@ -4,6 +4,7 @@
 
 """Regression coverage for folded perf profiles and their reporting contract."""
 
+import json
 import os
 import re
 import shutil
@@ -1030,8 +1031,16 @@ esac
             "  if [[ \"${PROBE_FAILURE_RESPONSE:-}\" == all-error ]]; then printf '%s\\n' 'corpus method probe found no successful results over 2 records (rpc_error:-32000)' >&2; fi\n"
             "  exit 7\n"
             "fi\n"
+            # The converter writes one fixture per selector class, plus the manifest that both
+            # the benchmark config and the reuse check read.
             "if [[ \"${1:-}\" == *prepare-eth-call-corpus.py ]]; then\n"
-            "  mkdir -p \"$(dirname \"$3\")\"; printf '[]' > \"$3\"\n"
+            "  mkdir -p \"$3\"; printf '[]' > \"$3/class_1.json\"\n"
+            "  printf '%s' '{\"class_1\":1}' > \"$3/classes.json\"\n"
+            "fi\n"
+            # The renderer is invoked as `python3 - <benchmark.yaml>`; the summary reads back the
+            # duration/rps/vus it wrote.
+            "if [[ \"${1:-}\" == - ]]; then\n"
+            "  mkdir -p \"$(dirname \"$2\")\"; printf '%s\\n' 'duration: \"60s\"' 'rps: 100' 'vus: 10' > \"$2\"\n"
             "fi\n"
             "if [[ \"${1:-}\" == *corpus_results.py && \"${2:-}\" == sanitize ]]; then\n"
             "  mkdir -p \"$(dirname \"$4\")\"; printf '%s\\n' '{\"metrics\":{\"http_req_duration\":{\"values\":{\"avg\":1,\"med\":1,\"p(90)\":1,\"p(95)\":1,\"p(99)\":1,\"max\":1}},\"http_reqs\":{\"values\":{\"count\":1,\"rate\":1}},\"http_req_failed\":{\"values\":{\"rate\":0}},\"checks\":{\"values\":{\"passes\":1,\"fails\":0}},\"dropped_iterations\":{\"values\":{\"count\":0}}}}' > \"$4\"\n"
@@ -1138,12 +1147,12 @@ esac
                 self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
                 self.assertIn("::error::", result.stdout)
 
-    def prepare_paths(self, **environment_overrides: str) -> subprocess.CompletedProcess[str]:
-        """Run the benchmark job's path-preparation body with these resolved outputs."""
-        script = self.directory / "prepare-paths.sh"
+    def validate_paths(self, **environment_overrides: str) -> subprocess.CompletedProcess[str]:
+        """Run the benchmark job's path-validation body with these resolved outputs."""
+        script = self.directory / "validate-paths.sh"
         script.write_text(
             workflow_step_script(
-                RPC_WORKFLOW.read_text(encoding="utf-8"), "benchmark", "Prepare scratch and output dirs"
+                RPC_WORKFLOW.read_text(encoding="utf-8"), "benchmark", "Validate snapshot and output paths"
             ),
             encoding="utf-8",
             newline="\n",
@@ -1169,11 +1178,11 @@ esac
             [BASH, str(script)], cwd=ROOT, check=False, text=True, capture_output=True, env=environment
         )
 
-    @unittest.skipUnless(shutil.which("jq"), "jq is required to read the sweep's snapshot block")
-    def test_path_preparation_validates_the_snapshot_each_mode_actually_mounts(self) -> None:
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to read the sweep's snapshot sets")
+    def test_path_validation_checks_the_snapshots_each_mode_actually_mounts(self) -> None:
         # `db_source` is resolved for every dispatch, but only `Start node` mounts it and that step is
-        # skipped in sweep mode - run-rpc-sweep.sh derives `nethermind-flat-<block>` itself. Requiring
-        # `db_source` to exist in sweep mode aborted a bare sweep over a directory it never touches.
+        # skipped in sweep mode - run-rpc-sweep.sh derives one `<type>-<block>` set per client type itself.
+        # Requiring `db_source` to exist in sweep mode aborted a bare sweep over a directory it never touches.
         snapshots = self.directory / "snapshots"
         (snapshots / "nethermind-flat-25490000").mkdir(parents=True)
         (snapshots / "nethermind-flat-25000000").mkdir()
@@ -1181,35 +1190,145 @@ esac
         parked.mkdir()
         absent = (self.directory / "absent").as_posix()
 
-        sweep = self.prepare_paths(BENCHMARK_TOOL="jsonbench-sweep", DB_SOURCE=absent)
+        sweep = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", DB_SOURCE=absent)
         self.assertEqual(sweep.returncode, 0, sweep.stdout + sweep.stderr)
-        self.assertTrue((self.directory / "scratch" / "rpcbench.test" / "out").is_dir())
+        # `Set up run paths` owns the output dirs; the check only reads.
+        self.assertFalse((self.directory / "scratch").exists())
 
-        pinned = self.prepare_paths(
+        pinned = self.validate_paths(
             BENCHMARK_TOOL="jsonbench-sweep", DB_SOURCE=absent, TOOL_CONFIG='{"snapshot_block":"25000000"}'
         )
         self.assertEqual(pinned.returncode, 0, pinned.stdout + pinned.stderr)
 
         # A sweep snapshot that is genuinely absent still has to stop the run, named by its own input.
-        missing_sweep = self.prepare_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG='{"snapshot_block":"1"}')
+        missing_sweep = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG='{"snapshot_block":"1"}')
         self.assertEqual(missing_sweep.returncode, 1, missing_sweep.stdout + missing_sweep.stderr)
         self.assertIn("tool_config.snapshot_block", missing_sweep.stdout)
 
+        # The sweep's Nethermind set follows its state_layout, and every other arm type mounts its own set.
+        halfpath = '{"state_layout":"halfpath"}'
+        missing_halfpath = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=halfpath)
+        self.assertEqual(missing_halfpath.returncode, 1, missing_halfpath.stdout + missing_halfpath.stderr)
+        self.assertIn("nethermind-25490000", missing_halfpath.stdout)
+        (snapshots / "nethermind-25490000").mkdir()
+        present_halfpath = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=halfpath)
+        self.assertEqual(present_halfpath.returncode, 0, present_halfpath.stdout + present_halfpath.stderr)
+        cross_client = json.dumps(
+            {"clients": "nethermind@registry.example/nm:pr reth@registry.example/reth:main#RUST_LOG=info"}
+        )
+        missing_reth = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=cross_client)
+        self.assertEqual(missing_reth.returncode, 1, missing_reth.stdout + missing_reth.stderr)
+        self.assertIn(f"{snapshots.as_posix()}/reth-25490000", missing_reth.stdout)
+        (snapshots / "reth-25490000").mkdir()
+        present_reth = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=cross_client)
+        self.assertEqual(present_reth.returncode, 0, present_reth.stdout + present_reth.stderr)
+
         # Single-node mode keeps the original contract against `db_source`.
-        single = self.prepare_paths(DB_SOURCE=parked.as_posix())
+        single = self.validate_paths(DB_SOURCE=parked.as_posix())
         self.assertEqual(single.returncode, 0, single.stdout + single.stderr)
-        missing_db = self.prepare_paths(DB_SOURCE=absent)
+        missing_db = self.validate_paths(DB_SOURCE=absent)
         self.assertEqual(missing_db.returncode, 1, missing_db.stdout + missing_db.stderr)
         self.assertIn("node_config.db_source", missing_db.stdout)
 
         # The overlap guards stay unconditional: they are what keeps output off a pristine snapshot.
-        overlapping = self.prepare_paths(
-            BENCHMARK_TOOL="jsonbench-sweep", SCRATCH_ROOT=(snapshots / "nethermind-flat-25490000").as_posix()
-        )
-        self.assertEqual(overlapping.returncode, 1, overlapping.stdout + overlapping.stderr)
-        self.assertIn("disjoint", overlapping.stdout)
+        for db_tree in ("nethermind-flat-25490000", "reth-25490000"):
+            with self.subTest(overlapping=db_tree):
+                overlapping = self.validate_paths(
+                    BENCHMARK_TOOL="jsonbench-sweep",
+                    TOOL_CONFIG=cross_client,
+                    SCRATCH_ROOT=(snapshots / db_tree).as_posix(),
+                )
+                self.assertEqual(overlapping.returncode, 1, overlapping.stdout + overlapping.stderr)
+                self.assertIn("disjoint", overlapping.stdout)
 
     @unittest.skipUnless(shutil.which("jq"), "jq is required to run the resolve body")
+    def test_arm_runs_a_provisioned_client_single_node_from_its_own_set(self) -> None:
+        # The ARM box keeps one directory per client beside the Nethermind root: /data/<client>/<client>-<block>.
+        for client, expected_db, expected_isolation in (
+            ("reth", "/data/reth/reth-25490000", "direct"),
+            ("nethermind", "/data/nethermind/nethermind-flat-25490000", "overlay"),
+        ):
+            with self.subTest(client=client):
+                result, outputs = self.resolve(
+                    IN_TOOL="jsonbench", IN_ARCH="arm64", IN_CLIENT=client, IN_DOCKER_IMAGE="registry.example/client:tag"
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertEqual(outputs["client"], client)
+                self.assertEqual(outputs["db_source"], expected_db)
+                self.assertEqual(outputs["db_isolation"], expected_isolation)
+                self.assertEqual(outputs["image_ref"], "registry.example/client:tag")
+
+        # The sweep presets pin the node to Nethermind whatever `client` says, so they keep the Nethermind set.
+        result, outputs = self.resolve(
+            IN_TOOL="corpus-ab", IN_ARCH="arm64", IN_CLIENT="reth", IN_DOCKER_IMAGE="registry.example/nm:pr"
+        )
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertEqual(outputs["client"], "nethermind")
+        self.assertEqual(outputs["db_source"], "/data/nethermind/nethermind-flat-25490000")
+
+        # Only a second node stays refused on that box.
+        result, _ = self.resolve(
+            IN_TOOL="jsonbench",
+            IN_ARCH="arm64",
+            IN_CLIENT="reth",
+            IN_REFERENCE_CLIENT="nethermind",
+            IN_DOCKER_IMAGE="registry.example/client:tag",
+        )
+        self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
+        self.assertIn("reference client", result.stdout)
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to run the resolve body")
+    def test_explicit_sweep_clients_supply_the_image_on_arm(self) -> None:
+        cases = (
+            (
+                " \t nethermind@registry.example/master:baseline#trace=true\t nethermind@registry.example/pr:head",
+                "registry.example/pr:head",
+            ),
+            (
+                "nethermind@registry.example/pr:head nethermind@registry.example/master:baseline",
+                "registry.example/master:baseline",
+            ),
+            (
+                "nethermind@registry.example/master:baseline reth@registry.example/reth:latest",
+                "registry.example/master:baseline",
+            ),
+            (
+                "reth@registry.example/reth:first reth@registry.example/reth:second",
+                "registry.example/reth:first",
+            ),
+        )
+        for clients, expected_image in cases:
+            with self.subTest(clients=clients):
+                result, outputs = self.resolve(
+                    IN_TOOL="jsonbench-sweep",
+                    IN_ARCH="arm64",
+                    IN_TOOL_CONFIG=json.dumps({"clients": clients}),
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertEqual(outputs["image_mode"], "provided")
+                self.assertEqual(outputs["image_ref"], expected_image)
+                self.assertEqual(outputs["baseline_image"], "cache")
+                tool_config = re.search(r"^tool_config: (\{.*\})$", result.stdout, re.M)
+                self.assertIsNotNone(tool_config)
+                self.assertEqual(json.loads(tool_config.group(1))["clients"], clients)
+
+        mixed_clients = " \t nethermind@registry.example/master:baseline nethermind"
+        mixed, _ = self.resolve(
+            IN_TOOL="jsonbench-sweep",
+            IN_ARCH="arm64",
+            IN_TOOL_CONFIG=json.dumps({"clients": mixed_clients}),
+        )
+        self.assertNotEqual(mixed.returncode, 0, f"{mixed.stdout}\n{mixed.stderr}")
+        self.assertIn("does not build images", mixed.stdout)
+
+        malformed, _ = self.resolve(
+            IN_TOOL="jsonbench-sweep",
+            IN_ARCH="arm64",
+            IN_TOOL_CONFIG='{"clients":["nethermind@registry.example/a","nethermind@registry.example/b"]}',
+        )
+        self.assertEqual(malformed.returncode, 1, f"{malformed.stdout}\n{malformed.stderr}")
+        self.assertIn("tool_config.clients must be a string", malformed.stdout)
+
     def test_response_limit_is_validated_and_exported_to_both_corpus_paths(self) -> None:
         jsonbench = {"IN_TOOL": "jsonbench", "IN_CLIENT": "nethermind"}
         result, _ = self.resolve(**jsonbench, IN_TOOL_CONFIG='{"max_response_bytes":123456}')
@@ -1221,14 +1340,19 @@ esac
         )
         self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
 
-        result, outputs = self.resolve(
-            **jsonbench,
-            IN_DEBUG_TRACE_CALL_CORPUS="true",
-            IN_TOOL_CONFIG='{"eth_call_corpus":true}',
-        )
-        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
-        self.assertIn("Debug", outputs["jsonrpc_modules"])
-        self.assertIn("Trace", outputs["jsonrpc_modules"])
+        # A corpus run serves only the module its method lives in, so the replay cannot reach a
+        # method the dispatch did not ask for - and the narrowing must still follow the method.
+        for inputs, expected in (
+            ({"IN_DEBUG_TRACE_CALL_CORPUS": "true"}, "Eth,Debug"),
+            ({"IN_TRACE_CALL_CORPUS": "true"}, "Eth,Trace"),
+            ({}, "Eth"),
+        ):
+            with self.subTest(modules=expected):
+                result, outputs = self.resolve(
+                    **jsonbench, **inputs, IN_TOOL_CONFIG='{"eth_call_corpus":true}'
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertEqual(outputs["jsonrpc_modules"], expected)
         result, outputs = self.resolve(
             **jsonbench,
             IN_NODE_CONFIG='{"jsonrpc_modules":"Eth,Trace"}',
@@ -1246,16 +1370,20 @@ esac
 
         workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("callTracer|prestateTracer|4byteTracer|stateGasTracer|\"\"", resolve_script(workflow))
+        # Every path that replays the corpus has to accept the same responses; the sweep and the
+        # measured cell export it through their tool_config tables, the warm-up on its own line.
         for step_name in ("Warm up node", "Run json-bench benchmark", "Run RPC sweep"):
             self.assertIn(
-                'export RPC_BENCH_MAX_RESPONSE_BYTES="${max_response_bytes}"',
+                "RPC_BENCH_MAX_RESPONSE_BYTES",
                 workflow_named_step_body(workflow, "benchmark", step_name),
             )
 
     @unittest.skipUnless(shutil.which("jq"), "jq is required to run the parity gate")
     def test_trace_parity_gate_rejects_every_replay_defect(self) -> None:
+        # A replay that could not produce a trustworthy answer is not "no divergence found": a trace
+        # response that never arrived, was invalid, or was an RPC error has to count as a defect.
         sweep = (ROOT / "scripts" / "rpc-bench" / "run-rpc-sweep.sh").read_text(encoding="utf-8")
-        match = re.search(r"(?ms)^compare_corpus_parity\(\) \{.*?^\}\n\n(?=mkdir -p)", sweep)
+        match = re.search(r"(?ms)^parity_compare\(\) \{.*?^\}$", sweep)
         self.assertIsNotNone(match, "could not extract the checked-in parity gate")
         self.write_executable(
             "python3",
@@ -1267,13 +1395,7 @@ for ((i = 1; i <= $#; i++)); do
     j=$((i + 1)); report="${!j}"
   fi
 done
-case "${FAKE_REPORT_KIND}" in
-  clean) printf '%s' '{"candidate_transport_failures":0,"candidate_invalid_responses":0,"candidate_rpc_errors":0,"baseline_rpc_errors":0}' > "${report}" ;;
-  transport) printf '%s' '{"candidate_transport_failures":1,"candidate_invalid_responses":0,"candidate_rpc_errors":0,"baseline_rpc_errors":0}' > "${report}" ;;
-  rpc) printf '%s' '{"candidate_transport_failures":0,"candidate_invalid_responses":0,"candidate_rpc_errors":1,"baseline_rpc_errors":0}' > "${report}" ;;
-  mixed) printf '%s' '{"candidate_transport_failures":0,"candidate_invalid_responses":1,"candidate_rpc_errors":1,"baseline_rpc_errors":0}' > "${report}" ;;
-  invalid) printf '%s' '{"candidate_transport_failures":0}' > "${report}" ;;
-esac
+[[ -z "${report}" || -z "${FAKE_REPORT}" ]] || printf '%s' "${FAKE_REPORT}" > "${report}"
 exit "${FAKE_EXIT}"
 """,
         )
@@ -1282,30 +1404,37 @@ exit "${FAKE_EXIT}"
             """#!/usr/bin/env bash
 set -uo pipefail
 here=/unused
+RPC=http://localhost:8545
+OUT_DIR="$1"
 CORPUS_PARITY_DIFFS=false
 PARITY_ROWS=()
 parity_fail=0
-CORPUS_METHOD="${CORPUS_METHOD_VALUE}"
+parity_skipped=0
 __PARITY_FUNCTION__
-mkdir -p "$1"
-compare_corpus_parity corpus http://localhost:8545 state "$1/report.json" base candidate "$1" corpus
-printf 'parity_fail=%s rows=%s\\n' "$parity_fail" "${#PARITY_ROWS[@]}"
+mkdir -p "$OUT_DIR"
+parity_compare corpus candidate corpus-file state base "${SAVED_MARKER}"
+printf 'parity_fail=%s parity_skipped=%s rows=%s\\n' "$parity_fail" "$parity_skipped" "${#PARITY_ROWS[@]}"
 """.replace("__PARITY_FUNCTION__", match.group(0).rstrip()),
         )
+
+        clean = '{"candidate_transport_failures":0,"candidate_invalid_responses":0,"candidate_rpc_errors":0}'
+        transport = '{"candidate_transport_failures":1,"candidate_invalid_responses":0,"candidate_rpc_errors":0}'
         cases = (
-            ("fixture exit2", "clean", "2", "trace_call", "parity_fail=1"),
-            ("transport failure", "transport", "1", "trace_call", "parity_fail=1"),
-            ("rpc failure", "rpc", "1", "trace_call", "parity_fail=1"),
-            ("mixed report", "mixed", "1", "trace_call", "parity_fail=1"),
-            ("invalid report", "invalid", "1", "trace_call", "parity_fail=1"),
-            ("trace digest divergence", "clean", "1", "trace_call", "parity_fail=1"),
-            ("eth_call divergence", "clean", "1", "eth_call", "parity_fail=1"),
+            ("divergence", clean, "1", "", "parity_fail=1 parity_skipped=0 rows=1"),
+            ("transport failure", transport, "1", "", "parity_fail=1 parity_skipped=0 rows=1"),
+            ("unparseable report", '{"candidate_transport_failures":0}', "1", "", "parity_fail=1 parity_skipped=0 rows=1"),
+            ("no report written", "", "1", "", "parity_fail=1 parity_skipped=0 rows=0"),
+            # Exit 2 is "the comparison could not run". Against a live baseline that is a defect;
+            # against a saved one it is reported separately, because only a moved snapshot calls
+            # for re-recording and neither must be silently read as parity.
+            ("replay could not run", clean, "2", "", "parity_fail=1 parity_skipped=0"),
+            ("saved baseline unusable", clean, "2", "saved", "parity_fail=0 parity_skipped=1 rows=0"),
+            ("clean", clean, "0", "", "parity_fail=0 parity_skipped=0 rows=1"),
         )
-        for label, report_kind, status, method, expected in cases:
+        for label, report, status, saved, expected in cases:
             with self.subTest(case=label):
-                report_dir = self.directory / label.replace(" ", "-")
                 result = subprocess.run(
-                    [BASH, str(script), str(report_dir)],
+                    [BASH, str(script), str(self.directory / label.replace(" ", "-"))],
                     check=False,
                     text=True,
                     capture_output=True,
@@ -1313,8 +1442,8 @@ printf 'parity_fail=%s rows=%s\\n' "$parity_fail" "${#PARITY_ROWS[@]}"
                         **os.environ,
                         "PATH": f"{self.directory}{os.pathsep}{os.environ.get('PATH', '')}",
                         "FAKE_EXIT": status,
-                        "FAKE_REPORT_KIND": report_kind,
-                        "CORPUS_METHOD_VALUE": method,
+                        "FAKE_REPORT": report,
+                        "SAVED_MARKER": saved,
                     },
                 )
                 self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
@@ -1455,7 +1584,7 @@ printf 'parity_fail=%s rows=%s\\n' "$parity_fail" "${#PARITY_ROWS[@]}"
         self.assertNotIn("${{ runner.temp }}/dotnet-trace-rpcbench.zip", job)
         self.assertIn('"${BENCH_TEMP}/rpcbench-corpus-results"', job)
         self.assertIn("find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete", job)
-        self.assertIn('if docker rmi "${img}" >/dev/null 2>&1; then echo "  dropped ${img}"; fi', job)
+        self.assertIn('docker rmi "${img}" >/dev/null 2>&1 && echo "  dropped ${img}"', job)
 
         upload = job.index("- name: Upload benchmark results")
         cleanup = job.index("- name: Defensive cleanup")
@@ -1557,11 +1686,11 @@ else printf 'Filesystem  Size  Used Avail Use%% Mounted on\nrootfs 1 0 1 0%% /\n
         self.assertIn("  /data/reth/reth-25490000", found.stdout)
         self.assertNotIn("<none found", found.stdout)
 
-    def test_prepare_paths_reject_symlinked_output_escape_before_mkdir(self) -> None:
+    def test_path_validation_rejects_symlinked_output_escape(self) -> None:
         rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
-        prepare = workflow_step_script(rpc_workflow, "benchmark", "Prepare scratch and output dirs")
+        validate = workflow_step_script(rpc_workflow, "benchmark", "Validate snapshot and output paths")
 
-        def run_prepare(scratch: Path, db: Path, bench_temp: Path) -> subprocess.CompletedProcess[str]:
+        def run_validate(scratch: Path, db: Path, bench_temp: Path) -> subprocess.CompletedProcess[str]:
             environment = os.environ.copy()
             environment.update(
                 BENCHMARK_TOOL="jsonbench",
@@ -1582,7 +1711,7 @@ else printf 'Filesystem  Size  Used Avail Use%% Mounted on\nrootfs 1 0 1 0%% /\n
                 'exec bash -c "$1"'
             )
             return subprocess.run(
-                [BASH, "-c", launcher, "bash", prepare],
+                [BASH, "-c", launcher, "bash", validate],
                 cwd=ROOT,
                 check=False,
                 text=True,
@@ -1595,7 +1724,7 @@ else printf 'Filesystem  Size  Used Avail Use%% Mounted on\nrootfs 1 0 1 0%% /\n
 
         missing_db = self.directory / "missing-db"
         missing_scratch = self.directory / "missing-scratch"
-        missing = run_prepare(missing_scratch, missing_db, missing_scratch / "rpcbench.test")
+        missing = run_validate(missing_scratch, missing_db, missing_scratch / "rpcbench.test")
         self.assertNotEqual(missing.returncode, 0, f"{missing.stdout}\n{missing.stderr}")
         self.assertIn("missing or unresolvable", missing.stdout)
         self.assertIn("set node_config.db_source to an existing snapshot path", missing.stdout)
@@ -1607,7 +1736,7 @@ else printf 'Filesystem  Size  Used Avail Use%% Mounted on\nrootfs 1 0 1 0%% /\n
             (scratch_symlink / "diag").symlink_to(primary_db, target_is_directory=True)
         except (OSError, NotImplementedError) as error:
             self.skipTest(f"directory symlinks are unavailable: {error}")
-        escaped = run_prepare(scratch_symlink, primary_db, scratch_symlink / "rpcbench.test")
+        escaped = run_validate(scratch_symlink, primary_db, scratch_symlink / "rpcbench.test")
         self.assertNotEqual(escaped.returncode, 0, f"{escaped.stdout}\n{escaped.stderr}")
         self.assertIn("escapes SCRATCH_ROOT", escaped.stdout)
 
@@ -1618,7 +1747,7 @@ else printf 'Filesystem  Size  Used Avail Use%% Mounted on\nrootfs 1 0 1 0%% /\n
             (scratch / "rpcbench.test").symlink_to(primary_db, target_is_directory=True)
         except (OSError, NotImplementedError) as error:
             self.skipTest(f"directory symlinks are unavailable: {error}")
-        overlapping = run_prepare(scratch, primary_db, scratch / "rpcbench.test")
+        overlapping = run_validate(scratch, primary_db, scratch / "rpcbench.test")
         self.assertNotEqual(overlapping.returncode, 0, f"{overlapping.stdout}\n{overlapping.stderr}")
         self.assertIn("overlaps the DB source", overlapping.stdout)
         self.assertEqual([], list(primary_db.iterdir()))
@@ -1626,10 +1755,10 @@ else printf 'Filesystem  Size  Used Avail Use%% Mounted on\nrootfs 1 0 1 0%% /\n
         good_scratch = self.directory / "good-scratch"
         for bench_temp in (good_scratch / "rpcbench.arm", self.directory / "runner-temp" / "rpcbench.amd"):
             with self.subTest(bench_temp=bench_temp.name):
-                good = run_prepare(good_scratch, primary_db, bench_temp)
+                good = run_validate(good_scratch, primary_db, bench_temp)
                 self.assertEqual(good.returncode, 0, f"{good.stdout}\n{good.stderr}")
-                self.assertTrue((bench_temp / "out").is_dir())
-                self.assertTrue((bench_temp / "state").is_dir())
+                # `Set up run paths` creates the output dirs; the check itself only reads.
+                self.assertFalse(bench_temp.exists())
 
     def test_workflow_profile_contracts_cover_both_collectors(self) -> None:
         expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
@@ -1661,8 +1790,8 @@ else printf 'Filesystem  Size  Used Avail Use%% Mounted on\nrootfs 1 0 1 0%% /\n
             start_node.index('mkdir -p "$STATE_DIR"'),
         )
         self.assertIn(
-            "# 6) Start the profilers once the node serves RPC, so they exclude startup. With a warm-up the\n"
-            "#    workflow starts them via start-profilers.sh after it, so they exclude the warm-up as well.",
+            "# Start the profilers once the node serves RPC, so they exclude startup. With a warm-up the\n"
+            "# workflow starts them via start-profilers.sh after it, so they exclude the warm-up as well.",
             start_node,
         )
         self.assertNotIn("itself rather than startup and warm-up", start_node)

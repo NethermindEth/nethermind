@@ -16,6 +16,7 @@ from pathlib import Path
 from test_reap_stale_overlays import extract_step_bodies, find_bash, to_bash
 
 WORKFLOW = Path(__file__).resolve().parents[2] / ".github/workflows/run-rpc-benchmarks.yml"
+LIB = Path(__file__).resolve().parents[2] / "scripts/rpc-bench/lib.sh"
 
 
 class RpcRunnerWorkspaceTests(unittest.TestCase):
@@ -179,6 +180,8 @@ journalctl() { :; }
         body, = extract_step_bodies(WORKFLOW, name)
         body = body.replace("/root/actions-runner", shlex.quote(to_bash(runner)))
         body = body.replace("/var/lib/containerd", shlex.quote(to_bash(containerd_root)))
+        # The fixture checkout carries no helpers; source the real ones.
+        body = body.replace("source scripts/rpc-bench/lib.sh", f"source {shlex.quote(to_bash(LIB))}")
         return preamble + body
 
     def test_disk_reclaim_preserves_active_job_files(self):

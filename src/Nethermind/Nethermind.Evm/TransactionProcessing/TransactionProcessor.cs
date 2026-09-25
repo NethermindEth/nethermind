@@ -1303,7 +1303,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WarmUpTxAccesses(tx, spec, in accessTracker, recipient, warmUpRecipient: loadRecipient);
             if (tx.IsContractCreation)
             {
-                codeInfo = CodeInfoFactory.CreateCodeInfo(tx.Data);
+                codeInfo = new CodeInfo(tx.Data);
             }
             else if (!loadRecipient)
             {
