@@ -19,6 +19,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Whether a fresh state sync uses the flat-state DB backend, and whether ImportFromPruningTrieState is honored. A node that already has a patricia-trie state DB keeps using it regardless of this setting; set to false to sync a fresh node on the patricia-trie backend instead.", DefaultValue = "true")]
     bool Enabled { get; set; }
 
+    [ConfigItem(Description = "What happens after a RocksDB repair of the flat DB. Resync wipes flat columns (headers, bodies, and receipts are kept) and re-enters state sync. Ignore keeps the repaired DB (escape hatch; may diverge). Ignore acknowledges the repair on the first start, so switching to Resync afterwards has no effect; a resync then requires wiping the flat DB directory. Resync refills state only through snap/state sync (Sync.FastSync with peers that serve it); a node that cannot state-sync, e.g. an archive synced from genesis, is left without state for its head, so set Ignore there or plan a resync from scratch. The flatHistory DB is not wiped: with HistoryEnabled and a windowed HistoryRetention (Rolling or SinceBlock), the resync fails to finish when its pivot falls inside the already-captured history window, so wipe the flatHistory directory too.", DefaultValue = "Resync")]
+    FlatDbOnRepair OnRepair { get; set; }
+
     [ConfigItem(Description = "Capture finalized per-block account/storage changesets into the history columns for archival queries. Off by default; when off the persist path does no extra work.", DefaultValue = "false")]
     bool HistoryEnabled { get; set; }
 

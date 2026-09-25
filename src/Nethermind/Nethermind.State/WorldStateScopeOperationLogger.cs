@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -22,10 +23,33 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     public bool HasRoot(BlockHeader? baseBlock) =>
         baseScopeProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) =>
+        baseScopeProvider.HasStateForTargetBlock(targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
+        if (!baseScopeProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
+        {
+            scope = null;
+            return false;
+        }
+
         long scopeId = Interlocked.Increment(ref _currentScopeId);
-        return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, metrics), scopeId, _logger);
+        scope = new ScopeWrapper(innerScope, scopeId, _logger);
+        return true;
+    }
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!baseScopeProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        long scopeId = Interlocked.Increment(ref _currentScopeId);
+        scope = new ScopeWrapper(innerScope, scopeId, _logger);
+        return true;
     }
 
     private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope

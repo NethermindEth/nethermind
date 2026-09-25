@@ -57,6 +57,12 @@ public class BlockTreeTestDouble : IBlockTree
         }
     }
 
+    public event EventHandler<BlockHeaderEventArgs>? BlockRemovedFromMain
+    {
+        add { if (Inner is not null) Inner.BlockRemovedFromMain += value; }
+        remove { if (Inner is not null) Inner.BlockRemovedFromMain -= value; }
+    }
+
     public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock
     {
         add { if (Inner is not null) Inner.NewBestSuggestedBlock += value; }

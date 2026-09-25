@@ -4,8 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Receipts;
@@ -33,9 +31,7 @@ public class ReceiptsRegeneratorRestrictedBundleTests
     {
         TestSpecProvider specProvider = new(Byzantium.Instance);
 
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         BlockHeader parent = Build.A.BlockHeader.WithNumber(4).TestObject;
-        blockFinder.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
 
         IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
@@ -52,10 +48,14 @@ public class ReceiptsRegeneratorRestrictedBundleTests
 
         IShareableOverridableEnvSource<ReceiptsRegenerationEnv> envSource = Substitute.For<IShareableOverridableEnvSource<ReceiptsRegenerationEnv>>();
         envSource
-            .BuildAndOverride(Arg.Any<BlockHeader>(), Arg.Any<Dictionary<Address, AccountOverride>>(), Arg.Any<BlockOverride>())
-            .Returns(new Scope<ReceiptsRegenerationEnv>(new ReceiptsRegenerationEnv(blockProcessor), Substitute.For<IDisposable>()));
+            .TryBuildAndOverrideAtTarget(Arg.Any<BlockHeader>(), Arg.Any<Dictionary<Address, AccountOverride>>(), out Arg.Any<Scope<ReceiptsRegenerationEnv>?>())
+            .Returns(call =>
+            {
+                call[2] = new Scope<ReceiptsRegenerationEnv>(new ReceiptsRegenerationEnv(blockProcessor), Substitute.For<IDisposable>());
+                return true;
+            });
 
-        ReceiptsRegenerator regenerator = new(envSource, blockFinder, specProvider, ecdsa, poSSwitcher, LimboLogs.Instance);
+        ReceiptsRegenerator regenerator = new(envSource, specProvider, ecdsa, poSSwitcher, LimboLogs.Instance);
         Block block = Build.A.Block.WithNumber(5).WithParentHash(parent.Hash!).TestObject;
 
         bool regenerated = regenerator.TryRegenerate(block, out TxReceipt[]? receipts);

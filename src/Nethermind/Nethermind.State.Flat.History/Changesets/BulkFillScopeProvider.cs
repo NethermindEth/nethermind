@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -24,15 +25,34 @@ public sealed class BulkFillScopeProvider(
     public bool HasRoot(BlockHeader? baseBlock) => session.IsReady && baseBlock is not null
         && baseBlock.Hash == session.BlockHash && new StateId(baseBlock) == session.CurrentState;
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    /// <remarks>
+    /// The session stands on the parent of the block it is about to replay, so the target is anchored here exactly
+    /// when the session holds that parent - the same pairing <see cref="BulkFillSession.BeginBlock"/> requires.
+    /// </remarks>
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => session.IsReady
+        && targetBlock.ParentHash == session.BlockHash && targetBlock.Number == session.CurrentState.BlockNumber + 1;
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        TryOpen(HasStateForTargetBlock(targetBlock), out scope);
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        TryOpen(HasRoot(baseBlock), out scope);
+
+    private bool TryOpen(bool anchored, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
-        RequireRoot(baseBlock);
+        if (!anchored)
+        {
+            scope = null;
+            return false;
+        }
+
         ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), session.CreateReader(), false, PersistedSnapshotStack.Empty(), isHistorical: true);
         SnapshotBundle bundle = new(readOnly, trieCache, resources, ResourcePool.Usage.ReadOnlyProcessingEnv);
         try
         {
-            return new Scope(new FlatWorldStateScope(session.CurrentState, bundle, session,
+            scope = new Scope(new FlatWorldStateScope(session.CurrentState, bundle, session,
                 RejectCommit.Instance, config, new NoopTrieWarmer(), logs, isReadOnly: true), session);
+            return true;
         }
         catch
         {

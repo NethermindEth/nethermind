@@ -42,6 +42,7 @@ public class ProofRpcModuleTests
     private TestSpecProvider _specProvider = null!;
     private WorldStateManager _worldStateManager = null!;
     private IHeaderFinder _headerFinder = null!;
+    private TestStateHeaderProvider _stateHeaderProvider = null!;
     private IReceiptStorage _receiptStorage = null!;
     private IContainer _container;
 
@@ -63,7 +64,9 @@ public class ProofRpcModuleTests
     public async Task Setup()
     {
         _dbProvider = await TestMemDbProvider.InitAsync();
-        _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, LimboLogs.Instance);
+        // The proof tests target block 1, whose parent is the genesis header built below.
+        _stateHeaderProvider = new();
+        _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, _stateHeaderProvider, LimboLogs.Instance);
 
         Hash256 stateRoot;
         IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
@@ -82,6 +85,7 @@ public class ProofRpcModuleTests
             .WithTransactions(receiptStorage)
             .OfChainLength(10);
         _blockTree = blockTreeBuilder.TestObject;
+        _stateHeaderProvider.Parent = _blockTree.FindHeader(0, BlockTreeLookupOptions.None);
         _headerFinder = blockTreeBuilder.HeaderStore;
 
         _container = new ContainerBuilder()
@@ -241,7 +245,7 @@ public class ProofRpcModuleTests
             // The starting offset is identical under both scenarios, so the stale stored Index moves nothing; and
             // non-zero, where the retraced block emits no logs at all, so the count came from the stored set the
             // served logs themselves come from. Every log carries it, not just the first.
-            for (int i = 0; i < receiptWithProof.Receipt.Logs.Length; i++)
+            for (int i = 0; i < receiptWithProof.Receipt.Logs!.Length; i++)
             {
                 Assert.That(receiptWithProof.Receipt.Logs[i].LogIndex, Is.EqualTo(StaleReceiptIndexLogsBefore + i), $"log {i} index");
                 Assert.That(receiptWithProof.Receipt.Logs[i].TransactionIndex, Is.EqualTo(StaleReceiptIndexTxIndex), $"log {i} transaction index");
@@ -265,7 +269,7 @@ public class ProofRpcModuleTests
 
         ResultWrapper<ReceiptWithProof?> result = _proofRpcModule.proof_getTransactionReceipt(txHash, false);
 
-        tracerEnv.DidNotReceiveWithAnyArgs().BuildAndOverride(header: null);
+        tracerEnv.DidNotReceiveWithAnyArgs().TryBuildAndOverrideAtTarget(null!, null, null, out _);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
     }
 
@@ -284,7 +288,11 @@ public class ProofRpcModuleTests
         ITracer tracer = Substitute.For<ITracer>();
         IDisposable scopeCloser = Substitute.For<IDisposable>();
         IOverridableEnv<ITracer> tracerEnv = Substitute.For<IOverridableEnv<ITracer>>();
-        tracerEnv.BuildAndOverride(header: null).ReturnsForAnyArgs(new Scope<ITracer>(tracer, scopeCloser));
+        tracerEnv.TryBuildAndOverrideAtTarget(null!, null, null, out _).ReturnsForAnyArgs(call =>
+        {
+            call[3] = new Scope<ITracer>(tracer, scopeCloser);
+            return true;
+        });
         // Only the retrace is substituted: the block and the stored receipts it is asked to prove are both real.
         ArrangeReceiptFinder(block, txHash, _receiptStorage.Get(block), tracerEnv);
 
@@ -312,12 +320,11 @@ public class ProofRpcModuleTests
         receiptFinder.Get(Arg.Any<Block>()).Returns(_receiptStorage.Get(block));
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
-        if (parentHeaderKnown)
-        {
-            // A known header whose state root the node no longer holds.
-            blockFinder.FindHeader(block.ParentHash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
-                .Returns(Build.A.BlockHeader.WithNumber(0).WithStateRoot(TestItem.KeccakH).TestObject);
-        }
+        // A known parent whose state root the node no longer holds, or no parent at all. The header must carry the
+        // block's own parent hash, or the "known" case would resolve to nothing and repeat the unknown one.
+        _stateHeaderProvider.Parent = parentHeaderKnown
+            ? Build.A.BlockHeader.WithNumber(0).WithHash(block.ParentHash!).WithStateRoot(TestItem.KeccakH).TestObject
+            : null;
         RebuildContainerWith(receiptFinder, blockFinder: blockFinder);
 
         ResultWrapper<ReceiptWithProof?> result = _proofRpcModule.proof_getTransactionReceipt(txHash, false);

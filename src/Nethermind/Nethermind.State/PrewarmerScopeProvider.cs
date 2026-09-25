@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -54,9 +55,34 @@ public class PrewarmerScopeProvider(
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => baseProvider.HasStateForTargetBlock(targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
-        IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
+        if (!baseProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = WrapScope(baseScope, metrics, baseScope.RootHash);
+        return true;
+    }
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!baseProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = WrapScope(baseScope, metrics, baseBlock?.StateRoot);
+        return true;
+    }
+
+    private IWorldStateScopeProvider.IScope WrapScope(IWorldStateScopeProvider.IScope scope, LocalMetrics metrics, Hash256? stateRoot)
+    {
         if (!isPrewarmer)
         {
             try
@@ -67,9 +93,9 @@ public class PrewarmerScopeProvider(
                 {
                     preBlockCaches.MainScope = scope;
                 }
-                // The consumer reads the state at baseBlock through the caches, which may still describe another state.
-                preBlockCaches.EnsureNotStaleFor(baseBlock?.StateRoot, logger);
-                return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, null, null, metrics, baseBlock?.StateRoot);
+                // The consumer reads the state at the opened root through the caches, which may still describe another state.
+                preBlockCaches.EnsureNotStaleFor(stateRoot, logger);
+                return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, null, null, metrics, stateRoot);
             }
             catch
             {
@@ -97,7 +123,7 @@ public class PrewarmerScopeProvider(
                 trieWarmupSession = preBlockCaches.MainScope?.CreateTrieWarmupSession();
             }
             PreBlockCaches.StorageReadCapture? storageReadCapture = preBlockCaches.CurrentStorageReadCapture;
-            return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, trieWarmupSession, storageReadCapture, metrics, baseBlock?.StateRoot);
+            return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, trieWarmupSession, storageReadCapture, metrics, stateRoot);
         }
         catch
         {

@@ -124,8 +124,10 @@ namespace Nethermind.Trie
 
         public CappedArray<byte> FullRlp => ReadRlp();
 
-        public NodeType NodeType => _nodeData?.NodeType ?? NodeType.Unknown;
-        public INodeData? NodeData => _nodeData;
+        // Acquire pairs with the release publication of _nodeData in DecodeRlp: a concurrent resolver may publish a
+        // decode while another thread tests whether the node is resolved, and the decoded fields must be visible with it.
+        public NodeType NodeType => Volatile.Read(ref _nodeData)?.NodeType ?? NodeType.Unknown;
+        public INodeData? NodeData => Volatile.Read(ref _nodeData);
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
 
@@ -344,6 +346,9 @@ namespace Nethermind.Trie
                     ThrowNullRlp();
                 }
 
+                // Warmer jobs share one node, so a racing resolver may have published its decode during the load.
+                if (NodeType != NodeType.Unknown) return;
+
                 WriteRlp(rlp = new CappedArray<byte>(fullRlp));
                 IsPersisted = true;
             }
@@ -371,38 +376,59 @@ namespace Nethermind.Trie
         public bool TryResolveNode(ITrieNodeResolver tree, ref TreePath path, ReadFlags readFlags = ReadFlags.None,
             ICappedArrayPool? bufferPool = null)
         {
+            if (NodeType != NodeType.Unknown) return true;
+
             try
             {
                 CappedArray<byte> rlp = ReadRlp();
-                if (NodeType == NodeType.Unknown)
+                if (rlp.IsNull)
                 {
-                    if (rlp.IsNull)
+                    Hash256? keccak = Keccak;
+                    if (keccak is null)
                     {
-                        Hash256? keccak = Keccak;
-                        if (keccak is null)
-                        {
-                            return false;
-                        }
-
-                        byte[]? fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
-
-                        if (fullRlp is null)
-                        {
-                            return false;
-                        }
-
-                        WriteRlp(rlp = new CappedArray<byte>(fullRlp));
-                        IsPersisted = true;
+                        return false;
                     }
-                }
-                else
-                {
-                    return true;
+
+                    byte[]? fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
+
+                    if (fullRlp is null)
+                    {
+                        return false;
+                    }
+
+                    // Warmer jobs share one node, so a racing resolver may have published its decode during the load.
+                    if (NodeType != NodeType.Unknown) return true;
+
+                    WriteRlp(rlp = new CappedArray<byte>(fullRlp));
+                    IsPersisted = true;
                 }
 
-                return DecodeRlp(rlp.AsSpan(), bufferPool, out _);
+                return TryDecodeRlp(in rlp, bufferPool);
             }
             catch (RlpException)
+            {
+                return false;
+            }
+        }
+
+        /// <remarks>
+        /// Unverified persistence bytes reach the decoder, and a malformed body surfaces as an out-of-range read
+        /// rather than an <see cref="RlpException"/>: <c>LiteRlpReader</c> slices past the end on a truncated length
+        /// prefix, <c>HexPrefix</c> indexes an empty key. Both mean "not a node", which is what the <c>Try</c>
+        /// variant reports as <c>false</c>. Scoped to the decode so an out-of-range fault raised by the resolver
+        /// still propagates instead of being reported as an absent node.
+        /// </remarks>
+        private bool TryDecodeRlp(in CappedArray<byte> rlp, ICappedArrayPool? bufferPool)
+        {
+            try
+            {
+                return DecodeRlp(rlp.AsSpan(), bufferPool, out _);
+            }
+            catch (IndexOutOfRangeException)
+            {
+                return false;
+            }
+            catch (ArgumentOutOfRangeException)
             {
                 return false;
             }
@@ -426,7 +452,7 @@ namespace Nethermind.Trie
             }
             else if (numberOfItems > 2)
             {
-                _nodeData = new BranchData();
+                Volatile.Write(ref _nodeData, new BranchData());
             }
             else
             {
@@ -437,11 +463,11 @@ namespace Nethermind.Trie
                     reader.DecodeByteArraySpan(ref position, out valueSpan);
                     CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);
                     valueSpan.CopyTo(buffer.AsSpan());
-                    _nodeData = new LeafData(key, buffer);
+                    Volatile.Write(ref _nodeData, new LeafData(key, buffer));
                 }
                 else
                 {
-                    _nodeData = new ExtensionData(key);
+                    Volatile.Write(ref _nodeData, new ExtensionData(key));
                 }
             }
 

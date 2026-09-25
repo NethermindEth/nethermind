@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,10 +29,8 @@ public class BranchProcessor(
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
-    private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
-    private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
     public event EventHandler<BlockExecutedEventArgs>? BlockExecuted;
 
@@ -49,11 +48,17 @@ public class BranchProcessor(
         stateProvider.CommitTree(block.Number);
     }
 
+    private IDisposable BeginTargetScope(Block targetBlock) => stateProvider.BeginScopeAtTarget(targetBlock.Header);
+
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
 
         Block suggestedBlock = suggestedBlocks[0];
+        // The scope is opened at the target's parent, but baseBlock still selects the prewarmed caches, so an
+        // inconsistent pair would warm one state and execute another without any other symptom.
+        Debug.Assert(suggestedBlock.IsGenesis ? baseBlock is null : baseBlock?.Hash == suggestedBlock.ParentHash,
+            "baseBlock must be the parent of the first suggested block");
 
         IDisposable? worldStateCloser = null;
         if (stateProvider.IsInScope)
@@ -72,11 +77,11 @@ public class BranchProcessor(
         }
         else
         {
-            worldStateCloser = stateProvider.BeginScope(baseBlock);
+            worldStateCloser = BeginTargetScope(suggestedBlock);
         }
 
         CancellationTokenSource? backgroundCancellation = new();
-        Task? preWarmTask = null;
+        IDisposable? prewarming = null;
         BlocksProcessingEventArgs? blocksProcessingEventArgs = null;
         int processedBlocksCount = 0;
         Exception? processingException = null;
@@ -91,9 +96,8 @@ public class BranchProcessor(
         try
         {
             // Start prewarming as early as possible
-            WaitForCacheClear();
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
+            prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
             blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
@@ -109,17 +113,15 @@ public class BranchProcessor(
 
             for (int i = 0; i < blocksCount; i++)
             {
-                WaitForCacheClear();
                 suggestedBlock = suggestedBlocks[i];
                 if (i > 0)
                 {
                     // Refresh spec
                     spec = specProvider.GetSpec(suggestedBlock.Header);
                 }
-                // If prewarmCancellation is not null it means we are in first iteration of loop
-                // and started prewarming at method entry, so don't start it again
+                // The first block prepared its caches at method entry, even if no warming was needed.
                 backgroundCancellation ??= new CancellationTokenSource();
-                preWarmTask ??= PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
+                if (i > 0) prewarming = PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
                 prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
@@ -146,12 +148,10 @@ public class BranchProcessor(
                     !blockOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList))
                 {
                     CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
-                    QueueClearCaches(preWarmTask);
-                    WaitAndClear(ref preWarmTask);
-                    WaitForCacheClear();
+                    DrainAndClear(ref prewarming);
 
                     worldStateCloser.Dispose();
-                    worldStateCloser = stateProvider.BeginScope(preBlockBaseBlock);
+                    worldStateCloser = BeginTargetScope(suggestedBlock);
                     ProcessingOptions retryOptions = blockOptions | ProcessingOptions.ForceSequentialBlockAccessList;
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);
                 }
@@ -180,9 +180,8 @@ public class BranchProcessor(
                     verdictGiven = executed.Answered;
                 }
 
-                QueueClearCaches(preWarmTask);
                 // Hint producers touch the active snapshot bundle, which CommitTree rotates.
-                WaitAndClear(ref preWarmTask);
+                DrainAndClear(ref prewarming);
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
@@ -201,10 +200,9 @@ public class BranchProcessor(
                 if (isCommitPoint && notReadOnly)
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                    BlockHeader previousBranchStateRoot = suggestedBlock.Header;
 
                     worldStateCloser?.Dispose();
-                    worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);
+                    worldStateCloser = BeginTargetScope(suggestedBlocks[i + 1]);
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
@@ -229,8 +227,7 @@ public class BranchProcessor(
             processingException = ex;
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
-            QueueClearCaches(preWarmTask);
-            WaitAndClear(ref preWarmTask);
+            DrainAndClear(ref prewarming);
 
             // A request was answered VALID already, so a failure from here on belongs to the commit, not to the block.
             // Left as an invalid block it would be deleted from the tree and recorded on the invalid chain, and the
@@ -258,35 +255,18 @@ public class BranchProcessor(
                 }
             }
         }
-
-        static void WaitAndClear(ref Task? task)
-        {
-            task?.GetAwaiter().GetResult();
-            task = null;
-        }
-
     }
 
-    private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
+    private IDisposable? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
         preWarmer?.PreWarmCaches(suggestedBlock,
             preBlockBaseBlock,
             spec,
             token);
 
-    private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
-
-    private void QueueClearCaches(Task? preWarmTask)
+    private void DrainAndClear(ref IDisposable? prewarming)
     {
-        if (preWarmTask is not null)
-        {
-            // Clear caches after prewarm completes; run inline to avoid ThreadPool scheduling jitter.
-            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.ExecuteSynchronously);
-        }
-        else if (preWarmer is not null)
-        {
-            preWarmer.ClearCaches();
-            _clearTask = Task.CompletedTask;
-        }
+        DisposableExtensions.DisposeAndNull(ref prewarming);
+        preWarmer?.ClearCaches();
     }
 
     private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem

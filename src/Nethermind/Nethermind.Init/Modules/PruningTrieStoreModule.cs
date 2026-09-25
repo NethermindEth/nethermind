@@ -40,7 +40,7 @@ public class PruningTrieStoreModule : Module
                 IDbFactory dbFactory = ctx.Resolve<IDbFactory>();
                 DbSettings stateDbSettings = new(GetTitleDbName(DbNames.State), DbNames.State);
                 stateDbSettings.DeleteOnStart = ShouldDropPruningTrieState(
-                    ctx.ResolveOptional<IFlatDbConfig>(), ctx.Resolve<IPersistence>, ctx.Resolve<ILogManager>,
+                    ctx.ResolveOptional<IFlatDbConfig>(), ctx.Resolve<IColumnsDb<FlatDbColumns>>, ctx.Resolve<ILogManager>,
                     () => HasSstFiles(fileSystem, dbFactory.GetFullDbPath(stateDbSettings)));
                 IDbFactory innerDbFactory = dbFactory;
                 if (dbFactory is not MemDbFactory)
@@ -138,7 +138,7 @@ public class PruningTrieStoreModule : Module
     /// </remarks>
     /// <param name="hasTrieData">Whether the trie store still holds data. Decides the log level only: the
     /// deletion stays unconditional so that a deletion interrupted by a crash completes on the next start.</param>
-    internal static bool ShouldDropPruningTrieState(IFlatDbConfig? flatDbConfig, Func<IPersistence> flatPersistence, Func<ILogManager> logManager, Func<bool> hasTrieData)
+    internal static bool ShouldDropPruningTrieState(IFlatDbConfig? flatDbConfig, Func<IColumnsDb<FlatDbColumns>> flatDb, Func<ILogManager> logManager, Func<bool> hasTrieData)
     {
         // Null when nothing registered the flat config: the state DB must still resolve, so nothing
         // beyond the flag may be resolved until the flag is known to be set.
@@ -155,16 +155,27 @@ public class PruningTrieStoreModule : Module
         // ImportFallbackStateBoundary only reads the trie's BestPersistedState while the flat one is
         // null, which is exactly StateId.PreGenesis - the case the next check rejects. So a populated
         // flat store is sufficient on its own, and the import flag needs no gate of its own.
-        using IPersistence.IPersistenceReader reader = flatPersistence().CreateReader();
-        if (reader.CurrentState == StateId.PreGenesis)
+        // Read off the columns DB rather than through IPersistence, which must not exist before the activation
+        // policy has wiped a repaired flat DB: it latches its slot encoding and caches a reader of the pre-wipe DB.
+        IColumnsDb<FlatDbColumns> db = flatDb();
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        StateId currentState = BasePersistence.ReadCurrentState(metadata);
+        if (currentState == StateId.PreGenesis)
         {
             if (logger.IsInfo) logger.Info("Keeping the patricia trie state: the flat DB is empty, so the node would be left without any state.");
             return false;
         }
 
+        // The activation policy may still wipe such a flat DB on this start, and its pointer does not survive the wipe.
+        if (db.WasRepairedOnOpen || BasePersistence.ReadWipedForSync(metadata))
+        {
+            if (logger.IsInfo) logger.Info("Keeping the patricia trie state: the flat DB was auto-repaired or its wipe was interrupted, so it may be wiped on this start.");
+            return false;
+        }
+
         if (hasTrieData())
         {
-            if (logger.IsWarn) logger.Warn($"Dropping the patricia trie state DB: the flat DB owns the state at {reader.CurrentState}. This is irreversible - a switch back to the patricia backend will require a resync.");
+            if (logger.IsWarn) logger.Warn($"Dropping the patricia trie state DB: the flat DB owns the state at {currentState}. This is irreversible - a switch back to the patricia backend will require a resync.");
         }
         else if (logger.IsDebug) logger.Debug("Dropping the empty patricia trie state DB.");
 

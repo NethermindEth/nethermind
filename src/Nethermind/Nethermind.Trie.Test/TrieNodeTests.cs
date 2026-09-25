@@ -238,6 +238,78 @@ public class TrieNodeTests
         Assert.That(second, Is.SameAs(child));
     }
 
+    // A malformed node reaches the RLP reader as an out-of-range read rather than an RlpException: an empty key
+    // indexes an empty span, a truncated length prefix slices past the end. Neither may escape the Try variant.
+    [TestCase(new byte[] { 0xc2, 0x80, 0x01 })]
+    [TestCase(new byte[] { 0xf8 })]
+    public void Undecodable_rlp_is_kept_and_loaded_once(byte[] invalidRlp)
+    {
+        Hash256 hash = new(ValueKeccak.Compute(invalidRlp));
+        TrieNode trieNode = new(NodeType.Unknown, hash);
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.TryLoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(invalidRlp);
+
+        TreePath path = TreePath.Empty;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.False);
+            Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.False);
+            Assert.That(trieNode.FullRlp.IsNotNull, Is.True);
+        }
+
+        resolver.Received(1).TryLoadRlp(TreePath.Empty, hash, ReadFlags.None);
+    }
+
+    // Warmer jobs resolve one shared node concurrently: a decode another job published while this load was in
+    // flight must be kept, not replaced by a second decode of the same bytes.
+    [Test]
+    public void Try_or_throw_resolve_keeps_a_decode_published_during_the_load([Values] bool tryResolve)
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        TrieNode trieNode = new(NodeType.Unknown, hash);
+        ITrieNodeResolver racingResolver = Substitute.For<ITrieNodeResolver>();
+        racingResolver.LoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(rlp);
+        INodeData? racingDecode = null;
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        void PublishRacingDecode()
+        {
+            trieNode.ResolveNode(racingResolver, TreePath.Empty);
+            racingDecode = trieNode.NodeData;
+        }
+
+        if (tryResolve)
+        {
+            resolver.TryLoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+            {
+                PublishRacingDecode();
+                return rlp;
+            });
+        }
+        else
+        {
+            resolver.LoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+            {
+                PublishRacingDecode();
+                return rlp;
+            });
+        }
+
+        TreePath path = TreePath.Empty;
+        using (Assert.EnterMultipleScope())
+        {
+            if (tryResolve)
+            {
+                Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.True);
+            }
+            else
+            {
+                trieNode.ResolveNode(resolver, path);
+            }
+
+            Assert.That(trieNode.NodeData, Is.SameAs(racingDecode));
+        }
+    }
+
     [Test]
     public void Encoding_leaf_without_key_throws_trie_exception()
     {

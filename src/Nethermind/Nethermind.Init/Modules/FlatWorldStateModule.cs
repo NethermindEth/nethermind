@@ -95,7 +95,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<FlatFullStateFinder>()
 
             // Persistences
-            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
+            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat, static settings => settings.PersistRepairMarkerUntilAcknowledged = true)
             .AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, ctx => ctx
                 .Resolve<IDbFactory>()
                 .CreateDb(new DbSettings(

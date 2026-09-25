@@ -8,6 +8,7 @@ namespace Nethermind.Db;
 public class FlatDbConfig : IFlatDbConfig
 {
     public bool Enabled { get; set; } = true;
+    public FlatDbOnRepair OnRepair { get; set; } = FlatDbOnRepair.Resync;
     public bool HistoryEnabled { get; set; } = false;
     public HistoryRetentionMode HistoryRetention { get; set; } = HistoryRetentionMode.None;
     public ulong HistoryRetentionBlocks { get; set; } = 0;
