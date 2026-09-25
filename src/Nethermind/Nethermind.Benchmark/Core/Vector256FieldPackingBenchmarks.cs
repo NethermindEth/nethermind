@@ -11,7 +11,7 @@ namespace Nethermind.Benchmarks.Core;
 
 /// <summary>
 /// A <see cref="Vector256{T}"/> field gives its struct 32-byte alignment unless the struct is packed, as
-/// <c>ValueHash256</c> now is. Compares a <c>TreePath</c>-shaped key (a hash and a length) in both layouts:
+/// <c>ValueHash256</c> is. Compares a <c>TreePath</c>-shaped key (a hash and a length) in both layouts:
 /// 64 bytes padded, 40 bytes packed.
 /// </summary>
 [ShortRunJob]
