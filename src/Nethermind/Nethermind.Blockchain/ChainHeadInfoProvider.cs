@@ -33,8 +33,8 @@ namespace Nethermind.Blockchain
             Block? head = blockTree.Head;
             HeadNumber = head?.Number ?? 0;
             HeadTimestamp = head?.Timestamp ?? 0;
-            // Genesis is not a head worth gating on: a node still syncing to the tip would price and bound
-            // transactions against it, so the facts below stay at their defaults until the first head change.
+            // Genesis is not a head worth pricing or bounding transactions on while syncing. Keep the
+            // gas limit, fees, and proof version at their defaults until the first head change.
             if (head is not null && !head.IsGenesis) ReadHead(head.Header);
 
             blockTree.BlockAddedToMain += OnHeadChanged;
@@ -83,9 +83,9 @@ namespace Nethermind.Blockchain
         }
 
         /// <summary>Reads the head-derived facts the transaction pool gates on off <paramref name="header"/>.</summary>
-        /// <remarks>Shared with the constructor, so a node that has seen no <see cref="IBlockTree.BlockAddedToMain"/>
-        /// yet gates on its own head rather than on the defaults. <see cref="HeadNumber"/> stays with the callers
-        /// because it is seeded even for a genesis head, which the facts here are not.</remarks>
+        /// <remarks>The constructor calls this only for a non-genesis head; the head-change handler always calls it.
+        /// <see cref="HeadNumber"/> is set outside this method so it is seeded for genesis too.
+        /// <see cref="HeadTimestamp"/> is likewise seeded for genesis in the constructor and refreshed here.</remarks>
         private void ReadHead(BlockHeader header)
         {
             IReleaseSpec spec = SpecProvider.GetSpec(header);
