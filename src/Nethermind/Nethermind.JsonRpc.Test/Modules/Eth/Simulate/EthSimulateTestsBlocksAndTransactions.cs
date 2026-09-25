@@ -1069,17 +1069,17 @@ public class EthSimulateTestsBlocksAndTransactions
         return await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
     }
 
-    /// <summary>
-    /// Regression test: under EIP-8037 the block <c>gasUsed</c> reported by eth_simulateV1 must be
-    /// the two-dimensional block accounting <c>max(Σ execution, Σ state)</c>, not the execution
-    /// dimension alone (and not the execution-only gas-cap budget). Value transfers
-    /// materialising dead recipients charge <c>NEW_ACCOUNT</c> state gas that far exceeds the
-    /// transactions' execution gas, so the state dimension dominates.
-    /// </summary>
-    [TestCase(true, TestName = "block gasUsed includes the EIP-8037 state dimension (validation=true)")]
-    [TestCase(false, TestName = "block gasUsed includes the EIP-8037 state dimension (validation=false)")]
-    public async Task eth_simulateV1_block_gas_used_is_max_of_execution_and_state_dimensions(bool validation)
+    [Test]
+    public async Task eth_simulateV1_block_gas_used_is_max_of_execution_and_state_dimensions(
+        [Values] bool validation,
+        [Values] bool executionDominates)
     {
+        const ulong callGas = 300_000;
+        // EIP-2780 value transfer to a new account: TX_BASE_COST + cold recipient access + TX_VALUE_COST.
+        const ulong newAccountTransferExecutionGas =
+            GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780;
+        Address invalidOpcodeContract = Address.FromNumber(0xfe);
+
         using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
 
         SimulatePayload<TransactionForRpc> payload = new()
@@ -1090,12 +1090,15 @@ public class EthSimulateTestsBlocksAndTransactions
                 {
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+                        { invalidOpcodeContract, new AccountOverride { Code = Bytes.FromHexString("0xfe") } }
                     },
                     Calls =
                     [
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7778), Value = 1000, Gas = 300_000, GasPrice = UInt256.Zero },
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7779), Value = 1000, Gas = 300_000, GasPrice = UInt256.Zero }
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7778), Value = 1000, Gas = callGas, GasPrice = UInt256.Zero },
+                        executionDominates
+                            ? new LegacyTransactionForRpc { From = TestItem.AddressA, To = invalidOpcodeContract, Gas = callGas, GasPrice = UInt256.Zero }
+                            : new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7779), Value = 1000, Gas = callGas, GasPrice = UInt256.Zero }
                     ]
                 }
             ],
@@ -1106,19 +1109,64 @@ public class EthSimulateTestsBlocksAndTransactions
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
-        Assert.That(result.Data![0].Calls.Select(static c => c.Error), Is.All.Null);
+        SimulateCallResult[] calls = result.Data![0].Calls.ToArray();
+        Assert.That(calls[0].Error, Is.Null);
+        Assert.That(calls[1].Error, executionDominates ? Is.Not.Null : Is.Null);
         // 183_600 of state gas per new account, drawn from each call's own 300_000 budget: a reprice
         // above that budget would turn this into an out-of-gas failure, not a gas-accounting mismatch.
-        Assert.That(result.Data![0].GasUsed, Is.EqualTo(2 * (ulong)GasCostOf.NewAccountState));
+        // Execution-dominated: 321_000 of execution against 183_600 of state; a sum would give 504_600.
+        Assert.That(result.Data![0].GasUsed, Is.EqualTo(executionDominates
+            ? newAccountTransferExecutionGas + callGas
+            : 2 * (ulong)GasCostOf.NewAccountState));
+    }
+
+    /// <summary>
+    /// EIP-1559 derives a block's base fee from <c>parent.gas_used</c>, which under EIP-8037 is
+    /// <c>max(Σ execution, Σ state)</c>, so the next simulated block's base fee must see the state dimension.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_child_base_fee_uses_two_dimensional_parent_gas_used()
+    {
+        using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { GasLimit = 1_000_000, BaseFeePerGas = 1.GWei },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7778), Value = 1000, Gas = 300_000, GasPrice = 1.GWei },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(0xdead7779), Value = 1000, Gas = 300_000, GasPrice = 1.GWei }
+                    ]
+                },
+                new()
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
+        // Parent: gas target 500_000, gas used 367_200 (state), so the fee drops by
+        // 1 gwei * 132_800 / 500_000 / 8 = 33_200_000 wei; execution alone (42_000) would give 885_500_000.
+        Assert.That(result.Data![1].BaseFeePerGas, Is.EqualTo((UInt256)966_800_000));
     }
 
     /// <summary>
     /// On forks without EIP-7778 the block <c>gasUsed</c> reported by eth_simulateV1 must be the gas
-    /// the calls actually spent, not the execution-only gas-cap budget the simulate adapter tracks for
-    /// the JSON-RPC gas cap. This is the behaviour that applies to every currently deployed fork.
+    /// the calls actually spent, not their gas limits. This is the behaviour that applies to every
+    /// currently deployed fork.
     /// </summary>
-    [TestCase(true, TestName = "block gasUsed is the spent gas, not the execution-only gas-cap budget (validation=true)")]
-    [TestCase(false, TestName = "block gasUsed is the spent gas, not the execution-only gas-cap budget (validation=false)")]
+    [TestCase(true, TestName = "block gasUsed is the spent gas, not the call gas limit (validation=true)")]
+    [TestCase(false, TestName = "block gasUsed is the spent gas, not the call gas limit (validation=false)")]
     public async Task eth_simulateV1_block_gas_used_is_spent_gas_without_eip7778(bool validation)
     {
         // Default chain is Berlin: neither EIP-7778 nor EIP-8037, so the funded transfer costs exactly
