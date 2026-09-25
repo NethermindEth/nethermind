@@ -123,7 +123,7 @@ public class TraceRpcModuleTests
 
     [Test]
     public async Task Rejects_unknown_trace_type_as_invalid_params(
-        [Values("trace_replayBlockTransactions", "trace_call", "trace_callMany", "trace_simulateV1")] string method)
+        [Values("trace_replayTransaction", "trace_replayBlockTransactions", "trace_call", "trace_callMany", "trace_simulateV1")] string method)
     {
         Context context = new();
         await context.Build();
@@ -132,6 +132,8 @@ public class TraceRpcModuleTests
         object transaction = new { from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x186a0" };
         object[] parameters = method switch
         {
+            // An unknown hash fails the receipt lookup, so this also checks the types are validated before that.
+            "trace_replayTransaction" => [TestItem.KeccakA, traceTypes],
             // Genesis short-circuits replay, so this also checks the types are validated before that.
             "trace_replayBlockTransactions" => ["earliest", traceTypes],
             "trace_call" => [transaction, traceTypes, "latest"],

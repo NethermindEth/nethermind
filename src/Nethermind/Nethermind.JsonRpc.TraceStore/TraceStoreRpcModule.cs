@@ -101,13 +101,8 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false)
     {
-        // The live fallback validates types only after its state checks, which fail on a pruned node.
-        if (!TraceRpcModule.TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
-        {
-            return TraceRpcModule.InvalidTraceTypes<ParityTxTraceFromReplay>();
-        }
-
-        if (TryGetStoredTrace(txHash, parityTypes, out ParityLikeTxTrace? storedTrace) && storedTrace is not null)
+        if (TraceRpcModule.TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes)
+            && TryGetStoredTrace(txHash, parityTypes, out ParityLikeTxTrace? storedTrace) && storedTrace is not null)
         {
             return BuildStoreStreamingSingleResult(
                 runStreaming: (writer, pipeWriter, ct) =>

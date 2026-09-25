@@ -180,15 +180,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter,
             Dictionary<Address, AccountOverride>? stateOverride = null)
         {
+            if (!TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
+            {
+                return InvalidTraceTypes<ParityTxTraceFromReplay>();
+            }
+
             SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
             if (headerSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
-            }
-
-            if (!TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
-            {
-                return InvalidTraceTypes<ParityTxTraceFromReplay>();
             }
 
             BlockHeader header = headerSearch.Object!.Clone();
@@ -216,6 +216,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false)
         {
+            if (!TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
+            {
+                return InvalidTraceTypes<ParityTxTraceFromReplay>();
+            }
+
             SearchResult<Hash256> blockHashSearch = receiptFinder.SearchForReceiptBlockHash(txHash);
             if (blockHashSearch.IsError)
             {
@@ -238,11 +243,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
             {
                 return GetStateFailureResult<ParityTxTraceFromReplay>(parentSearch.Object);
-            }
-
-            if (!TryGetParityTypes(traceTypes, out ParityTraceTypes parityTypes))
-            {
-                return InvalidTraceTypes<ParityTxTraceFromReplay>();
             }
 
             BlockHeader parentHeader = parentSearch.Object!;
