@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -40,6 +41,39 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 {
     private static readonly FieldInfo? BlockValidationTasksField =
         typeof(NewPayloadHandler).GetField("_blockValidationTasks", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    [Test]
+    public async Task Canonical_payload_far_behind_head_does_not_walk_the_full_ancestry()
+    {
+        Block block = PostMergeBlock();
+        int parentLookups = 0;
+        using NewPayloadHandler handler = CreateHandler(
+            block, AddBlockResult.AlreadyKnown, wasProcessed: false, validateSuggestedBlock: true,
+            configure: (blockTree, stateReader) =>
+            {
+                BlockHeader head = Build.A.BlockHeader.WithNumber(1000).WithParentHash(TestItem.KeccakC).TestObject;
+                blockTree.Head.Returns(Build.A.Block.WithHeader(head).TestObject);
+                blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
+                stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+                blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+                    .Returns(call =>
+                    {
+                        ulong? number = call.ArgAt<ulong?>(2);
+                        if (number is null)
+                        {
+                            return Build.A.BlockHeader.WithHash(block.ParentHash!).WithNumber(0).WithDifficulty(UInt256.Zero).TestObject;
+                        }
+
+                        Interlocked.Increment(ref parentLookups);
+                        return Build.A.BlockHeader.WithNumber(number.Value).WithParentHash(TestItem.KeccakC).TestObject;
+                    });
+            });
+
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+        Assert.That(parentLookups, Is.Zero, "an archive node may retain state thousands of blocks behind head");
+    }
 
     [Test]
     public async Task NewPayloadV1_RaceCondition_EventHandling_Should_Not_Throw_When_Multiple_Completions()
@@ -614,7 +648,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         IBlockProcessingQueue? processingQueue = null,
         int timeoutMs = 50,
         Func<bool>? wasProcessedNow = null,
-        Func<bool>? parentProcessedNow = null)
+        Func<bool>? parentProcessedNow = null,
+        Action<IBlockTree, IStateReader>? configure = null)
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -674,6 +709,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             effectiveProcessingQueue.Count.Returns(0);
             effectiveProcessingQueue.Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>()).Returns(_ => ValueTask.CompletedTask);
         }
+
+        configure?.Invoke(blockTree, stateReader);
 
         return new NewPayloadHandler(
             payloadPreparationService,

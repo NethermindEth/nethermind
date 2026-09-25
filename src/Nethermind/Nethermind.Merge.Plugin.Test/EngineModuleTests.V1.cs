@@ -2154,6 +2154,37 @@ public partial class EngineModuleTests
             "a block below finalized can never become the head, so its verdict stays usable without state");
     }
 
+    [Test]
+    public async Task newPayloadV1_reexecutes_a_pruned_block_when_only_its_canonical_marker_is_stale()
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        (ExecutionPayload block1, ExecutionPayload block2A, _, ExecutionPayload block3B) =
+            await BuildYShapedChainV1(chain, rpc);
+
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(new(block3B.BlockHash, block1.BlockHash, block1.BlockHash)))
+            .Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Block block2AInTree = chain.BlockTree.FindBlock(block2A.BlockHash, BlockTreeLookupOptions.None)!;
+        Block block3BInTree = chain.BlockTree.FindBlock(block3B.BlockHash, BlockTreeLookupOptions.None)!;
+        chain.BlockTree.ForceMainChainForTest(new[] { block2AInTree }, wereProcessed: true);
+        chain.BlockTree.ForceMainChainForTest(new[] { block3BInTree }, wereProcessed: true);
+        pruned[block2A.BlockHash] = 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.GetInfo(block2A.BlockNumber, block2A.BlockHash).Info!.WasProcessed, Is.True);
+            Assert.That(chain.BlockTree.IsMainChain(block2A.BlockHash), Is.True);
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block3B.BlockHash));
+        }
+
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(block2A);
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await WaitForCommit(chain, block2A.BlockHash);
+        Assert.That(pruned.ContainsKey(block2A.BlockHash), Is.False);
+    }
+
     /// <summary>
     /// A payload for a block the chain level already points at must not be staged as a beacon block: on a node
     /// that has finished syncing that arms the beacon pivot behind the head.

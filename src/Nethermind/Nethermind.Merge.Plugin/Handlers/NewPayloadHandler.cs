@@ -235,36 +235,27 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                     return NewPayloadV1Result.Valid(block.Hash);
                 }
 
-                // Not re-executed: a second run failing a check tightened since acceptance would be handled like any
-                // invalid block, deleting this block and every block after it up to the head. The cost is that the
-                // head cannot move back here until the state returns.
-                if (_logger.IsInfo) _logger.Info($"Syncing... A new payload found in main chain whose state is gone. Block {block.ToString(Block.Format.Short)}.");
-                return NewPayloadV1Result.Syncing;
+                // A stale canonical marker can point outside the head's ancestry. Let the parent-state and
+                // bounded ancestry checks below decide whether re-execution is safe.
             }
-
-            // Reuse the cached result for this exact (block, IL) so re-validating a known-canonical block
-            // whose parent state may be pruned doesn't regress to SYNCING; a different IL falls through.
-            if (TryGetCachedResult(block, out ResultWrapper<PayloadStatusV1>? cachedResult))
+            else
             {
-                if (_logger.IsInfo) _logger.Info($"Valid... A new payload with a known inclusion-list result. Block {block.ToString(Block.Format.Short)} found in main chain.");
-                return cachedResult;
-            }
+                // Reuse a known compliance result while its VALID verdict is still serviceable.
+                if (IsVerdictServiceable(block) && TryGetCachedResult(block, out ResultWrapper<PayloadStatusV1>? cachedResult))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Valid... A new payload with a known inclusion-list result. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                    return cachedResult;
+                }
 
-            // Compliance depends only on the block, the list and the state the block committed, so a
-            // canonical block is answerable from that state alone. Re-executing it instead would replay
-            // the whole pruning window whenever a consensus client resends the recent chain. As above, a head
-            // whose re-execution is still committing is waited for before the state is read a second time.
-            if (_stateReader.HasStateForBlock(block.Header)
-                || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && _stateReader.HasStateForBlock(block.Header)))
-            {
-                if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
-                return EvaluateInclusionListFromState(block);
+                // Compliance depends on the state this block committed, so wait for an in-flight commit
+                // before judging a new list against that state.
+                if (_stateReader.HasStateForBlock(block.Header)
+                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && _stateReader.HasStateForBlock(block.Header)))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                    return EvaluateInclusionListFromState(block);
+                }
             }
-
-            // bogota.md engine_newPayloadV6 (2.1) requires a VALID response to carry a compliance answer,
-            // and with the block's state pruned there is none to derive.
-            if (_logger.IsInfo) _logger.Info($"Syncing... A new payload whose inclusion list is no longer evaluable. Block {block.ToString(Block.Format.Short)} found in main chain.");
-            return NewPayloadV1Result.Syncing;
         }
 
         // The parent may have been answered VALID a moment ago and still be committing: its processed flag and its
@@ -313,13 +304,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Syncing;
         }
 
-        // A canonical block this node never ran reaches here when its parent has state. If the head descends from it,
-        // a processing failure would be recorded against the head and delete everything from it up to the head, so
-        // it is answered like a block ran onto the node's own chain. Only a stale marker - one the head does not
-        // descend from - is processed and, if invalid, recorded.
-        if (isCanonicalBehindHead && IsAncestorOfHead(block.Header))
+        // Re-executing a block in the head's ancestry could delete the node's own chain if a check tightened
+        // since acceptance. Only a stale marker outside that ancestry can be processed safely. When the
+        // bounded walk cannot establish ancestry, keep the chain intact and answer SYNCING.
+        if (isCanonicalBehindHead && IsAncestorOfHead(block.Header) is not false)
         {
-            if (_logger.IsInfo) _logger.Info($"Syncing... A new payload found in main chain that this node never ran. Block {block.ToString(Block.Format.Short)}.");
+            if (_logger.IsInfo) _logger.Info($"Syncing... A new payload found in main chain that cannot safely be re-executed. Block {block.ToString(Block.Format.Short)}.");
             return NewPayloadV1Result.Syncing;
         }
 
@@ -393,18 +383,24 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <summary>Whether the current head descends from <paramref name="header"/>.</summary>
     /// <remarks>
     /// The chain-level marker cannot answer this: sync moves it without moving the head, leaving stale markers the
-    /// head does not descend from. Walks the head's ancestry down to the header's height, which the only caller
-    /// bounds by requiring the header's parent to still have state.
+    /// head does not descend from. Returns null when the ancestry is missing or too deep to check within a
+    /// bounded number of header reads; a caller must then avoid re-executing the block.
     /// </remarks>
-    private bool IsAncestorOfHead(BlockHeader header)
+    private bool? IsAncestorOfHead(BlockHeader header)
     {
         BlockHeader? current = _blockTree.Head?.Header;
+        if (current is null || current.Number < header.Number) return null;
+
+        // An archive node can have parent state arbitrarily far behind head.
+        const ulong maxAncestorLookupDepth = 128;
+        if (current.Number - header.Number > maxAncestorLookupDepth) return null;
+
         while (current is not null && current.Number > header.Number)
         {
             current = _blockTree.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
-        return current?.Hash == header.Hash;
+        return current is null ? null : current.Hash == header.Hash;
     }
 
     /// <summary>Whether a VALID verdict for <paramref name="block"/> still describes something this node can act on.</summary>
