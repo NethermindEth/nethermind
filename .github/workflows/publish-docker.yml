@@ -33,7 +33,16 @@ jobs:
     name: Publish to Docker Hub
     runs-on: ubuntu-latest
     steps:
+      - name: Check whether the nightly is already built from this commit
+        id: nightly
+        if: github.event_name == 'schedule'
+        run: |
+          revision=$(docker buildx imagetools inspect nethermindeth/nethermind:nightly \
+            --format '{{ index (index .Image "linux/amd64").Config.Labels "org.opencontainers.image.revision" }}' || true)
+          if [ "$revision" = "$GITHUB_SHA" ]; then echo "unchanged=true" >> "$GITHUB_OUTPUT"; fi
+
       - name: Free up disk space
+        if: steps.nightly.outputs.unchanged != 'true'
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           large-packages: false
@@ -41,9 +50,11 @@ jobs:
           swap-storage: false
 
       - name: Check out repository
+        if: steps.nightly.outputs.unchanged != 'true'
         uses: actions/checkout@v6
 
       - name: Publish Docker image
+        if: steps.nightly.outputs.unchanged != 'true'
         uses: ./.github/actions/publish-docker
         with:
           image-name: ${{ github.event.inputs.image-name || 'nethermind' }}
