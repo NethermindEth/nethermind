@@ -24,7 +24,16 @@ public static class ScopeBalApplier
                 if (!accountChanges.HasStateChanges) continue;
 
                 Address address = accountChanges.Address;
-                Account account = scope.Get(address) ?? Account.TotallyEmpty;
+                Account? existing = scope.Get(address);
+                if (accountChanges.BalanceChanges.Length == 0 && accountChanges.NonceChanges.Length == 0 && accountChanges.CodeChanges.Length == 0)
+                {
+                    // Slot writes alone are not an account change: they neither create a missing account nor touch an
+                    // existing one, so EIP-158 leaves an empty account holding storage in place.
+                    if (existing is not null) WriteSlots(writeBatch, accountChanges);
+                    continue;
+                }
+
+                Account account = existing ?? Account.TotallyEmpty;
 
                 if (accountChanges.BalanceChanges.Length > 0) account = account.WithChangedBalance(accountChanges.BalanceChanges[^1].Value);
                 if (accountChanges.NonceChanges.Length > 0) account = account.WithChangedNonce(accountChanges.NonceChanges[^1].Value);
@@ -47,20 +56,24 @@ public static class ScopeBalApplier
                 }
 
                 writeBatch.Set(address, account);
-
-                ReadOnlySlotChanges[] storageChanges = accountChanges.StorageChanges;
-                if (storageChanges.Length == 0) continue;
-
-                using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(address, storageChanges.Length);
-                foreach (ReadOnlySlotChanges slotChanges in storageChanges)
-                {
-                    if (slotChanges.Changes.Length > 0) storageWriteBatch.Set(slotChanges.Key, slotChanges.Changes[^1].Value);
-                }
+                WriteSlots(writeBatch, accountChanges);
             }
         }
         finally
         {
             codeSetter?.Dispose();
+        }
+    }
+
+    private static void WriteSlots(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, ReadOnlyAccountChanges accountChanges)
+    {
+        ReadOnlySlotChanges[] storageChanges = accountChanges.StorageChanges;
+        if (storageChanges.Length == 0) return;
+
+        using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(accountChanges.Address, storageChanges.Length);
+        foreach (ReadOnlySlotChanges slotChanges in storageChanges)
+        {
+            if (slotChanges.Changes.Length > 0) storageWriteBatch.Set(slotChanges.Key, slotChanges.Changes[^1].Value);
         }
     }
 }
