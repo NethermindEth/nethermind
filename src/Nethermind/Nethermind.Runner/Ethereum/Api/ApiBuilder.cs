@@ -42,7 +42,12 @@ public class ApiBuilder
         ChainSpec = LoadChainSpec(_jsonSerializer);
     }
 
-    public EthereumRunner CreateEthereumRunner(IEnumerable<INethermindPlugin> plugins)
+    /// <summary>Builds the container and resolves the runner.</summary>
+    /// <param name="plugins">The enabled plugins, whose modules join the container.</param>
+    /// <param name="command">
+    /// The standalone command to run instead of the node, or <c>null</c> to start a node.
+    /// </param>
+    public EthereumRunner CreateEthereumRunner(IEnumerable<INethermindPlugin> plugins, string? command)
     {
         bool wasCreated = Interlocked.CompareExchange(ref _apiCreated, 1, 0) == 1;
         if (wasCreated)
@@ -57,6 +62,7 @@ public class ApiBuilder
                 _configProvider,
                 _processExitSource,
                 plugins,
+                command,
                 _logManager));
 
         IContainer container = containerBuilder.Build();
