@@ -326,6 +326,13 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.Zero);
             Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Hoodi));
             Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Hoodi));
+
+            // Shanghai and Cancun are active from the execution genesis, which predates the beacon chain.
+            IEnumerable<ulong> timestamps = GetTransitionTimestamps(chainSpec.Parameters).Where(static t => t > HoodiSpecProvider.GenesisTimestamp);
+            foreach (ulong t in timestamps)
+            {
+                Assert.That(ValidateSlotByTimestamp(t, HoodiSpecProvider.BeaconChainGenesisTimestampConst), Is.True);
+            }
         }
 
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoodiSpecProvider.CancunTimestamp));
@@ -715,6 +722,30 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(activation.Timestamp, Is.Null.Or.LessThanOrEqualTo(Nethermind.Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp),
                 $"{chain} schedules a fork above the unscheduled-fork band, which GetFinalSpec would skip");
+        }
+    }
+
+    public static IEnumerable<TestCaseData> BeaconChainGenesisTimestampCases
+    {
+        get
+        {
+            yield return new TestCaseData("foundation", MainnetSpecProvider.Instance, MainnetSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("foundation");
+            yield return new TestCaseData("sepolia", SepoliaSpecProvider.Instance, SepoliaSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("sepolia");
+            yield return new TestCaseData("hoodi", HoodiSpecProvider.Instance, HoodiSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("hoodi");
+            yield return new TestCaseData("gnosis", GnosisSpecProvider.Instance, GnosisSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("gnosis");
+            yield return new TestCaseData("chiado", ChiadoSpecProvider.Instance, ChiadoSpecProvider.BeaconChainGenesisTimestampConst).SetArgDisplayNames("chiado");
+        }
+    }
+
+    [TestCaseSource(nameof(BeaconChainGenesisTimestampCases))]
+    public void Beacon_chain_genesis_timestamp_matches_hard_coded_provider(string chain, ISpecProvider hardCodedProvider, ulong expected)
+    {
+        ChainSpecBasedSpecProvider provider = new(LoadChainSpecFromChainFolder(chain));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.BeaconChainGenesisTimestamp, Is.EqualTo(expected), $"{chain} chainspec");
+            Assert.That(hardCodedProvider.BeaconChainGenesisTimestamp, Is.EqualTo(expected), $"{chain} hard-coded provider");
         }
     }
 
