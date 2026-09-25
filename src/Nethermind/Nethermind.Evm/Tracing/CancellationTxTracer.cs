@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-/// <summary>Checks cancellation in tracer callbacks, deferring it while an instruction's start-to-completion callbacks are in flight.</summary>
+/// <summary>Checks cancellation in tracer callbacks, never between an instruction's start and its completion.</summary>
 /// <remarks>Wrap the complete tracer graph so cancellation cannot interrupt delivery to sibling observers.</remarks>
 public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default) : ITxTracer, ITxTracerWrapper, IInstructionTracingFilter
 {
@@ -31,12 +31,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingBlockAccess;
     private readonly bool _isTracingFees;
     private readonly bool _isTracingOpLevelLogs;
-
-    // Once a start is delivered, defer cancellation until the instruction's completion and error callbacks are
-    // paired. Callbacks that cannot belong to a pair keep the unconditional check, so a start that never completes
-    // cannot leave a transaction uncancellable.
-    private bool _isInstructionOperationActive;
-    private bool _canReportOperationError;
 
     public ITxTracer InnerTracer => innerTracer;
 
@@ -227,25 +221,20 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
-        _isInstructionOperationActive = false;
-        _canReportOperationError = false;
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingInstructions)
         {
-            _isInstructionOperationActive = true;
             innerTracer.StartOperation(pc, opcode, gas, env);
         }
     }
 
     public void ReportOperationError(EvmExceptionType error)
     {
-        if (!_canReportOperationError)
-            token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedOutsideOperation();
         if (innerTracer.IsTracingInstructions)
         {
             innerTracer.ReportOperationError(error);
         }
-        _canReportOperationError = false;
     }
 
     public void ReportOperationRemainingGas(ulong gas)
@@ -255,8 +244,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         {
             innerTracer.ReportOperationRemainingGas(gas);
         }
-        _canReportOperationError = _isInstructionOperationActive;
-        _isInstructionOperationActive = false;
     }
 
     public void ReportLog(LogEntry log)
@@ -468,7 +455,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {
-        _canReportOperationError = false;
         ThrowIfCancellationRequestedOutsideOperation();
         if (innerTracer.IsTracingInstructions)
         {
@@ -512,9 +498,11 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
+    // With instruction tracing, StartOperation checks before every start it forwards, so callbacks that can fire
+    // inside an instruction skip the check and cancellation cannot split a start from its completion.
     private void ThrowIfCancellationRequestedOutsideOperation()
     {
-        if (!_isInstructionOperationActive)
+        if (!innerTracer.IsTracingInstructions)
             token.ThrowIfCancellationRequested();
     }
 
