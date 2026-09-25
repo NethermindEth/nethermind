@@ -54,6 +54,58 @@ jobs:
           rm -rf "${RUNNER_TEMP}/frame-tx-measurements"
           mkdir -p "${RUNNER_TEMP}/frame-tx-measurements"
 
+      - name: Capture runner hardware profile
+        shell: bash
+        run: |
+          {
+            echo "captured_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "runner=${RUNNER_NAME}"
+            echo "machine=$(hostname)"
+            echo "kernel=$(uname -sr)"
+            echo
+            echo '## cpu'
+            lscpu
+            echo
+            echo '## process affinity'
+            taskset -pc "$$" 2>&1 || true
+            echo
+            echo '## memory'
+            free -h
+            echo
+            echo '## block devices'
+            lsblk -d -o NAME,MODEL,SIZE,ROTA,TRAN
+            echo
+            echo '## relevant mounts'
+            for path in "${RUNNER_TEMP}" /mnt/sda; do
+              if [[ -e "${path}" ]]; then
+                findmnt -T "${path}" || true
+              fi
+            done
+            echo
+            echo '## cpu frequency'
+            if command -v cpupower >/dev/null; then
+              cpupower frequency-info 2>&1 || true
+            else
+              echo 'cpupower unavailable'
+            fi
+            echo
+            echo '## cgroup limits'
+            for file in cpu.max cpuset.cpus.effective memory.max io.max; do
+              path="/sys/fs/cgroup/${file}"
+              if [[ -r "${path}" ]]; then
+                printf '%s=' "${file}"
+                tr '\n' ' ' < "${path}"
+                echo
+              fi
+            done
+            echo
+            echo '## host load'
+            uptime
+            echo
+            echo '## process counts (name only; no command-line arguments)'
+            ps -eo comm= | sort | uniq -c | sort -nr | head -n 20
+          } > "${OUTPUT_DIR}/HARDWARE_PROFILE.txt"
+
       - name: Check out repository
         uses: actions/checkout@v6
 
