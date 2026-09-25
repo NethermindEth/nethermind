@@ -23,7 +23,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
     {
         TypeDefinition vm = ModuleDefinition.GetType("Nethermind.Evm.VirtualMachine`1")
             ?? throw new WeavingException("VirtualMachine type was not found.");
-        MethodDefinition handler = GetMethod(vm, "ExecuteOpcode");
+        MethodDefinition handler = GetMethod(GetDispatchType(vm), "ExecuteOpcode");
         bool hasTailCall = false;
         foreach (Instruction instruction in handler.Body.Instructions)
             if (instruction.OpCode == OpCodes.Tail) { hasTailCall = true; break; }
@@ -97,9 +97,10 @@ public sealed class ModuleWeaver : BaseModuleWeaver
             if (!visited.Add(method) || !method.HasBody) continue;
             foreach (Instruction instruction in method.Body.Instructions)
             {
+                // The name test first: resolving an unrelated reference may need an assembly that is not there.
                 if (instruction.Operand is not MethodReference reference
-                    || reference.DeclaringType.GetElementType().FullName != vm.FullName
-                    || reference.DeclaringType.Resolve() != vm) continue;
+                    || !IsTypeOrNestedName(reference.DeclaringType.GetElementType().FullName, vm.FullName)
+                    || !IsTypeOrNested(reference.DeclaringType.Resolve(), vm)) continue;
                 MethodDefinition target = Resolve(reference);
                 if (instruction.OpCode == OpCodes.Ldftn)
                 {
@@ -116,6 +117,20 @@ public sealed class ModuleWeaver : BaseModuleWeaver
         if (!actual.SetEquals(expected))
             throw new WeavingException("Named opcode handlers are not all reachable from the opcode table factories.");
     }
+
+    /// <summary>The type holding the dispatch handlers: the nested <c>RawCalliHelper</c> when there is one.</summary>
+    private static TypeDefinition GetDispatchType(TypeDefinition vm)
+    {
+        foreach (TypeDefinition nested in vm.NestedTypes)
+            if (nested.Name == "RawCalliHelper") return nested;
+        return vm;
+    }
+
+    private static bool IsTypeOrNested(TypeDefinition? type, TypeDefinition owner) =>
+        type is not null && (type == owner || type.DeclaringType == owner);
+
+    private static bool IsTypeOrNestedName(string name, string owner) =>
+        name == owner || (name.StartsWith(owner, StringComparison.Ordinal) && name.Length > owner.Length && name[owner.Length] == '/');
 
     private static MethodDefinition GetMethod(TypeDefinition type, string name)
     {
@@ -144,7 +159,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
         bool redirected = false;
         foreach (Instruction instruction in factory.Body.Instructions)
         {
-            if (instruction.Operand is not GenericInstanceMethod target || target.DeclaringType.Resolve() != source.DeclaringType)
+            if (instruction.Operand is not GenericInstanceMethod target || !IsTypeOrNested(target.DeclaringType.Resolve(), source.DeclaringType))
                 continue;
             if (IsFactory(target.Name))
             {
@@ -157,7 +172,8 @@ public sealed class ModuleWeaver : BaseModuleWeaver
                 {
                     // Retain the generic parameters: only the metadata name and table target change.
                     handler = new MethodCloner(Resolve(target), WriteWarning).Clone("Op" + opcode);
-                    source.DeclaringType.Methods.Add(handler);
+                    // Beside the template, so the clone keeps the template's declaring type.
+                    Resolve(target).DeclaringType.Methods.Add(handler);
                     _handlers.Add(opcode, handler);
                 }
                 instruction.Operand = Retarget(target, handler);
