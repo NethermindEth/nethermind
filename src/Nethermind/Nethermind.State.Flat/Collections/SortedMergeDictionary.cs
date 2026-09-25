@@ -39,7 +39,10 @@ internal sealed class SortedMergeDictionary<TKey, TValue> : IEnumerable<KeyValue
     // Entry arrays of 64 KiB and more come from a pool of their own. ArrayPool.Shared keeps a copy per thread and trims
     // large arrays on gen2 GCs, so compaction kept renting fresh LOH arrays while idle copies sat in thread-local slots
     // (366 MB of them in a block-processing heap dump). This pool is shared by all threads, never trims, and keeps at
-    // most MaxPooledLargeArraysPerSize arrays per power-of-two length; longer arrays are not pooled.
+    // most MaxPooledLargeArraysPerSize arrays per power-of-two length; longer arrays are not pooled. It only holds
+    // arrays whose snapshot was disposed and not yet replaced, so retention follows how many same-size snapshots were
+    // released together. The ceiling per entry type is MaxPooledLargeArraysPerSize × (2^21 + 2^20 + ...) entries,
+    // about 2^24, which is roughly 1 GB at 64-byte entries. The 1,000-block EXPB runs peaked at 16 MiB arrays.
     private const int MaxPooledLargeArrayLength = 1 << 21;
     private const int MaxPooledLargeArraysPerSize = 4;
     private static readonly int LargeEntryArrayMinLength = Math.Max(16, 64 * 1024 / Unsafe.SizeOf<Entry>());
