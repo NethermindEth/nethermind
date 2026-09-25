@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
@@ -16,7 +17,7 @@ namespace Ethereum.ConsensusSpec.Test;
 /// historical roots, randao mixes, slashings), so it cannot decode a minimal-preset
 /// <c>anchor_state.ssz_snappy</c> at all - confirmed directly (decoding one throws
 /// <c>InvalidDataException: expected at least 2737225 bytes but found 19921</c>). The minimal-preset
-/// vectors (66 of them) are still enumerated and named, and reported not-implemented rather than
+/// vectors (67 of them) are still enumerated and named, and reported not-implemented rather than
 /// silently skipped; only the mainnet-preset vectors (opt in with
 /// NETHERMIND_CONSENSUS_SPEC_MAINNET=1) actually drive the fork-choice pipeline.
 /// </summary>
@@ -29,20 +30,47 @@ public class ForkChoiceTests
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(ForkChoiceCase testCase) => Execute(testCase);
 
-    private static void Execute(ForkChoiceCase testCase) =>
-        ConsensusSpecTestSummary.RunAndRecord("fork_choice", "fulu", testCase.Preset, testCase.VectorName, () =>
-        {
-            if (testCase.Preset == nameof(ConsensusPreset.Minimal))
-            {
-                throw new NotImplementedInDriverException(
-                    "BeaconStateFulu's SSZ shape hard-codes mainnet-preset-scaled vector bounds (see SszStaticTests' " +
-                    "BeaconState/Attestation/SyncCommittee entries), so it cannot decode a minimal-preset " +
-                    "anchor_state.ssz_snappy at all; this suite only drives fork choice for real against the " +
-                    "mainnet preset (opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
-            }
+    /// <summary>The fork_choice handlers each preset carries at <see cref="ConsensusSpecArchive.Version"/>.</summary>
+    private static readonly IReadOnlyDictionary<ConsensusPreset, string[]> HandlersByPreset = new Dictionary<ConsensusPreset, string[]>
+    {
+        [ConsensusPreset.Minimal] = ["deposit_with_reorg", "ex_ante", "get_head", "get_proposer_head", "on_block", "reorg", "withholding"],
+        [ConsensusPreset.Mainnet] = ["ex_ante", "get_head", "get_proposer_head", "on_block"],
+    };
 
-            ForkChoiceStepDriver.Run(testCase.CasePath);
-        });
+    // A wrong suite path or an emptied case source enumerates zero vectors, and zero vectors run green.
+    // The fork set is not asserted: Cases reads fulu only, the one fork ConsensusSpecArchive extracts fork_choice for.
+    [Test]
+    public void Every_handler_has_vectors_in_the_archive([Values] ConsensusPreset preset)
+    {
+        List<ForkChoiceCase> cases = FuluDriverSupport.TestedCases<ForkChoiceCase>(preset, MinimalCases, MainnetCases);
+        Assert.That(cases.Select(HandlerOf).Distinct(), Is.EquivalentTo(HandlersByPreset[preset]));
+    }
+
+    // Not-implemented vectors are Inconclusive, so a step driver that reports every mainnet vector that way still runs green.
+    [Test]
+    public void Every_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
+        FuluDriverSupport.AssertEveryKeyRunsAVector(
+            FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases), HandlerOf, Run);
+
+    /// <summary>The handler directory, the segment after <c>{preset}/fulu/fork_choice/</c> in the vector name.</summary>
+    private static string HandlerOf(ForkChoiceCase testCase) => testCase.VectorName.Split('/')[3];
+
+    private static void Execute(ForkChoiceCase testCase) =>
+        ConsensusSpecTestSummary.RunAndRecord("fork_choice", "fulu", testCase.Preset, testCase.VectorName, () => Run(testCase));
+
+    private static void Run(ForkChoiceCase testCase)
+    {
+        if (testCase.Preset == nameof(ConsensusPreset.Minimal))
+        {
+            throw new NotImplementedInDriverException(
+                "BeaconStateFulu's SSZ shape hard-codes mainnet-preset-scaled vector bounds (see SszStaticTests' " +
+                "BeaconState/Attestation/SyncCommittee entries), so it cannot decode a minimal-preset " +
+                "anchor_state.ssz_snappy at all; this suite only drives fork choice for real against the " +
+                "mainnet preset (opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
+        }
+
+        ForkChoiceStepDriver.Run(testCase.CasePath);
+    }
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
 

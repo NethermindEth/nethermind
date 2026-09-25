@@ -39,14 +39,17 @@ public class TransitionTests
     [Test]
     public void Every_transition_fork_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
-        if (preset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled)
-            Assert.Ignore("mainnet vectors are opt-in (NETHERMIND_CONSENSUS_SPEC_MAINNET=1)");
-
-        IEnumerable<string> forksWithVectors = (preset == ConsensusPreset.Mainnet ? MainnetCases() : MinimalCases())
-            .Select(static data => ((TransitionCase)data.Arguments[0]!).Fork)
-            .Distinct();
+        IEnumerable<string> forksWithVectors = TestedCases(preset).Select(static testCase => testCase.Fork).Distinct();
         Assert.That(forksWithVectors, Is.EquivalentTo(ConsensusSpecArchive.TransitionForks));
     }
+
+    // Not-implemented vectors are Inconclusive, so a driver that reports every mainnet vector that way still runs green.
+    [Test]
+    public void Every_transition_fork_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
+        FuluDriverSupport.AssertEveryKeyRunsAVector(TestedCases(ConsensusPreset.Mainnet), static testCase => testCase.Fork, Run);
+
+    private static List<TransitionCase> TestedCases(ConsensusPreset preset) =>
+        FuluDriverSupport.TestedCases<TransitionCase>(preset, MinimalCases, MainnetCases);
 
     private static void Execute(TransitionCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord("transition", testCase.Fork, testCase.Preset, testCase.VectorName, () => Run(testCase));
