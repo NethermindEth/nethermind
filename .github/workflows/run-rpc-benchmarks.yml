@@ -900,7 +900,8 @@ jobs:
             declare -A sweep_sets=(["${sweep_nethermind}"]=1)
             read -ra sweep_arms <<< "$(sweep_get .clients)"
             for arm in "${sweep_arms[@]}"; do
-              ctype="${arm%%#*}"; ctype="${ctype%%@*}"
+              # The type ends at the first '@' (image), '#' (env) or '+' (flags), as run-rpc-sweep.sh splits an entry.
+              ctype="${arm%%[@#+]*}"
               [[ "${ctype}" == "nethermind" ]] || sweep_sets["${SNAPSHOT_ROOT}/${ctype}-${sweep_block}"]=1
             done
             db_sources=("${!sweep_sets[@]}")
