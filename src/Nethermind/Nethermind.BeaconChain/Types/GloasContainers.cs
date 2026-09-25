@@ -413,6 +413,26 @@ public partial class AttesterSlashingGloas
     public IndexedAttestationGloas? Attestation2 { get; set; }
 }
 
+/// <summary>Gloas <c>AggregateAndProof</c>: the Electra fields, with <c>aggregate</c> retyped to the Gloas <c>Attestation</c>.</summary>
+[SszContainer]
+public partial class AggregateAndProofGloas
+{
+    public ulong AggregatorIndex { get; set; }
+
+    public AttestationGloas? Aggregate { get; set; }
+
+    public BlsSignature SelectionProof { get; set; }
+}
+
+/// <summary>Gloas <c>SignedAggregateAndProof</c>.</summary>
+[SszContainer]
+public partial class SignedAggregateAndProofGloas
+{
+    public AggregateAndProofGloas? Message { get; set; }
+
+    public BlsSignature Signature { get; set; }
+}
+
 /// <summary>
 /// Gloas <c>BeaconBlockBody</c> (specs/gloas/beacon-chain.md, "Modified containers"; EIP-7732/EIP-7688):
 /// <c>ProgressiveContainer</c>, <c>ACTIVE_FIELDS</c> width 13. <c>execution_payload</c>,

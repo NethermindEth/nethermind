@@ -333,6 +333,20 @@ public sealed class BlockImporter : IBlockImporter
     }
 
     /// <inheritdoc/>
+    public void OnGossipAggregate(SignedAggregateAndProofGloas aggregate)
+    {
+        try
+        {
+            _runner.OnAttestation(aggregate.Message!.Aggregate!, isFromBlock: false);
+        }
+        catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+        {
+            Metrics.BeaconChainForkChoiceRejections.Increment(GossipAggregateRejected);
+            if (_logger.IsTrace) _logger.Trace($"Rejected Gloas gossip aggregate: {e.Message}");
+        }
+    }
+
+    /// <inheritdoc/>
     public void OnGossipAttesterSlashing(AttesterSlashing slashing)
     {
         try
@@ -343,6 +357,20 @@ public sealed class BlockImporter : IBlockImporter
         {
             Metrics.BeaconChainForkChoiceRejections.Increment(GossipAttesterSlashingRejected);
             if (_logger.IsTrace) _logger.Trace($"Rejected gossip attester slashing: {e.Message}");
+        }
+    }
+
+    /// <inheritdoc/>
+    public void OnGossipAttesterSlashing(AttesterSlashingGloas slashing)
+    {
+        try
+        {
+            _runner.OnAttesterSlashing(slashing);
+        }
+        catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+        {
+            Metrics.BeaconChainForkChoiceRejections.Increment(GossipAttesterSlashingRejected);
+            if (_logger.IsTrace) _logger.Trace($"Rejected Gloas gossip attester slashing: {e.Message}");
         }
     }
 

@@ -55,6 +55,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     private readonly BeaconChainStore _store;
     private readonly ILogger _logger;
     private readonly ServiceProvider _serviceProvider;
+    private readonly GossipMessageValidator? _messageValidator;
 
     // What the libp2p layer learns about each session that the session object itself does not tell:
     // which side dialed, and the identify agent string. A slot opens the moment the library adds the
@@ -84,9 +85,11 @@ public sealed class BeaconP2P : IAsyncDisposable
         LocalMetadataSource metadataSource,
         DataColumnSidecarPool dataColumnSidecarPool,
         ExecutionPayloadEnvelopePool executionPayloadEnvelopePool,
-        ILogManager logManager)
+        ILogManager logManager,
+        GossipMessageValidator? messageValidator = null)
     {
         _config = config;
+        _messageValidator = messageValidator;
         _store = store;
         _statusSource = statusSource;
         _metadataSource = metadataSource;
@@ -174,6 +177,11 @@ public sealed class BeaconP2P : IAsyncDisposable
         _localPeer.Sessions.CollectionChanged += OnSessionsChanged;
         await _localPeer.StartListenAsync([$"/ip4/0.0.0.0/tcp/{_config.P2PPort}"], token);
         _router = _serviceProvider.GetRequiredService<PubsubRouter>();
+        if (_messageValidator is not null)
+        {
+            _router.VerifyMessage = _messageValidator.Verify;
+        }
+
         await _router.StartAsync(_localPeer, token);
         if (_logger.IsInfo) _logger.Info($"Beacon chain P2P listening on port {_config.P2PPort} as {LocalPeerId}");
     }
@@ -232,6 +240,9 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>Internal so a test can observe a refused inbound session being torn down, not just never admitted.</summary>
     internal int SessionCountForTest => _localPeer?.Sessions.Count ?? 0;
+
+    /// <summary>Internal so a test can see the validator installed on the started router; without it the node forwards every message unchecked.</summary>
+    internal Func<Libp2p.Protocols.Pubsub.Dto.Message, MessageValidity>? VerifyMessageForTest => _router?.VerifyMessage;
 
     /// <summary>Dials the peer, or returns the existing session when one is already established (for example inbound).</summary>
     /// <remarks>
