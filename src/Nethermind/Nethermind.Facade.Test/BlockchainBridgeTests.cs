@@ -1078,4 +1078,39 @@ public class BlockchainBridgeTests
         adapter.Execute(transaction, receiptsTracer);
         receiptsTracer.EndTxTrace();
     }
+
+    [Test]
+    public void Simulate_adapter_saturates_block_gas_left_when_explicit_gas_exceeds_it()
+    {
+        SimulateRequestState simulateRequestState = new()
+        {
+            TotalGasLeft = 300_000,
+            BlockGasLeft = 80_000,
+            Validate = false,
+        };
+        simulateRequestState.SetTxsWithExplicitGas(
+            [
+                new() { HadGasLimitInRequest = true, Transaction = new Transaction() },
+                new() { HadGasLimitInRequest = false, Transaction = new Transaction() }
+            ]);
+
+        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        processor.Trace(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(ci =>
+            {
+                ci.Arg<Transaction>().BlockGasUsed = 100_000;
+                return TransactionResult.Ok;
+            });
+
+        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
+        adapter.Execute(new Transaction { GasLimit = 200_000 }, Substitute.For<ITxTracer>());
+        Transaction omittedGas = new() { GasLimit = 500_000 };
+        adapter.PrepareForInclusionCheck(omittedGas, ulong.MaxValue);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(simulateRequestState.BlockGasLeft, Is.Zero);
+            Assert.That(omittedGas.GasLimit, Is.Zero);
+        }
+    }
 }

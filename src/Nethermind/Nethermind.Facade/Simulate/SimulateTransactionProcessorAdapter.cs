@@ -44,6 +44,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         // A transaction's gas limit funds both EIP-8037 dimensions, so the request-wide cap — which is what
         // clamps that limit — depletes by their sum, while the block budgets below track one dimension each.
         simulateRequestState.TotalGasLeft = simulateRequestState.TotalGasLeft.SaturatingSub(blockGasUsed.SaturatingAdd(blockStateGasUsed));
+        // Validation:false admits explicit gas above the remaining block gas, which must not wrap the clamp budget.
         simulateRequestState.BlockGasLeft = simulateRequestState.BlockGasLeft.SaturatingSub(blockGasUsed);
         // The BAL inclusion check refreshes this from receipt totals when it runs; otherwise — non-BAL specs,
         // ForceSequentialBlockAccessList, block production, Validation:false — this running value is authoritative.

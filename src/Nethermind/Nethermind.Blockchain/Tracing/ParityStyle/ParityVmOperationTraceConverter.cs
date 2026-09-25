@@ -61,9 +61,9 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
         {
             writer.WriteStartObject();
             writer.WritePropertyName("key"u8);
-            JsonSerializer.Serialize(writer, value.Store.Key, options);
+            ByteArrayConverter.Convert(writer, value.Store.Key, skipLeadingZeros: true);
             writer.WritePropertyName("val"u8);
-            JsonSerializer.Serialize(writer, value.Store.Value, options);
+            ByteArrayConverter.Convert(writer, value.Store.Value, skipLeadingZeros: true);
             writer.WriteEndObject();
         }
         else
