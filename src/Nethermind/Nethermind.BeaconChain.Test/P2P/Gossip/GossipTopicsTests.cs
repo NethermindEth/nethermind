@@ -56,9 +56,9 @@ public class GossipTopicsTests
         Assert.That(GossipTopics.Topic(GossipTopics.CurrentDigest(Spec, 419072), name), Is.EqualTo(expected));
 
     [Test]
-    public void Gloas_topic_names_are_exactly_execution_payload_and_payload_attestation_message_and_never_the_builder_only_ones()
+    public void Gloas_topic_names_are_exactly_execution_payload_and_never_the_builder_only_ones()
     {
-        Assert.That(GossipTopics.GloasTopicNames, Is.EquivalentTo(new[] { "execution_payload", "payload_attestation_message" }));
+        Assert.That(GossipTopics.GloasTopicNames, Is.EquivalentTo(new[] { "execution_payload" }));
         // execution_payload_bid and proposer_preferences exist only for builders/proposers; this
         // node is non-attesting and must never subscribe to them.
         Assert.That(GossipTopics.GloasTopicNames, Has.None.Contain("bid"));

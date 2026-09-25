@@ -1,15 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
+using Google.Protobuf;
 using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.P2P;
 using Nethermind.Config;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Libp2p.Protocols.Pubsub;
+using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -34,6 +40,20 @@ public class BeaconChainPluginTests
             Assert.That(new BeaconChainPlugin(new BeaconChainConfig()).Enabled, Is.False);
             Assert.That(new BeaconChainPlugin(new BeaconChainConfig { Enabled = true }).Enabled, Is.True);
         });
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Started_libp2p_host_runs_the_gossip_validator_on_every_pubsub_message(CancellationToken token)
+    {
+        using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { P2PPort = 0 }).Build();
+        await using BeaconP2P p2p = container.Resolve<BeaconP2P>();
+
+        await p2p.StartAsync(token);
+
+        // Without the validator the library accepts and forwards every message, including a signed one StrictNoSign forbids.
+        Message signed = new() { Topic = "/eth2/00000000/beacon_block/ssz_snappy", Signature = ByteString.CopyFrom([1]) };
+        Assert.That(p2p.VerifyMessageForTest?.Invoke(signed), Is.EqualTo(MessageValidity.Rejected));
     }
 
     [Test]

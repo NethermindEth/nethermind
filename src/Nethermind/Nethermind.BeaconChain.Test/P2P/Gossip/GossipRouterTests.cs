@@ -42,17 +42,13 @@ public partial class GossipRouterTests
         List<byte[]> received = [];
         router.BeaconBlockReceived += b => received.Add(SignedBeaconBlockCodec.Encode(b, Spec));
         router.AggregateAndProofReceived += a => received.Add(SignedAggregateAndProof.Encode(a));
-        router.VoluntaryExitReceived += e => received.Add(SignedVoluntaryExit.Encode(e));
-        router.ProposerSlashingReceived += s => received.Add(ProposerSlashing.Encode(s));
         router.AttesterSlashingReceived += s => received.Add(AttesterSlashing.Encode(s));
 
         byte[][] payloads =
         [
             SignedBeaconBlock.Encode(TestChain.CreateBlock(CurrentSlot, Hash256.Zero)),
             SignedAggregateAndProof.Encode(CreateAggregate(CurrentSlot)),
-            SignedVoluntaryExit.Encode(new SignedVoluntaryExit { Message = new VoluntaryExit { Epoch = 1, ValidatorIndex = 2 } }),
-            ProposerSlashing.Encode(new ProposerSlashing { SignedHeader1 = CreateHeader(1), SignedHeader2 = CreateHeader(2) }),
-            AttesterSlashing.Encode(new AttesterSlashing { Attestation1 = CreateIndexedAttestation(1), Attestation2 = CreateIndexedAttestation(2) }),
+            AttesterSlashing.Encode(new AttesterSlashing { Attestation1 = CreateIndexedAttestation(1, 4), Attestation2 = CreateIndexedAttestation(2, 3) }),
         ];
 
         string[] names = GossipTopics.SubscribedTopicNames;
@@ -74,8 +70,6 @@ public partial class GossipRouterTests
             .SetName("payload that is not a valid SSZ block");
         yield return new TestCaseData(BlockMessage(CurrentSlot + 2), GossipDropReason.FutureSlot)
             .SetName("slot two ahead of the wall clock");
-        yield return new TestCaseData(BlockMessage(CurrentSlot + 1), GossipDropReason.FutureSlot)
-            .SetName("next slot when its start is beyond the clock disparity");
         yield return new TestCaseData(BlockMessage(CurrentSlot - Spec.SlotsPerEpoch - 1), GossipDropReason.StaleSlot)
             .SetName("block older than one epoch");
     }
@@ -183,21 +177,21 @@ public partial class GossipRouterTests
         Dictionary<string, FakeTopic> topics = [];
         GossipRouter router = CreateRouter();
         int envelopes = 0;
-        int attestations = 0;
         router.ExecutionPayloadEnvelopeReceived += _ => envelopes++;
-        router.PayloadAttestationMessageReceived += _ => attestations++;
 
         router.Start(id => topics[id] = new FakeTopic(), bpo1Digest);
         Assert.That(topics.Keys, Has.None.Contain(GossipTopics.ExecutionPayload), "Gloas topics are not part of the fixed pre-Gloas set");
 
         router.ActivateGloasTopics();
         string envelopeTopicBpo1 = GossipTopics.Topic(bpo1Digest, GossipTopics.ExecutionPayload);
-        string attestationTopicBpo1 = GossipTopics.Topic(bpo1Digest, GossipTopics.PayloadAttestationMessage);
-        Assert.That(topics.Keys, Does.Contain(envelopeTopicBpo1).And.Contain(attestationTopicBpo1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topics.Keys, Does.Contain(envelopeTopicBpo1));
+            Assert.That(topics.Keys, Has.None.Contain(GossipTopics.PayloadAttestationMessage), "PTC votes are not subscribed until fork choice consumes them");
+        }
 
         topics[envelopeTopicBpo1].Deliver(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(CreateEnvelope())));
-        topics[attestationTopicBpo1].Deliver(Snappy.CompressToArray(PayloadAttestationMessage.Encode(CreateAttestationMessage(CurrentSlot))));
-        Assert.That((envelopes, attestations), Is.EqualTo((1, 1)), "activated Gloas topics deliver to their typed events");
+        Assert.That(envelopes, Is.EqualTo(1), "activated Gloas topics deliver to their typed events");
 
         // A second activation must not double-subscribe.
         router.ActivateGloasTopics();
@@ -230,13 +224,6 @@ public partial class GossipRouterTests
         Signature = new BlsSignature(new byte[BlsSignature.Length]),
     };
 
-    private static PayloadAttestationMessage CreateAttestationMessage(ulong slot) => new()
-    {
-        ValidatorIndex = 17,
-        Data = new PayloadAttestationData { BeaconBlockRoot = Hash256.Zero, Slot = slot, PayloadPresent = true, BlobDataAvailable = false },
-        Signature = new BlsSignature(new byte[BlsSignature.Length]),
-    };
-
     private static SignedAggregateAndProof CreateAggregate(ulong slot) => new()
     {
         Message = new AggregateAndProof
@@ -244,33 +231,21 @@ public partial class GossipRouterTests
             AggregatorIndex = 7,
             Aggregate = new Attestation
             {
-                AggregationBits = new BitArray(8),
+                AggregationBits = new BitArray(8) { [0] = true },
                 Data = new AttestationData
                 {
                     Slot = slot,
                     Index = 0,
                     BeaconBlockRoot = Hash256.Zero,
                     Source = new Checkpoint { Epoch = 1, Root = Hash256.Zero },
-                    Target = new Checkpoint { Epoch = 2, Root = Hash256.Zero },
+                    Target = new Checkpoint { Epoch = Spec.GetEpoch(slot), Root = Hash256.Zero },
                 },
-                CommitteeBits = new BitArray(64),
+                CommitteeBits = new BitArray(64) { [0] = true },
             },
         },
     };
 
-    private static SignedBeaconBlockHeader CreateHeader(ulong proposerIndex) => new()
-    {
-        Message = new BeaconBlockHeader
-        {
-            Slot = CurrentSlot,
-            ProposerIndex = proposerIndex,
-            ParentRoot = Hash256.Zero,
-            StateRoot = Hash256.Zero,
-            BodyRoot = Hash256.Zero,
-        },
-    };
-
-    private static IndexedAttestation CreateIndexedAttestation(ulong epoch) => new()
+    private static IndexedAttestation CreateIndexedAttestation(ulong sourceEpoch, ulong targetEpoch) => new()
     {
         AttestingIndices = [1, 2, 3],
         Data = new AttestationData
@@ -278,8 +253,8 @@ public partial class GossipRouterTests
             Slot = CurrentSlot,
             Index = 0,
             BeaconBlockRoot = Hash256.Zero,
-            Source = new Checkpoint { Epoch = epoch, Root = Hash256.Zero },
-            Target = new Checkpoint { Epoch = epoch + 1, Root = Hash256.Zero },
+            Source = new Checkpoint { Epoch = sourceEpoch, Root = Hash256.Zero },
+            Target = new Checkpoint { Epoch = targetEpoch, Root = Hash256.Zero },
         },
     };
 

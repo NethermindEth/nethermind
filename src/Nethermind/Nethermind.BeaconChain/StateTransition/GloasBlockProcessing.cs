@@ -172,17 +172,7 @@ public static class GloasBlockProcessing
     /// </summary>
     public static void ProcessOperations(BeaconStateGloas state, BeaconBlockBodyGloas body, ulong parentSlot, BeaconChainSpec spec, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
     {
-        if ((body.Deposits?.Length ?? 0) != 0)
-            throw new BeaconStateException("Gloas block body must carry zero deposits (EIP-6110: the Eth1 deposit path is fully retired)");
-
-        // [New in Gloas:EIP7688] The lists are progressive (no SSZ-level bound), so the per-kind
-        // limits are asserted here instead.
-        RequireAtMost(body.ProposerSlashings, Presets.MaxProposerSlashings, "proposer slashings");
-        RequireAtMost(body.AttesterSlashings, Presets.MaxAttesterSlashingsElectra, "attester slashings");
-        RequireAtMost(body.Attestations, Presets.MaxAttestationsElectra, "attestations");
-        RequireAtMost(body.VoluntaryExits, Presets.MaxVoluntaryExits, "voluntary exits");
-        RequireAtMost(body.BlsToExecutionChanges, Presets.MaxBlsToExecutionChanges, "BLS-to-execution changes");
-        RequireAtMost(body.PayloadAttestations, Presets.MaxPayloadAttestations, "payload attestations");
+        VerifyBlockBodyOperationLimits(body);
 
         foreach (ProposerSlashing slashing in body.ProposerSlashings ?? [])
         {
@@ -208,6 +198,25 @@ public static class GloasBlockProcessing
         {
             ProcessPayloadAttestation(state, attestation, spec, pubkeys, verifySignatures);
         }
+    }
+
+    /// <summary>
+    /// Spec <c>verify_block_body_operation_limits</c> (gloas/p2p-interface.md), also asserted by
+    /// <c>process_operations</c>: zero deposits and every operation count within its limit.
+    /// </summary>
+    /// <remarks>[New in Gloas:EIP7688] The lists are progressive (no SSZ-level bound), so the limits are asserted here instead.</remarks>
+    /// <exception cref="BeaconStateException">A count is over its limit, or the body carries a deposit.</exception>
+    internal static void VerifyBlockBodyOperationLimits(BeaconBlockBodyGloas body)
+    {
+        if ((body.Deposits?.Length ?? 0) != 0)
+            throw new BeaconStateException("Gloas block body must carry zero deposits (EIP-6110: the Eth1 deposit path is fully retired)");
+
+        RequireAtMost(body.ProposerSlashings, Presets.MaxProposerSlashings, "proposer slashings");
+        RequireAtMost(body.AttesterSlashings, Presets.MaxAttesterSlashingsElectra, "attester slashings");
+        RequireAtMost(body.Attestations, Presets.MaxAttestationsElectra, "attestations");
+        RequireAtMost(body.VoluntaryExits, Presets.MaxVoluntaryExits, "voluntary exits");
+        RequireAtMost(body.BlsToExecutionChanges, Presets.MaxBlsToExecutionChanges, "BLS-to-execution changes");
+        RequireAtMost(body.PayloadAttestations, Presets.MaxPayloadAttestations, "payload attestations");
     }
 
     private static void RequireAtMost<T>(T[]? operations, int limit, string name)
@@ -846,14 +855,7 @@ public static class GloasBlockProcessing
     /// </remarks>
     private static void ApplyParentExecutionPayload(BeaconStateGloas state, ExecutionRequestsGloas requests, ulong parentSlot, ExecutionPayloadBid parentBid, EpochCache cache)
     {
-        if ((requests.Withdrawals?.Length ?? 0) > Presets.MaxWithdrawalRequestsPerPayload)
-            throw new BeaconStateException("Parent execution requests exceed the withdrawal request limit");
-        if ((requests.Consolidations?.Length ?? 0) > Presets.MaxConsolidationRequestsPerPayload)
-            throw new BeaconStateException("Parent execution requests exceed the consolidation request limit");
-        if ((requests.BuilderDeposits?.Length ?? 0) > Presets.MaxBuilderDepositRequestsPerPayload)
-            throw new BeaconStateException("Parent execution requests exceed the builder deposit request limit");
-        if ((requests.BuilderExits?.Length ?? 0) > Presets.MaxBuilderExitRequestsPerPayload)
-            throw new BeaconStateException("Parent execution requests exceed the builder exit request limit");
+        VerifyExecutionRequestsLimits(requests);
 
         foreach (DepositRequest request in requests.Deposits ?? [])
             ProcessDepositRequest(state, request);
@@ -887,6 +889,20 @@ public static class GloasBlockProcessing
 
         state.ExecutionPayloadAvailability![(int)(parentSlot % Presets.SlotsPerHistoricalRoot)] = true;
         state.LatestBlockHash = parentBid.BlockHash;
+    }
+
+    /// <summary>Spec <c>verify_execution_requests_limits</c> (gloas/p2p-interface.md): every execution request count within its limit.</summary>
+    /// <exception cref="BeaconStateException">A count is over its limit.</exception>
+    internal static void VerifyExecutionRequestsLimits(ExecutionRequestsGloas requests)
+    {
+        if ((requests.Withdrawals?.Length ?? 0) > Presets.MaxWithdrawalRequestsPerPayload)
+            throw new BeaconStateException("Execution requests exceed the withdrawal request limit");
+        if ((requests.Consolidations?.Length ?? 0) > Presets.MaxConsolidationRequestsPerPayload)
+            throw new BeaconStateException("Execution requests exceed the consolidation request limit");
+        if ((requests.BuilderDeposits?.Length ?? 0) > Presets.MaxBuilderDepositRequestsPerPayload)
+            throw new BeaconStateException("Execution requests exceed the builder deposit request limit");
+        if ((requests.BuilderExits?.Length ?? 0) > Presets.MaxBuilderExitRequestsPerPayload)
+            throw new BeaconStateException("Execution requests exceed the builder exit request limit");
     }
 
     /// <summary>Spec <c>settle_builder_payment</c>.</summary>
