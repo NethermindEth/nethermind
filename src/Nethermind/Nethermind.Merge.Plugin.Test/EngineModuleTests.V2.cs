@@ -349,11 +349,10 @@ public partial class EngineModuleTests
         await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
         ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, false, withdrawals);
 
-        Task headWait = chain.WaitForNewHeadWhere(block => block.Hash == executionPayload2.BlockHash);
+        await chain.WaitForCommitted(executionPayload2.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV2(
             new ForkchoiceStateV1(executionPayload2.BlockHash!, executionPayload2.BlockHash!, executionPayload2.BlockHash!));
         Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-        await headWait;
 
         IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
