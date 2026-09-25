@@ -105,7 +105,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public bool ShouldPrewarm(Address address, UInt256? slot) => ShouldPrewarm(address.Bytes, slot);
 
-    public bool ShouldPrewarm(in ValueAddress address, UInt256? slot) => ShouldPrewarm(address.AsSpan, slot);
 
     private bool ShouldPrewarm(ReadOnlySpan<byte> addressBytes, UInt256? slot)
     {

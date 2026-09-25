@@ -49,10 +49,6 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
     private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
     {
-        public void HintWarmAccount(in ValueAddress address) => baseScope.HintWarmAccount(in address);
-
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => baseScope.HintWarmSlot(in address, in index);
-
         public void HintWarmAccount(Address address) => baseScope.HintWarmAccount(address);
 
         public void HintWarmSlot(Address address, in UInt256 index) => baseScope.HintWarmSlot(address, in index);

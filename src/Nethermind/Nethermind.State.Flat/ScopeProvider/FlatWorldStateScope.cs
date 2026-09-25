@@ -352,7 +352,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private PatriciaTree CreateWarmupStateTree()
     {
-        // Rooted at the scope's initial state, as before it was created lazily.
         PatriciaTree tree = new(new StateTrieStoreWarmerAdapter(_snapshotBundle), _logManager)
         {
             RootHash = _initialStateRoot
@@ -389,25 +388,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     internal void IncrementOutstandingWarmups() => Interlocked.Increment(ref _outstandingWarmups);
 
     internal void DecrementOutstandingWarmups() => Interlocked.Decrement(ref _outstandingWarmups);
-
-    public void HintWarmAccount(in ValueAddress address)
-    {
-        if (IsDisposed || _pausePrewarmer) return;
-        // The managed Address is materialized only after the dedupe bloom passes, so the
-        // allocation happens at most once per account per block.
-        if (_snapshotBundle.ShouldQueuePrewarm(address))
-            QueueStateTrieWarmup(address.ToAddress(), _hintSequenceId);
-    }
-
-    public void HintWarmSlot(in ValueAddress address, in UInt256 index)
-    {
-        if (IsDisposed || _pausePrewarmer) return;
-        if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
-
-        FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address.ToAddress());
-        if (tree is not null && _warmer.PushSlotJobMpmc(tree, index, _hintSequenceId))
-            Interlocked.Increment(ref _outstandingWarmups);
-    }
 
     public void HintWarmAccount(Address address)
     {

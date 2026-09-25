@@ -1541,11 +1541,11 @@ public class ScopeProviderTests(bool useFlat)
         PreBlockCaches caches = NewCaches();
         PrewarmerScopeProvider main = new(decorated, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
 
-        ValueAddress addressA = new(TestItem.AddressA.Bytes);
+        Address addressA = TestItem.AddressA;
         using (main.BeginScope(null))
         {
-            caches.MainScope.HintWarmAccount(in addressA);
-            caches.MainScope.HintWarmSlot(in addressA, (UInt256)1);
+            caches.MainScope.HintWarmAccount(addressA);
+            caches.MainScope.HintWarmSlot(addressA, (UInt256)1);
         }
 
         inner.Received(1).HintWarmAccount(addressA);
@@ -1715,11 +1715,11 @@ public class ScopeProviderTests(bool useFlat)
         caches.MainScope = mainScope;
         PrewarmerScopeProvider populator = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
 
-        ValueAddress addressA = new(TestItem.AddressA.Bytes);
+        Address addressA = TestItem.AddressA;
         using (IWorldStateScopeProvider.IScope scope = populator.BeginScope(null))
         {
             caches.MainScope = null;
-            scope.HintWarmSlot(in addressA, (UInt256)1);
+            scope.HintWarmSlot(addressA, (UInt256)1);
         }
 
         mainScope.Received(1).HintWarmSlot(addressA, (UInt256)1);
@@ -1889,15 +1889,15 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.DoesNotThrow(() =>
             {
-                ValueAddress addressA = new(TestItem.AddressA.Bytes);
-                ValueAddress addressB = new(TestItem.AddressB.Bytes);
-                ValueAddress addressC = new(TestItem.AddressC.Bytes);
-                scope.HintWarmAccount(in addressA);
-                scope.HintWarmSlot(in addressA, 1);
-                scope.HintWarmSlot(in addressB, 1);
-                scope.HintWarmSlot(in addressC, 1);
-                scope.HintWarmAccount(in addressA);
-                scope.HintWarmSlot(in addressA, 1);
+                Address addressA = TestItem.AddressA;
+                Address addressB = TestItem.AddressB;
+                Address addressC = TestItem.AddressC;
+                scope.HintWarmAccount(addressA);
+                scope.HintWarmSlot(addressA, 1);
+                scope.HintWarmSlot(addressB, 1);
+                scope.HintWarmSlot(addressC, 1);
+                scope.HintWarmAccount(addressA);
+                scope.HintWarmSlot(addressA, 1);
             });
         }
     }
