@@ -139,53 +139,101 @@ class ExpbWorkflowTests(unittest.TestCase):
             )
             return proc, parse_output(output), temp_path
 
-    def test_render_replaces_the_cpu_quota_with_whole_core_affinity(self):
+    def render_resources(self, **overrides):
+        """Run the render step's config rewrite on the amd64 resources block; return the rendered block."""
         yq = os.environ.get("YQ") or shutil.which("yq")
         if not yq:
             self.skipTest("Mike Farah yq is required (set YQ or add it to PATH)")
         renderers = extract_steps(WORKFLOW, "Render benchmark config")
         self.assertEqual(1, len(renderers))
-        for index, renderer in enumerate(renderers):
-            with self.subTest(renderer=index), tempfile.TemporaryDirectory() as directory:
-                topology = Path(directory) / "cpu"
-                for cpu in range(16):
-                    (topology / f"cpu{cpu}" / "topology").mkdir(parents=True)
-                    (topology / f"cpu{cpu}" / "topology" / "thread_siblings_list").write_text(
-                        f"{cpu % 8},{cpu % 8 + 8}\n", encoding="utf-8"
-                    )
-                source = Path(directory) / "source.yaml"
-                rendered = Path(directory) / "rendered.yaml"
-                original = (
-                    'resources:\n  cpu: 8\n  cpuset: "2-7,10-15"\n'
-                    '  infra_cpuset: "0-1,8-9"\n  mem: 64g\n'
-                    'scenarios:\n  nethermind:\n    amount: 10\n'
+        renderer = renderers[0]
+        with tempfile.TemporaryDirectory() as directory:
+            topology = Path(directory) / "cpu"
+            for cpu in range(16):
+                (topology / f"cpu{cpu}" / "topology").mkdir(parents=True)
+                (topology / f"cpu{cpu}" / "topology" / "thread_siblings_list").write_text(
+                    f"{cpu % 8},{cpu % 8 + 8}\n", encoding="utf-8"
                 )
-                source.write_text(original, encoding="utf-8")
-                start = renderer.index('sed \\')
-                end = renderer.index('scenario_key="${SCENARIO_NAME}"')
-                proc, _, _ = self.run_body(renderer[start:end], {
-                    "YQ": to_bash(yq),
-                    "SOURCE_CONFIG_FILE": to_bash(source),
-                    "RENDERED_CONFIG_FILE": to_bash(rendered),
-                    "DOCKER_TAG": "test",
-                    "DELAY_SECONDS": "0",
-                    "AMOUNT": "10",
-                    "EXPB_DATA_DIR": "/data/expb-data",
-                    "FLAT_SNAPSHOT_DIR": "/data/snapshot",
-                    "FLAT_SNAPSHOT_BLOCK_DIR": "/data/snapshot-block",
-                    "SCENARIO_NAME": "test",
-                    "CPU_TOPOLOGY_DIR": to_bash(topology),
-                })
-                self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
-                result = subprocess.run(
-                    [yq, "-o=json", ".resources", str(rendered)],
-                    capture_output=True, text=True, check=True,
-                )
-                self.assertEqual({
-                    "cpu": 0, "cpuset": "2,3,4,5,10,11,12,13",
-                    "infra_cpuset": "0-1,8-9", "mem": "64g",
-                }, json.loads(result.stdout))
-                self.assertEqual(original, source.read_text(encoding="utf-8"))
+            source = Path(directory) / "source.yaml"
+            rendered = Path(directory) / "rendered.yaml"
+            original = (
+                'resources:\n  cpu: 8\n  cpuset: "2-7,10-15"\n'
+                '  infra_cpuset: "0-1,8-9"\n  mem: 64g\n'
+                'scenarios:\n  nethermind:\n    amount: 10\n'
+            )
+            source.write_text(original, encoding="utf-8")
+            start = renderer.index('sed \\')
+            end = renderer.index('scenario_key="${SCENARIO_NAME}"')
+            proc, _, _ = self.run_body(renderer[start:end], {
+                "YQ": to_bash(yq),
+                "SOURCE_CONFIG_FILE": to_bash(source),
+                "RENDERED_CONFIG_FILE": to_bash(rendered),
+                "DOCKER_TAG": "test",
+                "DELAY_SECONDS": "0",
+                "AMOUNT": "10",
+                "EXPB_DATA_DIR": "/data/expb-data",
+                "FLAT_SNAPSHOT_DIR": "/data/snapshot",
+                "FLAT_SNAPSHOT_BLOCK_DIR": "/data/snapshot-block",
+                "SCENARIO_NAME": "test",
+                "CPU_TOPOLOGY_DIR": to_bash(topology),
+                "DOCKER_CPU": "",
+                "DOCKER_CPUSET": "",
+                "DOCKER_INFRA_CPUSET": "",
+                **overrides,
+            })
+            self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+            result = subprocess.run(
+                [yq, "-o=json", ".resources", str(rendered)],
+                capture_output=True, text=True, check=True,
+            )
+            self.assertEqual(original, source.read_text(encoding="utf-8"))
+            return json.loads(result.stdout)
+
+    def test_render_replaces_the_cpu_quota_with_whole_core_affinity(self):
+        self.assertEqual({
+            "cpu": 0, "cpuset": "2,3,4,5,10,11,12,13",
+            "infra_cpuset": "0-1,8-9", "mem": "64g",
+        }, self.render_resources())
+
+    def test_render_applies_the_dispatch_cpu_overrides_before_the_pinning(self):
+        for label, overrides, expected in (
+            ("a wider budget and cpuset", {"DOCKER_CPU": "12", "DOCKER_CPUSET": "0-15", "DOCKER_INFRA_CPUSET": "0-1"},
+             {"cpu": 0, "cpuset": "0,1,2,3,4,5,8,9,10,11,12,13", "infra_cpuset": "0-1", "mem": "64g"}),
+            ("all lifts every limit", {"DOCKER_CPU": "all", "DOCKER_CPUSET": "all", "DOCKER_INFRA_CPUSET": "all"},
+             {"cpu": 0, "mem": "64g"}),
+            ("cpu=all pins the whole cpuset", {"DOCKER_CPU": "all"},
+             {"cpu": 0, "cpuset": "2-7,10-15", "infra_cpuset": "0-1,8-9", "mem": "64g"}),
+        ):
+            with self.subTest(case=label):
+                self.assertEqual(expected, self.render_resources(**overrides))
+
+    def test_dispatch_inputs_stay_within_the_workflow_dispatch_limit(self):
+        # GitHub rejects the whole workflow file when workflow_dispatch declares more than 25 inputs.
+        text = WORKFLOW.read_text(encoding="utf-8")
+        block = text[text.index("  workflow_dispatch:\n    inputs:\n"):text.index("\n  pull_request:")]
+        self.assertLessEqual(len(re.findall(r"^      [a-z_]+:$", block, re.M)), 25)
+
+    def test_resolver_splits_the_packed_cpu_overrides(self):
+        for label, packed, expected in (
+            ("empty", "", ("", "", "")),
+            ("all keys", "cpu=16; cpuset=0-15  infra_cpuset=0-1,8-9", ("16", "0-15", "0-1,8-9")),
+            ("zero means all", "CPU=0", ("all", "", "")),
+            ("an unpinned client has no budget", "cpuset=ALL", ("all", "all", "")),
+        ):
+            with self.subTest(case=label):
+                code, log, output = self.run_resolver(DISPATCH_DOCKER_CPU_OVERRIDES=packed)
+                self.assertEqual(0, code, log)
+                self.assertEqual(expected, (output["docker_cpu"], output["docker_cpuset"], output["docker_infra_cpuset"]))
+        for label, packed in (
+            ("an unknown key", "cores=4"),
+            ("a fractional budget", "cpu=1.5"),
+            ("a malformed cpuset", "cpuset=2-7:10"),
+            ("a budget for an unpinned client", "cpu=8 cpuset=all"),
+        ):
+            with self.subTest(rejected=label):
+                code, log, _ = self.run_resolver(DISPATCH_DOCKER_CPU_OVERRIDES=packed)
+                self.assertNotEqual(0, code)
+                self.assertIn("docker_cpu_overrides", log)
 
     def run_resolver(self, **overrides):
         values = {
@@ -213,6 +261,7 @@ class ExpbWorkflowTests(unittest.TestCase):
             "DISPATCH_PERF": "false",
             "DISPATCH_TRACE_BLOCKS": "",
             "DISPATCH_CLIENT_ENV": "",
+            "DISPATCH_DOCKER_CPU_OVERRIDES": "",
         }
         values.update(overrides)
         proc, output, _ = self.run_body(self.resolver, values)

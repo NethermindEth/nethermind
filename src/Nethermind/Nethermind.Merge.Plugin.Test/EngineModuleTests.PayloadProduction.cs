@@ -743,6 +743,7 @@ public partial class EngineModuleTests
             }
 
             Assert.That(result1.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid), $"iteration {iteration}");
+            await chain.WaitForCommitted(getPayloadResult.BlockHash);
 
 
             // starting building on block X
