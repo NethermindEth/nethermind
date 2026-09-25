@@ -25,6 +25,7 @@ namespace Nethermind.BeaconChain.Test.DataAvailability;
 public class GloasCustodySamplingAvailabilityTests
 {
     private const ulong BlockSlot = 1;
+    private const string Peer = "peer";
     private static readonly Hash256 NodeId = new([.. Enumerable.Repeat((byte)0x37, 32)]);
     private static readonly NodeColumnCustody Custody = new(NodeId, Eip7594DasConstants.CustodyRequirement);
     private static BeaconChainSpec Spec => ImportableBlobBlock.FuluFromGenesis;
@@ -105,7 +106,7 @@ public class GloasCustodySamplingAvailabilityTests
         DataColumnSidecarPool pool = new();
         foreach (ulong column in Custody.SampledColumns)
         {
-            pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(column, BlockSlot));
+            pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(column, BlockSlot), Peer);
         }
 
         Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, pool, ClockAtEpoch(0));
@@ -115,7 +116,7 @@ public class GloasCustodySamplingAvailabilityTests
         {
             Assert.That(available, Is.True);
             Assert.That(Custody.SampledColumns.All(c => pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, c, out _)), Is.True, "verified sidecars are served");
-            Assert.That(Custody.SampledColumns.Any(c => pool.TryGetPendingGloas(DataColumnSidecarGloasTestFixture.BlockRoot, c, out _)), Is.False);
+            Assert.That(pool.PendingGloasCount, Is.Zero);
         }
     }
 
@@ -126,7 +127,7 @@ public class GloasCustodySamplingAvailabilityTests
         ulong column = Custody.SampledColumns[0];
         DataColumnSidecarGloas pending = DataColumnSidecarGloasTestFixture.BuildSidecar(column, BlockSlot);
         pending.KzgProofs = [pending.KzgProofs![1], pending.KzgProofs[0]];
-        pool.AddPendingGloas(pending);
+        pool.AddPendingGloas(pending, Peer);
         Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, pool, ClockAtEpoch(0));
 
         bool available = isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid());
@@ -135,12 +136,13 @@ public class GloasCustodySamplingAvailabilityTests
         {
             Assert.That(available, Is.False);
             Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, column, out _), Is.False, "an unverified sidecar must never reach req/resp");
+            Assert.That(pool.PendingGloasCount, Is.Zero, "a candidate that fails against the block's bid can never verify");
         }
     }
 
     /// <summary>
     /// Slot is not bound by KZG, and a pending sidecar predates its block, so no gossip check has matched
-    /// its slot to the block's; served, it would take over the by-slot index of the slot it names.
+    /// its slot to the block's; served, it would claim a slot its block does not occupy.
     /// </summary>
     [Test]
     public void A_pending_column_naming_another_slot_is_not_served()
@@ -148,7 +150,7 @@ public class GloasCustodySamplingAvailabilityTests
         DataColumnSidecarPool pool = PoolHolding(Custody.SampledColumns.Skip(1));
         ulong column = Custody.SampledColumns[0];
         const ulong forgedSlot = BlockSlot + 1;
-        pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(column, forgedSlot));
+        pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(column, forgedSlot), Peer);
         Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, pool, ClockAtEpoch(0));
 
         bool available = isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid());
@@ -157,7 +159,34 @@ public class GloasCustodySamplingAvailabilityTests
         {
             Assert.That(available, Is.False);
             Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, column, out _), Is.False);
-            Assert.That(pool.TryGetGloas(forgedSlot, column, out _), Is.False, "by-range serving must not map the forged slot to this block");
+            Assert.That(pool.PendingGloasCount, Is.Zero);
+        }
+    }
+
+    /// <summary>
+    /// Pending sidecars are unverified and keyed only by the root and column they name, so a forgery from
+    /// one peer must not hide a valid sidecar from another, whichever arrives first.
+    /// </summary>
+    [Test]
+    public void A_forged_pending_column_does_not_hide_a_valid_one_from_another_peer([Values] bool forgedFirst)
+    {
+        DataColumnSidecarPool pool = PoolHolding(Custody.SampledColumns.Skip(1));
+        ulong column = Custody.SampledColumns[0];
+        DataColumnSidecarGloas valid = DataColumnSidecarGloasTestFixture.BuildSidecar(column, BlockSlot);
+        DataColumnSidecarGloas forged = DataColumnSidecarGloasTestFixture.BuildSidecar(column, BlockSlot);
+        forged.KzgProofs = [forged.KzgProofs![1], forged.KzgProofs[0]];
+        if (forgedFirst) pool.AddPendingGloas(forged, "forging peer");
+        pool.AddPendingGloas(valid, Peer);
+        if (!forgedFirst) pool.AddPendingGloas(forged, "forging peer");
+        Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, pool, ClockAtEpoch(0));
+
+        bool available = isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(available, Is.True);
+            Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, column, out DataColumnSidecarGloas? served) ? served : null, Is.SameAs(valid));
+            Assert.That(pool.PendingGloasCount, Is.Zero);
         }
     }
 
