@@ -138,15 +138,16 @@ public class StatelessInputGeneratorTests
     [Test]
     public void Blockhash_of_an_ancestor_missing_from_the_witness_fails_the_block()
     {
-        BlockHeader parent = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockHeader grandparent = Build.A.BlockHeader.WithNumber(99).TestObject;
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(100).WithParent(grandparent).TestObject;
         BlockHeader current = Build.A.BlockHeader.WithNumber(101).WithParent(parent).TestObject;
-        StatelessBlockTree blockTree = new([parent]);
+        StatelessBlockTree blockTree = new([grandparent, parent]);
         BlockhashProvider provider = new(blockTree, Substitute.For<IWorldState>(), NullLogManager.Instance);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.GetBlockhash(current, 100, Cancun.Instance), Is.EqualTo(parent.Hash));
-            Assert.That(() => provider.GetBlockhash(current, 99, Cancun.Instance), Throws.TypeOf<InvalidDataException>());
+            Assert.That(provider.GetBlockhash(current, 99, Cancun.Instance), Is.EqualTo(grandparent.Hash));
+            Assert.That(() => provider.GetBlockhash(current, 98, Cancun.Instance), Throws.TypeOf<InvalidDataException>());
         }
     }
 
