@@ -172,7 +172,7 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false)
         {
             config ??= new FlatDbConfig();
 
@@ -232,7 +232,8 @@ public class FlatWorldStateScopeProviderTests
 
             // Externally owned because snapshot bundle take ownership
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
-                .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
+                .WithParameter(new NamedParameter("recordDetailedMetrics", false))
+                .WithParameter(new NamedParameter("isHistorical", historical))
                 .WithParameter(TypedParameter.From(ReadOnlySnapshots))
                 .WithParameter(TypedParameter.From(PersistedSnapshotStack.Empty()))
                 .ExternallyOwned();
@@ -328,6 +329,22 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
         storageTree.Get(slotIndex, out UInt256 slotRead186);
         Assert.That(slotRead186, Is.EqualTo(new UInt256(newerSlotValue, isBigEndian: true)));
+    }
+
+    [Test]
+    public void ClearStorage_empties_the_storage_root([Values] bool historical)
+    {
+        using TestContext ctx = new(historical: historical);
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(new Account(1, 2, TestItem.KeccakA, Keccak.OfAnEmptyString));
+        Assume.That(ctx.Scope.Trieless, Is.EqualTo(historical));
+        ctx.Scope.Get(address);
+        FlatStorageTree storageTree = (FlatStorageTree)ctx.Scope.CreateStorageTree(address);
+        Assume.That(storageTree.RootHash, Is.EqualTo(TestItem.KeccakA));
+
+        storageTree.ClearStorage();
+
+        Assert.That(storageTree.RootHash, Is.EqualTo(Keccak.EmptyTreeHash));
     }
 
     [Test]

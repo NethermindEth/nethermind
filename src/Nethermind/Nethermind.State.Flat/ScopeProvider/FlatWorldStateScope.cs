@@ -31,8 +31,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly bool _trieless;
 
     private readonly ConcurrencyController _concurrencyQuota;
-    private readonly PatriciaTree _warmupStateTree;
-    private readonly StateTree _stateTree;
+    private PatriciaTree? _warmupStateTree;
+    private readonly Hash256 _initialStateRoot;
+    private StateTree? _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
@@ -71,21 +72,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _commitTarget = commitTarget;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
-        _stateTree = new(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
-            logManager
-        )
-        {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
-
-        _warmupStateTree = new(
-            new StateTrieStoreWarmerAdapter(snapshotBundle),
-            logManager
-        )
-        {
-            RootHash = currentStateId.StateRoot.ToCommitment()
-        };
+        _initialStateRoot = currentStateId.StateRoot.ToCommitment();
 
         _configuration = configuration;
         _warmReadPool = warmReadPool;
@@ -157,11 +144,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public Hash256 RootHash => _stateTree.RootHash;
+    private StateTree StateTree => Volatile.Read(ref _stateTree) ?? CreateStateTree();
+
+    private StateTree CreateStateTree()
+    {
+        StateTree tree = new(new StateTrieStoreAdapter(_snapshotBundle, _concurrencyQuota), _logManager)
+        {
+            RootHash = _initialStateRoot
+        };
+        return Interlocked.CompareExchange(ref _stateTree, tree, null) ?? tree;
+    }
+
+    public Hash256 RootHash => Volatile.Read(ref _stateTree)?.RootHash ?? _initialStateRoot;
 
     public void UpdateRootHash()
     {
-        if (!_trieless) _stateTree.UpdateRootHash();
+        if (!_trieless) Volatile.Read(ref _stateTree)?.UpdateRootHash();
     }
 
     public Account? Get(Address address)
@@ -175,7 +173,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // and a historical value verified against the current trie would be wrong anyway.
         if (_configuration.VerifyWithTrie && !_trieless)
         {
-            Account? accTrie = _stateTree.Get(address);
+            Account? accTrie = StateTree.Get(address);
             if (accTrie != account)
             {
                 throw new TrieException($"Incorrect account {address}, account hash {address.ToAccountPath}, trie: {accTrie} vs flat: {account}");
@@ -349,6 +347,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
 
+    private PatriciaTree CreateWarmupStateTree()
+    {
+        PatriciaTree tree = new(new StateTrieStoreWarmerAdapter(_snapshotBundle), _logManager)
+        {
+            RootHash = _initialStateRoot
+        };
+        return Interlocked.CompareExchange(ref _warmupStateTree, tree, null) ?? tree;
+    }
+
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
         try
@@ -360,7 +367,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
-                _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+                (Volatile.Read(ref _warmupStateTree) ?? CreateWarmupStateTree()).WarmUpPath(address.ToAccountPath.Bytes);
 
                 return true;
             }
@@ -462,7 +469,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
-        if (!_trieless) _stateTree.Commit();
+        // No tree means nothing was written, so there is nothing to commit.
+        if (!_trieless) Volatile.Read(ref _stateTree)?.Commit();
 
         _storages.Clear();
         _hintWarmStorages?.Clear();
@@ -565,11 +573,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 {
                     if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
                     {
-                        scope._stateTree.SetAccounts(_dirtyAccounts);
+                        scope.StateTree.SetAccounts(_dirtyAccounts);
                     }
                     else
                     {
-                        using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+                        using StateTree.StateTreeBulkSetter stateSetter = scope.StateTree.BeginSet(_dirtyAccounts.Count);
                         foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                         {
                             stateSetter.Set(kv.Key, kv.Value);
