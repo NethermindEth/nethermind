@@ -27,19 +27,25 @@ namespace Ethereum.Test.Base
 
                 byte[] json = File.ReadAllBytes(_fileName);
 
-                IEnumerable<EthereumTest> tests = testType switch
-                {
-                    TestType.State => JsonToEthereumTest.ConvertStateTest(json),
-                    TestType.Transaction => JsonToEthereumTest.ConvertTransactionTests(json),
-                    _ => JsonToEthereumTest.ConvertToBlockchainTests(json)
-                };
-
-                return FixtureExclusions.Filter(tests, _fileName);
+                return LoadTests(json, testType);
             }
             catch (Exception e)
             {
                 return [new FailedToLoadTest { Name = _fileName, LoadFailure = $"Failed to load: {e}" }];
             }
+        }
+
+        /// <summary>Converts a JSON fixture and applies the same exclusions as <see cref="LoadTests(TestType)"/>.</summary>
+        public IEnumerable<EthereumTest> LoadTests(ReadOnlySpan<byte> json, TestType testType)
+        {
+            IEnumerable<EthereumTest> tests = testType switch
+            {
+                TestType.State => JsonToEthereumTest.ConvertStateTest(json),
+                TestType.Transaction => JsonToEthereumTest.ConvertTransactionTests(json),
+                _ => JsonToEthereumTest.ConvertToBlockchainTests(json)
+            };
+
+            return FixtureExclusions.Filter(tests, _fileName);
         }
     }
 }
