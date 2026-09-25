@@ -171,8 +171,6 @@ public static partial class EvmInstructions
         if (chargeCreateStateGas && !TGasPolicy.TryConsumeCreateStateGas(ref gas))
             goto OutOfGas;
 
-        // Preserve CREATE/CREATE2's pre-reservation gas snapshot for trace compatibility;
-        // CALL-family instructions instead complete after reserving the child frame's gas.
         if (TTracingInst.IsActive)
             vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 

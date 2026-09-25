@@ -424,8 +424,10 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gasAvailable">Gas remaining once the update is applied.</param>
     /// <remarks>
     /// Raised when a call or create frame returns and the parent instruction resumes, when gas is credited back to a
-    /// call that could not proceed, and for an instruction whose start <see cref="IInstructionTracingFilter"/>
-    /// filtered out. A tracer that follows gas checkpoints has to observe this alongside
+    /// call that could not proceed, and immediately before <see cref="ReportOperationError"/> when execution fails
+    /// with no instruction start open (the start was filtered out, CREATE already completed, or execution failed
+    /// outside any instruction, such as a precompile).
+    /// A tracer that follows gas checkpoints has to observe this alongside
     /// <see cref="ReportOperationRemainingGas"/>; the parity <c>vmTrace</c> uses it to amend the operation's
     /// recorded gas without recomputing its cost.
     /// <para>Depends on <see cref="IsTracingInstructions"/>.</para>

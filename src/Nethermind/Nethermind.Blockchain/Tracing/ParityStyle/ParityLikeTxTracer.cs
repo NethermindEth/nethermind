@@ -499,8 +499,6 @@ public class ParityLikeTxTracer : TxTracer
     {
         _currentOperation!.Used = gasAvailable;
 
-        // A resume after a call/create frame is the first gas report for the parent operation: it takes over the
-        // pushes and consumes the flags OnLeaveVmFrame latched, so they cannot skew the next operation's cost.
         if (!_gasAlreadySetForCurrentOp)
         {
             _gasAlreadySetForCurrentOp = true;

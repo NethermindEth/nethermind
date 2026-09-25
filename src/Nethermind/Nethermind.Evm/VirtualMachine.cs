@@ -161,9 +161,6 @@ public partial class VirtualMachine<TGasPolicy>(
     internal bool IsTracingActions { get => DispatchFlags.Tracing(field); private set; }
     internal bool IsTracingRefunds { get => DispatchFlags.Tracing(field); private set; }
     private bool _isCancelableCached;
-    /// <summary>The tracer that defers cancellation across an instruction's callbacks, when one is in the graph.</summary>
-    /// <remarks>Resolved once per execution so the per-instruction re-check costs no tracer-graph walk.</remarks>
-    private CancellationTxTracer? _deferringCancellationTracer;
     internal bool IsTracingAccess { get => DispatchFlags.Tracing(field); private set; }
     internal bool IsTracingOpLevelStorage { get => DispatchFlags.Tracing(field); private set; }
     private bool IsTracingImplicitStop { get => DispatchFlags.Tracing(field); set; }
@@ -219,7 +216,6 @@ public partial class VirtualMachine<TGasPolicy>(
         IsTracingActions = txTracer.IsTracingActions;
         IsTracingRefunds = txTracer.IsTracingRefunds;
         _isCancelableCached = txTracer.IsCancelable;
-        _deferringCancellationTracer = _isCancelableCached ? txTracer.GetTracer<CancellationTxTracer>() : null;
         IsTracingAccess = txTracer.IsTracingAccess;
         IsTracingOpLevelStorage = txTracer.IsTracingOpLevelStorage;
         IsTracingImplicitStop = txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
@@ -692,10 +688,10 @@ public partial class VirtualMachine<TGasPolicy>(
         EvmException? evmException = failure as EvmException;
         EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
 
-        // If an instruction trace is active, report zero remaining gas and its error.
+        // Errors are reported even when no instruction start is open.
         if (TTracingInst.IsActive)
         {
-            EndInstructionTraceError(0, errorType);
+            EndInstructionTrace(0, errorType);
         }
 
         // If action-level tracing is enabled, report the error associated with the action.
@@ -1447,7 +1443,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Suspend)
         {
-            if (TTracingInst.IsActive && exceptionType is EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Suspend)
+            if (TTracingInst.IsActive)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
             if (IsTracingActions)
                 _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(in gas));
@@ -1490,7 +1486,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
     private CallResult GetFailureReturn(ulong gasAvailable, EvmExceptionType exceptionType)
     {
-        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions) EndInstructionTraceError(gasAvailable, exceptionType);
+        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, exceptionType);
         if (IsTracingActions) _txTracer.ReportActionRemainingGas(gasAvailable);
 
         return exceptionType switch
@@ -1570,14 +1566,7 @@ public partial class VirtualMachine<TGasPolicy>(
         tracer.ReportOperationRemainingGas(gasAvailable);
         if (evmExceptionType is not null)
             tracer.ReportOperationError(evmExceptionType.Value);
-        // Only the deferring tracer holds a cancellation back across a pair, so only it is re-checked here.
-        if (_deferringCancellationTracer?.IsCancelled == true)
-            ThrowOperationCanceledException();
     }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void EndInstructionTraceError(ulong gasAvailable, EvmExceptionType evmExceptionType) =>
-        EndInstructionTrace(_txTracer, gasAvailable, evmExceptionType);
 
     internal void AddLog(LogEntry logEntry)
     {

@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -100,8 +102,49 @@ public class InstructionTracingFilterTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Execute_WhenExcludedOpcodeFailsAfterChildImplicitStop_ReportsNoUnpairedCompletion()
+    {
+        TestState.CreateAccount(TestItem.AddressC, UInt256.Zero);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.PushData(0).Done, Spec);
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.ADD).Done;
+        using FilteredTracer tracer = new(Instruction.CALL);
+
+        Execute(tracer, code, MainnetSpecProvider.CancunActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Operations, Is.EqualTo(new[] { Instruction.CALL, Instruction.STOP }));
+            Assert.That(tracer.CompletedOperations, Is.EqualTo(2));
+            Assert.That(tracer.OperationError, Is.EqualTo(EvmExceptionType.StackUnderflow));
+        }
+    }
+
+    [Test]
+    public void Execute_AfterInstructionStartThrows_DoesNotCompleteThePreviousTransactionOperation()
+    {
+        using FailingStartTracer failed = new();
+        Assert.Throws<OperationCanceledException>(() => Execute(failed, Prepare.EvmCode.Op(Instruction.STOP).Done));
+        using FilteredTracer next = new(Instruction.STOP);
+
+        Execute(next, Prepare.EvmCode.Op(Instruction.ADD).Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next.Operations, Is.Empty);
+            Assert.That(next.CompletedOperations, Is.Zero);
+            Assert.That(next.OperationError, Is.EqualTo(EvmExceptionType.StackUnderflow));
+        }
+    }
+
+    private sealed class FailingStartTracer : TestAllTracerWithOutput
+    {
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
+            throw new OperationCanceledException();
+    }
+
     private sealed class FilteredTracer(Instruction selected, bool cancelable = false, bool cancelOnOperation = false)
-        : TestAllTracerWithOutput, IInstructionTracingFilter, ITxTracer
+        : TestAllTracerWithOutput, IInstructionTracingFilter, ITraceImplicitStop, ITxTracer
     {
         public UInt256 InstructionMask => UInt256.One << (int)selected;
         public List<Instruction> Operations { get; } = [];
