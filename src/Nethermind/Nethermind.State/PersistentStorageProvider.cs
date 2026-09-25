@@ -815,9 +815,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private sealed class DefaultableDictionary()
     {
+        /// <summary>A full map of at least this many entries moves into one from <see cref="LargeTraceMapPool"/>.</summary>
+        private const int GrowIntoLargeAt = 512;
+        private const int LargeMapMinCapacity = 4096;
+
         private bool _missingAreDefault;
         private Dictionary<UInt256, StorageChangeTrace> _dictionary = new(UInt256Comparer.Instance);
         private Dictionary<UInt256, StorageChangeTrace>? _spare;
+        // The contract's own (cleared) map, parked while a large one holds its entries; restored on Reset.
+        private Dictionary<UInt256, StorageChangeTrace>? _parked;
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public int Count => _dictionary.Count;
         public bool HasClear => _missingAreDefault;
@@ -825,6 +831,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void Reset(int capacity)
         {
             _missingAreDefault = false;
+            if (_parked is not null)
+            {
+                // The large map goes back to the shared pool and the contract keeps its own small one, so a
+                // contract that outgrew the pooled size costs no allocation here or on its next heavy use.
+                if (_dictionary.Capacity > capacity) LargeTraceMapPool.Return(_dictionary);
+                if (_spare is not null && _spare.Capacity > capacity) LargeTraceMapPool.Return(_spare);
+                _dictionary = _parked;
+                _parked = null;
+                _spare = null;
+                _dictionary.ClearAndTrim(capacity, capacity);
+                return;
+            }
+
             if (_spare is not null && _spare.Capacity > _dictionary.Capacity)
             {
                 _dictionary = _spare;
@@ -884,6 +903,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public ref StorageChangeTrace GetValueRefOrAddDefault(in UInt256 storageCellIndex, out bool exists)
         {
+            Dictionary<UInt256, StorageChangeTrace> dictionary = _dictionary;
+            if (dictionary.Count == dictionary.Capacity && dictionary.Count >= GrowIntoLargeAt && !dictionary.ContainsKey(storageCellIndex))
+            {
+                GrowIntoLarge();
+            }
+
             ref StorageChangeTrace value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
             if (!exists && _missingAreDefault)
             {
@@ -893,6 +918,29 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 exists = true;
             }
             return ref value;
+        }
+
+        /// <summary>
+        /// Moves the entries into a large map instead of letting the full one rehash upwards: pooled maps are trimmed
+        /// to <c>PooledDictionaryCapacity</c>, so a heavy contract otherwise regrew onto the LOH every block or call.
+        /// </summary>
+        private void GrowIntoLarge()
+        {
+            Dictionary<UInt256, StorageChangeTrace> current = _dictionary;
+            Dictionary<UInt256, StorageChangeTrace> large = LargeTraceMapPool.Rent(Math.Max(current.Count * 4, LargeMapMinCapacity));
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> entry in current) large.Add(entry.Key, entry.Value);
+
+            if (_parked is null)
+            {
+                current.Clear();
+                _parked = current;
+            }
+            else
+            {
+                LargeTraceMapPool.Return(current); // an earlier large map that filled up
+            }
+
+            _dictionary = large;
         }
 
         public ref StorageChangeTrace GetValueRefOrNullRef(in UInt256 storageCellIndex)
@@ -910,6 +958,58 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public readonly record struct ClearSnapshot(
             Dictionary<UInt256, StorageChangeTrace>? PreviousEntries,
             bool MissingAreDefault);
+    }
+
+    /// <summary>
+    /// Large per-contract change maps shared by all providers. Retention is bounded: at most
+    /// <see cref="MaxRetainedEntries"/> entries of capacity in total (about 27 MB), none above <see cref="MaxRetainedCapacity"/>.
+    /// </summary>
+    private static class LargeTraceMapPool
+    {
+        private const int MaxRetainedEntries = 256 * 1024;
+        private const int MaxRetainedCapacity = 128 * 1024;
+        private static readonly Lock Lock = new();
+        private static readonly List<Dictionary<UInt256, StorageChangeTrace>> Retained = [];
+        private static int _retainedEntries;
+
+        /// <summary>The smallest retained map with at least <paramref name="minCapacity"/> capacity, or a new one.</summary>
+        public static Dictionary<UInt256, StorageChangeTrace> Rent(int minCapacity)
+        {
+            lock (Lock)
+            {
+                int best = -1;
+                for (int i = 0; i < Retained.Count; i++)
+                {
+                    int capacity = Retained[i].Capacity;
+                    if (capacity >= minCapacity && (best < 0 || capacity < Retained[best].Capacity)) best = i;
+                }
+
+                if (best >= 0)
+                {
+                    Dictionary<UInt256, StorageChangeTrace> retained = Retained[best];
+                    Retained.RemoveAt(best);
+                    _retainedEntries -= retained.Capacity;
+                    return retained;
+                }
+            }
+
+            return new Dictionary<UInt256, StorageChangeTrace>(minCapacity, UInt256Comparer.Instance);
+        }
+
+        public static void Return(Dictionary<UInt256, StorageChangeTrace> map)
+        {
+            int capacity = map.Capacity;
+            if (capacity > MaxRetainedCapacity) return;
+
+            lock (Lock)
+            {
+                if (_retainedEntries + capacity > MaxRetainedEntries) return;
+                _retainedEntries += capacity;
+            }
+
+            map.Clear();
+            lock (Lock) Retained.Add(map);
+        }
     }
 
     private sealed class PerContractState : IReturnable
