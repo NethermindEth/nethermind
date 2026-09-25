@@ -90,6 +90,36 @@ public class StatelessInputGeneratorTests
     }
 
     [Test]
+    [NonParallelizable]
+    public async Task Encoded_execution_checks_transaction_public_keys(
+        [Values("valid", "otherKey", "flippedByte", "prefix")] string mutation)
+    {
+        (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: false, currentChainActivation: true);
+        using (witness)
+        {
+            byte[] encoded = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
+            StatelessInput<SszExecutionPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> input);
+
+            byte[] key = [.. input.PublicKeys[0].AsSpan()];
+            switch (mutation)
+            {
+                case "otherKey": key = TestItem.PrivateKeyB.PublicKey.PrefixedBytes; break;
+                case "flippedByte": key[^1] ^= 1; break;
+                case "prefix": key[0] = 0x02; break;
+            }
+            input.PublicKeys[0] = SszPublicKey.FromSpan(key);
+
+            byte[] body = StatelessInput<SszExecutionPayload>.Encode(input);
+            byte[] modified = new byte[body.Length + sizeof(ushort)];
+            encoded.AsSpan(0, sizeof(ushort)).CopyTo(modified);
+            body.CopyTo(modified, sizeof(ushort));
+
+            StatelessValidationResult.Decode(StatelessExecutor.Execute(modified), out StatelessValidationResult result);
+            Assert.That(result.IsSuccess, Is.EqualTo(mutation == "valid"));
+        }
+    }
+
+    [Test]
     public void Direct_execution_validates_body_roots([Values("valid", "transactions", "withdrawals", "uncles", "hash")] string mutation)
     {
         (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam: false);
