@@ -197,6 +197,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     public void Commit(ulong blockNumber)
     {
         if (_logger.IsDebug) LogLifecycle($"commit begin block={blockNumber}");
+        long commitStart = Stopwatch.GetTimestamp();
         RetireWarmupSession();
         try
         {
@@ -204,6 +205,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             StateId newStateId = new(blockNumber, _rootHash);
             if (newStateId != _currentStateId)
             {
+                long publishStart = Stopwatch.GetTimestamp();
                 PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _treeRoot, out PbtTransientResource transientResource);
                 if (_isReadOnly)
                 {
@@ -211,6 +213,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                     transientResource.ReleaseLease();
                 }
                 else _commitTarget.AddSnapshot(snapshot, transientResource);
+                Metrics.PbtPublishSnapshotTime.Observe(Stopwatch.GetTimestamp() - publishStart);
                 _currentStateId = newStateId;
             }
             _currentHeader = _childHeader;
@@ -222,6 +225,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         finally
         {
             ResumePrewarmer();
+            Metrics.PbtCommitTime.Observe(Stopwatch.GetTimestamp() - commitStart);
         }
     }
 

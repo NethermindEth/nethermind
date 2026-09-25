@@ -55,6 +55,24 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
     public static IMetricObserver PbtRootHashTime { get; set; } = new NoopMetricObserver();
 
+    /// <remarks>Covers the whole commit: the fold it starts with (<see cref="PbtRootHashTime"/>) and the publish that follows.</remarks>
+    [DetailedMetric]
+    [Description("Time committing a pbt world state scope, fold included (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
+    public static IMetricObserver PbtCommitTime { get; set; } = new NoopMetricObserver();
+
+    /// <remarks>Sealing the write buffer into a snapshot and handing it, with the block's transient resource, to the manager.</remarks>
+    [DetailedMetric]
+    [Description("Time publishing a committed pbt snapshot to the db manager (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
+    public static IMetricObserver PbtPublishSnapshotTime { get; set; } = new NoopMetricObserver();
+
+    /// <remarks>Dominated by gathering the bundle: every snapshot of the unpersisted chain is leased, so it grows with <see cref="PbtSnapshotBundleSize"/>.</remarks>
+    [DetailedMetric]
+    [Description("Time opening a pbt world state scope, including gathering its snapshot bundle (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
+    public static IMetricObserver PbtBeginScopeTime { get; set; } = new NoopMetricObserver();
+
     [DetailedMetric]
     [Description("Time preparing pbt leaf changes in the world state scope (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
@@ -103,6 +121,24 @@ public static class Metrics
     [Description("Time of a read through the pbt read-only snapshot bundle, by read type, node-group partition, tier and result (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
     public static IMetricObserver PbtReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
+
+    /// <remarks>
+    /// Shares the node-group labels of <see cref="PbtReadOnlySnapshotBundleTimes"/>, whose histogram already counts
+    /// the reads, so size and count divide into a mean payload per tier and partition. Only a read that found a
+    /// group has a size, so the <c>_null</c> tiers of that label set do not appear here.
+    /// </remarks>
+    [DetailedMetric]
+    [Description("Total payload bytes of the node groups read through the pbt read-only snapshot bundle, by node-group partition and tier")]
+    [KeyIsLabel("type")]
+    public static ConcurrentDictionary<string, long> PbtReadOnlySnapshotBundleNodeGroupBytes { get; } = new()
+    {
+        ["node_group_account_snapshot"] = 0,
+        ["node_group_code_snapshot"] = 0,
+        ["node_group_storage_snapshot"] = 0,
+        ["node_group_account_persistence"] = 0,
+        ["node_group_code_persistence"] = 0,
+        ["node_group_storage_persistence"] = 0,
+    };
 
     [GaugeMetric]
     [Description("Retained payload bytes in pbt base snapshots, by partition and value type, excluding tombstones and data-structure overhead")]
