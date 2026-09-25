@@ -695,7 +695,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 TreePath path = TreePath.Empty;
                 TrieNode child = branch.GetChild(NullTrieNodeResolver.Instance, ref path, i)!;
                 child.ResolveNode(NullTrieNodeResolver.Instance, path);
-                if (child.IsLeaf && keyNibbles.AsSpan().EndsWith(child.Key)) return child;
+                if (child.IsLeaf && keyNibbles.AsSpan().EndsWith(child.Key) && keyNibbles[^(child.Key.Length + 1)] == i) return child;
             }
 
             return branch;
