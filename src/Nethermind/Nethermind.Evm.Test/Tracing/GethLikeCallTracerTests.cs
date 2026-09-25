@@ -95,6 +95,100 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
+    private static System.Collections.Generic.IEnumerable<TestCaseData> OutOfGasTraceCases()
+    {
+        (string Code, ulong Gas, string CancunError, string PragueError)[] cases =
+        [
+            ("600060006420000000006000600073000000000000000000000000000000000000beef6000f1", 31000UL, "out of gas: gas uint64 overflow", "out of gas: gas uint64 overflow"),
+            ("6000600060017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff600073000000000000000000000000000000000000beef6000f1", 31000UL, "gas uint64 overflow", "gas uint64 overflow"),
+            ("6000600060006000600173000000000000000000000000000000000000beef6000f1", 35000UL, "out of gas", "out of gas: out of gas"),
+            ("6000600060006000600073000000000000000000000000000000000000beef6000f1", 23000UL, "out of gas: out of gas", "out of gas: out of gas"),
+            ("600060006000600060017300000000000000000000000000000000000056786000f1", 29548UL, "out of gas: out of gas", "out of gas: out of gas"),
+            ("600060006000600060007300000000000000000000000000000000000056786000f1", 21050UL, "out of gas", "out of gas"),
+            ("6001600055", 23306UL, "out of gas: not enough gas for reentrancy sentry", "out of gas: not enough gas for reentrancy sentry"),
+            ("6001600055", 26000UL, "out of gas", "out of gas"),
+            ("600061100052", 21100UL, "out of gas", "out of gas"),
+            ("6001600101", 21006UL, "out of gas", "out of gas"),
+            ("60006000620100006000600073000000000000000000000000000000000000beef6000f1", 24000UL, "out of gas: out of gas", "out of gas: out of gas"),
+            ("60006000620100006000600073000000000000000000000000000000000000beef6000f2", 24000UL, "out of gas", "out of gas: out of gas"),
+            ("6000600062010000600073000000000000000000000000000000000000beef6000fa", 24000UL, "out of gas", "out of gas: out of gas"),
+            ("600060006000600060017300000000000000000000000000000000000056786000f2", 29548UL, "out of gas", "out of gas: out of gas"),
+            ("600060006000600073000000000000000000000000000000000000beef6000fa", 23000UL, "out of gas: out of gas", "out of gas: out of gas"),
+            ("600060006000600073000000000000000000000000000000000000beef6000f4", 23000UL, "out of gas: out of gas", "out of gas: out of gas")
+        ];
+        foreach ((string code, ulong gas, string cancunError, string pragueError) in cases)
+        {
+            yield return new TestCaseData(code, gas, cancunError, MainnetSpecProvider.CancunActivation);
+            yield return new TestCaseData(code, gas, pragueError, MainnetSpecProvider.PragueActivation);
+        }
+        yield return new TestCaseData("600060006000600060017300000000000000000000000000000000000056786000f1", 29548UL, "out of gas: out of gas", new ForkActivation(MainnetSpecProvider.IstanbulBlockNumber));
+        yield return new TestCaseData("600060006000600060017300000000000000000000000000000000000056786000f2", 29548UL, "out of gas", new ForkActivation(MainnetSpecProvider.IstanbulBlockNumber));
+        yield return new TestCaseData("6001600055", 23306UL, "out of gas", new ForkActivation(MainnetSpecProvider.IstanbulBlockNumber - 1));
+        yield return new TestCaseData("6001600055", 23306UL, "out of gas: not enough gas for reentrancy sentry", new ForkActivation(MainnetSpecProvider.IstanbulBlockNumber));
+    }
+
+    [TestCaseSource(nameof(OutOfGasTraceCases))]
+    public void Call_trace_preserves_out_of_gas_reason(string bytecode, ulong gasLimit, string expectedError, ForkActivation activation) =>
+        AssertCallGasError(Bytes.FromHexString(bytecode), gasLimit, activation, expectedError);
+
+    private void AssertCallGasError(byte[] code, ulong gasLimit, ForkActivation activation, string expectedError)
+    {
+        (Block block, Transaction tx) = PrepareTx(activation, gasLimit, code);
+        using NativeCallTracer tracer = new(tx, MainnetSpecProvider.Instance.GetSpec(activation), GetGethTraceOptions(null));
+        _processor.CallAndRestore(tx, block.Header, tracer);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        using JsonDocument trace = JsonDocument.Parse(JsonSerializer.Serialize(result.CustomTracerResult?.Value, SerializerOptions));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.RootElement.GetProperty("error").GetString(), Is.EqualTo(expectedError));
+            Assert.That(trace.RootElement.GetProperty("gasUsed").GetString(), Is.EqualTo($"0x{gasLimit:x}"));
+        }
+    }
+
+    [Test]
+    public void Call_trace_preserves_delegation_gas_error([Values] bool warm)
+    {
+        Address delegatedAccount = new("0x000000000000000000000000000000000000beef");
+        Address target = warm ? TestItem.AddressA : new Address("0x000000000000000000000000000000000000abcd");
+        TestState.CreateAccount(delegatedAccount, 0);
+        TestState.InsertCode(delegatedAccount, Bytes.FromHexString("ef0100" + target.ToString()[2..]), Spec);
+        ulong gasLimit = warm ? 23650UL : 24000UL;
+        byte[] code = Bytes.FromHexString("6000600060006000600073000000000000000000000000000000000000beef6000f1");
+        AssertCallGasError(code, gasLimit, MainnetSpecProvider.PragueActivation, "out of gas: out of gas");
+    }
+
+    [Test]
+    public void Call_trace_error_details_stay_in_failed_child([Values] bool onlyTopCall, [Values] bool parentReverts, [Values] bool wrapped)
+    {
+        byte[] childCode = Bytes.FromHexString("6001600055");
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, childCode, Spec);
+        byte[] code = parentReverts
+            ? Prepare.EvmCode.Call(TestItem.AddressC, 2306).Op(Instruction.POP).Revert(0, 0).Done
+            : Prepare.EvmCode.Call(TestItem.AddressC, 2306).Op(Instruction.POP).STOP().Done;
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(onlyTopCall ? OnlyTopCall : null));
+        using CompositeTxTracer composite = new(tracer, new GasCheckpointTracer());
+        using CancellationTxTracer cancellation = new(composite);
+        _processor.CallAndRestore(tx, block.Header, wrapped ? cancellation : tracer);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        using JsonDocument trace = JsonDocument.Parse(JsonSerializer.Serialize(result.CustomTracerResult?.Value, SerializerOptions));
+        JsonElement root = trace.RootElement;
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (parentReverts)
+                Assert.That(root.GetProperty("error").GetString(), Is.EqualTo("execution reverted"));
+            else
+                Assert.That(root.TryGetProperty("error", out _), Is.False);
+            if (onlyTopCall)
+                Assert.That(root.TryGetProperty("calls", out _), Is.False);
+            else
+                Assert.That(root.GetProperty("calls")[0].GetProperty("error").GetString(),
+                    Is.EqualTo("out of gas: not enough gas for reentrancy sentry"));
+        }
+    }
+
     public enum GasCheckpointCase { InvalidOpcode, StackUnderflow, OutOfGas, Revert, InvalidDeposit, DepositOutOfGas, PrecompileFailure }
 
     [Test]

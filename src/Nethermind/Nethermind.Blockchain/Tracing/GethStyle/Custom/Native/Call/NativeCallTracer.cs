@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -24,7 +25,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 // TracerConfig options:
 // onlyTopCall (default = false): Only the main (top-level) call will be processed to avoid any extra processing if only the main call info is required.
 // withLog (default = false): Logs emitted during each call will also be collected and included in the result.
-public sealed class NativeCallTracer : GethLikeNativeTxTracer
+public sealed class NativeCallTracer : GethLikeNativeTxTracer, ITraceActionErrorDetails
 {
     public const string CallTracer = "callTracer";
 
@@ -154,6 +155,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         base.ReportActionEnd(gas, output);
     }
 
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error)
+    {
+        if (_callStack.Count != 0 && (!_config.OnlyTopCall || Depth == 0))
+            _callStack[^1].Error = error;
+    }
+
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         _error = evmExceptionType;
@@ -270,7 +278,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     /// </remarks>
     private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
     {
-        callFrame.Error = error.GetEvmExceptionDescription();
+        callFrame.Error ??= error.GetEvmExceptionDescription();
         if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2)
         {
             callFrame.To = null;

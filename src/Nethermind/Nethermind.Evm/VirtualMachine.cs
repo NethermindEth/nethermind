@@ -1548,6 +1548,15 @@ public partial class VirtualMachine<TGasPolicy>(
             });
 
     [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceActionErrorDetails(string error)
+    {
+        if (IsTracingActions)
+            _txTracer.ForEach<ITraceActionErrorDetails, string>(
+                static tracer => tracer.IsTracingActions, error,
+                static (tracer, message) => tracer.ReportActionErrorDetails(message));
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
     internal void EndInstructionTrace(ulong gasAvailable) => _txTracer.ReportOperationRemainingGas(gasAvailable);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
