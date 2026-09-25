@@ -77,7 +77,7 @@ public class InclusionListBuilderTests
 
     // ITxPool's contract doesn't guarantee GetPendingTransactionsBySender omits empty buckets.
     [Test]
-    public void Tolerates_an_empty_bucket_from_the_pool()
+    public void Tolerates_an_empty_bucket_from_the_pool([Values(0.0, 0.5)] double oldestShare)
     {
         Dictionary<AddressAsKey, Transaction[]> bySender = new()
         {
@@ -87,7 +87,7 @@ public class InclusionListBuilderTests
         ITxPool pool = Substitute.For<ITxPool>();
         pool.GetPendingTransactionsBySender(Arg.Any<bool>(), Arg.Any<UInt256>()).Returns(bySender);
 
-        using InclusionListBytes il = BuildBuilder(pool).GetInclusionList();
+        using InclusionListBytes il = BuildBuilder(pool, oldestShare: oldestShare, oldestCount: 1).GetInclusionList();
 
         Assert.That(il.Count, Is.EqualTo(1));
     }

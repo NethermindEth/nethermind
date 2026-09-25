@@ -125,7 +125,8 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
         if (_oldestSenderDraw == 0 || _oldestSenderCount == 0 || pending.Count <= _oldestSenderCount)
             return SampleUniformly(pending);
 
-        ulong bound = OldestSenderBound(pending, _oldestSenderCount);
+        ulong bound = OldestSenderBound(pending, _oldestSenderCount, out int senderCount);
+        if (senderCount <= _oldestSenderCount) return SampleUniformly(pending);
         // Not `using`: a reservoir is offered to by reference, which a using variable cannot be.
         ArrayPoolListRef<Transaction[]> oldest = new(SenderSampleCapacity);
         ArrayPoolListRef<Transaction[]> rest = new(SenderSampleCapacity);
@@ -135,6 +136,7 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
             int restSeen = 0;
             foreach (Transaction[] bySender in pending.Values)
             {
+                if (bySender.Length == 0) continue;
                 if (bySender[0].PoolIndex <= bound) Offer(ref oldest, ref oldestSeen, bySender);
                 else Offer(ref rest, ref restSeen, bySender);
             }
@@ -146,7 +148,7 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
             ArrayPoolListRef<Transaction[]> senders = new(SenderSampleCapacity);
             // Floored at the slots a uniform draw would have given the cohort, so reserving cannot demote what it
             // is meant to promote. Both operands are pre-reservoir: capped counts would leak `rest`'s compression in.
-            int uniformDraw = (int)((long)SenderSampleCapacity * oldestSeen / pending.Count);
+            int uniformDraw = (int)((long)SenderSampleCapacity * oldestSeen / senderCount);
             int reserved = int.Min(int.Max(_oldestSenderDraw, uniformDraw), oldest.Count);
             Take(ref senders, oldest.AsSpan()[..reserved]);
             Take(ref senders, rest.AsSpan());
@@ -175,7 +177,8 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     {
         ArrayPoolListRef<Transaction[]> senders = new(SenderSampleCapacity);
         int seen = 0;
-        foreach (Transaction[] bySender in pending.Values) Offer(ref senders, ref seen, bySender);
+        foreach (Transaction[] bySender in pending.Values)
+            if (bySender.Length != 0) Offer(ref senders, ref seen, bySender);
 
         Random.Shared.Shuffle(senders.AsSpan());
         return senders;
@@ -208,18 +211,20 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
     /// in the cohort, and a restart, since nothing persists the non-blob pool, ranks every sender by arrival
     /// since startup until the pool turns over.
     /// </remarks>
-    private static ulong OldestSenderBound(IDictionary<AddressAsKey, Transaction[]> pending, int cohortSize)
+    private static ulong OldestSenderBound(IDictionary<AddressAsKey, Transaction[]> pending, int cohortSize, out int senderCount)
     {
         PriorityQueue<ulong, ulong> cohort = new(cohortSize, NewestFirst);
+        senderCount = 0;
         foreach (Transaction[] bySender in pending.Values)
         {
+            if (bySender.Length == 0) continue;
+            senderCount++;
             ulong poolIndex = bySender[0].PoolIndex;
             if (cohort.Count < cohortSize) cohort.Enqueue(poolIndex, poolIndex);
             else if (poolIndex < cohort.Peek()) cohort.EnqueueDequeue(poolIndex, poolIndex);
         }
 
-        // The caller only asks for a cohort smaller than the pool, so the queue is never empty here.
-        return cohort.Peek();
+        return cohort.Count == 0 ? 0 : cohort.Peek();
     }
 
     /// <summary>How many leading transactions of <paramref name="bySender"/> the next block could append.</summary>
