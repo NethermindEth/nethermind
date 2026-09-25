@@ -129,9 +129,10 @@ public static class JsonRpcResponseWriter
             await WriteStreamableAsync(staged, response, streamable, isBatch, cancellationToken);
         }
         // Nothing reaches the transport before commitment, so an uncommitted failure is never a transport failure.
-        catch (Exception ex) when (!staged.IsCommitted && !cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when (!staged.IsCommitted)
         {
             staged.Discard();
+            if (cancellationToken.IsCancellationRequested) throw;
             return WriteReplacementError(writer, response, ex, options);
         }
         staged.Commit();

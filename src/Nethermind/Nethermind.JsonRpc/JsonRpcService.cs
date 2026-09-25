@@ -1134,6 +1134,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             _ => (null, null, false)
         };
     }
+
     /// <summary>Maps deferred execution errors and reports the final response outcome.</summary>
     internal sealed class StreamingContext(JsonRpcService service, JsonRpcRequest request, string methodName)
     {
@@ -1154,5 +1155,4 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             else if (success is false) Metrics.JsonRpcErrors++;
         }
     }
-
 }
