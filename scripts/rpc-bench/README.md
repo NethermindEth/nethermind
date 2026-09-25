@@ -21,12 +21,12 @@ to `flat`, and an image it would have to build is refused as well (that box's
 small root disk dies under a build). Sweep mode stays Nethermind-only on both
 boxes (below). `resolve` checks those limits against the selected runner.
 
-Benchmark output and profiling archives are staged under the selected runner's
-scratch volume at `diag/results/<run-id>-<attempt>/`; only the sanitized private
-corpus artifact is staged in the runner's temporary directory. The ARM disk
-guard requires 6 GiB free on the output and Docker image volumes. It requires
-1 GiB on `/` when output is on another filesystem, or 6 GiB when output shares
-the root filesystem.
+Benchmark output and profiling archives are staged in a per-run directory
+(`rpcbench.XXXXXX`) that the job removes at the end: under the runner's
+temporary directory on amd64, and on the scratch volume on arm64, whose small
+root disk cannot hold them. The ARM disk guard requires 6 GiB free on each
+Docker/containerd filesystem and on the output filesystem, plus 1 GiB on `/`,
+and sweeps per-run directories that a killed job left on the scratch volume.
 
 Independently of the runner, **sweep mode** (`jsonbench-sweep`) resolves one
 Nethermind flat snapshot and varies only the image, so `run-rpc-sweep.sh` refuses

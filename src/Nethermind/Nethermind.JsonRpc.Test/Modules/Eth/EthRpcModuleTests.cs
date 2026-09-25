@@ -49,6 +49,7 @@ using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using Nethermind.State;
+using static Nethermind.JsonRpc.Test.TimeoutTestHelper;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -63,7 +64,6 @@ public partial class EthRpcModuleTests
     private const string ExpectedHeadTxRawAtIndex1 = "0xf85f020182520894942921b14f1b1c385cd7e0cc2ef7abe5598c8358018025a0e7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bda0575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb";
     private const string ExpectedFilterLogResponse = """{"jsonrpc":"2.0","result":[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blockHash":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760","blockNumber":"0x1","blockTimestamp":"0x1","data":"0x010203","logIndex":"0x1","removed":false,"topics":["0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72","0x6c3fd336b49dcb1c57dd4fbeaf5f898320b0da06a5ef64e798c6497600bb79f2"],"transactionHash":"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","transactionIndex":"0x1"}],"id":67}""";
     private const int LogsStreamEnvelopeEndReserveBytes = 128;
-    private const int TimeoutCancellationTokenPoolSize = 64;
 
     private static string ExpectedFilterLogStreamResponse(string status) =>
         ExpectedFilterLogResponse.Replace(",\"id\":67}", $",\"_streamStatus\":\"{status}\",\"id\":67}}");
@@ -800,50 +800,6 @@ public partial class EthRpcModuleTests
         pipe.Reader.AdvanceTo(read.Buffer.End);
         await pipe.Reader.CompleteAsync();
         return serialized;
-    }
-
-    private static TrackingCancellationTokenSource RentTrackingTimeoutSourceForNextRequest()
-    {
-        JsonRpcConfig config = new();
-        List<CancellationTokenSource> rentedTimeouts = new(TimeoutCancellationTokenPoolSize);
-        for (int i = 0; i < TimeoutCancellationTokenPoolSize; i++)
-        {
-            rentedTimeouts.Add(config.BuildTimeoutCancellationToken());
-        }
-
-        for (int i = 0; i < rentedTimeouts.Count; i++)
-        {
-            rentedTimeouts[i].Dispose();
-        }
-
-        TrackingCancellationTokenSource timeout = new();
-        JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
-        return timeout;
-    }
-
-    private static void DisposeIfNotAlreadyObserved(TrackingCancellationTokenSource timeout)
-    {
-        if (timeout.DisposeCount == 0)
-        {
-            timeout.Dispose();
-        }
-    }
-
-    private sealed class TrackingCancellationTokenSource : CancellationTokenSource
-    {
-        private int _disposeCount;
-
-        public int DisposeCount => Volatile.Read(ref _disposeCount);
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                Interlocked.Increment(ref _disposeCount);
-            }
-
-            base.Dispose(disposing);
-        }
     }
 
     [Test]
@@ -1913,6 +1869,50 @@ public partial class EthRpcModuleTests
             Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"type\":\"0x0\"},\"id\":67}"));
     }
 
+
+    /// <summary>The block-level gas breakdown is diagnostic and outside execution-apis, so a receipt carrying it
+    /// must still serialize to the standard shape in the eth_ namespace.</summary>
+    [Test]
+    public async Task Eth_receipts_omit_the_block_gas_breakdown()
+    {
+        using Context ctx = await Context.Create();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+
+        Block block = Build.A.Block.WithNumber(1).WithTimestamp(10)
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .TestObject;
+
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.WithLogs([]).TestObject;
+        receipt.BlockGasUsed = 10;
+        receipt.ExecutionGasUsed = 11;
+        receipt.StorageGasUsed = 12;
+
+        blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+        receiptFinder.Get(Arg.Any<Block>()).Returns([receipt]);
+        receiptFinder.Get(Arg.Any<Hash256>()).Returns([receipt]);
+        blockchainBridge.GetTxReceiptInfo(Arg.Any<Hash256>()).Returns((receipt, 10UL, new(UInt256.One), 0));
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
+
+        using JsonDocument single = JsonDocument.Parse(await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString()));
+        using JsonDocument batch = JsonDocument.Parse(await ctx.Test.TestEthRpc("eth_getBlockReceipts", "latest"));
+
+        JsonElement[] receipts = [single.RootElement.GetProperty("result"), batch.RootElement.GetProperty("result")[0]];
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (JsonElement element in receipts)
+            {
+                Assert.That(element.GetProperty("gasUsed").GetString(), Is.EqualTo("0x64"), "the standard field still reports the receipt's own gas");
+                Assert.That(element.TryGetProperty("blockGasUsed", out _), Is.False);
+                Assert.That(element.TryGetProperty("executionGasUsed", out _), Is.False);
+                Assert.That(element.TryGetProperty("storageGasUsed", out _), Is.False);
+            }
+        }
+    }
 
     [Test]
     public async Task Eth_get_transaction_receipt_when_block_has_few_receipts()

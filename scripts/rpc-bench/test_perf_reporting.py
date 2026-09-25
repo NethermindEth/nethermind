@@ -1159,10 +1159,9 @@ esac
                 "SNAPSHOT_ROOT": (self.directory / "snapshots").as_posix(),
                 "TOOL_CONFIG": "{}",
                 "DIAG_DIR": f"{scratch}/diag",
-                "RESULTS_DIR": f"{scratch}/diag/results/1-1",
-                "OUT_DIR": f"{scratch}/diag/results/1-1/out",
-                "STATE_DIR": f"{scratch}/diag/results/1-1/state",
-                "ARCHIVE_DIR": f"{scratch}/diag/results/1-1/archives",
+                "BENCH_TEMP": f"{scratch}/rpcbench.test",
+                "OUT_DIR": f"{scratch}/rpcbench.test/out",
+                "STATE_DIR": f"{scratch}/rpcbench.test/state",
                 **environment_overrides,
             }
         )
@@ -1184,7 +1183,7 @@ esac
 
         sweep = self.prepare_paths(BENCHMARK_TOOL="jsonbench-sweep", DB_SOURCE=absent)
         self.assertEqual(sweep.returncode, 0, sweep.stdout + sweep.stderr)
-        self.assertTrue((self.directory / "scratch" / "diag" / "results" / "1-1" / "out").is_dir())
+        self.assertTrue((self.directory / "scratch" / "rpcbench.test" / "out").is_dir())
 
         pinned = self.prepare_paths(
             BENCHMARK_TOOL="jsonbench-sweep", DB_SOURCE=absent, TOOL_CONFIG='{"snapshot_block":"25000000"}'
@@ -1432,7 +1431,7 @@ printf 'parity_fail=%s rows=%s\\n' "$parity_fail" "${#PARITY_ROWS[@]}"
         ]
         positions = [job.index(step) for step in order]
         self.assertEqual(positions, sorted(positions))
-        dotnet_trace_gate = "always() && needs.resolve.outputs.dotnet_trace == 'true'"
+        dotnet_trace_gate = "always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dotnet_trace == 'true'"
         for step_name in ("Collect dotnet-trace", "Upload dotnet-trace"):
             self.assertEqual(workflow_named_step_if(rpc_workflow, "benchmark", step_name), dotnet_trace_gate)
         self.assertIn("name: dotnet-trace-rpcbench", workflow_named_step_body(rpc_workflow, "benchmark", "Upload dotnet-trace"))
@@ -1443,32 +1442,24 @@ printf 'parity_fail=%s rows=%s\\n' "$parity_fail" "${#PARITY_ROWS[@]}"
         self.assertIn('DOTNET_TRACE: "false"', workflow_named_step_body(rpc_workflow, "benchmark", "Start reference node"))
         self.assertIn("rpcbench.nettrace", workflow_named_step_body(rpc_workflow, "benchmark", "Publish step summary"))
 
-    def test_benchmark_outputs_and_headroom_use_scratch_volume(self) -> None:
+    def test_benchmark_outputs_use_the_per_run_dir_and_killed_runs_are_swept(self) -> None:
         rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
         job = workflow_job_body(rpc_workflow, "benchmark")
-        results_root = "${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}"
 
-        for variable, suffix in (
-            ("RESULTS_DIR", ""),
-            ("OUT_DIR", "/out"),
-            ("STATE_DIR", "/state"),
-            ("ARCHIVE_DIR", "/archives"),
-        ):
-            self.assertIn(f"{variable}: {results_root}{suffix}", job)
+        # Placement of the per-run dir and the disk gate itself are pinned by scripts/ci/test_rpc_runner_workspace.py.
+        self.assertNotIn("diag/results", job)
         self.assertNotIn("${{ runner.temp }}/rpcbench-out", job)
         self.assertNotIn("${{ runner.temp }}/rpcbench-state", job)
         self.assertNotIn("${{ runner.temp }}/dottrace-rpcbench.zip", job)
         self.assertNotIn("${{ runner.temp }}/perf-rpcbench.zip", job)
         self.assertNotIn("${{ runner.temp }}/dotnet-trace-rpcbench.zip", job)
-        # The private corpus allowlist remains the only benchmark data staged on the small temporary volume.
-        self.assertIn('"${RUNNER_TEMP}/rpcbench-corpus-results"', job)
+        self.assertIn('"${BENCH_TEMP}/rpcbench-corpus-results"', job)
         self.assertIn("find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete", job)
         self.assertIn('if docker rmi "${img}" >/dev/null 2>&1; then echo "  dropped ${img}"; fi', job)
 
         upload = job.index("- name: Upload benchmark results")
         cleanup = job.index("- name: Defensive cleanup")
         self.assertLess(upload, cleanup)
-        self.assertIn("${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/archives/", job)
 
         start_node = START_NODE.read_text(encoding="utf-8")
         self.assertIn("/data/*/*-*", start_node)
@@ -1477,40 +1468,16 @@ printf 'parity_fail=%s rows=%s\\n' "$parity_fail" "${#PARITY_ROWS[@]}"
         fake_bin = self.directory / "headroom-bin"
         fake_bin.mkdir()
         docker_root = self.directory / "docker-root"
-        containerd_root = self.directory / "containerd-root"
-        output_dir = self.directory / "scratch" / "results"
         docker_root.mkdir()
-        containerd_root.mkdir()
-        output_dir.mkdir(parents=True)
-
         self.write_executable(
             "headroom-bin/docker",
-            r'''#!/bin/bash
-if [[ "$1" == "info" && "$2" == "-f" ]]; then
-  [[ "$3" == "{{.Driver}}" ]] && printf 'overlayfs\n' || printf '%s\n' "$FAKE_DOCKER_ROOT"
-fi
-exit 0
-''',
-        )
-        self.write_executable(
-            "headroom-bin/containerd",
-            r'''#!/bin/bash
-[[ "$1" == "config" ]] && printf 'root = "%s"\n' "$FAKE_CONTAINERD_ROOT"
-''',
+            '#!/bin/bash\n[[ "$1" == "info" ]] && printf \'%s\\n\' "$FAKE_DOCKER_ROOT"\nexit 0\n',
         )
         self.write_executable(
             "headroom-bin/df",
             r'''#!/bin/bash
-path="${@: -1}"
-if [[ "$*" == *"--output=source"* ]]; then
-  if [[ "${DF_SAME_FS:-false}" == "true" || "$path" == "/" ]]; then printf 'Filesystem\nrootfs\n'; else printf 'Filesystem\ndatafs\n'; fi
-elif [[ "$*" == *"--output=avail"* ]]; then
-  if [[ "$path" == "$RESULTS_DIR"* ]]; then printf 'Avail\n%s\n' "$OUTPUT_FREE";
-  elif [[ "$path" == "$FAKE_CONTAINERD_ROOT"* || "$path" == "$FAKE_DOCKER_ROOT"* ]]; then printf 'Avail\n%s\n' "$IMAGE_FREE";
-  else printf 'Avail\n%s\n' "$ROOT_FREE"; fi
-else
-  printf 'Filesystem  Size  Used Avail Use%% Mounted on\nrootfs 1 0 1 0%% /\n'
-fi
+if [[ "$*" == *"--output=avail"* ]]; then printf 'Avail\n%s\n' "$((100 * 1024 * 1024 * 1024))";
+else printf 'Filesystem  Size  Used Avail Use%% Mounted on\nrootfs 1 0 1 0%% /\n'; fi
 ''',
         )
         for command in ("apt-get", "journalctl", "rm", "du"):
@@ -1523,59 +1490,28 @@ fi
         find_calls = self.directory / "find-calls"
         environment = os.environ.copy()
         environment.update(
-            RESULTS_DIR=output_dir.as_posix(),
             SCRATCH_ROOT=(self.directory / "scratch").as_posix(),
+            BENCH_TEMP=(self.directory / "scratch" / "rpcbench.test").as_posix(),
             FIND_CALLS=find_calls.as_posix(),
             FAKE_DOCKER_ROOT=docker_root.as_posix(),
-            FAKE_CONTAINERD_ROOT=containerd_root.as_posix(),
-            ROOT_FREE=str(2 * 1024**3),
-            OUTPUT_FREE=str(7 * 1024**3),
-            IMAGE_FREE=str(7 * 1024**3),
+            FAKE_BIN=fake_bin.as_posix(),
+            KEEP_IMAGES="",
+            KEEP_TOOL_CONFIG="{}",
         )
-        environment["FAKE_BIN"] = fake_bin.as_posix()
-
-        def run_reclaim() -> subprocess.CompletedProcess[str]:
-            launcher = (
-                'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
-                'export PATH="$(to_posix "$FAKE_BIN"):$PATH"; exec bash -c "$1"'
-            )
-            return subprocess.run(
-                [BASH, "-c", launcher, "bash", reclaim],
-                cwd=ROOT,
-                check=False,
-                text=True,
-                capture_output=True,
-                env=environment,
-            )
-
-        enough = run_reclaim()
-        self.assertEqual(enough.returncode, 0, f"{enough.stdout}\n{enough.stderr}")
-        # Results moved off ${runner.temp}, whose wipe used to reclaim them for a run that died with the
-        # box; only a bounded sweep here keeps a killed run from leaking its multi-GB archives for good.
-        swept = find_calls.read_text(encoding="utf-8")
-        self.assertIn("diag/results", swept)
-        self.assertIn("-mtime +1", swept)
-
-        environment["OUTPUT_FREE"] = str(6 * 1024**3 - 1)
-        low_output = run_reclaim()
-        self.assertNotEqual(low_output.returncode, 0, f"{low_output.stdout}\n{low_output.stderr}")
-        self.assertIn("Not enough free space", low_output.stdout)
-
-        environment["OUTPUT_FREE"] = str(7 * 1024**3)
-        environment["ROOT_FREE"] = str(1024**3 - 1)
-        low_root = run_reclaim()
-        self.assertNotEqual(low_root.returncode, 0, f"{low_root.stdout}\n{low_root.stderr}")
-        self.assertIn("Not enough free space", low_root.stdout)
-
-        environment["ROOT_FREE"] = str(7 * 1024**3)
-        environment["DF_SAME_FS"] = "true"
-        enough_shared = run_reclaim()
-        self.assertEqual(enough_shared.returncode, 0, f"{enough_shared.stdout}\n{enough_shared.stderr}")
-
-        environment["ROOT_FREE"] = str(2 * 1024**3)
-        same_root = run_reclaim()
-        self.assertNotEqual(same_root.returncode, 0, f"{same_root.stdout}\n{same_root.stderr}")
-        self.assertIn("Not enough free space", same_root.stdout)
+        launcher = (
+            'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
+            'export PATH="$(to_posix "$FAKE_BIN"):$PATH"; exec bash -c "$1"'
+        )
+        result = subprocess.run(
+            [BASH, "-c", launcher, "bash", reclaim], cwd=ROOT, check=False, text=True, capture_output=True, env=environment
+        )
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        # On ARM the per-run dir sits on the scratch disk; a run that died with the box never reaches `Remove run
+        # output`, so only a bounded sweep here keeps it from leaking its multi-GB archives for good.
+        sweeps = [line for line in find_calls.read_text(encoding="utf-8").splitlines() if "rpcbench.*" in line]
+        self.assertEqual(len(sweeps), 1, find_calls.read_text(encoding="utf-8"))
+        self.assertIn("-maxdepth 1", sweeps[0])
+        self.assertIn("-mtime +1", sweeps[0])
 
     def test_start_node_lists_snapshot_candidates_or_says_there_are_none(self) -> None:
         fake_bin = self.directory / "candidates-bin"
@@ -1625,7 +1561,7 @@ fi
         rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
         prepare = workflow_step_script(rpc_workflow, "benchmark", "Prepare scratch and output dirs")
 
-        def run_prepare(scratch: Path, db: Path, results: Path, state: Path, archives: Path) -> subprocess.CompletedProcess[str]:
+        def run_prepare(scratch: Path, db: Path, bench_temp: Path) -> subprocess.CompletedProcess[str]:
             environment = os.environ.copy()
             environment.update(
                 BENCHMARK_TOOL="jsonbench",
@@ -1635,14 +1571,13 @@ fi
                 SNAPSHOT_ROOT=(self.directory / "snapshots").as_posix(),
                 TOOL_CONFIG="{}",
                 DIAG_DIR=(scratch / "diag").as_posix(),
-                RESULTS_DIR=results.as_posix(),
-                OUT_DIR=(results / "out").as_posix(),
-                STATE_DIR=state.as_posix(),
-                ARCHIVE_DIR=archives.as_posix(),
+                BENCH_TEMP=bench_temp.as_posix(),
+                OUT_DIR=(bench_temp / "out").as_posix(),
+                STATE_DIR=(bench_temp / "state").as_posix(),
             )
             launcher = (
                 'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
-                'for name in DB_SOURCE SCRATCH_ROOT DIAG_DIR RESULTS_DIR OUT_DIR STATE_DIR ARCHIVE_DIR; do '
+                'for name in DB_SOURCE SCRATCH_ROOT DIAG_DIR BENCH_TEMP OUT_DIR STATE_DIR; do '
                 'value="$(to_posix "${!name}")"; printf -v "$name" "%s" "$value"; export "$name"; done; '
                 'exec bash -c "$1"'
             )
@@ -1660,13 +1595,7 @@ fi
 
         missing_db = self.directory / "missing-db"
         missing_scratch = self.directory / "missing-scratch"
-        missing = run_prepare(
-            missing_scratch,
-            missing_db,
-            missing_scratch / "diag" / "results",
-            missing_scratch / "diag" / "results" / "state",
-            missing_scratch / "diag" / "results" / "archives",
-        )
+        missing = run_prepare(missing_scratch, missing_db, missing_scratch / "rpcbench.test")
         self.assertNotEqual(missing.returncode, 0, f"{missing.stdout}\n{missing.stderr}")
         self.assertIn("missing or unresolvable", missing.stdout)
         self.assertIn("set node_config.db_source to an existing snapshot path", missing.stdout)
@@ -1678,53 +1607,29 @@ fi
             (scratch_symlink / "diag").symlink_to(primary_db, target_is_directory=True)
         except (OSError, NotImplementedError) as error:
             self.skipTest(f"directory symlinks are unavailable: {error}")
-        escaped = run_prepare(
-            scratch_symlink,
-            primary_db,
-            scratch_symlink / "diag" / "results",
-            scratch_symlink / "diag" / "results" / "state",
-            scratch_symlink / "diag" / "results" / "archives",
-        )
+        escaped = run_prepare(scratch_symlink, primary_db, scratch_symlink / "rpcbench.test")
         self.assertNotEqual(escaped.returncode, 0, f"{escaped.stdout}\n{escaped.stderr}")
         self.assertIn("escapes SCRATCH_ROOT", escaped.stdout)
-        self.assertFalse((primary_db / "results").exists())
 
+        # The per-run output dir may live outside the scratch root (RUNNER_TEMP on amd64), but never inside a DB tree.
         scratch = self.directory / "scratch"
-        diag = scratch / "diag"
-        outside = self.directory / "outside"
         scratch.mkdir()
-        diag.mkdir()
-        outside.mkdir()
         try:
-            (diag / "results").symlink_to(outside, target_is_directory=True)
+            (scratch / "rpcbench.test").symlink_to(primary_db, target_is_directory=True)
         except (OSError, NotImplementedError) as error:
             self.skipTest(f"directory symlinks are unavailable: {error}")
-        escaped_results = run_prepare(
-            scratch,
-            primary_db,
-            diag / "results",
-            diag / "results" / "state",
-            diag / "results" / "archives",
-        )
-        self.assertNotEqual(escaped_results.returncode, 0, f"{escaped_results.stdout}\n{escaped_results.stderr}")
-        self.assertIn("escapes SCRATCH_ROOT", escaped_results.stdout)
-        self.assertFalse((outside / "out").exists())
-        self.assertFalse((outside / "state").exists())
-        self.assertFalse((outside / "archives").exists())
+        overlapping = run_prepare(scratch, primary_db, scratch / "rpcbench.test")
+        self.assertNotEqual(overlapping.returncode, 0, f"{overlapping.stdout}\n{overlapping.stderr}")
+        self.assertIn("overlaps the DB source", overlapping.stdout)
+        self.assertEqual([], list(primary_db.iterdir()))
 
         good_scratch = self.directory / "good-scratch"
-        good_results = good_scratch / "diag" / "results"
-        good = run_prepare(
-            good_scratch,
-            primary_db,
-            good_results,
-            good_results / "state",
-            good_results / "archives",
-        )
-        self.assertEqual(good.returncode, 0, f"{good.stdout}\n{good.stderr}")
-        self.assertTrue((good_results / "out").is_dir())
-        self.assertTrue((good_results / "state").is_dir())
-        self.assertTrue((good_results / "archives").is_dir())
+        for bench_temp in (good_scratch / "rpcbench.arm", self.directory / "runner-temp" / "rpcbench.amd"):
+            with self.subTest(bench_temp=bench_temp.name):
+                good = run_prepare(good_scratch, primary_db, bench_temp)
+                self.assertEqual(good.returncode, 0, f"{good.stdout}\n{good.stderr}")
+                self.assertTrue((bench_temp / "out").is_dir())
+                self.assertTrue((bench_temp / "state").is_dir())
 
     def test_workflow_profile_contracts_cover_both_collectors(self) -> None:
         expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
