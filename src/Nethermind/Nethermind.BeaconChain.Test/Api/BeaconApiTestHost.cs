@@ -50,7 +50,7 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
         Spec = spec;
         ManualTimestamper timestamper = new(DateTimeOffset.FromUnixTimeSeconds((long)spec.GenesisTime).UtcDateTime);
         StatusHolder = new BeaconChainStatusHolder(spec, timestamper);
-        Store = new BeaconChainStore(Db);
+        Store = new BeaconChainStore(Db, spec);
         BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
         Host = new BeaconApiHost(apiConfig, new BeaconChainConfig(), spec, StatusHolder, new SlotClock(spec, timestamper), Store,
             new LocalMetadataSource(), new NoOpEngineDriver(), new NoOpProcessExitSource(), LimboLogs.Instance, forkChoiceSnapshots: forkChoiceSnapshots);

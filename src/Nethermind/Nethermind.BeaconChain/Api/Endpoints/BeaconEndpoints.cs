@@ -3,12 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -70,10 +72,10 @@ internal static class BeaconEndpoints
         }
 
         HeaderEntryDto entry = BuildHeaderEntry(ctx, resolved);
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Block.Message!.Slot);
+        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Slot);
         return BeaconApiJson.WriteEnvelopeAsync(c, new[] { entry },
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            ResponseEnvelope.IsFinalized(ctx, resolved.Block.Message.Slot, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
             c.RequestAborted);
     }
 
@@ -117,7 +119,7 @@ internal static class BeaconEndpoints
         bool mixedForks = false;
         foreach (Hash256 childRoot in childRoots)
         {
-            if (!ctx.Store.TryGetBlock(childRoot, out SignedBeaconBlock? child))
+            if (!ctx.Store.TryGetForkedBlock(childRoot, out ForkedSignedBeaconBlock? child))
             {
                 // The index and the block column disagree (a prune raced this request); skipping the
                 // entry would hand back a shorter list that looks complete.
@@ -125,7 +127,7 @@ internal static class BeaconEndpoints
                     $"The children index names block {childRoot}, which is not retained; retry the request.", c.RequestAborted);
             }
 
-            ulong childSlot = child.Message!.Slot;
+            ulong childSlot = child.Slot;
             if (slotFilter is not null && childSlot != slotFilter) continue;
 
             entries.Add(BuildHeaderEntry(ctx, new ResolvedBlock(childRoot, child)));
@@ -159,10 +161,10 @@ internal static class BeaconEndpoints
         }
 
         HeaderEntryDto entry = BuildHeaderEntry(ctx, resolved);
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Block.Message!.Slot);
+        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Slot);
         return BeaconApiJson.WriteEnvelopeAsync(c, entry,
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            ResponseEnvelope.IsFinalized(ctx, resolved.Block.Message.Slot, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
             c.RequestAborted);
     }
 
@@ -178,10 +180,10 @@ internal static class BeaconEndpoints
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Block.Message!.Slot);
+        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Slot);
         return BeaconApiJson.WriteEnvelopeAsync(c, new RootDto(resolved.Root.ToString()),
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
-            ResponseEnvelope.IsFinalized(ctx, resolved.Block.Message.Slot, resolved.Root),
+            ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
             c.RequestAborted);
     }
 
@@ -198,22 +200,23 @@ internal static class BeaconEndpoints
             return ContentNegotiation.WriteNotAcceptable(c);
         }
 
-        ulong slot = resolved.Block.Message!.Slot;
+        ulong slot = resolved.Slot;
+        BeaconFork fork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(slot));
+        // Chosen before the response starts, so a body in another fork's layout is never served under this fork's name.
+        Action<Utf8JsonWriter> writeBlock = resolved.Block switch
+        {
+            ForkedSignedBeaconBlock.OfFulu fulu when fork != BeaconFork.Gloas => w => BeaconJsonWriter.WriteSignedBeaconBlock(w, fulu.Block),
+            ForkedSignedBeaconBlock.OfGloas gloas when fork == BeaconFork.Gloas => w => BeaconJsonWriter.WriteSignedBeaconBlock(w, gloas.Block),
+            _ => throw new BeaconStateException(
+                $"Block {resolved.Root} at slot {slot} was read as {resolved.Block.GetType().Name}, which is not the shape of the {ResponseEnvelope.ForkName(fork)} fork"),
+        };
+
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, slot);
         if (format == ContentNegotiation.ResponseFormat.Ssz)
         {
             c.Response.ContentType = ContentNegotiation.OctetStream;
-            byte[] encoded = SignedBeaconBlock.Encode(resolved.Block);
+            byte[] encoded = SignedBeaconBlockCodec.Encode(resolved.Block, ctx.Spec);
             return c.Response.Body.WriteAsync(encoded, c.RequestAborted).AsTask();
-        }
-
-        BeaconFork fork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(slot));
-        if (fork == BeaconFork.Gloas)
-        {
-            // The store decodes every block with the Electra/Fulu body layout; a Gloas body (no
-            // execution_payload, a signed bid instead) would come out as a plausible wrong object.
-            return ApiErrors.Write(c, StatusCodes.Status501NotImplemented,
-                $"JSON bodies for {ResponseEnvelope.ForkName(fork)} blocks are not implemented; only the Electra/Fulu body layout is serialized.", c.RequestAborted);
         }
 
         return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(fork),
@@ -221,26 +224,26 @@ internal static class BeaconEndpoints
             ResponseEnvelope.IsFinalized(ctx, slot, resolved.Root),
             s =>
             {
-                BeaconJsonWriter.WriteSignedBeaconBlock(s.Writer, resolved.Block);
+                writeBlock(s.Writer);
                 return Task.CompletedTask;
             });
     }
 
     private static HeaderEntryDto BuildHeaderEntry(BeaconApiContext ctx, ResolvedBlock resolved)
     {
-        BeaconBlock message = resolved.Block.Message!;
-        bool canonical = ctx.Store.TryGetCanonicalRoot(message.Slot, out Hash256? canonicalRoot) && canonicalRoot == resolved.Root;
-        Hash256 bodyRoot = SszRoots.HashTreeRoot(message.Body!);
+        ForkedSignedBeaconBlock block = resolved.Block;
+        bool canonical = ctx.Store.TryGetCanonicalRoot(block.Slot, out Hash256? canonicalRoot) && canonicalRoot == resolved.Root;
+        Hash256 bodyRoot = resolved.ComputeBodyRoot();
 
         BeaconBlockHeaderDto header = new(
-            message.Slot.ToString(),
-            message.ProposerIndex.ToString(),
-            message.ParentRoot!.ToString(),
-            message.StateRoot!.ToString(),
+            block.Slot.ToString(),
+            block.ProposerIndex.ToString(),
+            block.ParentRoot.ToString(),
+            resolved.StateRoot.ToString(),
             bodyRoot.ToString());
 
         return new HeaderEntryDto(resolved.Root.ToString(), canonical,
-            new SignedHeaderDto(header, resolved.Block.Signature.ToString()));
+            new SignedHeaderDto(header, resolved.Signature.ToString()));
     }
 
     private sealed record GenesisDto(
