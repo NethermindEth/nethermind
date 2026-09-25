@@ -73,17 +73,18 @@ public class EvmAdmissionGateTests
     }
 
     [Test]
-    public async Task Smaller_requests_go_first_but_never_ahead_of_one_that_arrived_half_a_budget_earlier()
+    public async Task Smaller_requests_go_first_but_never_ahead_of_one_that_arrived_its_size_penalty_earlier()
     {
         ManualClock clock = new();
         EvmAdmissionGate gate = CreateGate(clock);
         Lease held = await Admit(gate);
+        // Weight 4 delays its turn by 3/14 of the budget, about 214 ms; all grants below happen before anyone has waited half the budget.
         List<(string Name, Task<Lease> Admission)> waiters =
         [
-            ("heavy", Admit(gate, MaxWeight * BytesPerWeightUnit).AsTask()),
+            ("heavy", Admit(gate, 3 * BytesPerWeightUnit).AsTask()),
             ("light 1", Admit(gate).AsTask()),
         ];
-        clock.Advance(TimeSpan.FromMilliseconds(BudgetMs / 2 - 1));
+        clock.Advance(TimeSpan.FromMilliseconds(3 * BudgetMs / 14));
         waiters.Add(("light 2", Admit(gate).AsTask()));
         clock.Advance(TimeSpan.FromMilliseconds(2));
         waiters.Add(("light 3", Admit(gate).AsTask()));
@@ -101,6 +102,31 @@ public class EvmAdmissionGateTests
         }
 
         Assert.That(order, Is.EqualTo(new[] { "light 1", "light 2", "heavy", "light 3" }));
+    }
+
+    [Test]
+    public async Task Sustained_lighter_traffic_cannot_starve_a_heavy_waiter()
+    {
+        ManualClock clock = new();
+        EvmAdmissionGate gate = CreateGate(clock);
+        Lease slot = await Admit(gate);
+        // One grant and one new light waiter per 100 ms behind a backlog of seven: every light request waits 700 ms, within the
+        // budget but always ahead of the heavy request on size alone.
+        List<Task<Lease>> waiters = [.. Enumerable.Range(0, 7).Select(_ => Admit(gate).AsTask())];
+        Task<Lease> heavy = Admit(gate, MaxWeight * BytesPerWeightUnit).AsTask();
+        waiters.Add(heavy);
+
+        for (int waitedMs = 100; waitedMs < BudgetMs && !heavy.IsCompleted; waitedMs += 100)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(100));
+            waiters.Add(Admit(gate).AsTask());
+            slot.Dispose();
+            Task<Lease> granted = await Task.WhenAny(waiters).WaitAsync(TestTimeout);
+            waiters.Remove(granted);
+            slot = await granted;
+        }
+
+        Assert.That(heavy.IsCompletedSuccessfully, Is.True, "granted within its budget");
     }
 
     [TestCase(true, TestName = "Timer fires at the budget")]

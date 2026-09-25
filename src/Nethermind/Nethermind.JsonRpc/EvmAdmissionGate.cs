@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Exceptions;
@@ -17,8 +18,9 @@ namespace Nethermind.JsonRpc;
 /// <remarks>
 /// EVM throughput plateaus at about one execution per logical processor, so running more at once only adds latency and,
 /// past saturation, wastes work on requests that are rejected anyway. Waiters are served in order of arrival plus a penalty
-/// that grows with their <c>params</c> size up to half the wait budget: a smaller request overtakes a larger one, but never
-/// one that arrived more than half a budget earlier, so sustained light traffic cannot starve a heavy request.
+/// that grows with their <c>params</c> size up to half the wait budget, so a smaller request overtakes a larger one that
+/// arrived shortly before it. A waiter that has waited half the budget is served before any later arrival, so sustained
+/// light traffic cannot starve a heavy request.
 /// </remarks>
 internal sealed class EvmAdmissionGate
 {
@@ -30,6 +32,7 @@ internal sealed class EvmAdmissionGate
 
     private readonly Lock _lock = new();
     private readonly PriorityQueue<Waiter, (long Order, long Sequence)> _waiters = new();
+    private readonly LinkedList<Waiter> _arrivals = new();
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _budget;
     private readonly long _weightPenalty;
@@ -91,6 +94,7 @@ internal sealed class EvmAdmissionGate
             long now = _timeProvider.GetTimestamp();
             waiter = new Waiter(now);
             _waiters.Enqueue(waiter, (now + (Weigh(paramsUtf8Length) - 1) * _weightPenalty, ++_sequence));
+            waiter.Arrival = _arrivals.AddLast(waiter);
             Metrics.RpcAdmissionQueued = _waiters.Count;
         }
 
@@ -123,6 +127,7 @@ internal sealed class EvmAdmissionGate
                 return false;
             }
 
+            _arrivals.Remove(waiter.Arrival!);
             Metrics.RpcAdmissionQueued = _waiters.Count;
             if (timedOut) Metrics.RpcAdmissionWaitTimeoutRejections++;
             else Metrics.RpcAdmissionCancellations++;
@@ -135,7 +140,7 @@ internal sealed class EvmAdmissionGate
         lock (_lock)
         {
             // Waiters resume on the thread pool, so completing them under the lock never runs their continuations here.
-            while (_waiters.TryDequeue(out Waiter? next, out _))
+            while (TryDequeue(out Waiter? next))
             {
                 Metrics.RpcAdmissionQueued = _waiters.Count;
                 // Its timeout may not have fired yet, but a waiter past its budget must not be admitted.
@@ -153,6 +158,28 @@ internal sealed class EvmAdmissionGate
         }
     }
 
+    // Caller holds _lock. Takes the smallest order, unless the oldest waiter has waited half the budget: then it goes first.
+    private bool TryDequeue([NotNullWhen(true)] out Waiter? next)
+    {
+        next = _arrivals.First?.Value;
+        if (next is null)
+        {
+            return false;
+        }
+
+        if (_timeProvider.GetElapsedTime(next.EnqueuedTimestamp) >= _budget / 2)
+        {
+            _waiters.Remove(next, out _, out _);
+        }
+        else
+        {
+            next = _waiters.Dequeue();
+        }
+
+        _arrivals.Remove(next.Arrival!);
+        return true;
+    }
+
     /// <summary>An execution slot; disposing it passes the slot to the next waiter or frees it.</summary>
     /// <remarks>Dispose it exactly once: a second release would permanently raise the number of concurrent executions.</remarks>
     internal readonly struct Lease(EvmAdmissionGate? gate) : IDisposable
@@ -166,5 +193,6 @@ internal sealed class EvmAdmissionGate
     private sealed class Waiter(long enqueuedTimestamp) : TaskCompletionSource<Lease>(TaskCreationOptions.RunContinuationsAsynchronously)
     {
         public long EnqueuedTimestamp { get; } = enqueuedTimestamp;
+        public LinkedListNode<Waiter>? Arrival;
     }
 }
