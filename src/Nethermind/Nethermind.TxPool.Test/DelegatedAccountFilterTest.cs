@@ -42,7 +42,7 @@ internal class DelegatedAccountFilterTest
             standardPool,
             blobPool,
             stateProvider ?? Substitute.For<IReadOnlyStateProvider>(),
-            delegationCache ?? new DelegationCache());
+            delegationCache ?? new DelegationCache(TestBlockchainIds.ChainId));
 
     private static TestReadOnlyStateProvider CreateDelegatedStateProvider(ulong accountNonce = 0)
     {
@@ -200,7 +200,7 @@ internal class DelegatedAccountFilterTest
     public void Accept_SenderHasPendingDelegation_OnlyAcceptsIfNonceIsExactMatch(ulong nonce, AcceptTxResult expected)
     {
         (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) = CreatePools();
-        DelegationCache pendingDelegations = new();
+        DelegationCache pendingDelegations = new(TestBlockchainIds.ChainId);
         pendingDelegations.IncrementDelegationCount(TestItem.AddressA);
         DelegatedAccountFilter filter = CreateFilter(standardPool, blobPool, delegationCache: pendingDelegations);
         Transaction transaction = Build.A.Transaction.WithNonce(nonce).SignedAndResolved(Ecdsa, TestItem.PrivateKeyA).TestObject;
@@ -249,7 +249,7 @@ internal class DelegatedAccountFilterTest
     public void Accept_SetCodeTxHasAuthorityWithPendingTx_ReturnsDelegatorHasPendingTx()
     {
         (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) = CreatePools();
-        DelegationCache pendingDelegations = new();
+        DelegationCache pendingDelegations = new(TestBlockchainIds.ChainId);
         pendingDelegations.IncrementDelegationCount(TestItem.AddressA);
         DelegatedAccountFilter filter = CreateFilter(standardPool, blobPool, delegationCache: pendingDelegations);
         Transaction transaction = Build.A.Transaction

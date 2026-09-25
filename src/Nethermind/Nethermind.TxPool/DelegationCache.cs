@@ -7,9 +7,14 @@ using System.Collections.Generic;
 
 namespace Nethermind.TxPool;
 
-internal sealed class DelegationCache
+internal sealed class DelegationCache(ulong chainId)
 {
     private readonly ConcurrentDictionary<AddressAsKey, int> _pendingDelegations = new();
+
+    /// <summary>Returns the authority <paramref name="tuple"/> can delegate on this chain, or <c>null</c> when it cannot.</summary>
+    /// <remarks>EIP-7702 skips a tuple whose chain id is neither 0 nor the local one, so such a tuple never delegates its authority.</remarks>
+    public Address? GetAuthority(AuthorizationTuple tuple) =>
+        tuple.ChainId.IsZero || tuple.ChainId == chainId ? tuple.Authority : null;
 
     public bool HasPending(AddressAsKey key) => _pendingDelegations.ContainsKey(key);
 

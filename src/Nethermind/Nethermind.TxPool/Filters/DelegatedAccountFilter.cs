@@ -49,12 +49,12 @@ namespace Nethermind.TxPool.Filters
             foreach (AuthorizationTuple authorization in authorizations)
             {
                 //RecoverAuthorityFilter runs before this, so if a signature is null, we assume it is bad
-                if (authorization.Authority is null)
+                if (pendingDelegations.GetAuthority(authorization) is not { } authority)
                 {
                     continue;
                 }
-                if (standardPool.ContainsBucket(authorization.Authority)
-                    || blobPool.ContainsBucket(authorization.Authority))
+                if (standardPool.ContainsBucket(authority)
+                    || blobPool.ContainsBucket(authority))
                 {
                     return true;
                 }

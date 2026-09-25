@@ -6175,6 +6175,50 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(AuthorityTx(1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.NotCurrentNonceForDelegation));
         }
 
+        [TestCase(0UL, true)]
+        [TestCase(TestBlockchainIds.ChainId, true)]
+        [TestCase(TestBlockchainIds.ChainId + 1, false)]
+        public void Authorization_restricts_authority_only_when_valid_on_this_chain(ulong authChainId, bool restrictsAuthority)
+        {
+            ISpecProvider specProvider = GetPragueSpecProvider();
+            _txPool = CreatePool(new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 }, specProvider);
+
+            PrivateKey authority = TestItem.PrivateKeyA;
+            PrivateKey sponsorA = TestItem.PrivateKeyB;
+            PrivateKey sponsorB = TestItem.PrivateKeyC;
+            _stateProvider.CreateAccount(authority.Address, UInt256.MaxValue);
+            _stateProvider.CreateAccount(sponsorA.Address, UInt256.MaxValue);
+            _stateProvider.CreateAccount(sponsorB.Address, UInt256.MaxValue);
+
+            EthereumEcdsa ecdsa = new(_specProvider.ChainId);
+
+            Transaction Delegation(PrivateKey sponsor) => Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.SetCode)
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
+                .WithGasLimit(100_000)
+                .WithAuthorizationCode(ecdsa.Sign(authority, authChainId, TestItem.AddressD, 0))
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, sponsor).TestObject;
+
+            Transaction AuthorityTx(ulong nonce) => Build.A.Transaction
+                .WithNonce(nonce)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, authority).TestObject;
+
+            Assert.That(_txPool.SubmitTx(Delegation(sponsorA), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(AuthorityTx(0), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(AuthorityTx(1), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(restrictsAuthority ? AcceptTxResult.NotCurrentNonceForDelegation : AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(Delegation(sponsorB), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(restrictsAuthority ? AcceptTxResult.DelegatorHasPendingTx : AcceptTxResult.Accepted));
+        }
+
         [TestCase(1ul, 2ul)]
         [TestCase(0ul, 0ul)]
         [TestCase(ulong.MaxValue, ulong.MaxValue)]
