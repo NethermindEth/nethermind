@@ -27,6 +27,9 @@ internal class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbMa
         return flatDbManager.HasStateForBlock(stateId);
     }
 
+    public bool HasStateForBlock(in StateId stateId, ResourcePool.Usage usage) =>
+        stateId.StateRoot == Keccak.EmptyTreeHash || flatDbManager.HasStateForBlock(stateId, usage);
+
     private StateId NormalizeState(StateId stateId)
     {
         if (stateId.StateRoot == Keccak.EmptyTreeHash && stateId.BlockNumber != StateId.PreGenesis.BlockNumber &&

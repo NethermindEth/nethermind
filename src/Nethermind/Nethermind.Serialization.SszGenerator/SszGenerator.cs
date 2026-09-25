@@ -1850,11 +1850,6 @@ using static Nethermind.Serialization.SszCodecHelpers;
     }}
 }}
 ");
-#if DEBUG
-#pragma warning disable RS1035 // Allow console for debugging
-            Console.WriteLine(WithLineNumbers(result, false));
-#pragma warning restore RS1035
-#endif
             return GeneratedSourceHeader + result;
         }
         catch (Exception e)
@@ -1863,23 +1858,4 @@ using static Nethermind.Serialization.SszCodecHelpers;
             return null;
         }
     }
-
-#if DEBUG
-    static string WithLineNumbers(string input, bool bypass = false)
-    {
-        if (bypass) return input;
-
-        string[] lines = input.Split('\n');
-        int lineNumberWidth = lines.Length.ToString().Length;
-
-        StringBuilder sb = new();
-        for (int i = 0; i < lines.Length; i++)
-        {
-            string lineNumber = (i + 1).ToString().PadLeft(lineNumberWidth);
-            sb.AppendLine($"{lineNumber}: {lines[i]}");
-        }
-
-        return sb.ToString();
-    }
-#endif
 }
