@@ -71,5 +71,12 @@ public sealed class DetailedMetricOnFlagAttribute : Attribute
 
 public record StringLabel(string label) : IMetricLabels
 {
-    public string[] Labels => [label];
+    // Built once: observers read Labels on every observation.
+    public string[] Labels { get; } = [label];
+
+    // Equality stays on the label alone; the cached array would otherwise make equal labels unequal.
+    public virtual bool Equals(StringLabel? other) =>
+        ReferenceEquals(this, other) || (other is not null && EqualityContract == other.EqualityContract && label == other.label);
+
+    public override int GetHashCode() => HashCode.Combine(EqualityContract, label);
 }

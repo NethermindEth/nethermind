@@ -209,7 +209,8 @@ namespace Nethermind.Db
         public static IMetricObserver PrewarmerGetTime { get; set; } = NoopMetricObserver.Instance;
     }
 
-    public readonly struct PrewarmerGetTimeLabel(string part, bool isPrewarmer) : IMetricLabels
+    // A class: observers take IMetricLabels, so a struct label was boxed on every account and slot read.
+    public sealed class PrewarmerGetTimeLabel(string part, bool isPrewarmer) : IMetricLabels
     {
         public string[] Labels { get; } = [part, isPrewarmer ? "true" : "false"];
     }
