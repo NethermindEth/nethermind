@@ -59,6 +59,7 @@ public class BeaconChainModule : Module
             .AddSingleton<BeaconP2P>()
             .AddSingleton<BeaconDiscovery>()
             .AddSingleton<GossipRouter>()
+            .AddSingleton<GossipMessageValidator>()
             .AddSingleton<ColumnGossipRouter>()
             .AddSingleton<PeerManager>()
             .Bind<IBeaconSyncPeerPool, PeerManager>()
