@@ -973,7 +973,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
             else
             {
-                LargeMaps.Return(current); // an earlier large map that filled up
+                LargeMaps.Return(current); // a map is already parked, so this one is surplus
             }
 
             _dictionary = large;

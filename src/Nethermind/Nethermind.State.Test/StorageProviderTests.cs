@@ -371,6 +371,75 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    /// <remarks>
+    /// A change map that fills past 512 entries moves into a pooled large map. <paramref name="clearFirst"/> picks
+    /// which map is parked when <c>ClearStorage</c> and its revert happen: the contract's own (grown before the clear)
+    /// or the fresh one the clear starts (grown during it, after which the restored map grows as well). Writes reach
+    /// the change map at commit and reads after a clear add to it, so the steps commit and read rather than only write.
+    /// </remarks>
+    [Test]
+    public void Heavy_contract_map_survives_a_reverted_clear_and_resets_to_its_own_map([Values] bool clearFirst)
+    {
+        const int HeavyCount = 1_000;
+        const int ClearedFrom = 5_000;
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+
+        void Write(Address address, int from, int count, UInt256 value)
+        {
+            for (int i = from; i < from + count; i++) provider.Set(new StorageCell(address, (UInt256)i), value);
+            provider.Commit(Frontier.Instance);
+        }
+
+        UInt256 Read(Address address, int index)
+        {
+            provider.Get(new StorageCell(address, (UInt256)index), out UInt256 value);
+            return value;
+        }
+
+        int keptCount = clearFirst ? 10 : HeavyCount;
+        Write(ctx.Address1, 0, keptCount, 1);
+        Snapshot beforeClear = provider.TakeSnapshot();
+        provider.ClearStorage(ctx.Address1);
+        for (int i = ClearedFrom; i < ClearedFrom + HeavyCount; i++) Read(ctx.Address1, i);
+        provider.Restore(beforeClear);
+        if (clearFirst) Write(ctx.Address1, keptCount, HeavyCount, 3);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < keptCount; i++) Assert.That(Read(ctx.Address1, i), Is.EqualTo((UInt256)1));
+            if (clearFirst)
+            {
+                for (int i = keptCount; i < keptCount + HeavyCount; i++) Assert.That(Read(ctx.Address1, i), Is.EqualTo((UInt256)3));
+            }
+        }
+
+        object blockChange = GetBlockChange(provider, ctx.Address1);
+        Assume.That(GetCapacity(blockChange), Is.GreaterThanOrEqualTo(HeavyCount), "the heavy contract should be on a large map");
+        object parkedMap = GetPrivateField(blockChange, "_parked");
+        Assume.That(parkedMap, Is.Not.Null, "moving into a large map parks the contract's own map");
+        // Exercise the pool's reset while we still own the state; returned objects can be rented by background work.
+        blockChange.GetType().GetMethod(nameof(provider.Reset))!.Invoke(blockChange, [512]);
+
+        // The large maps are back in the pool; a heavy second contract can rent them.
+        const int OtherFrom = 20_000;
+        Write(ctx.Address2, OtherFrom, HeavyCount, 4);
+        object otherMap = GetDictionary(GetBlockChange(provider, ctx.Address2));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetDictionary(blockChange), Is.SameAs(parkedMap), "the contract is back on the map it parked");
+            Assert.That(GetCapacity(blockChange), Is.LessThan(1_024));
+            Assert.That(((IDictionary)GetDictionary(blockChange)).Count, Is.Zero);
+            Assert.That(GetDictionary(blockChange), Is.Not.SameAs(otherMap));
+            Assert.That(GetPrivateField(blockChange, "_spare"), Is.Not.SameAs(otherMap));
+            Assert.That(GetPrivateField(blockChange, "_parked"), Is.Not.SameAs(otherMap));
+            // A pooled map comes back empty, so the second contract sees none of the first one's slots.
+            Assert.That(Read(ctx.Address2, 0), Is.EqualTo(UInt256.Zero));
+            Assert.That(Read(ctx.Address2, OtherFrom), Is.EqualTo((UInt256)4));
+        }
+    }
+
     private static object GetBlockChange(WorldState provider, Address address)
     {
         FieldInfo storagesField = typeof(PersistentStorageProvider).GetField(
