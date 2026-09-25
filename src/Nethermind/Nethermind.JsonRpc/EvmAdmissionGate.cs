@@ -85,9 +85,15 @@ internal sealed class EvmAdmissionGate
                 return new Lease(this);
             }
 
-            if (!allowQueue || _budget == TimeSpan.Zero || _queueLimit > 0 && _waiters.Count >= _queueLimit)
+            if (!allowQueue || _budget == TimeSpan.Zero)
             {
-                Metrics.RpcAdmissionImmediateRejections++;
+                Metrics.RpcAdmissionNotQueueableRejections++;
+                throw new LimitExceededException(BusyMessage);
+            }
+
+            if (_queueLimit > 0 && _waiters.Count >= _queueLimit)
+            {
+                Metrics.RpcAdmissionQueueFullRejections++;
                 throw new LimitExceededException(BusyMessage);
             }
 

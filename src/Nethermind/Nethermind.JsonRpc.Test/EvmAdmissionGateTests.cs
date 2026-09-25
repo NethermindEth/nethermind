@@ -52,15 +52,16 @@ public class EvmAdmissionGateTests
         Assert.That(gate.InFlight, Is.Zero);
     }
 
-    [TestCase(0, 0, true, 0, true, TestName = "Zero budget disables queueing")]
-    [TestCase(BudgetMs, 2, true, 2, true, TestName = "Full queue")]
-    [TestCase(BudgetMs, 0, false, 0, true, TestName = "Request that may not queue")]
-    [TestCase(BudgetMs, 0, true, 3, false, TestName = "Zero queue limit leaves the queue uncapped")]
+    [TestCase(0, 0, true, 0, 0, 1, TestName = "Zero budget disables queueing")]
+    [TestCase(BudgetMs, 2, true, 2, 1, 0, TestName = "Full queue")]
+    [TestCase(BudgetMs, 0, false, 0, 0, 1, TestName = "Request that may not queue")]
+    [TestCase(BudgetMs, 0, true, 3, 0, 0, TestName = "Zero queue limit leaves the queue uncapped")]
     [NonParallelizable]
     public async Task Busy_gate_rejects_at_once_only_when_the_request_cannot_queue(
-        int maxQueueWaitMs, int queueLimit, bool allowQueue, int alreadyQueued, bool rejected)
+        int maxQueueWaitMs, int queueLimit, bool allowQueue, int alreadyQueued, int queueFullRejections, int notQueueableRejections)
     {
-        long rejectionsBefore = Metrics.RpcAdmissionImmediateRejections;
+        bool rejected = queueFullRejections + notQueueableRejections > 0;
+        (long QueueFull, long NotQueueable) rejectionsBefore = (Metrics.RpcAdmissionQueueFullRejections, Metrics.RpcAdmissionNotQueueableRejections);
         EvmAdmissionGate gate = CreateGate(maxQueueWaitMs: maxQueueWaitMs, queueLimit: queueLimit);
         using Lease held = await Admit(gate);
         Task<Lease>[] queued = [.. Enumerable.Range(0, alreadyQueued).Select(_ => Admit(gate).AsTask())];
@@ -73,8 +74,11 @@ public class EvmAdmissionGateTests
             Assert.That(async () => await admission, Throws.InstanceOf<LimitExceededException>());
         }
 
-        Assert.That((gate.Queued, Metrics.RpcAdmissionImmediateRejections - rejectionsBefore),
-            Is.EqualTo((queued.Length + (rejected ? 0 : 1), rejected ? 1 : 0)));
+        Assert.That(
+            (gate.Queued,
+                Metrics.RpcAdmissionQueueFullRejections - rejectionsBefore.QueueFull,
+                Metrics.RpcAdmissionNotQueueableRejections - rejectionsBefore.NotQueueable),
+            Is.EqualTo((queued.Length + (rejected ? 0 : 1), queueFullRejections, notQueueableRejections)));
     }
 
     [Test]

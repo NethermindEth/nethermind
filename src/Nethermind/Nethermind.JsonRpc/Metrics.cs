@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcInvalidRequests { get; set; }
 
         [CounterMetric]
-        [Description("Number of JSON RPC requests rejected or timed out at the EVM-execution admission gate (RpcAdmissionImmediateRejections plus RpcAdmissionWaitTimeoutRejections) or at a module, shared-request, execution-environment, or synchronous-transaction concurrency limit.")]
+        [Description("Number of JSON RPC requests rejected or timed out at the EVM-execution admission gate (RpcAdmissionQueueFullRejections, RpcAdmissionNotQueueableRejections and RpcAdmissionWaitTimeoutRejections) or at a module, shared-request, execution-environment, or synchronous-transaction concurrency limit.")]
         public static long JsonRpcOverloadRejections => _jsonRpcOverloadRejections;
         private static long _jsonRpcOverloadRejections;
         internal static void IncrementJsonRpcOverloadRejections() => Interlocked.Increment(ref _jsonRpcOverloadRejections);
@@ -38,10 +38,15 @@ namespace Nethermind.JsonRpc
         [Description("Number of EVM-executing JSON RPC requests holding an execution slot.")]
         public static long RpcAdmissionInFlight { get; set; }
 
-        /// <summary>Number of EVM-executing JSON-RPC requests rejected without queueing.</summary>
+        /// <summary>Number of EVM-executing JSON-RPC requests rejected at once because the queue was full.</summary>
         [CounterMetric]
-        [Description("Number of EVM-executing JSON RPC requests rejected without queueing: the queue was full, queueing is disabled, or the request may not queue (batch item, authenticated, IPC, single-worker WebSocket).")]
-        public static long RpcAdmissionImmediateRejections { get; set; }
+        [Description("Number of EVM-executing JSON RPC requests rejected without queueing because JsonRpc.EvmExecutionQueueLimit requests were already waiting.")]
+        public static long RpcAdmissionQueueFullRejections { get; set; }
+
+        /// <summary>Number of EVM-executing JSON-RPC requests rejected at once because they may not queue.</summary>
+        [CounterMetric]
+        [Description("Number of EVM-executing JSON RPC requests rejected because every execution slot was busy and the request may not queue: a batch item, an authenticated, IPC or single-worker WebSocket request, or any request when queueing is disabled.")]
+        public static long RpcAdmissionNotQueueableRejections { get; set; }
 
         /// <summary>Number of EVM-executing JSON-RPC requests rejected after waiting their whole budget.</summary>
         [CounterMetric]
