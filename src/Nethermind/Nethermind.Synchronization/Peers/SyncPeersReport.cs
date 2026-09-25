@@ -223,7 +223,7 @@ namespace Nethermind.Synchronization.Peers
                                 .Append("[Client Info (Name/Version/Operating System/Language)     ]")
                                 .AppendLine();
             _stringBuilder.Append("----------------------------------------------------------------------" +
-                "----------------------------------------------------------------------------------------");
+                "-------------------------------------------------------------------------------------------------");
         }
 
         private void RememberState(out bool initializedCountChanged)
