@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcInvalidRequests { get; set; }
 
         [CounterMetric]
-        [Description("Number of JSON RPC requests rejected or timed out at a concurrency cap (the EVM-execution admission gate, a module pool, or the override-environment limit). A nonzero rate means callers receive 'Too many requests'.")]
+        [Description("Number of JSON RPC requests rejected or timed out at the EVM-execution admission gate or at a module, shared-request, execution-environment, or synchronous-transaction concurrency limit.")]
         public static long JsonRpcOverloadRejections => _jsonRpcOverloadRejections;
         private static long _jsonRpcOverloadRejections;
         internal static void IncrementJsonRpcOverloadRejections() => Interlocked.Increment(ref _jsonRpcOverloadRejections);
