@@ -28,7 +28,11 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly Dictionary<Hash256, InclusionListAnswer> _inclusionListAnswers = [];
     private readonly Dictionary<Hash256, RetainedInclusionList> _retainedInclusionLists = [];
     private readonly Dictionary<Hash256, int> _inclusionListChildCounts = [];
-    private readonly IBlockTree? _inclusionListBlockTree = blockTree;
+    // bogota.md mandates retaining ACCEPTED tips; only best-effort SYNCING lists can be evicted.
+    private readonly LinkedList<Hash256> _syncingInclusionListOrder = new();
+    private readonly Dictionary<Hash256, LinkedListNode<Hash256>> _syncingInclusionListNodes = [];
+    private readonly IBlockTree _inclusionListBlockTree = blockTree;
+    private const int MaxRetainedSyncingInclusionLists = 64;
     private ulong _finalizedInclusionListNumber;
     private Hash256? _finalizedInclusionListHash;
 
@@ -209,7 +213,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
-    private void SetRetainedInclusionList(Hash256 blockHash, Hash256 parentHash, ulong number, byte[][] retained, bool accepted)
+    internal void SetRetainedInclusionList(Hash256 blockHash, Hash256 parentHash, ulong number, byte[][] retained, bool accepted)
     {
         lock (_inclusionListLock)
         {
@@ -225,7 +229,28 @@ public partial class EngineRpcModule : IEngineRpcModule
             RemoveRetainedInclusionList(blockHash);
             _retainedInclusionLists[blockHash] = new RetainedInclusionList(parentHash, number, retained, accepted);
             if (accepted) TrackInclusionListChild(parentHash);
+            else
+            {
+                _syncingInclusionListNodes[blockHash] = _syncingInclusionListOrder.AddLast(blockHash);
+                if (_syncingInclusionListNodes.Count > MaxRetainedSyncingInclusionLists)
+                    RemoveRetainedInclusionList(_syncingInclusionListOrder.First!.Value);
+            }
         }
+    }
+
+    internal bool HasRetainedInclusionList(Hash256 blockHash)
+    {
+        lock (_inclusionListLock) return _retainedInclusionLists.ContainsKey(blockHash);
+    }
+
+    internal int RetainedInclusionListCount
+    {
+        get { lock (_inclusionListLock) return _retainedInclusionLists.Count; }
+    }
+
+    internal bool HasInclusionListAnswer(Hash256 blockHash)
+    {
+        lock (_inclusionListLock) return _inclusionListAnswers.ContainsKey(blockHash);
     }
 
     /// <summary>Stores what evaluating <paramref name="retained"/> established for <paramref name="blockHash"/>,
@@ -259,7 +284,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private void PruneFinalizedInclusionLists(Hash256 finalizedHash)
     {
-        if (finalizedHash == Hash256.Zero || _inclusionListBlockTree?.FindHeader(finalizedHash,
+        if (finalizedHash == Hash256.Zero || _inclusionListBlockTree.FindHeader(finalizedHash,
                 BlockTreeLookupOptions.DoNotCreateLevelIfMissing) is not { Number: ulong number }) return;
 
         lock (_inclusionListLock)
@@ -291,8 +316,13 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private void RemoveRetainedInclusionList(Hash256 blockHash)
     {
-        if (_retainedInclusionLists.Remove(blockHash, out RetainedInclusionList entry) && entry.Accepted)
-            UntrackInclusionListChild(entry.ParentHash);
+        if (!_retainedInclusionLists.Remove(blockHash, out RetainedInclusionList entry)) return;
+        if (entry.Accepted) UntrackInclusionListChild(entry.ParentHash);
+        else
+        {
+            _syncingInclusionListOrder.Remove(_syncingInclusionListNodes[blockHash]);
+            _syncingInclusionListNodes.Remove(blockHash);
+        }
     }
 
     private void RemoveInclusionListAnswer(Hash256 blockHash)

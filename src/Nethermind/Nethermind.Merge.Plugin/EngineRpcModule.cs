@@ -50,7 +50,7 @@ public partial class EngineRpcModule(
     GCKeeper gcKeeper,
     IBlockProcessingQueue processingQueue,
     ILogManager logManager,
-    IBlockTree? blockTree = null) : IEngineRpcModule
+    IBlockTree blockTree) : IEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
     /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>
@@ -82,7 +82,8 @@ public partial class EngineRpcModule(
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         IBlockProcessingQueue processingQueue,
-        ILogManager logManager)
+        ILogManager logManager,
+        IBlockTree blockTree)
         : this(
             getPayloadHandlerV1,
             getPayloadHandlerV2,
@@ -112,7 +113,8 @@ public partial class EngineRpcModule(
             specProvider,
             gcKeeper,
             processingQueue,
-            logManager)
+            logManager,
+            blockTree)
     {
     }
 

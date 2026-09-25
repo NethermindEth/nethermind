@@ -517,7 +517,8 @@ public partial class EngineModuleTests
                 chain.SpecProvider,
                 chain.Container.Resolve<GCKeeper>(),
                 chain.BlockProcessingQueue,
-                Substitute.For<ILogManager>()));
+                Substitute.For<ILogManager>(),
+                chain.BlockTree));
         }
 
 

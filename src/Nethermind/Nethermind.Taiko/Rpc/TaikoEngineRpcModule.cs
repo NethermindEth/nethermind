@@ -67,6 +67,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
+        IBlockTree blockTree,
         IShareableTxProcessorSource txProcessorSource,
         IRlpDecoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore,
@@ -99,7 +100,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                 specProvider,
                 gcKeeper,
                 processingQueue,
-                logManager), ITaikoEngineRpcModule
+                logManager,
+                blockTree), ITaikoEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
     /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>
@@ -134,6 +136,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         ILogManager logManager,
         ITxPool txPool,
         IBlockFinder blockFinder,
+        IBlockTree blockTree,
         IShareableTxProcessorSource txProcessorSource,
         IRlpDecoder<Transaction> txDecoder,
         IL1OriginStore l1OriginStore,
@@ -170,6 +173,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             logManager,
             txPool,
             blockFinder,
+            blockTree,
             txProcessorSource,
             txDecoder,
             l1OriginStore,
