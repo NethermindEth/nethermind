@@ -1512,7 +1512,7 @@ public class EthSimulateTestsBlocksAndTransactions
         // first and leaves the second short only while both dimensions deplete it; counting execution alone
         // would leave ~173k and let both writes through, spending ~250k against a 200k cap.
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder,
-            new JsonRpcConfig { GasCap = TwoSstoreRequestGasCap }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+            new JsonRpcConfig { GasCap = TwoSstoreRequestGasCap, Timeout = -1 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
