@@ -264,10 +264,11 @@ internal static partial class TrieUpdater<TKey, TPath>
             ? reader.StoredPositions & ~(1u << PbtFourLevelGroupGeometry.RootPosition)
             : 0;
         writer.ReserveFirstBuffer(reader.PayloadLength);
-        SortedWalk<TFrame> walk = new(context, ref reader, ref hashes, writer, path, input, stored);
+        SortedWalk<TFrame> walk = new(context, ref reader, ref hashes, writer, path, input, stored, operations);
         try
         {
-            ComposedNode root = Walk(ref walk, default, input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource), operations);
+            ComposedNode root = Walk(ref walk, default, input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource));
+            Debug.Assert(walk.Next == operations.Length, "The walk consumes every operation of its frame.");
             return root.IsEmpty ? default : Land(ref reader, ref hashes, writer, root, PbtFourLevelGroupGeometry.RootPosition, context.Metrics);
         }
         finally
@@ -367,35 +368,45 @@ internal static partial class TrieUpdater<TKey, TPath>
     }
 
     /// <summary>Composes the node at <paramref name="local"/> from its <paramref name="cover"/> and the operations below it, appending it to the group.</summary>
-    /// <remarks>Mirrors one frame of <see cref="Compose"/>: the returned node is the writer's last entry, or empty.</remarks>
+    /// <remarks>
+    /// Mirrors one frame of <see cref="Compose"/>: the returned node is the writer's last entry, or empty. The operations
+    /// below <paramref name="local"/> are the ones at the walk's cursor sharing its path, which this call consumes.
+    /// </remarks>
     [SkipLocalsInit]
-    private static ComposedNode Walk<TFrame>(scoped ref SortedWalk<TFrame> walk, NodeGroupPath local, Cover cover, ReadOnlySpan<PbtWriteOperation<TKey>> operations)
+    private static ComposedNode Walk<TFrame>(scoped ref SortedWalk<TFrame> walk, NodeGroupPath local, Cover cover)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        if (operations.IsEmpty) return AppendUntouched(ref walk, local, cover);
-        if (local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup) return FoldSlot(ref walk, local, cover, operations);
-        if (operations.Length == 1 && (cover.IsEmpty || walk.IsLeaf(cover)) && TryWalkSingle(ref walk, local, cover, operations[0], out ComposedNode single))
+        if (!walk.Owns(walk.Next, local)) return AppendUntouched(ref walk, local, cover);
+        if (local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup) return FoldSlot(ref walk, local, cover, walk.Take(local));
+        if ((cover.IsEmpty || walk.IsLeaf(cover)) && !walk.Owns(walk.Next + 1, local)
+            && TryWalkSingle(ref walk, local, cover, walk.Operations[walk.Next], out ComposedNode single))
+        {
+            walk.Next++;
             return single;
+        }
 
-        int depth = walk.BitDepth + local.Length;
-        int split = SplitIndex(operations, depth);
         walk.ChildCovers(local, cover, out Cover leftCover, out Cover rightCover);
         int position = local.Position;
         // Two touched boundary nodes each need their old hash to key the group below, so both are hashed together.
-        if (local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup - 1 && split != 0 && split != operations.Length
-            && leftCover.Kind == CoverKind.Stored && rightCover.Kind == CoverKind.Stored)
+        if (local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup - 1 && leftCover.Kind == CoverKind.Stored && rightCover.Kind == CoverKind.Stored
+            && walk.Owns(walk.Next, local.Left) && walk.Owns(walk.Next + walk.CountOwned(walk.Next, local.Left), local.Right))
             walk.Hashes.GetChildHashesPaired(ref walk.Reader, position - local.Width, position - 1, walk.Context.Metrics, out _, out _);
-        ComposedNode left = Walk(ref walk, local.Left, leftCover, operations[..split]);
-        ReadOnlySpan<PbtWriteOperation<TKey>> rightOperations = operations[split..];
+        ComposedNode left = Walk(ref walk, local.Left, leftCover);
+        // Whatever the cursor still holds under this position lies on the right.
         bool rightIsEmpty = rightCover.IsEmpty
-            ? !HasSet(rightOperations)
-            : !left.IsEmpty && !rightOperations.IsEmpty && !HasSet(rightOperations) && !Survives(ref walk, local.Right, rightCover, rightOperations);
-        if (rightIsEmpty) return left.IsEmpty ? default : left.Rise(position - local.Width, 0);
+            ? !walk.HasSet(local.Right)
+            : !left.IsEmpty && walk.Owns(walk.Next, local.Right) && !walk.HasSet(local.Right) && !Survives(ref walk, local.Right, rightCover, walk.Peek(local.Right));
+        if (rightIsEmpty)
+        {
+            // Deletions that remove the whole right half, or find nothing there, leave no node to walk.
+            walk.Next += walk.CountOwned(walk.Next, local.Right);
+            return left.IsEmpty ? default : left.Rise(position - local.Width, 0);
+        }
 
         TrieUpdaterMetrics? metrics = walk.Context.Metrics;
         if (left.IsEmpty)
         {
-            ComposedNode only = Walk(ref walk, local.Right, rightCover, rightOperations);
+            ComposedNode only = Walk(ref walk, local.Right, rightCover);
             return only.IsEmpty ? default : only.Rise(position - 1, 1);
         }
 
@@ -403,7 +414,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         int leftPosition = position - local.Width;
         OmittedPreimage omittedLeft = default;
         bool leftPending = SettleLeftSorted(walk.Writer, walk.Path, leftPosition, left.RiseBitCount == 0 ? left : Land(ref walk.Reader, ref walk.Hashes, walk.Writer, left, leftPosition, metrics), ref frame, omittedLeft);
-        ComposedNode right = Walk(ref walk, local.Right, rightCover, rightOperations);
+        ComposedNode right = Walk(ref walk, local.Right, rightCover);
         Debug.Assert(!right.IsEmpty, "A right half known to survive composes a node.");
         return AppendBranchSorted(walk.Writer, walk.Path, position, right.RiseBitCount == 0 ? right : Land(ref walk.Reader, ref walk.Hashes, walk.Writer, right, position - 1, metrics), ref frame,
             leftPending ? (ReadOnlySpan<byte>)omittedLeft : default, metrics);
@@ -678,32 +689,10 @@ internal static partial class TrieUpdater<TKey, TPath>
             return !result.IsEmpty;
         }
 
-        int split = SplitIndex(operations, walk.BitDepth + local.Length);
+        int split = SortedWalk<TFrame>.CountOwned(operations, 0, local.Left, walk.BitDepth);
         walk.ChildCovers(local, cover, out Cover leftCover, out Cover rightCover);
         if ((split == 0 && !leftCover.IsEmpty) || (split == operations.Length && !rightCover.IsEmpty)) return true;
         return Survives(ref walk, local.Left, leftCover, operations[..split]) || Survives(ref walk, local.Right, rightCover, operations[split..]);
-    }
-
-    /// <summary>The index of the first operation whose key has a one at <paramref name="bit"/>, which every key of the range reaches.</summary>
-    private static int SplitIndex(ReadOnlySpan<PbtWriteOperation<TKey>> operations, int bit)
-    {
-        int low = 0;
-        int high = operations.Length;
-        while (high - low > 8)
-        {
-            int middle = (low + high) >>> 1;
-            if (operations[middle].Key.GetBit(bit) == 0) low = middle + 1;
-            else high = middle;
-        }
-        while (low < high && operations[low].Key.GetBit(bit) == 0) low++;
-        return low;
-    }
-
-    private static bool HasSet(ReadOnlySpan<PbtWriteOperation<TKey>> operations)
-    {
-        foreach (ref readonly PbtWriteOperation<TKey> operation in operations)
-            if (operation.Value != default) return true;
-        return false;
     }
 
     private static bool Contains(ReadOnlySpan<PbtWriteOperation<TKey>> operations, TKey key)
@@ -759,10 +748,50 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal byte[]? FoldedAhead;
         internal SlotNode[]? FoldedAheadNodes;
         internal int FoldedAheadMask;
+        /// <summary>The frame's operations, in key order.</summary>
+        internal readonly ReadOnlySpan<PbtWriteOperation<TKey>> Operations;
+        /// <summary>The index of the first operation no position has consumed yet.</summary>
+        internal int Next;
+
+        /// <summary>Whether the operation at <paramref name="index"/> lies under <paramref name="local"/>.</summary>
+        internal readonly bool Owns(int index, NodeGroupPath local) => index < Operations.Length && Owns(Operations[index], local, BitDepth);
+
+        private static bool Owns(in PbtWriteOperation<TKey> operation, NodeGroupPath local, int bitDepth) =>
+            ((BoundarySlot(operation.Key.Bytes, bitDepth) ^ local.Slot) >> (PbtFourLevelGroupGeometry.LevelsPerGroup - local.Length)) == 0;
+
+        /// <summary>How many operations from <paramref name="start"/> on lie under <paramref name="local"/>.</summary>
+        internal readonly int CountOwned(int start, NodeGroupPath local) => CountOwned(Operations, start, local, BitDepth);
+
+        internal static int CountOwned(ReadOnlySpan<PbtWriteOperation<TKey>> operations, int start, NodeGroupPath local, int bitDepth)
+        {
+            int end = start;
+            while (end < operations.Length && Owns(operations[end], local, bitDepth)) end++;
+            return end - start;
+        }
+
+        /// <summary>The operations at the cursor under <paramref name="local"/>, left unconsumed.</summary>
+        internal readonly ReadOnlySpan<PbtWriteOperation<TKey>> Peek(NodeGroupPath local) => Operations.Slice(Next, CountOwned(Next, local));
+
+        /// <summary>Consumes the operations at the cursor under <paramref name="local"/>.</summary>
+        internal ReadOnlySpan<PbtWriteOperation<TKey>> Take(NodeGroupPath local)
+        {
+            ReadOnlySpan<PbtWriteOperation<TKey>> taken = Peek(local);
+            Next += taken.Length;
+            return taken;
+        }
+
+        /// <summary>Whether any operation at the cursor under <paramref name="local"/> sets a value rather than deleting one.</summary>
+        internal readonly bool HasSet(NodeGroupPath local)
+        {
+            for (int index = Next; index < Operations.Length && Owns(Operations[index], local, BitDepth); index++)
+                if (Operations[index].Value != default) return true;
+            return false;
+        }
 
         internal SortedWalk(FoldContext context, ref TFrame reader, ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
-            PbtTraversalPath path, in BoundaryNode input, uint stored)
+            PbtTraversalPath path, in BoundaryNode input, uint stored, ReadOnlySpan<PbtWriteOperation<TKey>> operations)
         {
+            Operations = operations;
             Context = context;
             Reader = ref reader;
             Hashes = ref hashes;
