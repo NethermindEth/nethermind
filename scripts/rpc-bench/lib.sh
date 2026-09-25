@@ -266,14 +266,15 @@ DOTNET_DUMP_REPORTS=(
 )
 
 # Write a heap dump of the client in container $1 to $DIAG_DIR/dotnet-dump/$2. The client is paused
-# while the dump is written. Must run while the container is still up.
+# while the dump is written. Must run while the container is still up. Leaves the container's .NET root
+# in DOTNET_DUMP_ROOT for analyze_dotnet_dump, which runs the same apphost in the same image.
 collect_dotnet_dump() {
-  local container="$1" dump_name="$2" dotnet_root
-  dotnet_root="$(container_dotnet_root "$container")" || {
+  local container="$1" dump_name="$2"
+  DOTNET_DUMP_ROOT="$(container_dotnet_root "$container")" || {
     log "ERROR: no .NET root with host/fxr found inside $container — the dotnet-dump apphost cannot run there"
     return 1
   }
-  timeout "$DOTNET_DUMP_TIMEOUT" docker exec -e "DOTNET_ROOT=$dotnet_root" -e DOTNET_ROLL_FORWARD=Major "$container" \
+  timeout "$DOTNET_DUMP_TIMEOUT" docker exec -e "DOTNET_ROOT=$DOTNET_DUMP_ROOT" -e DOTNET_ROLL_FORWARD=Major "$container" \
     "$DOTNET_DUMP_CONTAINER_PATH/dotnet-dump" collect --name nethermind --type Heap \
     --output "$DOTNET_DUMP_OUTPUT_PATH/$dump_name" </dev/null || return 1
   # Written 0600 by the client's user; the analysis container and the archive step read it.
@@ -290,7 +291,7 @@ analyze_dotnet_dump() {
     if ! timeout "$DOTNET_DUMP_TIMEOUT" docker run --rm --network none \
         -v "$DOTNET_DUMP_HOST_PATH:$DOTNET_DUMP_CONTAINER_PATH:ro" \
         -v "$dump_dir:$DOTNET_DUMP_OUTPUT_PATH:ro" \
-        --entrypoint /usr/bin/env "$image" DOTNET_ROLL_FORWARD=Major \
+        --entrypoint /usr/bin/env "$image" "DOTNET_ROOT=$DOTNET_DUMP_ROOT" DOTNET_ROLL_FORWARD=Major \
         "$DOTNET_DUMP_CONTAINER_PATH/dotnet-dump" analyze "$DOTNET_DUMP_OUTPUT_PATH/$dump_name" \
         --command "$command" --command exit > "$dump_dir/$name.txt" 2>&1 </dev/null; then
       log "ERROR: dotnet-dump report '$name' failed"

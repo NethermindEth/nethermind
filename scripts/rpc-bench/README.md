@@ -872,7 +872,8 @@ builds for retention. The tool is the `dotnet-dump` global tool, installed on th
 bind-mounted read-only into the container, like dotnet-trace. The `dotnet-dump-rpcbench` artifact
 holds the reports only: the dump itself runs to several GB and is deleted after the analysis,
 unless `DOTNET_DUMP_KEEP=true` leaves it under `<diag dir>/dotnet-dump/` on the runner. A failed
-dump or report fails the run.
+dump or report fails the run. The node image needs `/usr/bin/env` and `chmod`, so the chiseled image is
+not supported.
 
 ## Runner prerequisites
 
