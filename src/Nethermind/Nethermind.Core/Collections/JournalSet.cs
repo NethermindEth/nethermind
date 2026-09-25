@@ -20,6 +20,15 @@ namespace Nethermind.Core.Collections
     {
         private readonly List<T> _items = [];
         private readonly HashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
+        private readonly bool _useSparseClear;
+
+        /// <summary>
+        /// Initializes a journal set, optionally retaining sparse clear storage for reuse.
+        /// </summary>
+        /// <param name="equalityComparer">Comparer used to determine whether items are already present.</param>
+        /// <param name="useSparseClear">Whether to remove individual items on small clears instead of clearing the whole backing set.</param>
+        public JournalSet(EqualityComparer<T> equalityComparer, bool useSparseClear) : this(equalityComparer)
+            => _useSparseClear = useSparseClear;
 
         public int TakeSnapshot() => Position;
 
@@ -60,8 +69,19 @@ namespace Nethermind.Core.Collections
 
         public void Clear()
         {
+            if (_useSparseClear && _items.Count <= _set.Capacity / 8)
+            {
+                foreach (T item in _items)
+                {
+                    _set.Remove(item);
+                }
+            }
+            else
+            {
+                _set.Clear();
+            }
+
             _items.Clear();
-            _set.Clear();
         }
 
         /// <summary>Enumerates the items in the order they were first added, excluding those dropped by <see cref="Restore"/>.</summary>
