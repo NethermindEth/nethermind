@@ -57,15 +57,20 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
                 : result;
         }
 
-        if (!MemoizeResolvedCode)
+        // Precompiles are never remembered, so they skip the probe as well.
+        if (!MemoizeResolvedCode || codeSource.CouldBePrecompile())
             return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
 
-        if (_resolved.TryGetValue(codeSource, out CodeInfo? remembered)) return remembered;
+        if (_resolved.TryGetValue(codeSource, out CodeInfo? remembered))
+        {
+            // Counted like the inner repository's own memo and LRU hits.
+            Nethermind.Evm.Metrics.IncrementCodeDbCache();
+            return remembered;
+        }
 
         CodeInfo resolved = codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
         if (delegationAddress is null &&
             resolved.Precompile is null &&
-            !codeSource.CouldBePrecompile() &&
             !ICodeInfoRepository.TryGetDelegatedAddress(resolved.CodeSpan, out _) &&
             !_codeWritten.Contains(codeSource) &&
             _resolved.Count < MaxRemembered)
