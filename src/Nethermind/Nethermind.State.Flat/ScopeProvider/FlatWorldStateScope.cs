@@ -34,7 +34,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // Built on the first account warm-up: a prewarm scope, created per warm-up job, sends its hints to the main scope.
     private PatriciaTree? _warmupStateTree;
     private readonly Hash256 _initialStateRoot;
-    private readonly StateTree _stateTree;
+    // Built on the first write, commit with changes, or trie verification: prewarm scopes only read, through the bundle.
+    private StateTree? _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
@@ -74,13 +75,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _initialStateRoot = currentStateId.StateRoot.ToCommitment();
-        _stateTree = new(
-            new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
-            logManager
-        )
-        {
-            RootHash = _initialStateRoot
-        };
 
         _configuration = configuration;
         _warmReadPool = warmReadPool;
@@ -152,11 +146,23 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public Hash256 RootHash => _stateTree.RootHash;
+    private StateTree StateTree => Volatile.Read(ref _stateTree) ?? CreateStateTree();
+
+    private StateTree CreateStateTree()
+    {
+        StateTree tree = new(new StateTrieStoreAdapter(_snapshotBundle, _concurrencyQuota), _logManager)
+        {
+            RootHash = _initialStateRoot
+        };
+        return Interlocked.CompareExchange(ref _stateTree, tree, null) ?? tree;
+    }
+
+    // Until something writes, the tree would still be at the root the scope was opened with.
+    public Hash256 RootHash => Volatile.Read(ref _stateTree)?.RootHash ?? _initialStateRoot;
 
     public void UpdateRootHash()
     {
-        if (!_trieless) _stateTree.UpdateRootHash();
+        if (!_trieless) Volatile.Read(ref _stateTree)?.UpdateRootHash();
     }
 
     public Account? Get(Address address)
@@ -170,7 +176,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // and a historical value verified against the current trie would be wrong anyway.
         if (_configuration.VerifyWithTrie && !_trieless)
         {
-            Account? accTrie = _stateTree.Get(address);
+            Account? accTrie = StateTree.Get(address);
             if (accTrie != account)
             {
                 throw new TrieException($"Incorrect account {address}, account hash {address.ToAccountPath}, trie: {accTrie} vs flat: {account}");
@@ -484,7 +490,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
-        if (!_trieless) _stateTree.Commit();
+        // No tree means nothing was written, so there is nothing to commit.
+        if (!_trieless) Volatile.Read(ref _stateTree)?.Commit();
 
         _storages.Clear();
         _hintWarmStorages?.Clear();
@@ -587,11 +594,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 {
                     if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
                     {
-                        scope._stateTree.SetAccounts(_dirtyAccounts);
+                        scope.StateTree.SetAccounts(_dirtyAccounts);
                     }
                     else
                     {
-                        using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+                        using StateTree.StateTreeBulkSetter stateSetter = scope.StateTree.BeginSet(_dirtyAccounts.Count);
                         foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                         {
                             stateSetter.Set(kv.Key, kv.Value);
