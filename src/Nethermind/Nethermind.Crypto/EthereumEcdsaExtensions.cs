@@ -15,6 +15,9 @@ public static class EthereumEcdsaExtensions
 {
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
+    /// <summary>The RLP encoding of an empty byte array, which a legacy signing payload uses for r and s.</summary>
+    private const byte EmptyArrayByte = 128;
+
     /// <remarks>
     /// Cross-context cache of recovered senders keyed by transaction hash: a transaction recovered
     /// on mempool ingress becomes a lookup on block arrival. Legacy transactions are excluded —
@@ -183,8 +186,8 @@ public static class EthereumEcdsaExtensions
     /// A transaction's signed payload is its encoding without the trailing three signature items, so the hash
     /// can be taken over bytes that are already on the wire plus a shorter sequence header - and, for a legacy
     /// EIP-155 transaction, the chain id triplet that replaces the signature. That skips a full re-encode of the
-    /// transaction, which is the bulk of recovery's cost inside a zkVM guest. Writes no heap allocation: the key
-    /// goes to the caller's buffer.
+    /// transaction, which is the bulk of recovery's cost inside a zkVM guest, and allocates nothing: the key goes
+    /// to the caller's buffer.
     /// </remarks>
     public static bool TryRecoverPublicKey(
         this IEthereumEcdsa ecdsa, Transaction tx, ReadOnlySpan<byte> encoded, Span<byte> publicKey, bool useSignatureChainId = false)
@@ -216,14 +219,12 @@ public static class EthereumEcdsaExtensions
         {
             writer.Encode(chainId);
             // The two empty byte arrays standing in for r and s, as LegacyTxDecoder encodes them.
-            WriteByte(ref writer, EmptyByteArray);
-            WriteByte(ref writer, EmptyByteArray);
+            WriteByte(ref writer, EmptyArrayByte);
+            WriteByte(ref writer, EmptyArrayByte);
         }
 
         return writer.GetValueHash();
     }
-
-    private const byte EmptyByteArray = 128;
 
     // The write primitives are explicit interface implementations, so they are reached through the constraint.
     private static void WriteByte<TWriter>(ref TWriter writer, byte value)
