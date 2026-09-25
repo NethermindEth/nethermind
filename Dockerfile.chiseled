@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.401-resolute@sha256:d818bb3014d94172e93820d985130135870bd1760f02588a61263a85c966860e AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0.100-rc.1-resolute@sha256:ab11199f8a0cded1d667111a0d4f0906567c3a17348a7181f9781d12cc5eb6f9 AS build
 
 ARG BUILD_CONFIG=release
 ARG CI=true
@@ -21,7 +21,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \
   dotnet restore --locked-mode && \
   dotnet publish -c $BUILD_CONFIG -a $arch -o /publish --no-restore --no-self-contained \
-    -p:SourceRevisionId=$COMMIT_HASH
+  -p:SourceRevisionId=$COMMIT_HASH
 
 # Creating these directories here is needed to ensure the correct permissions
 RUN cd /publish && \
@@ -29,7 +29,7 @@ RUN cd /publish && \
   mkdir logs && \
   mkdir nethermind_db
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.12-resolute-chiseled@sha256:99a0fe6f3e933a3d170aa38d8be4237125b72c644a9229889ee842628cbaf845
+FROM mcr.microsoft.com/dotnet/aspnet:11.0.0-rc.1-resolute-chiseled@sha256:ec752d908262db3ed7fe5cd7baad2dc97373c0bd390456a50bda8aaa866fc93d
 
 ARG COMMIT_HASH=unknown
 ARG VERSION=unknown

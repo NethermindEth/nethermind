@@ -25,11 +25,11 @@ namespace Nethermind.JsonRpc.Modules.TxPool
             Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> source,
             in TransactionForRpcContext extraData)
         {
-            Dictionary<string, Dictionary<ulong, TransactionForRpc>> result = new(source.Count);
+            Dictionary<string, Dictionary<ulong, TransactionForRpc>> result = [with(source.Count)];
             foreach (KeyValuePair<AddressAsKey, IDictionary<ulong, Transaction>> byAddress in source)
             {
                 string key = ((Address)byAddress.Key).ToString(withZeroX: true, withEip55Checksum: true);
-                Dictionary<ulong, TransactionForRpc> txsByNonce = new(byAddress.Value.Count);
+                Dictionary<ulong, TransactionForRpc> txsByNonce = [with(byAddress.Value.Count)];
                 foreach (KeyValuePair<ulong, Transaction> kv in byAddress.Value)
                     txsByNonce[kv.Key] = TransactionForRpc.FromTransaction(kv.Value, extraData);
                 result[key] = txsByNonce;

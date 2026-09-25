@@ -125,7 +125,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalSet<StorageCell> AccessedStorageCells { get; } = new(StorageCell.EqualityComparer);
         public JournalCollection<LogEntry> Logs { get; } = [];
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
-        public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
+        public HashSet<AddressAsKey> CreateList { get; } = [with(AddressAsKey.EqualityComparer)];
 
         private StorageCell _lastWarmCell;
         private bool _hasLastWarmCell;

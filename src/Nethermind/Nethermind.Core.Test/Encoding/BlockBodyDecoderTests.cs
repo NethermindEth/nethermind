@@ -22,7 +22,7 @@ public class BlockBodyDecoderTests
             ? blockDecoder.Encode(new Block(Build.A.BlockHeader.TestObject, body)).Bytes
             : BlockBodyDecoder.Instance.Encode(body).Bytes;
 
-        HashSet<Transaction> pooled = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        HashSet<Transaction> pooled = [with(System.Collections.Generic.ReferenceEqualityComparer.Instance)];
         for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
         foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
 

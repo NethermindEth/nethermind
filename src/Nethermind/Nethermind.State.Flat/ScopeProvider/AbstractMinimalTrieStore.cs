@@ -105,7 +105,7 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 
         private sealed class NodeBufferPoolPolicy : IPooledObjectPolicy<NodeBuffer>
         {
-            public NodeBuffer Create() => new(InitialNodeBufferCapacity);
+            public NodeBuffer Create() => [with(InitialNodeBufferCapacity)];
 
             public bool Return(NodeBuffer buffer)
             {

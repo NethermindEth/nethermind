@@ -380,7 +380,7 @@ internal class VotesManager : IVotesManager, IDisposable
         out string? error)
     {
         //TODO: try to minimize number of allocations, at least for common cases
-        Dictionary<Address, int> signedBy = new(allowedSigners.Count);
+        Dictionary<Address, int> signedBy = [with(allowedSigners.Count)];
         foreach (Address signer in allowedSigners)
             signedBy.TryAdd(signer, 0);
 

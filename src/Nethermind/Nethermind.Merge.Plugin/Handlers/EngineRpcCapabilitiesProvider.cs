@@ -44,7 +44,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         if (_combined is not null) return _combined;
         EnsureBuilt();
 
-        Dictionary<string, RpcCapabilityOptions> combined = new(_jsonRpc!.Count + _ssz!.Count);
+        Dictionary<string, RpcCapabilityOptions> combined = [with(_jsonRpc!.Count + _ssz!.Count)];
         foreach ((string k, RpcCapabilityOptions v) in _jsonRpc) combined[k] = v;
         foreach ((string k, RpcCapabilityOptions v) in _ssz) combined[k] = v;
         return _combined = combined.ToFrozenDictionary();

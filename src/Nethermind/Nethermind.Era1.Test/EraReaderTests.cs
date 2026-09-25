@@ -77,7 +77,7 @@ internal class EraReaderTests
     {
         Transaction source = Build.A.Transaction.Signed().TestObject;
         using PopulatedTestFile file = await PopulatedTestFile.Create(source);
-        HashSet<Transaction> pooled = new(ReferenceEqualityComparer.Instance);
+        HashSet<Transaction> pooled = [with(ReferenceEqualityComparer.Instance)];
         for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
         foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
 

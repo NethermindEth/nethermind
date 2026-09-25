@@ -19,32 +19,36 @@ internal static partial class InstructionAnnotator
     private static partial Regex ZeroOperandRegex();
 
     // 64-bit registers
-    private static readonly HashSet<string> Regs64 = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> Regs64 =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rsp", "rbp",
         "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
-    };
+    ];
 
     // 32-bit registers
-    private static readonly HashSet<string> Regs32 = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> Regs32 =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "eax", "ebx", "ecx", "edx", "esi", "edi", "esp", "ebp",
         "r8d", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d"
-    };
+    ];
 
     // 16-bit registers
-    private static readonly HashSet<string> Regs16 = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> Regs16 =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "ax", "bx", "cx", "dx", "si", "di", "sp", "bp",
         "r8w", "r9w", "r10w", "r11w", "r12w", "r13w", "r14w", "r15w"
-    };
+    ];
 
     // 8-bit registers
-    private static readonly HashSet<string> Regs8 = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> Regs8 =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "al", "bl", "cl", "dl", "sil", "dil", "spl", "bpl", "ah", "bh", "ch", "dh",
         "r8b", "r9b", "r10b", "r11b", "r12b", "r13b", "r14b", "r15b"
-    };
+    ];
 
     // JIT mnemonic → uops.info mnemonic mapping for conditional jumps
     // JIT uses Intel-style aliases (je, jne, ja, etc.) but uops.info uses the
@@ -179,7 +183,7 @@ internal static partial class InstructionAnnotator
     /// </summary>
     private static List<string> JoinContinuationLines(string[] rawLines)
     {
-        List<string> result = new(rawLines.Length);
+        List<string> result = [with(rawLines.Length)];
         for (int i = 0; i < rawLines.Length; i++)
         {
             string line = rawLines[i].TrimEnd('\r');

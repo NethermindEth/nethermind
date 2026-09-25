@@ -149,7 +149,7 @@ internal static class Program
     private static string[] GetSourceGeneratedTypes(List<ITypeSymbol> typeSymbols, IAssemblySymbol currentAssembly)
     {
         JsonContextEligibility eligibility = new(currentAssembly);
-        Dictionary<string, JsonTypeCandidate> candidatesByDisplayName = new(StringComparer.Ordinal);
+        Dictionary<string, JsonTypeCandidate> candidatesByDisplayName = [with(StringComparer.Ordinal)];
 
         for (int i = 0; i < typeSymbols.Count; i++)
         {
@@ -163,7 +163,7 @@ internal static class Program
         }
 
         HashSet<string> collidingGeneratedTypeNames = GetCollidingGeneratedTypeNames(candidatesByDisplayName.Values);
-        List<string> filteredTypes = new(candidatesByDisplayName.Count);
+        List<string> filteredTypes = [with(candidatesByDisplayName.Count)];
         foreach (JsonTypeCandidate candidate in candidatesByDisplayName.Values)
         {
             if (!collidingGeneratedTypeNames.Overlaps(candidate.GeneratedTypeNames.Keys))
@@ -178,8 +178,8 @@ internal static class Program
 
     private static HashSet<string> GetCollidingGeneratedTypeNames(IEnumerable<JsonTypeCandidate> candidates)
     {
-        Dictionary<string, string> ownerByGeneratedName = new(StringComparer.Ordinal);
-        HashSet<string> collisions = new(StringComparer.Ordinal);
+        Dictionary<string, string> ownerByGeneratedName = [with(StringComparer.Ordinal)];
+        HashSet<string> collisions = [with(StringComparer.Ordinal)];
 
         foreach (JsonTypeCandidate candidate in candidates)
         {
@@ -224,8 +224,8 @@ internal static class Program
                 return null;
             }
 
-            Dictionary<string, string> generatedTypeNames = new(StringComparer.Ordinal);
-            HashSet<string> visitedTypes = new(StringComparer.Ordinal);
+            Dictionary<string, string> generatedTypeNames = [with(StringComparer.Ordinal)];
+            HashSet<string> visitedTypes = [with(StringComparer.Ordinal)];
             return CanGenerateMetadata(type, generatedTypeNames, visitedTypes)
                 ? new JsonTypeCandidate(displayName, generatedTypeNames)
                 : null;
@@ -501,7 +501,7 @@ internal static class Program
         }
 
         string[] lines = File.ReadAllLines(path);
-        List<string> existing = new(lines.Length);
+        List<string> existing = [with(lines.Length)];
         for (int i = 0; i < lines.Length; i++)
         {
             string line = lines[i];
@@ -525,7 +525,7 @@ internal static class Program
     {
         public static Arguments Parse(string[] args)
         {
-            Dictionary<string, string> values = new(StringComparer.Ordinal);
+            Dictionary<string, string> values = [with(StringComparer.Ordinal)];
             for (int i = 0; i < args.Length; i += 2)
             {
                 if (i + 1 >= args.Length || !args[i].StartsWith("--", StringComparison.Ordinal))

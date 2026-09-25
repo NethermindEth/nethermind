@@ -444,8 +444,8 @@ public class TxPoolSourceTests
         TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
 
         Transaction[] invalidBlobs = new Transaction[invalidBlobCount];
-        Dictionary<AddressAsKey, Transaction[]> pendingBlobTransactions = new(invalidBlobCount + 1);
-        Dictionary<ValueHash256, Transaction> fullBlobTransactions = new(invalidBlobCount + 1);
+        Dictionary<AddressAsKey, Transaction[]> pendingBlobTransactions = [with(invalidBlobCount + 1)];
+        Dictionary<ValueHash256, Transaction> fullBlobTransactions = [with(invalidBlobCount + 1)];
         for (int i = 0; i < invalidBlobs.Length; i++)
         {
             UInt256 fee = 2.GWei + (UInt256)(invalidBlobCount - i);
@@ -534,7 +534,7 @@ public class TxPoolSourceTests
             .WithMaxPriorityFeePerGas(1.GWei)
             .SignedAndResolved(TestItem.PrivateKeys[invalidBlobCount])
             .TestObject;
-        Dictionary<AddressAsKey, Transaction[]> pendingBlobTransactions = new(invalidBlobCount + 1);
+        Dictionary<AddressAsKey, Transaction[]> pendingBlobTransactions = [with(invalidBlobCount + 1)];
         LightTransaction[] invalidBlobs = new LightTransaction[invalidBlobCount];
         for (int i = 0; i < invalidBlobs.Length; i++)
         {

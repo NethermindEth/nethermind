@@ -149,7 +149,7 @@ namespace Nethermind.Synchronization.Peers
                 using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(Timeouts.DefaultFetchHeaderTimeout);
 
-                List<Task<BlockHeader?>> requests = new(syncPeerPool.InitializedPeersCount);
+                List<Task<BlockHeader?>> requests = [with(syncPeerPool.InitializedPeersCount)];
                 foreach (PeerInfo peer in syncPeerPool.InitializedPeers)
                 {
                     requests.Add(FetchHeader(syncPeerPool, peer, hash, cts.Token));

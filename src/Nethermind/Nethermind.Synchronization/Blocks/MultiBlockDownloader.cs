@@ -52,7 +52,7 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
     private static ArrayPoolList<Hash256> BuildHashList(IOwnedReadOnlyList<BlockHeader> headers)
     {
         ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
-        ArrayPoolList<Hash256> hashes = new(headersSpan.Length);
+        ArrayPoolList<Hash256> hashes = [with(headersSpan.Length)];
         for (int i = 0; i < headersSpan.Length; i++)
         {
             hashes.Add(headersSpan[i].Hash!);

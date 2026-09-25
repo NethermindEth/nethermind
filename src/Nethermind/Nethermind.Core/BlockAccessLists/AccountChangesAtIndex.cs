@@ -28,8 +28,8 @@ public class AccountChangesAtIndex(Address address)
     public byte[]? PreTxCode { get; internal set; }
     private Dictionary<UInt256, PreTxStorage>? _preTxStorage;
 
-    private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(UInt256Comparer.GetOptimized());
-    private readonly HashSet<UInt256> _storageReads = new(UInt256Comparer.GetOptimized());
+    private readonly Dictionary<UInt256, StorageChange> _storageChanges = [with(UInt256Comparer.GetOptimized())];
+    private readonly HashSet<UInt256> _storageReads = [with(UInt256Comparer.GetOptimized())];
 
     public Dictionary<UInt256, StorageChange> StorageChanges => _storageChanges;
     public int StorageChangeCount => _storageChanges.Count;

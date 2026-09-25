@@ -422,7 +422,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         private readonly ulong _maxBytes = maxBytes;
         private ulong _length;
 
-        public ArrayPoolList<Transaction> Transactions { get; } = new(transactionsListCapacity);
+        public ArrayPoolList<Transaction> Transactions { get; } = [with(transactionsListCapacity)];
 
         public bool TryAddTx(Transaction tx)
         {

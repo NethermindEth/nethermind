@@ -93,7 +93,7 @@ public class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecPro
 
     private static InclusionListBytes EncodeTransactionsUpToLimit(in ArrayPoolListRef<Transaction> txs)
     {
-        InclusionListBytes result = new(txs.Count);
+        InclusionListBytes result = [with(txs.Count)];
         try
         {
             int size = 0;

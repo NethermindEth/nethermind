@@ -178,7 +178,7 @@ public class Eth68ProtocolHandler(ISession session,
                 SendHashesToRequest();
             }
 
-            hashesToRequest ??= new ArrayPoolList<ValueHash256>(requestCapacity);
+            hashesToRequest ??= [with(requestCapacity)];
             hashesToRequest.Add(hash);
             toRequestCount++;
 
@@ -233,9 +233,9 @@ public class Eth68ProtocolHandler(ISession session,
                 ValueHash256 txHash = txHashes[i];
                 if (TxShapeAnnouncements.TryGet(txHash, out (int Size, TxType Type) txShape))
                 {
-                    hashesWithShape ??= new ArrayPoolList<ValueHash256>(txHashes.Length);
-                    sizes ??= new ArrayPoolList<int>(txHashes.Length);
-                    types ??= new ArrayPoolList<byte>(txHashes.Length);
+                    hashesWithShape ??= [with(txHashes.Length)];
+                    sizes ??= [with(txHashes.Length)];
+                    types ??= [with(txHashes.Length)];
 
                     hashesWithShape.Add(txHash);
                     sizes.Add(txShape.Size);
@@ -243,7 +243,7 @@ public class Eth68ProtocolHandler(ISession session,
                 }
                 else
                 {
-                    hashesWithoutShape ??= new ArrayPoolList<ValueHash256>(txHashes.Length);
+                    hashesWithoutShape ??= [with(txHashes.Length)];
                     hashesWithoutShape.Add(txHash);
                 }
             }
@@ -365,18 +365,18 @@ public class Eth68ProtocolHandler(ISession session,
             return;
         }
 
-        ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
-        ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
-        ArrayPoolList<ValueHash256> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<byte> types = [with(NewPooledTransactionHashesMessage68.MaxCount)];
+        ArrayPoolList<int> sizes = [with(NewPooledTransactionHashesMessage68.MaxCount)];
+        ArrayPoolList<ValueHash256> hashes = [with(NewPooledTransactionHashesMessage68.MaxCount)];
 
         foreach (Transaction tx in txs)
         {
             if (hashes.Count == NewPooledTransactionHashesMessage68.MaxCount)
             {
                 SendMessage(types, sizes, hashes);
-                types = new(NewPooledTransactionHashesMessage68.MaxCount);
-                sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
-                hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
+                types = [with(NewPooledTransactionHashesMessage68.MaxCount)];
+                sizes = [with(NewPooledTransactionHashesMessage68.MaxCount)];
+                hashes = [with(NewPooledTransactionHashesMessage68.MaxCount)];
             }
 
             if (tx.Hash is not null)

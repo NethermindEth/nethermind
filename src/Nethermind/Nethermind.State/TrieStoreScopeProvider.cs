@@ -163,7 +163,7 @@ public class TrieStoreScopeProvider(
             }
 
             // Copy the span into a pooled array so the Parallel.For body can capture it.
-            ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
+            ArrayPoolList<ReadOnlyAccountChanges> accountChanges = [with(bal.AccountChanges.AsSpan())];
 
             _hintBalCts = new CancellationTokenSource();
             CancellationToken token = _hintBalCts.Token;
@@ -334,7 +334,7 @@ public class TrieStoreScopeProvider(
         int estimatedAccountCount,
         ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
+        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = [with(estimatedAccountCount)];
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
         private Action<Address, Hash256>? _markDirty;
 

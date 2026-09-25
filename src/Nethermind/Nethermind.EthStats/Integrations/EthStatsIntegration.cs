@@ -197,7 +197,7 @@ namespace Nethermind.EthStats.Integrations
         {
             NormalizeHistoryRange(request, out ulong min, out ulong max);
 
-            List<EthStatsBlock> history = new((int)(max - min + 1));
+            List<EthStatsBlock> history = [with((int)(max - min + 1))];
             for (ulong blockNumber = min; blockNumber <= max; blockNumber++)
             {
                 CoreBlock? block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
@@ -309,13 +309,13 @@ namespace Nethermind.EthStats.Integrations
 
         private static EthStatsBlock CreateBlockModel(CoreBlock block)
         {
-            List<EthStatsTransaction> transactions = new(block.Transactions.Length);
+            List<EthStatsTransaction> transactions = [with(block.Transactions.Length)];
             foreach (CoreTransaction transaction in block.Transactions)
             {
                 transactions.Add(new EthStatsTransaction((transaction.Hash ?? Keccak.Zero).ToString()));
             }
 
-            List<Uncle> uncles = new(block.Uncles.Length);
+            List<Uncle> uncles = [with(block.Uncles.Length)];
             foreach (BlockHeader _ in block.Uncles)
             {
                 uncles.Add(new Uncle());

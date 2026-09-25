@@ -84,7 +84,7 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
     public ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
     {
         BlockHeader? branchingPoint = null;
-        ArrayPoolList<Block> blocksToBeAddedToMain = new(InitialBranchCapacity);
+        ArrayPoolList<Block> blocksToBeAddedToMain = [with(InitialBranchCapacity)];
 
         bool branchingCondition;
 
@@ -296,7 +296,7 @@ internal readonly ref struct ProcessingBranch(BlockHeader? baseBlock, ArrayPoolL
 {
     public BlockHeader? BaseBlock { get; } = baseBlock;
     public ArrayPoolList<Block> Blocks { get; } = blocks;
-    public ArrayPoolList<Block> BlocksToProcess { get; } = new(blocks.Count);
+    public ArrayPoolList<Block> BlocksToProcess { get; } = [with(blocks.Count)];
 
     public void Dispose()
     {

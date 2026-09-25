@@ -31,7 +31,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     private readonly Hash256? _txHash;
     private readonly bool _isEip8037Enabled;
     private readonly NativeCallTracerConfig _config;
-    private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
+    private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = [with(1024)];
     private readonly CompositeDisposable _disposables = [];
 
     private EvmExceptionType? _error;
@@ -131,7 +131,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
             log.Topics,
             (ulong)callFrame.Calls.Count);
 
-        callFrame.Logs ??= new ArrayPoolList<NativeCallTracerLogEntry>(8);
+        callFrame.Logs ??= [with(8)];
         callFrame.Logs.Add(callLog);
     }
 
@@ -186,7 +186,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
-        firstCallFrame.Output = new ArrayPoolList<byte>(output);
+        firstCallFrame.Output = [with(output)];
         ApplyTwoDimensionalGas(firstCallFrame, in gasSpent);
 
         if (_config.WithLog)
@@ -204,7 +204,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         ApplyTwoDimensionalGas(firstCallFrame, in gasSpent);
         if (output is not null)
-            firstCallFrame.Output = new ArrayPoolList<byte>(output);
+            firstCallFrame.Output = [with(output)];
 
         if (_error is not null)
         {

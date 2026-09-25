@@ -136,7 +136,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
     private sealed class RetryBatches
     {
-        public readonly Dictionary<IBatchMessageHandler<TMessage, TResourceId>, List<TResourceId>> Requests = new(ReferenceEqualityComparer.Instance);
+        public readonly Dictionary<IBatchMessageHandler<TMessage, TResourceId>, List<TResourceId>> Requests = [with(ReferenceEqualityComparer.Instance)];
         private readonly List<List<TResourceId>> _buffers = [];
 
         public int Capacity
@@ -1056,7 +1056,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                 capacity = stripe.RetainedGenerationCapacityLimit >= 3
                     ? Math.Min(OverflowRequestStripe.MaxWarmSpareCapacity, stripe.RetainedGenerationCapacityLimit / 2)
                     : 0;
-                stripe.Generations[generation] = new(capacity);
+                stripe.Generations[generation] = [with(capacity)];
                 stripe.WarmSpare[generation] = capacity > 0;
             }
             else

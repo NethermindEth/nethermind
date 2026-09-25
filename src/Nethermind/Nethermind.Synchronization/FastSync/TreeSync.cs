@@ -990,7 +990,7 @@ namespace Nethermind.Synchronization.FastSync
                 ref HashSet<DependentItem>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dependencies, dependency, out bool exists);
                 if (!exists)
                 {
-                    value = new HashSet<DependentItem>(DependentItemComparer.Instance);
+                    value = [with(DependentItemComparer.Instance)];
                 }
 
                 value.Add(dependentItem);

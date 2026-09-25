@@ -342,7 +342,7 @@ public class ExecutionPayloadTests
     private static byte[][] BuildDiverseBatch(int size)
     {
         TxType[] cycle = [TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob];
-        List<byte[]> bytes = new(size);
+        List<byte[]> bytes = [with(size)];
         for (int i = 0; i < size; i++)
         {
             TransactionBuilder<Transaction> builder = Build.A.Transaction

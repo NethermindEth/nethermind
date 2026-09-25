@@ -13,7 +13,7 @@ internal sealed class RowArena : IDisposable
     private const int MaxChunks = (int.MaxValue >> ChunkShift) + 1;
     private const int FirstChunkSize = 64 * 1024;
 
-    private readonly ArrayPoolList<byte[]> _chunks = new(4);
+    private readonly ArrayPoolList<byte[]> _chunks = [with(4)];
     private int _position;
     private int _nextChunkSize = FirstChunkSize;
 

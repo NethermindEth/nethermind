@@ -28,12 +28,12 @@ public class WitnessGeneratingWorldState(
 {
     private readonly Dictionary<AddressAsKey, HashSet<UInt256>> _storageSlots = [];
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes =
-        new(GenericEqualityComparer.GetOptimized<ValueHash256>());
+        [with(GenericEqualityComparer.GetOptimized<ValueHash256>())];
 
     // In-block CREATE deploys, excluded from the witness (the verifier replays the CREATE). Rollback-aware:
     // _deployOrder/_deployFrames let Restore drop deploys made after a reverted snapshot.
     private readonly HashSet<ValueHash256> _inBlockDeployed =
-        new(GenericEqualityComparer.GetOptimized<ValueHash256>());
+        [with(GenericEqualityComparer.GetOptimized<ValueHash256>())];
     private readonly List<ValueHash256> _deployOrder = [];
     private readonly List<(Snapshot Snapshot, int DeployCountSoFar)> _deployFrames = [];
 
@@ -58,14 +58,10 @@ public class WitnessGeneratingWorldState(
         ArrayPoolList<byte[]>? keys = null;
         try
         {
-            codes = new ArrayPoolList<byte[]>(_bytecodes.Count);
-            foreach (byte[] code in _bytecodes.Values)
-                codes.Add(code);
+            codes = [with(_bytecodes.Count), .. _bytecodes.Values];
             codes.AsSpan().Sort(Bytes.Comparer);
 
-            state = new ArrayPoolList<byte[]>(sink.Nodes.Count);
-            foreach (byte[] node in sink.Nodes.Values)
-                state.Add(node);
+            state = [with(sink.Nodes.Count), .. sink.Nodes.Values];
             state.AsSpan().Sort(Bytes.Comparer);
 
             int totalKeysCount = _storageSlots.Count;
@@ -74,7 +70,7 @@ public class WitnessGeneratingWorldState(
                 totalKeysCount += kvp.Value.Count;
             }
 
-            keys = new ArrayPoolList<byte[]>(totalKeysCount);
+            keys = [with(totalKeysCount)];
             // Key order: <addr1><addr2><slot1-of-addr2><slot2-of-addr2><addr3><slot1-of-addr3>...
             foreach (KeyValuePair<AddressAsKey, HashSet<UInt256>> kvp in _storageSlots)
             {

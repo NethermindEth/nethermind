@@ -55,7 +55,7 @@ public sealed class PinnedCidStore : IPinnedCidStore
 
     private List<string> Materialize()
     {
-        List<string> cids = new(_cids.Count);
+        List<string> cids = [with(_cids.Count)];
         foreach (KeyValuePair<string, byte> entry in _cids) cids.Add(entry.Key);
         return cids;
     }

@@ -29,7 +29,7 @@ public class TxPoolContentFrom
         IDictionary<ulong, Transaction> source,
         in TransactionForRpcContext extraData)
     {
-        Dictionary<ulong, TransactionForRpc> result = new(source.Count);
+        Dictionary<ulong, TransactionForRpc> result = [with(source.Count)];
         foreach (KeyValuePair<ulong, Transaction> kv in source)
             result[kv.Key] = TransactionForRpc.FromTransaction(kv.Value, extraData);
         return result;

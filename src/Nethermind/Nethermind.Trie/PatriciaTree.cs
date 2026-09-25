@@ -211,7 +211,7 @@ namespace Nethermind.Trie
                             path.SetLast(i);
                             if (i < 15 && committer.TryRequestConcurrentQuota())
                             {
-                                childTasks ??= new ArrayPoolList<Task>(15);
+                                childTasks ??= [with(15)];
                                 // path is copied here
                                 childTasks.Add(CreateTaskForPath(committer, node, maxLevelForConcurrentCommit, path, childNode, i));
                             }

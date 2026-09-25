@@ -51,7 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             int length = ctx.PeekNumberOfItemsRemaining(checkPosition);
             ctx.GuardLimit(length, RlpLimit);
 
-            ArrayPoolList<Transaction> result = new(length);
+            ArrayPoolList<Transaction> result = [with(length)];
             try
             {
                 for (int i = 0; i < length; i++)

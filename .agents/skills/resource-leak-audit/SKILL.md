@@ -227,4 +227,4 @@ COSMETIC means: technically violates a best practice but has zero quantified run
 - **Override methods discarding parameters** — derived class ignoring disposable = leak
 - **Double-dispose is worse than no-dispose** — corrupts shared state. But verify Dispose() is actually called from multiple threads before reporting a race — check all callers.
 - **Empty Dispose() is a red flag** — check constructor for resources
-- Codebase uses .NET 10, C# 14, Autofac for DI
+- Codebase uses the latest .NET and C#, and Autofac for DI

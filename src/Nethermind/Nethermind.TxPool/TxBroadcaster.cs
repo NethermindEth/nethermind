@@ -252,7 +252,7 @@ namespace Nethermind.TxPool
 
                     if (tx.CanBeBroadcast())
                     {
-                        persistentTxsToSend ??= new List<Transaction>(numberOfPersistentTxsToBroadcast);
+                        persistentTxsToSend ??= [with(numberOfPersistentTxsToBroadcast)];
                         persistentTxsToSend.Add(tx);
                     }
                     else
@@ -261,7 +261,7 @@ namespace Nethermind.TxPool
                         {
                             continue;
                         }
-                        persistentHashesToSend ??= new List<Transaction>(numberOfPersistentTxsToBroadcast);
+                        persistentHashesToSend ??= [with(numberOfPersistentTxsToBroadcast)];
                         persistentHashesToSend.Add(tx);
                     }
                     numberOfPersistentTxsToBroadcast--;

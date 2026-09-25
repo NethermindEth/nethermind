@@ -61,7 +61,7 @@ namespace Nethermind.TxPool.Collections
             _groupComparer = GetGroupComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = []; // do not initialize it at the full capacity
             _buckets = [];
-            _worstSortedValues = new DictionarySortedSet<TValue, TKey>(_sortedComparer);
+            _worstSortedValues = [with(_sortedComparer)];
             _logger = logManager?.GetClassLogger(typeof(SortedPool<,,>)) ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -136,7 +136,7 @@ namespace Nethermind.TxPool.Collections
         public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
-            Dictionary<TGroupKey, TValue[]> snapshots = new(_buckets.Count);
+            Dictionary<TGroupKey, TValue[]> snapshots = [with(_buckets.Count)];
             foreach ((TGroupKey key, EnhancedSortedSet<TValue> bucket) in _buckets)
             {
                 if (where is not null && (bucket.Count == 0 || !where((key, bucket.Min!)))) continue;
@@ -250,7 +250,7 @@ namespace Nethermind.TxPool.Collections
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
 
-            EnhancedSortedSet<TValue> sortedValues = new(_sortedComparer);
+            EnhancedSortedSet<TValue> sortedValues = [with(_sortedComparer)];
             foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
             {
                 sortedValues.Add(bucket.Value.Min!);

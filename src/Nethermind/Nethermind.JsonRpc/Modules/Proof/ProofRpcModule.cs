@@ -237,7 +237,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         {
             if (txIndex == 0) return 0;
 
-            HashSet<Hash256> preceding = new(txIndex);
+            HashSet<Hash256> preceding = [with(txIndex)];
             for (int i = 0; i < txIndex; i++)
             {
                 preceding.Add(txs[i].Hash!);

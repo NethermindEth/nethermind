@@ -37,7 +37,7 @@ public static class TypeDiscovery
             // Early return if initialized while waiting for lock
             if (Volatile.Read(ref _allLoaded) == 1) return;
 
-            List<Assembly> loadedAssemblies = new(capacity: 48);
+            List<Assembly> loadedAssemblies = [with(capacity: 48)];
             Dictionary<string, Assembly> considered = [];
             foreach (Assembly assembly in AssemblyLoadContext.Default.Assemblies)
             {

@@ -88,7 +88,7 @@ namespace Nethermind.Network
             _outgoingConnectionRateLimiter = new RateLimiter(networkConfig.MaxOutgoingConnectPerSec);
 
             _peerPool = peerPool;
-            _candidates = new List<PeerStats>(networkConfig.MaxActivePeers * 2);
+            _candidates = [with(networkConfig.MaxActivePeers * 2)];
         }
 
         public IReadOnlyCollection<Peer> ActivePeers => _peerPool.ActivePeers.Select(static kvp => kvp.Value).ToList();

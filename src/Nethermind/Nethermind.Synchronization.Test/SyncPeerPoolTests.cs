@@ -73,9 +73,9 @@ public class SyncPeerPoolTests
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token) =>
             Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(
-                AnswersWithNullHeader ? new ArrayPoolList<BlockHeader>([null!])
+                AnswersWithNullHeader ? [with([null!])]
                     : HeaderToReturn is null ? ArrayPoolList<BlockHeader>.Empty()
-                        : new ArrayPoolList<BlockHeader>([HeaderToReturn]));
+                        : [with([HeaderToReturn])]);
 
         /// <summary>
         /// Header this peer answers header requests with, whatever hash was asked for. When unset, head-header

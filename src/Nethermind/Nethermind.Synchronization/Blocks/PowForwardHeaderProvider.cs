@@ -120,7 +120,7 @@ public class PowForwardHeaderProvider(
             if (!sameFound && lastResponseBatchSpan[i].Number != currentNumber) continue;
             sameFound = true;
 
-            newResponse ??= new ArrayPoolList<BlockHeader>(lastResponseBatchSpan.Length - i);
+            newResponse ??= [with(lastResponseBatchSpan.Length - i)];
             newResponse.Add(lastResponseBatchSpan[i]);
         }
 

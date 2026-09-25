@@ -242,7 +242,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (tx.GasLimit <= StorageDiscoveryGasThreshold || tx.To is null) continue;
             if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) continue;
 
-            (candidates ??= new(MaxDiscoveryCandidates)).Add((i, tx));
+            (candidates ??= [with(MaxDiscoveryCandidates)]).Add((i, tx));
             if (candidates.Count == MaxDiscoveryCandidates) break;
         }
 
@@ -258,9 +258,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         Lock roundCellsLock = new();
         // Copy: candidate lists are round-local state from here on.
         List<(int Index, Transaction Tx)> currentCandidates = [.. candidates];
-        List<(int Index, Transaction Tx)> nextRoundCandidates = new(candidates.Count);
-        List<(int Index, Transaction Tx)> admitted = new(candidates.Count);
-        List<(int Index, Transaction Tx)> deferred = new(candidates.Count);
+        List<(int Index, Transaction Tx)> nextRoundCandidates = [with(candidates.Count)];
+        List<(int Index, Transaction Tx)> admitted = [with(candidates.Count)];
+        List<(int Index, Transaction Tx)> deferred = [with(candidates.Count)];
         int uncharged = 0;
 
         for (int round = 0; round < MaxDiscoveryRounds && currentCandidates.Count > 0; round++)
@@ -961,8 +961,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         using GroupingScratch scratch = new();
         GroupTransactionsBySender(block, maxWorkers, speculativelyWarmed, claimed, scratch);
-        ArrayPoolList<WarmupJob> jobs = new(scratch.Jobs.Count);
-        jobs.AddRange(scratch.Jobs.AsSpan());
+        ArrayPoolList<WarmupJob> jobs = [with(scratch.Jobs.AsSpan())];
         scratch.Jobs.Clear();
         return jobs;
     }
@@ -1057,10 +1056,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         private const int MaxRetainedLists = 1024;
 
         public readonly Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> Groups = [];
-        public readonly ArrayPoolList<WarmupJob> Jobs = new(64);
+        public readonly ArrayPoolList<WarmupJob> Jobs = [with(64)];
         private readonly Stack<ArrayPoolList<(int Index, Transaction Tx)>> _lists = new();
 
-        public ArrayPoolList<(int Index, Transaction Tx)> RentList() => _lists.TryPop(out ArrayPoolList<(int Index, Transaction Tx)>? list) ? list : new(4);
+        public ArrayPoolList<(int Index, Transaction Tx)> RentList() => _lists.TryPop(out ArrayPoolList<(int Index, Transaction Tx)>? list) ? list : [with(4)];
 
         public void ReturnList(ArrayPoolList<(int Index, Transaction Tx)> list)
         {
@@ -1878,7 +1877,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         private readonly WarmupQueue _queue = queue;
         // Reused for every late run this worker claims, so claiming allocates nothing per job.
-        private readonly ArrayPoolList<(int Index, Transaction Tx)> _run = new(4);
+        private readonly ArrayPoolList<(int Index, Transaction Tx)> _run = [with(4)];
         private IPrewarmerEnv? _env;
 
         /// <summary>Link of the queue's parked list; owned by the queue.</summary>

@@ -70,7 +70,7 @@ public class TraceStreamingBenchmarks
         GC.WaitForPendingFinalizers();
         long baseline = GC.GetTotalMemory(true);
 
-        List<ParityLikeTxTrace> live = new(Concurrency);
+        List<ParityLikeTxTrace> live = [with(Concurrency)];
         for (int n = 0; n < Concurrency; n++)
         {
             ParityVmOperationTrace[] ops = new ParityVmOperationTrace[OpcodeCount];
@@ -98,7 +98,7 @@ public class TraceStreamingBenchmarks
         GC.WaitForPendingFinalizers();
         long baseline = GC.GetTotalMemory(true);
 
-        List<DiscardingBufferWriter> live = new(Concurrency);
+        List<DiscardingBufferWriter> live = [with(Concurrency)];
         for (int n = 0; n < Concurrency; n++)
         {
             DiscardingBufferWriter sink = new();
@@ -120,7 +120,7 @@ public class TraceStreamingBenchmarks
         GC.WaitForPendingFinalizers();
         long baseline = GC.GetTotalMemory(true);
 
-        List<ParityLikeTxTracer> live = new(Concurrency);
+        List<ParityLikeTxTracer> live = [with(Concurrency)];
         for (int n = 0; n < Concurrency; n++)
         {
             ParityLikeTxTracer tracer = new(_block, _tx, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace);
@@ -145,9 +145,9 @@ public class TraceStreamingBenchmarks
         GC.WaitForPendingFinalizers();
         long baseline = GC.GetTotalMemory(true);
 
-        List<StreamingParityLikeTxTracer> live = new(Concurrency);
-        List<DiscardingBufferWriter> sinks = new(Concurrency);
-        List<Utf8JsonWriter> writers = new(Concurrency);
+        List<StreamingParityLikeTxTracer> live = [with(Concurrency)];
+        List<DiscardingBufferWriter> sinks = [with(Concurrency)];
+        List<Utf8JsonWriter> writers = [with(Concurrency)];
         for (int n = 0; n < Concurrency; n++)
         {
             DiscardingBufferWriter sink = new();

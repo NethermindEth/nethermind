@@ -702,7 +702,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        List<byte[]> request = new(requestSize);
+        List<byte[]> request = [with(requestSize)];
         for (int i = 0; i < requestSize; i++)
         {
             request.Add(Bytes.FromHexString(i.ToString("X64")));
@@ -794,8 +794,8 @@ public partial class EngineModuleTests
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        List<byte[]> blobVersionedHashesRequest = new(requestSize);
-        List<BlobAndProofV1?> blobsAndProofs = new(requestSize);
+        List<byte[]> blobVersionedHashesRequest = [with(requestSize)];
+        List<BlobAndProofV1?> blobsAndProofs = [with(requestSize)];
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)

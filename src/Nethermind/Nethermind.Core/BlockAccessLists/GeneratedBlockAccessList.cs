@@ -17,7 +17,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </remarks>
 public class GeneratedBlockAccessList
 {
-    private readonly Dictionary<AddressAsKey, GeneratedAccountChanges> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
+    private readonly Dictionary<AddressAsKey, GeneratedAccountChanges> _accountChanges = [with(GenericEqualityComparer.GetOptimized<AddressAsKey>())];
 
     /// <summary>
     /// Insertion-ordered view over the BAL's accounts.

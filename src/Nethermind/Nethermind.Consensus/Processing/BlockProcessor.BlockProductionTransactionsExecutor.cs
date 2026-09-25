@@ -61,7 +61,7 @@ namespace Nethermind.Consensus.Processing
 
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
 
-                HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
+                HashSet<Transaction> consideredTx = [with(ByHashTxComparer.Instance)];
                 int i = 0;
                 foreach (Transaction currentTx in transactions)
                 {

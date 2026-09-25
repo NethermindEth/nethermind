@@ -110,7 +110,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         Address[] masternodes,
         Func<T, string> poolKeySelector)
     {
-        Dictionary<string, SignerTypes> message = new(pool.Count);
+        Dictionary<string, SignerTypes> message = [with(pool.Count)];
 
         foreach (Dictionary<Address, T> objs in pool.Values)
         {
@@ -318,7 +318,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<AccountRewardResponse>.Fail("Failed to get epoch switch info");
         }
 
-        List<AccountEpochReward> epochRewards = new(epochSwitchInfos.Length);
+        List<AccountEpochReward> epochRewards = [with(epochSwitchInfos.Length)];
         UInt256 totalAccountReward = UInt256.Zero;
         Dictionary<string, UInt256> totalDelegatedReward = [];
 

@@ -26,7 +26,7 @@ public class XdcPool<T> where T : IXdcPoolItem
             if (!_items.TryGetValue(key, out Dictionary<Address, T> list))
             {
                 //128 should be enough to cover all master nodes and some extras
-                list = new Dictionary<Address, T>(128);
+                list = [with(128)];
                 _items[key] = list;
             }
             list.TryAdd(item.Signer, item);
@@ -99,10 +99,10 @@ public class XdcPool<T> where T : IXdcPoolItem
     {
         using McsLock.Disposable lockRelease = _lock.Acquire();
         {
-            Dictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> snapshot = new(_items.Count);
+            Dictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> snapshot = [with(_items.Count)];
             foreach (KeyValuePair<(ulong Round, Hash256 Hash), Dictionary<Address, T>> pair in _items)
             {
-                snapshot[pair.Key] = new Dictionary<Address, T>(pair.Value);
+                snapshot[pair.Key] = [with(pair.Value)];
             }
 
             return snapshot;

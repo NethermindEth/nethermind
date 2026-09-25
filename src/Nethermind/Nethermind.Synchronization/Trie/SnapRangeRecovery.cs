@@ -181,7 +181,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         byte[] value,
         IByteArrayList proofs)
     {
-        ArrayPoolList<(TreePath, byte[])> result = new(1);
+        ArrayPoolList<(TreePath, byte[])> result = [with(1)];
 
         ITrieNodeResolver emptyResolver = new EmptyTrieNodeResolver();
         Dictionary<ValueHash256, byte[]> nodes = [];

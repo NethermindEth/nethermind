@@ -58,16 +58,16 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private int _storageValueByteCount;
     private bool _hasStorage;
 
-    private readonly ArrayPoolList<(byte[] Buffer, int Length)> _pushItems = new(4);
+    private readonly ArrayPoolList<(byte[] Buffer, int Length)> _pushItems = [with(4)];
 
-    private readonly ArrayPoolList<VmFrame> _streamingFrames = new(InitialFrameStackCapacity);
-    private readonly ArrayPoolList<VmFrame> _framePool = new(InitialFrameStackCapacity);
+    private readonly ArrayPoolList<VmFrame> _streamingFrames = [with(InitialFrameStackCapacity)];
+    private readonly ArrayPoolList<VmFrame> _framePool = [with(InitialFrameStackCapacity)];
 
-    private readonly ArrayPoolList<ParityTraceAction> _actionPool = new(InitialFrameStackCapacity);
-    private readonly ArrayPoolList<ParityAccountStateChange> _accountStateChangePool = new(InitialFrameStackCapacity);
-    private readonly ArrayPoolList<Dictionary<UInt256, ParityStateChange<byte[]>>> _storageDictPool = new(InitialFrameStackCapacity);
-    private readonly ArrayPoolList<ParityStateChange<byte[]>> _byteStateChangePool = new(InitialFrameStackCapacity);
-    private readonly ArrayPoolList<ParityStateChange<UInt256?>> _uint256StateChangePool = new(InitialFrameStackCapacity);
+    private readonly ArrayPoolList<ParityTraceAction> _actionPool = [with(InitialFrameStackCapacity)];
+    private readonly ArrayPoolList<ParityAccountStateChange> _accountStateChangePool = [with(InitialFrameStackCapacity)];
+    private readonly ArrayPoolList<Dictionary<UInt256, ParityStateChange<byte[]>>> _storageDictPool = [with(InitialFrameStackCapacity)];
+    private readonly ArrayPoolList<ParityStateChange<byte[]>> _byteStateChangePool = [with(InitialFrameStackCapacity)];
+    private readonly ArrayPoolList<ParityStateChange<UInt256?>> _uint256StateChangePool = [with(InitialFrameStackCapacity)];
 
     private int _entriesSinceLastFlush;
     private bool _disposed;

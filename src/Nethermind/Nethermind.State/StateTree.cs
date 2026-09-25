@@ -105,7 +105,7 @@ namespace Nethermind.State
 
         public class StateTreeBulkSetter(int estimatedEntries, StateTree tree) : IDisposable
         {
-            readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = new(estimatedEntries);
+            readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _bulkWrite = [with(estimatedEntries)];
 
             public void Set(Address key, Account? account)
             {

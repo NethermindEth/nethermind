@@ -82,7 +82,7 @@ public static class PersistedSnapshotBuilder
             () =>
             {
                 NativeMemoryList<TreePath> top = new(0);
-                NativeMemoryList<TreePath> compact = new(snapshot.StateNodesCount);
+                NativeMemoryList<TreePath> compact = [with(snapshot.StateNodesCount)];
                 NativeMemoryList<TreePath> fallback = new(0);
                 foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
                 {
@@ -103,7 +103,7 @@ public static class PersistedSnapshotBuilder
             () =>
             {
                 NativeMemoryList<(ValueHash256, TreePath)> top = new(0);
-                NativeMemoryList<(ValueHash256, TreePath)> compact = new(snapshot.StorageNodesCount);
+                NativeMemoryList<(ValueHash256, TreePath)> compact = [with(snapshot.StorageNodesCount)];
                 NativeMemoryList<(ValueHash256, TreePath)> fallback = new(0);
                 foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
                 {
@@ -131,7 +131,7 @@ public static class PersistedSnapshotBuilder
                     seen.Add(kv.Key);
 
                 NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> storages =
-                    new(Math.Max(1, snapshot.StoragesCount));
+                    [with(Math.Max(1, snapshot.StoragesCount))];
                 foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
                 {
                     (Address addr, UInt256 slot) = kv.Key.Key;
@@ -139,7 +139,7 @@ public static class PersistedSnapshotBuilder
                     seen.Add(addr);
                 }
 
-                NativeMemoryList<ValueAddress> addresses = new(Math.Max(1, seen.Count));
+                NativeMemoryList<ValueAddress> addresses = [with(Math.Max(1, seen.Count))];
                 foreach (HashedKey<Address> addr in seen)
                     addresses.Add(new ValueAddress(addr.Key.Bytes));
                 addresses.Sort(ValueAddressComparer);

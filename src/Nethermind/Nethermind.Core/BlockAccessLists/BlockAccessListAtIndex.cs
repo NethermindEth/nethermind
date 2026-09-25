@@ -31,8 +31,8 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     /// <summary>Distinct chargeable declared reads recorded by worker coverage for this slice.</summary>
     public ulong CoveredStorageReads { get; set; }
 
-    private readonly Dictionary<AddressAsKey, AccountChangesAtIndex> _accountChanges = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
-    private readonly List<Change> _changes = new(InitialChangeCapacity);
+    private readonly Dictionary<AddressAsKey, AccountChangesAtIndex> _accountChanges = [with(GenericEqualityComparer.GetOptimized<AddressAsKey>())];
+    private readonly List<Change> _changes = [with(InitialChangeCapacity)];
     private ulong _storageJournalEpoch;
 
     private readonly List<CodeChange> _previousCodeChanges = [];

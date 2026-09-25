@@ -434,7 +434,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         CheckInitialized();
 
         ReadOnlySpan<ReadOnlyAccountChanges> accounts = _suggestedBlockAccessList.AccountChanges.AsSpan();
-        ArrayPoolList<AddressAsKey> result = new(accounts.Length);
+        ArrayPoolList<AddressAsKey> result = [with(accounts.Length)];
         foreach (ReadOnlyAccountChanges accountChanges in accounts)
         {
             if (accountChanges.HasStateChanges)

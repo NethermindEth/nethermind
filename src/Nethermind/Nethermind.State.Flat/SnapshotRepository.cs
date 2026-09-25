@@ -1086,7 +1086,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         using PooledSet<StateId> seen = new();
         // visited owns a lease on every retained edge; GatherChain re-leases the winning path before the
         // finally releases all of them.
-        ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited = new(estimatedSize);
+        ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited = [with(estimatedSize)];
         try
         {
             int winnerIndex = -1;

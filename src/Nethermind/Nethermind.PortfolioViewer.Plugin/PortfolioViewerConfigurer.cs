@@ -74,11 +74,12 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
     // Media types the gateway response may keep; anything else is served as an opaque download so a hostile
     // HTML/SVG/XML CID can't be treated as an active document under this origin. SVG is allowed but neutralised
     // by the CSP sandbox + nosniff set on every response (it renders in <img> but can't script).
-    private static readonly HashSet<string> SafeIpfsMediaTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> SafeIpfsMediaTypes =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/apng", "image/bmp", "image/svg+xml",
         "video/mp4", "video/webm", "video/ogg", "audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "application/json",
-    };
+    ];
 
     private static readonly JsonSerializerOptions JsonOpts =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
@@ -198,7 +199,7 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
     private async Task ServeNodesAsync(HttpContext context)
     {
         IReadOnlyList<SiblingNode> nodes = await siblings.GetSiblingsAsync(context.RequestAborted);
-        List<NodeInfo> payload = new(nodes.Count);
+        List<NodeInfo> payload = [with(nodes.Count)];
         foreach (SiblingNode node in nodes) payload.Add(new NodeInfo(node.Port, node.ChainId));
         context.Response.ContentType = "application/json";
         await JsonSerializer.SerializeAsync(context.Response.Body, payload, JsonOpts, context.RequestAborted);

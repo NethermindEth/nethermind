@@ -66,7 +66,7 @@ public class FundsDistributor(IJsonRpcClient rpcClient, ulong chainId, string? k
 
     private async Task<IEnumerable<string>> ExecuteDistribution(Signer distributeFrom, DistributionPlan plan, uint keysToMake, UInt256 maxFee, PendingKeyFile? pending)
     {
-        List<string> txHashes = new((int)keysToMake);
+        List<string> txHashes = [with((int)keysToMake)];
 
         using PrivateKeyGenerator generator = new();
 

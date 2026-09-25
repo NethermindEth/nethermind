@@ -91,7 +91,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
         IOwnedReadOnlyList<Hash256> hashes = req.Hashes;
         ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
         long totalSize = 0;
-        ArrayPoolList<byte[]?> results = new(hashesSpan.Length);
+        ArrayPoolList<byte[]?> results = [with(hashesSpan.Length)];
 
         try
         {
@@ -129,7 +129,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
             return IOwnedReadOnlyList<byte[]?>.Empty;
         }
 
-        ArrayPoolList<Hash256> hashList = new(blockHashes.Count);
+        ArrayPoolList<Hash256> hashList = [with(blockHashes.Count)];
         for (int i = 0; i < blockHashes.Count; i++)
         {
             hashList.Add(blockHashes[i]);

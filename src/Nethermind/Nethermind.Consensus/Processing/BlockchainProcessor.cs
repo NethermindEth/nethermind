@@ -905,7 +905,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         // Engine API newPayload processes the block directly on its parent without collecting a branch.
         BlockHeader? parent = suggestedBlock.IsGenesis ? null : _blockTree.FindParentHeader(suggestedBlock.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        ArrayPoolList<Block> blocks = new(1);
+        ArrayPoolList<Block> blocks = [with(1)];
         if (!options.ContainsFlag(ProcessingOptions.ForceProcessing)) blocks.Add(suggestedBlock);
         return new ProcessingBranch(parent, blocks);
     }

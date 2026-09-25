@@ -1118,7 +1118,7 @@ namespace Nethermind.Core.Test
 
         private static void AssertIntHashesAreDistributed(Func<int, int> getHash, string context)
         {
-            HashSet<int> hashes = new(HashDistributionSampleCount);
+            HashSet<int> hashes = [with(HashDistributionSampleCount)];
             for (int value = 0; value < HashDistributionSampleCount; value++)
                 hashes.Add(getHash(value));
 
@@ -1169,10 +1169,10 @@ namespace Nethermind.Core.Test
 
         private static void AssertHash64WindowsAreDistributed(long[] hashes, string context)
         {
-            HashSet<long> fullHashes = new(hashes.Length);
-            HashSet<int> way0Sets = new(hashes.Length);
-            HashSet<int> signatures = new(hashes.Length);
-            HashSet<int> way1Sets = new(hashes.Length);
+            HashSet<long> fullHashes = [with(hashes.Length)];
+            HashSet<int> way0Sets = [with(hashes.Length)];
+            HashSet<int> signatures = [with(hashes.Length)];
+            HashSet<int> way1Sets = [with(hashes.Length)];
 
             foreach (long hash in hashes)
             {

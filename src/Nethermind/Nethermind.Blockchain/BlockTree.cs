@@ -1214,7 +1214,7 @@ namespace Nethermind.Blockchain
                 if (preloadedBlocks.Length == 0) return default;
                 if (preloadedBlocks.Length <= DictionaryThreshold) return new PreloadedBlockLookup(preloadedBlocks, null);
 
-                Dictionary<Hash256, Block> dict = new(preloadedBlocks.Length);
+                Dictionary<Hash256, Block> dict = [with(preloadedBlocks.Length)];
                 foreach (Block block in preloadedBlocks)
                 {
                     if (block.Hash is not null) dict[block.Hash] = block;

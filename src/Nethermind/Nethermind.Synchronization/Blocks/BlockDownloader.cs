@@ -271,7 +271,7 @@ namespace Nethermind.Synchronization.Blocks
         private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)
         {
             ReadOnlySpan<BlockHeader> currentHeadersSpan = currentHeaders.AsSpan();
-            HashSet<Hash256> currentHeaderHashes = new(currentHeadersSpan.Length);
+            HashSet<Hash256> currentHeaderHashes = [with(currentHeadersSpan.Length)];
             foreach (BlockHeader header in currentHeadersSpan)
             {
                 currentHeaderHashes.Add(header.Hash);
@@ -290,9 +290,9 @@ namespace Nethermind.Synchronization.Blocks
         {
             BlocksRequestContentType? requestContentType = null;
 
-            ArrayPoolList<BlockHeader> receiptsToDownload = new(headers.Count);
-            ArrayPoolList<BlockHeader> bodiesToDownload = new(headers.Count);
-            ArrayPoolList<BlockHeader> blockAccessListsToDownload = new(headers.Count);
+            ArrayPoolList<BlockHeader> receiptsToDownload = [with(headers.Count)];
+            ArrayPoolList<BlockHeader> bodiesToDownload = [with(headers.Count)];
+            ArrayPoolList<BlockHeader> blockAccessListsToDownload = [with(headers.Count)];
 
             int bodiesRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
@@ -396,7 +396,7 @@ namespace Nethermind.Synchronization.Blocks
             ArrayPoolList<BlockEntry>? satisfiedEntry = null;
             try
             {
-                satisfiedEntry = new ArrayPoolList<BlockEntry>(headers.Count);
+                satisfiedEntry = [with(headers.Count)];
                 ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
                 for (int i = 1; i < headersSpan.Length; i++)
                 {

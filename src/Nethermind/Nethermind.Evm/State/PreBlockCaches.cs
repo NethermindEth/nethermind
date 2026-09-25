@@ -457,7 +457,7 @@ public class PreBlockCaches
         {
             Owner = owner;
             _remainingCells = remainingCells;
-            _cells = new PooledSet<StorageCell>(Math.Clamp(remainingCells.Value, 0, InitialCellCapacity));
+            _cells = [with(Math.Clamp(remainingCells.Value, 0, InitialCellCapacity))];
         }
 
         internal PreBlockCaches Owner { get; }

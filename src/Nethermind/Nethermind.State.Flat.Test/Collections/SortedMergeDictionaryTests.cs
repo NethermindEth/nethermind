@@ -116,7 +116,7 @@ public class SortedMergeDictionaryTests
     {
         Random random = new(sourceCount * 31 + keySpace);
 
-        List<SortedMergeDictionary<int, int>> sources = new(sourceCount);
+        List<SortedMergeDictionary<int, int>> sources = [with(sourceCount)];
         Dictionary<int, int> reference = [];
         for (int s = 0; s < sourceCount; s++)
         {
@@ -363,7 +363,7 @@ public class SortedMergeDictionaryTests
     public void BucketSize_MatchesLegacyLoadFactorRounding([Values(1, 5, 11, 22, 89, 1000)] int count)
     {
         using SortedMergeDictionary<int, int> dict = new();
-        Dictionary<int, int> source = new(count);
+        Dictionary<int, int> source = [with(count)];
         for (int i = 0; i < count; i++) source[i] = i;
 
         dict.BuildFromUnsorted(source, Cmp);
@@ -493,7 +493,7 @@ public class SortedMergeDictionaryTests
 
     private static Dictionary<string, string> CreateStringSource(string prefix, int count)
     {
-        Dictionary<string, string> source = new(count);
+        Dictionary<string, string> source = [with(count)];
         for (int i = 0; i < count; i++) source[$"{prefix}{i:D3}"] = i.ToString();
         return source;
     }

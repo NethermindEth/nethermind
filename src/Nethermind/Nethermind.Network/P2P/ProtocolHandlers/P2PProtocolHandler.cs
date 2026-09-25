@@ -300,7 +300,7 @@ public class P2PProtocolHandler(
 
         IOwnedReadOnlyList<Capability>? capabilities = hello.Capabilities;
         ReadOnlySpan<Capability> capabilitiesSpan = capabilities.AsSpan();
-        _availableCapabilities = new List<Capability>(capabilitiesSpan.Length);
+        _availableCapabilities = [with(capabilitiesSpan.Length)];
         foreach (Capability theirCapability in capabilitiesSpan)
         {
             _availableCapabilities.Add(theirCapability);

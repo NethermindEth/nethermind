@@ -21,7 +21,7 @@ namespace Nethermind.State
     {
         protected readonly Dictionary<StorageCell, HeadChange> _intraBlockCache = [];
         protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
-        protected readonly List<Change> _changes = new(Resettable.StartCapacity);
+        protected readonly List<Change> _changes = [with(Resettable.StartCapacity)];
         private int _protectedPosition = Resettable.EmptyPosition;
 
         // stack of snapshot indexes on changes for start of each transaction

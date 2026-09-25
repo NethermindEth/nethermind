@@ -363,7 +363,7 @@ internal sealed class HistoricalTrieNodeBuilder
         RunFanOut(index => parts[index] = EnumerateLeaves(parent.Append(index)));
         int total = 0;
         foreach (List<TrieLeaf> part in parts) total += part.Count;
-        List<TrieLeaf> leaves = new(total);
+        List<TrieLeaf> leaves = [with(total)];
         foreach (List<TrieLeaf> part in parts) leaves.AddRange(part);
         return leaves;
     }

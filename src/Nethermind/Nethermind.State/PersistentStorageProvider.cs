@@ -33,7 +33,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private readonly LocalMetrics _metrics = metrics;
     private const int StoragesInitialCapacity = 4_096;
 
-    private Dictionary<AddressAsKey, PerContractState> _storages = new(StoragesInitialCapacity);
+    private Dictionary<AddressAsKey, PerContractState> _storages = [with(StoragesInitialCapacity)];
     // Handed back by a detached write-back once it is done with the map it took.
     private Dictionary<AddressAsKey, PerContractState>? _spareStorages;
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
@@ -475,7 +475,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         Dictionary<AddressAsKey, PerContractState> storages = _storages;
-        _storages = Interlocked.Exchange(ref _spareStorages, null) ?? new Dictionary<AddressAsKey, PerContractState>(StoragesInitialCapacity);
+        _storages = Interlocked.Exchange(ref _spareStorages, null) ?? [with(StoragesInitialCapacity)];
         InvalidateStorageMemo();
         return new StorageChangeSnapshot(this, storages, _stateProvider.DetachRemovedAccountsWithStorage());
     }
@@ -816,7 +816,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private sealed class DefaultableDictionary()
     {
         private bool _missingAreDefault;
-        private Dictionary<UInt256, StorageChangeTrace> _dictionary = new(UInt256Comparer.Instance);
+        private Dictionary<UInt256, StorageChangeTrace> _dictionary = [with(UInt256Comparer.Instance)];
         private Dictionary<UInt256, StorageChangeTrace>? _spare;
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public int Count => _dictionary.Count;
@@ -853,7 +853,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (_dictionary.Count != 0)
             {
                 previousEntries = _dictionary;
-                _dictionary = _spare ?? new Dictionary<UInt256, StorageChangeTrace>(UInt256Comparer.Instance);
+                _dictionary = _spare ?? [with(UInt256Comparer.Instance)];
                 _spare = null;
             }
 

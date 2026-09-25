@@ -159,7 +159,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
             if (emit is null)
             {
-                List<TTrace> all = new(transactions.Length + 1);
+                List<TTrace> all = [with(transactions.Length + 1)];
                 foreach (IReadOnlyCollection<TTrace>? result in results)
                 {
                     if (result is not null) all.AddRange(result);

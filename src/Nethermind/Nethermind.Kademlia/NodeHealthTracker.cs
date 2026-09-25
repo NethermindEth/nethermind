@@ -255,7 +255,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
     private sealed class PeerFailureCache(int capacity)
     {
         private readonly Lock _lock = new();
-        private readonly Dictionary<TKadKey, (int FailureCount, LinkedListNode<TKadKey> OrderNode)> _values = new(capacity);
+        private readonly Dictionary<TKadKey, (int FailureCount, LinkedListNode<TKadKey> OrderNode)> _values = [with(capacity)];
         private readonly LinkedList<TKadKey> _order = [];
 
         public bool TryGet(TKadKey hash, out int failureCount)

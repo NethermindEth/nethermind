@@ -232,7 +232,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         private static IOwnedReadOnlyList<BlockHeader> FindNonNullHeaders(IBlockTree blockTree, Hash256 hash, int numberOfBlocks, int skip, bool reverse)
         {
             using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
-            ArrayPoolList<BlockHeader> result = new(headers.Count);
+            ArrayPoolList<BlockHeader> result = [with(headers.Count)];
             for (int i = 0; i < headers.Count; i++)
             {
                 result.Add(headers[i]);

@@ -538,7 +538,7 @@ public class DebugRpcModule(
                 RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         IRlpDecoder<TxReceipt> receiptDecoder = Rlp.GetDecoderOrThrow<TxReceipt>();
 
-        ArrayPoolList<ArrayPoolList<byte>> encoded = new(receipts.Length);
+        ArrayPoolList<ArrayPoolList<byte>> encoded = [with(receipts.Length)];
         try
         {
             foreach (TxReceipt receipt in receipts)
@@ -765,7 +765,7 @@ public class DebugRpcModule(
         // SimulateTxExecutor inserts filler blocks between bundles when BlockOverride.Number has gaps.
         // Pre-compute the block each bundle targets so we can drop fillers from the result, keeping a 1:1
         // mapping to the input bundles, and cap its default gas by that block's spec.
-        HashSet<ulong> bundleBlockNumbers = new(bundles.Length);
+        HashSet<ulong> bundleBlockNumbers = [with(bundles.Length)];
         ulong lastBlockNumber = header.Number;
         ulong lastBlockTime = header.Timestamp;
         foreach (TransactionBundle bundle in bundles)

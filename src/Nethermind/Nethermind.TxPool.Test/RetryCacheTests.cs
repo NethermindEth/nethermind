@@ -319,7 +319,7 @@ public class RetryCacheTests
         bool shouldPrefer)
     {
         BatchTestHandler sharedHandler = new();
-        List<ResourceId> resources = new(existingResources);
+        List<ResourceId> resources = [with(existingResources)];
         for (int resourceId = 0; resourceId < existingResources; resourceId++)
         {
             resources.Add(resourceId);

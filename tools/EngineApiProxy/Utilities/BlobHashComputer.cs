@@ -161,7 +161,7 @@ public class BlobHashComputer(ILogManager logManager)
             return [];
         }
 
-        List<string> result = new(hashArray.Count);
+        List<string> result = [with(hashArray.Count)];
         foreach (JsonNode? token in hashArray)
         {
             string? value = token?.ToString();

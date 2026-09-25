@@ -52,8 +52,9 @@ Option<Format> outputPathFormat = new("--out", "-o")
     DefaultValueFactory = _ => Smart.Default.Parser.ParseFormat("{FileDir}/{FileName}.test.json")
 };
 
-RootCommand rootCommand = new("Generates RPC test files from JSONL request files")
-{
+RootCommand rootCommand =
+[
+    with("Generates RPC test files from JSONL request files"),
     requestsOption,
     clientsOption,
     parallelismOption,
@@ -62,7 +63,7 @@ RootCommand rootCommand = new("Generates RPC test files from JSONL request files
     maxBlocksOption,
     minResultLenOption,
     outputPathFormat
-};
+];
 
 rootCommand.SetAction(async (parseResult, ct) =>
 {

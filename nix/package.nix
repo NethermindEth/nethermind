@@ -41,8 +41,8 @@ buildDotnetModule {
 
   nugetDeps = ./nuget-deps.json;
 
-  dotnet-sdk = dotnetCorePackages.sdk_10_0-bin;
-  dotnet-runtime = dotnetCorePackages.aspnetcore_10_0-bin;
+  dotnet-sdk = dotnetCorePackages.sdk_11_0-bin;
+  dotnet-runtime = dotnetCorePackages.aspnetcore_11_0-bin;
 
   dotnetFlags = lib.optionals (sourceRevision != null) [ "-p:SourceRevisionId=${sourceRevision}" ];
 

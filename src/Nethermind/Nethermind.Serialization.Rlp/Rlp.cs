@@ -133,7 +133,7 @@ namespace Nethermind.Serialization.Rlp
                 int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
                 int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition, (limit ?? RlpLimit.DefaultLimit).Limit + 1);
                 decoderContext.GuardLimit(length, limit);
-                result = new(length);
+                result = [with(length)];
                 for (int i = 0; i < length; i++)
                 {
                     result.Add(rlpDecoder.DecodeGuardNotNull(ref decoderContext, rlpBehaviors));

@@ -211,7 +211,7 @@ namespace Nethermind.Init.Steps
             Dictionary<string, int> inDegree = depsMap.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
             Queue<string> queue = new(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key).OrderBy((c) => dependentsMap[c].Count));
             List<string> sorted = [];
-            Dictionary<string, int> degree = new(inDegree);
+            Dictionary<string, int> degree = [with(inDegree)];
             while (queue.Count > 0)
             {
                 string n = queue.Dequeue();

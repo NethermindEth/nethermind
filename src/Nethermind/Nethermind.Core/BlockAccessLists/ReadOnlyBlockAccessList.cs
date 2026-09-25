@@ -79,7 +79,7 @@ public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount, Hash256? wireHash)
     {
         _orderedAccounts = orderedAccounts;
-        _accountChanges = new Dictionary<AddressAsKey, ReadOnlyAccountChanges>(orderedAccounts.Length);
+        _accountChanges = [with(orderedAccounts.Length)];
         int totalReads = 0;
         int totalChangeEvents = 0;
         foreach (ReadOnlyAccountChanges a in orderedAccounts)
@@ -110,7 +110,7 @@ public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList
         {
             foreach (CodeChange change in account.CodeChanges)
             {
-                result ??= new(GenericEqualityComparer.GetOptimized<ValueHash256>());
+                result ??= [with(GenericEqualityComparer.GetOptimized<ValueHash256>())];
                 if (!result.TryGetValue(change.CodeHash, out (uint Index, byte[] Code) existing) || change.Index < existing.Index)
                 {
                     result[change.CodeHash] = (change.Index, change.Code);

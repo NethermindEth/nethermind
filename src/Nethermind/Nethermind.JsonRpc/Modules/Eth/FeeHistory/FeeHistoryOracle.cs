@@ -279,7 +279,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 // We could just go with null here too and just don't return percentiles
                 : txs.Select(static tx => tx.GasLimit));
 
-            List<RewardInfo> rewardInfos = new(txs.Length);
+            List<RewardInfo> rewardInfos = [with(txs.Length)];
             Span<ulong> gasUsedSpan = gasUsed.AsSpan();
             gasUsedTotal = 0;
             for (int i = 0; i < txs.Length; i++)
@@ -301,7 +301,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         {
             ulong sumGasUsed = rewardsInBlock[0].GasUsed;
             int txIndex = 0;
-            ArrayPoolList<UInt256> percentileValues = new(rewardPercentiles.Length);
+            ArrayPoolList<UInt256> percentileValues = [with(rewardPercentiles.Length)];
 
             foreach (double percentile in rewardPercentiles)
             {

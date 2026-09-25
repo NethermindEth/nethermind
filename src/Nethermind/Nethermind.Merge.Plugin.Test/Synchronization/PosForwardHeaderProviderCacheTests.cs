@@ -70,7 +70,7 @@ public class PosForwardHeaderProviderCacheTests
 
     private void RaiseMainChainUpdate(params Block[] blocks)
     {
-        List<BlockHeader> headers = new(blocks.Length);
+        List<BlockHeader> headers = [with(blocks.Length)];
         foreach (Block block in blocks) headers.Add(block.Header);
         _blockTree.OnUpdateMainChain += Raise.EventWith(_blockTree, new OnUpdateMainChainArgs(headers, wereProcessed: true));
     }

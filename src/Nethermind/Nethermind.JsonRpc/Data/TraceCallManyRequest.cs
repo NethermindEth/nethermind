@@ -42,7 +42,7 @@ public class TraceCallManyRequest(ArrayPoolList<TransactionForRpcWithTraceTypes>
                 throw new JsonException($"Too many calls ({count}). Max is {MaxCallCount}.");
             }
 
-            ArrayPoolList<TransactionForRpcWithTraceTypes> calls = new(count);
+            ArrayPoolList<TransactionForRpcWithTraceTypes> calls = [with(count)];
             try
             {
                 foreach (JsonElement element in jsonValue.EnumerateArray())

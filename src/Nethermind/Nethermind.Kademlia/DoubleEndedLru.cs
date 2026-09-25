@@ -29,7 +29,7 @@ public class DoubleEndedLru<TKey, TValue>(int capacity)
 
     private readonly Lock _lock = new();
     private readonly Entry[] _entries = new Entry[capacity];
-    private readonly Dictionary<TKey, int> _index = new(capacity);
+    private readonly Dictionary<TKey, int> _index = [with(capacity)];
     private int _head = None;
     private int _tail = None;
     private int _freeList = None;

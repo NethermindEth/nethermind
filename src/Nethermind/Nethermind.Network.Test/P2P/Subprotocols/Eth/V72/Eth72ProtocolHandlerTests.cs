@@ -849,7 +849,7 @@ public class Eth72ProtocolHandlerTests
             .SignedAndResolved()
             .TestObject;
         int transactionCount = TransactionsMessage.MaxPacketSize / template.GetLength() + 2;
-        Dictionary<ValueHash256, Transaction> transactions = new(transactionCount);
+        Dictionary<ValueHash256, Transaction> transactions = [with(transactionCount)];
         Hash256[] hashes = new Hash256[transactionCount];
         for (int i = 0; i < transactionCount; i++)
         {
