@@ -3,12 +3,14 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
@@ -201,6 +203,88 @@ public class GloasEpochProcessingTests
         ulong[] proposerIndices = GloasEpochProcessing.GetBeaconProposerIndices(state, state.GetCurrentEpoch());
 
         Assert.That(proposerIndices, Has.All.EqualTo(0ul), "validator 0 is the only unslashed candidate, so every slot must land on it");
+    }
+
+    // ---- get_next_sync_committee (eth_aggregate_pubkeys asserts KeyValidate on every member) ----
+
+    private static readonly BlsPublicKey[] SyncCommitteeKeys = [.. Enumerable.Range(0, 4).Select(i => new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress()))];
+
+    private static IEnumerable<TestCaseData> InvalidSyncCommitteeKeys()
+    {
+        byte[] infinity = new byte[BlsPublicKey.Length];
+        infinity[0] = 0xc0;
+        // ethereum/bls12-381-tests deserialization_fails_not_in_G1: decodes on-curve and non-infinity, outside the prime-order subgroup.
+        byte[] notInG1 = Bytes.FromHexString("0x8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+        foreach (bool gloas in new[] { false, true })
+        {
+            string fork = gloas ? "Gloas" : "Fulu";
+            yield return new TestCaseData(gloas, infinity).SetArgDisplayNames(fork, "infinity");
+            yield return new TestCaseData(gloas, notInG1).SetArgDisplayNames(fork, "not in G1");
+        }
+    }
+
+    [TestCaseSource(nameof(InvalidSyncCommitteeKeys))]
+    public void Sync_committee_rotation_fails_when_a_member_pubkey_fails_KeyValidate(bool gloas, byte[] invalidPubkey)
+    {
+        BlsPublicKey invalid = new(invalidPubkey);
+
+        Assert.That(() => RotateSyncCommittee(gloas, validators =>
+        {
+            for (int i = 0; i < validators.Length; i += 2)
+                validators[i].Pubkey = invalid;
+        }), Throws.TypeOf<BeaconStateException>());
+    }
+
+    [Test]
+    public void Sync_committee_rotation_aggregates_valid_member_pubkeys([Values] bool gloas)
+    {
+        SyncCommittee committee = RotateSyncCommittee(gloas, static _ => { });
+
+        BlsSigner.AggregatedPublicKey expected = new();
+        foreach (BlsPublicKey pubkey in committee.Pubkeys!)
+            Assert.That(expected.TryAggregate(pubkey.Bytes, out _), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(committee.Pubkeys, Has.Length.EqualTo(Presets.SyncCommitteeSize));
+            Assert.That(committee.Pubkeys.Distinct(), Is.EquivalentTo(SyncCommitteeKeys), "members come from the registry, and every registry key is sampled");
+            Assert.That(committee.AggregatePubkey.Bytes.ToArray(), Is.EqualTo(expected.PublicKey.Compress()));
+        }
+    }
+
+    [Test]
+    public void Sync_committee_rotation_fails_with_no_active_validator([Values] bool gloas) =>
+        Assert.That(() => RotateSyncCommittee(gloas, static validators =>
+        {
+            foreach (Validator validator in validators)
+                validator.ExitEpoch = 1;
+        }), Throws.TypeOf<BeaconStateException>());
+
+    /// <summary>
+    /// Runs <c>process_sync_committee_updates</c> at the last epoch of the first sync committee period
+    /// over a registry holding <see cref="SyncCommitteeKeys"/>, after <paramref name="configure"/> edits it.
+    /// </summary>
+    private static SyncCommittee RotateSyncCommittee(bool gloas, Action<Validator[]> configure)
+    {
+        ulong slot = (Presets.EpochsPerSyncCommitteePeriod - 1) * SlotsPerEpoch;
+        BeaconStateFulu fulu = CreateFuluState(ValidatorCount);
+        for (int i = 0; i < fulu.Validators!.Length; i++)
+            fulu.Validators[i].Pubkey = SyncCommitteeKeys[i % SyncCommitteeKeys.Length];
+
+        if (!gloas)
+        {
+            configure(fulu.Validators);
+            fulu.Slot = slot;
+            EpochProcessing.ProcessSyncCommitteeUpdates(fulu);
+            return fulu.NextSyncCommittee!;
+        }
+
+        // Configured after the upgrade, which itself samples committees from the active set.
+        BeaconStateGloas state = GloasForkTransition.UpgradeToGloas(fulu, SyntheticSpec());
+        configure(state.Validators!);
+        state.Slot = slot;
+        GloasEpochProcessing.ProcessSyncCommitteeUpdates(state);
+        return state.NextSyncCommittee!;
     }
 
     // ---- Everything Gloas left unchanged must agree with the Fulu pipeline ----
