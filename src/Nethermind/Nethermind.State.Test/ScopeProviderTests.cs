@@ -880,7 +880,7 @@ public class ScopeProviderTests(bool useFlat)
         {
             Assert.That(carried, Is.True);
             Assert.That(CachedAccount(caches, destroyed), Is.Null);
-            Assert.That(ServedFromCache(caches, in written), Is.False, "a slot of the destroyed account must not be cached");
+            Assert.That(caches.StorageCache.TryGetValue(in written, out _), Is.False, "a slot of the destroyed account must not be cached");
             Assert.That(ServedFromCache(caches, in SlotA1), Is.EqualTo(!preExistingStorage), "pre-block slots of the destroyed account must not survive it");
             Assert.That(caches.BypassesStorageCache(destroyed), Is.EqualTo(preExistingStorage));
             Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }), "unrelated slots survive either way");
