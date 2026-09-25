@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -12,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -119,5 +121,34 @@ public class OptimismWithdrawalTests
 
         processor.ProcessWithdrawals(blockB, releaseSpec);
         Assert.That(blockB.WithdrawalsRoot, Is.EqualTo(new Hash256("0x69b9a1b510f62bae4a767b9030b74cacd8e5bef0e5af497f961c642405f5fb62")));
+    }
+
+    /// <summary>
+    /// Block producer scopes wrap the withdrawal processor in <see cref="BlockProductionWithdrawalProcessor"/>;
+    /// the Isthmus root must survive that wrapper.
+    /// </summary>
+    [Test]
+    public void WithdrawalsRoot_Is_Kept_By_Block_Production_Wrapper_Post_Isthmus()
+    {
+        IWorldState state = TestWorldStateFactory.CreateForTest();
+        using IDisposable _ = state.BeginScope(IWorldState.PreGenesis);
+        state.CreateAccount(PreDeploys.L2ToL1MessagePasser, 1, 1);
+        state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), (UInt256)1);
+
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
+        releaseSpec.WithdrawalsEnabled.Returns(true);
+        Block block = Build.A.Block
+            .WithHeader(Build.A.BlockHeader
+                .WithNumber(1)
+                .WithTimestamp(Spec.IsthmusTimeStamp)
+                .WithExtraData(Bytes.FromHexString("0x00ffffffffffffffff"))
+                .TestObject)
+            .WithWithdrawals([])
+            .TestObject;
+
+        BlockProductionWithdrawalProcessor processor = new(new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance));
+        processor.ProcessWithdrawals(block, releaseSpec);
+
+        Assert.That(block.WithdrawalsRoot, Is.EqualTo(ActualStorageRoot));
     }
 }
