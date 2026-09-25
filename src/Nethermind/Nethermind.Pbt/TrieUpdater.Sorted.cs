@@ -4,8 +4,11 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using static Nethermind.Pbt.TrieUpdater;
 
 namespace Nethermind.Pbt;
@@ -24,15 +27,38 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// encoding of the node its parent group stores there.
     /// </remarks>
     /// <param name="sortedOperations">Operations in strictly ascending key order.</param>
-    [SkipLocalsInit]
     internal static ValueHash256 UpdateRootSorted(IPbtStore store, in ValueHash256 currentRoot, ReadOnlySpan<PbtWriteOperation<TKey>> sortedOperations,
-        PbtPrefixlessBranchOmission prefixlessBranchOmission, TrieUpdaterMetrics? metrics = null, IRefCountingMemoryProvider? memoryProvider = null)
+        PbtPrefixlessBranchOmission prefixlessBranchOmission, TrieUpdaterMetrics? metrics = null, IRefCountingMemoryProvider? memoryProvider = null) =>
+        UpdateRootSorted(store, currentRoot, sortedOperations, prefixlessBranchOmission, null, null, default, metrics, memoryProvider);
+
+    /// <inheritdoc cref="UpdateRootSorted(IPbtStore, in ValueHash256, ReadOnlySpan{PbtWriteOperation{TKey}}, PbtPrefixlessBranchOmission, TrieUpdaterMetrics?, IRefCountingMemoryProvider?)"/>
+    /// <remarks>
+    /// Each frame folds the groups below its touched boundary slots across threads as <paramref name="foldQuota"/> allows,
+    /// in runs of at least the operations <paramref name="fanOut"/> asks for, before composing itself on the calling thread.
+    /// The store must support concurrent reads; each worker writes through its own <see cref="IPbtStore.CreateWriter"/>.
+    /// </remarks>
+    /// <param name="sortedOperations">Operations in strictly ascending key order, backed by an array a worker rebuilds its range from.</param>
+    internal static ValueHash256 UpdateRootSorted(IPbtStore store, in ValueHash256 currentRoot, ReadOnlyMemory<PbtWriteOperation<TKey>> sortedOperations,
+        PbtPrefixlessBranchOmission prefixlessBranchOmission, ConcurrencyController foldQuota, FoldFanOut fanOut, TrieUpdaterMetrics? metrics = null,
+        IRefCountingMemoryProvider? memoryProvider = null)
+    {
+        ArgumentNullException.ThrowIfNull(foldQuota);
+        if (!MemoryMarshal.TryGetArray(sortedOperations, out ArraySegment<PbtWriteOperation<TKey>> segment))
+            throw new ArgumentException("Operations folded in parallel must be backed by an array.", nameof(sortedOperations));
+        return UpdateRootSorted(store, currentRoot, sortedOperations.Span, prefixlessBranchOmission, foldQuota, segment.Array, fanOut, metrics, memoryProvider);
+    }
+
+    [SkipLocalsInit]
+    private static ValueHash256 UpdateRootSorted(IPbtStore store, in ValueHash256 currentRoot, ReadOnlySpan<PbtWriteOperation<TKey>> sortedOperations,
+        PbtPrefixlessBranchOmission prefixlessBranchOmission, ConcurrencyController? foldQuota, PbtWriteOperation<TKey>[]? operationArray, FoldFanOut fanOut,
+        TrieUpdaterMetrics? metrics, IRefCountingMemoryProvider? memoryProvider)
     {
         ArgumentNullException.ThrowIfNull(store);
         AssertSorted(sortedOperations);
         if (sortedOperations.IsEmpty) return currentRoot;
         using IPbtConcurrentWriter storeWriter = store.CreateWriter();
-        FoldContext context = new(store, storeWriter, memoryProvider ?? PooledRefCountingMemoryProvider.Instance, metrics, null, null, default, prefixlessBranchOmission);
+        FoldContext context = new(store, storeWriter, memoryProvider ?? PooledRefCountingMemoryProvider.Instance, metrics, foldQuota, operationArray, fanOut,
+            prefixlessBranchOmission);
         Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
         PbtTraversalPath path = new(pathBuffer);
         Span<byte> encoding = stackalloc byte[MaxNodeLength];
@@ -267,6 +293,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         SortedWalk<TFrame> walk = new(context, ref reader, ref hashes, writer, path, input, stored, operations);
         try
         {
+            if (context.FoldQuota is not null) TryFoldSlotsInParallel(ref walk);
             ComposedNode root = Walk(ref walk, default, input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource));
             Debug.Assert(walk.Next == operations.Length, "The walk consumes every operation of its frame.");
             return root.IsEmpty ? default : Land(ref reader, ref hashes, writer, root, PbtFourLevelGroupGeometry.RootPosition, context.Metrics);
@@ -275,6 +302,157 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             if (walk.FoldedAhead is { } foldedAhead) ArrayPool<byte>.Shared.Return(foldedAhead);
             if (walk.FoldedAheadNodes is { } foldedAheadNodes) ArrayPool<SlotNode>.Shared.Return(foldedAheadNodes);
+        }
+    }
+
+    /// <summary>Folds the groups below the frame's touched boundary slots across threads, leaving each result folded ahead for the walk.</summary>
+    /// <remarks>
+    /// A slot is worth a worker when its cover is a branch, which owns a group below it, or when it holds two or more
+    /// operations, which build one. A single operation over an empty or leaf cover is trivial, and lies beneath the
+    /// walk's single-operation shortcut, which would skip its result. Every boundary node and old hash is resolved
+    /// here, on the calling thread, since the frame's hash cache is not shared. Each worker writes its slot's encoding
+    /// into a slice of its own and never touches the frame, whose group lease outlives the loop, so boundary nodes are
+    /// read from it in place. Slots fold on the calling thread while the quota has no free slot, as
+    /// <see cref="FoldBoundaryFromPartition"/> does.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    [SkipLocalsInit]
+    private static void TryFoldSlotsInParallel<TFrame>(scoped ref SortedWalk<TFrame> walk)
+        where TFrame : struct, IGroupFrame<TKey, TPath>
+    {
+        FoldContext context = walk.Context;
+        FoldFanOut fanOut = context.FanOut;
+        ReadOnlySpan<PbtWriteOperation<TKey>> operations = walk.Operations;
+        if (operations.Length < 2 * Math.Min(fanOut.MinOperationsPerWorker, fanOut.LargeSubtreeMinOperationsPerWorker)) return;
+
+        Span<int> slots = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        Span<int> starts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        Span<long> descendantBytes = stackalloc long[PbtFourLevelGroupGeometry.BoundarySlots];
+        Span<Cover> covers = stackalloc Cover[PbtFourLevelGroupGeometry.BoundarySlots];
+        int bitDepth = walk.BitDepth;
+        int foldCount = 0;
+        for (int index = 0; index < operations.Length;)
+        {
+            int slot = BoundarySlot(operations[index].Key.Bytes, bitDepth);
+            int start = index;
+            while (++index < operations.Length && BoundarySlot(operations[index].Key.Bytes, bitDepth) == slot) { }
+            Cover cover = walk.CoverAt(slot);
+            if (index - start == 1 && (cover.IsEmpty || walk.IsLeaf(cover))) continue;
+            slots[foldCount] = slot;
+            starts[foldCount] = start;
+            counts[foldCount] = index - start;
+            descendantBytes[foldCount] = walk.Reader.DescendantBytes(slot);
+            covers[foldCount++] = cover;
+        }
+
+        Span<int> runEnds = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        int runCount = PlanBucketRuns(counts[..foldCount], descendantBytes[..foldCount], fanOut, runEnds);
+        if (runCount < 2) return;
+
+        // Two touched boundary siblings need both old hashes to key their groups, so both are hashed together.
+        for (int fold = 0; fold + 1 < foldCount; fold++)
+        {
+            int slot = slots[fold];
+            if ((slot & 1) != 0 || slots[fold + 1] != slot + 1) continue;
+            if (covers[fold].Kind != CoverKind.Stored || covers[fold + 1].Kind != CoverKind.Stored) continue;
+            walk.Hashes.GetChildHashesPaired(ref walk.Reader, BoundaryPosition(slot), BoundaryPosition(slot + 1), context.Metrics, out _, out _);
+        }
+
+        int operationOffset = OffsetOf(context.Operations!, operations);
+        SortedSlotFold[] folds = ArrayPool<SortedSlotFold>.Shared.Rent(foldCount);
+        for (int fold = 0; fold < foldCount; fold++)
+        {
+            folds[fold] = new SortedSlotFold(slots[fold], operationOffset + starts[fold], counts[fold], walk.Boundary(covers[fold]), descendantBytes[fold],
+                context.Metrics is null ? null : new TrieUpdaterMetrics());
+        }
+        walk.FoldedAhead ??= ArrayPool<byte>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots * MaxNodeLength);
+        walk.FoldedAheadNodes ??= ArrayPool<SlotNode>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots);
+        FoldSlotRuns(context, folds, runEnds[..runCount], walk.Path.ToPath<TPath>(), bitDepth, walk.FoldedAhead);
+
+        foreach (ref SortedSlotFold fold in folds.AsSpan(0, foldCount))
+        {
+            if (fold.Metrics is { } foldMetrics) context.Metrics!.Add(foldMetrics);
+            walk.Writer.AddDescendantDelta(fold.Slot, fold.Result.SizeDelta);
+            walk.FoldedAheadNodes[fold.Slot] = fold.Result;
+            walk.FoldedAheadMask |= 1 << fold.Slot;
+        }
+        // The folds hold boundary encodings; clear so the pool does not keep them alive.
+        ArrayPool<SortedSlotFold>.Shared.Return(folds, clearArray: true);
+    }
+
+    /// <summary>Folds the planned runs of slots, the part of <see cref="TryFoldSlotsInParallel"/> past its early exits.</summary>
+    /// <remarks>Kept apart so the closure over the runs is allocated only once a frame is known to split.</remarks>
+    private static void FoldSlotRuns(FoldContext context, SortedSlotFold[] folds, scoped ReadOnlySpan<int> runEnds, TPath groupPath, int bitDepth, byte[] foldedAhead)
+    {
+        using ArrayPoolList<int> runs = new(runEnds);
+        ConcurrencyController quota = context.FoldQuota!;
+        int nextRun = 0;
+        for (; nextRun < runs.Count - 1 && !quota.TryRequestConcurrencyQuota(); nextRun++)
+            FoldRun(nextRun);
+        if (nextRun < runs.Count - 1)
+        {
+            int callerThreadId = Environment.CurrentManagedThreadId;
+            int admissionSlotClaimed = 0;
+            try
+            {
+                ParallelUnbalancedWork.For(nextRun, runs.Count, ParallelUnbalancedWork.DefaultOptions,
+                    () => TakeWorkerQuota(quota, callerThreadId, ref admissionSlotClaimed),
+                    (index, tookQuota) =>
+                    {
+                        FoldRun(index);
+                        return tookQuota;
+                    },
+                    tookQuota => ReturnWorkerQuota(quota, tookQuota));
+            }
+            finally
+            {
+                ReturnAdmissionSlot(quota, ref admissionSlotClaimed);
+            }
+        }
+        else if (nextRun < runs.Count)
+        {
+            FoldRun(nextRun);
+        }
+
+        void FoldRun(int run)
+        {
+            for (int fold = run == 0 ? 0 : runs[run - 1]; fold < runs[run]; fold++)
+                folds[fold].Fold(context, groupPath, bitDepth, foldedAhead);
+        }
+    }
+
+    private static int OffsetOf(PbtWriteOperation<TKey>[] array, ReadOnlySpan<PbtWriteOperation<TKey>> span)
+    {
+        int offset = (int)(Unsafe.ByteOffset(ref MemoryMarshal.GetArrayDataReference(array), ref MemoryMarshal.GetReference(span)) / Unsafe.SizeOf<PbtWriteOperation<TKey>>());
+        Debug.Assert(offset >= 0 && offset + span.Length <= array.Length, "The operation range must lie within the batch array.");
+        return offset;
+    }
+
+    /// <summary>One boundary slot a frame folds on a worker, with the node it then holds.</summary>
+    private struct SortedSlotFold(int slot, int offset, int count, BoundaryNode boundary, long descendantBytes, TrieUpdaterMetrics? metrics)
+    {
+        internal readonly int Slot = slot;
+        internal readonly TrieUpdaterMetrics? Metrics = metrics;
+        internal SlotNode Result;
+
+        [SkipLocalsInit]
+        internal void Fold(FoldContext context, TPath groupPath, int bitDepth, byte[] foldedAhead)
+        {
+            Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
+            PbtTraversalPath path = PbtTraversalPath.FromPath(pathBuffer, groupPath);
+            path.AppendMut(Slot);
+            // The fold below only reads its owner's depth and this slot's descendant size, so a stand-in carrying that
+            // size replaces the frame, which stays with the calling thread.
+            AbsentGroupFrame<TKey, TPath> owner = new(bitDepth, Slot, descendantBytes, null);
+            StoredGroupHashes ownerHashes = default;
+            using PbtNodeGroupWriter<TPath> ownerWriter = new(bitDepth, context.MemoryProvider, context.PrefixlessBranchOmission);
+            using IPbtConcurrentWriter writer = context.Store.CreateWriter();
+            FoldContext workerContext = new(context.Store, writer, context.MemoryProvider, Metrics, context.FoldQuota, context.Operations, context.FanOut,
+                context.PrefixlessBranchOmission);
+            int slotDepth = bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
+            Result = FoldSortedRange(workerContext, ref owner, ref ownerHashes, ownerWriter, boundary, context.Operations.AsSpan(offset, count), ref path,
+                slotDepth, slotDepth, foldedAhead.AsSpan(Slot * MaxNodeLength, MaxNodeLength));
         }
     }
 
@@ -928,6 +1106,21 @@ internal static partial class TrieUpdater<TKey, TPath>
             if ((_stored & (1u << position)) != 0) return new Cover(CoverKind.Stored, position);
             if (local.Length < PbtFourLevelGroupGeometry.LevelsPerGroup) return new Cover(CoverKind.Implicit, position);
             throw new InvalidDataException("A referenced PBT node is missing.");
+        }
+
+        /// <summary>The cover of boundary slot <paramref name="slot"/>, descended from the frame's input.</summary>
+        internal Cover CoverAt(int slot)
+        {
+            Cover cover = _input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource);
+            NodeGroupPath local = default;
+            for (int level = 0; level < PbtFourLevelGroupGeometry.LevelsPerGroup && !cover.IsEmpty; level++)
+            {
+                ChildCovers(local, cover, out Cover left, out Cover right);
+                bool isRight = (slot >> (PbtFourLevelGroupGeometry.LevelsPerGroup - 1 - level) & 1) != 0;
+                cover = isRight ? right : left;
+                local = isRight ? local.Right : local.Left;
+            }
+            return cover;
         }
 
         /// <summary>The boundary node <paramref name="cover"/> holds at a boundary slot, which the fold below it consumes.</summary>

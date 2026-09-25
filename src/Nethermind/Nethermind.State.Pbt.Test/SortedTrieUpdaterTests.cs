@@ -157,16 +157,18 @@ public class SortedTrieUpdaterTests
         return value;
     }
 
-    /// <summary>Applies every batch through both updaters, each on its own store, and asserts identical roots and groups.</summary>
+    /// <summary>Applies every batch through both updaters, the sorted one serially and in parallel, each on its own store, and asserts identical roots and groups.</summary>
     private sealed class DifferentialTree<TKey, TPath>(PbtPrefixlessBranchOmission omission) : IDisposable
         where TKey : unmanaged, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
     {
         private readonly PbtNodeGroupStore _bucketingStore = new();
         private readonly PbtNodeGroupStore _sortedStore = new();
+        private readonly PbtNodeGroupStore _parallelStore = new();
         private readonly EipReferenceTree _oracle = new();
         private ValueHash256 _bucketingRoot;
         private ValueHash256 _sortedRoot;
+        private ValueHash256 _parallelRoot;
 
         public void Apply((byte[] Key, byte[]? Value)[] writes)
         {
@@ -186,14 +188,19 @@ public class SortedTrieUpdaterTests
 
             _bucketingRoot = TrieUpdater<TKey, TPath>.UpdateRoot(_bucketingStore, _bucketingRoot, builder.Build(), omission);
             _sortedRoot = TrieUpdater<TKey, TPath>.UpdateRootSorted(_sortedStore, _sortedRoot, sorted, omission);
+            // A single-operation minimum splits every frame with two touched slots, so even small batches fold in parallel.
+            _parallelRoot = TrieUpdater<TKey, TPath>.UpdateRootSorted(_parallelStore, _parallelRoot, sorted.AsMemory(), omission,
+                PbtTreeHarness.FoldQuota(), PbtTreeHarness.FanOut(1));
 
             IReadOnlyList<PbtPhysicalPayload> expected = _bucketingStore.ExportPhysicalPayloads();
             IReadOnlyList<PbtPhysicalPayload> actual = _sortedStore.ExportPhysicalPayloads();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_sortedRoot, Is.EqualTo(_bucketingRoot));
+                Assert.That(_parallelRoot, Is.EqualTo(_bucketingRoot));
                 Assert.That(_sortedRoot.Bytes.ToArray(), Is.EqualTo(_oracle.Merkelize()));
                 Assert.That(actual.Select(Describe), Is.EqualTo(expected.Select(Describe)));
+                Assert.That(_parallelStore.ExportPhysicalPayloads().Select(Describe), Is.EqualTo(expected.Select(Describe)));
             }
             PbtStoreTestExtensions.AssertSubtreeBytes(actual);
         }
@@ -205,6 +212,7 @@ public class SortedTrieUpdaterTests
         {
             _bucketingStore.Dispose();
             _sortedStore.Dispose();
+            _parallelStore.Dispose();
         }
     }
 }

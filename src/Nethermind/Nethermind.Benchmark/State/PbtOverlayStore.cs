@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -12,10 +13,11 @@ using Nethermind.Pbt;
 namespace Nethermind.Benchmarks.State;
 
 /// <summary>An in-memory store whose writes land in an overlay above fixed base groups, so the base tree can be reused.</summary>
+/// <remarks>Parallel folds read and publish from several threads, each group from one, so the overlay is a concurrent map; the base is read-only once built.</remarks>
 internal sealed class PbtOverlayStore : IPbtStore, IPbtNodeGroupSink, IDisposable
 {
     private readonly Dictionary<PbtStorageNodePath, RefCountingMemory> _base = [];
-    private readonly Dictionary<PbtStorageNodePath, RefCountingMemory?> _overlay = [];
+    private readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> _overlay = new();
 
     public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
 
@@ -47,7 +49,7 @@ internal sealed class PbtOverlayStore : IPbtStore, IPbtNodeGroupSink, IDisposabl
 
     public void ResetOverlay()
     {
-        foreach (RefCountingMemory? payload in _overlay.Values) ((IDisposable?)payload)?.Dispose();
+        foreach ((PbtStorageNodePath _, RefCountingMemory? payload) in _overlay) ((IDisposable?)payload)?.Dispose();
         _overlay.Clear();
     }
 

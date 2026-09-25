@@ -9,6 +9,7 @@ using System.Threading;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt;
 using Nethermind.State.Pbt.Image;
@@ -18,7 +19,8 @@ namespace Nethermind.Benchmarks.State;
 /// <summary>Computes the root of a whole tree from sorted leaves: the image verifier's streaming calculator against both updaters building it from empty.</summary>
 /// <remarks>
 /// The calculator only hashes, while the updaters also encode and publish every group, so the gap is the cost of
-/// building the stored tree on top of the root. Each updater invocation starts from an empty store.
+/// building the stored tree on top of the root. Each updater invocation starts from an empty store. Keys are
+/// account-zone keys, the shape the partitioned driver the bucketing updater parallelizes through expects.
 /// </remarks>
 [MemoryDiagnoser]
 public class PbtRootBuildBenchmark
@@ -31,17 +33,24 @@ public class PbtRootBuildBenchmark
         Sorted,
         /// <summary>The bucketing updater, building every group from an empty tree.</summary>
         Current,
+        /// <summary>The sorted-range updater folding each frame's slots across threads, building every group from an empty tree.</summary>
+        SortedParallel,
+        /// <summary>The bucketing updater through the partitioned driver, folding buckets across threads, building every group from an empty tree.</summary>
+        CurrentParallel,
     }
 
     private PbtOverlayStore _store = null!;
+    private readonly ConcurrencyController _foldQuota = new(Environment.ProcessorCount);
     private RebuildEntry[] _entries = null!;
     private PbtWriteOperation<PbtStorageTreeKey>[] _operations = null!;
+    private PbtWriteOperation<PbtPath>[] _accountOperations = null!;
     private int[] _table = null!;
+    private int[] _zoneTable = null!;
 
     [Params(10_000, 100_000, 1_000_000)]
     public int LeafCount { get; set; }
 
-    [Params(Variant.ImageRootCalculator, Variant.Sorted, Variant.Current)]
+    [Params(Variant.ImageRootCalculator, Variant.Sorted, Variant.Current, Variant.SortedParallel, Variant.CurrentParallel)]
     public Variant Method { get; set; }
 
     [GlobalSetup]
@@ -54,6 +63,7 @@ public class PbtRootBuildBenchmark
         while (leaves.Count < LeafCount)
         {
             random.NextBytes(bytes);
+            bytes[0] = Eip8297KeyDerivation.AccountZone;
             random.NextBytes(value);
             value[0] |= 1;
             leaves[new PbtStorageTreeKey(bytes)] = new ValueHash256(value);
@@ -61,24 +71,16 @@ public class PbtRootBuildBenchmark
 
         _entries = new RebuildEntry[LeafCount];
         _operations = new PbtWriteOperation<PbtStorageTreeKey>[LeafCount];
-        int[] counts = new int[16];
+        _accountOperations = new PbtWriteOperation<PbtPath>[LeafCount];
         int index = 0;
         foreach ((PbtStorageTreeKey key, ValueHash256 leaf) in leaves)
         {
             _entries[index] = new RebuildEntry(key, leaf);
+            _accountOperations[index] = new(new PbtPath(key.Bytes), leaf);
             _operations[index++] = new(key, leaf);
-            counts[key.Bytes[0] >> 4]++;
         }
-
-        // The shard table PbtWriteBatchBuilder builds at nibble zero: the used-shard mask, then each used shard's count.
-        List<int> table = [0];
-        for (int shard = 0; shard < counts.Length; shard++)
-        {
-            if (counts[shard] == 0) continue;
-            table[0] |= 1 << shard;
-            table.Add(counts[shard]);
-        }
-        _table = [.. table];
+        _table = PbtTrieUpdaterBenchmark.ShardTable<PbtStorageTreeKey>(_operations, 0);
+        _zoneTable = PbtTrieUpdaterBenchmark.ShardTable<PbtPath>(_accountOperations, PbtTrieUpdaterBenchmark.ZoneShardNibbleIndex);
         _store = new PbtOverlayStore();
 
         ValueHash256 expected = PbtImageRootCalculator.Calculate(_entries, CancellationToken.None);
@@ -101,9 +103,22 @@ public class PbtRootBuildBenchmark
         {
             Variant.ImageRootCalculator => PbtImageRootCalculator.Calculate(_entries, CancellationToken.None),
             Variant.Sorted => TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRootSorted(_store, default, _operations, PbtPrefixlessBranchOmission.Interior),
+            Variant.SortedParallel => TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRootSorted(_store, default, _operations.AsMemory(),
+                PbtPrefixlessBranchOmission.Interior, _foldQuota, FoldFanOut.Default),
+            Variant.CurrentParallel => BuildInParallel(),
             _ => TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRoot(_store, default,
                 new PbtWriteBatch<PbtStorageTreeKey>(new ArrayPoolList<PbtWriteOperation<PbtStorageTreeKey>>(_operations), new ArrayPoolList<int>(_table), 0),
                 PbtPrefixlessBranchOmission.Interior),
         };
+    }
+
+    private ValueHash256 BuildInParallel()
+    {
+        using PbtPartitionBatches batches = new()
+        {
+            Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(_accountOperations), new ArrayPoolList<int>(_zoneTable),
+                PbtTrieUpdaterBenchmark.ZoneShardNibbleIndex),
+        };
+        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
     }
 }
