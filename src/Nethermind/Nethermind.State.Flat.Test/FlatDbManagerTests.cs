@@ -302,7 +302,7 @@ public class FlatDbManagerTests
     {
         IPersistence.IPersistenceReader mockReader = Substitute.For<IPersistence.IPersistenceReader>();
         mockReader.CurrentState.Returns(stateId);
-        _persistenceManager.LeaseReader().Returns(mockReader);
+        _persistenceManager.LeaseReader(Arg.Any<ReaderFlags>()).Returns(mockReader);
         _snapshotRepository.AssembleSnapshots(stateId, stateId, Arg.Any<int>())
             .Returns(_ => new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
     }
@@ -312,6 +312,45 @@ public class FlatDbManagerTests
         Snapshot snapshot = resourcePool.CreateSnapshot(CreateStateId(blockNumber - 1), CreateStateId(blockNumber), ResourcePool.Usage.MainBlockProcessing);
         TransientResource transientResource = resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
         manager.AddSnapshot(snapshot, transientResource);
+    }
+
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    public async Task GatherReadOnlySnapshotBundle_FullScanNeverSharesCachedReaders(bool populateCacheFirst, bool wrapHistory)
+    {
+        StateId stateId = CreateStateId(10);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(stateId);
+        _persistenceManager.LeaseReader(Arg.Any<ReaderFlags>()).Returns(_ =>
+        {
+            IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+            reader.CurrentState.Returns(stateId);
+            return reader;
+        });
+        _snapshotRepository.AssembleSnapshots(stateId, stateId, Arg.Any<int>())
+            .Returns(_ => new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
+
+        await using FlatDbManager inner = CreateManager();
+        IFlatDbManager manager = wrapHistory ? WrapHistory(inner) : inner;
+        if (populateCacheFirst)
+        {
+            using ReadOnlySnapshotBundle cached = manager.GatherReadOnlySnapshotBundle(stateId);
+        }
+
+        using ReadOnlySnapshotBundle fullScan = manager.GatherReadOnlySnapshotBundle(stateId, ReaderFlags.FullScan);
+        using ReadOnlySnapshotBundle normal = manager.GatherReadOnlySnapshotBundle(stateId);
+        using ReadOnlySnapshotBundle anotherFullScan = manager.GatherReadOnlySnapshotBundle(stateId, ReaderFlags.FullScan);
+        using ReadOnlySnapshotBundle cachedNormal = manager.GatherReadOnlySnapshotBundle(stateId);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fullScan, Is.Not.SameAs(normal));
+            Assert.That(anotherFullScan, Is.Not.SameAs(fullScan));
+            Assert.That(cachedNormal, Is.SameAs(normal));
+            _persistenceManager.Received(1).LeaseReader(ReaderFlags.None);
+            _persistenceManager.Received(2).LeaseReader(ReaderFlags.FullScan);
+        }
     }
 
     [Test]
@@ -415,6 +454,7 @@ public class FlatDbManagerTests
 
     // A historical bundle reads values as of the block but exposes the current trie; executing main-chain blocks
     // over that mix would commit a corrupt state root, so the manager must reject it rather than serve the scope.
+    // The refusal is the unavailability signal the flat scope providers map to a false TryBeginScope.
     [TestCase(ResourcePool.Usage.MainBlockProcessing)]
     [TestCase(ResourcePool.Usage.PostMainBlockProcessing)]
     public async Task GatherSnapshotBundle_below_barrier_rejects_main_block_processing(ResourcePool.Usage usage)
@@ -426,7 +466,7 @@ public class FlatDbManagerTests
         await using FlatDbManager inner = CreateManager();
         HistoricalFlatDbManager manager = WrapHistory(inner);
 
-        Assert.That(() => manager.GatherSnapshotBundle(historicalBlock, usage), Throws.InvalidOperationException);
+        Assert.That(() => manager.GatherSnapshotBundle(historicalBlock, usage), Throws.TypeOf<StateUnavailableException>());
     }
 
     // The per-block marker binds the captured state root; a query below the barrier for the same height but a
@@ -482,7 +522,54 @@ public class FlatDbManagerTests
         HistoricalFlatDbManager manager = WrapHistory(inner);
 
         Assert.That(() => manager.GatherReadOnlySnapshotBundle(CreateStateId(5, rootByte: 5)),
-            Throws.TypeOf<StateUnavailableException>());
+            Throws.TypeOf<StateNotRetainedException>());
+    }
+
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_orphaned_state_throws_state_not_retained()
+    {
+        StateId orphaned = CreateStateId(10, rootByte: 10);
+        StateId readerState = CreateStateId(20, rootByte: 20);
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(readerState);
+        _persistenceManager.LeaseReader().Returns(reader);
+        _snapshotRepository.AssembleSnapshots(orphaned, readerState, Arg.Any<int>())
+            .Returns(new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
+        _snapshotRepository.HasState(orphaned).Returns(false);
+
+        await using FlatDbManager manager = CreateManager();
+
+        Assert.That(() => manager.GatherReadOnlySnapshotBundle(orphaned),
+            Throws.TypeOf<StateNotRetainedException>().With.Message.StartsWith("No state available for block 10"));
+    }
+
+    // Persistence moved to the requested state and pruned its in-memory snapshots after the reader was leased.
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_state_persisted_after_reader_lease_is_served_by_fresh_reader()
+    {
+        StateId requested = CreateStateId(10, rootByte: 10);
+        StateId previouslyPersisted = CreateStateId(5, rootByte: 5);
+        IPersistence.IPersistenceReader staleReader = Substitute.For<IPersistence.IPersistenceReader>();
+        staleReader.CurrentState.Returns(previouslyPersisted);
+        IPersistence.IPersistenceReader freshReader = Substitute.For<IPersistence.IPersistenceReader>();
+        freshReader.CurrentState.Returns(requested);
+        _persistenceManager.LeaseReader().Returns(staleReader, freshReader);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(requested);
+        _snapshotRepository.AssembleSnapshots(requested, previouslyPersisted, Arg.Any<int>())
+            .Returns(_ => new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
+        _snapshotRepository.AssembleSnapshots(requested, requested, Arg.Any<int>())
+            .Returns(_ => new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
+        _snapshotRepository.HasState(requested).Returns(false);
+
+        await using FlatDbManager manager = CreateManager();
+        using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(requested);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _persistenceManager.Received(2).LeaseReader();
+            staleReader.Received(1).Dispose();
+            freshReader.DidNotReceive().Dispose();
+        }
     }
 
     [Test]
@@ -543,7 +630,8 @@ public class FlatDbManagerTests
         _trieNodeCache,
         _resourcePool,
         enableDetailedMetrics: false,
-        new HistoryScopeGate());
+        new HistoryScopeGate(),
+        LimboLogs.Instance);
 
     private void RecordHistoryWindow()
     {

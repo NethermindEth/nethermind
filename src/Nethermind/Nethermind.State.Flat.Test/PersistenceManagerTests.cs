@@ -17,7 +17,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -749,7 +748,7 @@ public class PersistenceManagerTests
             Substitute.For<IProcessExitSource>());
 
         // Finalized at/above the next boundary so the finalized branch IS entered, but leave
-        // GetFinalizedStateRootAt(16) unset so its seed resolves to null. Depth (90017) exceeds the
+        // GetFinalizedHeader(16) unset so its seed resolves to null. Depth (90017) exceeds the
         // effective backstop (MinReorgDepth + CompactSize = 90016), so the backstop must persist.
         StateId tierTip = CreateStateId(config.CompactSize);
         using Snapshot expected = CreateSnapshot(Block0, tierTip, compacted: false);
@@ -768,7 +767,7 @@ public class PersistenceManagerTests
     public void DetermineSnapshotAction_FinalizedBeyondHead_SeedsAtBoundary()
     {
         // Catch-up sync: CL reports a finalized block far beyond the local chain head.
-        // GetFinalizedStateRootAt(finalizedBlockNumber) would return null, but the boundary
+        // GetFinalizedHeader(finalizedBlockNumber) would return null, but the boundary
         // block (persisted + CompactSize) IS locally synced, so the canonical-root lookup
         // resolves there. Phase 1 must seed at the boundary and persist the boundary snapshot.
         StateId persisted = Block0;
@@ -776,7 +775,7 @@ public class PersistenceManagerTests
         StateId boundary = CreateStateId(_config.CompactSize);
 
         _finalizedStateProvider.SetFinalizedBlockNumber(25_128_361);
-        // Deliberately leave GetFinalizedStateRootAt(25_128_361) unset → returns null;
+        // Deliberately leave GetFinalizedHeader(25_128_361) unset → returns null;
         // only the boundary block has a known canonical state root.
         _finalizedStateProvider.SetFinalizedStateRootAt(_config.CompactSize, new Hash256(boundary.StateRoot.Bytes));
 
@@ -1904,7 +1903,7 @@ public class PersistenceManagerTests
         method.Invoke(_persistenceManager, [compacted]);
     }
 
-    private class TestFinalizedStateProvider : IFinalizedStateProvider
+    private class TestFinalizedStateProvider : IStateHeaderProvider
     {
         private ulong _finalizedBlockNumber;
         private readonly Dictionary<ulong, Hash256> _finalizedStateRoots = [];
@@ -1920,12 +1919,16 @@ public class PersistenceManagerTests
 
         public int GetLookupCount(ulong blockNumber) => _lookupCounts.GetValueOrDefault(blockNumber);
 
-        public Hash256? GetFinalizedStateRootAt(ulong blockNumber)
+        public BlockHeader? GetFinalizedHeader(ulong blockNumber)
         {
             _lookupCounts[blockNumber] = GetLookupCount(blockNumber) + 1;
             if (blockNumber > RootLookupCeiling) return null;
-            return _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
+            return _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root)
+                ? new BlockHeader(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, Address.Zero, UInt256.Zero, blockNumber, 30_000_000, 0, []) { StateRoot = root }
+                : null;
         }
+
+        public BlockHeader? FindParentHeader(BlockHeader target) => null;
     }
 
     private sealed class RecordingCaptureHook : IFlatPersistenceCaptureHook
