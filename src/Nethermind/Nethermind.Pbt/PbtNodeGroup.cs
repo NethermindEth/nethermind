@@ -134,16 +134,6 @@ public static class PbtNodeGroupCodec
     internal static uint ReadAvailability(ReadOnlySpan<byte> payload) =>
         BinaryPrimitives.ReadUInt32LittleEndian(payload[^(sizeof(uint) + DescendantsLength(ReadDescendantMask(payload)))..]);
 
-    /// <summary>Reads the descendant size of each boundary slot into <paramref name="descendantBytes"/>, without validating anything else.</summary>
-    /// <param name="descendantBytes">Receives one size per boundary slot; slots without descendants read as zero.</param>
-    public static void ReadDescendantBytes(ReadOnlySpan<byte> payload, Span<long> descendantBytes)
-    {
-        if (descendantBytes.Length != DescendantSlots) throw new ArgumentException("One size per boundary slot is required.", nameof(descendantBytes));
-        ushort descendantMask = ReadDescendantMask(payload);
-        for (int slot = 0; slot < DescendantSlots; slot++)
-            descendantBytes[slot] = (descendantMask & (1 << slot)) == 0 ? 0 : ReadDescendantBytes(payload, descendantMask, slot);
-    }
-
     internal static long ReadDescendantBytes(ReadOnlySpan<byte> payload, ushort descendantMask, int slot)
     {
         int fieldsAfter = BitOperations.PopCount((uint)(descendantMask >> (slot + 1)));
@@ -157,9 +147,6 @@ public static class PbtNodeGroupCodec
         BitOperations.PopCount(availability) * sizeof(ushort) + sizeof(uint) + DescendantsLength(descendantMask);
 
     /// <summary>Validates per-slot descendant sizes and returns the mask of nonzero slots; an empty span means no descendants.</summary>
-    internal static ushort DescendantMask(ReadOnlySpan<long> descendantBytes) => DescendantMask(descendantBytes, ushort.MaxValue);
-
-    /// <inheritdoc cref="DescendantMask(ReadOnlySpan{long})"/>
     /// <param name="candidateSlots">The slots that may be nonzero; every other slot is known to be zero and is not read.</param>
     internal static ushort DescendantMask(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
@@ -177,7 +164,7 @@ public static class PbtNodeGroupCodec
         return descendantMask;
     }
 
-    /// <param name="descendantMask">The <see cref="DescendantMask(ReadOnlySpan{long})"/> of <paramref name="descendantBytes"/>.</param>
+    /// <param name="descendantMask">The <see cref="DescendantMask(ReadOnlySpan{long}, ushort)"/> of <paramref name="descendantBytes"/>.</param>
     internal static void WriteFooter(Span<byte> footer, ReadOnlySpan<ushort> offsets, uint availability, ushort descendantMask, ReadOnlySpan<long> descendantBytes)
     {
         int offsetIndex = 0;
@@ -265,8 +252,6 @@ public readonly ref struct PbtNodeGroupReader
         ValidatePosition(position);
         return (_availability & (1u << position)) == 0 ? [] : NodeAt(position);
     }
-    /// <summary>Gets a borrowed canonical node encoding at a position.</summary>
-    public ReadOnlySpan<byte> this[int position] => GetNode(position);
     /// <summary>Attempts to get a borrowed canonical node encoding.</summary>
     public bool TryGetNode(int position, out ReadOnlySpan<byte> encoding)
     {
@@ -285,12 +270,6 @@ public readonly ref struct PbtNodeGroupReader
     }
 
     /// <summary>Gets an allocation-free positional enumerator.</summary>
-    public Enumerator GetEnumerator()
-    {
-        EnsureInitialized();
-        return new(this);
-    }
-    /// <summary>Gets an allocation-free positional enumerator.</summary>
     public Enumerator EnumerateNodes()
     {
         EnsureInitialized();
@@ -304,13 +283,6 @@ public readonly ref struct PbtNodeGroupReader
             throw new ArgumentOutOfRangeException(nameof(position));
     }
     private void EnsureInitialized() { if (!_initialized) throw new InvalidOperationException("The PBT node-group reader is not initialized."); }
-    [System.Diagnostics.Conditional("DEBUG")]
-    internal static void ValidateLeafPath<TPath>(TPath groupKey, int position, ReadOnlySpan<byte> encoding) where TPath : struct, IPbtNodePath<TPath>
-    {
-        PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
-        ValidateLeafPath(path, position, encoding);
-    }
-
     /// <summary>Checks that a branch's inline leaf keys lie below the branch's position.</summary>
     [System.Diagnostics.Conditional("DEBUG")]
     internal static void ValidateLeafPath(scoped in PbtTraversalPath groupKey, int position, ReadOnlySpan<byte> encoding)

@@ -47,14 +47,14 @@ public unsafe class SlabMemoryAllocatorTests
         using SlabMemoryAllocator allocator = CreateAllocator();
         SlabAllocation first = allocator.Allocate(size);
         SlabAllocation second = allocator.Allocate(size);
-        first.AsSpan().Fill(0xA1);
-        second.AsSpan().Fill(0xB2);
+        BlockSpan(first).Fill(0xA1);
+        BlockSpan(second).Fill(0xB2);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first.Capacity, Is.EqualTo(allocator.RoundUpCapacity(size)).And.GreaterThanOrEqualTo(size));
             Assert.That(first.Pointer != second.Pointer, "blocks are distinct");
-            Assert.That(first.AsSpan().IndexOfAnyExcept((byte)0xA1), Is.EqualTo(-1), "the second fill did not touch the first block");
+            Assert.That(BlockSpan(first).IndexOfAnyExcept((byte)0xA1), Is.EqualTo(-1), "the second fill did not touch the first block");
             Assert.That(allocator.OutstandingBytes, Is.GreaterThanOrEqualTo(2L * first.Capacity), "a refill batch may sit in the thread cache");
         }
 
@@ -75,11 +75,11 @@ public unsafe class SlabMemoryAllocatorTests
         for (int i = 0; i < count; i++)
         {
             blocks[i] = allocator.Allocate(size);
-            blocks[i].AsSpan().Fill((byte)i);
+            BlockSpan(blocks[i]).Fill((byte)i);
         }
 
         for (int i = 0; i < count; i++)
-            Assert.That(blocks[i].AsSpan().IndexOfAnyExcept((byte)i), Is.EqualTo(-1), $"region {i} overlaps another");
+            Assert.That(BlockSpan(blocks[i]).IndexOfAnyExcept((byte)i), Is.EqualTo(-1), $"region {i} overlaps another");
 
         long reserved = allocator.ReservedBytes;
         for (int i = 0; i < count; i++) allocator.Free(in blocks[i]);
@@ -285,7 +285,7 @@ public unsafe class SlabMemoryAllocatorTests
                     {
                         byte tag = (byte)random.Next(1, 256);
                         SlabAllocation block = allocator.Allocate(random.Next(0, 3 * PageSize));
-                        block.AsSpan().Fill(tag);
+                        BlockSpan(block).Fill(tag);
                         if (random.Next(2) == 0) mine.Add((block, tag));
                         else handedOff.Enqueue((block, tag));
 
@@ -322,7 +322,9 @@ public unsafe class SlabMemoryAllocatorTests
 
     private static void VerifyAndFree(SlabMemoryAllocator allocator, (SlabAllocation Block, byte Tag) entry)
     {
-        if (entry.Block.AsSpan().IndexOfAnyExcept(entry.Tag) >= 0) throw new InvalidOperationException("a block was overwritten by another allocation");
+        if (BlockSpan(entry.Block).IndexOfAnyExcept(entry.Tag) >= 0) throw new InvalidOperationException("a block was overwritten by another allocation");
         allocator.Free(in entry.Block);
     }
+
+    private static Span<byte> BlockSpan(in SlabAllocation block) => new(block.Pointer, block.Capacity);
 }

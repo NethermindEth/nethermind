@@ -114,8 +114,6 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly int BranchDepth => _anchorDepth + Prefix.BitCount;
         internal readonly ValueHash256 LeftHash => Reader.LeftHash;
         internal readonly ValueHash256 RightHash => Reader.RightHash;
-        internal readonly bool HasLeftLeaf => !Reader.LeftKey.IsEmpty;
-        internal readonly bool HasRightLeaf => !Reader.RightKey.IsEmpty;
         internal readonly TKey LeftLeafKey => TKey.Create(Reader.LeftKey);
         internal readonly TKey RightLeafKey => TKey.Create(Reader.RightKey);
         /// <summary>Which children are leaves: <see cref="LeftLeaf"/> and <see cref="RightLeaf"/> bits.</summary>

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -36,7 +37,7 @@ internal static class PbtTestLeaves
         new([Eip8297KeyDerivation.StorageZone, .. PbtKeyDerivation.AddressKeyHash(address).Bytes]);
 
     public static IEnumerable<KeyValuePair<PbtStorageTreeKey, ValueHash256>> EnumerateLeaves(this PbtReadOnlySnapshotBundle bundle, PbtStorageTreeKey prefix) =>
-        bundle.EnumerateLeaves().Where(leaf => prefix.IsPrefixOf(leaf.Key));
+        bundle.EnumerateLeaves().Where(leaf => leaf.Key.Bytes.StartsWith(prefix.Bytes));
 
     public static IEnumerable<KeyValuePair<PbtStorageTreeKey, ValueHash256>> EnumerateLeaves(this PbtReadOnlySnapshotBundle bundle)
     {

@@ -76,7 +76,7 @@ public class PbtTrieUpdaterBenchmark
         {
             Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(sharded), new ArrayPoolList<int>(zoneTable), ZoneShardNibbleIndex),
         };
-        return TrieUpdater.UpdateRoot(_store, _root, batches, _foldQuota, FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
+        return TrieUpdater.UpdateRoot(_store, _root, batches, _foldQuota, new FoldFanOut(FoldFanOut.DefaultMinOperationsPerWorker, FoldFanOut.DefaultLargeSubtreeBytes, FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker), PbtPrefixlessBranchOmission.Interior, null);
     }
 
     /// <summary>A batch of about 70% updates, 20% inserts and 10% deletes over distinct keys.</summary>

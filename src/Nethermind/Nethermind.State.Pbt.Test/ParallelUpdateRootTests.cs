@@ -130,7 +130,7 @@ public class ParallelUpdateRootTests
             (byte[] Key, byte[]? Value)[] writes = new (byte[], byte[]?)[mutations.Length];
             for (int index = 0; index < mutations.Length; index++)
                 writes[index] = (mutations[index].Key, zeroDeletes && mutations[index].Value is null ? new byte[32] : mutations[index].Value);
-            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
+            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
             sequential.ApplyBatch(mutations);
             foreach ((byte[] key, byte[]? value) in mutations)
             {
@@ -143,7 +143,7 @@ public class ParallelUpdateRootTests
                 Assert.That(root, Is.EqualTo(sequential.RootHash));
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
                 Assert.That(PhysicalRecords(store), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
-                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null), Is.EqualTo(root));
+                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null), Is.EqualTo(root));
                 Assert.That(PhysicalRecords(reopened), Is.EqualTo(PhysicalRecords(store)));
             }
         }
@@ -155,7 +155,7 @@ public class ParallelUpdateRootTests
         using PbtNodeGroupStore store = new();
         using PbtTreeHarness expected = new();
         (byte[] Key, byte[]? Value)[] initial = RandomZoneEntries(new Random(42), 256);
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), PbtTreeHarness.FoldQuota(), FoldFanOut.Default, omission, null);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, omission, null);
         int[] storedWidths = StoredPrefixlessBranchWidths(store);
         int[] expectedWidths = omission switch
         {
@@ -171,7 +171,7 @@ public class ParallelUpdateRootTests
 
         // Rewritten groups take the default layout while untouched ones keep theirs; both read alike.
         (byte[] Key, byte[]? Value)[] changes = Changes(initial);
-        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), PbtTreeHarness.FoldQuota(), FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
+        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(expected.ApplyBatch(changes)));
@@ -293,7 +293,7 @@ public class ParallelUpdateRootTests
         void ApplyAndCompare(PbtNodeGroupStore target, (byte[] Key, byte[]? Value)[] changes)
         {
             using PbtPartitionBatches partitions = PreparePartitions(changes);
-            root = TrieUpdater.UpdateRoot(target, root, partitions, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
+            root = TrieUpdater.UpdateRoot(target, root, partitions, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
             sequential.ApplyBatch(changes);
             foreach ((byte[] key, byte[]? value) in changes)
             {
@@ -332,7 +332,7 @@ public class ParallelUpdateRootTests
     public void Bucket_run_minimum_follows_its_own_descendants(int[] counts, long[] descendantBytes, int[] expectedRunEnds)
     {
         int[] runEnds = new int[PbtFourLevelGroupGeometry.BoundarySlots];
-        int runCount = TrieUpdater.PlanBucketRuns(counts, descendantBytes, FoldFanOut.Default, runEnds);
+        int runCount = TrieUpdater.PlanBucketRuns(counts, descendantBytes, PbtTreeHarness.DefaultFanOut, runEnds);
         Assert.That(runEnds.AsSpan(0, runCount).ToArray(), Is.EqualTo(expectedRunEnds));
     }
 
@@ -340,7 +340,7 @@ public class ParallelUpdateRootTests
     [TestCase(FoldFanOut.DefaultLargeSubtreeBytes - 1, FoldFanOut.DefaultMinOperationsPerWorker)]
     [TestCase(FoldFanOut.DefaultLargeSubtreeBytes, FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker)]
     public void Worker_minimum_drops_from_the_large_subtree_size(long descendantBytes, int expectedMinimum) =>
-        Assert.That(FoldFanOut.Default.MinOperationsFor(descendantBytes), Is.EqualTo(expectedMinimum));
+        Assert.That(PbtTreeHarness.DefaultFanOut.MinOperationsFor(descendantBytes), Is.EqualTo(expectedMinimum));
 
     // One populated zone keeps the zone fan-out out of the picture, so any second thread is a bucket worker. While the
     // buckets hold less than the large-subtree size below them a 40-operation frame folds on the calling thread alone;
@@ -355,10 +355,10 @@ public class ParallelUpdateRootTests
         using BucketWorkerStore store = new();
         using PbtTreeHarness sequential = new();
         ConcurrencyController foldQuota = new(2);
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
         sequential.ApplyBatch(initial);
         store.Observe(coordinate: expectParallel);
-        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
+        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
@@ -783,7 +783,7 @@ public class ParallelUpdateRootTests
     }
 
     /// <summary>A single-operation minimum splits every frame with two touched slots, so even small batches fold in parallel.</summary>
-    private static FoldFanOut SplitFanOut(bool splitEveryFrame) => splitEveryFrame ? PbtTreeHarness.FanOut(1) : FoldFanOut.Default;
+    private static FoldFanOut SplitFanOut(bool splitEveryFrame) => splitEveryFrame ? PbtTreeHarness.FanOut(1) : PbtTreeHarness.DefaultFanOut;
 
     /// <summary>Keys cycling through the account, code and storage zones, each led by its index byte.</summary>
     private static (byte[] Key, byte[]? Value)[] Entries(int seed, int count)

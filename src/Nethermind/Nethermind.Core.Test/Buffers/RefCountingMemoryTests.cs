@@ -13,34 +13,20 @@ namespace Nethermind.Core.Test.Buffers;
 public class RefCountingMemoryTests
 {
     [Test]
-    public void Owning_slices_to_value_length_while_wrapping_exposes_the_whole_array()
+    public void Owning_slices_to_value_length()
     {
         byte[] rented = ArrayPool<byte>.Shared.Rent(64);
         for (byte i = 0; i < 10; i++) rented[i] = i;
 
-        using (RefCountingMemory owning = RefCountingMemory.Owning(rented, 10))
-        {
-            Assert.That(owning.GetSpan().Length, Is.EqualTo(10));
-            Assert.That(owning.GetSpan().ToArray(), Is.EqualTo(rented[..10]));
-        }
-
-        byte[] array = [1, 2, 3];
-        using RefCountingMemory wrapping = RefCountingMemory.Wrapping(array);
-        Assert.That(wrapping.GetSpan().ToArray(), Is.EqualTo(array));
-    }
-
-    [Test]
-    public void WrappingOrNull_maps_a_null_array_to_null()
-    {
-        Assert.That(RefCountingMemory.WrappingOrNull(null), Is.Null);
-        using RefCountingMemory? memory = RefCountingMemory.WrappingOrNull([1]);
-        Assert.That(memory, Is.Not.Null);
+        using RefCountingMemory owning = RefCountingMemory.Owning(rented, 10);
+        Assert.That(owning.GetSpan().Length, Is.EqualTo(10));
+        Assert.That(owning.GetSpan().ToArray(), Is.EqualTo(rented[..10]));
     }
 
     [Test]
     public void Cleanup_runs_only_on_the_last_release_and_over_disposing_throws()
     {
-        RefCountingMemory mem = RefCountingMemory.Wrapping([1, 2, 3]);
+        RefCountingMemory mem = PooledRefCountingMemoryProvider.Instance.Rent(3);
         mem.AcquireLease();
 
         ((IDisposable)mem).Dispose();
@@ -53,7 +39,7 @@ public class RefCountingMemoryTests
     [Test]
     public void A_fully_released_memory_cannot_be_leased_again()
     {
-        RefCountingMemory mem = RefCountingMemory.Wrapping([1]);
+        RefCountingMemory mem = PooledRefCountingMemoryProvider.Instance.Rent(1);
         ((IDisposable)mem).Dispose();
         Assert.Throws<InvalidOperationException>(mem.AcquireLease);
     }
@@ -66,34 +52,28 @@ public class RefCountingMemoryTests
     }
 
     [Test]
-    public void Metrics_track_active_pooled_capacity_and_non_pooled_count_until_final_release()
+    public void Metrics_track_active_pooled_capacity_until_final_release()
     {
         long initialPooledCount = RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCount;
         long initialPooledCapacity = RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCapacity;
-        long initialNonPooledCount = RefCountingMemoryMetrics.ActiveNonPooledRefCountingMemoryCount;
         byte[] rented = ArrayPool<byte>.Shared.Rent(65);
         RefCountingMemory? owning = null;
-        RefCountingMemory? wrapping = null;
 
         try
         {
             owning = RefCountingMemory.Owning(rented, 65);
-            wrapping = RefCountingMemory.Wrapping([1, 2, 3]);
-            AssertMetrics(initialPooledCount + 1, initialPooledCapacity + rented.Length, initialNonPooledCount + 1);
+            AssertMetrics(initialPooledCount + 1, initialPooledCapacity + rented.Length);
 
             owning.AcquireLease();
             ((IDisposable)owning).Dispose();
-            AssertMetrics(initialPooledCount + 1, initialPooledCapacity + rented.Length, initialNonPooledCount + 1);
+            AssertMetrics(initialPooledCount + 1, initialPooledCapacity + rented.Length);
 
-            ((IDisposable)wrapping).Dispose();
-            wrapping = null;
             ((IDisposable)owning).Dispose();
             owning = null;
-            AssertMetrics(initialPooledCount, initialPooledCapacity, initialNonPooledCount);
+            AssertMetrics(initialPooledCount, initialPooledCapacity);
         }
         finally
         {
-            ((IDisposable?)wrapping)?.Dispose();
             ((IDisposable?)owning)?.Dispose();
         }
     }
@@ -103,7 +83,6 @@ public class RefCountingMemoryTests
     {
         long initialPooledCount = RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCount;
         long initialPooledCapacity = RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCapacity;
-        long initialNonPooledCount = RefCountingMemoryMetrics.ActiveNonPooledRefCountingMemoryCount;
         long initialRocksDbCount = RefCountingMemoryMetrics.ActiveRocksDbRefCountingMemoryCount;
         long initialRocksDbCapacity = RefCountingMemoryMetrics.ActiveRocksDbRefCountingMemoryCapacity;
         byte[] array = [1, 2, 3];
@@ -120,7 +99,7 @@ public class RefCountingMemoryTests
             {
                 Assert.That(memory.GetSpan().ToArray(), Is.EqualTo(new byte[] { 1, 4, 3 }), "owned memory is not copied");
                 Assert.That(owner.IsDisposed, Is.False, "owner before release");
-                AssertMetrics(initialPooledCount, initialPooledCapacity, initialNonPooledCount);
+                AssertMetrics(initialPooledCount, initialPooledCapacity);
                 Assert.That(RefCountingMemoryMetrics.ActiveRocksDbRefCountingMemoryCount, Is.EqualTo(initialRocksDbCount + 1), "RocksDB count");
                 Assert.That(RefCountingMemoryMetrics.ActiveRocksDbRefCountingMemoryCapacity, Is.EqualTo(initialRocksDbCapacity + array.Length), "RocksDB capacity");
             }
@@ -133,7 +112,7 @@ public class RefCountingMemoryTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(owner.IsDisposed, Is.True, "owner after final release");
-                AssertMetrics(initialPooledCount, initialPooledCapacity, initialNonPooledCount);
+                AssertMetrics(initialPooledCount, initialPooledCapacity);
                 Assert.That(RefCountingMemoryMetrics.ActiveRocksDbRefCountingMemoryCount, Is.EqualTo(initialRocksDbCount), "RocksDB count after release");
                 Assert.That(RefCountingMemoryMetrics.ActiveRocksDbRefCountingMemoryCapacity, Is.EqualTo(initialRocksDbCapacity), "RocksDB capacity after release");
             }
@@ -207,13 +186,12 @@ public class RefCountingMemoryTests
         protected override void Dispose(bool disposing) => IsDisposed = true;
     }
 
-    private static void AssertMetrics(long pooledCount, long pooledCapacity, long nonPooledCount)
+    private static void AssertMetrics(long pooledCount, long pooledCapacity)
     {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCount, Is.EqualTo(pooledCount), "pooled count");
             Assert.That(RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCapacity, Is.EqualTo(pooledCapacity), "pooled capacity");
-            Assert.That(RefCountingMemoryMetrics.ActiveNonPooledRefCountingMemoryCount, Is.EqualTo(nonPooledCount), "non-pooled count");
         }
     }
 }

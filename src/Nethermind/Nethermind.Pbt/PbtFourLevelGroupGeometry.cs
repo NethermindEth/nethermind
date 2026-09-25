@@ -52,9 +52,6 @@ public static class PbtFourLevelGroupGeometry
         return new PbtNodeGroupLocation<TPath>(groupKey, position);
     }
 
-    /// <summary>Returns the position of <paramref name="path"/> in its owning group.</summary>
-    public static int PositionOf<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> => PositionOf(path, GroupDepthOf(path.BitDepth));
-
     /// <summary>Reconstructs a canonical path from a group key and one of its positions.</summary>
     public static TPath PathOf<TPath>(TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath>
     {

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt;
@@ -26,17 +25,6 @@ internal static class PbtNodePathOperations
         if (path.Length != byteLength) throw new ArgumentException("Path length does not match the bit depth.", nameof(path));
         if (byteLength != 0 && (bitDepth & 7) != 0 && (path[^1] & (0xFF >> (bitDepth & 7))) != 0)
             throw new ArgumentException("Unused path bits must be zero.", nameof(path));
-    }
-
-    [SkipLocalsInit]
-    internal static TPath FromKey<TPath>(ReadOnlySpan<byte> key, int bitDepth) where TPath : struct, IPbtNodePath<TPath>
-    {
-        Debug.Assert(!key.IsEmpty);
-        Debug.Assert((uint)bitDepth <= (uint)TPath.MaxBitDepth && bitDepth <= (long)key.Length * 8);
-        Span<byte> path = stackalloc byte[(bitDepth + 7) >> 3];
-        key[..path.Length].CopyTo(path);
-        if (path.Length != 0 && (bitDepth & 7) != 0) path[^1] &= (byte)(0xFF << (8 - (bitDepth & 7)));
-        return TPath.Create(path, bitDepth);
     }
 
     [SkipLocalsInit]
@@ -79,20 +67,6 @@ internal static class PbtNodePathOperations
         return TPath.Create(path, depth);
     }
 
-    internal static int Compare<TPath, TOther>(TPath path, TOther other)
-        where TPath : struct, IPbtNodePath<TPath>
-        where TOther : struct, IPbtNodePath<TOther>
-    {
-        int depthComparison = path.BitDepth.CompareTo(other.BitDepth);
-        if (depthComparison != 0) return depthComparison;
-        for (int index = 0; index < (path.BitDepth + 7) >> 3; index++)
-        {
-            int comparison = path.GetByte(index).CompareTo(other.GetByte(index));
-            if (comparison != 0) return comparison;
-        }
-        return 0;
-    }
-
     internal static bool Equal<TPath, TOther>(TPath path, TOther other)
         where TPath : struct, IPbtNodePath<TPath>
         where TOther : struct, IPbtNodePath<TOther> =>
@@ -111,37 +85,10 @@ internal static class PbtNodePathOperations
         return tailBits == 0 || ((path.GetByte(completeBytes) ^ other.GetByte(completeBytes)) & (0xFF << (8 - tailBits))) == 0;
     }
 
-    internal static int GetBit(ReadOnlySpan<byte> path, int bitDepth, int bitIndex)
-    {
-        if ((uint)bitIndex >= (uint)bitDepth) throw new ArgumentOutOfRangeException(nameof(bitIndex));
-        return (path[bitIndex >> 3] >> (7 - (bitIndex & 7))) & 1;
-    }
-
-    internal static void CopyBitsTo(ReadOnlySpan<byte> path, int bitDepth, int sourceBitOffset,
-        Span<byte> destination, int destinationBitOffset, int bitCount)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(sourceBitOffset);
-        ArgumentOutOfRangeException.ThrowIfNegative(destinationBitOffset);
-        ArgumentOutOfRangeException.ThrowIfNegative(bitCount);
-        if (sourceBitOffset > bitDepth - bitCount) throw new ArgumentOutOfRangeException(nameof(bitCount));
-        if ((long)destinationBitOffset + bitCount > (long)destination.Length * 8) throw new ArgumentOutOfRangeException(nameof(destinationBitOffset));
-        PbtBitPrefix.CopyBits(path, sourceBitOffset, bitCount, destination, destinationBitOffset);
-    }
-
     /// <summary>Copies a path's canonical bytes into a zeroed destination of sufficient length.</summary>
     internal static void CopyTo<TPath>(TPath path, Span<byte> destination) where TPath : struct, IPbtNodePath<TPath>
     {
         for (int index = 0; index < (path.BitDepth + 7) >> 3; index++) destination[index] = path.GetByte(index);
-    }
-
-    internal static bool MatchesPrefix(ReadOnlySpan<byte> path, int bitDepth, ReadOnlySpan<byte> key, int bitCount)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(bitCount);
-        if (bitCount > bitDepth || (long)bitCount > (long)key.Length * 8) return false;
-        int completeBytes = bitCount >> 3;
-        int tailBits = bitCount & 7;
-        return path[..completeBytes].SequenceEqual(key[..completeBytes])
-            && (tailBits == 0 || ((path[completeBytes] ^ key[completeBytes]) & (0xFF << (8 - tailBits))) == 0);
     }
 
     internal static int Hash(ReadOnlySpan<byte> path, int bitDepth)

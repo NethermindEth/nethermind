@@ -382,7 +382,7 @@ public class PbtDbManagerTests
         PbtPersistenceCoordinator coordinator = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence,
             repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         PbtDbManager manager = new(repository, coordinator, persistence, pool,
-            new PbtSnapshotCompactor(pool, schedule, repository, config), exitSource, logs, config, new MetricsConfig(), IPbtTrieNodeCache.Noop.Instance);
+            new PbtSnapshotCompactor(pool, schedule, repository, config), exitSource, logs, config, new MetricsConfig(), NoopPbtTrieNodeCache.Instance);
         Task producer = Task.CompletedTask;
         try
         {
@@ -471,7 +471,7 @@ public class PbtDbManagerTests
             repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         using PbtTrieNodeCache cache = new(config);
         PbtDbManager manager = new(repository, coordinator, persistence, pool, new PbtSnapshotCompactor(pool, schedule, repository, config),
-            exitSource, LimboLogs.Instance, config, new MetricsConfig(), mode == TransientHandOff.NoCache ? IPbtTrieNodeCache.Noop.Instance : cache);
+            exitSource, LimboLogs.Instance, config, new MetricsConfig(), mode == TransientHandOff.NoCache ? NoopPbtTrieNodeCache.Instance : cache);
         PbtTransientResource first = StagedTransient(pool, 1);
         PbtTransientResource second = StagedTransient(pool, 2);
         PbtTransientResource third = StagedTransient(pool, 3);
@@ -512,7 +512,7 @@ public class PbtDbManagerTests
     private static PbtTransientResource StagedTransient(PbtResourcePool pool, byte marker)
     {
         PbtTransientResource transient = pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing);
-        using RefCountingMemory payload = RefCountingMemory.Wrapping([marker]);
+        using RefCountingMemory payload = RefCountingMemory.OwningRocksDb(new ArrayMemoryManager([marker]));
         transient.NodeGroups.Set(new ValueHash256(TestItem.KeccakA.Bytes), new PbtNodePath([marker], 8), payload);
         return transient;
     }

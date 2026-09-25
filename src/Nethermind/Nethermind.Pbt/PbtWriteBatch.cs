@@ -19,9 +19,6 @@ public sealed class PbtWriteBatch<TKey> : IDisposable where TKey : struct, IPbtK
         ShardNibbleIndex = shardNibbleIndex;
     }
 
-    /// <summary>Gets the number of prepared mutations before the batch is consumed.</summary>
-    public int Count => Operations.Count;
-
     internal int ShardNibbleIndex { get; }
     private ArrayPoolList<PbtWriteOperation<TKey>> Operations => _operations ?? throw new InvalidOperationException("The prepared batch has already been consumed.");
 
@@ -42,8 +39,4 @@ public sealed class PbtWriteBatch<TKey> : IDisposable where TKey : struct, IPbtK
     }
 }
 
-internal readonly record struct PbtWriteOperation<TKey>(TKey Key, ValueHash256 Value) where TKey : struct, IPbtKey<TKey>
-{
-    internal static PbtWriteOperation<TKey> Set(TKey key, in ValueHash256 value) => new(key, value);
-    internal static PbtWriteOperation<TKey> Delete(TKey key) => new(key, default);
-}
+internal readonly record struct PbtWriteOperation<TKey>(TKey Key, ValueHash256 Value) where TKey : struct, IPbtKey<TKey>;

@@ -67,9 +67,6 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
     /// <summary>Adds a complete-key value mutation, or a deletion when the value is zero.</summary>
     public void Set(TKey key, in ValueHash256 value) => SetLeaf(key, value);
 
-    /// <summary>Adds an explicit complete-key deletion.</summary>
-    public void Delete(TKey key) => SetMutation(key, null);
-
     internal void SetLeaf(TKey key, ValueHash256? value) =>
         SetMutation(key, value is null || value.Value == default ? null : value);
 
@@ -95,27 +92,6 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
             int count = 0;
             foreach (Shard? shard in _shards) count += shard?.Entries.Count ?? 0;
             return count;
-        }
-    }
-
-    internal IEnumerable<KeyValuePair<TKey, ValueHash256?>> Leaves
-    {
-        get
-        {
-            for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
-            {
-                if (_shards[shardIndex] is not { } shard) continue;
-                foreach (KeyValuePair<TKey, ValueHash256?> entry in shard.Entries) yield return entry;
-            }
-        }
-    }
-
-    internal IEnumerable<PbtWriteOperation<TKey>> Operations
-    {
-        get
-        {
-            foreach ((TKey key, ValueHash256? value) in Leaves)
-                yield return new(key, value.GetValueOrDefault());
         }
     }
 

@@ -17,7 +17,7 @@ namespace Nethermind.Core.Buffers;
 /// runs cleanup exactly once. An <see cref="Owning"/> instance returns its buffer to
 /// <see cref="ArrayPool{T}.Shared"/> on that last release, an <see cref="OwningRocksDb"/> instance
 /// disposes its memory manager, an <see cref="OwningNative"/> instance frees its block through its
-/// <see cref="SlabMemoryAllocator"/>, and a <see cref="Wrapping"/> instance leaves its array untouched.
+/// <see cref="SlabMemoryAllocator"/>.
 /// </summary>
 /// <remarks>
 /// The lease counter is lock-free via <see cref="RefCountingLease"/>, so leases may be acquired and
@@ -29,7 +29,6 @@ public sealed unsafe class RefCountingMemory : MemoryManager<byte>
     internal enum BackingKind
     {
         Pooled,
-        Wrapped,
         RocksDb,
         Native,
     }
@@ -101,19 +100,6 @@ public sealed unsafe class RefCountingMemory : MemoryManager<byte>
 
     /// <summary>Gets the size of the backing buffer, which a pooled buffer may have rented larger than the value.</summary>
     public int Capacity => _capacity;
-
-    /// <summary>Wraps an array whose lifetime is owned elsewhere; the last release does not free it.</summary>
-    public static RefCountingMemory Wrapping(byte[] array) => new(array, array.Length, BackingKind.Wrapped);
-
-    public static RefCountingMemory? WrappingOrNull(byte[]? array) => array is null ? null : Wrapping(array);
-
-    /// <summary>
-    /// Copies the content into a fresh array, consuming the caller's lease; the memory must not be used afterwards.
-    /// </summary>
-    public byte[] ToArrayAndRelease()
-    {
-        using (this) return GetSpan().ToArray();
-    }
 
     /// <summary>
     /// Narrows the value to its first <paramref name="length"/> bytes, for a producer that rented more

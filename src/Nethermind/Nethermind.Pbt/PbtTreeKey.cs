@@ -27,19 +27,6 @@ public readonly struct PbtTreeKey : IPbtKey<PbtTreeKey>
         Length = bytes.Length;
     }
 
-    private PbtTreeKey(in PbtPath key)
-    {
-        _key = key;
-        Length = PbtPath.KeyLength;
-    }
-
-    /// <summary>Widens a key without changing its bytes.</summary>
-    public static explicit operator PbtTreeKey(in PbtPath key) => new(key);
-
-    /// <summary>Narrows a key, rejecting any length other than <see cref="PbtPath.KeyLength"/>.</summary>
-    public static explicit operator PbtPath(in PbtTreeKey key) =>
-        key.Length == PbtPath.KeyLength ? key._key : throw new ArgumentOutOfRangeException(nameof(key));
-
     public int Length { get; }
     public int BitLength => Length * 8;
     [UnscopedRef]
@@ -47,17 +34,12 @@ public readonly struct PbtTreeKey : IPbtKey<PbtTreeKey>
 
     public int GetBit(int bitIndex) => PbtKeyOperations.GetBit(Bytes, bitIndex);
 
-    public bool IsPrefixOf(in PbtTreeKey other) =>
-        Length <= other.Length && other.Bytes[..Length].SequenceEqual(Bytes);
-
     public int FirstDifferingBit(in PbtTreeKey other, int startBit = 0) =>
         PbtKeyOperations.FirstDifferingBit(Bytes, other.Bytes, startBit);
 
     public int CompareTo(PbtTreeKey other) => Bytes.SequenceCompareTo(other.Bytes);
     public bool Equals(PbtTreeKey other) => Bytes.SequenceEqual(other.Bytes);
     public override bool Equals(object? obj) => obj is PbtTreeKey other && Equals(other);
-    public static bool operator ==(in PbtTreeKey left, in PbtTreeKey right) => left.Equals(right);
-    public static bool operator !=(in PbtTreeKey left, in PbtTreeKey right) => !left.Equals(right);
 
     public override int GetHashCode()
     {

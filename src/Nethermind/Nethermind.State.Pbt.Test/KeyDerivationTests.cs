@@ -22,8 +22,7 @@ public class KeyDerivationTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId), Is.EqualTo(expected));
-            Assert.That(PbtStateKey.Code(TestItem.AddressA, codeHash, chunkId), Is.EqualTo(expected));
-            Assert.That(PbtStateKey.Code(PbtKeyDerivation.AddressKeyHash(TestItem.AddressB), codeHash, chunkId), Is.EqualTo(expected));
+            Assert.That(PbtStateKey.Code(codeHash, chunkId), Is.EqualTo(expected));
         }
     }
 

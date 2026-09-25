@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Pbt.Image;
@@ -14,7 +13,6 @@ internal abstract class PbtBootstrapLease : IDisposable
 {
     public abstract PbtImageAnchor Anchor { get; }
     public abstract IPersistence.IPersistenceReader MptAnchor { get; }
-    public abstract IColumnsDb<PbtColumns> Target { get; }
     public abstract string ScratchDirectory { get; }
     public virtual Stream? Snapshot => null;
     public virtual Stream? Preimages => null;

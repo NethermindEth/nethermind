@@ -36,7 +36,7 @@ internal static class PbtFlatState
         for (int chunkId = 0; chunkId < chunkCount; chunkId++)
         {
             ValueHash256 value = new(chunks.AsSpan().Slice(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
-            if (value != default) yield return new(PbtStateKey.Code(addressHash, account.CodeHash.ValueHash256, chunkId), value);
+            if (value != default) yield return new(PbtStateKey.Code(account.CodeHash.ValueHash256, chunkId), value);
         }
     }
 

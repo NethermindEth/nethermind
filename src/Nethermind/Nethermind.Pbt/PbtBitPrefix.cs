@@ -3,54 +3,10 @@
 
 namespace Nethermind.Pbt;
 
-/// <summary>An immutable, MSB-first bit string used by canonical compressed branches.</summary>
-public sealed class PbtBitPrefix : IEquatable<PbtBitPrefix>
+/// <summary>MSB-first bit-string helpers used by canonical compressed branches.</summary>
+public static class PbtBitPrefix
 {
     public const int MaxBitCount = ushort.MaxValue;
-    private readonly byte[] _bytes;
-
-    public PbtBitPrefix(ReadOnlySpan<byte> bytes, int bitCount)
-    {
-        if ((uint)bitCount > MaxBitCount) throw new ArgumentOutOfRangeException(nameof(bitCount));
-        int byteCount = ByteCount(bitCount);
-        if (bytes.Length != byteCount) throw new ArgumentException("Prefix length does not match its bit count.", nameof(bytes));
-        if (bitCount % 8 != 0 && byteCount != 0 && (bytes[^1] & (0xFF >> (bitCount % 8))) != 0)
-        {
-            throw new ArgumentException("Unused prefix bits must be zero.", nameof(bytes));
-        }
-
-        _bytes = bytes.ToArray();
-        BitCount = bitCount;
-    }
-
-    private PbtBitPrefix(byte[] bytes, int bitCount)
-    {
-        _bytes = bytes;
-        BitCount = bitCount;
-    }
-
-    public int BitCount { get; }
-    public ReadOnlySpan<byte> Bytes => _bytes;
-
-    public int GetBit(int index)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(index);
-        if (index >= BitCount) throw new ArgumentOutOfRangeException(nameof(index));
-        return (_bytes[index >> 3] >> (7 - (index & 7))) & 1;
-    }
-
-    public bool Equals(PbtBitPrefix? other) =>
-        other is not null && BitCount == other.BitCount && Bytes.SequenceEqual(other.Bytes);
-
-    public override bool Equals(object? obj) => obj is PbtBitPrefix other && Equals(other);
-
-    public override int GetHashCode()
-    {
-        HashCode hash = new();
-        hash.Add(BitCount);
-        hash.AddBytes(_bytes);
-        return hash.ToHashCode();
-    }
 
     internal static int ByteCount(int bitCount) => (bitCount + 7) >> 3;
 

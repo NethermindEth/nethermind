@@ -11,7 +11,6 @@ public static class Metrics
 {
     private static long _activePooledRefCountingMemoryCount;
     private static long _activePooledRefCountingMemoryCapacity;
-    private static long _activeNonPooledRefCountingMemoryCount;
     private static long _activeRocksDbRefCountingMemoryCount;
     private static long _activeRocksDbRefCountingMemoryCapacity;
     private static long _activeNativeRefCountingMemoryCount;
@@ -24,10 +23,6 @@ public static class Metrics
     [GaugeMetric]
     [Description("Total backing-array capacity of active pooled RefCountingMemory instances in bytes")]
     public static long ActivePooledRefCountingMemoryCapacity => Volatile.Read(ref _activePooledRefCountingMemoryCapacity);
-
-    [GaugeMetric]
-    [Description("Number of active non-pooled RefCountingMemory instances")]
-    public static long ActiveNonPooledRefCountingMemoryCount => Volatile.Read(ref _activeNonPooledRefCountingMemoryCount);
 
     [GaugeMetric]
     [Description("Number of active RocksDB RefCountingMemory instances")]
@@ -53,9 +48,6 @@ public static class Metrics
                 Interlocked.Increment(ref _activePooledRefCountingMemoryCount);
                 Interlocked.Add(ref _activePooledRefCountingMemoryCapacity, capacity);
                 break;
-            case RefCountingMemory.BackingKind.Wrapped:
-                Interlocked.Increment(ref _activeNonPooledRefCountingMemoryCount);
-                break;
             case RefCountingMemory.BackingKind.RocksDb:
                 Interlocked.Increment(ref _activeRocksDbRefCountingMemoryCount);
                 Interlocked.Add(ref _activeRocksDbRefCountingMemoryCapacity, capacity);
@@ -74,9 +66,6 @@ public static class Metrics
             case RefCountingMemory.BackingKind.Pooled:
                 Interlocked.Decrement(ref _activePooledRefCountingMemoryCount);
                 Interlocked.Add(ref _activePooledRefCountingMemoryCapacity, -capacity);
-                break;
-            case RefCountingMemory.BackingKind.Wrapped:
-                Interlocked.Decrement(ref _activeNonPooledRefCountingMemoryCount);
                 break;
             case RefCountingMemory.BackingKind.RocksDb:
                 Interlocked.Decrement(ref _activeRocksDbRefCountingMemoryCount);

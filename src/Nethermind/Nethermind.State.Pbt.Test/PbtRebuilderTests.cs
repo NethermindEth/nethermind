@@ -117,7 +117,7 @@ public class PbtRebuilderTests
         foreach ((PbtStorageTreeKey key, ValueHash256 value) in leaves)
         {
             incrementalRoot = incrementalStore.Fold(incrementalRoot, [(key.Bytes.ToArray(), value.ToByteArray())],
-                config.PrefixlessBranchOmission, FoldFanOut.Default, null);
+                config.PrefixlessBranchOmission, PbtTreeHarness.DefaultFanOut, null);
         }
 
         int physicalNodeCount = 0;
@@ -259,8 +259,7 @@ public class PbtRebuilderTests
         {
             for (int index = 0; index < 2; index++)
             {
-                PbtStorageTreeKey key = (PbtStorageTreeKey)PbtStateKey.Code(TestItem.AddressA,
-                    TestItem.KeccakB.ValueHash256, PbtKeyDerivation.StemSubtreeWidth + index);
+                PbtStorageTreeKey key = (PbtStorageTreeKey)PbtStateKey.Code(TestItem.KeccakB.ValueHash256, 256 + index);
                 ArrayPoolList<RebuildEntry> chunk = new(windowSize);
                 for (int repeat = 0; repeat < windowSize; repeat++) chunk.Add(new(key, TestItem.KeccakC.ValueHash256));
                 await channel.Writer.WriteAsync(chunk);

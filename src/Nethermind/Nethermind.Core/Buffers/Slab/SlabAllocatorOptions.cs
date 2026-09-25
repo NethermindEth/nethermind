@@ -17,7 +17,6 @@ public sealed class SlabAllocatorOptions
 {
     public const int MinimumQuantum = 16;
     public const int DefaultPageSize = 16 * 1024;
-    public const int DefaultQuantum = 64;
     public const int DefaultThreadCacheMaxCount = 32;
 
     private readonly int[] _sizeClasses;

@@ -65,16 +65,17 @@ public class PbtResourcePoolTests
         if (parallel) Parallel.For(0, keys.Count, Write);
         else for (int index = 0; index < keys.Count; index++) Write(index);
 
-        Dictionary<TKey, ValueHash256?> leaves = new(batch.Leaves);
+        Dictionary<TKey, ValueHash256> expectedValues = [];
+        for (int index = 0; index < keys.Count; index++) expectedValues[keys[index]] = index % 2 == 0 ? default : TestItem.KeccakB.ValueHash256;
         using PbtWriteBatch<TKey> prepared = batch.Build();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(batch.Count, Is.EqualTo(keys.Count));
-            Assert.That(prepared.Count, Is.EqualTo(keys.Count));
-        }
         prepared.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
         using ArrayPoolList<PbtWriteOperation<TKey>> operationsLease = operations;
         using ArrayPoolList<int> tableLease = table;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.Count, Is.EqualTo(keys.Count));
+            Assert.That(operations.Count, Is.EqualTo(keys.Count));
+        }
         int[] expectedTable = new int[17];
         expectedTable[0] = touchedMask;
         int compactCount = 0;
@@ -90,31 +91,23 @@ public class PbtResourcePoolTests
                 {
                     Assert.That(operation.Key.Bytes[1] >> 4, Is.EqualTo(shard));
                     Assert.That(shardKeys.Add(operation.Key), Is.True);
-                    Assert.That(operation.Value, Is.EqualTo(leaves[operation.Key] ?? default));
+                    Assert.That(operation.Value, Is.EqualTo(expectedValues[operation.Key]));
                 }
             }
             offset += entriesPerShard;
         }
         Assert.That(table, Is.EqualTo(expectedTable));
         Assert.Throws<InvalidOperationException>(() => prepared.Consume(out _, out _));
+        PbtWriteOperation<TKey>[] expected = operations.AsSpan().ToArray();
         operations.AsSpan().Clear();
-        Assert.That(batch.Leaves, Is.EquivalentTo(leaves), "fold scratch must not own the publication values");
         using PbtWriteBatch<TKey> retry = batch.Build();
-        Assert.That(retry.Count, Is.EqualTo(keys.Count), "a failed fold can retry");
-        for (int index = 0; index < keys.Count; index++)
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(leaves.TryGetValue(keys[index], out ValueHash256? value), Is.True);
-                Assert.That(value, Is.EqualTo(index % 2 == 0 ? null : (ValueHash256?)TestItem.KeccakB.ValueHash256));
-            }
-        }
+        Assert.That(retry.ConsumeOperations(), Is.EqualTo(expected), "fold scratch must not own the publication values, so a failed fold can retry");
         batch.CompleteDrain();
         using PbtWriteBatch<TKey> drained = batch.Build();
-        Assert.That(drained.Count, Is.Zero);
+        Assert.That(drained.ConsumeOperations(), Is.Empty);
         batch.SetLeaf(keys[0], TestItem.KeccakA.ValueHash256);
         using PbtWriteBatch<TKey> pending = batch.Build();
-        Assert.That(pending.Count, Is.EqualTo(1));
+        Assert.That(pending.ConsumeOperations(), Has.Length.EqualTo(1));
         returnBatch(usage, batch);
         PbtWriteBatchBuilder<TKey> rented = rent(usage);
         using PbtWriteBatch<TKey> empty = rented.Build();
@@ -122,9 +115,8 @@ public class PbtResourcePoolTests
         {
             Assert.That(rented, Is.SameAs(batch));
             Assert.That(rented.Count, Is.Zero);
-            Assert.That(empty.Count, Is.Zero);
+            Assert.That(empty.ConsumeOperations(), Is.Empty);
             Assert.That(empty.ShardNibbleIndex, Is.EqualTo(2));
-            Assert.That(rented.Leaves, Is.Empty);
         }
         returnBatch(usage, rented);
     }
@@ -148,13 +140,13 @@ public class PbtResourcePoolTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(original.Leaves, Is.EquivalentTo(new[]
+            Assert.That(original.Build().ConsumeOperations(), Is.EqualTo(new[]
             {
-                new KeyValuePair<PbtStorageTreeKey, ValueHash256?>(key, TestItem.KeccakC.ValueHash256)
+                new PbtWriteOperation<PbtStorageTreeKey>(key, TestItem.KeccakC.ValueHash256)
             }));
-            Assert.That(replacement.Leaves, Is.EquivalentTo(new[]
+            Assert.That(replacement.Build().ConsumeOperations(), Is.EqualTo(new[]
             {
-                new KeyValuePair<PbtStorageTreeKey, ValueHash256?>(replacementKey, TestItem.KeccakB.ValueHash256)
+                new PbtWriteOperation<PbtStorageTreeKey>(replacementKey, TestItem.KeccakB.ValueHash256)
             }));
         }
     }
@@ -200,7 +192,7 @@ public class PbtResourcePoolTests
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(42)]
-    public void PrewarmKeysAndOverloadsMatch(int? slotNumber)
+    public void PrewarmKeysMatch(int? slotNumber)
     {
         Address address = TestItem.AddressA;
         ValueAddress valueAddress = new(address.Bytes);
@@ -210,11 +202,11 @@ public class PbtResourcePoolTests
             : (ulong)new StorageCell(address, slot.Value).GetHashCode64();
         using PbtTransientResource resource = new();
         Assert.That(PbtTransientResource.PrewarmKey(address.Bytes, slot), Is.EqualTo(expected));
-        Assert.That(resource.ShouldPrewarm(address, slot), Is.True);
+        Assert.That(resource.ShouldPrewarm(valueAddress, slot), Is.True);
         Assert.That(resource.ShouldPrewarm(valueAddress, slot), Is.False);
         resource.Reset();
         Assert.That(resource.ShouldPrewarm(valueAddress, slot), Is.True);
-        Assert.That(resource.ShouldPrewarm(address, slot), Is.False);
+        Assert.That(resource.ShouldPrewarm(valueAddress, slot), Is.False);
         if (slot is not null)
             Assert.That(PbtTransientResource.PrewarmKey(address.Bytes, slot), Is.Not.EqualTo(PbtTransientResource.PrewarmKey(address.Bytes, null)));
     }
@@ -288,7 +280,7 @@ public class PbtResourcePoolTests
             if (growNodeGroups)
                 for (int first = 0; first < 32; first++)
                     for (int second = 0; second < 256; second++)
-                        resource.NodeGroups.Set(default, new PbtNodePath([(byte)(first + 2), (byte)second], 16), RefCountingMemory.Wrapping([1]));
+                        resource.NodeGroups.Set(default, new PbtNodePath([(byte)(first + 2), (byte)second], 16), RefCountingMemory.OwningRocksDb(new ArrayMemoryManager([1])));
         }
         finally
         {
@@ -398,7 +390,7 @@ public class PbtResourcePoolTests
     internal static RefCountingMemory CreateGroup(IRefCountingMemoryProvider memoryProvider, ValueHash256 hash)
     {
         PbtNodePath groupKey = new([], 0);
-        byte[] encoding = PbtNodeCodec.EncodeBranch([], 0, hash, hash);
+        byte[] encoding = PbtTreeHarness.EncodeBranch([], 0, hash, hash);
         BufferWriter writer = new(memoryProvider);
         try
         {

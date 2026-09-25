@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Image;
@@ -20,21 +19,20 @@ internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
     private IReadOnlyKeyValueStore? _code;
 
     private RuntimeBootstrapLease(PbtImageAnchor anchor, IPersistence flatPersistence,
-        IColumnsDb<PbtColumns> target, string scratchDirectory, Func<bool> isCurrent)
+        string scratchDirectory, Func<bool> isCurrent)
     {
         Anchor = anchor;
         MptAnchor = flatPersistence.CreateReader();
         _owned.Add(MptAnchor);
-        Target = target;
         ScratchDirectory = scratchDirectory;
         _isCurrent = isCurrent;
     }
 
     public static RuntimeBootstrapLease Create(PbtImageAnchor anchor, IPersistence flatPersistence,
-        IColumnsDb<PbtColumns> target, string scratchDirectory, Func<bool> isCurrent, IPbtConfig configuration,
+        string scratchDirectory, Func<bool> isCurrent, IPbtConfig configuration,
         MigrationGenesisSource? genesisSource, IReadOnlyKeyValueStore code, ILogManager logManager)
     {
-        RuntimeBootstrapLease lease = new(anchor, flatPersistence, target, scratchDirectory, isCurrent);
+        RuntimeBootstrapLease lease = new(anchor, flatPersistence, scratchDirectory, isCurrent);
         try
         {
             if (configuration.MigrationSnapshotPath is { } snapshot)
@@ -64,7 +62,6 @@ internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
 
     public override PbtImageAnchor Anchor { get; }
     public override IPersistence.IPersistenceReader MptAnchor { get; }
-    public override IColumnsDb<PbtColumns> Target { get; }
     public override string ScratchDirectory { get; }
     public override Stream? Snapshot => _snapshot;
     public override Stream? Preimages => _preimages;

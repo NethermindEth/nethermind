@@ -68,7 +68,6 @@ public sealed unsafe class SlabMemoryAllocator : IDisposable
         _ = new Gen2Sweeper(this);
     }
 
-    public SlabAllocatorOptions Options => _options;
     internal bool IsDisposed => _disposed;
 
     /// <summary>Native bytes held: every slab plus dedicated blocks.</summary>

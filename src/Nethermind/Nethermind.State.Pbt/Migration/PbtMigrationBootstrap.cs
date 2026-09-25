@@ -26,7 +26,6 @@ internal sealed class PbtMigrationBootstrap(
     IDbFactory dbFactory,
     IDbProvider dbProvider,
     IPersistence flatPersistence,
-    IColumnsDb<PbtColumns> pbtDatabase,
     IPbtPersistence pbtPersistence,
     IPbtDbManager pbtManager,
     PbtAnchorPublication publication,
@@ -119,7 +118,7 @@ internal sealed class PbtMigrationBootstrap(
         bool IsCurrent() => blockTree.IsMainChain(header);
         PbtImageAnchor anchor = PbtMigrationAnchor.Create(chainSpec, genesis, header);
         string scratch = Path.Combine(dbFactory.GetFullDbPath(new DbSettings("migration-work", "migration-work")), "bootstrap");
-        return RuntimeBootstrapLease.Create(anchor, flatPersistence, pbtDatabase, scratch, IsCurrent,
+        return RuntimeBootstrapLease.Create(anchor, flatPersistence, scratch, IsCurrent,
             configuration, genesisBootstrap?.Source, dbProvider.CodeDb, logManager);
     }
 }

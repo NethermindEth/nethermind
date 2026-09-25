@@ -115,6 +115,6 @@ public class PbtWriteBatchMemoryBenchmark<TKey> where TKey : struct, IPbtKey<TKe
     public int BuildWarmBatch()
     {
         using PbtWriteBatch<TKey> batch = _builder.Build();
-        return batch.Count;
+        return _builder.Count;
     }
 }

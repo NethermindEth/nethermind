@@ -60,19 +60,6 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
         return hit;
     }
 
-    /// <summary>Retains a group under its path and subtree hash, superseding an older hash at the same path; the caller keeps its own lease.</summary>
-    /// <remarks>Must not run concurrently with another write to the cache.</remarks>
-    internal void Add<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
-    {
-        if (IsStorage(path)) Add(_storage, groupHash, path, payload);
-        else Add(IsCode(path) ? _code : _account, groupHash, path, payload);
-    }
-
-    private static void Add<TPath, TStored>(Partition<TStored> partition, in ValueHash256 groupHash, TPath path, RefCountingMemory payload)
-        where TPath : struct, IPbtNodePath<TPath>
-        where TStored : struct, IPbtNodePath<TStored> =>
-        Report(partition, partition.Add(groupHash, path, payload));
-
     /// <summary>Folds a retired block's staged groups into the shared cache once its last reader has left.</summary>
     /// <remarks>
     /// Child shard <c>i</c> maps onto parent shard <c>i</c>, so the shards ingest in parallel with one writer each.
@@ -186,15 +173,6 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
         {
             int hash = path.GetHashCode();
             return _shards[ShardIndex(hash)].TryGet(SetIndex(hash), groupHash, path, out payload);
-        }
-
-        /// <returns>The change in retained bytes.</returns>
-        internal long Add<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
-        {
-            long size = EntrySize(payload);
-            if (size > _shardBudget) return 0;
-            int hash = path.GetHashCode();
-            return Volatile.Read(ref _disposed) ? 0 : _shards[ShardIndex(hash)].Add(SetIndex(hash), groupHash, path, payload, size, _shardBudget);
         }
 
         /// <summary>Admits every group staged in the child's shard <paramref name="shardIndex"/>.</summary>

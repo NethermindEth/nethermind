@@ -94,8 +94,6 @@ public static partial class TrieUpdater
 
     private static bool ClaimAdmissionSlot(ref int admissionSlotClaimed) => Interlocked.Exchange(ref admissionSlotClaimed, 1) == 0;
 
-    internal static int BoundarySlot<TKey>(TKey key, int groupDepth) where TKey : struct, IPbtKey<TKey> => BoundarySlot(key.Bytes, groupDepth);
-
     internal static int BoundarySlot(ReadOnlySpan<byte> key, int groupDepth)
     {
         byte value = key[groupDepth >> 3];

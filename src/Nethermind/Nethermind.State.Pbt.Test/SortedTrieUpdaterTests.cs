@@ -162,7 +162,7 @@ public class SortedTrieUpdaterTests
 
             // A quota of one folds every zone and frame on the calling thread.
             using (PbtPartitionBatches changes = PbtStoreTestExtensions.PreparePartitions(writes))
-                _serialRoot = TrieUpdater.UpdateRoot(_serialStore, _serialRoot, changes, new ConcurrencyController(1), FoldFanOut.Default, omission, null);
+                _serialRoot = TrieUpdater.UpdateRoot(_serialStore, _serialRoot, changes, new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut, omission, null);
             // A single-operation minimum splits every frame with two touched slots, so even small batches fold in parallel.
             _parallelRoot = _parallelStore.Fold(_parallelRoot, writes, omission, PbtTreeHarness.FanOut(1), null);
 

@@ -17,17 +17,4 @@ public interface IPbtTrieNodeCache
 
     /// <summary>Folds a retired block's staged groups into the shared cache once its last reader has left.</summary>
     void Add(PbtTransientResource transientResource);
-
-    sealed class Noop : IPbtTrieNodeCache
-    {
-        public static readonly Noop Instance = new();
-
-        public bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
-        {
-            payload = null;
-            return false;
-        }
-
-        public void Add(PbtTransientResource transientResource) { }
-    }
 }

@@ -18,10 +18,6 @@ public static class PbtKeyDerivation
     public const int CodeHashLeafKey = 1;
     public const int DelegationLeafKey = 2;
     public const int HeaderStorageOffset = 64;
-    public const int StemSubtreeWidth = 256;
-
-    public const int AccountZone = 0;
-    public const int CodeZone = 1;
 
     /// <summary>Size of one code chunk, which is one leaf value.</summary>
     public const int CodeChunkSize = 32;

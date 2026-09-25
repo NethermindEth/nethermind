@@ -25,15 +25,7 @@ public readonly struct PbtNodePath : IPbtNodePath<PbtNodePath>, IEquatable<PbtNo
 
     public int BitDepth { get; }
     /// <inheritdoc/>
-    public int GetBit(int bitIndex) => PbtNodePathOperations.GetBit(_path.Bytes, BitDepth, bitIndex);
-    /// <inheritdoc/>
     public byte GetByte(int byteIndex) => _path.Bytes[byteIndex];
-    /// <inheritdoc/>
-    public void CopyBitsTo(int sourceBitOffset, Span<byte> destination, int destinationBitOffset, int bitCount) =>
-        PbtNodePathOperations.CopyBitsTo(_path.Bytes, BitDepth, sourceBitOffset, destination, destinationBitOffset, bitCount);
-    /// <inheritdoc/>
-    public bool MatchesPrefix(ReadOnlySpan<byte> key, int bitCount) =>
-        PbtNodePathOperations.MatchesPrefix(_path.Bytes, BitDepth, key, bitCount);
 
     /// <inheritdoc/>
     public PbtNodePath Prefix(int depth) => PbtNodePathOperations.Prefix<PbtNodePath>(_path.Bytes, BitDepth, depth);
@@ -46,15 +38,6 @@ public readonly struct PbtNodePath : IPbtNodePath<PbtNodePath>, IEquatable<PbtNo
         PbtNodePathOperations.AppendBits<PbtNodePath>(_path.Bytes, BitDepth, bits, bitCount);
     /// <inheritdoc/>
     public TPath ToPath<TPath>() where TPath : struct, IPbtNodePath<TPath> => TPath.Create(_path.Bytes, BitDepth);
-    /// <inheritdoc/>
-    public bool MatchesPrefix<TOther>(TOther other, int bitCount) where TOther : struct, IPbtNodePath<TOther> =>
-        PbtNodePathOperations.MatchesPrefix(this, other, bitCount);
-
-    internal static PbtNodePath FromKey(in PbtTreeKey key, int bitDepth) => PbtNodePathOperations.FromKey<PbtNodePath>(key.Bytes, bitDepth);
-
-    /// <inheritdoc/>
-    public PbtNodePath Append(CompressedPrefix prefix, int direction) =>
-        PbtNodePathOperations.Append<PbtNodePath>(_path.Bytes, BitDepth, prefix, direction);
 
     public int CompareTo(PbtNodePath other)
     {
@@ -62,7 +45,6 @@ public readonly struct PbtNodePath : IPbtNodePath<PbtNodePath>, IEquatable<PbtNo
         return depthComparison != 0 ? depthComparison : _path.Bytes.SequenceCompareTo(other._path.Bytes);
     }
     public bool Equals(PbtNodePath other) => BitDepth == other.BitDepth && _path.Bytes.SequenceEqual(other._path.Bytes);
-    public int CompareTo<TOther>(TOther other) where TOther : struct, IPbtNodePath<TOther> => PbtNodePathOperations.Compare(this, other);
     public bool Equals<TOther>(TOther other) where TOther : struct, IPbtNodePath<TOther> => PbtNodePathOperations.Equal(this, other);
     public override bool Equals(object? obj) => obj switch
     {

@@ -512,7 +512,7 @@ public class PbtRocksDbPersistenceTests
                     content.Accounts[addressHash] = new Account(number, number + 10);
                     foreach (PbtPhysicalPayload physical in tree.PhysicalPayloads)
                     {
-                        using RefCountingMemory payload = RefCountingMemory.Wrapping(physical.Payload.ToArray());
+                        using RefCountingMemory payload = RefCountingMemory.OwningRocksDb(new ArrayMemoryManager(physical.Payload.ToArray()));
                         content.SetNodeGroup(physical.Key, payload);
                     }
                     repository.TryAdd(new PbtSnapshot(last, next, tree.RootHash, content, pool, PbtResourcePool.Usage.MainBlockProcessing));
@@ -588,7 +588,7 @@ public class PbtRocksDbPersistenceTests
             using (IPbtPersistence.IReader reader = persistence.CreateReader())
             {
                 payload = reader.GetNodeGroup(groupKey)!;
-                Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).GetNode(PbtFourLevelGroupGeometry.PositionOf(path)).ToArray(),
+                Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).GetNode(PbtFourLevelGroupGeometry.Locate(path).Position).ToArray(),
                     Is.EqualTo(originalNode));
             }
 
@@ -599,7 +599,7 @@ public class PbtRocksDbPersistenceTests
                 batch.Commit();
             }
 
-            Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).GetNode(PbtFourLevelGroupGeometry.PositionOf(path)).ToArray(),
+            Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).GetNode(PbtFourLevelGroupGeometry.Locate(path).Position).ToArray(),
                 Is.EqualTo(originalNode));
             ((IDisposable)payload).Dispose();
         }
@@ -887,7 +887,7 @@ public class PbtRocksDbPersistenceTests
         return group.TryGetNode(location.Position, out ReadOnlySpan<byte> encoding) ? encoding.ToArray() : null;
     }
 
-    private static byte[] BranchNode(byte marker) => PbtNodeCodec.EncodeBranch(
+    private static byte[] BranchNode(byte marker) => PbtTreeHarness.EncodeBranch(
         Bytes.FromHexString("80"), 1,
         new ValueHash256(Value(marker)),
         new ValueHash256(Value((byte)(marker + 1))));

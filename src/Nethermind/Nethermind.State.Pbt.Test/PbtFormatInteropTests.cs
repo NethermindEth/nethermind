@@ -204,11 +204,10 @@ public class PbtFormatInteropTests
     {
         Span<byte> copied = stackalloc byte[bytes.Length];
         copied.Clear();
-        path.CopyBitsTo(0, copied, 0, path.BitDepth);
+        PbtNodePathOperations.CopyTo(path, copied);
         TPath converted = path.ToPath<TPath>();
         TPath appended = path.AppendBits(0, 0);
-        if (path.GetBit(0) != 0 || path.GetByte(0) != 0 || !path.MatchesPrefix(bytes, path.BitDepth)
-            || !converted.MatchesPrefix(appended, path.BitDepth))
+        if (path.GetByte(0) != 0 || !copied.SequenceEqual(bytes) || !converted.Equals(appended))
             throw new InvalidOperationException("Path operations changed the zero key.");
     }
 

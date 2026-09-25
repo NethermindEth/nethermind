@@ -20,7 +20,7 @@ internal static class PbtStateKey
     public static PbtPath Account(in ValueHash256 addressHash, byte subIndex) =>
         Eip8297KeyDerivation.AccountKey(addressHash, subIndex);
 
-    public static PbtPath Code(in ValueHash256 addressHash, in ValueHash256 codeHash, int chunkId) =>
+    public static PbtPath Code(in ValueHash256 codeHash, int chunkId) =>
         Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
 
     public static PbtStorageTreeKey Storage(Address address, in UInt256 slot)
@@ -45,9 +45,6 @@ internal static class PbtStateKey
         index = SlotRun.IndexOf(slotKey);
         return SlotRun.RunKey(slotKey);
     }
-
-    public static PbtPath Code(Address address, in ValueHash256 codeHash, int chunkId) =>
-        Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
 
     private static void Address32(Address address, Span<byte> address32)
     {

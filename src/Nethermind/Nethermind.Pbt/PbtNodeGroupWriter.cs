@@ -177,13 +177,6 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         ValidateEncoding(path, position, encoding);
     }
 
-    /// <summary>Copies and commits an existing canonical encoding.</summary>
-    internal void Write(scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding)
-    {
-        encoding.CopyTo(GetSpan(position, encoding.Length));
-        Commit(path);
-    }
-
     /// <summary>Emits the resolved tree root at the root position, returning its hash.</summary>
     internal ValueHash256 WriteRoot<TKey>(scoped in PbtTraversalPath path, in TrieUpdater<TKey, TPath>.FoldResult node)
         where TKey : unmanaged, IPbtKey<TKey>
@@ -222,9 +215,6 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
 
     /// <summary>Finishes the footer and transfers the output lease, or returns null for an empty group.</summary>
     /// <param name="descendantBytes">The summed payload lengths of the groups physically stored below each boundary slot, or empty for none; ignored for an empty group.</param>
-    internal RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes) => Detach(descendantBytes, ushort.MaxValue);
-
-    /// <inheritdoc cref="Detach(ReadOnlySpan{long})"/>
     /// <param name="candidateSlots">The slots of <paramref name="descendantBytes"/> that may be nonzero; every other slot is known to be zero.</param>
     internal RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {

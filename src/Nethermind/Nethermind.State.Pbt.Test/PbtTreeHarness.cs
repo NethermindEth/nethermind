@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -24,6 +25,25 @@ internal sealed class PbtTreeHarness : IDisposable
 
     /// <summary>A fan-out with one worker minimum whatever the subtree size.</summary>
     public static FoldFanOut FanOut(int minOperationsPerWorker) => new(minOperationsPerWorker, long.MaxValue, minOperationsPerWorker);
+
+    public static readonly FoldFanOut DefaultFanOut = new(FoldFanOut.DefaultMinOperationsPerWorker, FoldFanOut.DefaultLargeSubtreeBytes, FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker);
+
+    /// <summary>Encodes a branch whose children are both branches.</summary>
+    public static byte[] EncodeBranch(ReadOnlySpan<byte> prefix, int bitCount, in ValueHash256 left, in ValueHash256 right) =>
+        EncodeBranch(prefix, bitCount, left, right, [], []);
+
+    /// <summary>Encodes a branch; a non-empty key inlines that child as a leaf.</summary>
+    public static byte[] EncodeBranch(ReadOnlySpan<byte> prefix, int bitCount, in ValueHash256 left, in ValueHash256 right,
+        ReadOnlySpan<byte> leftKey, ReadOnlySpan<byte> rightKey)
+    {
+        if (prefix.Length != PbtBitPrefix.ByteCount(bitCount)) throw new ArgumentException("Prefix length does not match its bit count.", nameof(prefix));
+        byte[] encoding = new byte[PbtNodeCodec.BranchLength(bitCount, leftKey.Length, rightKey.Length)];
+        PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, left, right);
+        prefix.CopyTo(encoding.AsSpan(3));
+        PbtNodeCodec.WriteBranchTrailer(encoding.AsSpan(PbtNodeCodec.BranchPreimageLength(bitCount)), leftKey, rightKey);
+        PbtNodeCodec.ValidateExact(encoding);
+        return encoding;
+    }
 
     public ValueHash256 RootHash { get; private set; }
 
@@ -64,6 +84,30 @@ internal sealed class PbtTreeHarness : IDisposable
 
 internal static class PbtStoreTestExtensions
 {
+    internal static long[] ReadDescendantBytes(ReadOnlySpan<byte> payload)
+    {
+        ushort descendantMask = PbtNodeGroupCodec.ReadDescendantMask(payload);
+        long[] descendantBytes = new long[PbtNodeGroupCodec.DescendantSlots];
+        for (int slot = 0; slot < descendantBytes.Length; slot++)
+            descendantBytes[slot] = (descendantMask & (1 << slot)) == 0 ? 0 : PbtNodeGroupCodec.ReadDescendantBytes(payload, descendantMask, slot);
+        return descendantBytes;
+    }
+
+    internal static PbtWriteOperation<TKey>[] ConsumeOperations<TKey>(this PbtWriteBatch<TKey> batch) where TKey : struct, IPbtKey<TKey>
+    {
+        batch.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
+        using ArrayPoolList<PbtWriteOperation<TKey>> operationsLease = operations;
+        using ArrayPoolList<int> tableLease = table;
+        return operations.AsSpan().ToArray();
+    }
+
+    internal static void Write<TPath>(this PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        encoding.CopyTo(writer.GetSpan(position, encoding.Length));
+        writer.Commit(path);
+    }
+
     internal static int NodeGroupCount(this PbtSnapshotContent content) =>
         content.AccountNodeGroups.Count + content.CodeNodeGroups.Count + content.StorageNodeGroups.Count;
 
@@ -105,12 +149,11 @@ internal static class PbtStoreTestExtensions
                 long[] expected = new long[PbtNodeGroupCodec.DescendantSlots];
                 foreach (PbtPhysicalPayload candidate in payloads)
                 {
-                    if (candidate.Key.BitDepth <= groupDepth || !candidate.Key.MatchesPrefix(group.Key, groupDepth)) continue;
+                    if (candidate.Key.BitDepth <= groupDepth || !candidate.Key.Prefix(groupDepth).Equals(group.Key)) continue;
                     int slot = (candidate.Key.GetByte(groupDepth >> 3) >> (4 - (groupDepth & 4))) & 0xF;
                     expected[slot] += candidate.Payload.Length;
                 }
-                long[] stored = new long[PbtNodeGroupCodec.DescendantSlots];
-                PbtNodeGroupCodec.ReadDescendantBytes(group.Payload.Span, stored);
+                long[] stored = ReadDescendantBytes(group.Payload.Span);
                 Assert.That(stored, Is.EqualTo(expected), $"descendant bytes of group {Convert.ToHexString(group.Key.ToEncodedArray())}");
             }
         }
@@ -134,7 +177,7 @@ internal static class PbtStoreTestExtensions
                     encoding = ResolveNode(PbtStoreTestExtensions.ReadGroup(location.GroupKey, physical.Payload.Span), location.GroupKey, location.Position);
             // A root leaf's hash is not derivable from its encoding, and the test store ignores group hashes anyway.
             if (encoding is null || encoding[0] == 0) return default;
-            PbtNodeReader node = new(encoding);
+            PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
             int branchDepth = path.BitDepth + node.Prefix.BitCount;
             for (int bit = path.BitDepth; bit < Math.Min(branchDepth, groupKey.BitDepth); bit++)
                 if (TrieUpdater.GetBit(node.Prefix.Bytes, bit - path.BitDepth) != groupKey.GetBit(bit)) return default;
@@ -144,7 +187,7 @@ internal static class PbtStoreTestExtensions
                 byte[] prefix = new byte[(prefixBits + 7) / 8];
                 for (int bit = 0; bit < prefixBits; bit++)
                     prefix[bit / 8] |= (byte)(TrieUpdater.GetBit(node.Prefix.Bytes, groupKey.BitDepth - path.BitDepth + bit) << (7 - bit % 8));
-                return PbtNodeCodec.Hash(new PbtNodeReader(PbtNodeCodec.EncodeBranch(prefix, prefixBits, node.LeftHash, node.RightHash)));
+                return PbtNodeCodec.Hash(PbtNodeReader.FromValidated(PbtTreeHarness.EncodeBranch(prefix, prefixBits, node.LeftHash, node.RightHash)));
             }
             int direction = groupKey.GetBit(branchDepth);
             // An inline leaf has no group below it.
@@ -165,16 +208,19 @@ internal static class PbtStoreTestExtensions
     internal static byte[] ToPathArray<TPath>(this TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
         byte[] bytes = new byte[(path.BitDepth + 7) >> 3];
-        path.CopyBitsTo(0, bytes, 0, path.BitDepth);
+        PbtNodePathOperations.CopyTo(path, bytes);
         return bytes;
     }
+
+    internal static int GetBit<TPath>(this TPath path, int bitIndex) where TPath : struct, IPbtNodePath<TPath> =>
+        TrieUpdater.GetBit(path.ToPathArray(), bitIndex);
 
     /// <summary>The path's capacity-independent identity as bytes: its big-endian depth, then its canonical bytes.</summary>
     internal static byte[] ToEncodedArray<TPath>(this TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
         byte[] encoding = new byte[4 + ((path.BitDepth + 7) >> 3)];
         BinaryPrimitives.WriteInt32BigEndian(encoding, path.BitDepth);
-        path.CopyBitsTo(0, encoding.AsSpan(4), 0, path.BitDepth);
+        PbtNodePathOperations.CopyTo(path, encoding.AsSpan(4));
         return encoding;
     }
 
@@ -194,7 +240,7 @@ internal static class PbtStoreTestExtensions
 
     /// <summary>Folds zone-key <paramref name="writes"/> into the tree at <paramref name="root"/> through the partitioned driver production folds with.</summary>
     internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes) =>
-        store.Fold(root, writes, PbtPrefixlessBranchOmission.Interior, FoldFanOut.Default, null);
+        store.Fold(root, writes, PbtPrefixlessBranchOmission.Interior, PbtTreeHarness.DefaultFanOut, null);
 
     /// <inheritdoc cref="Fold(IPbtStore, in ValueHash256, IEnumerable{ValueTuple{byte[], byte[]}})"/>
     internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes,
@@ -229,7 +275,7 @@ internal static class PbtStoreTestExtensions
 
     private static void Apply<TKey>(PbtWriteBatchBuilder<TKey> builder, TKey key, byte[]? value) where TKey : struct, IPbtKey<TKey>
     {
-        if (value is null) builder.Delete(key);
+        if (value is null) builder.SetLeaf(key, null);
         else builder.Set(key, new ValueHash256(value));
     }
 
@@ -240,7 +286,7 @@ internal static class PbtStoreTestExtensions
         {
             byte[]? encoding = GetLogicalNode(store, currentPath);
             if (encoding is null || currentPath.Equals(path)) return encoding;
-            PbtNodeReader node = new(encoding);
+            PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
             if (node.IsLeaf || currentPath.BitDepth + node.Prefix.BitCount >= path.BitDepth) return null;
             int directionBit = currentPath.BitDepth + node.Prefix.BitCount;
             int direction = path.GetBit(directionBit);
@@ -270,8 +316,8 @@ internal static class PbtStoreTestExtensions
         int width = 1 << (4 - relativeDepth);
         byte[]? left = ResolveNode(reader, groupKey, position - width);
         byte[]? right = ResolveNode(reader, groupKey, position - 1);
-        return left is null || right is null ? null : PbtNodeCodec.EncodeBranch([], 0,
-            PbtNodeCodec.Hash(new PbtNodeReader(left)), PbtNodeCodec.Hash(new PbtNodeReader(right)));
+        return left is null || right is null ? null : PbtTreeHarness.EncodeBranch([], 0,
+            PbtNodeCodec.Hash(PbtNodeReader.FromValidated(left)), PbtNodeCodec.Hash(PbtNodeReader.FromValidated(right)));
     }
 
     internal static void SetNode<TPath>(this PbtNodeGroupStore store, TPath path, byte[]? encoding,
@@ -302,7 +348,7 @@ internal static class PbtStoreTestExtensions
         {
             PbtNodeGroupEncoder.Encode(ref writer, location.GroupKey, records, default);
             using RefCountingMemory payload = writer.Detach()!;
-            store.SetNodeGroup(location.GroupKey, encoding is null || encoding[0] == 0 ? default : PbtNodeCodec.Hash(new PbtNodeReader(encoding)), payload);
+            store.SetNodeGroup(location.GroupKey, encoding is null || encoding[0] == 0 ? default : PbtNodeCodec.Hash(PbtNodeReader.FromValidated(encoding)), payload);
         }
         finally
         {
@@ -320,7 +366,7 @@ internal static class PbtStoreTestExtensions
             byte[]? encoding = GetLogicalNode(store, path);
             if (encoding is null) continue;
             records.Add(new PbtNodeRecord(path, encoding));
-            PbtNodeReader node = new(encoding);
+            PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
             if (node.IsLeaf) continue;
             if (node.LeftKey.IsEmpty) pending.Push(path.Append(node.Prefix, 0));
             if (node.RightKey.IsEmpty) pending.Push(path.Append(node.Prefix, 1));

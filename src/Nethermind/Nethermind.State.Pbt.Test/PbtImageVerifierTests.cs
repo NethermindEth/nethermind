@@ -114,7 +114,7 @@ public class PbtImageVerifierTests
         Address history = new("0x0000f90827f1c53a10cb7a02335b175320002935");
         PbtStorageTreeKey basic = (PbtStorageTreeKey)PbtStateKey.Account(writer, 0);
         PbtStorageTreeKey hash = (PbtStorageTreeKey)PbtStateKey.Account(writer, 1);
-        PbtStorageTreeKey chunk = (PbtStorageTreeKey)PbtStateKey.Code(writer, ValueKeccak.Compute(Bytes.FromHexString("60003560005500")), 0);
+        PbtStorageTreeKey chunk = (PbtStorageTreeKey)PbtStateKey.Code(ValueKeccak.Compute(Bytes.FromHexString("60003560005500")), 0);
         PbtStorageTreeKey delegation = (PbtStorageTreeKey)PbtStateKey.Account(authority, 2);
         PbtStorageTreeKey storageKey = PbtStateKey.Storage(history, UInt256.Zero);
         switch (corruption)
@@ -139,7 +139,7 @@ public class PbtImageVerifierTests
             case "orphan": leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(Address.Zero, 3), Keccak.OfAnEmptyString.ValueHash256)); break;
             // A chunk past the account's code size: reachable by no code read, so nothing accounts for it.
             case "extra-code-chunk":
-                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Code(writer, ValueKeccak.Compute(Bytes.FromHexString("60003560005500")), 1), Keccak.OfAnEmptyString.ValueHash256));
+                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Code(ValueKeccak.Compute(Bytes.FromHexString("60003560005500")), 1), Keccak.OfAnEmptyString.ValueHash256));
                 break;
             case "missing-account-preimage": accounts.RemoveAt(accounts.FindIndex(account => account.Address == writer)); break;
             case "missing-slot-preimage": ChangeSlot(remove: true); break;

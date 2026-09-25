@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-
 namespace Nethermind.Core.Buffers.Slab;
 
 /// <summary>A block handed out by <see cref="SlabMemoryAllocator.Allocate"/>; give it back with <see cref="SlabMemoryAllocator.Free"/>.</summary>
@@ -25,7 +23,4 @@ public readonly unsafe struct SlabAllocation
     public int Capacity { get; }
     internal object? Owner { get; }
     internal int Index { get; }
-
-    // Safety: Pointer addresses Capacity bytes of native memory that stay mapped until Free.
-    public Span<byte> AsSpan() => new(Pointer, Capacity);
 }

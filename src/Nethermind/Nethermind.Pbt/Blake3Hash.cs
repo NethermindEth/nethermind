@@ -22,31 +22,4 @@ public static class Blake3Hash
         hashB = default;
         Blake3Managed.HashTwo(inputA, hashA.BytesAsSpan, inputB, hashB.BytesAsSpan);
     }
-
-    internal static ValueHash256 FoldFour(ReadOnlySpan<byte> compactSources, byte presenceMask)
-    {
-        if (presenceMask == 0) return default;
-
-        ValueHash256 result = default;
-        Blake3Managed.FoldFour(compactSources, presenceMask, result.BytesAsSpan);
-        return result;
-    }
-
-    internal static ValueHash256 FoldEight(ReadOnlySpan<byte> compactSources, byte presenceMask)
-    {
-        if (presenceMask == 0) return default;
-
-        ValueHash256 result = default;
-        Blake3Managed.FoldEight(compactSources, presenceMask, result.BytesAsSpan);
-        return result;
-    }
-
-    internal static ValueHash256 FoldSixteen(ReadOnlySpan<byte> compactSources, ushort presenceMask)
-    {
-        if (presenceMask == 0) return default;
-
-        ValueHash256 result = default;
-        Blake3Managed.FoldSixteen(compactSources, presenceMask, result.BytesAsSpan);
-        return result;
-    }
 }

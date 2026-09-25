@@ -64,12 +64,12 @@ public class PbtSnapshotBundleTests
         {
             new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, sharedContent, pool, PbtResourcePool.Usage.MainBlockProcessing)
         };
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(sharedSnapshots, new Reader(persistedKey, new ValueHash256(Value(1)))), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(sharedSnapshots, new Reader(persistedKey, new ValueHash256(Value(1)))), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         bundle.SetSlot(TestItem.AddressA, 3, local);
         EvmWord[] afterWrite = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
         bundle.SetSlot(TestItem.AddressA, heldByLayer ? 6u : 5u, default);
         EvmWord[] afterClear = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
-        bundle.SelfDestruct(TestItem.AddressA);
+        bundle.SelfDestruct(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA));
         bundle.SetSlot(TestItem.AddressA, 5, local);
         using (Assert.EnterMultipleScope())
         {
@@ -98,16 +98,16 @@ public class PbtSnapshotBundleTests
         content.SetSlot(rewritten, original);
         content.SetSlot(deleted, original);
         PbtSnapshotPooledList snapshots = new(1) { new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing) };
-        using PbtSnapshotBundle bundle = new(snapshots, new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+        using PbtSnapshotBundle bundle = new(snapshots, new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         bundle.SetSlot(TestItem.AddressA, 1, default);
         bundle.SetSlot(TestItem.AddressA, 1000, replacement);
-        bundle.SelfDestruct(TestItem.AddressA);
+        bundle.SelfDestruct(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA));
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         using (Assert.EnterMultipleScope())
         {
             // The header slot 1 and the wide slot 1000 were already written locally; the persisted-only cleared slot and the other address stay untouched.
-            Assert.That(changes.Account?.Count ?? 0, Is.EqualTo(1));
-            Assert.That(changes.Storage?.Count ?? 0, Is.EqualTo(1));
+            Assert.That(changes.Account?.ConsumeOperations().Length ?? 0, Is.EqualTo(1));
+            Assert.That(changes.Storage?.ConsumeOperations().Length ?? 0, Is.EqualTo(1));
             Assert.That(bundle.GetSlot(TestItem.AddressA, 1000), Is.EqualTo(default(EvmWord)));
         }
     }
@@ -117,7 +117,7 @@ public class PbtSnapshotBundleTests
     {
         TrackingMemoryProvider memoryProvider = new();
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         PbtNodePath groupPath = new([], 0);
         ValueHash256 groupHash = new(Value(1));
         byte[] encoding = EncodeGroup(groupPath, [new PbtNodeRecord(groupPath.ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
@@ -264,7 +264,7 @@ public class PbtSnapshotBundleTests
     private static PbtSnapshotBundle CreatePrewarmBundle(IPbtResourcePool pool) => new(
         new PbtSnapshotPooledList(0),
         new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(new PbtStorageTreeKey([0]), null)),
-        pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+        pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
 
     private sealed class TrackingTransientPool : IPbtResourcePool, IDisposable
     {
@@ -329,7 +329,7 @@ public class PbtSnapshotBundleTests
         {
             new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, sharedContent, pool, PbtResourcePool.Usage.MainBlockProcessing)
         };
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(sharedSnapshots, new Reader(key, persisted)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(sharedSnapshots, new Reader(key, persisted)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         Assert.That(bundle.GetSlot(TestItem.AddressA, 1), Is.EqualTo(EvmWordSlot.FromStripped(shared.Bytes)));
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(local.Bytes));
         Assert.That(bundle.GetSlot(TestItem.AddressA, 1), Is.EqualTo(EvmWordSlot.FromStripped(local.Bytes)));
@@ -370,7 +370,7 @@ public class PbtSnapshotBundleTests
         PbtStorageTreeKey key = PbtStateKey.Storage(TestItem.AddressA, slot);
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(key, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(key, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         EvmWord value = EvmWordSlot.FromStripped(Value(9));
         foreach (bool delete in new[] { false, true })
         {
@@ -379,9 +379,9 @@ public class PbtSnapshotBundleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(delete ? default : value));
-                Assert.That(changes.Account?.Count ?? 0, Is.EqualTo(slot < 64 ? 1 : 0));
-                Assert.That(changes.Storage?.Count ?? 0, Is.EqualTo(slot < 64 ? 0 : 1));
-                Assert.That(changes.Code?.Count ?? 0, Is.Zero);
+                Assert.That(changes.Account?.ConsumeOperations().Length ?? 0, Is.EqualTo(slot < 64 ? 1 : 0));
+                Assert.That(changes.Storage?.ConsumeOperations().Length ?? 0, Is.EqualTo(slot < 64 ? 0 : 1));
+                Assert.That(changes.Code?.ConsumeOperations().Length ?? 0, Is.Zero);
             }
             bundle.CompleteLeafChanges();
         }
@@ -396,7 +396,7 @@ public class PbtSnapshotBundleTests
         ValueHash256 flatValue = new(Value(9));
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(key, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(key, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         ValueHash256 root;
         using (PbtSnapshotStore store = new(bundle)) root = store.Fold(default, leafExists ? [(key.Bytes.ToArray(), Value(1))] : []);
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(flatValue.Bytes));
@@ -421,7 +421,7 @@ public class PbtSnapshotBundleTests
     {
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(new PbtStorageTreeKey([0]), null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(new PbtStorageTreeKey([0]), null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         // Only a delegated account may be deleted once its code is known: chunk leaves are shared without a reference count.
         byte[] code = deleteAccount ? Delegation : RealCode;
         Account account = Build.An.Account.WithCode(code).TestObject;
@@ -484,7 +484,7 @@ public class PbtSnapshotBundleTests
         int readsBeforeDirectRead = reader.GroupReadCount;
         for (int read = 0; read < 2; read++)
         {
-            using RefCountingMemory? payload = readOnly.GetNodeGroup(path);
+            using RefCountingMemory? payload = readOnly.GetNodeGroup(path.ToPath<PbtStorageNodePath>());
             Assert.That(payload!.GetSpan().ToArray(), Is.EqualTo(encoding));
         }
         Assert.That(reader.GroupReadCount, Is.EqualTo(readsBeforeDirectRead + 2), "direct read-only reads bypass the populated trie cache");
@@ -514,8 +514,8 @@ public class PbtSnapshotBundleTests
         PbtNodePath path = new(Bytes.FromHexString("00"), 4);
         byte[] originalNode = BranchEncoding(1);
         byte[] changedNode = BranchEncoding(2);
-        ValueHash256 originalHash = PbtNodeCodec.Hash(new PbtNodeReader(originalNode));
-        ValueHash256 changedHash = PbtNodeCodec.Hash(new PbtNodeReader(changedNode));
+        ValueHash256 originalHash = PbtNodeCodec.Hash(PbtNodeReader.FromValidated(originalNode));
+        ValueHash256 changedHash = PbtNodeCodec.Hash(PbtNodeReader.FromValidated(changedNode));
         PbtStorageNodePath childPath = PbtFourLevelGroupGeometry.PathOf(path, 0).ToPath<PbtStorageNodePath>();
         byte[] original = EncodeGroup(path, [new PbtNodeRecord(childPath, originalNode)]);
         byte[] changed = EncodeGroup(path, [new PbtNodeRecord(childPath, changedNode)]);
@@ -1066,7 +1066,7 @@ public class PbtSnapshotBundleTests
             MemoryProvider = memoryProvider,
         };
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         PbtStorageTreeKey originalLeafKey = PbtStateKey.Storage(TestItem.AddressA, 1);
         PbtNodePath originalGroupKey = new([0x80], 4);
         byte[] originalGroup = EncodeGroup(originalGroupKey, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(originalGroupKey, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
@@ -1089,7 +1089,7 @@ public class PbtSnapshotBundleTests
         PbtNodePath originalNodePath = new([0x80], 4);
         byte[] originalNode = EncodeGroup(originalNodePath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(originalNodePath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
         Reader reader = new(new PbtStorageTreeKey([0]), null) { GroupReadException = new InvalidDataException("Configured group read failure.") };
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(originalLeafValue.Bytes));
         using RefCountingMemory originalPayload = Memory(originalNode);
         bundle.SetNodeGroup(originalNodePath, TestItem.KeccakA.ValueHash256, originalPayload);
@@ -1120,7 +1120,7 @@ public class PbtSnapshotBundleTests
         ValueHash256 value = new(Value(2));
         ValueHash256 root = new(Value(3));
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(new PbtStorageTreeKey([0]), null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(new PbtStorageTreeKey([0]), null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(value.Bytes));
         Assert.Throws<InvalidOperationException>(() => bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root));
         root = Fold(bundle, default);
@@ -1140,7 +1140,7 @@ public class PbtSnapshotBundleTests
     {
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         Address address = new("0x0000000000000000000000000000000000000001");
         byte[] bytes = Bytes.FromHexString("6001");
         Account account = Build.An.Account.WithNonce(1).WithBalance(2).WithCode(bytes).TestObject;
@@ -1159,7 +1159,7 @@ public class PbtSnapshotBundleTests
     {
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         byte[] bytes = new byte[160];
         Bytes.FromHexString("6001600055").CopyTo(bytes, 0);
         CodeInfo code = new(bytes);
@@ -1204,7 +1204,7 @@ public class PbtSnapshotBundleTests
         const int AccountCount = 64;
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         static byte[] CodeOf(int index) => [0x60, (byte)index];
         static Account AccountOf(int index) => Build.An.Account.WithNonce((ulong)index + 1).WithCode(CodeOf(index)).TestObject;
 
@@ -1239,7 +1239,7 @@ public class PbtSnapshotBundleTests
     {
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         byte[] bytes = new byte[chunkCount * 31];
         bytes.AsSpan().Fill(0x5b);
         CodeInfo code = new(bytes);
@@ -1284,7 +1284,7 @@ public class PbtSnapshotBundleTests
     {
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         Account previous = Build.An.Account.WithNonce(1).WithCode(previousCode).TestObject;
         Account? next = nextCode is null ? null : Build.An.Account.WithNonce(2).WithCode(nextCode).TestObject;
         Set(previous, previousCode);
@@ -1311,7 +1311,7 @@ public class PbtSnapshotBundleTests
     {
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         bundle.SetAccount(TestItem.AddressA, Build.An.Account.WithCode(RealCode).TestObject);
         Assert.Throws<InvalidDataException>(() => bundle.SetAccount(TestItem.AddressA, Build.An.Account.WithCode(OtherRealCode).TestObject));
     }
@@ -1335,7 +1335,7 @@ public class PbtSnapshotBundleTests
     {
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         byte[] firstDelegation = Bytes.FromHexString("ef01000000000000000000000000000000000000000001");
         byte[] secondDelegation = Bytes.FromHexString("ef01000000000000000000000000000000000000000002");
         ValueHash256 root = default;
@@ -1407,7 +1407,7 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         Reader reader = new(default, null);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         byte[] bytes = Bytes.FromHexString("6001600055");
         Account account = Build.An.Account.WithBalance(1).WithCode(bytes).TestObject;
         ValueHash256 codeHash = account.CodeHash.ValueHash256;
@@ -1438,7 +1438,7 @@ public class PbtSnapshotBundleTests
         Account persisted = Build.An.Account.WithBalance(1).TestObject;
         Reader reader = new(default, null) { Accounts = [new(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), persisted)] };
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         bundle.HintAccount(TestItem.AddressA, persisted);
         Account written = persisted.WithChangedBalance(2);
         bundle.SetAccount(TestItem.AddressA, written);
@@ -1465,8 +1465,8 @@ public class PbtSnapshotBundleTests
     {
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
-        byte[] bytes = new byte[(PbtKeyDerivation.StemSubtreeWidth + 2) * 31];
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
+        byte[] bytes = new byte[(256 + 2) * 31];
         bytes.AsSpan().Fill(0x5b);
         Account account = Build.An.Account.WithBalance(3).WithCode(bytes).TestObject;
         bundle.SetCode(account.CodeHash.ValueHash256, new CodeInfo(bytes));
@@ -1488,7 +1488,7 @@ public class PbtSnapshotBundleTests
         bundle.SetCode(other.CodeHash.ValueHash256, new CodeInfo(otherBytes));
         bundle.SetAccount(TestItem.AddressB, other);
         CountingStore store = new(bundle) { FailedZone = failedZone };
-        Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), PbtTreeHarness.FoldQuota(), FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null));
+        Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TreeRoot, Is.EqualTo(root));
@@ -1506,7 +1506,7 @@ public class PbtSnapshotBundleTests
         {
             ValueHash256 updated;
             using (PbtSnapshotStore store = new(bundle))
-                updated = TrieUpdater.UpdateRoot(store, root, changes, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
+                updated = TrieUpdater.UpdateRoot(store, root, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
             bundle.CompleteLeafChanges();
             return updated;
         }
@@ -1551,7 +1551,7 @@ public class PbtSnapshotBundleTests
     {
         ValueHash256 left = new(Value(marker));
         ValueHash256 right = new(Value((byte)(marker + 32)));
-        return PbtNodeCodec.EncodeBranch([], 0, left, right);
+        return PbtTreeHarness.EncodeBranch([], 0, left, right);
     }
 
     private static byte[] EncodeGroup(PbtNodePath groupKey, IReadOnlyList<PbtNodeRecord> records)

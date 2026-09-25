@@ -213,6 +213,5 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         internal EntrySource Source => (EntrySource)(_source & 3);
         internal int SourcePosition => _source >> 2;
-        internal bool IsEmpty => _source == 0;
     }
 }

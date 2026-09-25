@@ -47,9 +47,6 @@ public readonly struct PbtStorageTreeKey : IPbtKey<PbtStorageTreeKey>
 
     public int GetBit(int bitIndex) => PbtKeyOperations.GetBit(Bytes, bitIndex);
 
-    public bool IsPrefixOf(in PbtStorageTreeKey other) =>
-        Length <= other.Length && other.Bytes[..Length].SequenceEqual(Bytes);
-
     public int FirstDifferingBit(in PbtStorageTreeKey other, int startBit = 0) =>
         PbtKeyOperations.FirstDifferingBit(Bytes, other.Bytes, startBit);
 

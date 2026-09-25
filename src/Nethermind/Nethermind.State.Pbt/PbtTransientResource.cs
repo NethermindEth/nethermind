@@ -60,9 +60,6 @@ public sealed class PbtTransientResource(long prewarmCapacity = PbtTransientReso
 
     /// <summary>Returns whether an account or storage slot should be prewarmed, recording the hint.</summary>
     /// <remarks>Bloom false positives and concurrent duplicate admission are allowed. The caller must hold a lease.</remarks>
-    public bool ShouldPrewarm(Address address, UInt256? slot = null) => ShouldPrewarm(address.Bytes, slot);
-
-    /// <inheritdoc cref="ShouldPrewarm(Address, UInt256?)"/>
     public bool ShouldPrewarm(in ValueAddress address, UInt256? slot = null) => ShouldPrewarm(address.AsSpan, slot);
 
     private bool ShouldPrewarm(ReadOnlySpan<byte> addressBytes, UInt256? slot)

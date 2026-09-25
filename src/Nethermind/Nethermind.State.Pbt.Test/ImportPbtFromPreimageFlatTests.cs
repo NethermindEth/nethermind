@@ -118,7 +118,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtRocksDbPersistence reopened = new(pbtDb, config);
         PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reopened.CreateReader()), pool, PbtResourcePool.Usage.MainBlockProcessing, IPbtTrieNodeCache.Noop.Instance);
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reopened.CreateReader()), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         Account retained = bundle.GetAccount(TestItem.AddressB)!.WithChangedNonce(4).WithChangedBalance(43);
         bundle.SetAccount(TestItem.AddressB, retained);
         Assert.Throws<InvalidOperationException>(() => bundle.SetAccount(TestItem.AddressC, null), "imported code chunks are shared without a reference count");
@@ -126,7 +126,7 @@ public class ImportPbtFromPreimageFlatTests
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         ValueHash256 remainingRoot;
         using (PbtSnapshotStore store = new(bundle))
-            remainingRoot = TrieUpdater.UpdateRoot(store, reader.CurrentRoot, changes, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
+            remainingRoot = TrieUpdater.UpdateRoot(store, reader.CurrentRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
         bundle.CompleteLeafChanges();
         PbtReferenceModel.SetAccount(model, TestItem.AddressB, 4, 43, bigCode);
         PbtReferenceModel.SetAccount(model, TestItem.AddressE, 2, 0);
@@ -521,12 +521,12 @@ public class ImportPbtFromPreimageFlatTests
             byte[] rightKey = (byte[])leftKey.Clone();
             if (inlineLeaves)
             {
-                node.CopyBitsTo(0, leftKey, 0, node.BitDepth);
-                node.CopyBitsTo(0, rightKey, 0, node.BitDepth);
+                PbtNodePathOperations.CopyTo(node, leftKey);
+                PbtNodePathOperations.CopyTo(node, rightKey);
                 rightKey[node.BitDepth / 8] |= (byte)(0x80 >> (node.BitDepth % 8));
                 expectedLeaves += 2;
             }
-            byte[] encoding = PbtNodeCodec.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, leftKey, rightKey);
+            byte[] encoding = PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, leftKey, rightKey);
             BufferWriter writer = new(new byte[1024]);
             PbtNodeGroupEncoder.Encode(ref writer, group, new[] { new PbtNodeRecord(node, encoding) }, default);
             Add(column, group.ToStorageKey(column, config.NodeGroupKeyLayout), writer.WrittenSpan.ToArray());

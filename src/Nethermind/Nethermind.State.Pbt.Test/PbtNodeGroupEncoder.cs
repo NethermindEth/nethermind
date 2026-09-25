@@ -32,7 +32,7 @@ internal static class PbtNodeGroupEncoder
         where TPath : struct, IPbtNodePath<TPath>
     {
         ArgumentNullException.ThrowIfNull(nodes);
-        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes);
+        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, ushort.MaxValue);
         ValidateGroupKey(groupKey);
         if (nodes.Count == 0) throw new InvalidDataException("A PBT node group cannot be empty.");
         if (nodes.Count > PbtFourLevelGroupGeometry.PositionCount) throw new InvalidDataException("A PBT node group has too many nodes.");
@@ -55,7 +55,8 @@ internal static class PbtNodeGroupEncoder
             if ((seenPositions & bit) != 0) throw new InvalidDataException("Duplicate node position in group.");
             seenPositions |= bit;
             ReadOnlySpan<byte> encoding = record.Encoding.Span;
-            PbtNodeReader node = new(encoding);
+            PbtNodeCodec.ValidateExact(encoding);
+            PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
             ValidateNodePath(node, record.Path);
             if (PbtNodeGroupCodec.ShouldOmit(PbtPrefixlessBranchOmission.Interior, location.Position, encoding)) continue;
             entriesLength = checked(entriesLength + encoding.Length);
@@ -96,7 +97,7 @@ internal static class PbtNodeGroupEncoder
     public static void Encode<TPath>(ref BufferWriter writer, TPath groupKey, scoped ReadOnlySpan<ReadOnlyMemory<byte>> encodings, scoped ReadOnlySpan<bool> present, ReadOnlySpan<long> descendantBytes)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes);
+        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, ushort.MaxValue);
         ValidateGroupKey(groupKey);
         if (encodings.Length != PbtFourLevelGroupGeometry.PositionCount || present.Length != PbtFourLevelGroupGeometry.PositionCount)
             throw new ArgumentException("A PBT node group must have one slot per position.");
@@ -110,7 +111,8 @@ internal static class PbtNodeGroupEncoder
             if (encoding.IsEmpty) continue;
             if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0)
                 throw new InvalidDataException("The group contains a reserved node position.");
-            PbtNodeReader node = new(encoding);
+            PbtNodeCodec.ValidateExact(encoding);
+            PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
             ValidateNodePath(node, PbtFourLevelGroupGeometry.PathOf(groupKey, position));
             if (PbtNodeGroupCodec.ShouldOmit(PbtPrefixlessBranchOmission.Interior, position, encoding)) continue;
             entriesLength = checked(entriesLength + encoding.Length);
@@ -159,9 +161,12 @@ internal static class PbtNodeGroupEncoder
     {
         ReadOnlySpan<byte> leftKey = node.LeftKey;
         ReadOnlySpan<byte> rightKey = node.RightKey;
-        return (leftKey.IsEmpty || path.MatchesPrefix(leftKey, path.BitDepth))
-            && (rightKey.IsEmpty || path.MatchesPrefix(rightKey, path.BitDepth));
+        return (leftKey.IsEmpty || StartsWith(leftKey, path))
+            && (rightKey.IsEmpty || StartsWith(rightKey, path));
     }
+
+    private static bool StartsWith<TPath>(ReadOnlySpan<byte> key, TPath path) where TPath : struct, IPbtNodePath<TPath> =>
+        key.Length * 8 >= path.BitDepth && PbtNodePathOperations.Prefix<TPath>(key, key.Length * 8, path.BitDepth).Equals(path);
 
     private static void ValidateGroupKey<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {

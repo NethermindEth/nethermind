@@ -151,7 +151,7 @@ public class PbtMetricsTests
         EvmWord actualSlot = bundle.GetSlot(SlotRun.RunKey(storageKey), SlotRun.IndexOf(storageKey));
         ISlotRun headerRun = bundle.RentRun(SlotRun.RunKey(headerStorageKey), addressHash);
         ISlotRun storageRun = bundle.RentRun(SlotRun.RunKey(storageKey), addressHash);
-        using RefCountingMemory? actualGroup = bundle.GetNodeGroup(groupKey);
+        using RefCountingMemory? actualGroup = bundle.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());
         CodeInfo? actualCode = bundle.GetCode(codeHash);
 
         string tier = snapshotHit ? "snapshot" : scenario == "missing" ? "persistence_null" : "persistence";

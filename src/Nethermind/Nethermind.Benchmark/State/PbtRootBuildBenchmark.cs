@@ -105,6 +105,6 @@ public class PbtRootBuildBenchmark
             Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(_shardedOperations), new ArrayPoolList<int>(_zoneTable),
                 PbtTrieUpdaterBenchmark.ZoneShardNibbleIndex),
         };
-        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, FoldFanOut.Default, PbtPrefixlessBranchOmission.Interior, null);
+        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, new FoldFanOut(FoldFanOut.DefaultMinOperationsPerWorker, FoldFanOut.DefaultLargeSubtreeBytes, FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker), PbtPrefixlessBranchOmission.Interior, null);
     }
 }

@@ -14,7 +14,6 @@ internal readonly record struct FoldFanOut(int MinOperationsPerWorker, long Larg
     internal const int DefaultMinOperationsPerWorker = 128;
     internal const long DefaultLargeSubtreeBytes = 32 * 1024;
     internal const int DefaultLargeSubtreeMinOperationsPerWorker = 16;
-    internal static readonly FoldFanOut Default = new(DefaultMinOperationsPerWorker, DefaultLargeSubtreeBytes, DefaultLargeSubtreeMinOperationsPerWorker);
 
     /// <param name="descendantBytes">The stored size below the buckets the worker would take.</param>
     internal int MinOperationsFor(long descendantBytes) => descendantBytes < LargeSubtreeBytes ? MinOperationsPerWorker : LargeSubtreeMinOperationsPerWorker;

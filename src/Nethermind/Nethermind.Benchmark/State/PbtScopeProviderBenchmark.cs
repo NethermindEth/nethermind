@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Config;
@@ -124,7 +125,7 @@ public class PbtScopeProviderBenchmark
             config, new BenchFinalizedStateProvider(), persistence, repository, schedule,
             NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _pbtManager = new PbtDbManager(
-            repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance, config, new MetricsConfig(), IPbtTrieNodeCache.Noop.Instance);
+            repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance, config, new MetricsConfig(), new BenchNoopTrieNodeCache());
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, new BenchFinalizedStateProvider(), resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
             new NoopTrieWarmer(), config);
@@ -210,5 +211,16 @@ public class PbtScopeProviderBenchmark
         public CancellationToken Token => cts.Token;
 
         public void Exit(int exitCode) => throw new NotSupportedException();
+    }
+
+    private sealed class BenchNoopTrieNodeCache : IPbtTrieNodeCache
+    {
+        public bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        {
+            payload = null;
+            return false;
+        }
+
+        public void Add(PbtTransientResource transientResource) { }
     }
 }

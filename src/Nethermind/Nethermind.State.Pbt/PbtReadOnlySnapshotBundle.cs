@@ -48,9 +48,6 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
     }
 
-    internal RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> =>
-        GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());
-
     /// <summary>Returns a caller-owned group lease, or null when no layer has an entry.</summary>
     internal RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey)
     {

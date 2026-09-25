@@ -123,24 +123,6 @@ internal static class PbtNodeCodec
         key.Bytes.CopyTo(encoding[2..]);
     }
 
-    /// <summary>Encodes a branch whose children are both branches.</summary>
-    internal static byte[] EncodeBranch(ReadOnlySpan<byte> prefix, int bitCount, in ValueHash256 left, in ValueHash256 right) =>
-        EncodeBranch(prefix, bitCount, left, right, [], []);
-
-    /// <summary>Encodes a branch; a non-empty key inlines that child as a leaf.</summary>
-    internal static byte[] EncodeBranch(ReadOnlySpan<byte> prefix, int bitCount, in ValueHash256 left, in ValueHash256 right,
-        ReadOnlySpan<byte> leftKey, ReadOnlySpan<byte> rightKey)
-    {
-        if ((uint)bitCount > PbtBitPrefix.MaxBitCount) throw new ArgumentOutOfRangeException(nameof(bitCount));
-        if (prefix.Length != PbtBitPrefix.ByteCount(bitCount)) throw new ArgumentException("Prefix length does not match its bit count.", nameof(prefix));
-        byte[] encoding = new byte[BranchLength(bitCount, leftKey.Length, rightKey.Length)];
-        CreateBranchEncoding(encoding, bitCount, left, right);
-        prefix.CopyTo(encoding.AsSpan(3));
-        WriteBranchTrailer(encoding.AsSpan(BranchPreimageLength(bitCount)), leftKey, rightKey);
-        ValidateExact(encoding);
-        return encoding;
-    }
-
     /// <summary>Writes a branch's hash preimage with a zeroed prefix for direct bit composition.</summary>
     /// <remarks>Only the first <see cref="BranchPreimageLength"/> bytes are written; the trailer follows through <see cref="WriteBranchTrailer"/>.</remarks>
     internal static void CreateBranchEncoding(Span<byte> encoding, int bitCount, in ValueHash256 left, in ValueHash256 right)

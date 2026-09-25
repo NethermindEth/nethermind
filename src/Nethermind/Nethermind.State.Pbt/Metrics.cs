@@ -41,9 +41,6 @@ public static class Metrics
 
     internal static readonly PbtSnapshotMemoryLabel AccountLeafSnapshotMemory = new("account", "leaf");
     internal static readonly PbtSnapshotMemoryLabel AccountTrieSnapshotMemory = new("account", "trie");
-    internal static readonly PbtSnapshotMemoryLabel CodeTrieSnapshotMemory = new("code", "trie");
-    internal static readonly PbtSnapshotMemoryLabel StorageLeafSnapshotMemory = new("storage", "leaf");
-    internal static readonly PbtSnapshotMemoryLabel StorageTrieSnapshotMemory = new("storage", "trie");
 
     [DetailedMetric]
     [Description("Time a pbt write batch was open, covering the block's storage and account flush (Stopwatch ticks)")]
@@ -111,9 +108,6 @@ public static class Metrics
     {
         [AccountLeafSnapshotMemory] = 0,
         [AccountTrieSnapshotMemory] = 0,
-        [CodeTrieSnapshotMemory] = 0,
-        [StorageLeafSnapshotMemory] = 0,
-        [StorageTrieSnapshotMemory] = 0,
     };
 
     private static long _pbtBaseSnapshotCount;

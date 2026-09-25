@@ -12,7 +12,6 @@ namespace Nethermind.Benchmarks.State;
 public class PbtNodePathBenchmark
 {
     private byte[] _bytes;
-    private PbtStorageTreeKey _key;
     private PbtStorageNodePath _path;
 
     [Params(0, 1, 8, 64, 272, 524, 528)]
@@ -23,17 +22,13 @@ public class PbtNodePathBenchmark
     {
         byte[] keyBytes = new byte[66];
         new Random(8297).NextBytes(keyBytes);
-        _key = new PbtStorageTreeKey(keyBytes);
-        _path = PbtStorageNodePath.FromKey(_key, BitDepth);
+        _path = PbtNodePathOperations.Prefix<PbtStorageNodePath>(keyBytes, keyBytes.Length * 8, BitDepth);
         _bytes = new byte[(BitDepth + 7) >> 3];
-        _path.CopyBitsTo(0, _bytes, 0, BitDepth);
+        PbtNodePathOperations.CopyTo(_path, _bytes);
     }
 
     [Benchmark]
     public PbtStorageNodePath Construct() => new(_bytes, BitDepth);
-
-    [Benchmark]
-    public PbtStorageNodePath FromKey() => PbtStorageNodePath.FromKey(_key, BitDepth);
 
     [Benchmark]
     public PbtStorageNodePath LocateAndReconstruct()
@@ -59,7 +54,7 @@ public class PbtNodePathAppendBenchmark
         new Random(8297).NextBytes(keyBytes);
         PbtStorageTreeKey key = new(keyBytes);
         int pathDepth = Math.Min(7, ResultBitDepth - 1);
-        _path = PbtStorageNodePath.FromKey(key, pathDepth);
+        _path = PbtNodePathOperations.Prefix<PbtStorageNodePath>(keyBytes, keyBytes.Length * 8, pathDepth);
         int prefixBits = ResultBitDepth - pathDepth - 1;
         _prefix = new byte[2 + PbtBitPrefix.ByteCount(prefixBits)];
         BinaryPrimitives.WriteUInt16BigEndian(_prefix, (ushort)prefixBits);
@@ -67,7 +62,7 @@ public class PbtNodePathAppendBenchmark
     }
 
     [Benchmark]
-    public PbtStorageNodePath Append() => _path.Append(new CompressedPrefix(_prefix), 1);
+    public PbtStorageNodePath Append() => _path.Append(CompressedPrefix.FromValidated(_prefix), 1);
 }
 
 [MemoryDiagnoser]

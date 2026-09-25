@@ -13,15 +13,9 @@ internal readonly ref struct PbtNodeReader
 {
     private readonly ReadOnlySpan<byte> _encoding;
 
-    internal PbtNodeReader(ReadOnlySpan<byte> encoding) : this(encoding, validated: false) { }
+    private PbtNodeReader(ReadOnlySpan<byte> encoding) => _encoding = encoding;
 
-    private PbtNodeReader(ReadOnlySpan<byte> encoding, bool validated)
-    {
-        if (!validated) PbtNodeCodec.ValidateExact(encoding);
-        _encoding = encoding;
-    }
-
-    internal static PbtNodeReader FromValidated(ReadOnlySpan<byte> encoding) => new(encoding, validated: true);
+    internal static PbtNodeReader FromValidated(ReadOnlySpan<byte> encoding) => new(encoding);
 
     internal ReadOnlySpan<byte> Encoding { get { EnsureInitialized(); return _encoding; } }
     internal bool IsLeaf => Encoding[0] == 0;

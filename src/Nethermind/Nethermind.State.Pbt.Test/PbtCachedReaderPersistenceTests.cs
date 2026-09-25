@@ -237,7 +237,7 @@ public class PbtCachedReaderPersistenceTests
     {
         Context ctx = new();
         PbtNodePath groupKey = new([], 0);
-        using RefCountingMemory payload = RefCountingMemory.Wrapping(new byte[PbtNodeGroupCodec.MaxTrailerLength]);
+        using RefCountingMemory payload = RefCountingMemory.OwningRocksDb(new ArrayMemoryManager(new byte[PbtNodeGroupCodec.MaxTrailerLength]));
         ctx.Reader.GetNodeGroup(groupKey).Returns(_ =>
         {
             payload.AcquireLease();

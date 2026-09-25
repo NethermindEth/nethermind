@@ -211,11 +211,7 @@ public sealed class PbtSnapshotBundle(
         SetPbtLeaf(PbtStateKey.Account(addressHash, isDelegation ? (byte)PbtKeyDerivation.CodeHashLeafKey : (byte)PbtKeyDerivation.DelegationLeafKey), null);
     }
 
-    public void SetSlot(Address address, in UInt256 slot, in EvmWord value) =>
-        SetSlot(address, PbtKeyDerivation.AddressKeyHash(address), slot, in value);
-
-    /// <inheritdoc cref="SetSlot(Address, in UInt256, in EvmWord)"/>
-    /// <remarks>Reuses a precomputed <see cref="PbtKeyDerivation.AddressKeyHash"/>, so a run of slots for one address pays only the per-tree-index suffix hash.</remarks>
+    /// <summary>Sets a storage slot, reusing a precomputed <see cref="PbtKeyDerivation.AddressKeyHash"/> so a run of slots for one address pays only the per-tree-index suffix hash.</summary>
     public void SetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot, in EvmWord value)
     {
         PbtStorageTreeKey key = PbtStateKey.Storage(address, addressHash, slot);
@@ -251,9 +247,6 @@ public sealed class PbtSnapshotBundle(
 
     // Clearing existing storage (isNewStorage: false) is not supported in PBT: under EIP-6780 a contract only loses
     // its storage when destroyed in its creating transaction, so no persisted run or trie leaf ever needs deleting.
-    public void SelfDestruct(Address address) => SelfDestruct(PbtKeyDerivation.AddressKeyHash(address));
-
-    /// <inheritdoc cref="SelfDestruct(Address)"/>
     public void SelfDestruct(in ValueHash256 addressHash) => WriteBuffer.ClearStorage(addressHash, isNewStorage: true);
 
     /// <summary>Stores bytecode written in this block; its chunk leaves are staged by the account writes that reference it.</summary>
@@ -339,13 +332,6 @@ public sealed class PbtSnapshotBundle(
             }
             throw;
         }
-    }
-
-    public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
-    {
-        PbtSnapshot snapshot = CollectSnapshot(from, to, treeRoot, out PbtTransientResource retired);
-        retired.ReleaseLease();
-        return snapshot;
     }
 
     /// <summary>Seals the write buffer into a snapshot and hands the block's transient resource to the caller, who owns its remaining lease.</summary>

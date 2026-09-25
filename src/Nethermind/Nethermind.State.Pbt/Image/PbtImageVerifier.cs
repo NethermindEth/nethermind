@@ -272,7 +272,7 @@ internal static class PbtImageVerifier
             bool hasCodeHash = ReadOptionalField(cursor, CodeHashKind, out ValueHash256 codeHash);
             if (!cursor.MoveNext()) throw new InvalidDataException("Truncated join results.");
             bool hasDelegation = ReadOptionalField(cursor, DelegationKind, out ValueHash256 delegation);
-            byte[] code = ReadCode(accountAddress, (int)codeSize, hasCodeHash, codeHash, hasDelegation, delegation,
+            byte[] code = ReadCode((int)codeSize, hasCodeHash, codeHash, hasDelegation, delegation,
                 codes, cancellationToken);
             if (nonce == 0 && balance.IsZero && code.Length == 0)
                 throw new InvalidDataException("Empty account violates EIP-7523.");
@@ -345,7 +345,7 @@ internal static class PbtImageVerifier
         ArgumentOutOfRangeException.ThrowIfNegative(anchor.MaxBufferedCodeBytes);
     }
 
-    private static byte[] ReadCode(Address address, int size, bool hasCodeHash, in ValueHash256 codeHashLeaf,
+    private static byte[] ReadCode(int size, bool hasCodeHash, in ValueHash256 codeHashLeaf,
         bool hasDelegation, in ValueHash256 delegation, CodeTable codes, CancellationToken cancellationToken)
     {
         if (hasDelegation)
@@ -362,7 +362,7 @@ internal static class PbtImageVerifier
         for (int chunk = 0; chunk < chunks; chunk++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (codes.TryRead(address, codeHash, chunk, out ValueHash256 value))
+            if (codes.TryRead(codeHash, chunk, out ValueHash256 value))
                 value.Bytes.Slice(1, Math.Min(31, size - chunk * 31)).CopyTo(code.AsSpan(chunk * 31));
         }
         if (ValueKeccak.Compute(code) != codeHash || Eip7702Constants.IsDelegatedCode(code))
@@ -373,7 +373,7 @@ internal static class PbtImageVerifier
         {
             cancellationToken.ThrowIfCancellationRequested();
             ValueHash256 expected = new(encodedChunks.AsSpan(chunk * 32, 32));
-            bool stored = codes.TryRead(address, codeHash, chunk, out ValueHash256 actual);
+            bool stored = codes.TryRead(codeHash, chunk, out ValueHash256 actual);
             if (actual != expected || stored != (expected != default))
                 throw new InvalidDataException("Noncanonical code chunk or PUSHDATA count.");
             if (stored) present++;
@@ -392,9 +392,9 @@ internal static class PbtImageVerifier
         /// <summary>Distinct residual leaves the code reads have accounted for.</summary>
         public long Consumed { get; private set; }
 
-        public bool TryRead(Address address, in ValueHash256 codeHash, int chunk, out ValueHash256 value)
+        public bool TryRead(in ValueHash256 codeHash, int chunk, out ValueHash256 value)
         {
-            PbtStorageTreeKey key = (PbtStorageTreeKey)PbtStateKey.Code(address, codeHash, chunk);
+            PbtStorageTreeKey key = (PbtStorageTreeKey)PbtStateKey.Code(codeHash, chunk);
             if (!SortedTableReader.TrySeek<MappedByteFile, NoOpPin>(in residual, new Bound(0, residual.Length), key.Bytes, out Bound found))
             {
                 value = default;

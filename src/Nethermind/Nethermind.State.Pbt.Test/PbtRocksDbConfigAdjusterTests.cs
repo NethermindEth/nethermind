@@ -151,7 +151,7 @@ public class PbtRocksDbConfigAdjusterTests
         ];
         PbtStorageNodePath[] expectedPaths = new PbtStorageNodePath[groups.Length];
         for (int index = 0; index < groups.Length; index++) expectedPaths[index] = groups[index].Path;
-        byte[] encoding = PbtNodeCodec.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+        byte[] encoding = PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
         StateId state = new(1, TestItem.KeccakA.ValueHash256);
         ValueHash256 treeRoot = TestItem.KeccakD.ValueHash256;
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);

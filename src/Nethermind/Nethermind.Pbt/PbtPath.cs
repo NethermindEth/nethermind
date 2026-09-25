@@ -45,16 +45,12 @@ public readonly struct PbtPath : IPbtKey<PbtPath>
 
     public int GetBit(int bitIndex) => PbtKeyOperations.GetBit(Bytes, bitIndex);
 
-    public bool IsPrefixOf(in PbtPath other) => Equals(other);
-
     public int FirstDifferingBit(in PbtPath other, int startBit = 0) =>
         PbtKeyOperations.FirstDifferingBit(Bytes, other.Bytes, startBit);
 
     public int CompareTo(PbtPath other) => Bytes.SequenceCompareTo(other.Bytes);
     public bool Equals(PbtPath other) => Bytes.SequenceEqual(other.Bytes);
     public override bool Equals(object? obj) => obj is PbtPath other && Equals(other);
-    public static bool operator ==(PbtPath left, PbtPath right) => left.Equals(right);
-    public static bool operator !=(PbtPath left, PbtPath right) => !left.Equals(right);
 
     public override int GetHashCode()
     {

@@ -333,7 +333,7 @@ public class PbtWorldStateScopeTests
     [TestCase(1000u, true)]
     public async Task RootUpdates_PreservePartitionLeavesThroughRepeatedFoldsAndCommit(uint updatedSlot, bool codeAfterAccount)
     {
-        byte[] code = new byte[(PbtKeyDerivation.StemSubtreeWidth + 2) * PbtKeyDerivation.CodeChunkSize];
+        byte[] code = new byte[(256 + 2) * PbtKeyDerivation.CodeChunkSize];
         Array.Fill(code, (byte)0x01);
         Hash256 codeHash = Keccak.Compute(code);
         await using PbtTestContext ctx = new();
@@ -370,7 +370,7 @@ public class PbtWorldStateScopeTests
         {
             Assert.That(leaves.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 7)), Is.True);
             Assert.That(leaves.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 1000)), Is.True);
-            Assert.That(leaves.ContainsKey((PbtStorageTreeKey)PbtStateKey.Code(TestItem.AddressA, codeHash.ValueHash256, PbtKeyDerivation.StemSubtreeWidth)), Is.True);
+            Assert.That(leaves.ContainsKey((PbtStorageTreeKey)PbtStateKey.Code(codeHash.ValueHash256, 256)), Is.True);
             Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(ReferenceRoot(leaves)));
             Assert.That(reopened.TreeRoot, Is.EqualTo(scope.RootHash.ValueHash256));
         }
@@ -595,7 +595,7 @@ public class PbtWorldStateScopeTests
         using ManualResetEventSlim release = new();
         reader.BeforeRead = () => { entered.Set(); Assert.That(release.Wait(TimeSpan.FromSeconds(10)), Is.True); };
         RecordingTrieWarmer warmer = new();
-        using PbtWorldStateScope scope = CreateCountingScope(reader, IPbtTrieNodeCache.Noop.Instance, warmer);
+        using PbtWorldStateScope scope = CreateCountingScope(reader, NoopPbtTrieNodeCache.Instance, warmer);
         IWorldStateScopeProvider.ITrieWarmupSession borrow = scope.CreateTrieWarmupSession();
         borrow.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
         Task<bool> operation = Task.Run(() => ExecuteHint(warmer, -1));

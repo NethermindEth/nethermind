@@ -11,23 +11,7 @@ public readonly ref struct CompressedPrefix
 {
     private readonly ReadOnlySpan<byte> _encoding;
 
-    /// <summary>Wraps a complete encoded prefix, including its two-byte bit count.</summary>
-    /// <exception cref="InvalidDataException">The encoding has an invalid length or nonzero padding bits.</exception>
-    public CompressedPrefix(ReadOnlySpan<byte> encoding) : this(encoding, validated: false) { }
-
-    private CompressedPrefix(ReadOnlySpan<byte> encoding, bool validated)
-    {
-        if (!validated)
-        {
-            if (encoding.Length < sizeof(ushort)) throw new InvalidDataException("Truncated compressed prefix.");
-            int bitCount = BinaryPrimitives.ReadUInt16BigEndian(encoding);
-            if (encoding.Length != sizeof(ushort) + PbtBitPrefix.ByteCount(bitCount))
-                throw new InvalidDataException("Compressed prefix length does not match its bit count.");
-            if ((bitCount & 7) != 0 && (encoding[^1] & (0xFF >> (bitCount & 7))) != 0)
-                throw new InvalidDataException("Unused compressed prefix bits must be zero.");
-        }
-        _encoding = encoding;
-    }
+    private CompressedPrefix(ReadOnlySpan<byte> encoding) => _encoding = encoding;
 
     /// <summary>Gets the number of meaningful prefix bits.</summary>
     public int BitCount => _encoding.IsEmpty ? 0 : BinaryPrimitives.ReadUInt16BigEndian(_encoding);
@@ -35,5 +19,5 @@ public readonly ref struct CompressedPrefix
     /// <summary>Gets the borrowed, MSB-first prefix bytes without the count header.</summary>
     public ReadOnlySpan<byte> Bytes => _encoding.IsEmpty ? [] : _encoding[sizeof(ushort)..];
 
-    internal static CompressedPrefix FromValidated(ReadOnlySpan<byte> encoding) => new(encoding, validated: true);
+    internal static CompressedPrefix FromValidated(ReadOnlySpan<byte> encoding) => new(encoding);
 }

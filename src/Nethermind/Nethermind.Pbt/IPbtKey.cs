@@ -21,8 +21,6 @@ public interface IPbtKey<TSelf> : IEquatable<TSelf>, IComparable<TSelf> where TS
     int BitLength { get; }
     /// <summary>Reads one MSB-first bit.</summary>
     int GetBit(int bitIndex);
-    /// <summary>Tests whether this key prefixes another key.</summary>
-    bool IsPrefixOf(in TSelf other);
     /// <summary>Finds the first different bit, or the common bit length.</summary>
     int FirstDifferingBit(in TSelf other, int startBit = 0);
 }
