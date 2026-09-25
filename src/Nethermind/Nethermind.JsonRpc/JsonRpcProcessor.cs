@@ -808,9 +808,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private ValueTask<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken)
     {
         Metrics.JsonRpcRequests++;
+        request.CancellationToken = cancellationToken;
         long startTime = Stopwatch.GetTimestamp();
 
-        ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context, cancellationToken);
+        ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context);
         return responseTask.IsCompletedSuccessfully
             ? ValueTask.FromResult(CreateSingleRequestEntry(request, responseTask.Result, context, startTime))
             : AwaitAndCreateEntryAsync(responseTask, request, context, startTime);

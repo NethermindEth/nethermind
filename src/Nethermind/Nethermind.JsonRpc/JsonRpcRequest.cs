@@ -5,6 +5,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 
 namespace Nethermind.JsonRpc
 {
@@ -45,13 +46,11 @@ namespace Nethermind.JsonRpc
 
         internal bool IsBatchItem { get; set; }
 
+        /// <summary>Signals that the caller has gone, e.g. the connection was closed.</summary>
+        internal CancellationToken CancellationToken { get; set; }
+
         /// <summary>Byte length of the raw <c>params</c> element, or zero when the request carries none.</summary>
-        /// <remarks>
-        /// Known without materializing the parameters on either input path: the body slice when the request was read
-        /// straight from the body, the document's backing buffer when it was parsed into a <see cref="JsonDocument"/>.
-        /// Read it before the parameters are bound and disposed: once the backing document is gone the parsed path throws
-        /// <see cref="ObjectDisposedException"/> and the raw path reads zero.
-        /// </remarks>
+        /// <remarks>Read it before the parameters are bound: disposing the parsed document invalidates it.</remarks>
         internal int ParamsUtf8Length => !ParamsUtf8.IsEmpty
             ? ParamsUtf8.Length
             : _params.ValueKind == JsonValueKind.Undefined ? 0 : JsonMarshal.GetRawUtf8Value(_params).Length;

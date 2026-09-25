@@ -463,7 +463,7 @@ namespace Nethermind.JsonRpc.Modules
                     if (IsEvmExecution && SuccessPayloadType is not null && typeof(IStreamableResult).IsAssignableFrom(SuccessPayloadType))
                     {
                         throw new InvalidOperationException(
-                            $"RPC method {methodInfo.Name} is admission-gated but returns {nameof(IStreamableResult)}; streamed EVM execution must use a separate pool.");
+                            $"RPC method {methodInfo.Name} is marked {nameof(JsonRpcMethodAttribute.IsEvmExecution)} but returns {nameof(IStreamableResult)}.");
                     }
 
                     SuccessPayloadTypeInfo = GetJsonTypeInfo(SuccessPayloadType);
@@ -490,10 +490,7 @@ namespace Nethermind.JsonRpc.Modules
             public ExpectedParameter[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
-
-            /// <summary>Whether the method is flagged <see cref="JsonRpcMethodAttribute.IsEvmExecution"/> and is therefore admitted through <see cref="EvmAdmissionGate"/>.</summary>
             internal bool IsEvmExecution { get; }
-
             internal Type? ResultWrapperType { get; }
             internal Type? SuccessPayloadType { get; }
             internal Type? ErrorDataPayloadType { get; }
