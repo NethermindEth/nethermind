@@ -32,4 +32,33 @@ public sealed class McpChainProfile(ChainSpec chainSpec, ISpecProvider specProvi
 
     /// <summary>Gets the beacon-chain deposit contract of the current fork, if any.</summary>
     public Address? DepositContractAddress => specProvider.GetFinalSpec().DepositContractAddress;
+
+    /// <summary>Gets well-known contracts of this chain: system contracts from the spec plus notable tokens.</summary>
+    /// <remarks>The HOSTING agent extends this with per-chain token lists; system contracts come from the latest fork spec.</remarks>
+    public IReadOnlyList<McpWellKnownContract> WellKnownContracts
+    {
+        get
+        {
+            IReleaseSpec spec = specProvider.GetFinalSpec();
+            List<McpWellKnownContract> contracts = [];
+            Add(contracts, "Beacon deposit contract", spec.DepositContractAddress, "system");
+            Add(contracts, "EIP-4788 beacon roots", spec.Eip4788ContractAddress, "system");
+            Add(contracts, "EIP-2935 block hash history", spec.Eip2935ContractAddress, "system");
+            Add(contracts, "EIP-7002 withdrawal requests", spec.Eip7002ContractAddress, "system");
+            Add(contracts, "EIP-7251 consolidation requests", spec.Eip7251ContractAddress, "system");
+            Add(contracts, "ENS registry", EnsRegistryAddress, "ens");
+            return contracts;
+
+            static void Add(List<McpWellKnownContract> list, string name, Address? address, string kind)
+            {
+                if (address is not null) list.Add(new McpWellKnownContract(name, address, kind));
+            }
+        }
+    }
 }
+
+/// <summary>A well-known contract on the running chain.</summary>
+/// <param name="Name">A human-readable name.</param>
+/// <param name="Address">The contract address.</param>
+/// <param name="Kind"><c>system</c>, <c>token</c>, <c>ens</c> or another short category.</param>
+public sealed record McpWellKnownContract(string Name, Address Address, string Kind);
