@@ -112,11 +112,8 @@ public class P2PProtocolHandler(
                         break;
                     }
 
-                    using HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
-
-                    // Set before HandleHello runs so a first Hello that throws partway through negotiation
-                    // cannot be replayed by a subsequent Hello to re-run it.
                     _receivedHello = true;
+                    using HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
                     HandleHello(helloMessage);
                     ReportIn(helloMessage, size);
 

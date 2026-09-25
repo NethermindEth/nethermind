@@ -465,6 +465,32 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
+        public void Second_hello_is_rejected_after_the_first_fails_to_deserialize()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            List<ProtocolEventArgs> requestedProtocols = [];
+            p2PProtocolHandler.SubprotocolRequested += (_, args) => requestedProtocols.Add(args);
+
+            Packet malformedFirstHello = new(CreateMalformedHelloData())
+            {
+                Protocol = Protocol.P2P,
+                PacketType = P2PMessageCode.Hello,
+            };
+            using HelloMessage secondHello = CreateHello();
+
+            Assert.Catch<RlpException>(() => p2PProtocolHandler.HandleMessage(malformedFirstHello));
+            Assert.DoesNotThrow(() => p2PProtocolHandler.HandleMessage(CreateP2PPacket(secondHello)));
+
+            using (Assert.EnterMultipleScope())
+            {
+                _session.Received(1).InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+                Assert.That(requestedProtocols, Is.Empty,
+                    "a Hello arriving after a malformed first attempt must not be negotiated");
+            }
+        }
+
+        [Test]
         public void Too_many_add_capability_messages_disconnect()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
