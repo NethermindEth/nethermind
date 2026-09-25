@@ -302,12 +302,12 @@ public class TraceRpcModuleTests
 
         if (replayFails)
         {
-            Assert.That(() => context.TraceRpcModule.trace_get(txHash, [-1]), Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(() => context.TraceRpcModule.trace_get(txHash, []), Throws.InstanceOf<OperationCanceledException>());
         }
         else
         {
-            using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_get(txHash, [-1]);
-            Assert.That(result.Data.Count(), Is.EqualTo(1));
+            using ResultWrapper<ParityTxTraceFromStore?> result = context.TraceRpcModule.trace_get(txHash, []);
+            Assert.That(result.Data!.TransactionHash, Is.EqualTo(txHash));
         }
 
         Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
@@ -327,16 +327,95 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public void Trace_get_selects_valid_and_skips_out_of_range_positions(
-        [Values(0, 3)] int length,
-        [Values(long.MinValue, -2L, -1L, 0L, 1L, 2L, long.MaxValue)] long position)
+    public async Task Trace_get_returns_the_trace_at_a_trace_address_path([Values] bool streaming)
     {
-        ParityTxTraceFromStore[] traces = Enumerable.Range(0, length)
-            .Select(_ => ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace { Action = new ParityTraceAction() }).Single()).ToArray();
-        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
-        ParityTxTraceFromStore[] expected = position >= -1 && position < length - 1 ? [traces[position + 1]] : [];
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        // Y calls D; the transaction's init code calls Y and then D, so its paths are [], [0], [0, 0] and [1].
+        ulong nonceA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        await blockchain.AddBlock(Build.A.Transaction.WithNonce(nonceA).WithTo(null).WithGasLimit(200_000)
+            .WithData(Prepare.EvmCode.ForInitOf(Prepare.EvmCode.Call(TestItem.AddressD, 50_000).Op(Instruction.STOP).Done).Done)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+        Address y = ContractAddress.From(TestItem.AddressA, nonceA);
+        Transaction transaction = Build.A.Transaction.WithNonce(blockchain.ReadOnlyState.GetNonce(TestItem.AddressB)).WithTo(null).WithGasLimit(300_000)
+            .WithData(Prepare.EvmCode.Call(y, 100_000).Call(TestItem.AddressD, 50_000).Op(Instruction.STOP).Done)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        await blockchain.AddBlock(transaction);
 
-        Assert.That(TraceRpcModule.ExtractPositionsFromTxTrace([position], result), Is.EqualTo(expected));
+        async Task<JToken> Request(string method, params object[] parameters) =>
+            JToken.Parse(await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters))["result"]!;
+
+        JToken traces = await Request("trace_transaction", transaction.Hash!);
+        Assert.That(traces.Select(static trace => trace["traceAddress"]!.ToString(Newtonsoft.Json.Formatting.None)), Is.EqualTo(new[] { "[]", "[0]", "[0,0]", "[1]" }));
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string[] path, JToken expected) in new (string[], JToken)[]
+            {
+                ([], traces[0]!),
+                (["0x0"], traces[1]!),
+                (["0x0", "0x0"], traces[2]!),
+                (["0x1"], traces[3]!),
+                (["0x2"], JValue.CreateNull()),
+                (["0x0", "0x1"], JValue.CreateNull()),
+                (["0x1", "0x0"], JValue.CreateNull()),
+                (["0x0", "0x0", "0x0"], JValue.CreateNull()),
+                (["0x100000000"], JValue.CreateNull()),
+                (["0xffffffffffffffff"], JValue.CreateNull()),
+            })
+            {
+                Assert.That(await Request("trace_get", transaction.Hash!, path), Is.EqualTo(expected).Using(JToken.EqualityComparer), string.Join(",", path));
+            }
+        }
+    }
+
+    [Test]
+    public async Task Trace_get_rejects_path_entries_that_are_not_hex_quantities(
+        [Values("[0]", "[\"0x0\",1]", "[\"0x00\"]", "[\"0x10000000000000000\"]", "[null]", "\"0x0\"")] string path)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        using JsonDocument parameter = JsonDocument.Parse(path);
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_get", blockchain.BlockTree.Head!.Transactions[0].Hash!, parameter.RootElement);
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [Test]
+    public void Trace_get_selects_trace_address_path()
+    {
+        // The root calls [0] (which calls [0, 0]) and then [1].
+        ParityTraceAction Action(params int[] traceAddress) => new() { TraceAddress = traceAddress };
+        ParityTraceAction root = Action();
+        ParityTraceAction first = Action(0);
+        first.Subtraces.Add(Action(0, 0));
+        root.Subtraces.AddRange([first, Action(1)]);
+        ParityTxTraceFromStore[] traces = [.. ParityTxTraceFromStore.FromTxTrace(new ParityLikeTxTrace { Action = root })];
+
+        ParityTxTraceFromStore? Select(params long[] traceAddress)
+        {
+            using ResultWrapper<ParityTxTraceFromStore?> result = TraceRpcModule.SelectTraceAddress(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces), traceAddress);
+            return result.Data;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Select(), Is.SameAs(traces[0]));
+            Assert.That(Select(0), Is.SameAs(traces[1]));
+            Assert.That(Select(0, 0), Is.SameAs(traces[2]));
+            Assert.That(Select(1), Is.SameAs(traces[3]));
+            Assert.That(Select(2), Is.Null);
+            Assert.That(Select(0, 1), Is.Null);
+            Assert.That(Select(1, 0), Is.Null);
+            Assert.That(Select(0, 0, 0), Is.Null);
+            Assert.That(Select(-1), Is.Null);
+            Assert.That(Select(long.MaxValue), Is.Null);
+        }
     }
 
     [Test]
@@ -705,9 +784,8 @@ public class TraceRpcModuleTests
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_transaction(transaction.Hash!);
         Assert.That(traces.Data!.Select(static trace => trace.TransactionHash), Is.EqualTo(new[] { transaction.Hash }));
 
-        long[] positions = { 0 };
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceGet = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
-        Assert.That(traceGet.Data, Is.Empty);
+        ResultWrapper<ParityTxTraceFromStore?> traceGet = context.TraceRpcModule.trace_get(transaction.Hash!, [0]);
+        Assert.That(traceGet.Data, Is.Null);
     }
 
     [Test]
@@ -722,9 +800,12 @@ public class TraceRpcModuleTests
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         await blockchain.AddBlock(transaction);
 
-        long[] positions = { 0 };
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_get(transaction.Hash!, positions);
-        Assert.That(traces.Data, Is.Empty);
+        ResultWrapper<ParityTxTraceFromStore?> trace = context.TraceRpcModule.trace_get(transaction.Hash!, []);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Data!.TransactionHash, Is.EqualTo(transaction.Hash));
+            Assert.That(trace.Data.TraceAddress.Length, Is.Zero);
+        }
     }
 
     [Test]
@@ -767,11 +848,10 @@ public class TraceRpcModuleTests
         Assert.That(System.Linq.Enumerable.Count(traces.Data), Is.EqualTo(3));
         Assert.That(traces.Data.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash!));
 
-        long[] positions = { 0 };
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> tracesGet = context.TraceRpcModule.trace_get(transaction2.Hash!, positions);
+        ResultWrapper<ParityTxTraceFromStore?> traceGet = context.TraceRpcModule.trace_get(transaction2.Hash!, [0]);
         Assert.That(traces.Data.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash));
         EthereumJsonSerializer serializer = new();
-        Assert.That(JToken.Parse(serializer.Serialize(traces.Data.ElementAt(1))), Is.EqualTo(JToken.Parse(serializer.Serialize(tracesGet.Data.ElementAt(0)))).Using(JToken.EqualityComparer));
+        Assert.That(JToken.Parse(serializer.Serialize(traces.Data.ElementAt(1))), Is.EqualTo(JToken.Parse(serializer.Serialize(traceGet.Data))).Using(JToken.EqualityComparer));
     }
 
     [Test]
