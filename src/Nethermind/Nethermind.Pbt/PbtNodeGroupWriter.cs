@@ -17,9 +17,12 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private const int MaxCapacity = PbtNodeGroupCodec.MaxPayloadLength;
     /// <summary>A pool bucket that holds most groups outright, so growth rarely copies more than once.</summary>
     private const int InitialCapacity = 1024;
-    private readonly int _bitDepth;
-    private readonly IRefCountingMemoryProvider _memoryProvider;
-    private readonly PbtPrefixlessBranchOmission _omission;
+    /// <summary>How many disposed writers each thread keeps for <see cref="Rent"/>, enough for the deepest fold's frames.</summary>
+    private const int CachedWritersPerThread = 64;
+    [ThreadStatic] private static Stack<PbtNodeGroupWriter<TPath>>? t_cache;
+    private int _bitDepth;
+    private IRefCountingMemoryProvider _memoryProvider;
+    private PbtPrefixlessBranchOmission _omission;
     private RefCountingMemory? _memory;
     private OffsetBuffer _offsets;
     private DescendantDeltaBuffer _descendantDeltas;
@@ -31,6 +34,8 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private int _pendingPosition = -1;
     private int _pendingLength;
     private bool _disposed;
+    /// <summary>Whether <see cref="Dispose"/> hands this writer back to the calling thread's cache.</summary>
+    private bool _rented;
 
     internal PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider, PbtPrefixlessBranchOmission omission)
     {
@@ -39,6 +44,30 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         _bitDepth = bitDepth;
         _memoryProvider = memoryProvider;
         _omission = omission;
+    }
+
+    /// <summary>A writer as the constructor makes it, reused from the calling thread's cache, which <see cref="Dispose"/> returns it to.</summary>
+    /// <remarks>A fold opens one writer per group it rewrites, so reusing them keeps the fold from allocating one per group.</remarks>
+    internal static PbtNodeGroupWriter<TPath> Rent(int bitDepth, IRefCountingMemoryProvider memoryProvider, PbtPrefixlessBranchOmission omission)
+    {
+        if (t_cache is not { Count: > 0 } cache) return new(bitDepth, memoryProvider, omission) { _rented = true };
+        PbtNodeGroupWriter<TPath> writer = cache.Pop();
+        ArgumentNullException.ThrowIfNull(memoryProvider);
+        Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a four-level boundary.");
+        writer._bitDepth = bitDepth;
+        writer._memoryProvider = memoryProvider;
+        writer._omission = omission;
+        ((Span<long>)writer._descendantDeltas).Clear();
+        writer._descendantDeltaMask = 0;
+        writer._descendantDeltaTotal = 0;
+        writer._availability = 0;
+        writer._written = 0;
+        writer._lastPosition = -1;
+        writer._pendingPosition = -1;
+        writer._pendingLength = 0;
+        writer._disposed = false;
+        writer._rented = true;
+        return writer;
     }
 
     internal int WrittenCount => _written;
@@ -198,7 +227,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         ValidateCommitted();
         if (_availability == 0)
         {
-            Dispose();
+            Release();
             return null;
         }
 
@@ -230,6 +259,15 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     public void Dispose()
+    {
+        Release();
+        if (!_rented) return;
+        _rented = false;
+        Stack<PbtNodeGroupWriter<TPath>> cache = t_cache ??= new(CachedWritersPerThread);
+        if (cache.Count < CachedWritersPerThread) cache.Push(this);
+    }
+
+    private void Release()
     {
         if (_disposed) return;
         _disposed = true;

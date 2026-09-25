@@ -136,7 +136,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int anchorDepth, scoped Span<byte> encoding)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        using PbtNodeGroupWriter<TPath> writer = new(bitDepth, context.MemoryProvider, context.PrefixlessBranchOmission);
+        using PbtNodeGroupWriter<TPath> writer = PbtNodeGroupWriter<TPath>.Rent(bitDepth, context.MemoryProvider, context.PrefixlessBranchOmission);
         StoredGroupHashes hashes = default;
         ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path, default);
         SlotNode result = default;

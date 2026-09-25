@@ -109,7 +109,7 @@ public static partial class TrieUpdater
         IRefCountingMemoryProvider memoryProvider, PbtPrefixlessBranchOmission prefixlessBranchOmission)
         where TRoot : struct, IGroupFrame<PbtStorageTreeKey, PbtStorageNodePath>
     {
-        using PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = new(0, memoryProvider, prefixlessBranchOmission);
+        using PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(0, memoryProvider, prefixlessBranchOmission);
         PbtTraversalPath rootPath = new(Span<byte>.Empty);
         Span<byte> sharedPathBuffer = stackalloc byte[1];
         int touchedRootMask = 0;
@@ -134,7 +134,7 @@ public static partial class TrieUpdater
             if (sharedWriters[slot] is null)
             {
                 BoundaryNode boundary = TakeBoundary(ref rootReader, ref rootHashes, rootPath, ref rootFrontier, slot);
-                sharedWriters[slot] = new(4, memoryProvider, prefixlessBranchOmission);
+                sharedWriters[slot] = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(4, memoryProvider, prefixlessBranchOmission);
                 zoneHashes[slot] = default;
                 zoneFrontiers[slot] = new(touchedZoneMasks[slot]);
                 if (IsAbsentGroup(boundary, 4))
@@ -284,7 +284,7 @@ public static partial class TrieUpdater
             where TFrame : struct, IGroupFrame<TKey, TPath>
         {
             Span<byte> sourceBuffer = stackalloc byte[PbtStorageTreeKey.MaxLength];
-            using PbtNodeGroupWriter<TPath> writer = new(8, memoryProvider, prefixlessBranchOmission);
+            using PbtNodeGroupWriter<TPath> writer = PbtNodeGroupWriter<TPath>.Rent(8, memoryProvider, prefixlessBranchOmission);
             using IPbtConcurrentWriter concurrentWriter = store.CreateWriter();
             TrieUpdater<TKey, TPath>.FoldContext context = new(store, concurrentWriter, memoryProvider,
                 foldQuota, operations.UnsafeGetInternalArray(), fanOut, prefixlessBranchOmission);
