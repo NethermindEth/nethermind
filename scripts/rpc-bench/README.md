@@ -174,6 +174,7 @@ the workflow's defensive-cleanup step).
 | `state_layout` | `flat` — the only layout with a snapshot set on this runner. |
 | `perf` | `false` (default) or `true` — host Linux CPU sampling for a single-node Nethermind benchmark. See [Linux perf flow](#linux-perf-flow). |
 | `dotnet_trace` | `false` (default) or `true` — EventPipe runtime events (GC, lock contention, thread pool, exceptions) from the node during the measured phase, for a Nethermind `jsonbench` benchmark with no reference client (the only shape with a warm-up to attach the collector after; one is supplied when the dispatch sets none). See [dotnet-trace sidecar](#dotnet-trace-sidecar). |
+| `dotnet_dump` | `false` (default) or `true` — a heap dump of the node right after the measured cell, turned into `dotnet-dump analyze` text reports (types by count and size, live and dead, large objects, per-heap generation sizes), for a single-node Nethermind benchmark (not `jsonbench-sweep`). See [dotnet-dump heap reports](#dotnet-dump-heap-reports). |
 | `additional_nethermind_flags` | Extra flags appended to the node command. |
 | `tool_config` | Tool-specific JSON (see below). |
 | `node_config` | Advanced JSON overrides (see below). |
@@ -368,6 +369,10 @@ gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbenc
 
 # Profile the node under the corpus load
 gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench -f dottrace=sampling \
+  -f tool_config='{"eth_call_corpus":true,"corpus_file":"/mnt/sda/expb-data/rpc-bench/eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}'
+
+# What the node's heap holds after the same load (dotnet-dump text reports)
+gh workflow run run-rpc-benchmarks.yml --ref <branch> -f benchmark_tool=jsonbench -f dotnet_dump=true \
   -f tool_config='{"eth_call_corpus":true,"corpus_file":"/mnt/sda/expb-data/rpc-bench/eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz"}'
 ```
 
@@ -842,6 +847,33 @@ them at the verbose level the sidecar collects); stacks are managed-only. `dotne
 convert --format speedscope` produces an empty profile for these events — it only knows
 sampled CPU stacks.
 
+## dotnet-dump heap reports
+
+Set `dotnet_dump: true` (Nethermind, any single-node shape; `jsonbench-sweep` is rejected because
+it starts and stops its own nodes per cell) to see what the node's heap holds once the load is
+over. `stop-node.sh` writes a heap dump with `docker exec` while the node is still up: after the
+measured cell, so the pause costs the numbers nothing, and after the dotnet-trace collector stops,
+so the pause is not in the trace either. It then stops the node and analyzes the dump in a
+throwaway container of the node image, the one place sure to carry the DAC that matches the dump.
+Each report is its own `analyze` session, because a failing command ends the session:
+
+| Report | `dotnet-dump analyze` command |
+|---|---|
+| `gcheapstat.txt` | `gcheapstat`: generation sizes per heap. |
+| `eeheap-gc.txt` | `eeheap -gc`: the GC's regions per heap. |
+| `dumpheap-stat.txt` | `dumpheap -stat`: object count and total size per type. |
+| `dumpheap-stat-live.txt`, `dumpheap-stat-dead.txt` | The same, split into reachable objects and garbage not yet collected. |
+| `dumpheap-stat-loh.txt` | `dumpheap -stat -min 85000`: large objects only. |
+| `sizestats.txt` | `sizestats`: object size statistics. |
+
+A large dead share is garbage the next GC reclaims, not a leak; compare the live report between
+builds for retention. The tool is the `dotnet-dump` global tool, installed on the host on demand
+(`--tool-path /opt/dotnet-dump`, pinned by `DOTNET_DUMP_VERSION` in `start-node.sh`) and
+bind-mounted read-only into the container, like dotnet-trace. The `dotnet-dump-rpcbench` artifact
+holds the reports only: the dump itself runs to several GB and is deleted after the analysis,
+unless `DOTNET_DUMP_KEEP=true` leaves it under `<diag dir>/dotnet-dump/` on the runner. A failed
+dump or report fails the run.
+
 ## Runner prerequisites
 
 The `reproducible-benchmarks-arm` self-hosted runner must provide:
@@ -856,7 +888,7 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 - **`mount`/`umount` privileges** and overlayfs (expb already uses both).
 - **`jq`, `curl`, `git`**, **`python3` + `pip`** (flood; json-bench also renders
   its benchmark config via `python3` + PyYAML), and the **.NET SDK** (only if
-  `/opt/dottrace` / `/opt/dotnet-trace` are not already installed by previous runs).
+  `/opt/dottrace` / `/opt/dotnet-trace` / `/opt/dotnet-dump` are not already installed by previous runs).
 - **Host `perf` and a root runner process** on *either* runner when using
   `perf: true` — it is available for `arch=amd64` too, and that is the default;
   `perf` must be able to sample `cycles:u` (see [Linux perf flow](#linux-perf-flow)).
@@ -868,7 +900,7 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 | `lib.sh` | Shared helpers: logging, path guards, RPC health wait, head-match assert, DB fingerprint tripwire. |
 | `start-node.sh` | Fingerprint baseline → isolate DB → start container (per-client profile, primary/reference instance) → wait for RPC → start profilers (unless `PROFILE_AFTER_WARMUP=true`). |
 | `start-profilers.sh` | Start perf, deferred dotTrace collection and the dotnet-trace sidecar after the warm-up (`lib.sh` `start_profilers`); refuses to run twice. |
-| `stop-node.sh` | Stop dotnet-trace and fold perf → graceful stop → collect logs + dotTrace → **verify snapshot unchanged** → tear down (per instance via `NODE_ENV_FILE`). |
+| `stop-node.sh` | Stop dotnet-trace and fold perf → heap dump (`dotnet_dump`) → graceful stop → collect logs + dotTrace, analyze the dump → **verify snapshot unchanged** → tear down (per instance via `NODE_ENV_FILE`). |
 | `run-flood.sh` | Install flood + Vegeta, run the selected tests (load or `--equality`), report. |
 | `run-ethcallchaos.sh` | Clone/build/run EthCallChaos in an SDK container, scrape its API. |
 | `corpus_parity.py` | Private corpus replay: capture a baseline client's responses (VM-local), diff later clients against it, emit counts-only reports. |
@@ -878,6 +910,6 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 | `run-jsonbench.sh` | Clone/build json-bench's runner image, render the workload config for the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
 | `run-rpc-sweep.sh` | One node per `clients` entry `ctype[@image][#K=V[,K=V]]` (times `rounds`, ABBA; the env suffix is passed as `docker -e` to that arm's node only and folded into its label, so one sweep can compare config values of one image), cells per rps, corpus warm-up/parity/timings, step summary. |
 | `cpu-stabilize.sh` | Turbo off, `performance` governor, optional `scaling_max_freq` cap for the job; restores the originals afterwards. |
-| `sample-resources.py` | Per-cell cgroup counters for the node container (CPU-ms/request, IO, PSI). |
+| `sample-resources.py` | Per-cell cgroup counters for the node container (CPU-ms/request, IO, PSI, memory). `memory_avg_bytes`/`memory_peak_bytes` read `memory.current`, which includes the page cache (mostly state DB pages, moved by whatever ran before); `memory_anon_*` is the node's own memory (GC heap and native) and `memory_file_avg_bytes` the page cache, both from `memory.stat` (null when the kernel does not provide it). |
 | `percat-matrix.py`, `deep-check-compare.py` | Sweep step-summary tables; cross-client response diff of deep-check captures. |
 | `cleanup.sh` | Guarded defensive cleanup (stale containers, leftover mounts, scratch). |
