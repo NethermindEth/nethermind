@@ -580,9 +580,10 @@ public partial class EthRpcModule(
             }
             catch (OperationCanceledException)
             {
-                return ResultWrapper<ReceiptForRpc?>.Fail(
+                return ResultWrapper<ReceiptForRpc?, Hash256>.Fail(
                     $"Transaction {hash} was added to the pool but not included within {waitMs}ms.",
-                    ErrorCodes.Timeout);
+                    ErrorCodes.TxSyncTimeout,
+                    hash);
             }
         }
     }
