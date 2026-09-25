@@ -27,6 +27,10 @@
     <Project Path="Nethermind.Hive.Test/Nethermind.Hive.Test.csproj" />
     <Project Path="Nethermind.Hive/Nethermind.Hive.csproj" />
   </Folder>
+  <Folder Name="/Plugins/Mcp/">
+    <Project Path="Nethermind.Mcp.Plugin.Test/Nethermind.Mcp.Plugin.Test.csproj" />
+    <Project Path="Nethermind.Mcp.Plugin/Nethermind.Mcp.Plugin.csproj" />
+  </Folder>
   <Folder Name="/Plugins/Merge/">
     <Project Path="Nethermind.Merge.Plugin.Test/Nethermind.Merge.Plugin.Test.csproj" />
     <Project Path="Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
