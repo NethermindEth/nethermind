@@ -14,6 +14,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 {
     private readonly Action<GethTxFileTraceEntry> _dumpCallback;
     private TopLevelGasTracker _gasTracker;
+    private bool _captureStopped;
 
     /// <summary>
     /// Creates a streaming Geth-style transaction tracer.
@@ -35,6 +36,22 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         IsTracingOpLevelStorage = false;
         IsTracingRefunds = true;
         IsTracingActions = true;
+        if (options.Limit < 0) StopCapture();
+    }
+
+    internal void StopCapture()
+    {
+        _captureStopped = true;
+        CurrentTraceEntry = null;
+        IsTracingMemory = false;
+        IsTracingStack = false;
+    }
+
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+    {
+        if (_captureStopped) return;
+        base.StartOperation(pc, opcode, gas, in env);
+        if (_captureStopped) CurrentTraceEntry = null;
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)

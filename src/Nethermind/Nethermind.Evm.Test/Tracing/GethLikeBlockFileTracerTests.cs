@@ -22,9 +22,8 @@ namespace Nethermind.Evm.Test.Tracing;
 
 public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
 {
-    [TestCase(false)]
-    [TestCase(true)]
-    public void File_summary_uses_unprefixed_output_and_line_feed(bool returnsData)
+    [Test]
+    public void File_summary_uses_unprefixed_output_and_line_feed([Values] bool returnsData)
     {
         byte[] code = returnsData
             ? Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done
@@ -37,6 +36,16 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             Assert.That(file, Does.EndWith($"{{\"output\":\"{output}\",\"gasUsed\":\"{gasUsed}\"}}\n"));
             Assert.That(file, Does.Not.Contain("\r"));
         }
+    }
+
+    [Test]
+    public void File_summary_preserves_output_larger_than_stack_buffer()
+    {
+        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(257, 0).Done;
+        string file = TraceFile(code);
+        string summary = file.Split('\n', StringSplitOptions.RemoveEmptyEntries)[^1];
+        using JsonDocument json = JsonDocument.Parse(summary);
+        Assert.That(json.RootElement.GetProperty("output").GetString(), Is.EqualTo(new string('0', 62) + "2a" + new string('0', 450)));
     }
 
     [TestCase("negative", 0)]
@@ -95,6 +104,31 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         Assert.That(tracer.FileNames, Has.Count.EqualTo(2));
         foreach (string fileName in tracer.FileNames)
             Assert.That(fileSystem.File.ReadAllText(fileName), Is.EqualTo(limit < 0 ? "" : "{\"output\":\"2a\",\"gasUsed\":\"0xa\"}\n"));
+    }
+
+    [TestCase(-1)]
+    [TestCase(1)]
+    public void File_limit_stops_stack_and_memory_capture(long limit)
+    {
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+        Transaction transaction = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+        Block block = Build.A.Block.WithTransactions([transaction]).TestObject;
+        using GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default with { Limit = limit, EnableMemory = true }, fileSystem, Spec);
+        IBlockTracer blockTracer = tracer;
+        ITxTracer txTracer = blockTracer.StartNewTxTrace(transaction);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
+        txTracer.StartOperation(0, Instruction.STOP, 100, environment);
+        txTracer.StartOperation(1, Instruction.STOP, 100, environment);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txTracer.IsTracingStack, Is.False);
+            Assert.That(txTracer.IsTracingMemory, Is.False);
+        }
+        blockTracer.EndTxTrace();
+        Assert.That(fileSystem.File.ReadAllText(tracer.FileNames.Single()).Split('\n', StringSplitOptions.RemoveEmptyEntries),
+            Has.Length.EqualTo(limit < 0 ? 0 : 1));
     }
 
     [Test]
