@@ -31,9 +31,6 @@ namespace Nethermind.Synchronization.Blocks
 {
     public class BlockDownloader : IForwardSyncController
     {
-        private static readonly IPeerAllocationStrategy EstimatedAllocationStrategy =
-            BlocksSyncPeerAllocationStrategyFactory.AllocationStrategy;
-
         private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>() ?? throw new InvalidOperationException();
 
         private readonly IBlockTree _blockTree;
@@ -299,13 +296,19 @@ namespace Nethermind.Synchronization.Blocks
             ArrayPoolList<BlockHeader> bodiesToDownload = new(headers.Count);
             ArrayPoolList<BlockHeader> blockAccessListsToDownload = new(headers.Count);
 
+            // Estimate from the peers that can serve this window: a peer that announced it no longer stores
+            // these blocks would only answer with nothing, and sizing from it caps the request sent to a peer that can.
+            IPeerAllocationStrategy estimatedAllocationStrategy = BlocksSyncPeerAllocationStrategyFactory.ForBlocksFrom(headers[1].Number);
             int bodiesRequestSize =
-                (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, estimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxBodyFetch;
             int? blockAccessListsRequestSize = null;
-            int receiptsRequestSize =
-                (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
-                ?? GethSyncLimits.MaxReceiptFetch;
+            // Only estimate receipts when they are downloaded: every estimate is a throwaway allocation that can wait
+            // for a free peer, and it runs under the request lock.
+            int receiptsRequestSize = shouldDownloadReceipt
+                ? (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, estimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                  ?? GethSyncLimits.MaxReceiptFetch
+                : GethSyncLimits.MaxReceiptFetch;
 
             int headersCount = headers.Count;
             BlockHeader parentHeader = headers[0];
@@ -343,7 +346,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (!shouldProcess && (requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
                 {
                     blockAccessListsRequestSize ??=
-                        (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, EstimatedAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation))
+                        (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, estimatedAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation))
                         ?? GethSyncLimits.MaxBodyFetch;
 
                     if (blockAccessListsToDownload.Count < blockAccessListsRequestSize.Value)

@@ -57,6 +57,7 @@ public class SyncPeerPoolTests
         public Node Node { get; } = new Node(publicKey, "127.0.0.1", 30303);
         public string ClientId { get; } = description;
         public ulong HeadNumber { get; set; }
+        public ulong EarliestBlock { get; set; }
         public UInt256? TotalDifficulty { get; set; } = 1;
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
@@ -208,6 +209,29 @@ public class SyncPeerPoolTests
         await WaitForPeersInitialization(ctx);
         ctx.Pool.DropUselessPeers(true);
         Assert.That(peers.Any(static p => p.DisconnectRequested), Is.True);
+    }
+
+    [TestCase(false, 0UL)]
+    [TestCase(false, 101UL)]
+    [TestCase(true, 0UL)]
+    public async Task Prefers_history_serving_peer_only_without_fast_sync(bool fastSyncEnabled, ulong servingFloor)
+    {
+        await using Context ctx = new();
+        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, 2, fastSyncEnabled: fastSyncEnabled);
+        ctx.BlockTree.BestSuggestedBody.Returns(Build.A.Block.WithNumber(fastSyncEnabled ? 0 : 100).TestObject);
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
+        peers[0].EarliestBlock = 102;
+        peers[0].HeadNumber = 200;
+        peers[1].EarliestBlock = servingFloor;
+        peers[1].HeadNumber = 100;
+
+        ctx.Pool.DropUselessPeers(true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peers[0].DisconnectRequested, Is.EqualTo(!fastSyncEnabled));
+            Assert.That(peers[1].DisconnectRequested, Is.EqualTo(fastSyncEnabled));
+        }
     }
 
     [TestCase(true, false)]
