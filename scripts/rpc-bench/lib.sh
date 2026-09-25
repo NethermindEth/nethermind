@@ -227,6 +227,59 @@ DOTNET_TRACE_CLR_EVENTS="gc+contention+threading+exception"
 DOTNET_TRACE_CLR_EVENT_LEVEL="verbose"
 DOTNET_TRACE_STOP_TIMEOUT="${DOTNET_TRACE_STOP_TIMEOUT:-120}"
 
+# Heap dump of the node after the measured cell. The host-installed dotnet-dump global tool is
+# bind-mounted at DOTNET_DUMP_CONTAINER_PATH and run inside the node container with docker exec; the
+# runtime writes the dump itself, into the bind-mounted DOTNET_DUMP_OUTPUT_PATH. The analysis runs
+# in a throwaway container of the node image, the one place guaranteed to carry the DAC that matches
+# the dump, one analyze session per report because a failing command ends the session.
+DOTNET_DUMP_CONTAINER_PATH="/opt/dotnet-dump"
+DOTNET_DUMP_OUTPUT_PATH="/dotnet-dump-output"
+DOTNET_DUMP_TIMEOUT="${DOTNET_DUMP_TIMEOUT:-1200}"
+DOTNET_DUMP_REPORTS=(
+  "gcheapstat|gcheapstat"
+  "eeheap-gc|eeheap -gc"
+  "dumpheap-stat|dumpheap -stat"
+  "dumpheap-stat-live|dumpheap -stat -live"
+  "dumpheap-stat-dead|dumpheap -stat -dead"
+  "dumpheap-stat-loh|dumpheap -stat -min 85000"
+  "sizestats|sizestats"
+)
+
+# Write a heap dump of the client in container $1 to $DIAG_DIR/dotnet-dump/$2. The client is paused
+# while the dump is written. Must run while the container is still up.
+collect_dotnet_dump() {
+  local container="$1" dump_name="$2" dotnet_root
+  dotnet_root="$(container_dotnet_root "$container")" || {
+    log "ERROR: no .NET root with host/fxr found inside $container — the dotnet-dump apphost cannot run there"
+    return 1
+  }
+  timeout "$DOTNET_DUMP_TIMEOUT" docker exec -e "DOTNET_ROOT=$dotnet_root" -e DOTNET_ROLL_FORWARD=Major "$container" \
+    "$DOTNET_DUMP_CONTAINER_PATH/dotnet-dump" collect --name nethermind --type Heap \
+    --output "$DOTNET_DUMP_OUTPUT_PATH/$dump_name" </dev/null || return 1
+  # Written 0600 by the client's user; the analysis container and the archive step read it.
+  docker exec "$container" chmod 0644 "$DOTNET_DUMP_OUTPUT_PATH/$dump_name" </dev/null || true
+}
+
+# Turn dump $2 (under $DIAG_DIR/dotnet-dump) into text reports next to it, analyzed in a throwaway
+# container of image $1. Returns non-zero when any report failed.
+analyze_dotnet_dump() {
+  local image="$1" dump_name="$2" dump_dir="$DIAG_DIR/dotnet-dump" entry name command failed=0
+  for entry in "${DOTNET_DUMP_REPORTS[@]}"; do
+    name="${entry%%|*}"
+    command="${entry#*|}"
+    if ! timeout "$DOTNET_DUMP_TIMEOUT" docker run --rm --network none \
+        -v "$DOTNET_DUMP_HOST_PATH:$DOTNET_DUMP_CONTAINER_PATH:ro" \
+        -v "$dump_dir:$DOTNET_DUMP_OUTPUT_PATH:ro" \
+        --entrypoint /usr/bin/env "$image" DOTNET_ROLL_FORWARD=Major \
+        "$DOTNET_DUMP_CONTAINER_PATH/dotnet-dump" analyze "$DOTNET_DUMP_OUTPUT_PATH/$dump_name" \
+        --command "$command" --command exit > "$dump_dir/$name.txt" 2>&1 </dev/null; then
+      log "ERROR: dotnet-dump report '$name' failed"
+      failed=1
+    fi
+  done
+  return "$failed"
+}
+
 # Echo the DOTNET_ROOT the framework-dependent dotnet-trace apphost needs inside container $1.
 # The directory of the `dotnet` on PATH is not it (a distro host package puts a real binary under
 # /usr/bin while the runtime lives elsewhere), so ask the muxer for its runtimes and take the root

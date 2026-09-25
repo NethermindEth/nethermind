@@ -52,6 +52,10 @@ DOTNET_TRACE_HOST_PATH="${DOTNET_TRACE_HOST_PATH:-/opt/dotnet-trace}"
 # Pinned like every other tool on this rig: an unpinned install would drift the collector between
 # runs whose numbers are meant to be comparable.
 DOTNET_TRACE_VERSION="${DOTNET_TRACE_VERSION:-9.0.661903}"
+# Heap dump after the measured cell (stop-node.sh), analyzed into dotnet-dump text reports.
+DOTNET_DUMP="${DOTNET_DUMP:-false}"
+DOTNET_DUMP_HOST_PATH="${DOTNET_DUMP_HOST_PATH:-/opt/dotnet-dump}"
+DOTNET_DUMP_VERSION="${DOTNET_DUMP_VERSION:-10.0.745401}"
 # true = leave perf unstarted and dotTrace launched with data collection off; the workflow runs
 # start-profilers.sh once the warm-up is done, so the profiles cover only the measured phase.
 PROFILE_AFTER_WARMUP="${PROFILE_AFTER_WARMUP:-false}"
@@ -82,6 +86,13 @@ case "$DOTNET_TRACE" in
 esac
 if [[ "$DOTNET_TRACE" == "true" && "$CLIENT" != "nethermind" ]]; then
   die "dotnet-trace requires CLIENT=nethermind (EventPipe is .NET-specific)"
+fi
+case "$DOTNET_DUMP" in
+  true|false) ;;
+  *) die "DOTNET_DUMP must be true or false (got '$DOTNET_DUMP')" ;;
+esac
+if [[ "$DOTNET_DUMP" == "true" && "$CLIENT" != "nethermind" ]]; then
+  die "dotnet-dump requires CLIENT=nethermind (heap dumps are .NET-specific)"
 fi
 case "$DOTTRACE_MODE" in
   sampling|tracing|timeline) ;;
@@ -124,6 +135,7 @@ log "Scratch:    $SCRATCH_ROOT"
 log "dotTrace:   $DOTTRACE"
 log "perf:       $PERF (${PERF_FREQUENCY}Hz)"
 log "dotnet-trace: $DOTNET_TRACE"
+log "dotnet-dump: $DOTNET_DUMP"
 [[ "$PROFILE_AFTER_WARMUP" == "true" ]] && log "profilers:  deferred until start-profilers.sh runs after the warm-up"
 log "RPC port:   $RPC_PORT  (network: $NETWORK)"
 # Snapshot sets carry provenance sidecars (capture head + client version) — log
@@ -236,6 +248,9 @@ log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT into container at $DA
   echo "PERF=$PERF"
   echo "PERF_FREQUENCY=$PERF_FREQUENCY"
   echo "DOTNET_TRACE=$DOTNET_TRACE"
+  echo "DOTNET_DUMP=$DOTNET_DUMP"
+  echo "DOTNET_DUMP_HOST_PATH=$DOTNET_DUMP_HOST_PATH"
+  printf 'NODE_IMAGE=%q\n' "$NODE_IMAGE"
   echo "PROFILE_AFTER_WARMUP=$PROFILE_AFTER_WARMUP"
   echo "RPC_PORT=$RPC_PORT"
 } > "$STATE_DIR/node$SUFFIX.env"
@@ -337,6 +352,23 @@ if [[ "$DOTNET_TRACE" == "true" ]]; then
   docker_args+=(
     -v "$DOTNET_TRACE_HOST_PATH:$DOTNET_TRACE_CONTAINER_PATH:ro"
     -v "$DIAG_DIR/dotnet-trace:$DOTNET_TRACE_OUTPUT_PATH:rw"
+  )
+fi
+# dotnet-dump (nethermind only): mount the host tool read-only plus an output dir; stop-node.sh runs
+# the collect with docker exec after the measured cell, so nothing about the node's launch changes.
+if [[ "$DOTNET_DUMP" == "true" ]]; then
+  if [[ ! -x "$DOTNET_DUMP_HOST_PATH/dotnet-dump" ]]; then
+    log "dotnet-dump not found at $DOTNET_DUMP_HOST_PATH — installing $DOTNET_DUMP_VERSION via dotnet tool..."
+    dotnet tool install --version "$DOTNET_DUMP_VERSION" --tool-path "$DOTNET_DUMP_HOST_PATH" dotnet-dump \
+      || as_root dotnet tool install --version "$DOTNET_DUMP_VERSION" --tool-path "$DOTNET_DUMP_HOST_PATH" dotnet-dump \
+      || die "failed to install dotnet-dump $DOTNET_DUMP_VERSION (is the .NET SDK on the runner?)"
+  fi
+  assert_no_mounts_under "$DIAG_DIR/dotnet-dump"
+  as_root rm -rf "$DIAG_DIR/dotnet-dump"
+  mkdir -p "$DIAG_DIR/dotnet-dump"
+  docker_args+=(
+    -v "$DOTNET_DUMP_HOST_PATH:$DOTNET_DUMP_CONTAINER_PATH:ro"
+    -v "$DIAG_DIR/dotnet-dump:$DOTNET_DUMP_OUTPUT_PATH:rw"
   )
 fi
 [[ -n "$NODE_CPUSET" ]] && docker_args+=(--cpuset-cpus "$NODE_CPUSET")
