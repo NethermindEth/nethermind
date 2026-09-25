@@ -124,7 +124,6 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalSet<Address> AccessedAddresses { get; } = new(Address.EqualityComparer, useSparseClear: true);
         public JournalSet<StorageCell> AccessedStorageCells { get; } = new(StorageCell.EqualityComparer, useSparseClear: true);
         public JournalCollection<LogEntry> Logs { get; } = [];
-        // DestroyList ordering is consensus-visible, so keep its dense-clear HashSet semantics.
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
 

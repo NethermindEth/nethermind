@@ -35,6 +35,9 @@ public class StorageProviderTests(bool useFlat)
 {
     private static readonly ILogManager LogManager = LimboLogs.Instance;
 
+    /// <summary>The test corpus is byte arrays; storage now takes words.</summary>
+    private UInt256 Value(int index) => new(_values[index], isBigEndian: true);
+
     private readonly byte[][] _values =
     [
         [0],
@@ -157,6 +160,7 @@ public class StorageProviderTests(bool useFlat)
     /// <remarks>Reads consult the write journal only for contracts known to have journaled a write. This pins
     /// that gate: were it ever to answer false for a contract that has written, reads would fall through to
     /// the committed tree value and silently lose the write.</remarks>
+
     [Test]
     public void Write_is_visible_to_later_reads_of_the_same_contract()
     {
@@ -2227,7 +2231,7 @@ public class StorageProviderTests(bool useFlat)
             mainScope.DidNotReceiveWithAnyArgs().HintWarmSlot(default, default);
     }
 
-    private class Context : IDisposable
+    internal class Context : IDisposable
     {
         public WorldState StateProvider { get; }
         internal WrittenData WrittenData = null;
@@ -2411,7 +2415,6 @@ public class StorageProviderTests(bool useFlat)
         public void ReportCodeChange(Address address, byte[] before, byte[] after) { }
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
         public void ReportAccountRead(Address address) { }
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
         public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => Changes.Add((storageCell, before, after));
         public void ReportStorageRead(in StorageCell storageCell)
         {

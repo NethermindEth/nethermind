@@ -57,25 +57,23 @@ namespace Nethermind.Core.Test.Collections
             Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 10)));
         }
 
+        /// <remarks>Adds after a restore refill the freed slots, where a hash set's own order stops following insertion order.</remarks>
         [Test]
-        public void Single_returns_the_only_item()
+        public void Enumerates_in_insertion_order_when_restored_slots_are_reused()
         {
             JournalSet<int> journalSet = CreateJournalSet();
-            journalSet.Add(3);
+            journalSet.AddRange([3, 1, 2]);
+            int snapshot = journalSet.TakeSnapshot();
+            journalSet.AddRange([6, 4, 5]);
+            journalSet.Restore(snapshot);
+            journalSet.AddRange([9, 7, 8]);
 
-            Assert.That(journalSet.First, Is.EqualTo(3));
-        }
-
-        [Test]
-        public void Default_clear_preserves_hash_set_reuse_order()
-        {
-            JournalSet<int> journalSet = CreateJournalSet();
-            journalSet.Clear();
-            journalSet.AddRange([1, 2]);
-            journalSet.Restore(-1);
-            journalSet.AddRange([4, 5]);
-
-            Assert.That(EnumerateConcrete(journalSet), Is.EqualTo([5, 4]));
+            int[] insertionOrder = [3, 1, 2, 9, 7, 8];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(journalSet, Is.EqualTo(insertionOrder), "enumeration");
+                Assert.That(journalSet.ToArray(), Is.EqualTo(insertionOrder), "CopyTo");
+            }
         }
 
         [Test]
@@ -122,7 +120,7 @@ namespace Nethermind.Core.Test.Collections
 
         private static int[] EnumerateConcrete(JournalSet<int> journalSet)
         {
-            using JournalSet<int>.Enumerator enumerator = journalSet.GetEnumerator();
+            using List<int>.Enumerator enumerator = journalSet.GetEnumerator();
             List<int> items = [];
             while (enumerator.MoveNext())
             {
@@ -179,7 +177,6 @@ namespace Nethermind.Core.Test.Collections
             journalSet.Restore(0);
 
             Assert.That(journalSet, Is.EquivalentTo([0]));
-            Assert.That(journalSet.First, Is.EqualTo(0));
             journalSet.Clear();
             Assert.That(journalSet, Is.Empty);
 
@@ -203,7 +200,6 @@ namespace Nethermind.Core.Test.Collections
                 Assert.That(journalSet.Contains(7), Is.True);
                 Assert.That(journalSet.Contains(8), Is.True);
                 Assert.That(journalSet.Contains(9), Is.False);
-                Assert.That(journalSet.First, Is.EqualTo(7));
                 Assert.That(journalSet, Is.EquivalentTo([7, 8]));
             }
 
@@ -211,7 +207,6 @@ namespace Nethermind.Core.Test.Collections
             Assert.That(journalSet, Is.Empty);
             Assert.That(journalSet.Add(42), Is.True);
             Assert.That(journalSet.Add(42), Is.False);
-            Assert.That(journalSet.First, Is.EqualTo(42));
         }
 
         [Test]

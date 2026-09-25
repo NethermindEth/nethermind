@@ -162,7 +162,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
         }
     }
 
-    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    public void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
     }
 
@@ -170,7 +170,7 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
     {
     }
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
     }
 

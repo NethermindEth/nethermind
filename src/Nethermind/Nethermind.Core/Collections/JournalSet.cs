@@ -26,7 +26,7 @@ namespace Nethermind.Core.Collections
         /// Initializes a journal set, optionally retaining sparse clear storage for reuse.
         /// </summary>
         /// <param name="equalityComparer">Comparer used to determine whether items are already present.</param>
-        /// <param name="useSparseClear">Whether to remove individual items on small clears and enumerate from the insertion journal.</param>
+        /// <param name="useSparseClear">Whether to remove individual items on small clears instead of clearing the whole backing set.</param>
         public JournalSet(EqualityComparer<T> equalityComparer, bool useSparseClear) : this(equalityComparer)
             => _useSparseClear = useSparseClear;
 
@@ -84,11 +84,8 @@ namespace Nethermind.Core.Collections
             _items.Clear();
         }
 
-        /// <summary>Enumerates the set using its configured ordering.</summary>
-        /// <remarks>Sparse journals enumerate their insertion journal directly; dense journals retain the backing <see cref="HashSet{T}"/> ordering.</remarks>
-        public Enumerator GetEnumerator() => _useSparseClear
-            ? new(_items.GetEnumerator())
-            : new(_set.GetEnumerator());
+        /// <summary>Enumerates the items in the order they were first added, excluding those dropped by <see cref="Restore"/>.</summary>
+        public List<T>.Enumerator GetEnumerator() => _items.GetEnumerator();
         IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
@@ -96,63 +93,6 @@ namespace Nethermind.Core.Collections
         public bool IsReadOnly => false;
         void ICollection<T>.Add(T item) => Add(item);
         public bool Contains(T item) => _set.Contains(item);
-        /// <summary>
-        /// Gets the first item added to the set.
-        /// </summary>
-        /// <remarks>The caller must ensure the set is not empty.</remarks>
-        public T First => _items[0];
-        public void CopyTo(T[] array, int arrayIndex)
-        {
-            if (_useSparseClear)
-            {
-                _items.CopyTo(array, arrayIndex);
-            }
-            else
-            {
-                _set.CopyTo(array, arrayIndex);
-            }
-        }
-
-        /// <summary>Enumerates the items in the journal set.</summary>
-        public struct Enumerator : IEnumerator<T>
-        {
-            private readonly bool _useItems;
-            private HashSet<T>.Enumerator _setEnumerator;
-            private List<T>.Enumerator _itemsEnumerator;
-
-            internal Enumerator(HashSet<T>.Enumerator setEnumerator)
-            {
-                _useItems = false;
-                _setEnumerator = setEnumerator;
-                _itemsEnumerator = default;
-            }
-
-            internal Enumerator(List<T>.Enumerator itemsEnumerator)
-            {
-                _useItems = true;
-                _setEnumerator = default;
-                _itemsEnumerator = itemsEnumerator;
-            }
-
-            /// <inheritdoc/>
-            public T Current => _useItems ? _itemsEnumerator.Current : _setEnumerator.Current;
-            object IEnumerator.Current => Current!;
-            /// <inheritdoc/>
-            public bool MoveNext() => _useItems ? _itemsEnumerator.MoveNext() : _setEnumerator.MoveNext();
-            /// <inheritdoc/>
-            public void Reset() => throw new NotSupportedException();
-            /// <inheritdoc/>
-            public void Dispose()
-            {
-                if (_useItems)
-                {
-                    _itemsEnumerator.Dispose();
-                }
-                else
-                {
-                    _setEnumerator.Dispose();
-                }
-            }
-        }
+        public void CopyTo(T[] array, int arrayIndex) => _items.CopyTo(array, arrayIndex);
     }
 }
