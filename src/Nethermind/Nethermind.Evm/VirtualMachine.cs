@@ -121,6 +121,11 @@ public partial class VirtualMachine<TGasPolicy>(
     private ReadOnlyMemory<byte> _returnDataBuffer;
     private const int MaxRetainedReturnDataScratch = 32 * 1024;
     private byte[] _returnDataScratch = [];
+
+    /// <summary>Pooled scratch for a nested RETURN/REVERT output too large to hold on the VM between transactions.</summary>
+    /// <remarks>Borrowed on first use and handed back when the transaction ends, like <see cref="_pooledPrecompileScratch"/>.</remarks>
+    private byte[]? _pooledReturnDataScratch;
+
     private byte[]? _stagedReturnData;
     private int _stagedReturnDataLength;
 
@@ -149,6 +154,9 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <summary>The retained nested RETURN/REVERT scratch length. Zero until that path runs.</summary>
     internal int RetainedReturnDataScratchLength => _returnDataScratch.Length;
 
+    /// <summary>Whether a pooled nested RETURN/REVERT scratch is currently borrowed. Always false between transactions.</summary>
+    internal bool HoldsPooledReturnDataScratch => _pooledReturnDataScratch is not null;
+
     protected VmState<TGasPolicy> _currentState = null!;
     protected (Address? CreatedAddress, bool? Success) _previousCallResult;
     protected UInt256 _previousCallOutputDestination;
@@ -171,23 +179,17 @@ public partial class VirtualMachine<TGasPolicy>(
             output = Array.Empty<byte>();
         }
         // Only nested non-create outputs are consumed before this buffer can be reused by a later child call.
-        else if (returnData.Length <= MaxRetainedReturnDataScratch
-            && !_currentState.IsTopLevel
+        else if (!_currentState.IsTopLevel
             && !_currentState.ExecutionType.IsAnyCreate()
             && !_txTracer.IsTracingActions
             && !_txTracer.IsTracingInstructions
             && !_txTracer.IsTracingMemory
             && !_txTracer.IsTracingReturnData)
         {
-            byte[] scratch = _returnDataScratch;
-            if (scratch.Length < returnData.Length)
-            {
-                int size = (int)BitOperations.RoundUpToPowerOf2((uint)returnData.Length);
-                _returnDataScratch = scratch = GC.AllocateUninitializedArray<byte>(size);
-            }
-
-            returnData.CopyTo(scratch);
-            output = scratch;
+            output = returnData.Length <= MaxRetainedReturnDataScratch
+                ? GetRetainedReturnDataScratch(returnData.Length)
+                : RentPooledReturnDataScratch(returnData.Length);
+            returnData.CopyTo(output);
         }
         else
         {
@@ -196,6 +198,46 @@ public partial class VirtualMachine<TGasPolicy>(
 
         ReturnData = output;
         _stagedReturnData = output;
+    }
+
+    private byte[] GetRetainedReturnDataScratch(int length)
+    {
+        byte[] scratch = _returnDataScratch;
+        if (scratch.Length < length)
+        {
+            int size = (int)BitOperations.RoundUpToPowerOf2((uint)length);
+            _returnDataScratch = scratch = GC.AllocateUninitializedArray<byte>(size);
+        }
+
+        return scratch;
+    }
+
+    /// <remarks>Growing hands the smaller rental back at once. Nothing still reads it: only the latest child
+    /// output is live, and it is the one being replaced, since this runs for the frame that is returning.</remarks>
+    private byte[] RentPooledReturnDataScratch(int length)
+    {
+        byte[]? pooled = _pooledReturnDataScratch;
+        if (pooled is null || pooled.Length < length)
+        {
+            ReleasePooledReturnDataScratch();
+            _pooledReturnDataScratch = pooled = SafeArrayPool<byte>.Shared.Rent(length);
+        }
+
+        return pooled;
+    }
+
+    /// <summary>Hands the pooled nested RETURN/REVERT scratch back, if this instance is holding one.</summary>
+    /// <remarks>Clears <see cref="ReturnDataBuffer"/> first for the same reason as
+    /// <see cref="ReleasePooledPrecompileScratch"/>: the pool may hand the array to another thread the instant it
+    /// is returned.</remarks>
+    private void ReleasePooledReturnDataScratch()
+    {
+        byte[]? pooled = _pooledReturnDataScratch;
+        if (pooled is null) return;
+
+        _pooledReturnDataScratch = null;
+        _returnDataBuffer = default;
+        SafeArrayPool<byte>.Shared.Return(pooled);
     }
 
     public PoppedAddressCache AddressCache { get; } = new();
@@ -486,6 +528,7 @@ public partial class VirtualMachine<TGasPolicy>(
         public void Dispose()
         {
             vm.ReleasePooledPrecompileScratch();
+            vm.ReleasePooledReturnDataScratch();
             // Normal exits clear both fields; populated frame state therefore means exceptional unwind.
             if (vm._currentState is not null || vm._stateStack.Count != 0)
             {
