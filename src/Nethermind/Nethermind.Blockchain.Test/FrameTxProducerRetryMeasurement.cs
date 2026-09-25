@@ -158,21 +158,14 @@ public class FrameTxProducerRetryMeasurement
     }
 
     /// <summary>Measures producer-side retry behavior for a control that approves and a prefix that never does.</summary>
-    /// <remarks>352,800 is soispoke's declared privacy-pool budget (their
-    /// <c>activation_manifest.testbed.json</c>: an EIP-8272 recent-root <c>verify_frame_gas</c> 30,000 +
-    /// a pool <c>verify_frame_gas</c> 320,000 + <c>signature_gas</c> 2,800).
-    /// The <c>groth16-soispoke</c> sweep entry in the mempool/flood harnesses stays clamped to 300,000
-    /// because those harnesses run through <c>CapFrameGas</c>, which enforces the fixed
-    /// <see cref="Eip8141Constants.MaxVerifyGas"/> on the simulation path regardless of configuration; this
-    /// fixture drives block execution instead, which applies no such cap, so it can use the real declared
-    /// number that clamp stands in for. <see cref="FrameTx"/> puts the whole declared value into one frame's
-    /// execution gas limit with no signatures, so at every ceiling this fixture sweeps (not only 352,800) the
-    /// EVM burn is a uniform tight-loop shape, distinct from the signature/Groth16 shapes the mempool/flood
-    /// harnesses measure at the same nominal ceiling — rows here are not CPU-comparable to those, only the
-    /// declared-gas axis is shared.</remarks>
-    [TestCase(true, 352_800ul, TestName = "control: a prefix that approves is included and paid for")]
+    /// <remarks><see cref="FrameTx"/> puts the whole declared value into one frame's execution gas limit with
+    /// no signatures, so this is a single-frame budget sweep, not a replay of the multi-frame soispoke profile.
+    /// At every ceiling this fixture sweeps, the EVM burn is a uniform tight-loop shape, distinct from the
+    /// signature/Groth16 shapes the mempool/flood harnesses measure at the same nominal ceiling. These rows
+    /// are not CPU-comparable; only the declared-gas axis is shared.</remarks>
+    [TestCase(true, 235_800ul, TestName = "control: a prefix that approves is included and paid for")]
     [TestCase(false, 300_000ul, TestName = "never approves, at the default MAX_VERIFY_GAS")]
-    [TestCase(false, 352_800ul, TestName = "never approves, at soispoke's declared privacy-pool budget")]
+    [TestCase(false, 235_800ul, TestName = "never approves, at the current profile budget")]
     public async Task ProducerRetriesAFailingPrefix(bool approves, ulong verifyGas)
     {
         await BuildChain(approves ? Approves() : NeverApproves());
@@ -229,7 +222,7 @@ public class FrameTxProducerRetryMeasurement
 
     private static IEnumerable<TestCaseData> RetryCases()
     {
-        foreach (ulong verifyGas in new ulong[] { 100_000ul, 236_285ul, 300_000ul, 352_800ul, 500_000ul })
+        foreach (ulong verifyGas in new ulong[] { 100_000ul, 235_800ul, 250_000ul, 300_000ul, 400_000ul, 500_000ul })
         {
             foreach (int kRetry in new int[] { 1, 2, 4, 8 })
             {

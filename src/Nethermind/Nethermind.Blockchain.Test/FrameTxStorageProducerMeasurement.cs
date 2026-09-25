@@ -58,11 +58,12 @@ namespace Nethermind.Blockchain.Test;
 public class FrameTxStorageProducerMeasurement
 {
     /// <summary>
-    /// The swept ceilings, matching the CPU shapes' grid. 352,800 is above the compiled
+    /// The swept ceilings, matching the CPU shapes' grid. Values above 300,000 are above the compiled
     /// <see cref="Eip8141Constants.MaxVerifyGas"/>, so it self-ignores on a stock build and needs a run that
     /// raises the constant.
     /// </summary>
-    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 352_800ul];
+    private static readonly ulong[] SweptCeilings =
+        [100_000ul, 235_800ul, 250_000ul, 300_000ul, 400_000ul, 500_000ul];
 
     /// <summary>Untimed build attempts used to move tiered-JIT work outside measurement.</summary>
     private const int Warmup = 40;

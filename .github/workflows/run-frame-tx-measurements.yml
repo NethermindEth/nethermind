@@ -26,7 +26,7 @@ on:
         default: ''
       raise_verify_gas_const:
         description: >-
-          Patch Eip8141Constants.MaxVerifyGas to this value before building, so the 500k sweep points can run.
+          Patch Eip8141Constants.MaxVerifyGas to this value before building, so sweep points above 300k can run.
           Empty means a stock build, on which they self-ignore. Use 500000 for the complete sweep. The patch
           and its diff are recorded in PROVENANCE.txt beside the results.
         required: false
@@ -112,8 +112,8 @@ jobs:
               echo "::error::raise_verify_gas_const '${RAISE_VERIFY_GAS}' is not a plain integer of 6 to 9 digits."
               exit 1
             fi
-            if (( RAISE_VERIFY_GAS < 500000 )); then
-              echo "::error::raise_verify_gas_const ${RAISE_VERIFY_GAS} unlocks no sweep point: both harnesses skip a ceiling strictly greater than the constant, and the smallest declared point above stock 300000 is 500000."
+            if (( RAISE_VERIFY_GAS < 400000 )); then
+              echo "::error::raise_verify_gas_const ${RAISE_VERIFY_GAS} unlocks no sweep point: both harnesses skip a ceiling strictly greater than the constant, and the smallest declared point above stock 300000 is 400000."
               exit 1
             fi
             if [[ ! -f "${CONST_FILE}" ]]; then
@@ -135,7 +135,7 @@ jobs:
           else
             {
               echo "eip8141_max_verify_gas=300000 (stock, unpatched)"
-              echo "# The 500k sweep points self-ignore on this build. Re-dispatch with raise_verify_gas_const=500000 to measure them."
+              echo "# The 400k and 500k sweep points self-ignore on this build. Re-dispatch with raise_verify_gas_const=400000 or 500000 to measure them."
             } >> "${OUTPUT_DIR}/PROVENANCE.txt"
           fi
 
@@ -227,8 +227,12 @@ jobs:
           }
 
           # Named so a self-ignored case fails loudly instead of quietly shrinking the sweep.
-          mempool_markers=('shape=groth16-' 'shape=groth16-soispoke' 'case=signature_reject')
-          flood_markers=('case=flood_delay' 'shape=groth16-' 'shape=groth16-soispoke' 'shape=signature-stuffed')
+          mempool_markers=('shape=groth16-250k' 'shape=groth16-300k' 'shape=groth16-soispoke-v2' 'case=signature_reject')
+          flood_markers=('case=flood_delay' 'shape=groth16-250k' 'shape=groth16-300k' 'shape=groth16-soispoke-v2' 'shape=signature-stuffed')
+          if (( RAISE_VERIFY_GAS >= 400000 )); then
+            mempool_markers+=('shape=groth16-400k')
+            flood_markers+=('shape=groth16-400k')
+          fi
           if (( RAISE_VERIFY_GAS >= 500000 )); then
             mempool_markers+=('verify_gas=500000' 'shape=groth16-500k')
             flood_markers+=('shape=groth16-500k')

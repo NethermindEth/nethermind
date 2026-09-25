@@ -4,7 +4,7 @@ set -uo pipefail
 
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fetch-artifacts.sh"
 readonly SCRIPT
-readonly LABELS=(236k 300k 500k soispoke)
+readonly LABELS=(250k 300k 400k 500k soispoke)
 root=$(mktemp -d)
 trap 'rm -rf "${root}"' EXIT
 mkdir -p "${root}/bin" "${root}/releases" "${root}/runs"
@@ -117,27 +117,27 @@ check() {
 }
 
 none() { :; }
-dot_root() { mkdir "$1/only"; mv "$1/sweep-236k" "$1/only/"; tar -czf "$2/sweep-236k.tar.gz" -C "$1/only" .; }
-dot_prefix() { tar -czf "$2/sweep-236k.tar.gz" -C "$1" ./sweep-236k; }
+dot_root() { mkdir "$1/only"; mv "$1/sweep-250k" "$1/only/"; tar -czf "$2/sweep-250k.tar.gz" -C "$1/only" .; }
+dot_prefix() { tar -czf "$2/sweep-250k.tar.gz" -C "$1" ./sweep-250k; }
 tamper() { printf 'x' >> "$2/sweep-300k.tar.gz"; }
 drop_sum() { sed -i '$d' "$2/SHA256SUMS"; }
 extra_sum() { echo "$(hex_repeat 0 64)  sweep-evil.tar.gz" >> "$2/SHA256SUMS"; }
 duplicate_sum() { sed -i '1p;$d' "$2/SHA256SUMS"; }
 no_sums() { rm "$2/SHA256SUMS"; }
 no_tarball() { rm "$2/sweep-500k.tar.gz"; }
-dotdot() { tar -czf "$2/sweep-236k.tar.gz" -C "$1" --transform 's,^sweep-236k/gas.txt$,sweep-236k/../gas.txt,' sweep-236k; }
-absolute() { tar -czPf "$2/sweep-236k.tar.gz" -C "$1" --transform 's,^sweep-236k/gas.txt$,/tmp/fetch-artifacts-test-escape,' sweep-236k; }
-foreign() { tar -czf "$2/sweep-236k.tar.gz" -C "$1" sweep-236k sweep-300k/gas.txt; }
-bare_file() { tar -czf "$2/sweep-236k.tar.gz" -C "$1/sweep-236k" gas.txt verifier.hex calldata-invalid.hex; }
-symlink() { ln -sf /etc/hostname "$1/sweep-236k/verifier.hex"; }
-symlink_dir() { ln -s /tmp "$1/sweep-236k/source"; }
-hardlink() { ln "$1/sweep-236k/gas.txt" "$1/sweep-236k/gas-link.txt"; }
-fifo() { mkfifo "$1/sweep-236k/pipe"; }
-newline_name() { echo x > "$1/sweep-236k/evil"$'\n'"name"; }
-too_big() { head -c $((16 * 1024 * 1024 + 1)) /dev/zero > "$1/sweep-236k/padding.bin"; }
-no_gas() { rm "$1/sweep-236k/gas.txt"; }
-verifier() { local body=$1; eval "set_verifier() { echo '${body}' > \"\$1/sweep-236k/verifier.hex\"; }"; }
-set_file() { eval "set_${1//-/_}() { printf '%s' '$3' > \"\$1/sweep-236k/$2\"; }"; }
+dotdot() { tar -czf "$2/sweep-250k.tar.gz" -C "$1" --transform 's,^sweep-250k/gas.txt$,sweep-250k/../gas.txt,' sweep-250k; }
+absolute() { tar -czPf "$2/sweep-250k.tar.gz" -C "$1" --transform 's,^sweep-250k/gas.txt$,/tmp/fetch-artifacts-test-escape,' sweep-250k; }
+foreign() { tar -czf "$2/sweep-250k.tar.gz" -C "$1" sweep-250k sweep-300k/gas.txt; }
+bare_file() { tar -czf "$2/sweep-250k.tar.gz" -C "$1/sweep-250k" gas.txt verifier.hex calldata-invalid.hex; }
+symlink() { ln -sf /etc/hostname "$1/sweep-250k/verifier.hex"; }
+symlink_dir() { ln -s /tmp "$1/sweep-250k/source"; }
+hardlink() { ln "$1/sweep-250k/gas.txt" "$1/sweep-250k/gas-link.txt"; }
+fifo() { mkfifo "$1/sweep-250k/pipe"; }
+newline_name() { echo x > "$1/sweep-250k/evil"$'\n'"name"; }
+too_big() { head -c $((16 * 1024 * 1024 + 1)) /dev/zero > "$1/sweep-250k/padding.bin"; }
+no_gas() { rm "$1/sweep-250k/gas.txt"; }
+verifier() { local body=$1; eval "set_verifier() { echo '${body}' > \"\$1/sweep-250k/verifier.hex\"; }"; }
+set_file() { eval "set_${1//-/_}() { printf '%s' '$3' > \"\$1/sweep-250k/$2\"; }"; }
 
 release v1.0.0 'false false' none none
 release v1.0.1 'false false' dot_root none
@@ -199,7 +199,7 @@ expect sums-extra-entry v2.0.2 1 'SHA256SUMS of release v2.0.2 must list exactly
 expect sums-duplicate-entry v2.0.3 1 'SHA256SUMS of release v2.0.3 must list exactly'
 expect sums-asset-missing v2.0.4 1 'has no SHA256SUMS asset'
 expect tarball-asset-missing v2.0.5 1 'has no sweep-500k.tar.gz asset'
-expect tar-dotdot v3.0.0 1 "unexpected path or prefix \\('sweep-236k/\\.\\./gas\\.txt'\\)"
+expect tar-dotdot v3.0.0 1 "unexpected path or prefix \\('sweep-250k/\\.\\./gas\\.txt'\\)"
 expect tar-absolute v3.0.1 1 "unexpected path or prefix \\('/tmp/fetch-artifacts-test-escape'\\)"
 expect tar-foreign-sweep v3.0.2 1 "unexpected path or prefix \\('sweep-300k/gas\\.txt'\\)"
 expect tar-no-sweep-dir v3.0.3 1 "unexpected path or prefix \\('gas\\.txt'\\)"
@@ -209,22 +209,22 @@ expect tar-hardlink v3.0.6 1 'link or special-file member'
 expect tar-fifo v3.0.7 1 'link or special-file member'
 expect tar-newline-name v3.0.8 1 'unexpected path or prefix'
 expect tar-over-16mib v3.0.9 1 'expands to 1677[0-9]+ bytes, over the 16777216-byte limit'
-expect tar-missing-gas v3.0.10 1 'has no sweep-236k/gas.txt'
+expect tar-missing-gas v3.0.10 1 'has no sweep-250k/gas.txt'
 # Only the absolute-path escape is checkable here: validation runs on the tar listing before any
 # mkdir/extract for that sweep (see fetch-artifacts.sh), so a rejected dotdot member is never written
 # anywhere to begin with, and fetch-artifacts.sh's own work-dir trap would remove it regardless — the
 # regression that matters is already caught by tar-dotdot's own exit-code and message assertion above.
 check no-escaped-files "[[ ! -e /tmp/fetch-artifacts-test-escape ]]"
-expect verifier-no-precompile v4.0.0 1 'rejected sweep-236k/verifier.hex \(precompile-push check\): no PUSH1 of 0x06 ecAdd, 0x07 ecMul, 0x08 ecPairing'
+expect verifier-no-precompile v4.0.0 1 'rejected sweep-250k/verifier.hex \(precompile-push check\): no PUSH1 of 0x06 ecAdd, 0x07 ecMul, 0x08 ecPairing'
 check verifier-no-precompile:names-heuristic "grep -q 'plausibility heuristic in scripts/frame-verify-gas/check-verifiers.py rejected release v4.0.0' '${LAST_RUN}/out'"
-expect verifier-push-data-only v4.0.1 1 'rejected sweep-236k/verifier.hex \(precompile-push check\)'
-expect verifier-no-staticcall v4.0.2 1 'rejected sweep-236k/verifier.hex \(staticcall check\)'
-expect verifier-too-small v4.0.3 1 'rejected sweep-236k/verifier.hex \(size check\): 107 bytes'
-expect verifier-too-big v4.0.4 1 'rejected sweep-236k/verifier.hex \(size check\): 24607 bytes'
-expect verifier-odd-hex v4.0.5 1 'rejected sweep-236k/verifier.hex \(hex check\)'
-expect calldata-not-hex v4.0.6 1 'rejected sweep-236k/calldata-invalid.hex \(hex check\)'
-expect calldata-too-short v4.0.7 1 'rejected sweep-236k/calldata-invalid.hex \(length check\)'
-expect gas-not-integer v4.0.8 1 'rejected sweep-236k/gas.txt \(integer check\)'
+expect verifier-push-data-only v4.0.1 1 'rejected sweep-250k/verifier.hex \(precompile-push check\)'
+expect verifier-no-staticcall v4.0.2 1 'rejected sweep-250k/verifier.hex \(staticcall check\)'
+expect verifier-too-small v4.0.3 1 'rejected sweep-250k/verifier.hex \(size check\): 107 bytes'
+expect verifier-too-big v4.0.4 1 'rejected sweep-250k/verifier.hex \(size check\): 24607 bytes'
+expect verifier-odd-hex v4.0.5 1 'rejected sweep-250k/verifier.hex \(hex check\)'
+expect calldata-not-hex v4.0.6 1 'rejected sweep-250k/calldata-invalid.hex \(hex check\)'
+expect calldata-too-short v4.0.7 1 'rejected sweep-250k/calldata-invalid.hex \(length check\)'
+expect gas-not-integer v4.0.8 1 'rejected sweep-250k/gas.txt \(integer check\)'
 
 echo "pass=${pass} fail=${fail}"
 (( fail == 0 ))

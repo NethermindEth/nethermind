@@ -83,21 +83,23 @@ public class FrameTxFloodMeasurement
     /// <summary>Environment variable containing the externally generated Groth16 artifacts.</summary>
     private const string Groth16ArtifactRootVariable = "FRAME_GROTH16_ARTIFACTS";
 
-    private readonly record struct Groth16Sweep(string Directory, ulong Ceiling);
+    private readonly record struct Groth16Sweep(string Directory, ulong SweepCeiling, ulong FrameGasLimit);
 
     private static readonly Dictionary<string, Groth16Sweep> Groth16Sweeps = new()
     {
-        ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285),
-        ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000),
-        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 500_000),
-        ["groth16-soispoke"] = new Groth16Sweep("sweep-soispoke", 300_000),
+        ["groth16-250k"] = new Groth16Sweep("sweep-250k", 250_000, 250_000),
+        ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000, 300_000),
+        ["groth16-400k"] = new Groth16Sweep("sweep-400k", 400_000, 400_000),
+        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 500_000, 500_000),
+        ["groth16-soispoke-v2"] = new Groth16Sweep("sweep-soispoke", 235_800, 225_000),
     };
 
     private static IEnumerable<TestCaseData> AdmissionShapes()
     {
         foreach (string shape in new string[]
                  {
-                     "keccak-wide", "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke",
+                     "keccak-wide", "groth16-250k", "groth16-300k", "groth16-400k", "groth16-500k",
+                     "groth16-soispoke-v2",
                      "signature-stuffed"
                  })
         {
@@ -127,7 +129,8 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> Groth16RateCases()
     {
-        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke" })
+        foreach (string shape in new string[]
+                 { "groth16-250k", "groth16-300k", "groth16-400k", "groth16-500k", "groth16-soispoke-v2" })
         {
             foreach (int rate in new int[] { 50, 100, 150, 200 })
             {
@@ -146,7 +149,8 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> Groth16Cases()
     {
-        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke" })
+        foreach (string shape in new string[]
+                 { "groth16-250k", "groth16-300k", "groth16-400k", "groth16-500k", "groth16-soispoke-v2" })
         {
             yield return new TestCaseData(shape);
         }
@@ -173,17 +177,15 @@ public class FrameTxFloodMeasurement
     private const string ProjectCoresVariable = "FRAME_FLOOD_PROJECT_CORES";
 
     /// <summary>The plain ceiling sweep shared by the keccak-wide budget-burning and signature-stuffed cases.</summary>
-    /// <remarks>352,800 is soispoke's declared privacy-pool budget (their activation_manifest.testbed.json:
-    /// an EIP-8272 recent-root verify_frame_gas 30,000 + a pool verify_frame_gas 320,000 + signature_gas
-    /// 2,800); 236,285 stays as a curve-shape interior point below the stock MAX_VERIFY_GAS cap.
-    /// 352,800 exceeds <see cref="Eip8141Constants.MaxVerifyGas"/>
-    /// (300,000), so of the methods this array feeds, only the signature-stuffed ones — refused before they
-    /// ever reach that cap — produce a row at that point; every keccak-wide arm is gated by it and
-    /// Assert.Ignores instead. The cap bounds mempool validation only, so the signature-stuffed production
-    /// arm runs its recoveries at that ceiling too. <see cref="StuffedSignatureCount"/> floors, and the frame
-    /// keeps <see cref="MinimalFrameGas"/> for itself, so a stuffed row exercises up to one signature less
-    /// validation work than its <c>ceiling=</c> label names: 352,800 runs 350,400.</remarks>
-    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 352_800ul, 500_000ul];
+    /// <remarks>235,800 is the current soispoke v2 profile budget; its pool VERIFY frame declares 225,000,
+    /// with recent-root and signature costs accounting for the remaining 10,800. The v2 isolated-verifier
+    /// arm runs its frame at 225,000 while the measured profile point is 235,800. Values above
+    /// <see cref="Eip8141Constants.MaxVerifyGas"/> (300,000) self-ignore unless the workflow raises the
+    /// constant. Signature-stuffed transactions are refused before that cap, so they still exercise each
+    /// ceiling. <see cref="StuffedSignatureCount"/> floors and reserves frame gas, so a stuffed row may use
+    /// up to one fewer signature than the ceiling permits.</remarks>
+    private static readonly ulong[] SweptCeilings =
+        [100_000ul, 235_800ul, 250_000ul, 300_000ul, 400_000ul, 500_000ul];
 
     private static readonly int[] AdmissionRates = [50, 100, 150, 200, 250, 300, 350, 400];
 
@@ -257,7 +259,7 @@ public class FrameTxFloodMeasurement
     {
         bool isSignatureStuffed = shape == "signature-stuffed";
         ulong ceiling = isSignatureStuffed ? 500_000
-            : Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep) ? sweep.Ceiling
+            : Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep) ? sweep.SweepCeiling
             : Eip8141Constants.MaxVerifyGas;
         if (!isSignatureStuffed) Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain(shape, ceiling);
@@ -462,7 +464,7 @@ public class FrameTxFloodMeasurement
 
     [TestCaseSource(nameof(Groth16RateCases))]
     public async Task Block_processing_delay_under_admission_flood_groth16(string shape, int offeredRate) =>
-        await MeasureFloodDelay(shape, Groth16Sweeps[shape].Ceiling, offeredRate);
+        await MeasureFloodDelay(shape, Groth16Sweeps[shape].SweepCeiling, offeredRate);
 
     [TestCaseSource(nameof(CeilingRateCases))]
     public async Task Block_processing_delay_under_admission_flood_signature_stuffed(ulong ceiling, int offeredRate) =>
@@ -475,7 +477,7 @@ public class FrameTxFloodMeasurement
 
     [TestCaseSource(nameof(Groth16RateCases))]
     public async Task Block_processing_delay_under_admission_flood_groth16_with_shedding(string shape, int offeredRate) =>
-        await MeasureFloodDelay(shape, Groth16Sweeps[shape].Ceiling, offeredRate, shedding: true);
+        await MeasureFloodDelay(shape, Groth16Sweeps[shape].SweepCeiling, offeredRate, shedding: true);
 
     /// <summary>Signature failures are refused before the simulator, so this arm must shed nothing.</summary>
     [TestCaseSource(nameof(CeilingRateCases))]
@@ -534,7 +536,7 @@ public class FrameTxFloodMeasurement
                                   + "achieved_rate_core_normalized_basis=analytic_projection_lower_bound ";
         }
 
-        Emit($"case=flood_delay shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
+        Emit($"case=flood_delay shape={shape} ceiling={ceiling} frame_gas_limit={_frameExecutionGasLimit} shedding={(_shedding ? "on" : "off")} "
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
              + coreNormalizedField
              + $"W0_after_p50_us={w0After:F1} W0_after_p99_us={w0p99After:F1} "
@@ -590,7 +592,7 @@ public class FrameTxFloodMeasurement
 
     [TestCaseSource(nameof(Groth16Cases))]
     public async Task Sustainable_rejection_rate_by_ramp_groth16(string shape) =>
-        await MeasureSustainableRate(shape, Groth16Sweeps[shape].Ceiling);
+        await MeasureSustainableRate(shape, Groth16Sweeps[shape].SweepCeiling);
 
     [TestCaseSource(nameof(CeilingCases))]
     public async Task Sustainable_rejection_rate_by_ramp_signature_stuffed(ulong ceiling) =>
@@ -1061,7 +1063,7 @@ public class FrameTxFloodMeasurement
             byte[] verifierCode = Groth16Artifact(sweep, "verifier.hex");
             _frameCalldataPrefix = Groth16Artifact(sweep, "calldata-invalid.hex");
             _frameSignatures = [];
-            _frameExecutionGasLimit = ceiling;
+            _frameExecutionGasLimit = sweep.FrameGasLimit;
             return verifierCode;
         }
 

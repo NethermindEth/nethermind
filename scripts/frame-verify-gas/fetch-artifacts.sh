@@ -5,13 +5,13 @@
 set -uo pipefail
 
 readonly REPO=NethermindEth/frame-verify-gas
-readonly LABELS=(236k 300k 500k soispoke)
+readonly LABELS=(250k 300k 400k 500k soispoke)
 readonly MAX_EXPANDED_BYTES=$((16 * 1024 * 1024))
 
 version="${REQUESTED_VERSION:-}"
 version="${version//[[:space:]]/}"
 if [[ -z "${version}" ]]; then
-  echo "::error::groth16_artifacts_version is empty. Supply a ${REPO} release tag, e.g. v1.0.0."
+  echo "::error::groth16_artifacts_version is empty. Supply a published ${REPO} release tag (vMAJOR.MINOR.PATCH)."
   exit 1
 fi
 if [[ ! "${version}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
