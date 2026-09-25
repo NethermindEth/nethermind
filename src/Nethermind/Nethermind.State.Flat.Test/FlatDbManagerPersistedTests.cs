@@ -78,7 +78,6 @@ public class FlatDbManagerPersistedTests
 
         await using FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
-            new GcPacer(_config, LimboLogs.Instance),
             _processExitSource,
             Substitute.For<ITrieNodeCache>(),
             Substitute.For<ISnapshotCompactor>(),
@@ -112,7 +111,6 @@ public class FlatDbManagerPersistedTests
 
         FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
-            new GcPacer(_config, LimboLogs.Instance),
             _processExitSource,
             Substitute.For<ITrieNodeCache>(),
             Substitute.For<ISnapshotCompactor>(),
@@ -157,7 +155,7 @@ public class FlatDbManagerPersistedTests
             if (call.Arg<StateId>().BlockNumber == blockedBlock) lastCompactionStarted.TrySetResult();
             return false;
         });
-        FlatDbManager manager = new(tier.ResourcePool, new GcPacer(_config, LimboLogs.Instance), _processExitSource,
+        FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
             Substitute.For<ITrieNodeCache>(), compactor, tier.Repository, persistence,
             Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
 
@@ -213,7 +211,7 @@ public class FlatDbManagerPersistedTests
         StateId next = new(2, Keccak.Compute("2"));
         ISnapshotCompactor compactor = Substitute.For<ISnapshotCompactor>();
         compactor.DoCompactSnapshot(failing).Returns(_ => throw new IOException("compaction failed"));
-        FlatDbManager manager = new(tier.ResourcePool, new GcPacer(_config, LimboLogs.Instance), _processExitSource,
+        FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
             Substitute.For<ITrieNodeCache>(), compactor, tier.Repository, persistence,
             Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
 
@@ -253,7 +251,6 @@ public class FlatDbManagerPersistedTests
             _processExitSource);
         await using FlatDbManager manager = new(
             tier.ResourcePool,
-            new GcPacer(_config, LimboLogs.Instance),
             _processExitSource,
             tier.Resolve<ITrieNodeCache>(),
             tier.Resolve<ISnapshotCompactor>(),

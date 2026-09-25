@@ -146,7 +146,6 @@ public class HistoricalTraceReExecutionTests
 
     private FlatDbManager CreateManager() => new(
         _resourcePool,
-        new GcPacer(new FlatDbConfig(), LimboLogs.Instance),
         _processExitSource,
         _trieNodeCache,
         _snapshotCompactor,

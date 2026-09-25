@@ -82,7 +82,6 @@ public class FlatDbManagerTests
 
     private FlatDbManager CreateManager() => new(
         _resourcePool,
-        new GcPacer(_config, LimboLogs.Instance),
         _processExitSource,
         _trieNodeCache,
         _snapshotCompactor,
