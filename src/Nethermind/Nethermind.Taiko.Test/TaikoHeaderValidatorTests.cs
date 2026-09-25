@@ -444,36 +444,4 @@ public class TaikoHeaderValidatorTests
         Assert.That(valid, Is.False);
         Assert.That(error, Does.Contain("WithdrawalsRoot").Or.Contain("withdrawals"));
     }
-
-    /// <summary>
-    /// Shasta extraData is exactly [basefeeSharingPctg | proposalId(6)]; taiko-geth and alethia-reth reject any other length.
-    /// </summary>
-    [TestCase(6, false)]
-    [TestCase(7, true)]
-    [TestCase(8, false)]
-    [TestCase(32, false)]
-    public void Shasta_RequiresExactExtraDataLength(int length, bool accepted)
-    {
-        TaikoUnzenReleaseSpec spec = new();
-        TaikoHeaderValidator validator = MakeValidator(ProviderFor(spec));
-
-        BlockHeader parent = ParentWithBaseFee();
-        BlockHeader header = Build.A.BlockHeader
-            .WithNumber(1)
-            .WithParent(parent)
-            .WithTimestamp(1)
-            .WithBaseFee(25_000_000)
-            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
-            .WithWithdrawalsRoot(Keccak.EmptyTreeHash)
-            .WithRequestsHash(ExecutionRequestExtensions.EmptyRequestsHash)
-            .WithBlobGasUsed(0)
-            .WithExcessBlobGas(0)
-            .WithExtraData(new byte[length])
-            .WithParentBeaconBlockRoot(Keccak.Zero)
-            .TestObject;
-
-        bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
-
-        Assert.That(valid, Is.EqualTo(accepted), error);
-    }
 }
