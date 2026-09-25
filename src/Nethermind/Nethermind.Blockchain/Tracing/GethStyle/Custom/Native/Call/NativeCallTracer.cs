@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 // `calls`. Two deliberate divergences follow: onlyTopCall still returns that root with its frames as
 // children, and a frame that never entered the VM is rendered from the transaction's frame list. Every
 // frame's gas and gasUsed are its declared limit and its receipt's spend, so siblings read alike.
-public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTracer
+public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTracer, ITraceActionErrorDetails
 {
     public const string CallTracer = "callTracer";
 
@@ -191,6 +191,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     {
         OnExit(gas, output);
         base.ReportActionEnd(gas, output);
+    }
+
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error)
+    {
+        if (_callStack.Count != 0 && (!_config.OnlyTopCall || Depth == 0))
+            _callStack[^1].Error = error;
     }
 
     public override void ReportActionError(EvmExceptionType evmExceptionType)
@@ -513,7 +520,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// </remarks>
     private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
     {
-        callFrame.Error = error.GetEvmExceptionDescription();
+        callFrame.Error ??= error.GetEvmExceptionDescription();
         if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2 or Instruction.TCREATE)
         {
             callFrame.To = null;
