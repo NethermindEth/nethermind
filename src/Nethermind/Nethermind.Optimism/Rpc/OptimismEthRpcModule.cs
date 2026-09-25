@@ -147,9 +147,18 @@ public class OptimismEthRpcModule(
         }
 
         string? response = await sequencerRpcClient.Post(nameof(eth_sendRawTransaction), transaction);
-        JsonRpcResponse<Hash256>? forwarded = response is null
-            ? null
-            : JsonSerializer.Deserialize<JsonRpcResponse<Hash256>>(response, EthereumJsonSerializer.JsonOptions);
+        JsonRpcResponse<Hash256>? forwarded = null;
+        if (!string.IsNullOrWhiteSpace(response))
+        {
+            try
+            {
+                forwarded = JsonSerializer.Deserialize<JsonRpcResponse<Hash256>>(response, EthereumJsonSerializer.JsonOptions);
+            }
+            catch (JsonException e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Sequencer returned a non-JSON-RPC response to eth_sendRawTransaction: {e.Message}");
+            }
+        }
 
         // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it.
         if (forwarded?.Error is { } error)

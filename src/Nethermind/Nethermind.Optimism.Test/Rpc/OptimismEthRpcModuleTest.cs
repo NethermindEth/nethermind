@@ -133,6 +133,7 @@ public class OptimismEthRpcModuleTest
     }
 
     private const string ForwardedHash = "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760";
+    private const string FailedToForward = """{"jsonrpc":"2.0","error":{"code":-32603,"message":"Failed to forward transaction"},"id":67}""";
 
     [TestCase("""{"jsonrpc":"2.0","id":67,"error":{"code":-32000,"message":"nonce too low"}}""",
         """{"jsonrpc":"2.0","error":{"code":-32000,"message":"nonce too low"},"id":67}""",
@@ -140,6 +141,8 @@ public class OptimismEthRpcModuleTest
     [TestCase($$"""{"jsonrpc":"2.0","id":67,"result":"{{ForwardedHash}}"}""",
         $$"""{"jsonrpc":"2.0","result":"{{ForwardedHash}}","id":67}""",
         TestName = "Forwarded transaction accepted by the sequencer returns its hash")]
+    [TestCase("", FailedToForward, TestName = "Empty sequencer response returns failed to forward")]
+    [TestCase("<html>502 Bad Gateway</html>", FailedToForward, TestName = "Non-JSON sequencer response returns failed to forward")]
     public async Task Send_raw_transaction_forwards_the_sequencer_response(string sequencerResponse, string expected)
     {
         IJsonRpcClient sequencer = Substitute.For<IJsonRpcClient>();
