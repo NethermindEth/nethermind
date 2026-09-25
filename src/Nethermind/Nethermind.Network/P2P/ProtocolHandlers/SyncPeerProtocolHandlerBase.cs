@@ -225,7 +225,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected virtual void SendNewTransactionCore(Transaction tx)
         {
-            if (!tx.SupportsBlobs) //additional protection from sending full tx with blob
+            if (!tx.CarriesBlobs) //additional protection from sending full tx with blob
             {
                 SendMessage(new ArrayPoolList<Transaction>(1) { tx });
             }
@@ -260,7 +260,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                 }
 
-                if (tx.Hash is not null && !tx.SupportsBlobs) //additional protection from sending full tx with blob
+                if (tx.Hash is not null && !tx.CarriesBlobs) //additional protection from sending full tx with blob
                 {
                     txsToSend.Add(tx);
                     packetSizeLeft -= txSize;
