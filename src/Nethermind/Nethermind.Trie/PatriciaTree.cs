@@ -327,6 +327,13 @@ namespace Nethermind.Trie
         public void UpdateRootHash(bool canBeParallel = true)
         {
             TreePath path = TreePath.Empty;
+            if (RootRef is not null && DirtyNodeHasher.HashBelowRoot(RootRef, TrieStore, _bufferPool, canBeParallel))
+            {
+                // Everything below the root is hashed, so the walk has only the root left and
+                // nothing to spread over cores.
+                canBeParallel = false;
+            }
+
             RootRef?.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool, canBeParallel);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }

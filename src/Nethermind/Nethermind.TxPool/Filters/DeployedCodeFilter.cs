@@ -18,7 +18,7 @@ namespace Nethermind.TxPool.Filters
         {
             // EIP-8141 §Mempool exempts frame transactions from EIP-3607: one is authorised by the
             // sender's own code running in the validation prefix, the very case EIP-3607 forbids elsewhere.
-            if (tx.Type == TxType.FrameTx)
+            if (tx.SupportsFrames)
             {
                 return AcceptTxResult.Accepted;
             }

@@ -441,7 +441,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPersistentTx(Hash256 hash, out Transaction? transaction)
+        public bool TryGetPersistentTx(in ValueHash256 hash, out Transaction? transaction)
         {
             if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.CarriesBlobs)
             {

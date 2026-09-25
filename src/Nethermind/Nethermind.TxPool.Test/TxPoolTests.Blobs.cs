@@ -28,7 +28,9 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
 using Nethermind.TxPool.Collections;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections;
@@ -576,6 +578,121 @@ namespace Nethermind.TxPool.Test
             Assert.That(() => _txPool.GetPendingBlobTransactionsCount(), Is.Zero.After(Timeout, 10));
             storage.DidNotReceiveWithAnyArgs().TryGetMany(default, default, default);
         }
+
+        [Test]
+        public void reloaded_blobs_are_kept_when_head_state_is_unavailable()
+        {
+            // Soak #13577: after a Flat repair resync, headers/HEAD remain but state was Clear()'d.
+            // Persistent blob txs are reloaded and TxPool ctor used to die in UpdateBucketsWithoutRevalidation
+            // (MissingTrieNodeException from TryGetAccount) → docker restart loop. Unknown state is not an
+            // empty account either: the reloaded blobs must stay pooled and persisted until state is back.
+            IBlobTxStorage storage = CreateStorageWithOneReloadedBlobTx();
+            ChainHeadInfoProvider headInfo = CreateHeadInfoWithState(_ => throw MissingHeadState());
+
+            Assert.DoesNotThrow(() => _txPool = CreatePoolWithPersistentBlobs(headInfo, storage));
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+            storage.DidNotReceiveWithAnyArgs().Delete(default, default);
+        }
+
+        [Test]
+        public async Task reloaded_blobs_see_real_account_once_head_state_is_back()
+        {
+            const ulong accountNonce = 2;
+            bool stateAvailable = false;
+            IBlobTxStorage storage = CreateStorageWithOneReloadedBlobTx();
+            ChainHeadInfoProvider headInfo = CreateHeadInfoWithState(callInfo =>
+            {
+                if (!stateAvailable) throw MissingHeadState();
+                callInfo[1] = new AccountStruct(accountNonce, UInt256.MaxValue);
+                return true;
+            });
+
+            _txPool = CreatePoolWithPersistentBlobs(headInfo, storage);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+
+            stateAvailable = true;
+            // Had the failed lookup been cached as TotallyEmpty, the pooled nonce-0 tx would yield 1 here.
+            Assert.That(_txPool.GetLatestPendingNonce(TestItem.AddressA), Is.EqualTo(accountNonce));
+
+            Block nextBlock = Build.A.Block.WithNumber(_blockTree.Head.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = nextBlock.Header;
+            await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+            AssertRevalidatedForHead();
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+            storage.ReceivedWithAnyArgs(1).Delete(default, default);
+        }
+
+        // The constructor's head-state guard covers the bucket update only, but restoring a blob-carrying frame tx
+        // reads head state first, to index a delegated sender. Neither the missing state nor a sender with code may
+        // stop the constructor or leave the second record out of the ledgers, which the checked build compares
+        // against the pool at the next head.
+        [Test]
+        public async Task reloaded_frame_blobs_seed_every_ledger_when_head_state_is_unavailable([Values] bool senderHasCode)
+        {
+            bool stateAvailable = false;
+            IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
+            storage.GetAll().Returns([
+                new LightTransaction(RestorableFrameBlobTx(nonce: 0, payer: TestItem.AddressC)),
+                new LightTransaction(RestorableFrameBlobTx(nonce: 1, payer: TestItem.AddressD))]);
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+            state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(callInfo =>
+            {
+                if (!stateAvailable && !senderHasCode) throw MissingHeadState();
+                callInfo[1] = senderHasCode
+                    ? new AccountStruct(0, UInt256.MaxValue, Keccak.EmptyTreeHash, TestItem.KeccakA)
+                    : new AccountStruct(0, UInt256.MaxValue);
+                return true;
+            });
+            state.GetCode(Arg.Any<Address>()).Returns(_ => stateAvailable ? [] : throw MissingHeadState());
+            ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(GetBogotaSpecProvider(), _blockTree), _blockTree, state);
+
+            Assert.DoesNotThrow(() => _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 10 },
+                GetBogotaSpecProvider(),
+                chainHeadInfoProvider: headInfo,
+                txStorage: storage));
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(2));
+
+            stateAvailable = true;
+            Block nextBlock = Build.A.Block.WithNumber(_blockTree.Head.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = nextBlock.Header;
+            await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+            AssertRevalidatedForHead();
+        }
+
+        private Transaction RestorableFrameBlobTx(ulong nonce, Address payer)
+        {
+            Transaction tx = BuildBlobFrameTx(nonce, blobCount: 1, paymaster: payer);
+            tx.PayerAddress = payer;
+            tx.PayerExposure = 1.GWei;
+            return tx;
+        }
+
+        private IBlobTxStorage CreateStorageWithOneReloadedBlobTx()
+        {
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
+            storage.GetAll().Returns([new LightTransaction(transaction)]);
+            return storage;
+        }
+
+        private ChainHeadInfoProvider CreateHeadInfoWithState(Func<NSubstitute.Core.CallInfo, bool> tryGetAccount)
+        {
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+            state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(tryGetAccount);
+            return new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state);
+        }
+
+        private TxPool CreatePoolWithPersistentBlobs(ChainHeadInfoProvider headInfo, IBlobTxStorage storage) => CreatePool(
+            new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 1 },
+            GetCancunSpecProvider(),
+            chainHeadInfoProvider: headInfo,
+            txStorage: storage);
+
+        private static MissingTrieNodeException MissingHeadState() =>
+            new("State for block 11739434 is unavailable", null, TreePath.Empty, Keccak.Zero);
 
         [Test]
         public async Task should_allow_rebroadcast_of_blob_with_new_proofs_after_fork_when_balance_is_insufficient()
@@ -2345,10 +2462,8 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_batch_return_blobs_and_proofs_v1_from_persistent_storage()
+        public void should_batch_return_blobs_and_proofs_v1_from_persistent_storage([Values(1, 2)] int blobCount, [Values(1, 2, 16, 256, 257)] int repetitions)
         {
-            // BlobCacheSize = 1 forces cache eviction after the first insert,
-            // so the second tx must be fetched via TryGetMany (Phase 2 DB path).
             TxPoolConfig txPoolConfig = new()
             {
                 BlobsSupport = BlobsSupportMode.Storage,
@@ -2361,40 +2476,64 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
 
             Transaction tx1 = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithShardBlobTxTypeAndFields(blobCount, spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction tx2 = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithShardBlobTxTypeAndFields(blobCount, spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
-                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 2))
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 3))
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+
+            int expectedSlot = new TxLookupKey(tx1.Hash!, tx1.SenderAddress!, tx1.Timestamp).GetHashCode() & 1023;
+            for (uint timestamp = 0; timestamp < 100_000; timestamp++)
+            {
+                tx2.Timestamp = timestamp;
+                if ((new TxLookupKey(tx2.Hash!, tx2.SenderAddress!, tx2.Timestamp).GetHashCode() & 1023) == expectedSlot)
+                    break;
+            }
+            Assert.That(new TxLookupKey(tx2.Hash!, tx2.SenderAddress!, tx2.Timestamp).GetHashCode() & 1023, Is.EqualTo(expectedSlot));
 
             Assert.That(tx2.BlobVersionedHashes![0], Is.Not.EqualTo(tx1.BlobVersionedHashes![0]));
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Transaction cacheEvictor = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(1)
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 4))
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            Assert.That(_txPool.SubmitTx(cacheEvictor, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // tx1 was evicted from cache (size=1) when tx2 was inserted,
-            // so at least one must come from DB via TryGetMany
-            byte[][] requestedHashes = [tx1.BlobVersionedHashes![0]!, tx2.BlobVersionedHashes![0]!];
-            byte[][] blobs = new byte[2][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[2];
+            byte[][] requestedHashes = new byte[repetitions * (blobCount + 1)][];
+            for (int i = 0; i < requestedHashes.Length; i++)
+            {
+                int index = i % (blobCount + 1);
+                requestedHashes[i] = index == blobCount ? tx2.BlobVersionedHashes![0]! : tx1.BlobVersionedHashes![index]!;
+            }
+            byte[][] blobs = new byte[requestedHashes.Length][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[requestedHashes.Length];
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(found, Is.EqualTo(2));
-                Assert.That(blobs[0], Is.Not.Null);
-                Assert.That(blobs[1], Is.Not.Null);
-                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-                Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-                Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(1));
+                Assert.That(found, Is.EqualTo(requestedHashes.Length));
+                for (int i = 0; i < requestedHashes.Length; i++)
+                {
+                    int blobIndex = i % (blobCount + 1);
+                    ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)(blobIndex == blobCount ? tx2 : tx1).NetworkWrapper!;
+                    int index = blobIndex == blobCount ? 0 : blobIndex;
+                    Assert.That(blobs[i].AsSpan().SequenceEqual(wrapper.Blobs[index]), Is.True, $"Blob at index {i}");
+                    Assert.That(proofs[i].ToArray(), Is.EqualTo(wrapper.Proofs.AsSpan(index * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob).ToArray()));
+                }
+                Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(2));
             }
         }
 

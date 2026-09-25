@@ -86,7 +86,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
 
         if (transaction is not null)
         {
-            transaction.NetworkWrapper = ShardBlobNetworkWrapperRlp.Decode(ref decoderContext, rlpBehaviors);
+            transaction.NetworkWrapper = ShardBlobNetworkWrapperRlp.Decode(ref decoderContext, networkWrapperCheck, rlpBehaviors);
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
             {

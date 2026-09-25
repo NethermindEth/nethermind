@@ -7,7 +7,7 @@ public static class TxTypeExtensions
 {
     // Frame transactions (EIP-8141) carry EIP-1559 fee fields but have no access list field.
     public static bool SupportsAccessList(this TxType txType)
-        => txType >= TxType.AccessList && txType != TxType.DepositTx && txType != TxType.FrameTx;
+        => txType >= TxType.AccessList && txType != TxType.DepositTx && !SupportsFrames(txType);
 
     public static bool Supports1559(this TxType txType)
         => txType >= TxType.EIP1559 && txType != TxType.DepositTx;

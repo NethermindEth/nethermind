@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -67,23 +68,28 @@ public class KeyedNonceManagerTests
     }
 
     [Test]
-    public void Batched_storage_indices_match_individual_slots([Values(8, 9, 12, 15, Eip8250Constants.MaxNonceKeys)] int count)
+    public void Batched_storage_indices_match_individual_slots(
+        [Range(0, Eip8250Constants.MaxNonceKeys)] int count, [Values] bool wide)
     {
-        UInt256[] keys = StrictlyIncreasing(count);
+        UInt256[] keys = StrictlyIncreasing(count, wide);
         UInt256[] indices = new UInt256[count];
 
         KeyedNonceManager.StorageIndices(TestItem.AddressA, keys, indices);
 
+        byte[] preimage = new byte[64];
+        TestItem.AddressA.Bytes.CopyTo(preimage.AsSpan(12, Address.Size));
         for (int i = 0; i < count; i++)
         {
-            Assert.That(indices[i], Is.EqualTo(KeyedNonceManager.StorageSlot(TestItem.AddressA, keys[i]).Index));
+            keys[i].ToBigEndian(preimage.AsSpan(32));
+            UInt256 expected = new(ValueKeccak.Compute(preimage).Bytes, isBigEndian: true);
+            Assert.That(indices[i], Is.EqualTo(expected));
         }
     }
 
     // Gas estimation reaches payment approval with nonce validation skipped, so a set part fresh and part
     // used is observable and the count is not just "all or nothing" on the shared sequence.
     [Test]
-    public void FirstUseCount_counts_only_the_unused_keys([Values(2, 8, Eip8250Constants.MaxNonceKeys)] int count)
+    public void FirstUseCount_counts_only_the_unused_keys([Range(2, Eip8250Constants.MaxNonceKeys)] int count)
     {
         UInt256[] keys = StrictlyIncreasing(count);
         int used = count / 2;
@@ -98,7 +104,7 @@ public class KeyedNonceManagerTests
             "key 0 is the account nonce, which needs no NONCE_MANAGER slot");
 
     [Test]
-    public void Batched_nonce_set_is_consumed_and_validated([Values(12, Eip8250Constants.MaxNonceKeys)] int count)
+    public void Batched_nonce_set_is_consumed_and_validated([Range(2, Eip8250Constants.MaxNonceKeys)] int count)
     {
         UInt256[] keys = StrictlyIncreasing(count);
 
@@ -254,12 +260,16 @@ public class KeyedNonceManagerTests
         Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue - 1), Is.True);
     }
 
-    private static UInt256[] StrictlyIncreasing(int count)
+    /// <param name="wide">Fills the upper words too, so a batch lane carries a full 32-byte key rather than
+    /// one whose high bytes a cleared buffer would supply anyway.</param>
+    private static UInt256[] StrictlyIncreasing(int count, bool wide = false)
     {
         UInt256[] keys = new UInt256[count];
         for (int i = 0; i < count; i++)
         {
-            keys[i] = (UInt256)(i + 1);
+            keys[i] = wide
+                ? new UInt256((ulong)(i + 1), 0x0f1e2d3c4b5a6978UL, 0x8796a5b4c3d2e1f0UL, 0x0102030405060708UL)
+                : (UInt256)(i + 1);
         }
         return keys;
     }
