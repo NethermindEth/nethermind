@@ -35,6 +35,7 @@ public ref partial struct EvmStack
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
+        InitializeJumpDestinations();
     }
 
     public EvmStack(int head, ref byte stack, scoped in ReadOnlySpan<byte> codeSpan, CodeInfo? codeInfo)
@@ -45,6 +46,7 @@ public ref partial struct EvmStack
         _stack = ref stack;
         Code = ref MemoryMarshal.GetReference(codeSpan);
         CodeLength = codeSpan.Length;
+        InitializeJumpDestinations();
     }
 
     // Null only for stacks whose compile-time tracing flag eliminates every tracer read.
@@ -70,6 +72,9 @@ public ref partial struct EvmStack
     internal readonly nint CodeLength;
     private readonly CodeInfo? _codeInfo;
     private long[]? _jumpDestinations;
+
+    /// <summary>Resolves the jump-destination bitmap when the stack is built, where the build flavour wants it.</summary>
+    partial void InitializeJumpDestinations();
 
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;
