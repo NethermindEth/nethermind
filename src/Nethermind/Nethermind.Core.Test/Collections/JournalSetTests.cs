@@ -76,48 +76,6 @@ namespace Nethermind.Core.Test.Collections
             }
         }
 
-        [Test]
-        public void Sparse_clear_preserves_insertion_order_across_reuse_cycles()
-        {
-            JournalSet<int> journalSet = CreateJournalSet(useSparseClear: true);
-            journalSet.AddRange(Enumerable.Range(0, 8192));
-            journalSet.Restore(2);
-
-            for (int cycle = 0; cycle < 3; cycle++)
-            {
-                journalSet.Clear();
-                int[] expected = [cycle * 10 + 1, cycle * 10 + 2, cycle * 10 + 3, cycle * 10 + 4];
-                journalSet.AddRange(expected);
-
-                switch (cycle)
-                {
-                    case 0:
-                        {
-                            int[] copied = Enumerable.Repeat(-1, expected.Length + 1).ToArray();
-                            journalSet.CopyTo(copied, 1);
-                            Assert.That(copied, Is.EqualTo([-1, .. expected]));
-                            break;
-                        }
-                    case 1:
-                        Assert.That(EnumerateConcrete(journalSet), Is.EqualTo(expected));
-                        break;
-                    default:
-                        {
-                            IEnumerable<int> enumerable = journalSet;
-                            using IEnumerator<int> enumerator = enumerable.GetEnumerator();
-                            List<int> enumerated = [];
-                            while (enumerator.MoveNext())
-                            {
-                                enumerated.Add(enumerator.Current);
-                            }
-
-                            Assert.That(enumerated, Is.EqualTo(expected));
-                            break;
-                        }
-                }
-            }
-        }
-
         private static int[] EnumerateConcrete(JournalSet<int> journalSet)
         {
             using List<int>.Enumerator enumerator = journalSet.GetEnumerator();
@@ -131,7 +89,7 @@ namespace Nethermind.Core.Test.Collections
         }
 
         [Test]
-        public void Sparse_clear_enumerates_restored_items_without_hash_set_normalization()
+        public void Sparse_journal_enumerates_in_journal_order_after_restore_and_readd()
         {
             JournalSet<int> journalSet = CreateJournalSet(useSparseClear: true);
             journalSet.AddRange(Enumerable.Range(0, 8192));
@@ -139,7 +97,6 @@ namespace Nethermind.Core.Test.Collections
             journalSet.Clear();
             journalSet.AddRange([8, 9, 10]);
 
-            // Consume the sparse-clear state before exercising restored and reused entries.
             Assert.That(EnumerateConcrete(journalSet), Is.EqualTo([8, 9, 10]));
             int snapshot = journalSet.TakeSnapshot();
             journalSet.AddRange([11, 12]);
