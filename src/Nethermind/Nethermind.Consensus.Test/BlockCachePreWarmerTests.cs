@@ -2126,7 +2126,9 @@ public class BlockCachePreWarmerTests
         BlockHeader parent = BuildParentHeader();
         using (_processingScope.Resolve<IWorldState>().BeginScope(parent))
         {
-            Task warming = StartPrewarming(preWarmer, block, parent, Osaka.Instance, cancellation.Token, budget, entered);
+            // Only a budget above one gets a runner that could take the coordinator.
+            Task warming = StartPrewarming(preWarmer, block, parent, Osaka.Instance, cancellation.Token, budget,
+                budget > 1 ? entered : null);
             bool filled;
             bool oversubscribed;
             try
@@ -2350,11 +2352,16 @@ public class BlockCachePreWarmerTests
             {
                 using ParallelUnbalancedWork.WorkerScope scope = ParallelUnbalancedWork.BeginWorkerScope(workerBudget);
                 // Queued ahead of the session: a helper that starts before this thread joins would otherwise take the
-                // coordinator and leave this thread's share of the budget idle in the join. Parked here, it waits for
-                // the coordinator to be warming on this thread, then drains the session's helper work.
+                // coordinator and leave this thread's share of the budget idle in the join. Relies on the scope handing
+                // its runner queued work oldest-first and requesting no runner beyond the one this item already has.
+                // Parked here, the runner waits for the coordinator to be warming on this thread, then drains the
+                // session's helper work.
                 using ParallelUnbalancedWork.BackgroundWork? parkedHelper = warmerEntered is null ? null
-                    : ParallelUnbalancedWork.BackgroundFor(0, 1, ParallelUnbalancedWork.DefaultOptions,
-                        _ => warmerEntered.Wait(DiscoveryTimeout));
+                    : ParallelUnbalancedWork.BackgroundFor(0, 1, ParallelUnbalancedWork.DefaultOptions, _ =>
+                    {
+                        if (!warmerEntered.Wait(DiscoveryTimeout))
+                            throw new TimeoutException("no warmer entered while the scope's runner was parked");
+                    });
                 using IDisposable? scopedSession = preWarmer.PreWarmCaches(block, parent, spec, token);
                 ((PrewarmingSession?)scopedSession)?.WaitForCompletion();
                 parkedHelper?.WaitForCompletion();
