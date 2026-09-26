@@ -139,9 +139,11 @@ public static partial class EvmInstructions
             ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
             destination = BinaryPrimitives.ReverseEndianness(destination);
             // With lazy analysis the destination may not be analyzed yet, and analyzing it here would put a call into
-            // this handler, so the push and the jump run unfused and the jump handler does the analysis. Either way
-            // the gas, the stack and the outcome are the same.
-            if (EvmStack.AnalyzesJumpDestinationsLazily && !stack.IsKnownJumpDestination(destination))
+            // this handler, so unless a JUMPI will not be taken, and so never validates it, the push and the jump run
+            // unfused and the jump handler does the analysis. Either way the gas, the stack and the outcome are the
+            // same.
+            if (EvmStack.AnalyzesJumpDestinationsLazily && !stack.IsKnownJumpDestination(destination)
+                && !(nextInstruction == Instruction.JUMPI && stack.PeekUInt256IsZero()))
                 goto Unfused;
 
             if (nextInstruction == Instruction.JUMP)
