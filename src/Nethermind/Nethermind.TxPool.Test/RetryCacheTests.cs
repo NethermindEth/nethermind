@@ -172,7 +172,7 @@ public class RetryCacheTests
     private const int AssertTimeoutMs = 10_000;
 
     [SetUp]
-    public async Task Setup()
+    public void Setup()
     {
         _cancellationTokenSource = new CancellationTokenSource();
         _timeProvider = new ManualTimeProvider();
@@ -181,7 +181,7 @@ public class RetryCacheTests
             _timeProvider,
             timeoutMs: CacheTimeoutMs,
             token: _cancellationTokenSource.Token);
-        await _timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
+        Assert.That(_timeProvider.TimerCreated.IsCompleted, Is.True);
     }
 
     [TearDown]
@@ -286,7 +286,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             BatchTestHandler sharedHandler = new();
             BatchTestHandler otherHandler = new();
 
@@ -347,7 +347,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             BatchTestHandler sharedHandler = new();
 
             for (int resourceId = 1; resourceId <= resourceCount; resourceId++)
@@ -381,7 +381,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             ValueEqualBatchTestHandler firstHandler = new();
             ValueEqualBatchTestHandler secondHandler = new();
 
@@ -431,7 +431,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler controlHandler = new();
             TestHandler retryHandler = new();
             cache.Announced(1, new TestHandler());
@@ -493,7 +493,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler[] handlers = new TestHandler[100];
             for (int i = 0; i < handlers.Length; i++)
             {
@@ -534,7 +534,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler retryHandler = new();
             for (int resourceId = 0; resourceId < resourceCount; resourceId++)
             {
@@ -653,7 +653,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             cache.Announced(1, new TestHandler());
             timeProvider.Advance(TimeSpan.FromMilliseconds(timeoutMs / 2));
 
@@ -717,7 +717,7 @@ public class RetryCacheTests
             token: cancellationTokenSource.Token);
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler request1 = new();
             TestHandler request2 = new();
             TestHandler request3 = new();
@@ -938,7 +938,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler source = new();
             int admitted = 0;
             Parallel.For(0, 100, resourceId =>
@@ -1053,7 +1053,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler source = new();
             for (int resourceId = 0; resourceId < staleResources; resourceId++)
             {
@@ -1088,7 +1088,7 @@ public class RetryCacheTests
         ManualTimeProvider time = new();
         await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(
             NullLogManager.Instance, time, maxPendingResourcesPerHandler: 4);
-        await time.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
+        Assert.That(time.TimerCreated.IsCompleted, Is.True);
         ValueEqualBatchTestHandler[] peers = [new(), new()];
         for (int cycle = 0; cycle < 16; cycle++)
         {
@@ -1341,7 +1341,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler source = new();
             for (int batch = 0; batch < batchCount; batch++)
             {
@@ -1481,7 +1481,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
 
             timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs - 1));
             AnnounceResult initial = cache.Announced(1, new TestHandler());
@@ -1637,7 +1637,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             CollisionHandler handler = new();
             for (int resourceId = 0; resourceId < resourceCount; resourceId++)
             {
@@ -1752,7 +1752,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler cappedHandler = new();
             cache.Announced(0, cappedHandler);
 
@@ -1893,7 +1893,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler alternate = new();
             for (int resourceId = 1; resourceId <= 3; resourceId++)
             {

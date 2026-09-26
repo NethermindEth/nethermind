@@ -32,6 +32,35 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private StateId _basis;
     private long _generation;
 
+    // Handed from one write batch to the next, so a persist does not grow fresh sets on the LOH. A spare keeps the
+    // capacity of the batch that filled it for the node's lifetime, so only sets within the cache's own per-kind
+    // capacity are kept.
+    private HashSet<Address>? _spareWrittenAccounts;
+    private HashSet<(Address, UInt256)>? _spareWrittenSlots;
+
+    private HashSet<Address> RentWrittenAccounts() => Interlocked.Exchange(ref _spareWrittenAccounts, null) ?? [];
+
+    private HashSet<(Address, UInt256)> RentWrittenSlots() => Interlocked.Exchange(ref _spareWrittenSlots, null) ?? [];
+
+    private void ReturnWrittenSets(HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots)
+    {
+        if (writtenAccounts is not null && writtenAccounts.Count <= _maxEntriesPerKind)
+        {
+            writtenAccounts.Clear();
+            Volatile.Write(ref _spareWrittenAccounts, writtenAccounts);
+        }
+
+        if (writtenSlots is not null && writtenSlots.Count <= _maxEntriesPerKind)
+        {
+            writtenSlots.Clear();
+            Volatile.Write(ref _spareWrittenSlots, writtenSlots);
+        }
+    }
+
+    internal bool HasSpareWrittenAccounts => Volatile.Read(ref _spareWrittenAccounts) is not null;
+
+    internal bool HasSpareWrittenSlots => Volatile.Read(ref _spareWrittenSlots) is not null;
+
     public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind)
     {
         _inner = inner;
@@ -88,8 +117,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 _accounts.Clear();
                 _accountCount = 0;
+                Metrics.IncrementCarryForwardAccountWipes();
             }
             if (_accounts.TryAdd(address, account)) _accountCount++;
+            Metrics.PublishCarryForwardAccountCount(_accountCount);
         }
     }
 
@@ -104,8 +135,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 _slots.Clear();
                 _slotCount = 0;
+                Metrics.IncrementCarryForwardSlotWipes();
             }
             if (_slots.TryAdd(key, slot)) _slotCount++;
+            Metrics.PublishCarryForwardSlotCount(_slotCount);
         }
     }
 
@@ -128,6 +161,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 {
                     if (_accounts.TryRemove(address, out _)) _accountCount--;
                 }
+                Metrics.PublishCarryForwardAccountCount(_accountCount);
             }
 
             if (writtenSlots is not null)
@@ -136,6 +170,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 {
                     if (_slots.TryRemove(key, out _)) _slotCount--;
                 }
+                Metrics.PublishCarryForwardSlotCount(_slotCount);
             }
         }
     }
@@ -146,6 +181,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         _accountCount = 0;
         _slots.Clear();
         _slotCount = 0;
+        Metrics.PublishCarryForwardAccountCount(0);
+        Metrics.PublishCarryForwardSlotCount(0);
     }
 
     private readonly struct CachedSlot(bool found, UInt256 value)
@@ -157,11 +194,21 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
         : IPersistence.IPersistenceReader
     {
+        // A reader is shared by every thread reading its state, so enabled counters must support concurrent updates.
+        // DetailedMetricsEnabled is captured once per reader after normal startup registration to avoid its hot-path
+        // cost. Existing readers retain that captured value if the flag later changes.
+        private readonly bool _recordDetailedMetrics = Db.Metrics.DetailedMetricsEnabled;
+
         public Account? GetAccount(Address address)
         {
             bool current = parent.IsCurrent(generation);
-            if (current && parent._accounts.TryGetValue(address, out Account? cached)) return cached;
+            if (current && parent._accounts.TryGetValue(address, out Account? cached))
+            {
+                if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountHits();
+                return cached;
+            }
 
+            if (current && _recordDetailedMetrics) Metrics.IncrementCarryForwardAccountMisses();
             Account? account = inner.GetAccount(address);
             if (current) parent.TryCacheAccount(address, account, generation);
             return account;
@@ -226,10 +273,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             bool current = parent.IsCurrent(generation);
             if (current && parent._slots.TryGetValue(key, out CachedSlot cached))
             {
+                if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotHits();
                 if (cached.Found) outValue = cached.Value;
                 return cached.Found;
             }
 
+            if (current && _recordDetailedMetrics) Metrics.IncrementCarryForwardSlotMisses();
             bool found = inner.TryGetSlot(address, slot, ref outValue);
             if (current) parent.TryCacheSlot(key, new CachedSlot(found, found ? outValue : default), generation);
             return found;
@@ -326,13 +375,13 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetAccount(Address addr, Account? account)
         {
-            (_writtenAccounts ??= []).Add(addr);
+            (_writtenAccounts ??= parent.RentWrittenAccounts()).Add(addr);
             inner.SetAccount(addr, account);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
-            (_writtenSlots ??= []).Add((addr, slot));
+            (_writtenSlots ??= parent.RentWrittenSlots()).Add((addr, slot));
             inner.SetStorage(addr, slot, value);
         }
 
@@ -369,6 +418,9 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             inner.Dispose();
             parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
+            parent.ReturnWrittenSets(_writtenAccounts, _writtenSlots);
+            _writtenAccounts = null;
+            _writtenSlots = null;
         }
     }
 }

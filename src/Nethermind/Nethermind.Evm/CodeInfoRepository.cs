@@ -88,7 +88,8 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);
 
-        if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
+        delegationAddress = codeInfo.DelegatedAddress;
+        if (delegationAddress is not null)
         {
             if (followDelegation)
             {
@@ -146,7 +147,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         Metrics.IncrementCodeReads();
         Metrics.IncrementCodeBytesRead(code.Length);
 
-        return CodeInfoFactory.CreateCodeInfo(code);
+        return new CodeInfo(code);
 
         [DoesNotReturn, StackTraceHidden]
         static void MissingCode(in ValueHash256 codeHash) => throw new DataException($"Code {codeHash} missing in the state");
@@ -175,9 +176,9 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         if (codeSource != Address.Zero)
         {
-            authorizedBuffer = new byte[Eip7702Constants.DelegationHeader.Length + Address.Size];
+            authorizedBuffer = new byte[Eip7702Constants.DelegationHeaderLength + Address.Size];
             Eip7702Constants.DelegationHeader.CopyTo(authorizedBuffer);
-            codeSource.Bytes.CopyTo(authorizedBuffer.AsSpan(Eip7702Constants.DelegationHeader.Length));
+            codeSource.Bytes.CopyTo(authorizedBuffer.AsSpan(Eip7702Constants.DelegationHeaderLength));
             codeHash = ValueKeccak.Compute(authorizedBuffer);
         }
         else
@@ -210,6 +211,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return false;
         }
 
-        return ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address, spec).CodeSpan, out delegatedAddress);
+        delegatedAddress = InternalGetCodeInfo(address, spec).DelegatedAddress;
+        return delegatedAddress is not null;
     }
 }

@@ -14,7 +14,7 @@ namespace Nethermind.Synchronization.Peers
     /// fields. <see cref="PeerInfo"/> packs the live counters into a single <see cref="ulong"/> internally to
     /// enable atomic compound CAS; the static helpers on this type encapsulate all the byte-slot bit math.
     /// </summary>
-    public struct AllocationAllowances(byte headers, byte bodies, byte receipts, byte state, byte snap, byte forwardHeader) : IEquatable<AllocationAllowances>
+    public struct AllocationAllowances(byte headers, byte bodies, byte receipts, byte state, byte snap, byte forwardHeader, byte blockAccessLists) : IEquatable<AllocationAllowances>
     {
         public byte Headers = headers;
         public byte Bodies = bodies;
@@ -22,12 +22,13 @@ namespace Nethermind.Synchronization.Peers
         public byte State = state;
         public byte Snap = snap;
         public byte ForwardHeader = forwardHeader;
+        public byte BlockAccessLists = blockAccessLists;
 
         /// <summary>
         /// Minimal allowance — one slot per context. Useful for tests that exercise the binary
         /// alloc/full mechanic.
         /// </summary>
-        public static AllocationAllowances Single { get; } = new(1, 1, 1, 1, 1, 1);
+        public static AllocationAllowances Single { get; } = new(1, 1, 1, 1, 1, 1, 1);
 
         /// <summary>
         /// Production default: Headers pinned to 1 (they reliably hang under higher allowances),
@@ -35,10 +36,10 @@ namespace Nethermind.Synchronization.Peers
         /// <c>SyncPeerPool</c> builds for the typical config; used as the fallback for the
         /// parameterless <c>PeerInfo</c> ctor.
         /// </summary>
-        public static AllocationAllowances Default { get; } = new(headers: 1, bodies: 2, receipts: 2, state: 2, snap: 2, forwardHeader: 2);
+        public static AllocationAllowances Default { get; } = new(headers: 1, bodies: 2, receipts: 2, state: 2, snap: 2, forwardHeader: 2, blockAccessLists: 2);
 
         /// <summary>Number of single-bit allocation contexts (one byte slot each).</summary>
-        public const int SingleContextCount = 6;
+        public const int SingleContextCount = 7;
 
         /// <summary>Bits per byte-slot in the packed slot word.</summary>
         public const int SlotBits = 8;
@@ -58,6 +59,7 @@ namespace Nethermind.Synchronization.Peers
             AllocationContexts.State,
             AllocationContexts.Snap,
             AllocationContexts.ForwardHeader,
+            AllocationContexts.BlockAccessLists,
         ];
 
         public byte this[AllocationContexts context]
@@ -71,6 +73,7 @@ namespace Nethermind.Synchronization.Peers
                 AllocationContexts.State => State,
                 AllocationContexts.Snap => Snap,
                 AllocationContexts.ForwardHeader => ForwardHeader,
+                AllocationContexts.BlockAccessLists => BlockAccessLists,
                 _ => ThrowNotSingle(context),
             };
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -84,6 +87,7 @@ namespace Nethermind.Synchronization.Peers
                     case AllocationContexts.State: State = value; break;
                     case AllocationContexts.Snap: Snap = value; break;
                     case AllocationContexts.ForwardHeader: ForwardHeader = value; break;
+                    case AllocationContexts.BlockAccessLists: BlockAccessLists = value; break;
                     default: ThrowNotSingle(context); break;
                 }
             }
@@ -194,11 +198,12 @@ namespace Nethermind.Synchronization.Peers
 
         public readonly bool Equals(AllocationAllowances other) =>
             Headers == other.Headers && Bodies == other.Bodies && Receipts == other.Receipts &&
-            State == other.State && Snap == other.Snap && ForwardHeader == other.ForwardHeader;
+            State == other.State && Snap == other.Snap && ForwardHeader == other.ForwardHeader &&
+            BlockAccessLists == other.BlockAccessLists;
 
         public readonly override bool Equals(object? obj) => obj is AllocationAllowances other && Equals(other);
 
-        public readonly override int GetHashCode() => HashCode.Combine(Headers, Bodies, Receipts, State, Snap, ForwardHeader);
+        public readonly override int GetHashCode() => HashCode.Combine(Headers, Bodies, Receipts, State, Snap, ForwardHeader, BlockAccessLists);
 
         public static bool operator ==(AllocationAllowances left, AllocationAllowances right) => left.Equals(right);
         public static bool operator !=(AllocationAllowances left, AllocationAllowances right) => !left.Equals(right);
