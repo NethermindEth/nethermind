@@ -68,6 +68,7 @@ public static class ReqRespFraming
     // plus the 4-byte CRC, with headroom for the worst-case snappy block expansion of a 64 KiB frame.
     private const int MaxFrameDataLength = 4 + 65536 + 65536 / 6 + 32;
     private static readonly byte[] StreamIdentifierContent = "sNaPpY"u8.ToArray();
+    private static readonly byte[] EmptyPayloadFraming = [StreamIdentifierFrame, (byte)StreamIdentifierContent.Length, 0, 0, .. StreamIdentifierContent];
 
     public static async Task WriteRequestAsync(Stream stream, ReadOnlyMemory<byte> ssz, CancellationToken token)
     {
@@ -82,11 +83,19 @@ public static class ReqRespFraming
         await stream.WriteAsync(buffer.GetBuffer().AsMemory(0, (int)buffer.Length), token);
     }
 
-    public static async Task<byte[]> ReadRequestAsync(Stream stream, int maxSize, CancellationToken token)
+    /// <param name="allowEmpty">Whether the request SSZ type has a zero minimum size (a bare list), so a zero length-prefix is within its bounds.</param>
+    public static async Task<byte[]> ReadRequestAsync(Stream stream, int maxSize, CancellationToken token, bool allowEmpty = false)
     {
         try
         {
-            return await ReadPayloadAsync(stream, maxSize, token);
+            ulong declaredLength = await ReadVarintAsync(stream, token);
+            if (declaredLength == 0 && allowEmpty)
+            {
+                await ReadEmptyRequestFramingAsync(stream, token);
+                return [];
+            }
+
+            return await ReadFramedPayloadAsync(stream, declaredLength, maxSize, token);
         }
         catch (EndOfStreamException e)
         {
@@ -146,9 +155,28 @@ public static class ReqRespFraming
         }
     }
 
-    private static async Task<byte[]> ReadPayloadAsync(Stream stream, int maxSize, CancellationToken token)
+    // An empty payload has no data frame to end it, so its framing runs to the requester's half-close: nothing, or one stream identifier.
+    private static async Task ReadEmptyRequestFramingAsync(Stream stream, CancellationToken token)
     {
-        ulong declaredLength = await ReadVarintAsync(stream, token);
+        byte[] framing = new byte[EmptyPayloadFraming.Length + 1];
+        int read = 0;
+        int lastRead;
+        while (read < framing.Length && (lastRead = await stream.ReadAsync(framing.AsMemory(read), token)) > 0)
+        {
+            read += lastRead;
+        }
+
+        if (read != 0 && !framing.AsSpan(0, read).SequenceEqual(EmptyPayloadFraming))
+        {
+            throw new Eth2ReqRespException("Bytes other than one snappy stream identifier follow an empty request payload");
+        }
+    }
+
+    private static async Task<byte[]> ReadPayloadAsync(Stream stream, int maxSize, CancellationToken token) =>
+        await ReadFramedPayloadAsync(stream, await ReadVarintAsync(stream, token), maxSize, token);
+
+    private static async Task<byte[]> ReadFramedPayloadAsync(Stream stream, ulong declaredLength, int maxSize, CancellationToken token)
+    {
         if (declaredLength == 0 || declaredLength > (ulong)maxSize)
         {
             throw new Eth2ReqRespException($"Invalid payload length {declaredLength}, expected 1..{maxSize}");

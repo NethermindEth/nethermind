@@ -85,6 +85,29 @@ public class ReqRespFramingTests
         Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(stream, maxSize, default));
     }
 
+    // SSZ of an empty list is zero bytes; snappy framing of no data is nothing or one stream identifier.
+    [TestCase("0x00", false, Description = "empty list without framing")]
+    [TestCase("0x00ff060000734e61507059", false, Description = "empty list with its stream identifier")]
+    [TestCase("0x00ff060000734e6150705900", true, Description = "a byte after the stream identifier")]
+    [TestCase("0x00ff060000734e61507059ff060000734e61507059", true, Description = "a second stream identifier")]
+    [TestCase("0x00010c00000175de410100000000000000", true, Description = "a data frame")]
+    [TestCase("0x00ff060000734e", true, Description = "cut stream identifier")]
+    public async Task Zero_length_request_is_read_as_empty_only_where_the_type_allows_it(string wireHex, bool malformed)
+    {
+        using MemoryStream strict = new(Bytes.FromHexString(wireHex));
+        Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(strict, maxSize: 8, default), "a type with a nonzero minimum size");
+
+        using MemoryStream list = new(Bytes.FromHexString(wireHex));
+        if (malformed)
+        {
+            Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(list, maxSize: 8, default, allowEmpty: true));
+        }
+        else
+        {
+            Assert.That(await ReqRespFraming.ReadRequestAsync(list, maxSize: 8, default, allowEmpty: true), Is.Empty);
+        }
+    }
+
     // A peer that repeats the stream-identifier frame forever never advances uncompressedTotal (the
     // loop's only exit condition before the fix), so it would buffer without bound. The 20,000
     // repeats here supply far more than the compressed-size bound for an 8-byte payload; asserting

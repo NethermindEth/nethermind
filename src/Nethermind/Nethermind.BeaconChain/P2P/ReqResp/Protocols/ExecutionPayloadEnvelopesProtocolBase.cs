@@ -28,7 +28,11 @@ public abstract class ExecutionPayloadEnvelopesProtocolBase(BeaconChainSpec spec
     /// (EIP-7843's <c>SLOTNUM</c>: "the beacon chain slot number of the current block" - the same
     /// value as the envelope's beacon block's slot).
     /// </summary>
-    /// <remarks>Callers must ensure <paramref name="envelope"/> has a non-null <c>Message.Payload</c> first (see <see cref="ReadEnvelopeChunksAsync"/>); this indexes into it unconditionally.</remarks>
+    /// <remarks>
+    /// Callers must ensure <paramref name="envelope"/> has a non-null <c>Message.Payload</c> first (see <see cref="ReadEnvelopeChunksAsync"/>); this indexes into it unconditionally.
+    /// The spec keys the context on <c>epoch(beacon_block.slot)</c>; an envelope this node serves was verified, and verification rejects
+    /// <c>block.slot != payload.slot_number</c>, so the two epochs agree.
+    /// </remarks>
     protected byte[] ContextBytesFor(SignedExecutionPayloadEnvelope envelope) =>
         ForkDigest.Compute(Spec, Spec.GetEpoch(envelope.Message!.Payload!.SlotNumber));
 

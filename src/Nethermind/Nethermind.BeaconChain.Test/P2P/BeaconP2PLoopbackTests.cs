@@ -174,6 +174,27 @@ public class BeaconP2PLoopbackTests
         }
     }
 
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Empty_by_root_requests_are_answered_with_no_chunks_at_once(CancellationToken token)
+    {
+        Node server = CreateNode();
+        Node client = CreateNode();
+
+        await using (client.P2P)
+        await using (server.P2P)
+        {
+            await server.P2P.StartAsync(token);
+            await client.P2P.StartAsync(token);
+            ISession toServer = await client.P2P.DialPeerAsync(LoopbackAddress(server.P2P), token);
+
+            using CancellationTokenSource quick = CancellationTokenSource.CreateLinkedTokenSource(token);
+            quick.CancelAfter(TimeSpan.FromSeconds(5));
+            Assert.That(await client.P2P.RequestExecutionPayloadEnvelopesByRootAsync(toServer, [], quick.Token), Is.Empty, "envelopes by root");
+            Assert.That(await client.P2P.RequestBlocksByRootAsync(toServer, [], quick.Token), Is.Empty, "blocks by root");
+        }
+    }
+
     public enum ColumnDial
     {
         FuluByRange,
