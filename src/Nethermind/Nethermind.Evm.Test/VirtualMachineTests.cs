@@ -153,6 +153,14 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
+    [TestCase(0x1000, false, TestName = "Thin handler is accepted")]
+    [TestCase(0x1002, true, TestName = "Fat handler is rejected")]
+    public void Opcode_table_rejects_fat_handlers(long handler, bool rejected)
+    {
+        Action ensure = () => VirtualMachine<EthereumGasPolicy>.EnsureThinHandler((nint)handler);
+        Assert.That(ensure, rejected ? Throws.TypeOf<NotSupportedException>() : Throws.Nothing);
+    }
+
     [Test]
     public void Frame_handlers_are_reused_across_blocks_and_reselected_across_forks()
     {

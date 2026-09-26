@@ -252,8 +252,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// Otherwise every managed <c>calli</c> is treated as possibly fat and guarded by a tag test and a second
     /// calling sequence that passes a generic context ahead of the arguments, and the register allocator then
     /// keeps the handler's arguments where that sequence wants them, moving them back for the ordinary call.
-    /// The opt-out is sound here because every table entry is an instantiation over structs (see the
-    /// constraint on <typeparamref name="TGasPolicy"/>), hence exact code and a thin pointer.
+    /// The opt-out is sound only while every table entry is exact (unshared) code, hence a thin pointer. The
+    /// <c>struct</c> constraints do not guarantee that: a policy such as <c>Policy&lt;string&gt;</c> is shared
+    /// through <c>Policy&lt;__Canon&gt;</c>. Table generation therefore rejects fat entries up front
+    /// (<see cref="EnsureThinHandler"/>).
     /// </remarks>
     private static class RawCalliHelper
     {
