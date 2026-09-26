@@ -83,6 +83,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.EngineUnavailable"/> or <see cref="BlockImportResult.ParentPayloadUnverified"/>, keyed by block root, awaiting a retry.</summary>
     private readonly Dictionary<Hash256, ForkedSignedBeaconBlock> _pendingRetry = [];
 
+    /// <summary>The roots of the blocks in <see cref="_pendingByParent"/> held for a parent waiting on a payload.</summary>
+    private readonly HashSet<Hash256> _heldForPayload = [];
+
     private readonly ConcurrentDictionary<string, byte> _dialedPeerIds = new();
     private readonly Stopwatch _progressStopwatch = new();
 
@@ -119,6 +122,9 @@ public sealed class BeaconSyncOrchestrator(
     internal (Hash256 Root, ulong Slot) SyncTip => (_syncTip.Root, _syncTip.Slot);
 
     internal ChannelWriter<WorkItem> WorkWriter => _work.Writer;
+
+    /// <summary>The gossip blocks held for a parent, bounded by <see cref="MaxPendingGossipBlocks"/>; for tests.</summary>
+    internal int PendingGossipBlockCount => _pendingCount;
 
     /// <summary>Runs the full sync flow from the given anchor until cancelled.</summary>
     public async Task RunAsync(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot, CancellationToken token)
@@ -293,7 +299,7 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>
     /// Imports one block and, on success, drains any gossip blocks that were waiting for it. The
-    /// single choke point for all four callers of <see cref="IBlockImporter.Import"/>, so this is
+    /// single choke point for all four callers of <see cref="IBlockImporter.Import"/> that can import, so this is
     /// also where a <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.ParentPayloadUnverified"/> or
     /// <see cref="BlockImportResult.EngineUnavailable"/> result is remembered for a later retry —
     /// wiring it in at only one call site would leave the other three silently dropping it.
@@ -318,25 +324,68 @@ public sealed class BeaconSyncOrchestrator(
         }
         else if (result is BlockImportResult.DataUnavailable or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified)
         {
-            QueuePendingRetry(root, block);
+            if (!QueuePendingRetry(root, block))
+            {
+                DropPendingChildren(root);
+            }
         }
         else
         {
-            _pendingRetry.Remove(root);
+            // A retried block answers UnknownParent once its parent's state is gone, so it never imports.
+            bool wasRetried = _pendingRetry.Remove(root);
+            if (result == BlockImportResult.Invalid || (wasRetried && result == BlockImportResult.UnknownParent))
+            {
+                DropPendingChildren(root);
+            }
         }
 
         return result;
     }
 
     /// <summary>Remembers a block for <see cref="DrainPendingRetriesAsync"/>; silently drops it once <see cref="MaxPendingRetryBlocks"/> is reached, same as <see cref="QueuePendingGossipBlock"/> does for its list.</summary>
-    private void QueuePendingRetry(Hash256 root, ForkedSignedBeaconBlock block)
+    /// <returns>Whether the block is held for a retry.</returns>
+    private bool QueuePendingRetry(Hash256 root, ForkedSignedBeaconBlock block)
     {
-        if (_pendingRetry.ContainsKey(root) || _pendingRetry.Count >= MaxPendingRetryBlocks)
+        if (_pendingRetry.ContainsKey(root))
+        {
+            return true;
+        }
+
+        if (_pendingRetry.Count >= MaxPendingRetryBlocks)
+        {
+            return false;
+        }
+
+        _pendingRetry[root] = block;
+        return true;
+    }
+
+    /// <summary>Forgets the gossip blocks held for <paramref name="parentRoot"/>, and theirs in turn, once that parent can no longer import.</summary>
+    /// <remarks>Otherwise they keep their share of <see cref="MaxPendingGossipBlocks"/> for the process lifetime.</remarks>
+    private void DropPendingChildren(Hash256 parentRoot)
+    {
+        if (!_pendingByParent.ContainsKey(parentRoot))
         {
             return;
         }
 
-        _pendingRetry[root] = block;
+        Stack<Hash256> dropped = new();
+        dropped.Push(parentRoot);
+        while (dropped.TryPop(out Hash256? root))
+        {
+            if (!_pendingByParent.Remove(root, out List<ForkedSignedBeaconBlock>? children))
+            {
+                continue;
+            }
+
+            _pendingCount -= children.Count;
+            foreach (ForkedSignedBeaconBlock child in children)
+            {
+                Hash256 childRoot = child.ComputeMessageRoot();
+                _heldForPayload.Remove(childRoot);
+                dropped.Push(childRoot);
+            }
+        }
     }
 
     /// <summary>
@@ -360,6 +409,7 @@ public sealed class BeaconSyncOrchestrator(
             if (block.Slot <= finalizedSlot)
             {
                 _pendingRetry.Remove(root);
+                DropPendingChildren(root);
                 continue;
             }
 
@@ -417,6 +467,11 @@ public sealed class BeaconSyncOrchestrator(
             _pendingCount -= children.Count;
             foreach (ForkedSignedBeaconBlock child in children)
             {
+                if (_heldForPayload.Count > 0)
+                {
+                    _heldForPayload.Remove(child.ComputeMessageRoot());
+                }
+
                 await ImportBlockAsync(child, token);
             }
         }
@@ -460,6 +515,13 @@ public sealed class BeaconSyncOrchestrator(
             return;
         }
 
+        // The parent's import drains this child, so the parent is not fetched again.
+        if (IsWaitingForPayload(block.ParentRoot))
+        {
+            HoldForWaitingParent(block);
+            return;
+        }
+
         if (!importer.IsKnown(block.ParentRoot))
         {
             // While far behind, range sync will deliver the parent chain anyway — just hold the
@@ -479,11 +541,11 @@ public sealed class BeaconSyncOrchestrator(
         await ImportBlockAsync(block, token);
     }
 
-    private void QueuePendingGossipBlock(ForkedSignedBeaconBlock block)
+    private bool QueuePendingGossipBlock(ForkedSignedBeaconBlock block)
     {
         if (_pendingCount >= MaxPendingGossipBlocks)
         {
-            return;
+            return false;
         }
 
         Hash256 parent = block.ParentRoot;
@@ -494,6 +556,53 @@ public sealed class BeaconSyncOrchestrator(
 
         siblings.Add(block);
         _pendingCount++;
+        return true;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="blockRoot"/> is a Gloas block waiting in the retry set for its own parent's payload, or a
+    /// block held for one; specs/gloas/p2p-interface.md <c>beacon_block</c> lets a client queue a block until the parent payload is retrieved.
+    /// </summary>
+    private bool IsWaitingForPayload(Hash256 blockRoot) =>
+        // A Gloas block is only ever retried for its parent's payload.
+        (_pendingRetry.TryGetValue(blockRoot, out ForkedSignedBeaconBlock? parked) && parked is ForkedSignedBeaconBlock.OfGloas)
+        || _heldForPayload.Contains(blockRoot);
+
+    /// <summary>Holds <paramref name="block"/> until its parent, found by <see cref="IsWaitingForPayload"/>, imports.</summary>
+    /// <remarks>
+    /// The block is held only once the importer defers it too, which it does only after its proposer and proposer signature
+    /// check out, and its (slot, proposer) is then marked seen: the queue is bounded, so unsigned or repeated proposals must
+    /// not be able to crowd out the real block. The seen gate covers fetched ancestors too, or one equivocating proposer
+    /// could fill the queue through forged children naming each of its blocks; such an ancestor imports once range sync or
+    /// a later by-root fetch delivers it after its parent. A block the full queue cannot take is not marked seen.
+    /// </remarks>
+    /// <returns>Whether the block is held.</returns>
+    private bool HoldForWaitingParent(ForkedSignedBeaconBlock block)
+    {
+        Hash256 root = block.ComputeMessageRoot();
+        if (_pendingCount >= MaxPendingGossipBlocks
+            || gossipRouter.IsProposalSeen(block.Slot, block.ProposerIndex)
+            || _importer!.Import(block, root, verifySignatures: true) != BlockImportResult.ParentPayloadUnverified)
+        {
+            return false;
+        }
+
+        QueuePendingGossipBlock(block);
+        gossipRouter.MarkProposalSeen(block.Slot, block.ProposerIndex);
+        _heldForPayload.Add(root);
+        return true;
+    }
+
+    /// <summary>Holds <paramref name="chain"/> from index <paramref name="from"/> down to its gossip block at index 0, stopping at the first block not held.</summary>
+    private void HoldChainForWaitingParent(List<ForkedSignedBeaconBlock> chain, int from)
+    {
+        for (int i = from; i >= 0; i--)
+        {
+            if (!HoldForWaitingParent(chain[i]))
+            {
+                return;
+            }
+        }
     }
 
     /// <summary>Fetches the unknown parent chain of a gossip block by root (bounded depth), then imports oldest-first.</summary>
@@ -504,6 +613,12 @@ public sealed class BeaconSyncOrchestrator(
         Hash256 parent = block.ParentRoot;
         while (!importer.IsKnown(parent))
         {
+            if (IsWaitingForPayload(parent))
+            {
+                HoldChainForWaitingParent(chain, chain.Count - 1);
+                return;
+            }
+
             if (chain.Count > MaxBackfillDepth)
             {
                 if (_logger.IsDebug) _logger.Debug($"Giving up on gossip block at slot {block.Slot}: ancestor chain exceeds {MaxBackfillDepth} unknown blocks");
@@ -523,7 +638,14 @@ public sealed class BeaconSyncOrchestrator(
 
         for (int i = chain.Count - 1; i >= 0; i--)
         {
-            if (await ImportBlockAsync(chain[i], token) is not (BlockImportResult.Imported or BlockImportResult.AlreadyKnown))
+            BlockImportResult result = await ImportBlockAsync(chain[i], token);
+            if (result == BlockImportResult.ParentPayloadUnverified && i > 0 && _pendingRetry.ContainsKey(chain[i].ComputeMessageRoot()))
+            {
+                HoldChainForWaitingParent(chain, i - 1);
+                return;
+            }
+
+            if (result is not (BlockImportResult.Imported or BlockImportResult.AlreadyKnown))
             {
                 return;
             }

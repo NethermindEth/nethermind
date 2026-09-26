@@ -491,10 +491,14 @@ public sealed class ForkChoiceRunner
         if ((executionStatus == ExecutionStatus.Irrelevant) != (executionBlockHash is null))
             throw new ForkChoiceException($"Block {blockRoot} must carry an execution block hash if and only if execution is enabled");
 
-        // Proposer boost for the first block of the slot arriving in the attesting interval.
-        ulong timeIntoSlot = (Time - GenesisTime) % _spec.SecondsPerSlot;
-        bool isBeforeAttestingInterval = timeIntoSlot < _spec.SecondsPerSlot / Presets.IntervalsPerSlot;
-        bool isTimely = slot == _store.CurrentSlot && isBeforeAttestingInterval;
+        // Proposer boost for the first block of the slot arriving before get_attestation_due_ms, which Gloas moves earlier
+        // (specs/phase0/fork-choice.md and specs/gloas/fork-choice.md record_block_timeliness).
+        const ulong BasisPoints = 10_000;
+        ulong slotDurationMs = _spec.SecondsPerSlot * 1000;
+        ulong secondsSinceGenesis = Time - GenesisTime;
+        ulong timeIntoSlotMs = (secondsSinceGenesis > ulong.MaxValue / 1000 ? ulong.MaxValue : secondsSinceGenesis * 1000) % slotDurationMs;
+        ulong attestationDueMs = (IsGloasSlot(slot) ? GloasTiming.AttestationDueBpsGloas : GloasTiming.AttestationDueBps) * slotDurationMs / BasisPoints;
+        bool isTimely = slot == _store.CurrentSlot && timeIntoSlotMs < attestationDueMs;
         _blockTimeliness[blockRoot] = isTimely;
         if (isTimely && _store.ProposerBoostRoot == Hash256.Zero)
             _store.ProposerBoostRoot = blockRoot;
