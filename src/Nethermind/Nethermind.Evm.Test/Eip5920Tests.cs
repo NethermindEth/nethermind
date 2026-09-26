@@ -70,15 +70,17 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
     private void AssertSucceeded(TestAllTracerWithOutput result) =>
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success), result.Error);
 
-    // Gas charged at the PAY step, per the Geth-style trace.
-    private ulong PayCost(byte[] code)
+    private ulong PayCost(byte[] code) => OpcodeCost(code, Instruction.PAY);
+
+    // Gas charged at the opcode's step, per the Geth-style trace.
+    private ulong OpcodeCost(byte[] code, Instruction opcode)
     {
         foreach (GethTxTraceEntry entry in ExecuteAndTrace(GasLimit, code).Entries)
         {
-            if (entry.Opcode == nameof(Instruction.PAY)) return entry.GasCost;
+            if (entry.Opcode == opcode.ToString()) return entry.GasCost;
         }
 
-        throw new InvalidOperationException("PAY was not traced");
+        throw new InvalidOperationException($"{opcode} was not traced");
     }
 
     [Test]
@@ -136,13 +138,7 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
         byte[] code = Pay(Prepare.EvmCode, Existing, 0).Op(Instruction.POP)
             .PushData(Existing).Op(Instruction.BALANCE).STOP().Done;
 
-        ulong balanceCost = 0;
-        foreach (GethTxTraceEntry entry in ExecuteAndTrace(GasLimit, code).Entries)
-        {
-            if (entry.Opcode == nameof(Instruction.BALANCE)) balanceCost = entry.GasCost;
-        }
-
-        Assert.That(balanceCost, Is.EqualTo(GasCostOf.WarmStateRead));
+        Assert.That(OpcodeCost(code, Instruction.BALANCE), Is.EqualTo(GasCostOf.WarmStateRead));
     }
 
     private static IEnumerable<TestCaseData> SurchargeCases()
