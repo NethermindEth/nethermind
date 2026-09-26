@@ -12,6 +12,8 @@ using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.P2P.Gossip;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
@@ -157,6 +159,35 @@ public class BlockImporterTests
         Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "a block with no blobs needs no columns");
     }
 
+    /// <summary>
+    /// specs/phase0/fork-choice.md <c>on_block</c> asserts <c>get_current_slot(store) &gt;= block.slot</c> before
+    /// <c>state_transition</c>, whose <c>process_slots</c> is linear in the slot distance. The current slot is the node's
+    /// clock with <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>; fork-choice time is ticked to the block's own slot on import, so
+    /// only the clock can refuse a block from the future, and a block the clock has reached (any older block) still imports.
+    /// </summary>
+    [TestCase(1UL, GossipRouter.MaximumGossipClockDisparityMs + 1, BlockImportResult.Invalid)]
+    [TestCase(1UL, GossipRouter.MaximumGossipClockDisparityMs, BlockImportResult.Imported)]
+    [TestCase(1UL, -1_200_000L, BlockImportResult.Imported)]
+    [TestCase(1UL << 40, -1_200_000L, BlockImportResult.Invalid)]
+    public void Block_after_the_clock_slot_is_refused_before_its_state_transition(ulong slot, long millisecondsBeforeSlotOne, BlockImportResult expected)
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        WarningCapture warnings = new();
+        SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeMilliseconds((long)(chain.Spec.GenesisTime + chain.Spec.SecondsPerSlot) * 1000 - millisecondsBeforeSlotOne).UtcDateTime));
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), warnings, importClock: clock);
+        BeaconBlock block = chain.Block.Message!;
+        block.Slot = slot;
+        Hash256 root = SszRoots.HashTreeRoot(block);
+
+        BlockImportResult result = GloasBlockImporterTests.ImportOrFailIfStuck(importer, new ForkedSignedBeaconBlock.OfFulu(chain.Block), root);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expected));
+            Assert.That(warnings.Warnings.Any(w => w.Contains("before its state transition")), Is.EqualTo(expected == BlockImportResult.Invalid));
+        }
+    }
+
     [Test]
     public void Trusted_store_replay_imports_a_blob_block_without_its_columns()
     {
@@ -179,7 +210,7 @@ public class BlockImporterTests
         NodeColumnCustody custody = new DiscoveryNodeCustodySource(discovery).Current!;
         DataColumnSidecarPool pool = new();
         Hold(pool, chain, custody.SampledColumns);
-        BlockImporterFactory factory = new(chain.Spec, store, chain.Pubkeys, new ValidPayloadEngine(), new BeaconChainConfig(), LimboLogs.Instance, pool, discovery, chain.ClockAtEpoch(0));
+        BlockImporterFactory factory = new(chain.Spec, store, chain.Pubkeys, new ValidPayloadEngine(), new BeaconChainConfig(), LimboLogs.Instance, pool, discovery, chain.ClockAtSlot(chain.Block.Message!.Slot));
         IBlockImporter importer = factory.Create(chain.AnchorState, chain.AnchorBlock, chain.AnchorRoot);
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
@@ -198,7 +229,7 @@ public class BlockImporterTests
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         DataColumnSidecarPool pool = new();
         Hold(pool, chain, Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(c => (ulong)c));
-        BlockImporterFactory factory = new(chain.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), chain.Pubkeys, new ValidPayloadEngine(), new BeaconChainConfig(), LimboLogs.Instance, pool, clock: chain.ClockAtEpoch(0));
+        BlockImporterFactory factory = new(chain.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), chain.Pubkeys, new ValidPayloadEngine(), new BeaconChainConfig(), LimboLogs.Instance, pool, clock: chain.ClockAtSlot(chain.Block.Message!.Slot));
         IBlockImporter importer = factory.Create(chain.AnchorState, chain.AnchorBlock, chain.AnchorRoot);
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
@@ -509,7 +540,7 @@ public class BlockImporterTests
     private static long RefusedByForkChoice(string operation) =>
         Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(new StringLabel(operation));
 
-    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null) =>
+    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null) =>
         new(
             chain.Spec,
             new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
@@ -518,6 +549,8 @@ public class BlockImporterTests
             new BeaconChainConfig(),
             warnings is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(warnings)),
             new CustodySamplingAvailability(new FixedCustodySource(custody), new DataColumnPoolSource(pool), clock ?? chain.ClockAtEpoch(0)),
+            static (_, _) => false,
+            importClock ?? new SlotClock(chain.Spec, Timestamper.Default),
             chain.AnchorState,
             chain.AnchorBlock,
             chain.AnchorRoot,
