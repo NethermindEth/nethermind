@@ -105,6 +105,9 @@ public interface IInitConfig : IConfig
         HiddenFromDocs = true)]
     bool EvmWarmupEnabled { get; set; }
 
+    [ConfigItem(Description = "Whether to warm the block processing pipeline on startup, before RPC opens.", DefaultValue = "true")]
+    bool PipelineWarmupEnabled { get; set; }
+
     [ConfigItem(Description = "Whether to repair canonical-chain markers on startup after a canonical mismatch.", DefaultValue = "false", HiddenFromDocs = true)]
     bool HealCanonicalChain { get; set; }
 

@@ -9,22 +9,31 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Stateless;
+using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Memory;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Hive;
+using Nethermind.Init;
+using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Sockets;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Runner.Ethereum.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(HiveStep))]
-public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats, GCKeeper gcKeeper) : IStep
+public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats, GCKeeper gcKeeper,
+    Lazy<FlatStateActivationPolicy> flatStateActivationPolicy, IRpcAuthentication? authentication = null) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -48,10 +57,24 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         IRpcModuleProvider rpcModuleProvider = api.RpcModuleProvider!;
 
         JsonRpcService jsonRpcService = new(rpcModuleProvider, api.LogManager, jsonRpcConfig, gcKeeper);
-        IRpcAuthentication auth =
-            jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
+        IRpcAuthentication auth = authentication ??
+            (jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                 ? NoAuthentication.Instance
-                : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, api.Timestamper, logger);
+                : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, api.Timestamper, logger));
+
+        // Added before the warmup, whose own RPC host would otherwise claim this entry.
+        ThisNodeInfo.AddInfo("JSON RPC     :", string.Join(" ; ", jsonRpcUrlCollection.Urls));
+        if (GetPipelineWarmupSkipReason(api) is { } skipReason)
+        {
+            if (logger.IsDebug) logger.Debug($"Skipping startup payload pipeline warmup: {skipReason}");
+        }
+        else
+        {
+            bool flatState = flatStateActivationPolicy.Value.ShouldTurnOnFlatDb();
+            await StartupWarmupTask.RunAsync(token =>
+                StartupPipelineWarmer.WarmupAsync(api.ChainSpec, api.ConfigProvider, flatState, token, auth, logger, liveBlockTree: api.BlockTree),
+                logger, StartupWarmupTask.SafetyTimeout, cancellationToken);
+        }
 
         JsonRpcProcessor jsonRpcProcessor = new(
             jsonRpcService,
@@ -113,6 +136,29 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         api.DisposeStack.Push(jsonRpcRunner);
         api.DisposeStack.Push(jsonIpcRunner);
     }
+
+    internal static string? GetPipelineWarmupSkipReason(INethermindApi api)
+    {
+        IInitConfig initConfig = api.Config<IInitConfig>();
+        if (!initConfig.PipelineWarmupEnabled) return "disabled by configuration.";
+        if (initConfig.DiagnosticMode != DiagnosticMode.None) return "a database diagnostic mode is enabled.";
+        if (api.SpecProvider?.GetType() != typeof(ChainSpecBasedSpecProvider)) return "the chain uses a custom spec provider.";
+        bool mergeEnabled = false;
+        foreach (INethermindPlugin plugin in api.Plugins)
+        {
+            if (plugin.GetType() == typeof(MergePlugin) && plugin.Enabled)
+            {
+                mergeEnabled = true;
+                break;
+            }
+        }
+        if (!mergeEnabled) return "the standard Merge plugin is not enabled.";
+        if (api.MainProcessingContext?.BlockProcessor is not (StandardBlockProcessor or WitnessCapturingBlockProcessor or InlineCaptureBlockProcessor)
+            || api.MainProcessingContext.TransactionProcessor is not EthereumTransactionProcessor)
+            return "the chain uses a custom processing pipeline.";
+        return null;
+    }
+
     private static void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, IJsonRpcConfig jsonRpcConfig, ILogger logger)
     {
         string newPath = Path.GetFullPath(Path.Join(keyStoreConfig.KeyStoreDirectory, "jwt-secret"));

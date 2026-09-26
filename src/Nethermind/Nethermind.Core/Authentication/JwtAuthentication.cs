@@ -148,6 +148,17 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         }
     }
 
+    /// <summary>Creates a short-lived token for the isolated startup pipeline request.</summary>
+    internal string CreateWarmupToken() => new JsonWebTokenHandler { SetDefaultTimesOnTokenCreation = false }
+        .CreateToken(new SecurityTokenDescriptor
+        {
+            IssuedAt = _timestamper.UtcNow,
+            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(_secretBytes)
+            {
+                CryptoProviderFactory = new CryptoProviderFactory { CacheSignatureProviders = false }
+            }, SecurityAlgorithms.HmacSha256)
+        });
+
     public Task<bool> Authenticate(string? token)
     {
         if (string.IsNullOrEmpty(token))
