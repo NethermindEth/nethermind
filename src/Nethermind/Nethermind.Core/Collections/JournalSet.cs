@@ -18,6 +18,10 @@ namespace Nethermind.Core.Collections
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
     public sealed class JournalSet<T>(EqualityComparer<T> equalityComparer) : ICollection<T>, IJournal<int>
     {
+        // Removing entries one by one beats zeroing every bucket only while few remain: add, restore, clear and reuse
+        // cycles on Address and StorageCell journals put the crossover between about Capacity/100 and Capacity/1000.
+        private const int SparseClearCapacityDivisor = 256;
+
         private readonly List<T> _items = [];
         private readonly HashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
 
@@ -60,8 +64,19 @@ namespace Nethermind.Core.Collections
 
         public void Clear()
         {
+            if (Count <= _set.Capacity / SparseClearCapacityDivisor)
+            {
+                foreach (T item in CollectionsMarshal.AsSpan(_items))
+                {
+                    _set.Remove(item);
+                }
+            }
+            else
+            {
+                _set.Clear();
+            }
+
             _items.Clear();
-            _set.Clear();
         }
 
         /// <summary>Enumerates the items in the order they were first added, excluding those dropped by <see cref="Restore"/>.</summary>
