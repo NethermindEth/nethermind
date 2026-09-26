@@ -14,9 +14,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
@@ -169,6 +172,37 @@ public class BlockchainBridgeTests
         _transactionProcessor.Received().CallAndRestore(
             tx,
             Arg.Any<ITxTracer>());
+    }
+
+    [Test]
+    public void Call_leaves_the_hash_of_ethereum_types_null([Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.FrameTx)] TxType type)
+    {
+        Transaction tx = Build.A.Transaction.WithType(type).TestObject;
+        tx.Hash = TestItem.KeccakA;
+
+        _blockchainBridge.Call(Build.A.BlockHeader.TestObject, tx);
+
+        Assert.That(tx.Hash, Is.Null);
+    }
+
+    [Test]
+    public void Call_computes_the_hash_of_other_types()
+    {
+        // Stands in for a plugin's decoder: core registers none for deposit transactions.
+        TxDecoder.Instance.RegisterDecoder(TxType.DepositTx, new EIP1559TxDecoder<Transaction>());
+        try
+        {
+            Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
+            tx.Hash = TestItem.KeccakA;
+
+            _blockchainBridge.Call(Build.A.BlockHeader.TestObject, tx);
+
+            Assert.That(tx.Hash, Is.EqualTo(tx.CalculateHash()));
+        }
+        finally
+        {
+            TxDecoder.Instance.RegisterDecoder(TxType.DepositTx, null!);
+        }
     }
 
     [Test]

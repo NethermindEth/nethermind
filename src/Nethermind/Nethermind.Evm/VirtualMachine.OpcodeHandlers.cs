@@ -33,6 +33,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         static virtual int StackInputs => 0;
         static virtual int StackGrowth => 0;
         static virtual int PushSize => -1;
+        /// <summary>Whether Execute can move the program counter to a jump target.</summary>
+        static virtual bool MayJump => false;
 
         static abstract EvmExceptionType Execute(
             ref EvmStack stack,
@@ -666,8 +668,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct SignExtendOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.LowGasCost>(ref gas);
+        public static int StackInputs => 2;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSignExtend<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+            HasCheckedBody ? EvmInstructions.SignExtendCore<TTracingInst, OffFlag>(ref stack)
+                : EvmInstructions.InstructionSignExtend<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
@@ -1237,6 +1249,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct JumpOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool MayJump => true;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         {
             OpcodeResult result = TTracingInst.IsActive
@@ -1284,8 +1298,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct JumpDestOpcode : IOpcodeBody
     {
+        public static bool HasCheckedBody => true;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.JumpDestGasCost>(ref gas);
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionJumpDest(ref stack, ref gas, vm);
+            EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
@@ -1332,6 +1350,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct Push2Opcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        // Untraced PUSH2 runs a following JUMP or JUMPI itself.
+        public static bool MayJump => !TTracingInst.IsActive;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(ref stack, ref gas, vm, ref programCounter);
     }

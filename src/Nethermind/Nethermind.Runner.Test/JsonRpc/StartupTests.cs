@@ -581,7 +581,7 @@ public class StartupTests
         ctx.SetEndpoint(new Endpoint(static _ => Task.CompletedTask, new EndpointMetadataCollection(), "health"));
         bool nextCalled = false;
 
-        await new Startup().HandleJsonRpcHttpRequestAsync(ctx, () =>
+        await new Startup().HandleJsonRpcHttpRequestAsync(ctx, _ =>
         {
             nextCalled = true;
             return Task.CompletedTask;

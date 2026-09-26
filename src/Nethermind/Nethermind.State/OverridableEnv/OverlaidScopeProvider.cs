@@ -35,10 +35,12 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
     private sealed class Scope(IWorldStateScopeProvider.IScope inner, StateReadOverlaySlot slot) : IWorldStateScopeProvider.IScope
     {
+        private readonly CodeDb _codeDb = new(inner.CodeDb, slot);
+
         public Hash256 RootHash => inner.RootHash;
         public bool StorageRootsAreAuthoritative => inner.StorageRootsAreAuthoritative;
 
-        public IWorldStateScopeProvider.ICodeDb CodeDb => inner.CodeDb;
+        public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
 
         public void UpdateRootHash() => inner.UpdateRootHash();
 
@@ -81,6 +83,20 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => inner.HintBal(bal, sink);
 
         public void Dispose() => inner.Dispose();
+    }
+
+    /// <summary>Falls back to the armed overlay only when the database misses, so a read of code the database holds
+    /// costs what it did.</summary>
+    private sealed class CodeDb(IWorldStateScopeProvider.ICodeDb inner, StateReadOverlaySlot slot) : IWorldStateScopeProvider.ICodeDb
+    {
+        public byte[]? GetCode(in ValueHash256 codeHash) =>
+            inner.GetCode(in codeHash) ?? (slot.Current is { } overlay && overlay.TryGetCode(in codeHash, out byte[]? code) ? code : null);
+
+        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => inner.BeginCodeWrite();
+
+        public bool ContainsCode(in ValueHash256 codeHash) => inner.ContainsCode(in codeHash);
+
+        public void MarkCodePersisted(in ValueHash256 codeHash) => inner.MarkCodePersisted(in codeHash);
     }
 
     private sealed class StorageTree(IWorldStateScopeProvider.IStorageTree inner, Address address, StateReadOverlaySlot slot) : IWorldStateScopeProvider.IStorageTree

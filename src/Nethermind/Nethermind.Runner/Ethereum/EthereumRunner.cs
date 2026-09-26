@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Init.Steps;
@@ -12,7 +13,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum;
 
-public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManager, ILifetimeScope lifetimeScope, IServiceStopper serviceStopper)
+public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManager, ILifetimeScope lifetimeScope, IServiceStopper serviceStopper, IProcessExitSource processExitSource)
 {
     public INethermindApi Api => api;
     public ILifetimeScope LifetimeScope => lifetimeScope;
@@ -23,6 +24,14 @@ public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManage
         if (_logger.IsDebug) _logger.Debug("Starting Ethereum runner");
 
         await stepsManager.InitializeAll(cancellationToken);
+
+        // Only reached when the target completed; anything else threw. A command run has nothing left to keep
+        // the process alive, and has already produced its own output, so a node info screen would be noise.
+        if (stepsManager.HasTarget)
+        {
+            processExitSource.Exit(ExitCodes.Ok);
+            return;
+        }
 
         string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
 

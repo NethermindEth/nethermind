@@ -41,7 +41,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
         chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
-        SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, CreateTracerFactory());
+        SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, CreateTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<TTrace>> data = result.Data;
         Assert.That(data, Has.Count.EqualTo(7));
@@ -74,7 +74,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
         chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
-        SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, CreateTracerFactory());
+        SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, CreateTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result =
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<TTrace>> data = result.Data;
@@ -109,7 +109,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
         chain.BlockTree.TryUpdateMainChain(chain.BlockFinder.Head!.Header, true, true, preloadedBlocks: [chain.BlockFinder.Head!]);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
-        SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, CreateTracerFactory());
+        SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, CreateTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result =
             executor.Execute(payload, BlockParameter.Latest);

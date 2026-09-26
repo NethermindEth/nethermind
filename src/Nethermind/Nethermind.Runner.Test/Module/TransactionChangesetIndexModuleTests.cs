@@ -22,6 +22,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Int256;
@@ -267,15 +268,73 @@ public class TransactionChangesetIndexModuleTests
         }
     }
 
-    [TestCase(true, typeof(ChangesetPrefixStateSeedSource), TestName = "WithFlatHistory_TheChangesetSeedSourceWinsOverTheNullDefault")]
-    [TestCase(false, typeof(NullPrefixStateSeedSource), TestName = "WithoutFlatHistory_TheNullDefaultKeepsTheReplay")]
-    public void The_prefix_seed_source_follows_the_flat_history_switch(bool historyEnabled, Type expected)
+    [TestCase(true, TestName = "PrefixSeedSource_WithTheTransactionIndexOn_ArmsChangesetSeeds")]
+    [TestCase(false, TestName = "PrefixSeedSource_WithTheTransactionIndexOff_ArmsNothing")]
+    public void PrefixSeedSource_OnAChainWithoutAccessLists_FollowsTheFlatHistorySwitch(bool indexEnabled)
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = historyEnabled }))
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = indexEnabled }))
             .Build();
+        Assert.That(container.Resolve<ISpecProvider>().GetFinalSpec().BlockLevelAccessListsEnabled, Is.False, "precondition: only the changeset seeds can arm a slot");
 
-        Assert.That(container.Resolve<IPrefixStateSeedSource>(), Is.TypeOf(expected));
+        IPrefixStateSeedSource resolved = container.Resolve<IPrefixStateSeedSource>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved, Is.TypeOf<BlockAccessListPrefixStateSeedSource>(), "every node resolves the access list decorator, the one place deciding what seeds a block");
+            Assert.That(resolved.Enabled, Is.EqualTo(indexEnabled), "a block without an access list is left to the changeset source, enabled by the flat history switch");
+        }
+    }
+
+    [TestCase(4, TestName = "ParallelTraceBudgets_ByDefault_TraceAccessListBlocksOnFourWorkers")]
+    [TestCase(1, TestName = "ParallelTraceBudgets_WhenSetToOne_TraceAccessListBlocksSequentially")]
+    [TestCase(0, TestName = "ParallelTraceBudgets_WhenSetToZero_TraceAccessListBlocksSequentially")]
+    public void ParallelTraceBudgets_ForAccessListBlocks_FollowTheirOwnSetting(int configured)
+    {
+        JsonRpcConfig rpc = new();
+        if (configured != 4) rpc.TraceBlockParallelism = configured;
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = false, HistoryTransactionIndexTraceParallelism = 8 }, rpc))
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance))
+            .Build();
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        bool parallel = container.Resolve<ParallelTraceBudgets>().TryGetParallel(block.Header, out ParallelTraceBudget budget);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new JsonRpcConfig().TraceBlockParallelism, Is.EqualTo(4), "the default is four workers");
+            Assert.That(parallel, Is.EqualTo(configured >= 2 && Environment.ProcessorCount >= 2), "zero or one traces an access list block sequentially");
+            if (parallel) Assert.That(budget.Degree, Is.EqualTo(Math.Min(configured, Environment.ProcessorCount)), "the degree is the access list setting, not the flat history one");
+            Assert.That(container.Resolve<ParallelTraceBudgets>().AllowsParallelTracing, Is.EqualTo(parallel), "with no changeset seeds, only the access list setting can start a parallel tracer");
+        }
+    }
+
+    [TestCase(true, true, 3, true, TestName = "ParallelTraceBudgets_WithChangesetSeeds_TraceOtherBlocksOnTheFlatHistorySetting")]
+    [TestCase(true, true, 1, false, TestName = "ParallelTraceBudgets_WithChangesetSeedsSetToOne_TraceOtherBlocksSequentially")]
+    [TestCase(true, false, 3, false, TestName = "ParallelTraceBudgets_WithoutChangesetSeeds_NeverTraceOtherBlocksInParallel")]
+    [TestCase(false, true, 3, false, TestName = "ParallelTraceBudgets_WithFlatOff_NeverTraceOtherBlocksInParallel")]
+    public void ParallelTraceBudgets_ForBlocksWithoutAccessLists_FollowTheFlatHistorySetting(bool flatEnabled, bool indexEnabled, int configured, bool expected)
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig
+            {
+                Enabled = flatEnabled,
+                HistoryEnabled = true,
+                HistoryTransactionIndexEnabled = indexEnabled,
+                HistoryTransactionIndexTraceParallelism = configured,
+            }))
+            .Build();
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        bool parallel = container.Resolve<ParallelTraceBudgets>().TryGetParallel(block.Header, out ParallelTraceBudget budget);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parallel, Is.EqualTo(expected), "a block without an access list takes the changeset seeds' budget, set by the flat history setting");
+            if (parallel) Assert.That(budget.Degree, Is.EqualTo(configured), "the flat history setting keeps its meaning");
+            Assert.That(container.Resolve<ParallelTraceBudgets>().AllowsParallelTracing, Is.EqualTo(expected), "the parallel tracer is built only when a seed this chain can take allows two workers");
+        }
     }
 
     [Test]
@@ -298,11 +357,17 @@ public class TransactionChangesetIndexModuleTests
             .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = indexEnabled }))
             .Build();
 
-        IOverridableEnv env = container.Resolve<IOverridableEnvFactory>().Create();
-        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder.AddModule(env));
+        IOverridableEnv traceEnv = container.Resolve<ITraceEnvFactory>().CreateForTracing();
+        IOverridableEnv otherEnv = container.Resolve<IOverridableEnvFactory>().Create();
+        using ILifetimeScope traceScope = container.BeginLifetimeScope(builder => builder.AddModule(traceEnv));
+        using ILifetimeScope otherScope = container.BeginLifetimeScope(builder => builder.AddModule(otherEnv));
 
-        Assert.That(scope.IsRegistered<StateReadOverlaySlot>(), Is.EqualTo(indexEnabled),
-            "the slot exists exactly when the scope provider consults it; a slot nothing reads would let the executor skip a prefix no one supplies");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traceScope.IsRegistered<StateReadOverlaySlot>(), Is.EqualTo(indexEnabled),
+                "the slot exists exactly when the scope provider consults it; a slot nothing reads would let the executor skip a prefix no one supplies");
+            Assert.That(otherScope.IsRegistered<StateReadOverlaySlot>(), Is.False, "only trace environments carry the overlay; every other read-only environment pays nothing for it");
+        }
     }
 
     [Test]
