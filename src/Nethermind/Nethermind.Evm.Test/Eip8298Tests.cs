@@ -84,6 +84,23 @@ public class Eip8298Tests : VirtualMachineTestsBase
         Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.Zero));
     }
 
+    // Validity is decided by the precompile address's state, not by it being a precompile.
+    [TestCase(false, 1)]
+    [TestCase(true, 0)]
+    public void PrecompileSourceWithCodeInState_ValidatedByThatCode(bool efPrefixed, int expected)
+    {
+        byte[] precompileCode = efPrefixed ? [0xef, .. SourceCode] : SourceCode;
+        TestState.CreateAccount(Sha256Precompile.Address, 1.Ether);
+        TestState.InsertCode(Sha256Precompile.Address, precompileCode, Spec);
+        byte[] code = Prepare.EvmCode.SETCODEFROM(Sha256Precompile.Address).MSTORE(0).Return(32, 0).Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)expected));
+        AssertCodeHash(Recipient, Keccak.Compute(expected == 1 ? precompileCode : code));
+    }
+
     [Test]
     public void StaticContext_ExceptionalHalt()
     {

@@ -676,25 +676,30 @@ public static partial class EvmInstructions
         if (source is null) goto StackUnderflow;
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, source)) goto OutOfGas;
 
-        // Valid source: not a precompile, non-empty code, and regular deployed code (not 0xEF-prefixed per EIP-3541/7702).
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(source, spec);
-        if (spec.IsPrecompile(source) || codeInfo.IsEmpty || CodeDepositHandler.CodeIsInvalid(spec, codeInfo.Code))
-        {
-            return stack.PushZero<TTracingInst, OnFlag>();
-        }
+        // Valid source: exists, has code, and that code is regular deployed code (not 0xEF-prefixed per EIP-3541/7702).
+        IWorldState state = vm.WorldState;
+        if (!state.AccountExists(source)) goto InvalidSource;
+        ValueHash256 codeHash = state.GetCodeHash(source);
+        if (codeHash == ValueKeccak.OfAnEmptyString) goto InvalidSource;
+        // The repository resolves a precompile address to the precompile rather than to the code held in state.
+        ReadOnlyMemory<byte> code = spec.IsPrecompile(source)
+            ? CodeInfoRepository.GetCodeInfo(state, source, in codeHash).Code
+            : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(source, spec).Code;
+        if (CodeDepositHandler.CodeIsInvalid(spec, code)) goto InvalidSource;
 
         // The current account access is charged before the hash comparison, ACCOUNT_WRITE before the write.
         if (!TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess)) goto OutOfGas;
-        IWorldState state = vm.WorldState;
         Address executingAccount = vmState.Env.ExecutingAccount;
-        if (state.GetCodeHash(executingAccount) != state.GetCodeHash(source))
+        if (state.GetCodeHash(executingAccount) != codeHash)
         {
             if (!TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite)) goto OutOfGas;
-            vm.CodeInfoRepository.InsertCode(codeInfo.Code, executingAccount, spec);
+            vm.CodeInfoRepository.InsertCode(code, executingAccount, spec);
         }
 
         return stack.PushOne<TTracingInst>();
         // Jump forward to be unpredicted by the branch predictor.
+    InvalidSource:
+        return stack.PushZero<TTracingInst, OnFlag>();
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
