@@ -9,6 +9,8 @@ using System.Runtime.CompilerServices;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
@@ -1085,10 +1087,11 @@ public partial class VirtualMachine<TGasPolicy>(
     /// </summary>
     /// <remarks>
     /// The Parity touch-bug account (RIPEMD-160) is excluded because <see cref="RunPrecompile"/> records its
-    /// EIP-161 empty-account deletion, which the inline path does not replay.
+    /// EIP-161 empty-account deletion, which the inline path does not replay. EIP-8151 ecRecover is excluded
+    /// because its account warming must roll back with a frame that runs out of gas.
     /// </remarks>
     protected internal virtual bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource) =>
-        !codeSource.Equals(Ripemd160Address);
+        !codeSource.Equals(Ripemd160Address) && !IsEip8151EcRecover(codeSource, Spec);
 
     /// <summary>Returns a buffer of <paramref name="length"/> bytes for the ID precompile to copy its input into.</summary>
     /// <remarks>Buffers up to <see cref="VirtualMachineStatics.MaxRetainedPrecompileScratch"/> live on this
@@ -1318,8 +1321,14 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             Result<byte[]> output = precompile.Run(callData, spec);
             bool success = output;
+            byte[] data = success ? output.Data! : [];
+            if (success && IsEip8151EcRecover(state.Env.CodeSource, spec) && !TryRestrictEcRecoverOutput(state, spec, ref data))
+            {
+                return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
+            }
+
             return new(
-                success ? output.Data : [],
+                data,
                 precompileSuccess: success,
                 shouldRevert: !success,
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
@@ -1339,6 +1348,43 @@ public partial class VirtualMachine<TGasPolicy>(
             if (_logger.IsError) LogExecutionException(precompile, exception);
             return new(default, precompileSuccess: false, shouldRevert: true);
         }
+    }
+
+    private static bool IsEip8151EcRecover(Address? codeSource, IReleaseSpec spec) =>
+        spec.IsEip8151Enabled && PrecompiledAddresses.ECRecover.Value.Equals(codeSource);
+
+    /// <summary>Applies the EIP-8151 account-code restriction to a successful ecRecover output.</summary>
+    /// <remarks>
+    /// Runs after <see cref="IPrecompile.Run"/>, so precompile result caches only ever hold the pure recovery result
+    /// and cannot serve a verdict that the recovered account's code has since invalidated. A recovered address is
+    /// charged its EIP-2929 access cost and warmed in the precompile frame's access tracker, so the warming rolls back
+    /// with the frame. Only once that charge succeeds is the account read and recorded in the EIP-7928 block access
+    /// list. The address is returned when its raw code is empty or an EIP-7702 delegation designator; every other
+    /// outcome, including a failed recovery, returns 32 zero bytes.
+    /// </remarks>
+    /// <returns><c>false</c> when the access cost exceeds the frame's remaining gas.</returns>
+    private bool TryRestrictEcRecoverOutput(VmState<TGasPolicy> state, IReleaseSpec spec, ref byte[] output)
+    {
+        if (output.Length == 0)
+        {
+            output = Bytes.Zero32;
+            return true;
+        }
+
+        Address recovered = new(output.AsSpan(output.Length - Address.Size));
+        if (!TGasPolicy.TryConsumeAccountAccessGas(ref state.Gas, spec, in state.AccessTracker, IsTracingAccess, recovered))
+        {
+            return false;
+        }
+
+        _worldState.AddAccountRead(recovered);
+        ReadOnlySpan<byte> code = _codeInfoRepository.GetCachedCodeInfo(recovered, followDelegation: false, spec, out _).CodeSpan;
+        if (!code.IsEmpty && !Eip7702Constants.IsDelegatedCode(code))
+        {
+            output = Bytes.Zero32;
+        }
+
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
