@@ -35,9 +35,45 @@ public interface IPersistence
     {
         Account? GetAccount(Address address);
 
+        /// <summary>Batched <see cref="GetAccount"/>: <c>accounts[i]</c> receives the account at <c>addresses[i]</c>, or <c>null</c> if it is absent.</summary>
+        /// <remarks>
+        /// Every element of <paramref name="accounts"/> is written, so callers need not pre-clear it. Where the batch reaches
+        /// the batched RocksDB read (the hashed flat layouts), it uses <see cref="ReadFlags.HintCacheMiss"/> and does not fill
+        /// the block cache: that suits bulk warm-up whose results land in managed caches, not a caller that wants the blocks cached.
+        /// </remarks>
+        void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            for (int i = 0; i < addresses.Length; i++)
+                accounts[i] = GetAccount(addresses[i]);
+        }
+
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
+
+        /// <summary>Batched <see cref="TryGetSlot"/>: <c>found[i]</c> and <c>slots[i]</c> receive the result for <c>storageCells[i]</c>.</summary>
+        /// <remarks>
+        /// Every element of <paramref name="slots"/> and <paramref name="found"/> is written, and <c>slots[i]</c> is
+        /// <c>default</c> where <c>found[i]</c> is <c>false</c>, so callers need not pre-clear and forwarding readers need
+        /// not re-clear. The block cache is bypassed as for <see cref="GetAccounts"/>.
+        /// </remarks>
+        void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
+        {
+            if (storageCells.Length != slots.Length || storageCells.Length != found.Length)
+                throw new ArgumentException("Storage cells, slots, and found flags must have the same length.", nameof(slots));
+
+            for (int i = 0; i < storageCells.Length; i++)
+            {
+                StorageCell cell = storageCells[i];
+                bool slotFound = TryGetSlot(cell.Address, cell.Index, ref slots[i]);
+                found[i] = slotFound;
+                if (!slotFound) slots[i] = default;
+            }
+        }
+
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);

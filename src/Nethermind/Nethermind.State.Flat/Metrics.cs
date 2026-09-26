@@ -113,6 +113,7 @@ public static class Metrics
     public static long CarryForwardAccountHits => _carryForwardAccountHits.Sum;
     private static readonly StripedLong _carryForwardAccountHits = new();
     internal static void IncrementCarryForwardAccountHits() => _carryForwardAccountHits.Increment();
+    internal static void AddCarryForwardAccountHits(long count) => _carryForwardAccountHits.Add(count);
 
     [DetailedMetric]
     [CounterMetric]
@@ -120,6 +121,7 @@ public static class Metrics
     public static long CarryForwardAccountMisses => _carryForwardAccountMisses.Sum;
     private static readonly StripedLong _carryForwardAccountMisses = new();
     internal static void IncrementCarryForwardAccountMisses() => _carryForwardAccountMisses.Increment();
+    internal static void AddCarryForwardAccountMisses(long count) => _carryForwardAccountMisses.Add(count);
 
     [DetailedMetric]
     [CounterMetric]
@@ -127,6 +129,7 @@ public static class Metrics
     public static long CarryForwardSlotHits => _carryForwardSlotHits.Sum;
     private static readonly StripedLong _carryForwardSlotHits = new();
     internal static void IncrementCarryForwardSlotHits() => _carryForwardSlotHits.Increment();
+    internal static void AddCarryForwardSlotHits(long count) => _carryForwardSlotHits.Add(count);
 
     [DetailedMetric]
     [CounterMetric]
@@ -134,6 +137,7 @@ public static class Metrics
     public static long CarryForwardSlotMisses => _carryForwardSlotMisses.Sum;
     private static readonly StripedLong _carryForwardSlotMisses = new();
     internal static void IncrementCarryForwardSlotMisses() => _carryForwardSlotMisses.Increment();
+    internal static void AddCarryForwardSlotMisses(long count) => _carryForwardSlotMisses.Add(count);
 
     [CounterMetric]
     [Description("Times the carry-forward account cache was cleared wholesale because its entry cap was reached")]

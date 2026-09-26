@@ -162,6 +162,7 @@ public class FlatWorldStateScopeProviderTests
 
         private IContainer? _container;
         private IContainer Container => _container ??= _containerBuilder.Build();
+        private readonly IPersistence.IPersistenceReader _persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
 
         public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
         public IFlatDbManager FlatDbManager => field ??= Container.Resolve<IFlatDbManager>();
@@ -169,7 +170,7 @@ public class FlatWorldStateScopeProviderTests
         public SnapshotBundle SnapshotBundle => Container.Resolve<SnapshotBundle>();
         public SnapshotPooledList ReadOnlySnapshots = new(0);
         public List<Snapshot> LocalSnapshots { get; } = [];
-        public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
+        public IPersistence.IPersistenceReader PersistenceReader => _persistenceReader;
         public Snapshot? LastCommittedSnapshot { get; set; }
 
         public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false)
@@ -185,7 +186,7 @@ public class FlatWorldStateScopeProviderTests
                     .AddKeyedSingleton<IDb>(DbNames.Code, new TestMemDb())
                     .AddSingleton<IBlockTree>(blockTree ?? Substitute.For<IBlockTree>())
                     .AddSingleton<ITrieWarmer, NoopTrieWarmer>()
-                    .AddSingleton<IPersistence.IPersistenceReader>(_ => Substitute.For<IPersistence.IPersistenceReader>())
+                    .AddSingleton<IPersistence.IPersistenceReader>(_ => new DelegatingPersistenceReader(_persistenceReader))
                     .AddSingleton<IFlatDbManager>(_ =>
                     {
                         IFlatDbManager flatDiff = Substitute.For<IFlatDbManager>();
@@ -284,6 +285,21 @@ public class FlatWorldStateScopeProviderTests
                 snapshotContent,
                 ResourcePool,
                 ResourcePool.Usage.MainBlockProcessing));
+        }
+
+        private sealed class DelegatingPersistenceReader(IPersistence.IPersistenceReader inner) : IPersistence.IPersistenceReader
+        {
+            public Account? GetAccount(Address address) => inner.GetAccount(address);
+            public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => inner.TryGetSlot(address, slot, ref outValue);
+            public StateId CurrentState => inner.CurrentState;
+            public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
+            public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);
+            public byte[]? GetAccountRaw(in ValueHash256 addrHash) => inner.GetAccountRaw(addrHash);
+            public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => inner.TryGetStorageRaw(addrHash, slotHash, ref value);
+            public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => inner.CreateAccountIterator(startKey, endKey);
+            public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => inner.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
+            public bool IsPreimageMode => inner.IsPreimageMode;
+            public void Dispose() => inner.Dispose();
         }
     }
 
@@ -1070,6 +1086,14 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(slotRead866, Is.EqualTo(new UInt256(valueAtSelfDestruct, isBigEndian: true)), "Slot at self-destruct should be found");
         storageTree.Get(slotAfter, out UInt256 slotRead867);
         Assert.That(slotRead867, Is.EqualTo(new UInt256(valueAfter, isBigEndian: true)), "Slot after self-destruct should be found");
+
+        UInt256?[] batchedSlots = [new UInt256([0xFF], isBigEndian: true)];
+        int selfDestructStateIdx = ctx.SnapshotBundle.DetermineSelfDestructSnapshotIdx(addr);
+        ctx.SnapshotBundle.GetSlots(
+            [new StorageCell(addr, slotBefore)],
+            [selfDestructStateIdx],
+            batchedSlots);
+        Assert.That(batchedSlots[0], Is.Null, "Batched slot reads must clear stale output for self-destructed slots");
     }
 
     [Test]
