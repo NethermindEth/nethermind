@@ -306,26 +306,61 @@ public class StorageStridePrefetcherTests
     }
 
     /// <remarks>
-    /// Drives the reader cap of <see cref="PrewarmerScopeProvider"/> over a substituted backend, so it does not
-    /// depend on a storage layout.
+    /// This and the next test drive the reader cap of <see cref="PrewarmerScopeProvider"/> over a substituted
+    /// backend whose readers stay parked in their first read, so every engaged detector holds its reader slot
+    /// until released instead of idling out partway through the test.
     /// </remarks>
+    [Test]
+    public void PrewarmerScope_LimitsActiveReadersWithoutSpendingEngagementsOnDeferredDetectors()
+    {
+        const int detectorCount = 9;
+        const int activeDetectorCount = 4;
+        ControlledStorageTrees controlledTrees = new();
+        PrewarmerScopeProvider prewarmer = CreatePrewarmerOver(controlledTrees, new PreBlockCaches(TestPreBlockCachesConfig.Small));
+
+        using IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(null, new LocalMetrics());
+        try
+        {
+            controlledTrees.OwnerThreadId = Environment.CurrentManagedThreadId;
+            controlledTrees.HoldReaders();
+
+            IWorldStateScopeProvider.IStorageTree[] storages = new IWorldStateScopeProvider.IStorageTree[detectorCount];
+            for (int i = 0; i < storages.Length; i++)
+                storages[i] = scope.CreateStorageTree(new Address(Keccak.Compute($"stride-cap-{i}")));
+
+            for (int i = 0; i < activeDetectorCount; i++)
+                ReadStride(storages[i], startIndex: 1, count: 12);
+
+            Assert.That(controlledTrees.WaitForReaderTrees(activeDetectorCount), Is.True, "The initial detectors did not engage.");
+
+            // These detectors were created before the four reader slots filled. They must defer while the reader
+            // cap is full and must not consume the scope's total engagement budget.
+            for (int i = activeDetectorCount; i < detectorCount - 1; i++)
+                ReadStride(storages[i], startIndex: 1, count: 12);
+
+            // Free one reader slot. If the deferred detectors had consumed total engagements, the final detector
+            // would be rejected at eight even though a reader slot is now available.
+            BreakStride(storages[0]);
+            ReadStride(storages[^1], startIndex: 1, count: 12);
+
+            Assert.That(controlledTrees.WaitForReaderTrees(activeDetectorCount + 1), Is.True,
+                "A detector deferred by the active-reader cap consumed the total engagement budget.");
+            Assert.That(SpinWait.SpinUntil(() => controlledTrees.ReaderTreeCount > activeDetectorCount + 1, 200), Is.False,
+                "A detector engaged despite the active reader cap.");
+        }
+        finally
+        {
+            controlledTrees.ReleaseReaders();
+        }
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public void PrewarmerScope_EngagesDetectorCreatedWhileReadersHoldSlots(bool attemptBeforeSlotFree)
     {
         ControlledStorageTrees controlledTrees = new();
-        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
-        baseProvider.SupportsConcurrentScopes.Returns(true);
-        baseProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, baseScope));
-        baseScope.CreateStorageTree(Arg.Any<Address>())
-            .Returns(callInfo => controlledTrees.Get(callInfo.Arg<Address>()));
-
         PreBlockCaches caches = new(TestPreBlockCachesConfig.Small);
-        PrewarmerScopeProvider prewarmer = new(
-            baseProvider,
-            new PrewarmerState(caches, isPrewarmer: false),
-            LimboLogs.Instance);
+        PrewarmerScopeProvider prewarmer = CreatePrewarmerOver(controlledTrees, caches);
 
         using IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(null, new LocalMetrics());
         try
@@ -360,25 +395,37 @@ public class StorageStridePrefetcherTests
             StorageCell lateFarCell = new(lateAddress, 64);
             Assert.That(SpinWait.SpinUntil(() => caches.StorageCache.TryGetValue(in lateFarCell, out _), 5000), Is.True,
                 "The late detector did not warm a slot after the earlier detector released its slot.");
-
-            static void ReadStride(IWorldStateScopeProvider.IStorageTree storage, int startIndex, int count)
-            {
-                UInt256 index = (UInt256)(uint)startIndex;
-                for (int i = 0; i < count; i++, index++)
-                    storage.Get(in index, out _);
-            }
-
-            static void BreakStride(IWorldStateScopeProvider.IStorageTree storage)
-            {
-                UInt256 index = 10_000;
-                for (int i = 0; i < 16; i++, index += (UInt256)(101 + i * i))
-                    storage.Get(in index, out _);
-            }
         }
         finally
         {
             controlledTrees.ReleaseReaders();
         }
+    }
+
+    private static PrewarmerScopeProvider CreatePrewarmerOver(ControlledStorageTrees controlledTrees, PreBlockCaches caches)
+    {
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        baseProvider.SupportsConcurrentScopes.Returns(true);
+        baseProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, baseScope));
+        baseScope.CreateStorageTree(Arg.Any<Address>())
+            .Returns(callInfo => controlledTrees.Get(callInfo.Arg<Address>()));
+
+        return new PrewarmerScopeProvider(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
+    }
+
+    private static void ReadStride(IWorldStateScopeProvider.IStorageTree storage, int startIndex, int count)
+    {
+        UInt256 index = (UInt256)(uint)startIndex;
+        for (int i = 0; i < count; i++, index++)
+            storage.Get(in index, out _);
+    }
+
+    private static void BreakStride(IWorldStateScopeProvider.IStorageTree storage)
+    {
+        UInt256 index = 10_000;
+        for (int i = 0; i < 16; i++, index += (UInt256)(101 + i * i))
+            storage.Get(in index, out _);
     }
 
     private sealed class ControlledStorageTrees
@@ -404,16 +451,21 @@ public class StorageStridePrefetcherTests
             _releaseReaders.TrySetResult(true);
         }
 
-        public bool WaitForReaderTrees(int count) => SpinWait.SpinUntil(() =>
+        public int ReaderTreeCount
         {
-            int entered = 0;
-            foreach (KeyValuePair<Address, ControlledStorageTree> entry in _trees)
+            get
             {
-                if (entry.Value.HasReaderEntered) entered++;
-            }
+                int entered = 0;
+                foreach (KeyValuePair<Address, ControlledStorageTree> entry in _trees)
+                {
+                    if (entry.Value.HasReaderEntered) entered++;
+                }
 
-            return entered >= count;
-        }, 5000);
+                return entered;
+            }
+        }
+
+        public bool WaitForReaderTrees(int count) => SpinWait.SpinUntil(() => ReaderTreeCount >= count, 5000);
 
         private sealed class ControlledStorageTree(ControlledStorageTrees owner) : IWorldStateScopeProvider.IStorageTree
         {
