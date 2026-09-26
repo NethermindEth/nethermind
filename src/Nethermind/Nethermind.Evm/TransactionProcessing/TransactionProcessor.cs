@@ -732,7 +732,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.LogsToArray() : [];
+                    LogEntry[] logs = substate.LogCount != 0 ? substate.LogsToArray() : [];
                     tracer.MarkAsSuccess(executingAccount, spentGas, substate.Output.AsReadOnlyArray(), logs, stateRoot);
                 }
             }

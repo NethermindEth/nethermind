@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -43,7 +45,7 @@ public readonly ref struct TransactionSubstate
     }.ToFrozenDictionary();
 
     private readonly JournalSet<Address>? _destroyList;
-    private readonly JournalCollection<LogEntry> _logs;
+    private readonly JournalCollection<LogEntry>? _logs;
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
@@ -52,7 +54,12 @@ public readonly ref struct TransactionSubstate
     public ReadOnlyMemory<byte> Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
-    public JournalCollection<LogEntry> Logs => _logs;
+    public int LogCount => _logs?.Count ?? 0;
+
+    /// <summary>The log journal of an executed frame, which the destroy-list finalization appends to.</summary>
+    /// <remarks>A substate created without a journal (a plain value transfer without logs) has no destroy list,
+    /// so nothing appends to it; asking for its journal is a bug and throws instead of handing out a shared list.</remarks>
+    public JournalCollection<LogEntry> Logs => _logs ?? ThrowNoLogJournal();
     public JournalSet<Address>? DestroyList => _destroyList;
     internal bool ShouldRestoreRipemdTouch { get; init; }
 
@@ -82,7 +89,7 @@ public readonly ref struct TransactionSubstate
         Output = bytes;
         Refund = refund;
         _destroyList = destroyList;
-        _logs = logs ?? [];
+        _logs = logs;
         ShouldRevert = shouldRevert;
         EvmExceptionType = evmExceptionType;
 
@@ -106,7 +113,11 @@ public readonly ref struct TransactionSubstate
 
     public bool DestroyListContains(Address? address) => address is not null && _destroyList?.Contains(address) == true;
 
-    public LogEntry[] LogsToArray() => _logs.ToArray();
+    public LogEntry[] LogsToArray() => _logs is null ? [] : _logs.ToArray();
+
+    [DoesNotReturn, StackTraceHidden]
+    private static JournalCollection<LogEntry> ThrowNoLogJournal() =>
+        throw new InvalidOperationException("This substate was created without a log journal.");
 
     public static string EncodeErrorMessage(ReadOnlySpan<byte> span)
     {
