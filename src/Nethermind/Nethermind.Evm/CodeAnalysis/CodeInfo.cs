@@ -72,17 +72,16 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     internal ReadOnlySpan<byte> ExecutionCodeSpan
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => new(Volatile.Read(ref _executionCode) ?? CreateExecutionCode(), 0, Code.Length);
+        get => new(GetExecutionCode(), 0, Code.Length);
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private byte[] CreateExecutionCode()
+    private byte[] CreatePaddedCode()
     {
         ReadOnlySpan<byte> code = CodeSpan;
         byte[] padded = GC.AllocateUninitializedArray<byte>(code.Length + ExecutionPadding);
         code.CopyTo(padded);
         padded.AsSpan(code.Length).Clear();
-        return Interlocked.CompareExchange(ref _executionCode, padded, null) ?? padded;
+        return padded;
     }
     private Address? _delegatedAddress;
     internal Address? DelegatedAddress

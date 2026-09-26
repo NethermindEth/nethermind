@@ -112,24 +112,16 @@ public static partial class EvmInstructions
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
         if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        // Retrieve the code segment containing immediate data.
+        // Retrieve the code segment containing immediate data. Untraced code is padded, so the immediate and
+        // the next opcode are readable even past the end: a truncated immediate reads zeros and is followed by STOP.
         ref byte bytes = ref stack.Code;
         nint remainingCode = stack.CodeLength - programCounter;
         Instruction nextInstruction;
-        if (!TTracingInst.IsActive)
+        // A following jump or implicit STOP does not exempt PUSH2 from the stack limit.
+        if (!TTracingInst.IsActive && stack.Head >= EvmStack.MaxStackSize - 1)
         {
-            // A following jump or implicit STOP does not exempt PUSH2 from the stack limit.
-            if (stack.Head >= EvmStack.MaxStackSize - 1)
-            {
-                programCounter += Size;
-                return EvmExceptionType.StackOverflow;
-            }
-            if (remainingCode <= Size)
-            {
-                // Implicit STOP discards the stack, and no tracer or subsequent opcode can observe this push.
-                programCounter += Size;
-                return EvmExceptionType.None;
-            }
+            programCounter += Size;
+            return EvmExceptionType.StackOverflow;
         }
         if (!TTracingInst.IsActive &&
             ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size))

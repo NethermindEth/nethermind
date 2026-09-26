@@ -60,6 +60,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData("61ff", 21003UL, 1).SetName("Push2_truncated"),
         new TestCaseData("6000600001", 21009UL, 3).SetName("Add_at_end"),
         new TestCaseData("600060000100", 21009UL, 4).SetName("Explicit_stop_at_end"),
+        new TestCaseData("60003b", 21703UL, 2).SetName("ExtCodeSize_at_end"),
+        new TestCaseData("60003b15", 21706UL, 3).SetName("ExtCodeSize_IsZero_at_end"),
     ];
 
     private static readonly TestCaseData[] JumpFailureCases =
