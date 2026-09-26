@@ -205,6 +205,7 @@ public class SeqlockCacheTests
         SeqlockCache<SameHashKey, UInt256> cache = new(2);
         using Barrier start = new(4);
         Task[] tasks = new Task[4];
+        int totalHits = 0;
         for (int worker = 0; worker < tasks.Length; worker++)
         {
             int workerId = worker;
@@ -227,10 +228,13 @@ public class SeqlockCacheTests
                     }
                     if (clear && (i & 1023) == 0) cache.Clear();
                 }
-                Assert.That(hits, Is.GreaterThan(0));
+                Interlocked.Add(ref totalHits, hits);
             });
         }
         await Task.WhenAll(tasks);
+        // Not per worker: a writer preempted mid-write keeps its entry locked, and while both ways of the set are
+        // locked every read misses, which can span a running worker's whole loop.
+        Assert.That(totalHits, Is.GreaterThan(0));
     }
 
     [Test]
