@@ -817,6 +817,30 @@ public class FrameTxProcessorTests
         AssertStorage(Observer, 0, new UInt256(FrameTxSigHash.ComputeValue(tx).Bytes, isBigEndian: true));
     }
 
+    [Test]
+    public void Simulation_TxParamMaxCost_PlaceholderCoversSignedSignature()
+    {
+        UInt256 placeholder = SimulatedMaxCost(signed: false);
+        UInt256 signed = SimulatedMaxCost(signed: true);
+
+        Assert.That(placeholder, Is.GreaterThanOrEqualTo(signed));
+    }
+
+    /// <summary>The <c>TXPARAM</c> max_cost a frame observes with a SECP256K1 entry, run as simulation with its state kept.</summary>
+    private UInt256 SimulatedMaxCost(bool signed)
+    {
+        Transaction tx = TxParamObserverTx(0x06);
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, default)];
+        if (signed) SignCanonicalHash(tx, 0, TestItem.PrivateKeyB, TestItem.AddressB);
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.SkipValidationAndCommit);
+
+        Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+        return StorageAt(new StorageCell(Observer, 0));
+    }
+
     /// <summary>Builds the transaction whose body frame stores <c>TXPARAM param</c> into the observer's slot 0.</summary>
     private Transaction TxParamObserverTx(byte param)
     {
