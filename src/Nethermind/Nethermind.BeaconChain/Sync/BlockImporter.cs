@@ -669,9 +669,11 @@ public sealed class BlockImporter : IBlockImporter
 
         _runner.Prune();
         PruneStore(finalizedSlot);
+        // on_block refuses every block at or below the finalized epoch's start slot, even when that slot is empty.
+        ulong neverImportable = Math.Max(finalizedSlot, BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch));
         foreach ((Hash256 root, DeferredBlock deferred) in _deferred)
         {
-            if (deferred.Slot <= finalizedSlot)
+            if (deferred.Slot <= neverImportable)
             {
                 _deferred.Remove(root);
             }
