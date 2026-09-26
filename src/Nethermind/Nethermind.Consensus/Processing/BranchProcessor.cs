@@ -194,11 +194,13 @@ public class BranchProcessor(
                 // is built for one commit: every further commit keeps its block on the scope's own lookup path, which
                 // a cold read scans before the shared snapshots, and draws its buffers outside the processing pool.
                 // A read-only chain publishes no snapshots, so its next block could not open at this one.
+                // Opens at the block just committed rather than looking up the next block's parent, which a branch
+                // processed outside the block tree does not have there.
                 if (i < blocksCount - 1 && notReadOnly && worldStateCloser is not null)
                 {
                     worldStateCloser.Dispose();
                     worldStateCloser = null;
-                    worldStateCloser = BeginTargetScope(suggestedBlocks[i + 1]);
+                    worldStateCloser = stateProvider.BeginScope(processedBlock.Header);
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
