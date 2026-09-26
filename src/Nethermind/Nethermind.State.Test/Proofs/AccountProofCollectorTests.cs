@@ -662,8 +662,8 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 UInt256.Parse("111441116583694579330994579543328952341102629710800874549520941775158004606487")
             ];
             IDb memDb = new MemDb();
-            StateTree tree = new(new RawScopedTrieStore(memDb), LimboLogs.Instance);
-            StorageTree storageTree = new(new RawScopedTrieStore(memDb, address.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StateTree tree = new(new RawScopedTrieStore(new TestNodeStorage(memDb)), LimboLogs.Instance);
+            StorageTree storageTree = new(new RawScopedTrieStore(new TestNodeStorage(memDb), address.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
             foreach (UInt256 key in keys) storageTree.Set(key, [1]);
             storageTree.UpdateRootHash();
             storageTree.Commit();
