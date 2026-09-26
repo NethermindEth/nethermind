@@ -43,20 +43,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        &ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OnFlag>;
+        &RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OnFlag>;
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
         TerminatingOpcodeHandler<TOpcode, TTracingInst, TCancelable>()
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        &ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OffFlag>;
+        &RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OffFlag>;
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
         JumpIfOpcodeHandler<TTracingInst, TCancelable>()
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        &ExecuteJumpIfOpcode<TTracingInst, TCancelable>;
+        &RawCalliHelper.ExecuteJumpIfOpcode<TTracingInst, TCancelable>;
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]
         GenerateOpcodeHandlers<TTracingInst, TCancelable>(IReleaseSpec spec)
