@@ -284,17 +284,24 @@ internal static class SszCodecHelpers
         return firstOffset / SszOffsetSize;
     }
 
+    // Inlined into every variable-size list element's decode; the messages are built out of line.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void ValidateSszNextOffset(ReadOnlySpan<byte> data, int currentOffset, int nextOffset, string typeName)
+    {
+        if (nextOffset < currentOffset || nextOffset > data.Length)
+        {
+            ThrowInvalidSszNextOffset(data.Length, currentOffset, nextOffset, typeName);
+        }
+    }
+
+    private static void ThrowInvalidSszNextOffset(int dataLength, int currentOffset, int nextOffset, string typeName)
     {
         if (nextOffset < currentOffset)
         {
             ThrowInvalidSszData(typeName, $"offsets are out of order ({nextOffset} < {currentOffset}).");
         }
 
-        if (nextOffset > data.Length)
-        {
-            ThrowInvalidSszData(typeName, $"offset {nextOffset} exceeds the input length {data.Length}.");
-        }
+        ThrowInvalidSszData(typeName, $"offset {nextOffset} exceeds the input length {dataLength}.");
     }
 
     internal static void ValidateSszVectorLength<T>(ReadOnlySpan<T> items, int expectedLength, string typeName, string fieldName)
