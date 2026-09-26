@@ -52,7 +52,7 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
     }
 
     [Test]
-    public void Serves_the_head_only_when_its_verified_envelope_is_held([Values] bool held)
+    public void Never_serves_the_head_even_when_its_verified_envelope_is_held([Values] bool held)
     {
         EnvelopeChain chain = new();
         (Hash256 genesis, Hash256 genesisHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
@@ -65,7 +65,7 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
 
         chain.SetHead(head, Base + 1);
 
-        Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(held ? new[] { genesis, head } : new[] { genesis }));
+        Assert.That(chain.ServedRoots(Base, 2), Is.EqualTo(new[] { genesis }), "a held envelope does not make the head FULL; only fork choice can");
     }
 
     [Test]
@@ -74,14 +74,15 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
         EnvelopeChain chain = new();
         (Hash256 genesis, Hash256 genesisHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
         (Hash256 orphan, _) = chain.Put(Base + 1, genesis, genesisHash);
-        (Hash256 head, _) = chain.Put(Base + 2, genesis, genesisHash);
+        (Hash256 onChain, Hash256 onChainHash) = chain.Put(Base + 2, genesis, genesisHash);
+        (Hash256 head, _) = chain.Put(Base + 3, onChain, onChainHash);
         chain.Store.SetCanonicalRoot(Base, genesis);
         chain.Store.SetCanonicalRoot(Base + 1, orphan);
-        chain.Store.SetCanonicalRoot(Base + 2, head);
-        chain.AddEnvelopes(genesis, orphan, head);
-        chain.SetHead(head, Base + 2);
+        chain.Store.SetCanonicalRoot(Base + 2, onChain);
+        chain.AddEnvelopes(genesis, orphan, onChain);
+        chain.SetHead(head, Base + 3);
 
-        Assert.That(chain.ServedRoots(Base, 3), Is.EqualTo(new[] { genesis, head }), "a reorged-out root the index still names is not served");
+        Assert.That(chain.ServedRoots(Base, 3), Is.EqualTo(new[] { genesis, onChain }), "a reorged-out root the index still names is not served");
     }
 
     [Test]
@@ -101,11 +102,12 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
         EnvelopeChain chain = new();
         Hash256 fulu = chain.PutFulu(FirstGloasSlot - 1);
         (Hash256 first, Hash256 firstHash) = chain.Put(FirstGloasSlot, fulu, Hash256.Zero);
-        (Hash256 head, _) = chain.Put(FirstGloasSlot + 1, first, firstHash);
-        chain.AddEnvelopes(fulu, first, head);
-        chain.SetHead(preGloasHead ? fulu : head, preGloasHead ? FirstGloasSlot - 1 : FirstGloasSlot + 1);
+        (Hash256 second, Hash256 secondHash) = chain.Put(FirstGloasSlot + 1, first, firstHash);
+        (Hash256 head, _) = chain.Put(FirstGloasSlot + 2, second, secondHash);
+        chain.AddEnvelopes(fulu, first, second);
+        chain.SetHead(preGloasHead ? fulu : head, preGloasHead ? FirstGloasSlot - 1 : FirstGloasSlot + 2);
 
-        Assert.That(chain.ServedRoots(FirstGloasSlot - 1, 3), Is.EqualTo(preGloasHead ? [] : new[] { first, head }));
+        Assert.That(chain.ServedRoots(FirstGloasSlot - 1, 3), Is.EqualTo(preGloasHead ? [] : new[] { first, second }));
         long before = chain.BlockReads;
         chain.ServedRoots(FirstGloasSlot - 1, 3);
         Assert.That(chain.BlockReads - before, Is.Zero, "a pre-Gloas block that ends the walk is decoded once, not once per request");

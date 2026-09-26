@@ -224,7 +224,9 @@ public partial class GossipRouterTests
         RequestsOverLimit,
         SeenForBlockAndBuilder,
         SeenForBlockFromAnotherBuilder,
-        PreGloasSlot,
+        PreGloasSlotNotHeld,
+        PreGloasSlotForHeldGloasBlock,
+        PreGloasSlotBeforeFinalized,
         BlockNotHeld,
         NoStore,
         BlockNotGloas,
@@ -246,7 +248,9 @@ public partial class GossipRouterTests
     [TestCase(EnvelopeCase.RequestsOverLimit, MessageValidity.Rejected, GossipDropReason.LimitExceeded, false)]
     [TestCase(EnvelopeCase.SeenForBlockAndBuilder, MessageValidity.Ignored, GossipDropReason.Duplicate, false)]
     [TestCase(EnvelopeCase.SeenForBlockFromAnotherBuilder, MessageValidity.Ignored, null, true)]
-    [TestCase(EnvelopeCase.PreGloasSlot, MessageValidity.Ignored, GossipDropReason.InvalidField, false)]
+    [TestCase(EnvelopeCase.PreGloasSlotNotHeld, MessageValidity.Ignored, GossipDropReason.InvalidField, false)]
+    [TestCase(EnvelopeCase.PreGloasSlotForHeldGloasBlock, MessageValidity.Rejected, GossipDropReason.InvalidField, false)]
+    [TestCase(EnvelopeCase.PreGloasSlotBeforeFinalized, MessageValidity.Ignored, GossipDropReason.BeforeFinalized, false)]
     [TestCase(EnvelopeCase.BlockNotHeld, MessageValidity.Ignored, null, true)]
     [TestCase(EnvelopeCase.NoStore, MessageValidity.Ignored, null, true)]
     [TestCase(EnvelopeCase.BlockNotGloas, MessageValidity.Ignored, GossipDropReason.InvalidField, false)]
@@ -264,7 +268,9 @@ public partial class GossipRouterTests
     [TestCase(EnvelopeCase.Valid, MessageValidity.Ignored, null, true)]
     public void Envelope_verdict_and_consumption_follow_the_gossip_rules(EnvelopeCase testCase, MessageValidity expected, GossipDropReason? reason, bool raised)
     {
-        EnvelopeFixture fixture = new(withStore: testCase != EnvelopeCase.NoStore);
+        // Finality before the fork leaves a pre-Gloas payload slot above the finalized slot, so only the slot match can refuse it.
+        EnvelopeFixture fixture = new(withStore: testCase != EnvelopeCase.NoStore,
+            finalizedEpoch: testCase is EnvelopeCase.PreGloasSlotNotHeld or EnvelopeCase.PreGloasSlotForHeldGloasBlock ? Sepolia.GloasForkEpoch - 1 : null);
         SignedExecutionPayloadEnvelope envelope = fixture.Envelope();
         ExecutionPayloadEnvelope message = envelope.Message!;
         switch (testCase)
@@ -281,7 +287,11 @@ public partial class GossipRouterTests
             case EnvelopeCase.SeenForBlockFromAnotherBuilder:
                 fixture.Router.MarkEnvelopeSeen(fixture.BlockRoot, EnvelopeFixture.BuilderIndex + 1);
                 break;
-            case EnvelopeCase.PreGloasSlot:
+            case EnvelopeCase.PreGloasSlotNotHeld:
+                message.BeaconBlockRoot = Keccak.OfAnEmptyString;
+                message.Payload!.SlotNumber = FirstGloasSlot - 1;
+                break;
+            case EnvelopeCase.PreGloasSlotForHeldGloasBlock or EnvelopeCase.PreGloasSlotBeforeFinalized:
                 message.Payload!.SlotNumber = FirstGloasSlot - 1;
                 break;
             case EnvelopeCase.BlockNotHeld:
@@ -420,13 +430,13 @@ public partial class GossipRouterTests
 
         private readonly MemColumnsDb<BeaconChainDbColumns> _db = new();
 
-        public EnvelopeFixture(bool withStore)
+        public EnvelopeFixture(bool withStore, ulong? finalizedEpoch = null)
         {
             Store = new BeaconChainStore(_db, Sepolia);
             Timestamper = new ManualTimestamper(SepoliaSlotStart(WallSlot).AddSeconds(6));
             BeaconChainStatusHolder status = new(Sepolia, Timestamper)
             {
-                CurrentStatus = new StatusMessageV2 { ForkDigest = SepoliaGloasDigest, FinalizedRoot = Hash256.Zero, FinalizedEpoch = FinalizedEpoch, HeadRoot = Hash256.Zero },
+                CurrentStatus = new StatusMessageV2 { ForkDigest = SepoliaGloasDigest, FinalizedRoot = Hash256.Zero, FinalizedEpoch = finalizedEpoch ?? FinalizedEpoch, HeadRoot = Hash256.Zero },
             };
             BlockRoot = PutGloasBlock(WallSlot, Hash256.Zero);
             FinalizedRoot = PutGloasBlock(FinalizedBlockSlot, Hash256.Zero);
