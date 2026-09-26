@@ -80,7 +80,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Gossip blocks waiting for their parent, keyed by the unknown parent root.</summary>
     private readonly Dictionary<Hash256, List<ForkedSignedBeaconBlock>> _pendingByParent = [];
 
-    /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/> or <see cref="BlockImportResult.EngineUnavailable"/>, keyed by block root, awaiting a slot-tick retry.</summary>
+    /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.EngineUnavailable"/> or <see cref="BlockImportResult.ParentPayloadUnverified"/>, keyed by block root, awaiting a retry.</summary>
     private readonly Dictionary<Hash256, ForkedSignedBeaconBlock> _pendingRetry = [];
 
     private readonly ConcurrentDictionary<string, byte> _dialedPeerIds = new();
@@ -99,7 +99,6 @@ public sealed class BeaconSyncOrchestrator(
     private (ulong Epoch, byte[] Digest)? _nextRotation;
     private ulong _nextProgressLogSlot;
     private long _blocksSinceProgressLog;
-    private long _droppedGloasBlocks;
 
     private sealed record Tip(Hash256 Root, ulong Slot);
 
@@ -120,9 +119,6 @@ public sealed class BeaconSyncOrchestrator(
     internal (Hash256 Root, ulong Slot) SyncTip => (_syncTip.Root, _syncTip.Slot);
 
     internal ChannelWriter<WorkItem> WorkWriter => _work.Writer;
-
-    /// <summary>Gloas-shaped blocks dropped unimported because <see cref="IBlockImporter"/> takes only Fulu blocks.</summary>
-    internal long DroppedGloasBlocks => _droppedGloasBlocks;
 
     /// <summary>Runs the full sync flow from the given anchor until cancelled.</summary>
     public async Task RunAsync(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot, CancellationToken token)
@@ -214,7 +210,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <remarks>
     /// Blocks are imported with signature verification off: they were fully verified before being
     /// persisted. Parent linkage is still checked so a stale index tail (e.g. entries past an
-    /// unfinalized reorg point) stops the replay and leaves the rest to range sync.
+    /// unfinalized reorg point) stops the replay and leaves the rest to range sync. Envelopes are not
+    /// persisted, so a stored Gloas block that builds on its parent's full payload stands in for that
+    /// parent's verified envelope (see <see cref="IBlockImporter.Import"/>).
     /// </remarks>
     internal async Task ReplayStoredBlocksAsync(CancellationToken token)
     {
@@ -225,12 +223,12 @@ public sealed class BeaconSyncOrchestrator(
         for (ulong slot = _syncTip.Slot + 1; slot <= wallSlot; slot++)
         {
             token.ThrowIfCancellationRequested();
-            if (!store.TryGetCanonicalRoot(slot, out Hash256? root) || !store.TryGetBlock(root, out SignedBeaconBlock? block))
+            if (!store.TryGetCanonicalRoot(slot, out Hash256? root) || !store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block))
             {
                 continue;
             }
 
-            if (block.Message!.ParentRoot != expectedParent || importer.Import(block, root, verifySignatures: false) != BlockImportResult.Imported)
+            if (block.ParentRoot != expectedParent || importer.Import(block, root, verifySignatures: false) != BlockImportResult.Imported)
             {
                 break;
             }
@@ -296,27 +294,17 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>
     /// Imports one block and, on success, drains any gossip blocks that were waiting for it. The
     /// single choke point for all four callers of <see cref="IBlockImporter.Import"/>, so this is
-    /// also where a <see cref="BlockImportResult.DataUnavailable"/> or
+    /// also where a <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.ParentPayloadUnverified"/> or
     /// <see cref="BlockImportResult.EngineUnavailable"/> result is remembered for a later retry —
     /// wiring it in at only one call site would leave the other three silently dropping it.
     /// </summary>
-    /// <remarks>
-    /// A Gloas-shaped block is dropped as <see cref="BlockImportResult.Invalid"/> without calling the
-    /// importer, so it is never queued for a retry and no peer is penalized for serving it.
-    /// </remarks>
     internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token)
     {
         Hash256 root = block.ComputeMessageRoot();
-        if (block is not ForkedSignedBeaconBlock.OfFulu { Block: { } fulu })
-        {
-            DropGloasBlock(block, root);
-            return BlockImportResult.Invalid;
-        }
-
         long startMs = Environment.TickCount64;
-        BlockImportResult result = _importer!.Import(fulu, root, verifySignatures: true);
-        // Both results come after the state transition verified the proposer signature.
-        if (result is BlockImportResult.Imported or BlockImportResult.EngineUnavailable)
+        BlockImportResult result = _importer!.Import(block, root, verifySignatures: true);
+        // These results come after the importer verified the proposer signature.
+        if (result is BlockImportResult.Imported or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified)
         {
             gossipRouter.MarkProposalSeen(block.Slot, block.ProposerIndex);
         }
@@ -328,7 +316,7 @@ public sealed class BeaconSyncOrchestrator(
             _pendingRetry.Remove(root);
             await OnImportedAsync(root, block.Slot, token);
         }
-        else if (result is BlockImportResult.DataUnavailable or BlockImportResult.EngineUnavailable)
+        else if (result is BlockImportResult.DataUnavailable or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified)
         {
             QueuePendingRetry(root, block);
         }
@@ -379,6 +367,41 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
+    /// <summary>
+    /// Imports an execution payload envelope and, once its payload is recorded, re-drives at once every
+    /// pending block that waits on it as its full parent: the next slot's block needs that payload within the slot.
+    /// </summary>
+    internal async Task<ExecutionPayloadEnvelopeImportResult> ImportEnvelopeAsync(SignedExecutionPayloadEnvelope envelope, CancellationToken token)
+    {
+        ExecutionPayloadEnvelopeImportResult result = _importer!.ImportEnvelope(envelope);
+        if (result is not (ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic))
+        {
+            return result;
+        }
+
+        // The execution layer now holds the payload, and only forkchoiceUpdated makes it the head.
+        _importedSinceHeadStep = true;
+        Hash256 blockRoot = envelope.Message!.BeaconBlockRoot!;
+        List<ForkedSignedBeaconBlock>? children = null;
+        foreach (ForkedSignedBeaconBlock pending in _pendingRetry.Values)
+        {
+            if (pending.ParentRoot == blockRoot)
+            {
+                (children ??= []).Add(pending);
+            }
+        }
+
+        if (children is not null)
+        {
+            foreach (ForkedSignedBeaconBlock child in children)
+            {
+                await ImportBlockAsync(child, token);
+            }
+        }
+
+        return result;
+    }
+
     private async Task OnImportedAsync(Hash256 root, ulong slot, CancellationToken token)
     {
         if (slot > _syncTip.Slot)
@@ -409,19 +432,12 @@ public sealed class BeaconSyncOrchestrator(
     /// finalized slot, no block with a valid signature seen for its (slot, proposer), expected proposer per the lookahead.
     /// The proposer signature is verified by the state transition during the immediate import
     /// (the import runs with <c>verifySignatures: true</c> right below), so no separate
-    /// pre-verification pass is needed. A Gloas-shaped block is dropped before any of these, so it
-    /// neither marks its (slot, proposer) as seen nor starts a by-root backfill.
+    /// pre-verification pass is needed.
     /// </summary>
     internal async Task ProcessGossipBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token)
     {
         IBlockImporter importer = _importer!;
         Hash256 root = block.ComputeMessageRoot();
-        if (block is not ForkedSignedBeaconBlock.OfFulu { Block: { } fulu })
-        {
-            DropGloasBlock(block, root);
-            return;
-        }
-
         if (importer.IsKnown(root))
         {
             return;
@@ -438,7 +454,7 @@ public sealed class BeaconSyncOrchestrator(
             return;
         }
 
-        if (!importer.IsExpectedProposer(fulu))
+        if (!importer.IsExpectedProposer(block))
         {
             if (_logger.IsWarn) _logger.Warn($"Dropping gossip block at slot {block.Slot} with unexpected proposer {block.ProposerIndex}");
             return;
@@ -701,10 +717,6 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Runs one range-sync round from the sync tip into the work channel.</summary>
-    /// <remarks>
-    /// The round ends after the first Gloas-shaped block: <see cref="ImportBlockAsync"/> drops it, so the
-    /// tip cannot pass it, and fetching further would only download blocks the next round fetches again.
-    /// </remarks>
     internal async Task FeedRangeSyncRoundAsync(CancellationToken token)
     {
         Tip tip = _syncTip;
@@ -716,24 +728,6 @@ public sealed class BeaconSyncOrchestrator(
         await foreach (ForkedSignedBeaconBlock block in rangeSync.Run(tip.Root, tip.Slot, () => slotClock.CurrentSlot, token))
         {
             await _work.Writer.WriteAsync(new RangeBlockItem(block), token);
-            if (block is ForkedSignedBeaconBlock.OfGloas)
-            {
-                break;
-            }
-        }
-    }
-
-    /// <summary>Counts and logs a Gloas-shaped block that the Fulu-only <see cref="IBlockImporter"/> cannot take.</summary>
-    private void DropGloasBlock(ForkedSignedBeaconBlock block, Hash256 root)
-    {
-        // Warn once so a node past the fork says why its head stopped, then keep the per-block log at Debug.
-        if (++_droppedGloasBlocks == 1)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Dropping Gloas block {root} at slot {block.Slot}: this node cannot import Gloas blocks yet, so its head will not advance past the fork");
-        }
-        else if (_logger.IsDebug)
-        {
-            _logger.Debug($"Dropping Gloas block {root} at slot {block.Slot}: Gloas block import is not supported");
         }
     }
 

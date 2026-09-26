@@ -28,6 +28,8 @@ namespace Nethermind.BeaconChain.Sync;
 /// against the frozen post-state of exactly the block it names, one slot after that block. There is
 /// no store fallback for this tier: <see cref="BeaconChainStore"/> snapshots decode as
 /// <see cref="BeaconStateFulu"/> only, so a Gloas root that has aged out is unknown, not mis-typed.
+/// Gloas checkpoint candidates are also kept in a small epoch-boundary tier, as the Fulu ones are in
+/// the LRU above, so a justified root resolved first epochs later has not aged out with the per-block tier.
 /// </remarks>
 internal sealed class PostStateCache(BeaconChainStore store, BeaconChainSpec spec, Hash256 lineageRoot, BeaconStateFulu lineageState) : IForkChoiceStateProvider, IGloasBlockStateProvider
 {
@@ -39,6 +41,7 @@ internal sealed class PostStateCache(BeaconChainStore store, BeaconChainSpec spe
 
     private readonly LruCache<Hash256, BeaconStateFulu> _retained = new(RetainedStateCount, nameof(PostStateCache));
     private readonly LruCache<Hash256, BeaconStateGloas> _retainedGloas = new(RetainedGloasStateCount, nameof(PostStateCache) + "Gloas");
+    private readonly LruCache<Hash256, BeaconStateGloas> _retainedGloasBoundaries = new(RetainedStateCount, nameof(PostStateCache) + "GloasBoundaries");
 
     /// <summary>The root of the block whose post-state is <see cref="LineageState"/>.</summary>
     public Hash256 LineageRoot { get; private set; } = lineageRoot;
@@ -87,9 +90,17 @@ internal sealed class PostStateCache(BeaconChainStore store, BeaconChainSpec spe
     /// mutated afterwards, or an envelope for that block will be verified against a state its
     /// builder never saw. A lineage that keeps advancing in place retains a clone, not itself.
     /// </summary>
-    public void RetainGloas(Hash256 blockRoot, BeaconStateGloas state) => _retainedGloas.Set(blockRoot, state);
+    /// <param name="checkpointCandidate">Whether the block can be an epoch's checkpoint block, so its state also goes to the epoch-boundary tier.</param>
+    public void RetainGloas(Hash256 blockRoot, BeaconStateGloas state, bool checkpointCandidate = false)
+    {
+        _retainedGloas.Set(blockRoot, state);
+        if (checkpointCandidate)
+        {
+            _retainedGloasBoundaries.Set(blockRoot, state);
+        }
+    }
 
     /// <inheritdoc/>
     public BeaconStateGloas? GetGloasBlockState(Hash256 blockRoot) =>
-        _retainedGloas.TryGet(blockRoot, out BeaconStateGloas? retained) ? retained : null;
+        _retainedGloas.TryGet(blockRoot, out BeaconStateGloas? retained) || _retainedGloasBoundaries.TryGet(blockRoot, out retained) ? retained : null;
 }

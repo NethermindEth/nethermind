@@ -56,12 +56,20 @@ public static class SignatureSets
     }
 
     /// <summary>Verifies a block's proposer signature over <c>DOMAIN_BEACON_PROPOSER</c> at the block-slot epoch.</summary>
+    /// <exception cref="BeaconStateException">The proposer index is not a validator of <paramref name="state"/>, or <paramref name="pubkeys"/> has no key for it.</exception>
     public static bool VerifyProposerSignature(BeaconStateFulu state, SignedBeaconBlock block, PubkeyCache pubkeys) =>
         VerifyProposerSignature(state, block.Message!, block.Signature, pubkeys);
 
     /// <inheritdoc cref="VerifyProposerSignature(BeaconStateFulu, SignedBeaconBlock, PubkeyCache)"/>
     public static bool VerifyProposerSignature(BeaconStateFulu state, BeaconBlock block, BlsSignature signature, PubkeyCache pubkeys)
     {
+        // verify_block_signature indexes state.validators with the untrusted proposer_index (p2p beacon_block: [REJECT] a valid validator index).
+        ulong proposerIndex = block.ProposerIndex;
+        if (proposerIndex >= (ulong)state.Validators!.Length)
+            throw new BeaconStateException($"Block proposer index {proposerIndex} is not a validator index (registry size {state.Validators.Length})");
+        // Epoch processing inside process_slots can grow the registry past the cache.
+        if (proposerIndex >= (ulong)pubkeys.Count)
+            throw new BeaconStateException($"Block proposer index {proposerIndex} has no cached public key ({pubkeys.Count} cached)");
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(block.Slot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(block), domain);
         return Verify(pubkeys.GetPublicKey((int)block.ProposerIndex), signature, signingRoot);
