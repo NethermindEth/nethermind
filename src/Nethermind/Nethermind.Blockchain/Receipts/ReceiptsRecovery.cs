@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 if (transaction.SenderAddress is null && _forceRecoverSender)
                 {
-                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId);
+                    transaction.SenderAddress = receipt.Sender ?? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId);
                 }
 
                 receipt.TxType = transaction.Type;
