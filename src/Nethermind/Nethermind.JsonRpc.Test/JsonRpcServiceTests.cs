@@ -604,6 +604,35 @@ public class JsonRpcServiceTests
         ethRpcModule.DidNotReceive().eth_getBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<bool>());
     }
 
+    // Real requests carry UTF-8 params, so the trace_filter mode converter is also checked on that path.
+    [TestCase("\"garbage\"")]
+    [TestCase("\"Union\"")]
+    public void Trace_filter_rejects_unknown_mode_in_utf8_params(string mode)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        JsonRpcResponse response = TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",\"mode\":{mode}}}]");
+
+        AssertInvalidParamsWithoutData(response, "invalid trace filter mode, expected \"intersection\" or \"union\"");
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    // An explicit null mode is the same as omitting it.
+    [TestCase("", TraceFilterMode.Intersection)]
+    [TestCase(",\"mode\":null", TraceFilterMode.Intersection)]
+    [TestCase(",\"mode\":\"union\"", TraceFilterMode.Union)]
+    public void Trace_filter_reads_mode_in_utf8_params(string mode, TraceFilterMode expected)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+
+        using JsonRpcResponse response = TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\"{mode}}}]");
+
+        RpcTest.AssertSuccess(response);
+
+        traceRpcModule.Received(1).trace_filter(Arg.Is<TraceFilterForRpc>(filter => filter.Mode == expected));
+    }
+
     // #13156: a parameter the caller got wrong is answered with -32602; it must not also cost the operator a WARN line
     // (with a stack trace) per request. The detail stays available at Debug.
     [Test]

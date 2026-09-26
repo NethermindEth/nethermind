@@ -301,6 +301,69 @@ public class TraceStoreRpcModuleTests
         Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Latest, ToBlock = BlockParameter.Latest }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.DbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace))))).Using(JToken.EqualityComparer));
     }
 
+    private static readonly string StoreAToB = $"{TestItem.AddressA} -> {TestItem.AddressB}";
+    private static readonly string StoreBToB = $"{TestItem.AddressB} -> {TestItem.AddressB}";
+    private static readonly string StoreAToC = $"{TestItem.AddressA} -> {TestItem.AddressC}";
+    private static readonly string StoreRewardToC = $"reward -> {TestItem.AddressC}";
+
+    // Stores A -> B, B -> B, A -> C and a reward to C at the latest block, then filters them with the given fields.
+    private static async Task<string[]> FilterStore(bool streaming, string fields)
+    {
+        TestContext test = new(streaming: streaming);
+        Hash256 block = test.DbTrace.BlockHash!;
+        ParityLikeTxTrace Call(Address from, Address to) => new()
+        {
+            BlockHash = block,
+            TransactionHash = test.DbTrace.TransactionHash,
+            Action = new ParityTraceAction { Type = "call", CallType = "call", From = from, To = to }
+        };
+        ParityLikeTxTrace reward = new() { BlockHash = block, Action = new ParityTraceAction { Type = "reward", Author = TestItem.AddressC, RewardType = "block" } };
+        test.Store.Set(block, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize(
+            new[] { Call(TestItem.AddressA, TestItem.AddressB), Call(TestItem.AddressB, TestItem.AddressB), Call(TestItem.AddressA, TestItem.AddressC), reward }));
+
+        // Read as the RPC server reads it, so an omitted or null mode takes the default.
+        TraceFilterForRpc filter = JsonSerializer.Deserialize<TraceFilterForRpc>(
+            $"{{\"fromBlock\":\"latest\",\"toBlock\":\"latest\"{fields}}}",
+            EthereumJsonSerializer.JsonRpcRequestOptions)!;
+        using JsonRpcResponse response = test.Module.trace_filter(filter);
+
+        // Written as the RPC server writes it, so the streaming case runs the streamed filter, not the buffered one.
+        JToken result = JToken.Parse(Encoding.UTF8.GetString(await Serialize(response)))["result"]!;
+        return [.. result.Select(static trace => $"{trace["action"]!["from"] ?? "reward"} -> {trace["action"]!["to"] ?? trace["action"]!["author"]}")];
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_combines_address_lists_by_mode(
+        [Values(null, "null", "\"intersection\"", "\"union\"")] string? mode,
+        [Values] bool streaming)
+    {
+        string modeField = mode is null ? "" : $",\"mode\":{mode}";
+        string[] matched = await FilterStore(streaming, $",\"fromAddress\":[\"{TestItem.AddressA}\"],\"toAddress\":[\"{TestItem.AddressC}\"]{modeField}");
+        string[] expected = mode == "\"union\"" ? [StoreAToB, StoreAToC, StoreRewardToC] : [StoreAToC];
+        Assert.That(matched, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_reads_an_empty_address_list_as_unrestricted(
+        [Values(null, "\"intersection\"", "\"union\"")] string? mode,
+        [Values] bool streaming)
+    {
+        string modeField = mode is null ? "" : $",\"mode\":{mode}";
+        string[] all = [StoreAToB, StoreBToB, StoreAToC, StoreRewardToC];
+        string[] toC = await FilterStore(streaming, $",\"toAddress\":[\"{TestItem.AddressC}\"]{modeField}");
+        string[] fromA = await FilterStore(streaming, $",\"fromAddress\":[\"{TestItem.AddressA}\"]{modeField}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(toC, Is.EqualTo(new[] { StoreAToC, StoreRewardToC }));
+            Assert.That(fromA, Is.EqualTo(new[] { StoreAToB, StoreAToC }));
+            Assert.That(await FilterStore(streaming, $",\"fromAddress\":[],\"toAddress\":[\"{TestItem.AddressC}\"]{modeField}"), Is.EqualTo(toC));
+            Assert.That(await FilterStore(streaming, $",\"fromAddress\":[\"{TestItem.AddressA}\"],\"toAddress\":[]{modeField}"), Is.EqualTo(fromA));
+            Assert.That(await FilterStore(streaming, $",\"fromAddress\":[],\"toAddress\":[]{modeField}"), Is.EqualTo(all));
+            Assert.That(await FilterStore(streaming, $",\"fromAddress\":[]{modeField}"), Is.EqualTo(all));
+            Assert.That(await FilterStore(streaming, $",\"toAddress\":[]{modeField}"), Is.EqualTo(all));
+        }
+    }
+
     [Test]
     public void trace_filter_returns_from_inner_module_when_any_block_trace_is_missing([Values(0, 1, 2)] int parallelization)
     {
