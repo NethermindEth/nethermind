@@ -1674,7 +1674,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // left in gas_left (including refunded spill), so only the reservoir goes unspent here.
             ulong preRefundGas = tx.GasLimit - (ulong)stateReservoir;
             // The execution gas refund (e.g. EIP-7702 ACCOUNT_WRITE) survives a halt: the spec adds it to
-            // the refund counter pre-execution and applies min(before_refund / 5, counter) to tx_gas_used.
+            // the refund counter pre-execution and applies min(before_refund / 5, counter) (uncapped under EIP-3298).
             ulong executionRefund = CalculateClaimableRefund(preRefundGas, codeInsertExecutionRefund, spec);
             ulong spentGas = Math.Max(preRefundGas - executionRefund, floorGas);
             // Spilled state gas burns in gas_left as execution gas; the state dimension keeps

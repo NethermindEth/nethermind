@@ -176,8 +176,54 @@ public class Eip3298SpecTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(spec.GasCosts.SClearRefund, eip3298Enabled ? Is.Zero : Is.EqualTo(fork.GasCosts.SClearRefund).And.Not.Zero);
+            Assert.That(spec.GasCosts.DestroyRefund, eip3298Enabled ? Is.Zero : Is.EqualTo(fork.GasCosts.DestroyRefund));
             Assert.That(RefundHelper.CalculateClaimableRefund(spentGas, refund, spec),
                 Is.EqualTo(eip3298Enabled ? refund : spentGas / (fork.IsEip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient)));
+        }
+    }
+}
+
+/// <summary>
+/// EIP-3298 enabled on a pre-EIP-3529 base: without the cap, the SELFDESTRUCT refund would exceed the gas it
+/// is netted against, so it is removed along with the storage-clear refund.
+/// </summary>
+[TestFixture(true)]
+[TestFixture(false)]
+public class Eip3298PreLondonTests(bool eip3298Enabled) : VirtualMachineTestsBase
+{
+    private const int Contracts = 3;
+
+    protected override ulong BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
+    protected override ISpecProvider SpecProvider { get; } =
+        new TestSpecProvider(new OverridableReleaseSpec(Berlin.Instance) { IsEip3298Enabled = eip3298Enabled });
+
+    [Test]
+    public void Selfdestruct_refund_does_not_exceed_gas_used()
+    {
+        Prepare code = Prepare.EvmCode;
+        byte[] selfDestruct = Prepare.EvmCode.PushData(Miner).Op(Instruction.SELFDESTRUCT).Done;
+        for (int i = 0; i < Contracts; i++)
+        {
+            Address contract = Address.FromNumber((UInt256)(0x1000 + i));
+            TestState.CreateAccount(contract, 0);
+            TestState.InsertCode(contract, selfDestruct, Spec);
+            code.Call(contract, 50_000);
+        }
+
+        TestState.Commit(Spec);
+
+        TestAllTracerWithOutput result = Execute(Activation, 1_000_000, code.Done);
+
+        ulong preRefundGas = result.GasConsumedResult.MaxUsedGas;
+        ulong expectedRefund = eip3298Enabled
+            ? 0
+            : Math.Min(preRefundGas / RefundHelper.MaxRefundQuotient, Contracts * RefundOf.DestroyBeforeEip3529);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(result.GasConsumedResult.GasRefund, Is.EqualTo(expectedRefund));
+            Assert.That(result.GasSpent, Is.EqualTo(preRefundGas - expectedRefund));
         }
     }
 }

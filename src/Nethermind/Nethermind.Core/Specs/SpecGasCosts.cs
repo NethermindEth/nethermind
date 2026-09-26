@@ -124,7 +124,8 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
                     ? RefundOf.SClearAfterEip3529
                     : RefundOf.SClearBeforeEip3529;
 
-        DestroyRefund = spec.IsEip3529Enabled
+        // EIP-3298 lifts the refund cap, so an unbacked pre-EIP-3529 SELFDESTRUCT refund must not survive it.
+        DestroyRefund = spec.IsEip3529Enabled || spec.IsEip3298Enabled
             ? RefundOf.DestroyAfterEip3529
             : RefundOf.DestroyBeforeEip3529;
 
