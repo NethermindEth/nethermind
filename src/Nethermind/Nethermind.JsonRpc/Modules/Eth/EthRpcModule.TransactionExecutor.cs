@@ -40,7 +40,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
                 IReleaseSpec spec = GetSpec(header);
-                Result<Transaction> result = call.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec, validateFeeCapOrder: ValidatesFeeCapOrder);
+                Result<Transaction> result = ValidatesFeeCapOrder
+                    ? call.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec)
+                    : call.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
                 if (result.IsError) return result;
 
                 Transaction tx = result.Data;
