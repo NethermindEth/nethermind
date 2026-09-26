@@ -41,7 +41,6 @@ public class Eip8131Tests
     // With EIP-2780 the floor is anchored on the decomposed intrinsic base, which is 21000 for a value transfer to another account.
     private static readonly IReleaseSpec AmsterdamSpec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8131Enabled = true };
 
-    private static IEnumerable<IReleaseSpec> Specs() => [PragueSpec, AmsterdamSpec];
 
     private static TransactionBuilder<Transaction> ValueTransfer(TxType type) => Build.A.Transaction
         .WithType(type)
@@ -52,6 +51,17 @@ public class Eip8131Tests
     private static AuthorizationTuple Authorization() => new(1, TestItem.AddressC, 0, new Signature(new byte[64], 0));
 
     private static IEnumerable<TestCaseData> EipTestCases()
+    {
+        foreach ((string label, IReleaseSpec spec) in (ValueTuple<string, IReleaseSpec>[])[("without EIP-2780", PragueSpec), ("with EIP-2780", AmsterdamSpec)])
+        {
+            foreach (TestCaseData vector in EipVectors())
+            {
+                yield return new TestCaseData(spec, vector.Arguments[0], vector.Arguments[1]).SetName($"{vector.TestName}, {label}");
+            }
+        }
+    }
+
+    private static IEnumerable<TestCaseData> EipVectors()
     {
         yield return new TestCaseData(ValueTransfer(TxType.Legacy).TestObject, 21_000UL)
             .SetName("Bare ETH transfer");
@@ -88,25 +98,16 @@ public class Eip8131Tests
     }
 
     [TestCaseSource(nameof(EipTestCases))]
-    public void Floor_matches_eip_test_cases(Transaction transaction, ulong expectedFloor)
-    {
-        foreach (IReleaseSpec spec in Specs())
-        {
-            Assert.That(IntrinsicGasCalculator.Calculate(transaction, spec).FloorGas, Is.EqualTo(expectedFloor), spec.Name);
-        }
-    }
+    public void Floor_matches_eip_test_cases(IReleaseSpec spec, Transaction transaction, ulong expectedFloor) =>
+        Assert.That(IntrinsicGasCalculator.Calculate(transaction, spec).FloorGas, Is.EqualTo(expectedFloor));
 
     [TestCaseSource(nameof(EipTestCases))]
-    public void Intrinsic_gas_carries_no_content_surcharge(Transaction transaction, ulong _)
+    public void Intrinsic_gas_carries_no_content_surcharge(IReleaseSpec spec, Transaction transaction, ulong _)
     {
-        foreach (IReleaseSpec spec in Specs())
-        {
-            IReleaseSpec withoutFloorSurcharges = new OverridableReleaseSpec(spec) { IsEip7981Enabled = false, IsEip8131Enabled = false };
-            Assert.That(
-                IntrinsicGasCalculator.Calculate(transaction, spec).Standard,
-                Is.EqualTo(IntrinsicGasCalculator.Calculate(transaction, withoutFloorSurcharges).Standard),
-                spec.Name);
-        }
+        IReleaseSpec withoutFloorSurcharges = new OverridableReleaseSpec(spec) { IsEip7981Enabled = false, IsEip8131Enabled = false };
+        Assert.That(
+            IntrinsicGasCalculator.Calculate(transaction, spec).Standard,
+            Is.EqualTo(IntrinsicGasCalculator.Calculate(transaction, withoutFloorSurcharges).Standard));
     }
 
     // Six blob hashes: intrinsic 21000, content floor 33288.
