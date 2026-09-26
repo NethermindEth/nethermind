@@ -178,6 +178,23 @@ public class ForkChoiceRunnerReorgTests
     }
 
     /// <summary>
+    /// Fulu's <c>get_proposer_head</c> (specs/fulu/fork-choice.md, EIP-7917) has no <c>is_shuffling_stable</c>, so a late,
+    /// weak head in the last slot of an epoch is re-orged for a proposal in the first slot of the next, as one slot earlier.
+    /// The slot-30 committee is empty, so the parent's vote there comes from the slot-31 committee.
+    /// </summary>
+    [TestCase(29ul, 29ul, TestName = "proposal_in_the_last_slot_of_the_epoch")]
+    [TestCase(30ul, 31ul, TestName = "proposal_in_the_first_slot_of_the_next_epoch")]
+    public void Late_weak_head_is_reorged_on_either_side_of_an_epoch_boundary(ulong parentSlot, ulong voteSlot)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        Assert.That(chain.Committee(voteSlot), Is.Not.Empty, "fixture bug: the parent's vote needs a committee member");
+        ForkChoiceRunner runner = CreateRunner(chain);
+        (UnsignedChain.ChainBlock parent, UnsignedChain.ChainBlock head) = LateHeadOnParent(chain, runner, parentVoted: true, secondsIntoSlot: 0, parentSlot, voteSlot);
+
+        Assert.That(runner.GetProposerHead(head.Root, proposalSlot: parentSlot + 2), Is.EqualTo(parent.Root));
+    }
+
+    /// <summary>
     /// <c>is_parent_strong</c> needs the parent's score strictly above the threshold. A heavy validator outside the
     /// voting committee sets the justified total to 640 ETH plus <paramref name="totalOffsetGwei"/>, which puts the
     /// threshold exactly on the parent's single 32 ETH vote at offset 0, and 160 Gwei either side of it otherwise.
@@ -199,18 +216,22 @@ public class ForkChoiceRunnerReorgTests
         Assert.That(runner.GetProposerHead(head.Root, proposalSlot: 3), Is.EqualTo(expectReorg ? parent.Root : head.Root));
     }
 
-    /// <summary>A late, vote-less slot-2 head on a timely slot-1 parent, with the clock <paramref name="secondsIntoSlot"/> into slot 3.</summary>
-    private static (UnsignedChain.ChainBlock Parent, UnsignedChain.ChainBlock Head) LateHeadOnParent(UnsignedChain chain, ForkChoiceRunner runner, bool parentVoted, ulong secondsIntoSlot)
+    /// <summary>
+    /// A late, vote-less head at <paramref name="parentSlot"/> + 1 on a timely parent, with the clock <paramref name="secondsIntoSlot"/>
+    /// into the slot after the head. The parent's vote is cast by the committee of <paramref name="voteSlot"/>, the parent's slot by default.
+    /// </summary>
+    private static (UnsignedChain.ChainBlock Parent, UnsignedChain.ChainBlock Head) LateHeadOnParent(UnsignedChain chain, ForkChoiceRunner runner, bool parentVoted, ulong secondsIntoSlot, ulong parentSlot = 1, ulong? voteSlot = null)
     {
-        UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
-        UnsignedChain.ChainBlock head = chain.Extend(parent.Root, slot: 2, payloadHashByte: 0xa2);
-        TickTo(runner, slot: 1);
+        ulong headSlot = parentSlot + 1;
+        UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: parentSlot, payloadHashByte: 0xa1);
+        UnsignedChain.ChainBlock head = chain.Extend(parent.Root, slot: headSlot, payloadHashByte: 0xa2);
+        TickTo(runner, slot: parentSlot);
         Import(runner, parent);
-        // Past the attestation deadline of slot 2, so the head is late and gets no boost.
-        TickTo(runner, slot: 2, secondsIntoSlot: 5);
+        // Past the attestation deadline of the head's slot, so the head is late and gets no boost.
+        TickTo(runner, slot: headSlot, secondsIntoSlot: 5);
         Import(runner, head);
-        if (parentVoted) runner.OnAttestation(chain.Vote(1, parent.Root), verifySignature: false);
-        TickTo(runner, slot: 3, secondsIntoSlot);
+        TickTo(runner, slot: headSlot + 1, secondsIntoSlot);
+        if (parentVoted) runner.OnAttestation(chain.Vote(voteSlot ?? parentSlot, parent.Root), verifySignature: false);
         Assert.That(runner.GetHead(), Is.EqualTo(head.Root), "fixture bug: the late block must be the head");
         return (parent, head);
     }
