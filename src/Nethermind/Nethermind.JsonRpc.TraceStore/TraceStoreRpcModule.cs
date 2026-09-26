@@ -307,16 +307,8 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         return _traceModule.trace_block(blockParameter);
     }
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Hash256 txHash, long[] positions)
-    {
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
-        if (!traceTransaction.Result) return traceTransaction;
-        using (traceTransaction)
-        {
-            List<ParityTxTraceFromStore> traces = TraceRpcModule.ExtractPositionsFromTxTrace(positions, traceTransaction);
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
-        }
-    }
+    public ResultWrapper<ParityTxTraceFromStore?> trace_get(Hash256 txHash, long[] traceAddress) =>
+        TraceRpcModule.SelectTraceAddress(trace_transaction(txHash), traceAddress);
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Hash256 txHash, bool traceNonCanonical = false)
     {
