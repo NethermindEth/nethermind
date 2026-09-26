@@ -174,6 +174,37 @@ public static class JsonRpcResponseWriter
         return runtimeType == typeof(TValue) ? null : RpcPayloadTypeInfo.Get(options, runtimeType);
     }
 
+    /// <summary>Writes a response payload the way every response writes its result.</summary>
+    internal static void WritePayload<T>(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
+    {
+        if (TryWriteSimpleValue(writer, value))
+        {
+            return;
+        }
+
+        JsonTypeInfo? runtimeTypeInfo = GetRuntimePayloadTypeInfo(options, value);
+        if (runtimeTypeInfo is not null)
+        {
+            JsonSerializer.Serialize(writer, (object)value!, runtimeTypeInfo);
+        }
+        else
+        {
+            JsonSerializer.Serialize(writer, value, RpcPayloadTypeInfo<T>.Get(options));
+        }
+    }
+
+    /// <summary>Serializes a payload once, byte for byte as <see cref="WritePayload{T}"/> writes it in a response.</summary>
+    internal static byte[] SerializePayload<T>(T value, JsonSerializerOptions options)
+    {
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer, CreateWriterOptions(options)))
+        {
+            WritePayload(writer, value, options);
+        }
+
+        return buffer.WrittenSpan.ToArray();
+    }
+
     internal static bool TryWriteSimpleValue<T>(Utf8JsonWriter writer, T value)
     {
         if (typeof(T) == typeof(string))

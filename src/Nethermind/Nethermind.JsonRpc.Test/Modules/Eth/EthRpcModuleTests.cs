@@ -2247,8 +2247,10 @@ public partial class EthRpcModuleTests
             .To(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
-        yield return new TestCaseData(raw, "100", ErrorCodes.Timeout, "not included within 100ms")
+        yield return new TestCaseData(raw, "100", ErrorCodes.TxSyncTimeout, "not included within 100ms")
             .SetName("Timeout");
+        yield return new TestCaseData(raw, "100", ErrorCodes.TxSyncTimeout, $"\"data\":\"{tx.Hash}\"")
+            .SetName("TimeoutCarriesTransactionHash");
     }
 
     [Test]
@@ -2585,6 +2587,19 @@ public partial class EthRpcModuleTests
         Assert.That(result["error"], Is.Null);
         Assert.That(gasUsed, Is.EqualTo(21_000));
         Assert.That(result["accessList"]!.ToArray(), Is.Empty);
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_input_error_embeds_tx_hash()
+    {
+        using Context ctx = await Context.Create();
+        object tx = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{CreateAccessListSender}}","to":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","gas":"0x5207"}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", tx, "latest");
+
+        Assert.That(JToken.Parse(serialized)["error"]!["message"]!.Value<string>(),
+            Does.Match("^failed to apply transaction: 0x[0-9a-f]{64} err: intrinsic gas too low"));
     }
 
     [Test]

@@ -84,9 +84,10 @@ public class EthereumRunnerTests
     }
 
     /// <summary>Budget for a single start or stop of a runner under test.</summary>
-    /// <remarks><see cref="MaxTimeAttribute"/> only reports once the test returns, so it cannot end a
-    /// start or stop that never completes; without a bound, one takes the whole assembly into the CI
-    /// hang-dump watchdog. A runner on an in-memory DB is orders of magnitude under this.</remarks>
+    /// <remarks>This is what fails a smoke case whose steps deadlock on incorrect dependencies. A test-level
+    /// <see cref="MaxTimeAttribute"/> would only report once the test returns, and it also counts setup, which
+    /// is unbounded and can stall on slow CI hosts. Without a bound, a start or stop that never completes takes the
+    /// whole assembly into the CI hang-dump watchdog. A runner on an in-memory DB is orders of magnitude under this.</remarks>
     private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(30);
 
     private static readonly Lazy<ICollection<(string file, ConfigProvider configProvider)>>? _cachedProviders = new(InitOnce);
@@ -165,7 +166,6 @@ public class EthereumRunnerTests
     }
 
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
-    [MaxTime(20000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
     public async Task Smoke((string file, ConfigProvider configProvider) testCase, int testIndex)
     {
         if (testCase.configProvider is null)
@@ -181,7 +181,6 @@ public class EthereumRunnerTests
     }
 
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
-    [MaxTime(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
     public async Task Smoke_cancel((string file, ConfigProvider configProvider) testCase, int testIndex)
     {
         if (testCase.configProvider is null)
@@ -195,8 +194,45 @@ public class EthereumRunnerTests
         await SmokeTest(testCase.configProvider, testIndex, 30430, true);
     }
 
+    /// <summary>
+    /// Proves the real production container resolves a command by name and that a command which cannot do its
+    /// job fails the run instead of exiting Ok. Under <see cref="DiagnosticMode.MemDb"/> the block tree has no
+    /// head, so <c>verify-trie</c> has nothing to verify. Closure contents are covered by
+    /// <c>EthereumStepsManagerTests</c>.
+    /// </summary>
+    [Test]
+    [MaxTime(60000)]
+    public async Task Command_run_that_cannot_do_its_job_fails_without_exiting_ok()
+    {
+        Rlp.ResetDecoders(); // The global decoder registry is shared with every other test in this assembly.
+
+        ConfigProvider configProvider = new();
+        configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+        configProvider.Initialize();
+
+        PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
+        pluginLoader.Load();
+
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        ApiBuilder builder = new(processExitSource, configProvider, LimboLogs.Instance);
+        IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
+        plugins.Add(new RunnerTestPlugin(true));
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: "verify-trie");
+
+        try
+        {
+            Assert.That(async () => await runner.Start(CancellationToken.None).WaitAsync(RunnerTimeout),
+                Throws.TypeOf<StepDependencyException>());
+
+            processExitSource.DidNotReceive().Exit(ExitCodes.Ok);
+        }
+        finally
+        {
+            await runner.StopAsync();
+        }
+    }
+
     [TestCaseSource(nameof(ChainSpecRunnerTests))]
-    [MaxTime(300000)]
     public async Task Smoke_CanResolveAllSteps((string file, ConfigProvider configProvider) testCase, int testIndex)
     {
         if (testCase.configProvider is null)
@@ -215,7 +251,7 @@ public class EthereumRunnerTests
         ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), testCase.configProvider, LimboLogs.Instance);
         IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(testCase.configProvider, builder.ChainSpec);
         plugins.Add(new RunnerTestPlugin(true));
-        EthereumRunner runner = builder.CreateEthereumRunner(plugins);
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
 
         INethermindApi api = runner.Api;
 
@@ -383,7 +419,7 @@ public class EthereumRunnerTests
             ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
             IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
             plugins.Add(new RunnerTestPlugin());
-            EthereumRunner runner = builder.CreateEthereumRunner(plugins);
+            EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: null);
             LogPhase("setup", phaseTimer);
 
             using CancellationTokenSource cts = new();
@@ -445,7 +481,7 @@ public class EthereumRunnerTests
         }
     }
 
-    /// <summary>Reports how long a smoke test phase took, so a case over its <see cref="MaxTimeAttribute"/> names the phase that stalled.</summary>
+    /// <summary>Reports how long a smoke test phase took, so a slow case names the phase that stalled.</summary>
     private static void LogPhase(string name, Stopwatch phaseTimer)
     {
         TestContext.Out.WriteLine($"{name}: {phaseTimer.ElapsedMilliseconds} ms");
