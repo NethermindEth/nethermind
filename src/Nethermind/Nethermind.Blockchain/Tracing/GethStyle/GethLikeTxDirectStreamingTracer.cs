@@ -290,7 +290,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (_pendingError is not null) _writer.WriteString("error"u8, _pendingError);
 
         if (IsTracingStack) WriteStackArrayIfPresent();
-        if (IsTracingFullMemory) WriteMemoryArrayIfPresent();
+        if (IsTracingFullMemory && _memoryByteCount > 0) WriteMemoryArrayIfPresent();
         if (IsTracingOpLevelStorage && _pendingStorageTouched) WriteStorageObjectIfPresent();
         if (IsTracingReturnData && _returnDataByteCount > 0) WriteReturnDataValue();
 
