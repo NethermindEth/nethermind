@@ -425,9 +425,7 @@ public static partial class EvmInstructions
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
-            WriteSmallWordToSlot(ref topRef, 1UL);
-            if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(Bytes.OneByteSpan);
-            return EvmExceptionType.None;
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, vm);
         }
 
         ulong expSize = (ulong)(32 - leadingZeros);
@@ -436,15 +434,11 @@ public static partial class EvmInstructions
 
         if (a.IsZero)
         {
-            WriteSmallWordToSlot(ref topRef, 0UL);
-            if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(Bytes.ZeroByteSpan);
-            return EvmExceptionType.None;
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 0UL, vm);
         }
         if (a.IsOne)
         {
-            WriteSmallWordToSlot(ref topRef, 1UL);
-            if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(Bytes.OneByteSpan);
-            return EvmExceptionType.None;
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, vm);
         }
 
         // The result goes to a local first: the exponent it overwrites is still an input.
@@ -455,5 +449,15 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType WriteSmallExpResult<TGasPolicy, TTracingInst>(ref byte slot, ulong value, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        WriteSmallWordToSlot(ref slot, value);
+        if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(value == 0 ? Bytes.ZeroByteSpan : Bytes.OneByteSpan);
+        return EvmExceptionType.None;
     }
 }
