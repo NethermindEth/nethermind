@@ -40,7 +40,7 @@ public interface IWorldStateManager
     bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Persists and clears the in-memory state caches, e.g. once genesis is loaded.
+    /// Persist and clear cache. Used by some tests.
     /// </summary>
     void FlushCache(CancellationToken cancellationToken);
 

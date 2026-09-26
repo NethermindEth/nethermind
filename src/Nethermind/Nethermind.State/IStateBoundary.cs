@@ -22,7 +22,7 @@ public interface IStateBoundary
     /// </summary>
     ulong? BestPersistedState { get; }
 }
-/// <summary>Empty boundary for construction sites with no state backend.</summary>
+/// <summary>Empty boundary for construction sites with no state backend (e.g. simulated block trees).</summary>
 public sealed class NullStateBoundary : IStateBoundary
 {
     public static readonly NullStateBoundary Instance = new();
