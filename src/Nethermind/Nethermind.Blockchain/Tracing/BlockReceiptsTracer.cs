@@ -222,7 +222,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public void SetOperationMemorySize(ulong newSize) =>
         _currentTxTracer.SetOperationMemorySize(newSize);
 
-    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData) =>
+    public void SetOperationReturnData(ReadOnlySpan<byte> returnData) =>
         _currentTxTracer.SetOperationReturnData(returnData);
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) =>

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Init.Steps;
@@ -57,17 +58,18 @@ public class ImportFlatDbTests
         _columnsDb.Dispose();
     }
 
-    private ImportFlatDb CreateStep(BlockHeader head)
+    private ImportFlatDb CreateStep(BlockHeader? head) => CreateStep(head, new FlatDbConfig());
+
+    private ImportFlatDb CreateStep(BlockHeader? head, IFlatDbConfig flatDbConfig)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(Build.A.Block.WithHeader(head).TestObject);
+        blockTree.Head.Returns(head is null ? null : Build.A.Block.WithHeader(head).TestObject);
         return new ImportFlatDb(
             blockTree,
             _persistence,
             _nodeStorage,
             _importer,
-            Substitute.For<IProcessExitSource>(),
-            new FlatDbConfig(),
+            flatDbConfig,
             LimboLogs.Instance);
     }
 
@@ -87,7 +89,7 @@ public class ImportFlatDbTests
     }
 
     [Test]
-    public async Task Execute_WhenFlatDbAlreadyPopulated_SkipsImport()
+    public void Execute_WhenFlatDbAlreadyPopulated_FailsWithoutOverwriting()
     {
         StateId existing = new(5, _stateTree.RootHash);
         using (IPersistence.IWriteBatch seed = _persistence.CreateWriteBatch(StateId.PreGenesis, existing))
@@ -96,9 +98,37 @@ public class ImportFlatDbTests
         _persistence.Flush();
 
         BlockHeader head = Build.A.BlockHeader.WithNumber(10).WithStateRoot(_stateTree.RootHash).TestObject;
-        await CreateStep(head).Execute(CancellationToken.None);
+
+        // The step ends the process, so a quiet "nothing to do" would stop the node with exit 0 on every
+        // restart once the flag is left in a config after a finished import.
+        Assert.That(async () => await CreateStep(head).Execute(CancellationToken.None),
+            Throws.TypeOf<InvalidConfigurationException>()
+                .With.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.ForbiddenOptionValue));
 
         using IPersistence.IPersistenceReader after = _persistence.CreateReader();
         Assert.That(after.CurrentState, Is.EqualTo(existing), "existing flat db state must not be overwritten");
+    }
+
+    [Test]
+    public void Execute_WhenNothingToImport_Fails(
+        [Values("no head", "head state root absent from the trie db")] string scenario)
+    {
+        BlockHeader? head = scenario == "no head"
+            ? null
+            : Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        Assert.That(async () => await CreateStep(head).Execute(CancellationToken.None),
+            Throws.TypeOf<InvalidConfigurationException>()
+                .With.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.ForbiddenOptionValue));
+    }
+
+    [Test]
+    public void Execute_WithPreimageLayout_Fails()
+    {
+        BlockHeader head = Build.A.BlockHeader.WithNumber(1).WithStateRoot(_stateTree.RootHash).TestObject;
+
+        Assert.That(async () => await CreateStep(head, new FlatDbConfig { Layout = FlatLayout.PreimageFlat }).Execute(CancellationToken.None),
+            Throws.TypeOf<InvalidConfigurationException>()
+                .With.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.ForbiddenOptionValue));
     }
 }

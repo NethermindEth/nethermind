@@ -65,13 +65,13 @@ public static class StatelessExecutor
                 if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
                     KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
 #endif
-                for (int i = 0; i < transactions.Length; i++)
-                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].AsSpan()[1..]);
+                if (TryAssignSenders(transactions, payload.EncodedTransactions, publicKeys, specProvider, spec))
+                {
+                    using Witness witness = payload.Witness.ToWitness();
 
-                using Witness witness = payload.Witness.ToWitness();
-
-                // Reconstruction derives body roots; the hash check above binds them to the declared block hash.
-                success = Execute(block, witness, specProvider, validateHashes: false);
+                    // Reconstruction derives body roots; the hash check above binds them to the declared block hash.
+                    success = Execute(block, witness, specProvider, validateHashes: false);
+                }
             }
         }
         catch (Exception ex)
@@ -175,6 +175,38 @@ public static class StatelessExecutor
         ChainId = 0,
         SchemaId = 0
     };
+
+    /// <summary>
+    /// Binds each supplied public key to the signature of the transaction at the same index and assigns the
+    /// recovered sender, returning whether every key matched.
+    /// </summary>
+    /// <remarks>
+    /// The keys are an input hint and are verified rather than trusted: comparing against the key the signature
+    /// recovers also pins the recovery id, since a signature's other recovery candidate verifies just as well on
+    /// its own and would name a different sender.
+    /// </remarks>
+    private static bool TryAssignSenders(
+        Transaction[] transactions, byte[][] encodedTransactions, ReadOnlySpan<SszPublicKey> publicKeys,
+        ISpecProvider specProvider, IReleaseSpec spec)
+    {
+        EthereumEcdsa ecdsa = new(specProvider.ChainId);
+        Span<byte> recovered = stackalloc byte[PublicKey.PrefixedLengthInBytes];
+
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            Transaction transaction = transactions[i];
+
+            if (!ecdsa.TryRecoverPublicKey(transaction, encodedTransactions[i], recovered, !spec.ValidateChainId) ||
+                !publicKeys[i].AsSpan().SequenceEqual(recovered))
+            {
+                return false;
+            }
+
+            transaction.SenderAddress = PublicKey.ComputeAddress(recovered[1..]);
+        }
+
+        return true;
+    }
 
     /// <summary>Returns whether <paramref name="transactions"/> commit to exactly <paramref name="expected"/>, in order.</summary>
     internal static bool BlobVersionedHashesMatch(Transaction[] transactions, ReadOnlySpan<Hash256> expected)
