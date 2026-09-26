@@ -189,6 +189,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MSIZE] = OpcodeHandler<EnvUInt64Opcode<EvmInstructions.OpMSize<TGasPolicy>, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.GAS] = OpcodeHandler<GasOpcode<TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.JUMPDEST] = OpcodeHandler<JumpDestOpcode, TTracingInst, TCancelable>();
+        if (spec.IsEip7979Enabled)
+        {
+            lookup[(int)Instruction.CALLSUB] = OpcodeHandler<CallSubOpcode<TTracingInst>, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.CALLDEST] = OpcodeHandler<CallDestOpcode, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.RETURNSUB] = OpcodeHandler<ReturnSubOpcode, TTracingInst, TCancelable>();
+        }
 
         if (spec.TransientStorageEnabled)
         {
@@ -1271,6 +1277,34 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    private readonly struct CallSubOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            OpcodeResult result = TTracingInst.IsActive
+                ? EvmInstructions.InstructionCallSub(ref stack, ref gas, vm, programCounter)
+                : EvmInstructions.InstructionCallSubAndSkipCallDest(ref stack, ref gas, vm, programCounter);
+            programCounter = result.ProgramCounter;
+            return result.Exception;
+        }
+    }
+
+    /// <summary>EIP-7979 <c>CALLDEST</c>: a no-op marker priced as a <c>JUMPDEST</c>.</summary>
+    [SkipLocalsInit]
+    private readonly struct CallDestOpcode : IOpcodeBody
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            TGasPolicy.UpdateGas<GasPolicy.JumpDestGasCost>(ref gas) ? EvmExceptionType.None : EvmExceptionType.OutOfGas;
+    }
+
+    [SkipLocalsInit]
+    private readonly struct ReturnSubOpcode : IOpcodeBody
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionReturnSub(ref gas, vm, ref programCounter);
     }
 
     [SkipLocalsInit]

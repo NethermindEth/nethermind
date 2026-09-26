@@ -21,6 +21,7 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     private const int PUSHx = PUSH1 - 1;
     private const int JUMPDEST = (int)Instruction.JUMPDEST;
     private const int PUSH32 = (int)Instruction.PUSH32;
+    private const int CALLDEST = (int)Instruction.CALLDEST;
     private const int BitShiftPerInt64 = 6;
 
     private static readonly long[] _emptyJumpDestinationBitmap = new long[1];
@@ -34,6 +35,55 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
     }
+
+    // Volatile for the same cross-thread publication as the jump-destination bitmap; one per EIP-8024 setting.
+    private volatile long[]? _jumpAndCallDestinationBitmap;
+    private volatile long[]? _jumpAndCallDestinationBitmapEip8024;
+
+    /// <summary>The EIP-7979 destination bitmap, built on first use; one bit per <c>JUMPDEST</c> or <c>CALLDEST</c> instruction.</summary>
+    /// <param name="eip8024">Whether EIP-8024 immediates are instruction data, so a <c>CALLDEST</c> byte inside one is not marked.</param>
+    /// <remarks>
+    /// Kept apart from <see cref="JumpDestinationBitmap"/> because the code info is shared across forks. The
+    /// <c>JUMPDEST</c> bits are the same either way: an EIP-8024 immediate is never <c>0x5b</c> or a PUSH.
+    /// </remarks>
+    internal long[] GetJumpAndCallDestinationBitmap(bool eip8024) => eip8024
+        ? _jumpAndCallDestinationBitmapEip8024 ??= CreateJumpAndCallDestinationBitmap(eip8024: true)
+        : _jumpAndCallDestinationBitmap ??= CreateJumpAndCallDestinationBitmap(eip8024: false);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private long[] CreateJumpAndCallDestinationBitmap(bool eip8024)
+    {
+        ReadOnlySpan<byte> code = MachineCode.Span;
+        if ((uint)code.Length < (uint)1 || code[0] == (byte)Instruction.STOP) return _emptyJumpDestinationBitmap;
+
+        long[] bitmap = CreateBitmap(code.Length);
+        for (int pc = 0; pc < code.Length; pc++)
+        {
+            int op = code[pc];
+            if (op is JUMPDEST or CALLDEST)
+            {
+                bitmap[pc >> BitShiftPerInt64] |= 1L << pc;
+            }
+            else if ((uint)(op - PUSH1) <= PUSH32 - PUSH1)
+            {
+                pc += op - PUSHx;
+            }
+            else if (eip8024 && pc + 1 < code.Length && IsEip8024Immediate(op, code[pc + 1]))
+            {
+                pc++;
+            }
+        }
+
+        return bitmap;
+    }
+
+    /// <summary>Whether <paramref name="next"/> is a valid EIP-8024 immediate of <paramref name="op"/>, and so not an instruction.</summary>
+    private static bool IsEip8024Immediate(int op, byte next) => op switch
+    {
+        (int)Instruction.DUPN or (int)Instruction.SWAPN => (uint)(next - 0x5B) > 0x7F - 0x5B,
+        (int)Instruction.EXCHANGE => (uint)(next - 0x52) > 0x7F - 0x52,
+        _ => false,
+    };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool ValidateJump(int destination)
