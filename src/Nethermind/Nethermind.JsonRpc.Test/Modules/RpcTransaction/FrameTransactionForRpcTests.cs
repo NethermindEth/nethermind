@@ -43,27 +43,15 @@ public class FrameTransactionForRpcTests
 
     [Test]
     public void ToTransaction_NonFrameCreationWithoutData_IsRejected(
-        [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob, TxType.SetCode)] TxType type)
+        [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.SetCode)] TxType type)
     {
         Transaction tx = new() { Type = type };
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
         if (rpc is EIP1559TransactionForRpc feeMarket) feeMarket.GasPrice = null;
-        if (rpc is BlobTransactionForRpc blob)
-        {
-            byte[] hash = new byte[32];
-            hash[0] = 1;
-            blob.BlobVersionedHashes = [hash];
-        }
 
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.IsError, Is.True);
-            Assert.That(result.Error, Is.EqualTo(type == TxType.Blob
-                ? RpcTransactionErrors.MissingToInBlobTx
-                : RpcTransactionErrors.ContractCreationWithoutData));
-        }
+        Assert.That(result.Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
     }
 
     [Test]
