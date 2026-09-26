@@ -79,6 +79,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => inner.WriteBackCommittedState(takeSnapshot);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => inner.HintBal(bal, sink);
+        public void ApplyBal(ReadOnlyBlockAccessList bal) => inner.ApplyBal(bal);
 
         public void Dispose() => inner.Dispose();
     }

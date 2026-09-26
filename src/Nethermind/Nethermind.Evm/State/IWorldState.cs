@@ -40,6 +40,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser);
 
     Task HintBal(ReadOnlyBlockAccessList bal);
+
+    /// <inheritdoc cref="IWorldStateScopeProvider.IScope.ApplyBal"/>
+    void ApplyBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);

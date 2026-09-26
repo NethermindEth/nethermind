@@ -139,6 +139,8 @@ public class TrieStoreScopeProvider(
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
+        public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
+
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
             CancelHintBal();

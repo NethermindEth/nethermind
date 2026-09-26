@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain
         /// Observing the write rather than assuming it precedes the transactions is what makes that hold:
         /// it does precede them on the sequential paths, but not under parallel BAL, where the write is
         /// routed to a world state that discards storage writes and reaches the shared state only from
-        /// ApplyStateChanges — iteration zero of the same parallel loop as the transactions.
+        /// IWorldState.ApplyBal — iteration zero of the same parallel loop as the transactions.
         /// Storage-backed BLOCKHASH is not wired for that path regardless, since this provider reads the
         /// shared world state that loop is concurrently writing. Cached values come from state rather than
         /// from the block tree, which matters at the fork boundary where the buffer is still filling and

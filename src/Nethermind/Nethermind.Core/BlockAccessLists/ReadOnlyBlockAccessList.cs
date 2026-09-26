@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -64,6 +65,21 @@ public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList
 
     public ReadOnlyAccountChanges? GetAccountChanges(Address address)
         => _accountChanges.TryGetValue(address, out ReadOnlyAccountChanges? value) ? value : null;
+
+    /// <summary>Addresses of the accounts whose state the block changed, in address order.</summary>
+    /// <returns>A pooled list the caller owns and must dispose.</returns>
+    public ArrayPoolList<AddressAsKey> GetStateChangedAddresses()
+    {
+        ArrayPoolList<AddressAsKey> result = new(_orderedAccounts.Length);
+        foreach (ReadOnlyAccountChanges accountChanges in _orderedAccounts)
+        {
+            if (accountChanges.HasStateChanges)
+            {
+                result.Add(new AddressAsKey(accountChanges.Address));
+            }
+        }
+        return result;
+    }
 
     public ReadOnlyBlockAccessList() : this([], 0) { }
 

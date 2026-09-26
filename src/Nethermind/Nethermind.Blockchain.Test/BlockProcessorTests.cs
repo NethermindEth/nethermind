@@ -1533,7 +1533,7 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public void ApplyStateChanges_uses_parent_state_without_prestate_sentinels()
+    public void ApplyBal_uses_parent_state_without_prestate_sentinels()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -1544,7 +1544,7 @@ public class BlockProcessorTests
                 .TestObject)
             .TestObject;
 
-        ApplyStateChangesInParentScope(
+        ApplyBalInParentScope(
             bal,
             genesisSetup: stateProvider => stateProvider.CreateAccount(TestItem.AddressA, 100),
             assertState: stateProvider =>
@@ -1561,7 +1561,7 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public void ApplyStateChanges_creates_missing_account_from_balance_change()
+    public void ApplyBal_creates_missing_account_from_balance_change()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -1570,7 +1570,7 @@ public class BlockProcessorTests
                 .TestObject)
             .TestObject;
 
-        ApplyStateChangesInParentScope(
+        ApplyBalInParentScope(
             bal,
             genesisSetup: null,
             assertState: stateProvider =>
@@ -1585,9 +1585,9 @@ public class BlockProcessorTests
 
     // A predeploy mandating runtime code alone, leaving balance and nonce as they stand (EIP-8141's expiry
     // verifier), produces an account whose only BAL entry is a code change, so nothing else creates it.
-    // A slot write on a missing account is not an account change, so the hoisted creation must skip it.
+    // A slot write on a missing account is not an account change, so it must not create the account.
     [Test]
-    public void ApplyStateChanges_does_not_create_an_account_from_storage_changes_alone()
+    public void ApplyBal_does_not_create_an_account_from_storage_changes_alone()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
@@ -1596,7 +1596,7 @@ public class BlockProcessorTests
                 .TestObject)
             .TestObject;
 
-        ApplyStateChangesInParentScope(
+        ApplyBalInParentScope(
             bal,
             genesisSetup: null,
             assertState: stateProvider =>
@@ -1604,7 +1604,7 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public void ApplyStateChanges_creates_missing_account_from_code_change()
+    public void ApplyBal_creates_missing_account_from_code_change()
     {
         byte[] code = [0x60, 0x00];
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
@@ -1614,7 +1614,7 @@ public class BlockProcessorTests
                 .TestObject)
             .TestObject;
 
-        ApplyStateChangesInParentScope(
+        ApplyBalInParentScope(
             bal,
             genesisSetup: null,
             assertState: stateProvider =>
@@ -1687,7 +1687,7 @@ public class BlockProcessorTests
         Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2));
     }
 
-    private static void ApplyStateChangesInParentScope(
+    private static void ApplyBalInParentScope(
         ReadOnlyBlockAccessList bal,
         Action<IWorldState>? genesisSetup,
         Action<IWorldState> assertState)
@@ -1705,7 +1705,7 @@ public class BlockProcessorTests
         BlockHeader parent = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
         using (stateProvider.BeginScope(parent))
         {
-            BlockAccessListManager.ApplyStateChanges(bal, stateProvider, Amsterdam.Instance, shouldComputeStateRoot: false);
+            stateProvider.ApplyBal(bal);
             assertState(stateProvider);
         }
     }

@@ -37,6 +37,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);
 
+    public void ApplyBal(ReadOnlyBlockAccessList bal)
+        => State.ApplyBal(bal);
+
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => State.HasStateForBlock(baseBlock);
 
