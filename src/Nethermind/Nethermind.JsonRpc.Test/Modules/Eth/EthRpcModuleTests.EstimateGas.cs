@@ -152,7 +152,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task FrameGas_EstimateGas_FillsEveryFrameWhenProbeBudgetRunsOut()
+    public async Task FrameGas_EstimateGas_FillsEveryFrameWhenProbeBudgetRunsOut([Values] bool lastFrameNeedsHeadroom)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         ctx.Test.RpcConfig.EstimateErrorMargin = 0;
@@ -163,12 +163,16 @@ public partial class EthRpcModuleTests
         request.Frames[0] = verify;
         for (int i = 1; i < request.Frames.Length; i++)
             request.Frames[i] = new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = loop };
-        // A 512-iteration loop: an exact search on every frame needs more probes than the estimator allows.
-        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{loop}}}":{"code":"0x6102005b600190038060035700"}}""")!;
+        if (lastFrameNeedsHeadroom) request.Frames[^1].Target = TestItem.AddressD;
+        // A 512-iteration loop: an exact search on every frame needs more probes than the estimator allows. The
+        // headroom check reverts unless 100,000 gas remains, far above what it uses, so an unverified limit fails.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{loop}}}":{"code":"0x6102005b600190038060035700"},"{{{TestItem.AddressD}}}":{"code":"0x5a620186a010600c575f5ffd5b00"}}""")!;
 
         string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
 
-        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+        JToken? error = JToken.Parse(response)["error"];
+        if (lastFrameNeedsHeadroom) Assert.That(error?["message"]?.Value<string>(), Does.Contain("probes"), response);
+        else Assert.That(error, Is.Null, response);
     }
 
     [Test]

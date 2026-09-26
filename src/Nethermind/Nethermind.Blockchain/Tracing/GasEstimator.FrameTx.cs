@@ -86,6 +86,7 @@ public partial class GasEstimator
         tx.DecodedMaxFeePerGas = 0;
         int probes = 0;
         bool lastProbeReverted = false;
+        bool probesExhausted = false;
         TxFrameReceipt[]? receipts = null;
         (int? Frame, EvmExceptionType? Error) reservationFailure = default;
 
@@ -124,6 +125,8 @@ public partial class GasEstimator
         tx.DecodedMaxFeePerGas = feeCap;
         Probe(realFees: true, out string? finalError);
         executionReverted = finalError is not null && lastProbeReverted;
+        if (finalError is not null && probesExhausted)
+            finalError = $"frame gas search used all {MaxFrameProbes} probes before verifying every limit: {finalError}";
         return finalError is null ? frames : Result<TxFrame[]>.Fail(finalError);
 
         // Frames before index hold their final limits and later frames their reservations; index takes the rest.
@@ -194,7 +197,7 @@ public partial class GasEstimator
             ulong low = measured is null ? 0 : Math.Min(Used(measured, execution), high);
             ulong candidate = measured is null ? high / 2 : Optimistic(low, high, execution);
             // Out of probes: take the optimistic limit unverified; the final probe checks the whole assignment.
-            if (probes >= MaxFrameProbes - 1) high = candidate;
+            if (probes >= MaxFrameProbes - 1) (high, probesExhausted) = (candidate, true);
             for (int attempt = 0; attempt < 8 && probes < MaxFrameProbes - 1; attempt++)
             {
                 frames[index] = WithGas(frame, execution ? candidate : frame.ExecutionGasLimit, execution ? frame.StateGasLimit : candidate);
