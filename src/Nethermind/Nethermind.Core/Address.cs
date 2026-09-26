@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -141,13 +142,15 @@ namespace Nethermind.Core
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException(
-                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
-                    nameof(bytes));
+                ThrowInvalidLength(bytes.Length, nameof(bytes));
             }
 
             _bytes = new ValueAddress(bytes);
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidLength(int length, string paramName) =>
+            throw new ArgumentException($"{nameof(Address)} should be {Size} bytes long and is {length} bytes long", paramName);
 
         internal Address(in ValueAddress bytes) => _bytes = bytes;
 
