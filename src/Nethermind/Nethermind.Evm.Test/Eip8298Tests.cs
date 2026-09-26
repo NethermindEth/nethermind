@@ -66,7 +66,7 @@ public class Eip8298Tests : VirtualMachineTestsBase
     private static object[] InvalidSourceCases =
     {
         new object[] { "empty", null!, false },
-        new object[] { "eip7702-delegation", new byte[] { 0xef, 0x01, 0x00, 0x11, 0x22 }, true },
+        new object[] { "eip7702-delegation", Bytes.Concat(Eip7702Constants.DelegationHeader, TestItem.AddressF.Bytes), true },
         new object[] { "eip3541-ef", new byte[] { 0xef, 0x00 }, true },
     };
 
@@ -109,6 +109,57 @@ public class Eip8298Tests : VirtualMachineTestsBase
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)expected));
         AssertCodeHash(Recipient, Keccak.Compute(expected == 1 ? precompileCode : code));
+    }
+
+    [Test]
+    public void RevertAfterSetCodeFrom_RestoresCodeHash()
+    {
+        DeploySource();
+        Address child = TestItem.AddressE;
+        byte[] childCode = Prepare.EvmCode.SETCODEFROM(Source).POP().Revert(0, 0).Done;
+        TestState.CreateAccount(child, 1.Ether);
+        TestState.InsertCode(child, childCode, Spec);
+
+        TestAllTracerWithOutput result = Execute(Prepare.EvmCode.Call(child, 100_000).MSTORE(0).Return(32, 0).Done);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.Zero), "child call reverted");
+        AssertCodeHash(child, Keccak.Compute(childCode));
+    }
+
+    [Test]
+    public void DelegateCall_UpdatesExecutingAccount_NotCodeSource()
+    {
+        DeploySource();
+        Address library = TestItem.AddressE;
+        byte[] libraryCode = Prepare.EvmCode.SETCODEFROM(Source).STOP().Done;
+        TestState.CreateAccount(library, 1.Ether);
+        TestState.InsertCode(library, libraryCode, Spec);
+
+        TestAllTracerWithOutput result = Execute(Prepare.EvmCode.DelegateCall(library, 100_000).STOP().Done);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        AssertCodeHash(Recipient, SourceCodeHash);
+        AssertCodeHash(library, Keccak.Compute(libraryCode));
+    }
+
+    [Test]
+    public void CurrentFrameKeepsLoadedCode_LaterSelfCallRunsAdoptedCode()
+    {
+        DeploySource(Prepare.EvmCode.PushData(42).MSTORE(0).Return(32, 0).Done);
+        // Adopt, prove the frame continues by storing slot 1, then store what a CALL to self returns in slot 2.
+        byte[] code = Prepare.EvmCode.SETCODEFROM(Source).POP()
+            .PushData(0x11).PushData(1).Op(Instruction.SSTORE)
+            .Call(Recipient, 100_000).POP()
+            .PushData(32).PushData(0).PushData(0).Op(Instruction.RETURNDATACOPY)
+            .PushData(0).Op(Instruction.MLOAD).PushData(2).Op(Instruction.SSTORE)
+            .STOP().Done;
+
+        TestAllTracerWithOutput result = Execute(Activation, 1_000_000, code);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        AssertStorage(1, (UInt256)0x11);
+        AssertStorage(2, (UInt256)42);
     }
 
     [Test]
