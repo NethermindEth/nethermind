@@ -15,6 +15,8 @@ internal sealed class SocketSendLock : IDisposable
     private bool _faulted;
     private Exception? _failure;
 
+    internal bool IsFaulted => _faulted;
+
     internal Exception? Failure => _failure;
 
     internal async ValueTask WaitAsync(CancellationToken cancellationToken)

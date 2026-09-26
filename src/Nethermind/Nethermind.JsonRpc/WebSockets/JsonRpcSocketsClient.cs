@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -118,9 +119,12 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         {
             await cts.WhenAllSucceed(allTasks);
         }
-        catch (OperationCanceledException) when (_sendFailure.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested && _sendLock.Failure is { } failure
+            && (ex is OperationCanceledException || ex.InnerException == failure))
         {
-            throw new IOException("A JSON-RPC notification left an incomplete message.", _sendLock.Failure);
+            // Surface the failed send itself: the cancellation it caused, or a later sender's rejection wrapping it,
+            // would hide a client reset from disconnect filters.
+            ExceptionDispatchInfo.Throw(failure);
         }
     }
 
@@ -169,22 +173,23 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     {
         JsonRpcResponse response = result.Response ?? throw new InvalidOperationException("JSON-RPC result does not contain a response.");
         await _sendLock.WaitAsync(cancellationToken);
-        bool failed = false;
+        bool faulted = false;
         try
         {
-            long responseSize = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, response, cancellationToken);
+            long responseSize = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, _sendLock, response, cancellationToken);
             return (int)responseSize;
         }
-        catch (Exception ex)
+        catch
         {
-            _sendLock.Fault(ex);
-            failed = true;
+            // Only a failure that left part of the message on the stream faults the lock.
+            faulted = _sendLock.IsFaulted;
             throw;
         }
         finally
         {
             _sendLock.Release();
-            if (failed)
+            // A notification has no worker to fail, so an incomplete message ends the receive loop here.
+            if (faulted)
             {
                 lock (_sendFailure)
                 {
