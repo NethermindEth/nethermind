@@ -135,11 +135,12 @@ public static partial class EvmInstructions
         if (!TTracingInst.IsActive &&
             ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size))
                 is Instruction.JUMP or Instruction.JUMPI) &&
-            // Fuse only onto a destination already known valid; otherwise the push and the jump run unfused and
-            // the jump handler does whatever analysis the destination still needs. Either way the gas, the
-            // stack and the outcome are the same.
-            stack.IsKnownJumpDestination(destination = BinaryPrimitives.ReverseEndianness(
-                Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter)))))
+            // Fuse only onto a destination already known valid, or onto a JUMPI that will not be taken and so never
+            // validates it; otherwise the push and the jump run unfused and the jump handler does whatever analysis
+            // the destination still needs. Either way the gas, the stack and the outcome are the same.
+            (stack.IsKnownJumpDestination(destination = BinaryPrimitives.ReverseEndianness(
+                Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter))))
+             || (nextInstruction == Instruction.JUMPI && stack.PeekUInt256IsZero())))
         {
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
             if (nextInstruction == Instruction.JUMP)

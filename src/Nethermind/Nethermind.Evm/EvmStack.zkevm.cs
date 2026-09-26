@@ -11,9 +11,9 @@ public ref partial struct EvmStack
 {
     /// <summary>Reports whether <paramref name="destination"/> is a valid jump destination in <see cref="Code"/>.</summary>
     /// <remarks>
-    /// The code info's incremental bitmap covers only the code scanned so far, so a clear bit is not yet an
-    /// answer: it falls through to <see cref="CodeInfo.AnalyzeJump"/>, which extends the scan to reach the
-    /// destination. Repeat jumps to an already scanned destination take the bit test alone. See
+    /// The code info's incremental bitmap holds only the destinations analyzed so far, so a clear bit is not yet
+    /// an answer: it falls through to <see cref="CodeInfo.AnalyzeJump"/>, which analyzes the destination.
+    /// Repeat jumps to an already analyzed destination take the bit test alone. See
     /// <c>EvmStack.std.cs</c> for the host form, which analyzes the whole code up front.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -25,9 +25,9 @@ public ref partial struct EvmStack
             || (_codeInfo is not null && _codeInfo.AnalyzeJump(destination, bitmap, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength)));
     }
 
-    /// <summary>Reports whether <paramref name="destination"/> is a jump destination the scan has already reached.</summary>
+    /// <summary>Reports whether <paramref name="destination"/> is a jump destination already analyzed.</summary>
     /// <remarks>
-    /// A bit test and nothing else, so a false answer may only mean "not scanned yet". The fused PUSH2+JUMP
+    /// A bit test and nothing else, so a false answer may only mean "not analyzed yet". The fused PUSH2+JUMP
     /// fuses only on a true answer and otherwise runs the two unfused, leaving the scan to the jump handler:
     /// carrying the scan inline made the PUSH2 handler save and restore the callee-saved registers on every
     /// execution, though almost none of them scan.
