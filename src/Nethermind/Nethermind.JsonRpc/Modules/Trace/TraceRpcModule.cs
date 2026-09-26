@@ -403,13 +403,21 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IEnumerable<ParityTxTraceFromStore> RunBufferedTraceFilter(List<(Block Block, BlockHeader? Parent)> blocks, TxTraceFilter filter, CancellationToken cancellationToken)
         {
-            List<ParityTxTraceFromStore> result = [];
-            foreach ((Block block, BlockHeader? parentHeader) in blocks)
+            ArrayPoolList<ParityTxTraceFromStore> result = new(blocks.Count);
+            try
             {
-                if (filter.IsExhausted) break;
-                cancellationToken.ThrowIfCancellationRequested();
-                IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlockParallelOrReplay(parentHeader!, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, cancellationToken);
-                result.AddRange(filter.FilterTxTraces(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
+                foreach ((Block block, BlockHeader? parentHeader) in blocks)
+                {
+                    if (filter.IsExhausted) break;
+                    cancellationToken.ThrowIfCancellationRequested();
+                    IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlockParallelOrReplay(parentHeader!, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, cancellationToken);
+                    result.AddRange(filter.FilterTxTraces(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
+                }
+            }
+            catch
+            {
+                result.Dispose();
+                throw;
             }
 
             return result;
