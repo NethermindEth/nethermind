@@ -27,13 +27,16 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Precompiles;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Facade.Test;
 
@@ -926,6 +929,67 @@ public class BlockchainBridgeTests
         }
 
         testFactory.Received().Create();
+    }
+
+    [Test]
+    public void Single_call_env_remembers_resolved_code_for_the_rest_of_one_call()
+    {
+        using IContainer container = BuildCodeLookupContainer(out ICodeInfoRepository codeSource);
+        IBlockchainBridge blockchainBridge = container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge();
+
+        // Any override sends a call to the single-call env; the second call reuses the pooled env of the first.
+        const int calls = 2;
+        for (int i = 0; i < calls; i++)
+            blockchainBridge.Call(Build.A.BlockHeader.TestObject, new Transaction(), blobBaseFeeOverride: UInt256.One);
+
+        AssertCodeSourceLookups(codeSource, calls);
+    }
+
+    [Test]
+    public void Envs_from_the_overridable_env_factory_do_not_memoize_code()
+    {
+        using IContainer container = BuildCodeLookupContainer(out ICodeInfoRepository codeSource);
+        // Tracing and eth_simulateV1 build on these envs and run several transactions in one scope.
+        IOverridableEnv env = container.Resolve<IOverridableEnvFactory>().Create();
+        using ILifetimeScope envLifetime = container.BeginLifetimeScope(builder => builder.AddModule(env));
+
+        using (Scope<ITransactionProcessor> scope = envLifetime.Resolve<IOverridableEnv<ITransactionProcessor>>().BuildAndOverride(Build.A.BlockHeader.TestObject))
+        {
+            scope.Component.CallAndRestore(new Transaction(), NullTxTracer.Instance);
+        }
+
+        AssertCodeSourceLookups(codeSource, CodeLookupsPerCall);
+    }
+
+    private const int CodeLookupsPerCall = 3;
+
+    private static IContainer BuildCodeLookupContainer(out ICodeInfoRepository codeSource)
+    {
+        codeSource = Substitute.For<ICodeInfoRepository>();
+        codeSource.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>())
+            .Returns(new CodeInfo(new byte[] { 0x60, 0x00 }));
+        return new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddScoped(codeSource)
+            .AddScoped<ITransactionProcessor, CodeLookupTransactionProcessor>()
+            .Build();
+    }
+
+    private static void AssertCodeSourceLookups(ICodeInfoRepository codeSource, int expected) =>
+        codeSource.Received(expected).GetCachedCodeInfo(TestItem.AddressC, Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address?>());
+
+    // Stands in for the EVM: every call resolves the same contract's code a few times through the env's repository.
+    private sealed class CodeLookupTransactionProcessor(ICodeInfoRepository codeInfoRepository) : ITransactionProcessor
+    {
+        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
+        {
+            for (int i = 0; i < CodeLookupsPerCall; i++) codeInfoRepository.GetCachedCodeInfo(TestItem.AddressC, Prague.Instance);
+            return TransactionResult.Ok;
+        }
+
+        public void SetBlockExecutionContext(BlockHeader blockHeader) { }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
     }
 
     [Test]

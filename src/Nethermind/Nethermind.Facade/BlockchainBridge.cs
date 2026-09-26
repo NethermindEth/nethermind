@@ -703,6 +703,10 @@ namespace Nethermind.Facade
                 .AddScoped<SingleCallRequestState>()
                 .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
                 .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
+                // The memo relies on a scope running one transaction (re-run from the same state by estimateGas and
+                // createAccessList); an env that runs several transactions in one scope must not register it.
+                .AddScoped<ResolvedCodeMemo>()
+                .AddDecorator<ICodeInfoRepository, MemoizingCodeInfoRepository>()
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
             // Pool owns the scope. Registering with rootLifetimeScope.Disposer would retain every created env until shutdown
@@ -713,6 +717,7 @@ namespace Nethermind.Facade
                 inner,
                 overridableScopeLifetime,
                 overridableScopeLifetime.Resolve<IOverridableCodeInfoRepository>(),
+                overridableScopeLifetime.Resolve<ResolvedCodeMemo>(),
                 overridableScopeLifetime.Resolve<ISpecProvider>());
         }
 
@@ -720,6 +725,7 @@ namespace Nethermind.Facade
             IOverridableEnv<BlockchainBridge.BlockProcessingComponents> inner,
             IDisposable scope,
             IOverridableCodeInfoRepository codeInfoRepository,
+            ResolvedCodeMemo resolvedCode,
             ISpecProvider specProvider) : IOverridableEnv<BlockchainBridge.BlockProcessingComponents>, IDisposable
         {
             /// <inheritdoc/>
@@ -743,6 +749,7 @@ namespace Nethermind.Facade
                 // the overridden block number, which the overridden header relies on to resolve.
                 if (!inner.TryBuildAndOverride(header, stateOverride: null, specOverride, blockOverride, out scope)) return false;
 
+                scope = ClearResolvedCodeOnDispose(scope);
                 if (stateOverride is null || header is null) return true;
                 ApplyUnmerkleizedStateOverride(scope, stateOverride, header);
                 return true;
@@ -754,6 +761,7 @@ namespace Nethermind.Facade
             {
                 if (!inner.TryBuildAndOverrideAtTarget(targetBlock, stateOverride: null, specOverride, out scope)) return false;
 
+                scope = ClearResolvedCodeOnDispose(scope);
                 if (stateOverride is null) return true;
                 ApplyUnmerkleizedStateOverride(scope, stateOverride, targetBlock);
                 return true;
@@ -775,7 +783,20 @@ namespace Nethermind.Facade
                 }
             }
 
+            // The next renter of this pooled env must not be answered with code this scope resolved.
+            private Scope<BlockchainBridge.BlockProcessingComponents> ClearResolvedCodeOnDispose(Scope<BlockchainBridge.BlockProcessingComponents> scope) =>
+                new(scope.Component, new ResolvedCodeClearingCloser(scope, resolvedCode));
+
             public void Dispose() => scope.Dispose();
+
+            private sealed class ResolvedCodeClearingCloser(IDisposable scope, ResolvedCodeMemo resolvedCode) : IDisposable
+            {
+                public void Dispose()
+                {
+                    resolvedCode.Clear();
+                    scope.Dispose();
+                }
+            }
         }
     }
 }
