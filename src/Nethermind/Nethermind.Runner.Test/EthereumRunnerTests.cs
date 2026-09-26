@@ -261,8 +261,11 @@ public class EthereumRunnerTests
             release.Wait();
         });
         ILogger slowBlocks = new(slowBlockLogger);
+        // DEBUG builds turn on debug logging in ProcessingStats, so its class logger must wrap a real logger.
+        ILogger statsLogger = LimboLogs.Instance.GetClassLogger<ProcessingStats>();
         ILogManager logManager = Substitute.For<ILogManager>();
         logManager.GetLogger("SlowBlocks").Returns(slowBlocks);
+        logManager.GetClassLogger<ProcessingStats>().Returns(statsLogger);
         StartupPipelineWarmer.WarmMetrics warmMetrics = new();
         IProcessingStats stats = new StartupPipelineWarmer.WarmProcessingStats(live.StateReader, logManager, new BlocksConfig { SlowBlockThresholdMs = 0 }, warmMetrics);
 
