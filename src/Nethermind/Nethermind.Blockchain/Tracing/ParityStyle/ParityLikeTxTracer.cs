@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -96,19 +97,38 @@ public partial class ParityLikeTxTracer : TxTracer
         _ => "call"
     };
 
+    /// <summary>
+    /// Parity's and OpenEthereum's failure labels, with distinct labels for an address collision, which Parity reported
+    /// as out of gas, and for a failed balance check, for which Parity emitted no frame.
+    /// </summary>
     private static string? GetErrorDescription(EvmExceptionType evmExceptionType) => evmExceptionType switch
     {
         EvmExceptionType.None => null,
         EvmExceptionType.BadInstruction => "Bad instruction",
-        EvmExceptionType.StackOverflow => "Stack overflow",
+        EvmExceptionType.StackOverflow => "Out of stack",
         EvmExceptionType.StackUnderflow => "Stack underflow",
         EvmExceptionType.OutOfGas => "Out of gas",
         EvmExceptionType.InvalidJumpDestination => "Bad jump destination",
-        EvmExceptionType.AccessViolation => "Access violation",
-        EvmExceptionType.StaticCallViolation => "Static call violation",
+        EvmExceptionType.AccessViolation => "Out of bounds",
+        EvmExceptionType.StaticCallViolation => "Mutable Call In Static Context",
+        EvmExceptionType.PrecompileFailure => "Built-in failed",
+        EvmExceptionType.TransactionCollision => "Contract address collision",
+        EvmExceptionType.NotEnoughBalance => "Insufficient balance for transfer",
+        EvmExceptionType.InvalidCode => "Invalid code",
         EvmExceptionType.Revert => "Reverted",
         _ => "Error",
     };
+
+    /// <summary>
+    /// Frame labels by the exception name a failed substate reports as its error.
+    /// </summary>
+    private static readonly FrozenDictionary<string, string> ErrorDescriptionsBySubstateError = new[]
+    {
+        EvmExceptionType.BadInstruction, EvmExceptionType.StackOverflow, EvmExceptionType.StackUnderflow,
+        EvmExceptionType.OutOfGas, EvmExceptionType.InvalidJumpDestination, EvmExceptionType.AccessViolation,
+        EvmExceptionType.StaticCallViolation, EvmExceptionType.PrecompileFailure, EvmExceptionType.TransactionCollision,
+        EvmExceptionType.NotEnoughBalance, EvmExceptionType.Other, EvmExceptionType.InvalidCode,
+    }.ToFrozenDictionary(static type => type.FastToString(), static type => GetErrorDescription(type)!);
 
     public virtual ParityLikeTxTrace BuildResult()
     {
@@ -281,8 +301,13 @@ public partial class ParityLikeTxTracer : TxTracer
 
         if (_trace.Action is null)
         {
+            // No frame was entered, e.g. a creation colliding with an existing account: the frame halted, so it has
+            // no result, and its error is the substate's exception name, which is given the frame label.
             ParityTraceAction action = CreateRootActionFromTx();
-            action.Error = error;
+            action.Result = null;
+            action.Error = error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description)
+                ? description
+                : error;
             _trace.Action = action;
         }
     }
@@ -491,11 +516,22 @@ public partial class ParityLikeTxTracer : TxTracer
 
     public override void ReportActionError(EvmExceptionType evmExceptionType) => HandleActionError(evmExceptionType);
 
-    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => HandleActionError(EvmExceptionType.Revert, gas, output);
-
-    private void HandleActionError(EvmExceptionType evmExceptionType, ulong gasLeft = 0, ReadOnlyMemory<byte> output = default)
+    /// <summary>
+    /// Unlike an exceptional halt, a REVERT returns its data and unused gas, so the frame keeps a result with both.
+    /// A reverted creation deployed nothing, so its result has no address or code.
+    /// </summary>
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
-        _currentAction!.Result = _frameTx?.FailedActionResult(_currentAction, evmExceptionType, gasLeft, output);
+        ParityTraceResult result = _currentAction!.Result!;
+        result.Output = output.ToArray();
+        result.GasUsed = _currentAction.Gas - gas;
+        _currentAction.Error = GetErrorDescription(EvmExceptionType.Revert);
+        PopAction();
+    }
+
+    private void HandleActionError(EvmExceptionType evmExceptionType)
+    {
+        _currentAction!.Result = null;
         _currentAction.Error = GetErrorDescription(evmExceptionType);
         PopAction();
     }
