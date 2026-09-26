@@ -5,7 +5,6 @@ using System.Threading;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -38,10 +37,6 @@ public sealed class TransactionTraceBlockProcessor(
     }
 
     /// <inheritdoc/>
-    /// <remarks>Tracers read only execution; <see cref="IntermediateRootsBlockTracer"/> derives its roots itself.</remarks>
-    protected override bool ComputesCommitments(ProcessingOptions options) => !TransactionTraceBoundary.IsUnpersistedReplay(options);
-
-    /// <inheritdoc/>
     /// <remarks>Intentionally empty: the suggested block is the canonical instance and a replay never writes its artifacts back onto it.</remarks>
     protected override void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
     {
@@ -57,6 +52,9 @@ public sealed class TransactionTraceBlockProcessor(
             return receipts;
         }
 
-        return base.FinalizeBlock(block, blockTracer, options, spec, receipts);
+        // Tracers read only execution; IntermediateRootsBlockTracer derives its roots itself.
+        return TransactionTraceBoundary.IsUnpersistedReplay(options)
+            ? FinalizeBlock<OffFlag>(block, blockTracer, spec, receipts)
+            : base.FinalizeBlock(block, blockTracer, options, spec, receipts);
     }
 }
