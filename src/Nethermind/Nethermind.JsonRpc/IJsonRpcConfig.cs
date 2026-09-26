@@ -165,7 +165,9 @@ public interface IJsonRpcConfig : IConfig
             overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. Also the
             number of execution slots shared by `eth_call`, `eth_estimateGas`, `eth_createAccessList`,
             `eth_simulateV1` and `eth_fillTransaction`, with or without overrides; see
-            `EvmExecutionMaxQueueWaitMs`. Defaults to the number of logical processors.
+            `EvmExecutionMaxQueueWaitMs`. Raising it above the number of logical processors also
+            runs more of those calls at once, and a value far above it effectively turns off their
+            queueing and load shedding. Defaults to the number of logical processors.
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
