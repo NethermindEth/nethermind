@@ -107,6 +107,53 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.GetAccount(address, key);
     }
 
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+    {
+        GuardDispose();
+
+        if (addresses.Length != accounts.Length)
+            throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+        using ArrayPoolListRef<Address> missingAddresses = new(addresses.Length);
+        using ArrayPoolListRef<int> missingIndices = new(addresses.Length);
+        int missingCount = 0;
+
+        for (int addressIndex = 0; addressIndex < addresses.Length; addressIndex++)
+        {
+            Address address = addresses[addressIndex];
+            HashedKey<Address> key = new(address);
+
+            if (_changedAccounts.TryGetValue(key, out Account? account))
+            {
+                accounts[addressIndex] = account;
+                continue;
+            }
+
+            bool found = false;
+            for (int snapshotIndex = _snapshots.Count - 1; snapshotIndex >= 0; snapshotIndex--)
+            {
+                if (!_snapshots[snapshotIndex].TryGetAccount(key, out account)) continue;
+
+                accounts[addressIndex] = account;
+                found = true;
+                break;
+            }
+
+            if (found) continue;
+
+            missingAddresses.Add(address);
+            missingIndices.Add(addressIndex);
+            missingCount++;
+        }
+
+        if (missingCount == 0) return;
+
+        using ArrayPoolListRef<Account?> missingAccounts = new(missingCount, missingCount);
+        _readOnlySnapshotBundle.GetAccounts(missingAddresses.AsSpan(), missingAccounts.AsSpan());
+        for (int i = 0; i < missingCount; i++)
+            accounts[missingIndices[i]] = missingAccounts[i];
+    }
+
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
         HashedKey<Address> key = new(address);
@@ -158,6 +205,77 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key, out value);
+    }
+
+    public void GetSlots(
+        ReadOnlySpan<StorageCell> storageCells,
+        ReadOnlySpan<int> selfDestructStateIdxs,
+        Span<UInt256?> slots)
+    {
+        GuardDispose();
+
+        if (storageCells.Length != selfDestructStateIdxs.Length || storageCells.Length != slots.Length)
+            throw new ArgumentException("Storage cells, self-destruct indices, and slots must have the same length.", nameof(slots));
+
+        using ArrayPoolListRef<StorageCell> missingCells = new(storageCells.Length);
+        using ArrayPoolListRef<int> missingSelfDestructStateIdxs = new(storageCells.Length);
+        using ArrayPoolListRef<int> missingIndices = new(storageCells.Length);
+        int missingCount = 0;
+
+        for (int cellIndex = 0; cellIndex < storageCells.Length; cellIndex++)
+        {
+            StorageCell cell = storageCells[cellIndex];
+            HashedKey<(Address, UInt256)> key = new((cell.Address, cell.Index));
+            int selfDestructStateIdx = selfDestructStateIdxs[cellIndex];
+
+            if (_changedSlots.TryGetValue(key, out UInt256? slotValue))
+            {
+                slots[cellIndex] = slotValue;
+                continue;
+            }
+
+            if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
+            {
+                slots[cellIndex] = null;
+                continue;
+            }
+
+            int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
+            bool resolved = false;
+            for (int snapshotIndex = _snapshots.Count - 1; snapshotIndex >= 0; snapshotIndex--)
+            {
+                if (_snapshots[snapshotIndex].TryGetStorage(key, out slotValue))
+                {
+                    slots[cellIndex] = slotValue;
+                    resolved = true;
+                    break;
+                }
+
+                if (snapshotIndex <= currentBundleSelfDestructIdx)
+                {
+                    slots[cellIndex] = null;
+                    resolved = true;
+                    break;
+                }
+            }
+
+            if (resolved) continue;
+
+            missingCells.Add(cell);
+            missingSelfDestructStateIdxs.Add(selfDestructStateIdx);
+            missingIndices.Add(cellIndex);
+            missingCount++;
+        }
+
+        if (missingCount == 0) return;
+
+        using ArrayPoolListRef<UInt256?> missingSlots = new(missingCount, missingCount);
+        _readOnlySnapshotBundle.GetSlots(
+            missingCells.AsSpan(),
+            missingSelfDestructStateIdxs.AsSpan(),
+            missingSlots.AsSpan());
+        for (int i = 0; i < missingCount; i++)
+            slots[missingIndices[i]] = missingSlots[i];
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
