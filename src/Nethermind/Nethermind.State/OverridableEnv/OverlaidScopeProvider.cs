@@ -42,9 +42,9 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public void UpdateRootHash() => inner.UpdateRootHash();
 
-        public void HintWarmAccount(in ValueAddress address) => inner.HintWarmAccount(in address);
+        public void HintWarmAccount(Address address) => inner.HintWarmAccount(address);
 
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => inner.HintWarmSlot(in address, in index);
+        public void HintWarmSlot(Address address, in UInt256 index) => inner.HintWarmSlot(address, in index);
 
         public Account? Get(Address address)
         {
