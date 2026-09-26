@@ -21,6 +21,7 @@ namespace Nethermind.Trie;
 /// </summary>
 [Todo("check if its worth it to change the length to byte, or if it actually make things slower.")]
 [Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
 public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 {
     public const int MemorySize = 36;

@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Flat;
 
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
 public readonly record struct StateId(ulong BlockNumber, in ValueHash256 StateRoot) : IComparable<StateId>
 {
     public StateId(BlockHeader? header) : this(header is null ? ulong.MaxValue : header.Number, header?.StateRoot ?? Keccak.EmptyTreeHash)

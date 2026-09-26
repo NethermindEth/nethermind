@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -28,8 +29,13 @@ public partial class PatriciaTree
 
     public readonly struct BulkSetEntry(in ValueHash256 path, byte[]? value) : IComparable<BulkSetEntry>
     {
-        public readonly ValueHash256 Path = path;
+        // The runtime lays out a struct holding a reference itself and ignores Pack there, so the path sits in
+        // an 8-byte-aligned wrapper; ValueHash256's own 32-byte alignment would pad each entry from 40 to 64 bytes.
+        private readonly PackedHash _path = new(path);
         public readonly byte[]? Value = value;
+
+        [UnscopedRef]
+        public ref readonly ValueHash256 Path => ref _path.Value;
 
         public int CompareTo(BulkSetEntry entry) => Path.CompareTo(entry.Path);
 
@@ -43,6 +49,12 @@ public partial class PatriciaTree
             return (index & 1) == 0
                 ? (byte)((b & 0xf0) >> 4)
                 : (byte)(b & 0x0f);
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 8)]
+        private readonly struct PackedHash(in ValueHash256 value)
+        {
+            public readonly ValueHash256 Value = value;
         }
     }
 

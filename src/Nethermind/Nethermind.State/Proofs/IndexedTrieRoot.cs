@@ -667,6 +667,7 @@ internal static class IndexedTrieRoot
         }
     }
 
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 8)]
     internal readonly record struct NodeReference(ValueHash256 Value, int Length)
     {
         public int EncodedLength => Length == 32 ? 33 : Length;
