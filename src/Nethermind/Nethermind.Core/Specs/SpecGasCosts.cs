@@ -115,11 +115,14 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
                 ? GasCostOf.TotalCostFloorPerTokenEip7623
                 : GasCostOf.Free;
 
-        SClearRefund = spec.IsEip8038Enabled
-            ? RefundOf.SClearEip8038
-            : spec.IsEip3529Enabled
-                ? RefundOf.SClearAfterEip3529
-                : RefundOf.SClearBeforeEip3529;
+        // EIP-3298 strikes the storage-clear refund, so its grant and reversal both become no-ops.
+        SClearRefund = spec.IsEip3298Enabled
+            ? GasCostOf.Free
+            : spec.IsEip8038Enabled
+                ? RefundOf.SClearEip8038
+                : spec.IsEip3529Enabled
+                    ? RefundOf.SClearAfterEip3529
+                    : RefundOf.SClearBeforeEip3529;
 
         DestroyRefund = spec.IsEip3529Enabled
             ? RefundOf.DestroyAfterEip3529

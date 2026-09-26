@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -41,5 +42,22 @@ public class EstimateGasTracerTests
 
         Assert.That(tracer.CalculateAdditionalGasRequired(tx, Cancun.Instance), Is.EqualTo(ulong.MaxValue),
             "an unchecked add wraps ulong.MaxValue - 1 + 600000 round to a small, plausible-looking estimate");
+    }
+
+    // EIP-3298 drops the EIP-3529 cap, so the whole refund must be added back on top of the post-refund spend.
+    [TestCase(false, 200_000UL)]
+    [TestCase(true, 600_000UL)]
+    public void CalculateAdditionalGasRequired_adds_claimable_refund(bool eip3298Enabled, ulong expected)
+    {
+        const ulong rootGas = 1UL;
+        const ulong intrinsicGas = 1_000_000UL;
+
+        EstimateGasTracer tracer = new();
+        tracer.ReportAction(rootGas, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
+        tracer.ReportRefund(600_000L);
+        Transaction tx = Build.A.Transaction.WithGasLimit(intrinsicGas + rootGas).TestObject;
+        ReleaseSpec spec = new() { IsEip3529Enabled = true, IsEip3298Enabled = eip3298Enabled };
+
+        Assert.That(tracer.CalculateAdditionalGasRequired(tx, spec), Is.EqualTo(expected));
     }
 }

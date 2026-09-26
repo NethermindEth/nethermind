@@ -1885,6 +1885,13 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!substate.IsError && !substate.ShouldRevert)
                 totalToRefund += substate.Refund + (substate.DestroyList?.Count ?? 0) * (long)spec.GasCosts.DestroyRefund;
 
+            // EIP-3298: no cap; the remaining refunds never exceed the same transaction's charges.
+            if (spec.IsEip3298Enabled)
+            {
+                Debug.Assert(totalToRefund <= (long)spentGas, $"EIP-3298 invariant violated: refund ({totalToRefund}) exceeds gas used ({spentGas}).");
+                return (spentGas, totalToRefund);
+            }
+
             long quotient = spec.IsEip3529Enabled ? (long)RefundHelper.MaxRefundQuotientEIP3529 : (long)RefundHelper.MaxRefundQuotient;
             return (spentGas, Math.Min((long)(spentGas / (ulong)quotient), totalToRefund));
         }
