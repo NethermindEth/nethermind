@@ -104,9 +104,10 @@ public sealed class ModuleWeaver : BaseModuleWeaver
                 MethodDefinition target = Resolve(reference);
                 if (instruction.OpCode == OpCodes.Ldftn)
                 {
-                    if (expected.Contains(target)) actual.Add(target);
-                    else if (target.Name is "ExecuteOpcode" or "ExecuteJumpIfOpcode")
-                        throw new WeavingException($"Opcode table still references unnamed handler {target.Name}.");
+                    // RawCalliHelper calls table entries as exact code, so a shared-generic (fat) pointer would break NativeAOT.
+                    if (!expected.Contains(target))
+                        throw new WeavingException($"Opcode table references {target.FullName}, which is not a named opcode handler.");
+                    actual.Add(target);
                 }
                 else
                 {
