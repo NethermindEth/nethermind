@@ -71,7 +71,7 @@ Record findings — used in Phase 1 backward searches.
 If subagents are available:
 
 - **Step 0:** Run 0a and 0b in parallel
-- **Phase 1:** One subagent PER category. Each exhausts ONE category completely
+- **Phase 1:** One subagent per tier in references/pattern-categories.md (split a tier only when its search results are too large for one agent); each exhausts its categories completely
 - **Convergence checkpoint:** After first wave, review findings for cross-cutting patterns, launch second wave
 - **Phase 2:** Validation subagents for CRITICAL/HIGH candidates
 - **Final review:** Separate reviewer subagent with complete findings for fresh perspective
@@ -111,7 +111,7 @@ For each category (see @references/pattern-categories.md):
 
 7. **After exhausting a category**, reflect: "What patterns suggest similar leaks I haven't searched for?"
 
-8. **Stop ONLY when** all categories are covered AND reflection produces no new actionable patterns.
+8. **Finish** when all categories are covered and reflection produces no new actionable patterns.
 
 ### Phase 1 Convergence Checkpoint
 

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Threading;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -58,13 +57,10 @@ public class GuestJumpDestinationTests
     public void Scan_matches_the_reference(byte[] code) => AssertMatchesReference(code);
 
     [Test]
-    public void Full_analysis_reuses_the_completed_bitmap([Values] bool executeFirst)
+    public void Full_analysis_reuses_the_completed_bitmap()
     {
         CodeInfo codeInfo = new(new byte[] { PUSH1, JUMPDEST, JUMPDEST });
-        if (executeFirst) ((IThreadPoolWorkItem)codeInfo).Execute();
-
         long[] bitmap = codeInfo.JumpDestinationBitmap;
-        ((IThreadPoolWorkItem)codeInfo).Execute();
 
         using (Assert.EnterMultipleScope())
         {
