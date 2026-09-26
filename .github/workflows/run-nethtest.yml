@@ -35,7 +35,7 @@ on:
       focil_version:
         description: FOCIL fixtures release tag (focilTest only) - pin to an exact tag
         required: false
-        default: tests-focil-devnet@v0.2.0
+        default: tests-focil-devnet@v0.3.0
         type: string
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
@@ -91,7 +91,7 @@ on:
       focil_version:
         description: FOCIL fixtures release tag (focilTest only) - pin to an exact tag
         required: false
-        default: tests-focil-devnet@v0.2.0
+        default: tests-focil-devnet@v0.3.0
         type: string
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
@@ -130,7 +130,7 @@ env:
   ZKEVM_VERSION: ${{ inputs.zkevm_version || 'tests-zkevm@v21.0.0' }}
   # FOCIL fixtures ship in their own release line, resolved instead of EEST_VERSION. Keep it an exact
   # tag: latest-<keyword> resolution scans only the 20 newest releases and never reaches that line.
-  FOCIL_VERSION: ${{ inputs.focil_version || 'tests-focil-devnet@v0.2.0' }}
+  FOCIL_VERSION: ${{ inputs.focil_version || 'tests-focil-devnet@v0.3.0' }}
   # EIP-8141 frame-transaction fixtures, likewise their own release line and likewise an exact tag.
   # This archive labels its fork "Bogota" meaning Amsterdam plus EIP-8141, where the FOCIL archive
   # means Amsterdam plus EIP-7805; nothing inside a fixture separates the two, so the lane names the
@@ -584,35 +584,29 @@ jobs:
           KNOWN_FAILURES=()
           if [ "$TEST_TYPE" = "focilTest" ]; then
             KNOWN_FAILURES+=(
-              # These ported_static fixtures give the block a synthetic gas limit above 2^32 and a
-              # transaction that spends all of it, so EIP-8037 rule 1 (tx.gas <= TX_MAX_TOTAL_GAS_LIMIT)
-              # rejects a transaction they expect to be accepted. Fixed upstream as
-              # ethereum/execution-specs#3582, which the FOCIL v0.2.0 release predates.
-              # Only --g2 diverges, but stCallCreateCallCodeTest and stDelegatecallTestHomestead share the
-              # test name, so its passing sibling goes with it. ecrecover_short_buff has one
-              # parameterisation per fork and format, so the fork prefix already pins it exactly.
-              'test_callcode_lose_gas_oog\[fork_(Amsterdam|Bogota)-[^]]*--g2\]'
-              'test_ecrecover_short_buff\[fork_(Amsterdam|Bogota)-'
-              # The inclusion-list variant keeps rlp_modifier while clearing header_verify, so header
-              # blob-gas fields are never recomputed. Fix pending as ethereum/execution-specs#3406.
-              'test_insufficient_balance_blob_tx_combinations.*inclusion_list'
-              'test_invalid_block_blob_count.*inclusion_list'
-              'test_invalid_blob_hash_versioning_.*inclusion_list'
-              'test_invalid_tx_max_fee_per_blob_gas.*inclusion_list'
-              'test_invalid_tx_blob_count.*too_many_blobs.*inclusion_list'
-              'test_invalid_normal_gas.*inclusion_list'
-              # A single ~131 KB inclusion-list entry, 16x the per-list MAX_BYTES_PER_INCLUSION_LIST
-              # of EIP-7805. Raised upstream; the aggregate committee-wide cap is ours, not the spec's.
+              # The v0.3.0 release corrects the inclusion-list engine fixtures, so the patterns this
+              # lane carried for ethereum/execution-specs#3582, #3406, the EIP-7610 collision scenario
+              # and the EIP-7928 boundary at test_tx_gas_limit are no longer needed.
+              #
+              # What remains is the aggregate inclusion-list size cap, which is ours rather than the
+              # spec's: these cases carry an ~131 KB initcode or calldata payload, 16x the per-list
+              # MAX_BYTES_PER_INCLUSION_LIST of EIP-7805, so engine_newPayloadV6 answers -32602 before
+              # validating and the fixture cannot demonstrate the rejection it expects.
               'test_contract_creating_tx.*inclusion_list'
+              'test_tx_gas_limit_cap_contract_creation.*inclusion_list'
               'test_oversized_initcode_tx_no_state_gas.*inclusion_list'
               'test_max_initcode_size.*inclusion_list'
               'test_calldata_floor_exceeding_tx_gas_limit_cap.*inclusion_list'
               'test_tx_gas_limit_cap_authorized_tx.*inclusion_list'
-              # An empty block at a 21000 gas limit is expected VALID, yet its mandatory system-contract
-              # BAL items exceed the EIP-7928 cap; test_bal_gas_limit_boundary contradicts it at 50000.
-              'test_tx_gas_limit.fork_Bogota-blockchain_test_engine_inclusion_list'
-              # FOCIL v0.2.0 still embeds an EIP-7610 collision scenario removed from Glamsterdam v8.1.2.
-              'test_block_with_failing_included_il_tx_is_valid.*scenario_creation_address_collision'
+              # The inclusion-list variant keeps rlp_modifier while clearing header_verify, so header
+              # blob-gas fields are never recomputed. Fix pending as ethereum/execution-specs#3406.
+              'test_invalid_block_blob_count.*inclusion_list'
+              'test_invalid_tx_max_fee_per_blob_gas.*inclusion_list'
+              # At an exactly-fitting state budget the inclusion-list variant expects
+              # inclusionListSatisfied=false, so the spec judges the transaction includable once the
+              # preparation rollback restores the budget. We report true. The exceeded siblings agree,
+              # so this is the boundary case only.
+              'test_preparation_rollback_restores_block_state_budget.*inclusion_list.*exact_fit'
             )
           fi
           if [ "${#KNOWN_FAILURES[@]}" -gt 0 ]; then
