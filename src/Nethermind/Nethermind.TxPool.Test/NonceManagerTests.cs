@@ -168,6 +168,105 @@ public class NonceManagerTests
     }
 
     [Test]
+    public void TxWithNonceReceived_should_drop_senders_once_their_nonces_are_confirmed()
+    {
+        IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+        NonceManager nonceManager = new(accounts, minSweepThreshold: 4);
+        for (int i = 0; i < 4; i++)
+        {
+            using NonceLocker locker = nonceManager.TxWithNonceReceived(TestItem.Addresses[i], 0);
+            locker.Accept();
+        }
+
+        Assert.That(nonceManager.TrackedAddressCount, Is.EqualTo(4), "precondition: every raw-tx sender is tracked");
+        accounts.GetNonce(Arg.Any<Address>()).Returns(1UL);
+
+        using (NonceLocker locker = nonceManager.TxWithNonceReceived(TestItem.Addresses[4], 0))
+        {
+            locker.Accept();
+        }
+
+        Assert.That(nonceManager.TrackedAddressCount, Is.EqualTo(1), "senders whose nonces are all confirmed must be dropped, leaving only the new one");
+    }
+
+    // 1. A sends a raw tx with nonce 1 while its account nonce is 0, so nonce 1 is still pending.
+    // 2. Three other senders confirm their raw txs and a fifth sender triggers the sweep.
+    // 3. A's managed reservations must still step over nonce 1: 0, then 2.
+    [Test]
+    public void TxWithNonceReceived_should_keep_a_sender_with_a_pending_nonce_through_a_sweep()
+    {
+        IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+        NonceManager nonceManager = new(accounts, minSweepThreshold: 4);
+        using (NonceLocker locker = nonceManager.TxWithNonceReceived(TestItem.AddressA, 1))
+        {
+            locker.Accept();
+        }
+
+        for (int i = 1; i < 4; i++)
+        {
+            using NonceLocker locker = nonceManager.TxWithNonceReceived(TestItem.Addresses[i], 0);
+            locker.Accept();
+            accounts.GetNonce(TestItem.Addresses[i]).Returns(1UL);
+        }
+
+        using (NonceLocker locker = nonceManager.TxWithNonceReceived(TestItem.Addresses[4], 0))
+        {
+            locker.Accept();
+        }
+
+        Assert.That(nonceManager.TrackedAddressCount, Is.EqualTo(2), "precondition: only the sender with a pending nonce survives next to the new one");
+
+        using (NonceLocker locker = nonceManager.ReserveNonce(TestItem.AddressA, out ulong first))
+        {
+            Assert.That(first, Is.EqualTo(0UL), "the account nonce is still free");
+            locker.Accept();
+        }
+
+        using (nonceManager.ReserveNonce(TestItem.AddressA, out ulong second))
+        {
+            Assert.That(second, Is.EqualTo(2UL), "the pending raw nonce must still be skipped after the sweep");
+        }
+    }
+
+    // A submission in progress holds its entry's lock, so the sweep must leave that entry alone even when every
+    // nonce it recorded is confirmed.
+    [Test]
+    public void TxWithNonceReceived_should_keep_a_sender_whose_submission_is_in_progress_through_a_sweep()
+    {
+        IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+        NonceManager nonceManager = new(accounts, minSweepThreshold: 4);
+        using NonceLocker inProgress = nonceManager.TxWithNonceReceived(TestItem.AddressA, 0);
+        inProgress.Accept();
+        for (int i = 1; i < 4; i++)
+        {
+            using NonceLocker locker = nonceManager.TxWithNonceReceived(TestItem.Addresses[i], 0);
+            locker.Accept();
+        }
+
+        accounts.GetNonce(Arg.Any<Address>()).Returns(1UL);
+        using (NonceLocker locker = nonceManager.TxWithNonceReceived(TestItem.Addresses[4], 0))
+        {
+            locker.Accept();
+        }
+
+        Assert.That(nonceManager.TrackedAddressCount, Is.EqualTo(2), "the busy sender must survive the sweep next to the new one");
+    }
+
+    [Test]
+    public void ReserveNonce_should_start_from_a_high_account_nonce_without_walking_up_to_it()
+    {
+        const ulong accountNonce = 1_000_000_000_000;
+        IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+        accounts.GetNonce(TestItem.AddressA).Returns(accountNonce);
+        NonceManager nonceManager = new(accounts);
+
+        using (nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo(accountNonce), "a new sender starts at its account nonce");
+        }
+    }
+
+    [Test]
     public void should_reuse_nonce_if_tx_rejected()
     {
         using (_nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
