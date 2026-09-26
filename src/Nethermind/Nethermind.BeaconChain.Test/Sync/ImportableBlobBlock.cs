@@ -82,8 +82,11 @@ internal sealed class ImportableBlobBlock
     public required DataColumnSidecar[] Columns { get; init; }
 
     /// <summary>A wall clock stopped at the first slot of <paramref name="epoch"/> under <see cref="Spec"/>, for placing <see cref="Block"/> inside or below the data availability window.</summary>
-    public SlotClock ClockAtEpoch(ulong epoch) =>
-        new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + epoch * Spec.SlotsPerEpoch * Spec.SecondsPerSlot)).UtcDateTime));
+    public SlotClock ClockAtEpoch(ulong epoch) => ClockAtSlot(epoch * Spec.SlotsPerEpoch);
+
+    /// <summary>A wall clock stopped at the start of <paramref name="slot"/> under <see cref="Spec"/>; a block after it is from the future.</summary>
+    public SlotClock ClockAtSlot(ulong slot) =>
+        new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + slot * Spec.SecondsPerSlot)).UtcDateTime));
 
     public static ImportableBlobBlock Create(int blobCount = 2)
     {
