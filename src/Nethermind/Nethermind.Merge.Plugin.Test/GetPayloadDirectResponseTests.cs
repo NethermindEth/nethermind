@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
 using System.Reflection;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -263,9 +262,7 @@ public class GetPayloadDirectResponseTests
             Assert.That(async () => await act(), Throws.TypeOf<OperationCanceledException>());
             await writer.FlushAsync(CancellationToken.None);
 
-            string partialResponse = Encoding.UTF8.GetString(stream.ToArray());
-            Assert.That(partialResponse, Does.Contain("\"result\":"));
-            Assert.That(partialResponse, Does.Not.Contain(",\"id\":"));
+            Assert.That(stream.Length, Is.Zero);
         }
         finally
         {

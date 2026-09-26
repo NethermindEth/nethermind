@@ -3,10 +3,10 @@
 
 using System.Diagnostics;
 using System.IO;
-using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.IO;
 using Microsoft.Extensions.Primitives;
 using Nethermind.Core.Resettables;
 using Nethermind.JsonRpc;
@@ -26,12 +26,10 @@ internal sealed class HttpJsonRpcResponseSink(
     private const string JsonContentType = "application/json";
     private const int BufferedResponseInitialCapacity = 16 * 1024;
     private static readonly StringValues JsonContentTypeHeader = new(JsonContentType);
-    private static readonly StreamPipeWriterOptions BufferedResponsePipeWriterOptions =
-        new(minimumBufferSize: BufferedResponseInitialCapacity, leaveOpen: true);
 
     private readonly bool _reportCalls = jsonRpcLocalStats.IsEnabled;
     private CountingWriter? _writer;
-    private Stream? _bufferedStream;
+    private RecyclableMemoryStream? _bufferedStream;
     private bool _isFirstBatchItem = true;
     private bool _completed;
 
@@ -46,21 +44,68 @@ internal sealed class HttpJsonRpcResponseSink(
 
     private ValueTask WriteStartedAsync(JsonRpcResponse response, RpcReport report, bool isBatch, CancellationToken cancellationToken)
     {
-        ValueTask writeTask = JsonRpcResponseWriter.WriteAsync(_writer!, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken);
-        if (!writeTask.IsCompletedSuccessfully)
+        ValueTask writeTask;
+        try
         {
-            return WriteAfterWriteAsync(writeTask, report, isBatch);
+            // A non-streamed response is serialized synchronously and can fail before a task exists.
+            writeTask = JsonRpcResponseWriter.WriteAsync(_writer!, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken);
+        }
+        catch
+        {
+            ReportWrite(report with { Success = false }, isBatch);
+            throw;
         }
 
-        writeTask.GetAwaiter().GetResult();
-        ReportWrite(report, isBatch);
-        return ValueTask.CompletedTask;
+        if (writeTask.IsCompletedSuccessfully)
+        {
+            writeTask.GetAwaiter().GetResult();
+            CompleteWrite(response, report, isBatch);
+            return ValueTask.CompletedTask;
+        }
+
+        // Only a deferred result can be replaced while it is written, so any other response is reported as is and
+        // its continuation does not need to keep the response.
+        return response.Streaming is null
+            ? WriteAfterWriteAsync(writeTask, JsonRpcResponseWriteOutcome.Of(response).ApplyTo(report), isBatch)
+            : WriteDeferredAfterWriteAsync(writeTask, response, report, isBatch);
     }
 
     private async ValueTask WriteAfterWriteAsync(ValueTask writeTask, RpcReport report, bool isBatch)
     {
-        await writeTask;
+        try
+        {
+            await writeTask;
+        }
+        catch
+        {
+            ReportWrite(report with { Success = false }, isBatch);
+            throw;
+        }
         ReportWrite(report, isBatch);
+    }
+
+    private async ValueTask WriteDeferredAfterWriteAsync(ValueTask writeTask, JsonRpcResponse response, RpcReport report, bool isBatch)
+    {
+        try
+        {
+            await writeTask;
+        }
+        catch
+        {
+            ReportWrite(report with { Success = false }, isBatch);
+            throw;
+        }
+        CompleteWrite(response, report, isBatch);
+    }
+
+    private void CompleteWrite(JsonRpcResponse response, RpcReport report, bool isBatch)
+    {
+        JsonRpcResponseWriteOutcome outcome = JsonRpcResponseWriteOutcome.Of(response);
+        if (!isBatch && !context.Response.HasStarted && outcome.IsResourceUnavailable)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        }
+        ReportWrite(outcome.ApplyTo(report), isBatch);
     }
 
     private void ReportWrite(RpcReport report, bool isBatch)
@@ -152,6 +197,27 @@ internal sealed class HttpJsonRpcResponseSink(
             : CompleteAfterWriterAsync(writerCompleteTask, cancellationToken);
     }
 
+    /// <summary>Aborts an incomplete response without completing or sending its buffered body.</summary>
+    public void Abort()
+    {
+        if (_completed) return;
+        _completed = true;
+        context.Abort();
+
+        if (_bufferedStream is not null)
+        {
+            try
+            {
+                _writer!.Complete();
+            }
+            finally
+            {
+                _bufferedStream.Dispose();
+                _bufferedStream = null;
+            }
+        }
+    }
+
     private async ValueTask CompleteAfterWriterAsync(ValueTask writerCompleteTask, CancellationToken cancellationToken)
     {
         await writerCompleteTask;
@@ -201,7 +267,7 @@ internal sealed class HttpJsonRpcResponseSink(
 
         bool bufferResponse = jsonRpcConfig.BufferResponses && !(jsonRpcUrl.IsAuthenticated && !isCollection);
         _bufferedStream = bufferResponse ? RecyclableStream.GetStream("http", BufferedResponseInitialCapacity) : null;
-        _writer = _bufferedStream is not null ? new CountingStreamPipeWriter(_bufferedStream, BufferedResponsePipeWriterOptions) : new CountingPipeWriter(context.Response.BodyWriter);
+        _writer = _bufferedStream is not null ? new RewindableStreamPipeWriter(_bufferedStream) : new CountingPipeWriter(context.Response.BodyWriter);
 
         context.Response.Headers.ContentType = JsonContentTypeHeader;
         context.Response.StatusCode = isCollection

@@ -185,7 +185,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         if (resultWrapper is JsonRpcResponse response)
         {
-            return response.WithResponseContext(in request.IdRef, returnAction);
+            response = response.WithResponseContext(in request.IdRef, returnAction);
+            if (response.TryGetStreamableResult(out IStreamableResult? streamable) && streamable is IDeferredExecutionResult)
+            {
+                response.Streaming = new StreamingContext(this, request, methodName);
+            }
+            return response;
         }
 
         return HandleUnsupportedResultWrapper(request, methodName, returnAction);
@@ -587,7 +592,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
     }
 
-    private JsonRpcErrorResponse HandleInvocationException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
+    private JsonRpcErrorResponse HandleInvocationException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction, bool isStreaming = false)
     {
         return ex switch
         {
@@ -601,7 +606,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             TargetParameterCountException or ArgumentException =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction)),
 
-            JsonException or TargetInvocationException and { InnerException: JsonException } =>
+            JsonException or TargetInvocationException and { InnerException: JsonException } when !isStreaming =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
 
             OperationCanceledException or { InnerException: OperationCanceledException } =>
@@ -610,6 +615,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
             // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
+            ModuleRentalTimeoutException or { InnerException: ModuleRentalTimeoutException } =>
+                GetErrorResponse(methodName, ErrorCodes.ModuleTimeout, "Timeout", null, in request.IdRef, returnAction, suppressWarning: true),
+
             LimitExceededException or ConcurrencyLimitReachedException
                 or { InnerException: LimitExceededException }
                 or { InnerException: ConcurrencyLimitReachedException } =>
@@ -1125,5 +1133,29 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated.", false),
             _ => (null, null, false)
         };
+    }
+
+    /// <summary>Maps deferred execution errors and reports the final response outcome.</summary>
+    internal sealed class StreamingContext(JsonRpcService service, JsonRpcRequest request, string methodName)
+    {
+        internal bool ReportCompletion { get; set; }
+
+        /// <summary>The outcome of the error that replaced a failed deferred result, if any.</summary>
+        internal JsonRpcResponseWriteOutcome? Replacement { get; set; }
+
+        /// <summary>Maps a deferred error through the normal invocation error mapping.</summary>
+        /// <remarks>The original response owns the module rental; the replacement must not return it twice.</remarks>
+        internal JsonRpcErrorResponse MapException(Exception exception) =>
+            service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
+
+        /// <summary>Reports one completed execution, excluding an unwritten or request-cancelled response.</summary>
+        /// <remarks>A failure without request cancellation, including a transport exception, counts as an error.</remarks>
+        internal void Complete(bool? success)
+        {
+            if (!ReportCompletion) return;
+            ReportCompletion = false;
+            if (success is true) Metrics.JsonRpcSuccesses++;
+            else if (success is false) Metrics.JsonRpcErrors++;
+        }
     }
 }
