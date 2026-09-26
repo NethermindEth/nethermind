@@ -115,7 +115,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .Map<IBlockProcessingPauseControl, MainProcessingContext>(ctx => (IBlockProcessingPauseControl)ctx.BlockchainProcessor)
             .Bind<IMainProcessingContext, MainProcessingContext>()
 
-            .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
+            .AddSingleton<INonceManager, NonceManager>()
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider, ILogManager>((mainProcessingContext, chainHeadInfoProvider, logManager) => new BackgroundTaskScheduler(
                 mainProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,
