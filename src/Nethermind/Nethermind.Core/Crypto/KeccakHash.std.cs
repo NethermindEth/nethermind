@@ -32,6 +32,16 @@ public sealed partial class KeccakHash
         return AbsorbFullBlocks(state, stateBytes, input, roundSize);
     }
 
+    /// <inheritdoc cref="KeccakHash.ComputeHash256" />
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static partial ValueHash256 ComputeHash256(ReadOnlySpan<byte> input)
+    {
+        Unsafe.SkipInit(out ValueHash256 keccak);
+        ComputeHash(input, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keccak, 1)));
+        return keccak;
+    }
+
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)
     {

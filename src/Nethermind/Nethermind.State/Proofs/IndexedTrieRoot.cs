@@ -691,8 +691,7 @@ internal static class IndexedTrieRoot
                 encoded.CopyTo(value.BytesAsSpan);
                 return new(value, encoded.Length);
             }
-            KeccakHash.ComputeHash(encoded, value.BytesAsSpan);
-            return new(value, 32);
+            return new(ValueKeccak.Compute(encoded), 32);
         }
     }
 }
