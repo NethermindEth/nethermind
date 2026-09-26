@@ -16,6 +16,7 @@ using Nethermind.Evm.State;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -623,6 +624,7 @@ public partial class EthRpcModuleTests
 
     private static readonly OverridableReleaseSpec Eip7976Spec = new(Prague.Instance) { IsEip7976Enabled = true };
     private static readonly OverridableReleaseSpec Eip7981Spec = new(Amsterdam.Instance) { IsEip7976Enabled = true, IsEip7981Enabled = true };
+    private static readonly OverridableReleaseSpec Eip8131Spec = new(Amsterdam.Instance) { IsEip8131Enabled = true };
 
     private static IEnumerable<TestCaseData> EstimateGasFloorCostCases()
     {
@@ -672,6 +674,21 @@ public partial class EthRpcModuleTests
                 new AccessList.Builder().AddAddress(Address.Zero).Build(),
                 $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip7981FloorWithCalldata.ToHexString(true)}\",\"id\":67}}")
             .SetName("EIP-7981: floor wins with calldata and access list");
+
+        // EIP-8131 drops the EIP-7981 intrinsic surcharge, so a lone access-list address pays only its EIP-2930 cost.
+        ulong eip8131Standard = eip2780ValueTransferBase + Eip8038Constants.AccessListAddressCost;
+        yield return new TestCaseData(Eip8131Spec, Array.Empty<byte>(), 200_000UL,
+                new AccessList.Builder().AddAddress(Address.Zero).Build(),
+                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip8131Standard.ToHexString(true)}\",\"id\":67}}")
+            .SetName("EIP-8131: standard wins with access list");
+
+        // 64 gas per content byte outprices the EIP-2930 storage-key cost, so 50 keys bind on the content floor.
+        AccessList.Builder fiftyKeys = new AccessList.Builder().AddAddress(Address.Zero);
+        for (int i = 0; i < 50; i++) fiftyKeys.AddStorage((UInt256)i);
+        ulong eip8131Floor = eip2780ValueTransferBase + Eip8131Constants.FloorGasPerByte * (Address.Size + 50UL * AccessList.StorageKeySize);
+        yield return new TestCaseData(Eip8131Spec, Array.Empty<byte>(), 200_000UL, fiftyKeys.Build(),
+                $"{{\"jsonrpc\":\"2.0\",\"result\":\"{eip8131Floor.ToHexString(true)}\",\"id\":67}}")
+            .SetName("EIP-8131: content floor wins with access-list storage keys");
     }
 
     [TestCaseSource(nameof(EstimateGasFloorCostCases))]
