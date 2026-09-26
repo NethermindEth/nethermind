@@ -595,17 +595,20 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("gas required exceeds allowance (100000)"), serialized);
     }
 
-    [Test]
-    public async Task Estimate_gas_below_the_base_cost_is_bounded_by_the_gas_cap()
+    [TestCase(",\"data\":\"0x01\"", null, "gas required exceeds allowance (20000)", TestName = "Call data")]
+    [TestCase("", "0x5208", null, TestName = "Plain transfer runs at the base cost")]
+    public async Task Estimate_gas_with_a_gas_cap_below_the_base_cost(string dataField, string? expectedResult, string? expectedError)
     {
-        using Context ctx = await Context.Create();
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
         ctx.Test.RpcConfig.GasCap = 20_000;
         object? transaction = JsonSerializer.Deserialize<object>(
-            $$"""{"from":"{{TestItem.AddressA}}","to":"0xc200000000000000000000000000000000000000","data":"0x01"}""");
+            $$"""{"from":"{{TestItem.AddressA}}","to":"0xc200000000000000000000000000000000000000"{{dataField}}}""");
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
 
-        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("gas required exceeds allowance (20000)"), serialized);
+        JToken response = JToken.Parse(serialized);
+        Assert.That(response["result"]?.Value<string>(), Is.EqualTo(expectedResult), serialized);
+        Assert.That(response["error"]?["message"]?.Value<string>(), Is.EqualTo(expectedError), serialized);
     }
 
     [Test]
