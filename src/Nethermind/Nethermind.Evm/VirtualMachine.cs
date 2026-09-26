@@ -587,6 +587,12 @@ public partial class VirtualMachine<TGasPolicy>(
             executionDepositCost = ulong.MaxValue;
             stateDepositCost = long.MaxValue;
         }
+        else if (previousState.ExecutionType == ExecutionType.TCREATE)
+        {
+            // EIP-8360: TCREATE code is discarded at the end of the transaction, so it pays no code-deposit cost.
+            executionDepositCost = 0;
+            stateDepositCost = 0;
+        }
 
         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
         TryChargeAndDepositCode(previousState, gasAvailableForCodeDeposit, ref previousStateSucceeded,
@@ -1273,6 +1279,11 @@ public partial class VirtualMachine<TGasPolicy>(
     private CallResult RunPrecompile<Eip158>(VmState<TGasPolicy> state)
         where Eip158 : struct, IFlag
     {
+        if (state.AccessTracker.TransientCreateList.Count != 0 && !TryChargeTransientCreateTransfer(state))
+        {
+            return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
+        }
+
         ReadOnlyMemory<byte> callData = state.Env.InputData;
         ref readonly UInt256 transferValue = ref state.ExecutionType.GetBalanceCredit(in state.Env.Value);
         TGasPolicy gas = state.Gas;
@@ -1419,6 +1430,11 @@ public partial class VirtualMachine<TGasPolicy>(
         // If this is the first call frame (not a continuation), adjust account balances and nonces.
         if (!vmState.IsContinuation)
         {
+            if (vmState.AccessTracker.TransientCreateList.Count != 0 && !TryChargeTransientCreateTransfer(vmState))
+            {
+                return new CallResult(EvmExceptionType.OutOfGas);
+            }
+
             GetExecutionHandlers().InitializeFrame(this, vmState);
         }
 

@@ -61,7 +61,7 @@ public static partial class EvmInstructions
             TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in tracker, tracing, address, kind);
     }
 
-    internal interface ICreateSpec
+    internal interface ICreateSpec : IAccessSpec
     {
         static abstract bool UseHotAndColdStorage { get; }
         static abstract bool IsEip3860Enabled { get; }
@@ -91,6 +91,11 @@ public static partial class EvmInstructions
             where Eip8037 : struct, IFlag
             where TOpCreate : struct, IOpCreate =>
             TGasPolicy.TryConsumeCreateGas<Eip8037, TOpCreate, Eip3860, Eip8038>(ref gas, spec, words);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
+            ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
+            where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
+            TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in tracker, tracing, address, kind);
     }
 
     internal interface ISelfDestructSpec : IAccessSpec

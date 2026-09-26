@@ -419,13 +419,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
     /// <summary>Records an EVM halt on a call frame, for the root frame and the nested ones alike.</summary>
     /// <remarks>
-    /// A CREATE or CREATE2 frame that halted deployed no contract, so its <c>to</c> is dropped —
+    /// A CREATE, CREATE2 or TCREATE frame that halted deployed no contract, so its <c>to</c> is dropped —
     /// the execution-apis <c>CallFrame</c> schema requires it to be omitted there.
     /// </remarks>
     private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
     {
         callFrame.Error = error.GetEvmExceptionDescription();
-        if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2)
+        if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2 or Instruction.TCREATE)
         {
             callFrame.To = null;
         }

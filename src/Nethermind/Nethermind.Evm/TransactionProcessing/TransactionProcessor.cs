@@ -100,6 +100,24 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
+        /// <summary>
+        /// Applies the EIP-8360 end-of-transaction finalization to every <c>TCREATE</c> account.
+        /// </summary>
+        /// <remarks>
+        /// Code, nonce and storage are dropped and the balance is kept as a fresh nonce-0, code-less account; an
+        /// empty one stays deleted per EIP-161. Accounts on the destroy list are left to self-destruct finalization.
+        /// </remarks>
+        private protected static void FinalizeTransientCreates(IWorldState worldState, in StackAccessTracker accessTracker, bool commit)
+        {
+            foreach (Address transientCreate in accessTracker.TransientCreateList)
+            {
+                if (accessTracker.DestroyList.Contains(transientCreate)) continue;
+
+                UInt256 balance = worldState.GetBalance(transientCreate);
+                DestroyAccount(worldState, transientCreate, in balance, commit, removeSelfdestructBurn: true);
+            }
+        }
+
         /// <summary>Bounds a prefix frame's execution gas by what is left of <c>MAX_VERIFY_GAS</c>.</summary>
         /// <remarks>An opaque prefix's declared gas_limits are not structurally bounded, so this cap is what
         /// keeps cumulative validation work under the budget.</remarks>
@@ -1473,14 +1491,16 @@ namespace Nethermind.Evm.TransactionProcessing
                         }
                     }
 
+                    // Same derivation as Execute: !commit = build-up round spanning the block.
+                    bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
+                    FinalizeTransientCreates(WorldState, in accessedItems, commit);
+
                     // EIP-8037: defer destroy list processing to after PayFees so that
                     // burn logs include the priority fee in the balance.
                     bool deferFinalization = spec.IsEip7708Enabled && spec.IsEip8037Enabled;
                     JournalSet<Address>? destroyList = substate.DestroyList;
                     if (!deferFinalization && destroyList?.Count > 0)
                     {
-                        // Same derivation as Execute: !commit = build-up round spanning the block.
-                        bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                         bool tracingRefunds = tracer.IsTracingRefunds;

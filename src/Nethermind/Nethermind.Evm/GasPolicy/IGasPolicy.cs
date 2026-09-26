@@ -134,11 +134,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         where TEip8037 : struct, IFlag
         where TOpCreate : struct, EvmInstructions.IOpCreate
     {
-        ulong baseCost = spec.IsEip8038Enabled ? Eip8038Constants.CreateAccess
+        ulong baseCost = typeof(TOpCreate) == typeof(EvmInstructions.OpTCreate) ? GasCostOf.TCreate
+            : spec.IsEip8038Enabled ? Eip8038Constants.CreateAccess
             : TEip8037.IsActive ? GasCostOf.CreateExecution
             : GasCostOf.Create;
         ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
-        ulong create2HashCost = typeof(TOpCreate) == typeof(EvmInstructions.OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
+        ulong create2HashCost = typeof(TOpCreate) != typeof(EvmInstructions.OpCreate) ? GasCostOf.Sha3Word * initCodeWords : 0;
         return TSelf.UpdateGas(ref gas, baseCost + initCodeWordCost + create2HashCost);
     }
 

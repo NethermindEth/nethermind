@@ -11,7 +11,7 @@ namespace Nethermind.Evm
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsAnyCreate(this ExecutionType executionType) =>
-            executionType is ExecutionType.CREATE or ExecutionType.CREATE2;
+            executionType is ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.TCREATE;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsAnyCall(this ExecutionType executionType) =>
@@ -27,7 +27,7 @@ namespace Nethermind.Evm
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool CreditsBalance(this ExecutionType executionType) =>
-            executionType is ExecutionType.TRANSACTION or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE or ExecutionType.CREATE2;
+            executionType is ExecutionType.TRANSACTION or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.TCREATE;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ref readonly UInt256 GetBalanceCredit(this ExecutionType executionType, in UInt256 value) =>
@@ -43,6 +43,7 @@ namespace Nethermind.Evm
                 ExecutionType.DELEGATECALL => Instruction.DELEGATECALL,
                 ExecutionType.CREATE => Instruction.CREATE,
                 ExecutionType.CREATE2 => Instruction.CREATE2,
+                ExecutionType.TCREATE => Instruction.TCREATE,
                 _ => throw new NotSupportedException($"Execution type {executionType} is not supported.")
             };
     }
@@ -57,6 +58,8 @@ namespace Nethermind.Evm
         CALLCODE,
         CREATE,
         CREATE2,
+        /// <summary>EIP-8360 transient contract creation.</summary>
+        TCREATE,
     }
     // ReSharper restore IdentifierTypo InconsistentNaming
 }

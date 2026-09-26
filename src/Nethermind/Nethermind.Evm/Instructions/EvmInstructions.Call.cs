@@ -238,8 +238,9 @@ public static partial class EvmInstructions
             return pushResult;
         }
 
-        // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.IsTracingActions)
+        // Fast-path for calls to externally owned accounts (non-contracts); EIP-8360 transfers need a frame to charge in.
+        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.IsTracingActions
+            && (!hasValueTransfer || vm.VmState.AccessTracker.TransientCreateList.Count == 0))
         {
             vm.ReturnDataBuffer = default;
             // Mutate balances only after the success byte is on the stack; this fast path has no snapshot to roll back a failed push.
@@ -340,7 +341,8 @@ public static partial class EvmInstructions
 #if ZK_EVM
         // Precompiles run no bytecode: handle them inline, skipping the child
         // frame's round trip through the ExecuteTransaction dispatch loop.
-        if (codeInfo.IsPrecompile)
+        // EIP-8360 transfers take the full frame so its entry prices the TCREATE balance change.
+        if (codeInfo.IsPrecompile && (callValue.IsZero || vm.VmState.AccessTracker.TransientCreateList.Count == 0))
         {
             return vm.InlinePrecompileCall<TTracingInst>(
                 callEnv,
