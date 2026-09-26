@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
@@ -78,33 +77,12 @@ public partial class Bls12381G1MsmPrecompile
             return Eip2537.G1Infinity;
         }
 
-        Result result = Result.Success;
-
+        Memory<long> rawPointsMemory = rawPoints.AsMemory();
+        Memory<byte> rawScalarsMemory = rawScalars.AsMemory();
         // decode points to rawPoints buffer
         // n.b. subgroup checks carried out as part of decoding
-#pragma warning disable CS0162 // Unreachable code detected
-        if (Eip2537.DisableConcurrency)
-        {
-            for (int i = 0; i < pointDestinations.Count && result; i++)
-            {
-                result = Eip2537.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), pointDestinations[i], i);
-            }
-        }
-        else
-        {
-            Memory<long> rawPointsMemory = rawPoints.AsMemory();
-            Memory<byte> rawScalarsMemory = rawScalars.AsMemory();
-            Parallel.For(0, pointDestinations.Count, (index, state) =>
-            {
-                Result local = Eip2537.TryDecodeG1ToBuffer(inputData, rawPointsMemory, rawScalarsMemory, pointDestinations[index], index);
-                if (!local)
-                {
-                    result = local;
-                    state.Break();
-                }
-            });
-        }
-#pragma warning restore CS0162 // Unreachable code detected
+        Result result = Eip2537.DecodeAll(pointDestinations.Count,
+            index => Eip2537.TryDecodeG1ToBuffer(inputData, rawPointsMemory, rawScalarsMemory, pointDestinations[index], index));
 
         if (!result)
             return result.Error!;

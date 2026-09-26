@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
@@ -43,33 +42,11 @@ public partial class Bls12381PairingCheckPrecompile
             pairDestinations.Add(dest);
         }
 
-        Result result = Result.Success;
-
+        Memory<long> g1Memory = g1Points.AsMemory();
+        Memory<long> g2Memory = g2Points.AsMemory();
         // decode + on-curve/subgroup-validate each pair into its slot
-#pragma warning disable CS0162 // Unreachable code detected
-        if (Eip2537.DisableConcurrency)
-        {
-            for (int i = 0; i < pairDestinations.Count && result; i++)
-            {
-                result = TryDecodePairToBuffer(inputData, g1Points.AsMemory(), g2Points.AsMemory(), pairDestinations[i], i);
-            }
-        }
-        else
-        {
-            Memory<long> g1Memory = g1Points.AsMemory();
-            Memory<long> g2Memory = g2Points.AsMemory();
-            Parallel.For(0, pairDestinations.Count, (index, state) =>
-            {
-                Result local = TryDecodePairToBuffer(inputData, g1Memory, g2Memory, pairDestinations[index], index);
-                if (!local)
-                {
-                    // racy but safe: workers only ever store a failure, so post-barrier result fails iff any pair did
-                    result = local;
-                    state.Break();
-                }
-            });
-        }
-#pragma warning restore CS0162 // Unreachable code detected
+        Result result = Eip2537.DecodeAll(pairDestinations.Count,
+            index => TryDecodePairToBuffer(inputData, g1Memory, g2Memory, pairDestinations[index], index));
 
         if (!result)
             return result.Error!;
