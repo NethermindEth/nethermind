@@ -2,9 +2,9 @@
 
 Nethermind uses Autofac for DI with a custom DSL defined in `Nethermind.Core/ContainerBuilderExtensions.cs`.
 
-## Critical rules
+## Rules
 
-- **NEVER manually wire components** that DI modules already register. Check `Nethermind.Init/Modules/` first.
+- Don't manually wire components that DI modules already register: hand wiring breaks when a component gains a dependency and bypasses plugin decorators. Check `Nethermind.Init/Modules/` first.
 - **For tests and benchmarks**: use production modules with overrides (e.g., `DiagnosticMode.MemDb`), not manual construction. See `TestBlockchain` and `E2ESyncTests`.
 
 ## Production modules (`Nethermind.Init/Modules/`)
@@ -26,7 +26,7 @@ The table is not exhaustive — list `Nethermind.Init/Modules/` for the current 
 
 ## WorldState Architecture
 
-`IWorldState` handles the EVM→State interface. Previously it also handled storage concerns, but that was extracted into `IWorldStateScopeProvider`, leaving snapshot and journaling logic in `IWorldState`.
+`IWorldState` handles the EVM→State interface: snapshots and journaling. Storage concerns live in `IWorldStateScopeProvider`.
 
 `IWorldStateScopeProvider` is provided into each block processing context from `IWorldStateManager` manually depending on usage. Each instance of `IWorldStateScopeProvider` is NOT shareable across different block processing contexts. These are done in:
 

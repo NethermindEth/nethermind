@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -185,7 +186,9 @@ namespace Nethermind.Facade
         {
             CallOutputTracer tracer = new();
             BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
-            TransactionResult result = TryCallAndRestore(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
+            TransactionResult result = TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap
+                ? tipAboveFeeCap
+                : TryCallAndRestore(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
 
             string? error = result.GetErrorMessage(tracer.Error);
             if (result.TransactionExecuted && error is not null && result.EvmExceptionType is not EvmExceptionType.Revert
@@ -369,7 +372,7 @@ namespace Nethermind.Facade
                 accessTracer.Reset();
                 outputTracer.Reset();
                 tx.AccessList = previousAccessList;
-                result = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, tracer);
+                result = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap: true);
                 stop = !result.TransactionExecuted || HasConverged(previousAccessList, accessTracer.AccessList);
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
@@ -383,7 +386,7 @@ namespace Nethermind.Facade
                 CallOutputTracer emptyOutputTracer = new();
                 CancellationTxTracer emptyTracer = emptyOutputTracer.WithCancellation(cancellationToken);
                 tx.AccessList = null;
-                TransactionResult emptyResult = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, emptyTracer);
+                TransactionResult emptyResult = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, emptyTracer, rejectsTipAboveFeeCap: true);
                 if (emptyResult.TransactionExecuted
                     && emptyOutputTracer.StatusCode == outputTracer.StatusCode
                     && emptyOutputTracer.GasSpent < outputTracer.GasSpent)
@@ -468,11 +471,12 @@ namespace Nethermind.Facade
             BlockHeader blockHeader,
             Transaction transaction,
             UInt256? blobBaseFeeOverride,
-            ITxTracer tracer)
+            ITxTracer tracer,
+            bool rejectsTipAboveFeeCap = false)
         {
             try
             {
-                return CallAndRestore(nonceSource, txProcessor, blockHeader, transaction, blobBaseFeeOverride, tracer);
+                return CallAndRestore(nonceSource, txProcessor, blockHeader, transaction, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap);
             }
             catch (InsufficientBalanceException)
             {
@@ -486,10 +490,13 @@ namespace Nethermind.Facade
             BlockHeader blockHeader,
             Transaction transaction,
             UInt256? blobBaseFeeOverride,
-            ITxTracer tracer)
+            ITxTracer tracer,
+            bool rejectsTipAboveFeeCap = false)
         {
             BlockExecutionContext blockExecutionContext = PrepareCall(nonceSource, blockHeader, transaction, blobBaseFeeOverride);
-            return txProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
+            return rejectsTipAboveFeeCap && TipAboveFeeCap(transaction, blockExecutionContext.Spec) is { } tipAboveFeeCap
+                ? tipAboveFeeCap
+                : txProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
         }
 
         /// <summary>Readies <paramref name="transaction"/> to run on top of <paramref name="blockHeader"/> and returns that block's execution context.</summary>
@@ -521,9 +528,21 @@ namespace Nethermind.Facade
                 }
             }
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
-            transaction.Hash = transaction.CalculateHash();
+            transaction.Hash = transaction.Type <= TxType.FrameTx ? null : transaction.CalculateHash();
             return new BlockExecutionContext(callHeader, releaseSpec, blobBaseFee);
         }
+
+        /// <summary>
+        /// The rejection of a priced call whose priority fee exceeds its fee cap, before any gas is bought; the
+        /// processor checks only the fee cap against the base fee when validation is skipped.
+        /// </summary>
+        private static TransactionResult? TipAboveFeeCap(Transaction tx, IReleaseSpec spec) =>
+            spec.IsEip1559Enabled
+            && !(tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero)
+            && tx.MaxFeePerGas < tx.MaxPriorityFeePerGas
+                ? TransactionResult.ErrorType.MalformedTransaction.WithDetail(
+                    $"{TxErrorMessages.TipAboveFeeCap}: address {tx.SenderAddress!.ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: {tx.MaxPriorityFeePerGas}, maxFeePerGas: {tx.MaxFeePerGas}")
+                : null;
 
         public ulong GetChainId() => blockTree.ChainId;
 

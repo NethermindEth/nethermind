@@ -354,6 +354,17 @@ public partial class EthRpcModule(
 
     public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
     {
+        // Fees are checked for an account this node holds, ahead of the rest of the request; blob transactions are
+        // not sent this way.
+        Address from = (rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero;
+        if (rpcTx is not BlobTransactionForRpc
+            && _blockFinder.Head?.Header is { } head
+            && Array.IndexOf(_wallet.GetAccounts(), from) >= 0
+            && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(head).IsEip1559Enabled) is { } feeError)
+        {
+            return Task.FromResult(ResultWrapper<Hash256>.Fail(feeError, ErrorCodes.InvalidInput));
+        }
+
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
         {
@@ -390,6 +401,16 @@ public partial class EthRpcModule(
         Address from = (rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero;
         if (!_wallet.IsUnlocked(from))
             return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
+
+        // With the signing fields present, fees are checked before the rest of the request; a request carrying
+        // blobs has its sidecar checked first.
+        if (rpcTx.MissingSigningField() is null
+            && rpcTx is not BlobTransactionForRpc { Blobs: not null }
+            && _blockFinder.Head?.Header is { } signingHead
+            && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(signingHead).IsEip1559Enabled) is { } feeError)
+        {
+            return ResultWrapper<SignTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
+        }
 
         Result<Transaction> txResult = rpcTx.ToSignableTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
@@ -476,6 +497,11 @@ public partial class EthRpcModule(
         if (legacyTx.From is not { } from)
             return ResultWrapper<FillTransactionResult>.Fail("from address not specified", ErrorCodes.InvalidInput);
 
+        // Fees are checked before the chain id, as they are when a transaction to send is filled; a request carrying
+        // blobs has its sidecar checked first.
+        if (rpcTx is not BlobTransactionForRpc { Blobs: not null } && FeeDefaultRules.Error(rpcTx, spec.IsEip1559Enabled) is { } feeError)
+            return ResultWrapper<FillTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
+
         if (legacyTx.ChainId is { } requestedChainId && requestedChainId != chainId)
             return ResultWrapper<FillTransactionResult>.Fail($"invalid chain id (have={chainId}, want={requestedChainId})", ErrorCodes.InvalidInput);
 
@@ -498,6 +524,13 @@ public partial class EthRpcModule(
         Result fillResult = rpcTx.FillDefaults(fillContext);
         if (!fillResult)
             return ResultWrapper<FillTransactionResult>.Fail(fillResult.Error!, ErrorCodes.InvalidInput);
+
+        // A fee cap left in place next to a filled priority fee must still cover it.
+        if (rpcTx is EIP1559TransactionForRpc { MaxFeePerGas: { } filledFeeCap, MaxPriorityFeePerGas: { } filledPriorityFee }
+            && FeeDefaultRules.OrderError(filledFeeCap, filledPriorityFee) is { } orderError)
+        {
+            return ResultWrapper<FillTransactionResult>.Fail(orderError, ErrorCodes.InvalidInput);
+        }
 
         if (rpcTx.Gas is null)
         {
