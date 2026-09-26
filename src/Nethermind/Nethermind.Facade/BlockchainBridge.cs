@@ -185,12 +185,21 @@ namespace Nethermind.Facade
         private CallOutput RunCall(IWorldState nonceSource, ITransactionProcessor txProcessor, BlockHeader header, Transaction tx, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
             CallOutputTracer tracer = new();
-            TransactionResult result = TryCallAndRestore(nonceSource, txProcessor, header, tx, treatBlockHeaderAsParentBlock: false,
-                blobBaseFeeOverride, tracer.WithCancellation(cancellationToken), rejectsTipAboveFeeCap: true);
+            BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
+            TransactionResult result = TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap
+                ? tipAboveFeeCap
+                : TryCallAndRestore(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
+
+            string? error = result.GetErrorMessage(tracer.Error);
+            if (result.TransactionExecuted && error is not null && result.EvmExceptionType is not EvmExceptionType.Revert
+                && ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText))
+            {
+                error = failureText;
+            }
 
             return new CallOutput
             {
-                Error = result.GetErrorMessage(tracer.Error),
+                Error = error,
                 GasSpent = tracer.GasSpent,
                 OutputData = tracer.ReturnValue,
                 InputError = !result.TransactionExecuted,
@@ -218,95 +227,84 @@ namespace Nethermind.Facade
             }
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, CancellationToken cancellationToken) =>
-            HasOverrides(stateOverride, blobBaseFeeOverride, blockOverride)
-                ? EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, blockOverride, cancellationToken)
-                : EstimateGasShareable(header, tx, errorMargin, cancellationToken);
-
-        private CallOutput EstimateGasShareable(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, ulong gasCap, CancellationToken cancellationToken)
         {
-            if (!shareableTxProcessorSource.TryBuild(header, out IReadOnlyTxProcessingScope? scope)) return StateUnavailable(header);
-            using IDisposable _ = scope;
-            return RunEstimateGas(scope.TransactionProcessor, scope.WorldState, header, tx, errorMargin, blobBaseFeeOverride: null, cancellationToken);
+            // A blob transaction without a blob fee cap is estimated with blob gas priced at zero.
+            BlobFeeCapFill blobFeeCapFill = new(tx.SupportsBlobs && tx.MaxFeePerBlobGas is null, blobBaseFeeOverride);
+            if (tx.SupportsBlobs && (tx.MaxFeePerBlobGas ?? UInt256.Zero).IsZero)
+            {
+                tx.MaxFeePerBlobGas = UInt256.Zero;
+                blobBaseFeeOverride = UInt256.Zero;
+            }
+
+            return HasOverrides(stateOverride, blobBaseFeeOverride, blockOverride)
+                ? EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, blockOverride, gasCap, blobFeeCapFill, cancellationToken)
+                : EstimateGasShareable(header, tx, errorMargin, gasCap, blobFeeCapFill, cancellationToken);
         }
 
-        private CallOutput EstimateGasExclusive(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, CancellationToken cancellationToken)
+        private CallOutput EstimateGasShareable(BlockHeader header, Transaction tx, int errorMargin, ulong gasCap, BlobFeeCapFill blobFeeCapFill, CancellationToken cancellationToken)
         {
-            if (!processingEnv.TryBuildAndOverride(header, stateOverride, blockOverride, out Scope<BlockProcessingComponents>? scope)) return StateUnavailable(header);
+            if (!shareableTxProcessorSource.TryBuild(header, out IReadOnlyTxProcessingScope? scope)) return EstimateGasStateUnavailable(header, tx);
+            using IDisposable _ = scope;
+            return RunEstimateGas(scope.TransactionProcessor, scope.WorldState, header, tx, errorMargin, gasCap, blobBaseFeeOverride: null, blobFeeCapFill, cancellationToken);
+        }
+
+        private CallOutput EstimateGasExclusive(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, ulong gasCap, BlobFeeCapFill blobFeeCapFill, CancellationToken cancellationToken)
+        {
+            if (!processingEnv.TryBuildAndOverride(header, stateOverride, blockOverride, out Scope<BlockProcessingComponents>? scope)) return EstimateGasStateUnavailable(header, tx);
             using IDisposable _ = scope;
             BlockProcessingComponents components = scope.Component;
             components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
-            return RunEstimateGas(components.TransactionProcessor, components.WorldState, header, tx, errorMargin, blobBaseFeeOverride, cancellationToken);
+            return RunEstimateGas(components.TransactionProcessor, components.WorldState, header, tx, errorMargin, gasCap, blobBaseFeeOverride, blobFeeCapFill, cancellationToken);
         }
 
-        /// <summary>Whether the sender's balance bounds <paramref name="tx"/>'s gas limit, and what is left for gas after its value.</summary>
-        /// <remarks>False for an EIP-8141 frame transaction: the gas is owed by the frame-approved payer, not the sender.</remarks>
-        private static bool IsCappedBySenderAllowance(Transaction tx, in UInt256 senderBalance, in UInt256 feeCap, out UInt256 availableForGas)
+        /// <summary>Whether the request left the blob fee cap to be filled, and the blob base fee override it carried.</summary>
+        private readonly record struct BlobFeeCapFill(bool IsFilled, UInt256? BlobBaseFeeOverride);
+
+        /// <summary>
+        /// A failure without standard text names the gas the next block's rules fund, run with the blob fee cap
+        /// filled from the next block's blob base fee when the request left it out.
+        /// </summary>
+        private FundedRunContext CreateFundedRunContext(BlockHeader header, BlobFeeCapFill blobFeeCapFill)
         {
-            availableForGas = UInt256.Zero;
-            return !tx.SupportsFrames
-                && feeCap > UInt256.Zero
-                && !UInt256.SubtractUnderflow(senderBalance, tx.ValueRef, out availableForGas);
+            IReleaseSpec fundingSpec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
+            if (!blobFeeCapFill.IsFilled)
+                return new FundedRunContext(fundingSpec, null);
+
+            BlockHeader nextHeader = header.Clone();
+            nextHeader.Number += 1;
+            nextHeader.Timestamp = Math.Max(header.Timestamp + blocksConfig.SecondsPerSlot, timestamper.UnixTime.Seconds);
+            IReleaseSpec nextSpec = specProvider.GetSpec(nextHeader);
+            if (!nextSpec.IsEip4844Enabled)
+                return new FundedRunContext(fundingSpec, null);
+
+            nextHeader.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(header, nextSpec);
+            BlobGasCalculator.TryCalculateFeePerBlobGas(nextHeader, nextSpec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee);
+            return new FundedRunContext(fundingSpec, blobFeeCapFill.BlobBaseFeeOverride ?? blobBaseFee);
         }
 
-        private CallOutput RunEstimateGas(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader header, Transaction tx, int errorMargin, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
+        // A rejected transaction reports, as GasSpent, the gas limit the RPC error names.
+        private static CallOutput EstimateGasStateUnavailable(BlockHeader header, Transaction tx)
         {
-            // Cap tx.GasLimit to the sender's affordable allowance before the initial probe,
-            // mirroring Geth's hi = min(hi, (balance - value - blobFee) / gasFeeCap), where blobFee = 0 outside EIP-4844. This ensures
-            // BuyGas never sees a gas limit that makes gasLimit * feeCap + blobFee exceed the sender's balance.
-            IReleaseSpec spec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
-            UInt256 senderBalance = worldState.GetBalance(tx.SenderAddress ?? Address.Zero);
-            UInt256 feeCap = tx.CalculateFeeCap();
-            if (IsCappedBySenderAllowance(tx, in senderBalance, in feeCap, out UInt256 availableForGas))
-            {
-                if (!BlobGasCalculator.TrySubtractBlobFee(spec, tx, ref availableForGas))
-                    availableForGas = UInt256.Zero;
+            CallOutput output = StateUnavailable(header);
+            output.InputError = true;
+            output.GasSpent = tx.GasLimit;
+            return output;
+        }
 
-                ulong allowance = GasEstimator.AllowanceFromFunds(in availableForGas, in feeCap);
-                if (tx.GasLimit > allowance)
-                    tx.GasLimit = allowance;
-            }
-
-            EstimateGasTracer estimateGasTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(worldState, txProcessor, header, tx, true,
-                blobBaseFeeOverride, estimateGasTracer.WithCancellation(cancellationToken));
-
-            GasEstimator gasEstimator = new(txProcessor, worldState, specProvider, blocksConfig);
-
-            string? error = tryCallResult.GetErrorMessage(estimateGasTracer.Error);
-            string? probeError = error;
-
-            ulong estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, (ulong)errorMargin, cancellationToken);
-            // Allowance errors take precedence over any earlier revert: the revert was an artifact
-            // of the gas cap, so surfacing it instead of the affordability error would be misleading.
-            error = err switch
-            {
-                // Probe failed only because the gas hint was outside validity bounds (below standard
-                // intrinsic or above the EIP-8037 total cap): if estimation succeeds, clear the probe error.
-                null when tryCallResult.Error is TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
-                    or TransactionResult.ErrorType.GasLimitExceedsMaxTotalCap => null,
-                null => error,
-                _ when error is null => err,
-                // Probe's out-of-bounds-gas failure is superseded by whatever the estimator found at full gas.
-                _ when tryCallResult.Error is TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
-                    or TransactionResult.ErrorType.GasLimitExceedsMaxTotalCap => err,
-                _ when err.StartsWith(GasEstimator.GasExceedsAllowanceMsgPrefix, StringComparison.Ordinal) => err,
-                GasEstimator.InsufficientBalance => err,
-                GasEstimator.InsufficientFundsForGas => err,
-                _ => error
-            };
-
-            bool executionReverted = err is not null
-                ? estimateGasTracer.TopLevelRevert // err comes from GasEstimator; TopLevelRevert is authoritative for revert detection here.
-                : tryCallResult.EvmExceptionType == EvmExceptionType.Revert;
+        private CallOutput RunEstimateGas(ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader header, Transaction tx, int errorMargin, ulong gasCap, UInt256? blobBaseFeeOverride, BlobFeeCapFill blobFeeCapFill, CancellationToken cancellationToken)
+        {
+            BlockExecutionContext blockContext = PrepareCall(worldState, header, tx, blobBaseFeeOverride);
+            GasEstimation estimation = new GasEstimator(txProcessor, worldState).Estimate(
+                tx, in blockContext, (ulong)errorMargin, gasCap, CreateFundedRunContext(header, blobFeeCapFill), cancellationToken);
 
             return new CallOutput
             {
-                Error = error,
-                GasSpent = estimate,
-                OutputData = estimateGasTracer.ReturnValue,
-                InputError = !executionReverted && error is not null && (error != probeError),
-                ExecutionReverted = executionReverted
+                Error = estimation.Error,
+                GasSpent = estimation.RejectedGasLimit ?? estimation.Gas,
+                OutputData = estimation.RevertData ?? [],
+                InputError = estimation.RejectedGasLimit is not null,
+                ExecutionReverted = estimation.Reverted
             };
         }
 
@@ -374,7 +372,7 @@ namespace Nethermind.Facade
                 accessTracer.Reset();
                 outputTracer.Reset();
                 tx.AccessList = previousAccessList;
-                result = TryCallAndRestore(nonceSource, txProcessor, header, tx, false, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap: true);
+                result = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap: true);
                 stop = !result.TransactionExecuted || HasConverged(previousAccessList, accessTracer.AccessList);
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
@@ -388,7 +386,7 @@ namespace Nethermind.Facade
                 CallOutputTracer emptyOutputTracer = new();
                 CancellationTxTracer emptyTracer = emptyOutputTracer.WithCancellation(cancellationToken);
                 tx.AccessList = null;
-                TransactionResult emptyResult = TryCallAndRestore(nonceSource, txProcessor, header, tx, false, blobBaseFeeOverride, emptyTracer, rejectsTipAboveFeeCap: true);
+                TransactionResult emptyResult = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, emptyTracer, rejectsTipAboveFeeCap: true);
                 if (emptyResult.TransactionExecuted
                     && emptyOutputTracer.StatusCode == outputTracer.StatusCode
                     && emptyOutputTracer.GasSpent < outputTracer.GasSpent)
@@ -455,19 +453,30 @@ namespace Nethermind.Facade
             return previousCount == discoveredCount;
         }
 
+        private static TransactionResult TryCallAndRestore(ITransactionProcessor txProcessor, Transaction transaction, in BlockExecutionContext blockContext, ITxTracer tracer)
+        {
+            try
+            {
+                return txProcessor.CallAndRestore(transaction, in blockContext, tracer);
+            }
+            catch (InsufficientBalanceException)
+            {
+                return TransactionResult.InsufficientSenderBalance;
+            }
+        }
+
         private TransactionResult TryCallAndRestore(
             IWorldState nonceSource,
             ITransactionProcessor txProcessor,
             BlockHeader blockHeader,
             Transaction transaction,
-            bool treatBlockHeaderAsParentBlock,
             UInt256? blobBaseFeeOverride,
             ITxTracer tracer,
             bool rejectsTipAboveFeeCap = false)
         {
             try
             {
-                return CallAndRestore(nonceSource, txProcessor, blockHeader, transaction, treatBlockHeaderAsParentBlock, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap);
+                return CallAndRestore(nonceSource, txProcessor, blockHeader, transaction, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap);
             }
             catch (InsufficientBalanceException)
             {
@@ -480,10 +489,18 @@ namespace Nethermind.Facade
             ITransactionProcessor txProcessor,
             BlockHeader blockHeader,
             Transaction transaction,
-            bool treatBlockHeaderAsParentBlock,
             UInt256? blobBaseFeeOverride,
             ITxTracer tracer,
             bool rejectsTipAboveFeeCap = false)
+        {
+            BlockExecutionContext blockExecutionContext = PrepareCall(nonceSource, blockHeader, transaction, blobBaseFeeOverride);
+            return rejectsTipAboveFeeCap && TipAboveFeeCap(transaction, blockExecutionContext.Spec) is { } tipAboveFeeCap
+                ? tipAboveFeeCap
+                : txProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
+        }
+
+        /// <summary>Readies <paramref name="transaction"/> to run on top of <paramref name="blockHeader"/> and returns that block's execution context.</summary>
+        private BlockExecutionContext PrepareCall(IWorldState nonceSource, BlockHeader blockHeader, Transaction transaction, UInt256? blobBaseFeeOverride)
         {
             transaction.SenderAddress ??= Address.Zero;
 
@@ -493,28 +510,12 @@ namespace Nethermind.Facade
             transaction.Nonce = nonceSource.GetNonce(transaction.SenderAddress);
 
             BlockHeader callHeader = blockHeader.Clone();
-            if (treatBlockHeaderAsParentBlock)
-            {
-                callHeader.Number += 1;
-                callHeader.UnclesHash = Keccak.OfAnEmptySequenceRlp;
-                callHeader.Beneficiary = Address.Zero;
-                callHeader.Difficulty = UInt256.Zero;
-                callHeader.Timestamp = Math.Max(blockHeader.Timestamp + blocksConfig.SecondsPerSlot, timestamper.UnixTime.Seconds);
-            }
-
             IReleaseSpec releaseSpec = specProvider.GetSpec(callHeader);
-            callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
-                ? BaseFeeCalculator.Calculate(blockHeader, releaseSpec)
-                : blockHeader.BaseFeePerGas;
-
             UInt256 blobBaseFee = UInt256.Zero;
 
             if (releaseSpec.IsEip4844Enabled)
             {
                 callHeader.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(transaction);
-                callHeader.ExcessBlobGas = treatBlockHeaderAsParentBlock
-                    ? BlobGasCalculator.CalculateExcessBlobGas(blockHeader, releaseSpec)
-                    : blockHeader.ExcessBlobGas;
 
                 BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, releaseSpec.BlobBaseFeeUpdateFraction, out blobBaseFee);
 
@@ -526,27 +527,22 @@ namespace Nethermind.Facade
                     transaction.MaxFeePerBlobGas = blobBaseFee;
                 }
             }
-            callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.Type <= TxType.FrameTx ? null : transaction.CalculateHash();
-            if (rejectsTipAboveFeeCap && IsTipAboveFeeCap(transaction, releaseSpec))
-            {
-                return TransactionResult.ErrorType.MalformedTransaction.WithDetail(
-                    $"{TxErrorMessages.TipAboveFeeCap}: address {transaction.SenderAddress.ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: {transaction.MaxPriorityFeePerGas}, maxFeePerGas: {transaction.MaxFeePerGas}");
-            }
-
-            BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, blobBaseFee);
-            return txProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
+            return new BlockExecutionContext(callHeader, releaseSpec, blobBaseFee);
         }
 
         /// <summary>
-        /// Whether a priced call's priority fee exceeds its fee cap, which fails it before any gas is bought; the
+        /// The rejection of a priced call whose priority fee exceeds its fee cap, before any gas is bought; the
         /// processor checks only the fee cap against the base fee when validation is skipped.
         /// </summary>
-        private static bool IsTipAboveFeeCap(Transaction tx, IReleaseSpec spec) =>
+        private static TransactionResult? TipAboveFeeCap(Transaction tx, IReleaseSpec spec) =>
             spec.IsEip1559Enabled
             && !(tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero)
-            && tx.MaxFeePerGas < tx.MaxPriorityFeePerGas;
+            && tx.MaxFeePerGas < tx.MaxPriorityFeePerGas
+                ? TransactionResult.ErrorType.MalformedTransaction.WithDetail(
+                    $"{TxErrorMessages.TipAboveFeeCap}: address {tx.SenderAddress!.ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: {tx.MaxPriorityFeePerGas}, maxFeePerGas: {tx.MaxFeePerGas}")
+                : null;
 
         public ulong GetChainId() => blockTree.ChainId;
 

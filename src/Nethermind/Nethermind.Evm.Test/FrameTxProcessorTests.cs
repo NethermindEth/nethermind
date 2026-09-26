@@ -11,7 +11,6 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -1072,13 +1071,15 @@ public class FrameTxProcessorTests
             .WithBeneficiary(Beneficiary)
             .WithGasLimit(30_000_000).TestObject;
 
-        EstimateGasTracer gasTracer = new();
+        CallOutputTracer gasTracer = new();
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
         TransactionResult probe = _transactionProcessor.CallAndRestore(tx, gasTracer);
         Assert.That(probe.TransactionExecuted, Is.True, probe.ErrorDescription ?? probe.Error.ToString());
 
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
-        ulong estimate = estimator.Estimate(tx, header, gasTracer, out string? error);
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider);
+        GasEstimation estimation = estimator.Estimate(tx, new BlockExecutionContext(header, _specProvider.GetSpec(header)));
+        ulong estimate = estimation.Gas;
+        string? error = estimation.Error;
 
         const ulong frameGasSum = 3 * 200_000;
         using (Assert.EnterMultipleScope())
@@ -1102,12 +1103,12 @@ public class FrameTxProcessorTests
             .WithBeneficiary(Beneficiary)
             .WithGasLimit(100_000).TestObject;
 
-        EstimateGasTracer gasTracer = new();
+        CallOutputTracer gasTracer = new();
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
         _transactionProcessor.CallAndRestore(tx, gasTracer);
 
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
-        estimator.Estimate(tx, header, gasTracer, out string? error);
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider);
+        string? error = estimator.Estimate(tx, new BlockExecutionContext(header, _specProvider.GetSpec(header))).Error;
 
         Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
     }
@@ -1129,8 +1130,10 @@ public class FrameTxProcessorTests
         Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, Spec, out ulong execution, out ulong state), Is.True);
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas), Is.True);
 
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
-        ulong estimate = estimator.Estimate(tx, header, new EstimateGasTracer(), out string? error);
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider);
+        GasEstimation estimation = estimator.Estimate(tx, new BlockExecutionContext(header, _specProvider.GetSpec(header)));
+        ulong estimate = estimation.Gas;
+        string? error = estimation.Error;
 
         using (Assert.EnterMultipleScope())
         {
@@ -1158,8 +1161,8 @@ public class FrameTxProcessorTests
 
         Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, Spec, out ulong execution, out ulong state), Is.True);
 
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
-        estimator.Estimate(tx, header, new EstimateGasTracer(), out string? error);
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider);
+        string? error = estimator.Estimate(tx, new BlockExecutionContext(header, _specProvider.GetSpec(header))).Error;
 
         using (Assert.EnterMultipleScope())
         {
@@ -1185,8 +1188,8 @@ public class FrameTxProcessorTests
 
         Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, Spec, out ulong execution, out ulong state), Is.True);
 
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
-        estimator.Estimate(tx, header, new EstimateGasTracer(), out string? error);
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider);
+        string? error = estimator.Estimate(tx, new BlockExecutionContext(header, _specProvider.GetSpec(header))).Error;
 
         using (Assert.EnterMultipleScope())
         {
@@ -1215,12 +1218,12 @@ public class FrameTxProcessorTests
             .WithBeneficiary(Beneficiary)
             .WithGasLimit(30_000_000).TestObject;
 
-        EstimateGasTracer gasTracer = new();
+        CallOutputTracer gasTracer = new();
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
         _transactionProcessor.CallAndRestore(tx, gasTracer);
 
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
-        estimator.Estimate(tx, header, gasTracer, out string? error);
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider);
+        string? error = estimator.Estimate(tx, new BlockExecutionContext(header, _specProvider.GetSpec(header))).Error;
 
         Assert.That(error, Is.EqualTo(GasEstimator.CannotEstimateGasExceeded));
     }
@@ -1243,9 +1246,8 @@ public class FrameTxProcessorTests
             .WithBeneficiary(Beneficiary)
             .WithGasLimit(30_000_000).TestObject;
 
-        EstimateGasTracer gasTracer = new();
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
-        estimator.Estimate(tx, header, gasTracer, out string? error);
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider);
+        string? error = estimator.Estimate(tx, new BlockExecutionContext(header, _specProvider.GetSpec(header))).Error;
 
         Assert.That(error, Is.EqualTo(FrameTxValidation.MissingFrames));
     }
@@ -1289,7 +1291,7 @@ public class FrameTxProcessorTests
             .WithBeneficiary(Beneficiary)
             .WithGasLimit(30_000_000).TestObject;
 
-        EstimateGasTracer gasTracer = new();
+        CallOutputTracer gasTracer = new();
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, Spec));
         TransactionResult probe = _transactionProcessor.CallAndRestore(tx, gasTracer);
 
@@ -1299,8 +1301,10 @@ public class FrameTxProcessorTests
             Assert.That(gasTracer.StatusCode, Is.EqualTo(StatusCode.Failure), "a reverting POST_TX frame fails the probe status");
         }
 
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
-        ulong estimate = estimator.Estimate(tx, header, gasTracer, out string? error);
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider);
+        GasEstimation estimation = estimator.Estimate(tx, new BlockExecutionContext(header, _specProvider.GetSpec(header)));
+        ulong estimate = estimation.Gas;
+        string? error = estimation.Error;
 
         using (Assert.EnterMultipleScope())
         {
@@ -2114,8 +2118,10 @@ public class FrameTxProcessorTests
         FrameReceiptTracer secondTracer = new();
         TransactionResult second = _transactionProcessor.CallAndRestore(tx, secondTracer);
 
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, new BlocksConfig());
-        ulong estimate = estimator.Estimate(tx, header, new EstimateGasTracer(), out string? error);
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider);
+        GasEstimation estimation = estimator.Estimate(tx, new BlockExecutionContext(header, _specProvider.GetSpec(header)));
+        ulong estimate = estimation.Gas;
+        string? error = estimation.Error;
 
         using (Assert.EnterMultipleScope())
         {

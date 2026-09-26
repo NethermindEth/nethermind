@@ -17,6 +17,9 @@ public class CallOutputTracer : TxTracer
     public ulong GasSpent { get; set; }
     public ulong OperationGas { get; set; }
 
+    /// <summary>The peak gas the transaction consumed, before refunds and at least the calldata floor.</summary>
+    public ulong MaxUsedGas { get; set; }
+
     public string? Error { get; set; }
 
     public byte StatusCode { get; set; }
@@ -26,6 +29,7 @@ public class CallOutputTracer : TxTracer
     {
         GasSpent = gasSpent.SpentGas;
         OperationGas = gasSpent.OperationGas;
+        MaxUsedGas = gasSpent.EffectiveMaxUsedGas;
         ReturnValue = output;
         StatusCode = Evm.StatusCode.Success;
     }
@@ -35,6 +39,7 @@ public class CallOutputTracer : TxTracer
     {
         GasSpent = gasSpent.SpentGas;
         OperationGas = gasSpent.OperationGas;
+        MaxUsedGas = gasSpent.EffectiveMaxUsedGas;
         Error = error;
         ReturnValue = output;
         StatusCode = Evm.StatusCode.Failure;
@@ -44,6 +49,7 @@ public class CallOutputTracer : TxTracer
     {
         GasSpent = 0;
         OperationGas = 0;
+        MaxUsedGas = 0;
         ReturnValue = null;
         Error = null;
         StatusCode = 0;
