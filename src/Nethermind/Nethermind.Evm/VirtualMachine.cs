@@ -1346,10 +1346,6 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    /// <summary>Whether an ID frame may hand its output back in the precompile scratch instead of a new array.</summary>
-    /// <remarks>A nested output only reaches the parent's <see cref="ReturnDataBuffer"/> and memory, as on the inline
-    /// path. A top-level output becomes the transaction output, which outlives the scratch, and an action or
-    /// instruction tracer may keep a nested one, so those still get their own array.</remarks>
     private bool CanReturnIdentityOutputInScratch(VmState<TGasPolicy> state) =>
         !state.IsTopLevel && !IsTracingActions && !_txTracer.IsTracingInstructions;
 
