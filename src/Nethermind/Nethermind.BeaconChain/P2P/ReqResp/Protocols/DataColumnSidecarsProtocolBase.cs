@@ -83,6 +83,13 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
                     throw new Eth2ReqRespException("Data column sidecar chunk carries more commitments than its epoch permits");
                 }
 
+                // gloas/p2p-interface.md: a Gloas-epoch sidecar has the Gloas shape, so a Fulu-shaped one claiming a Gloas slot is invalid.
+                if (Spec.GetEpoch(sidecar.SignedBlockHeader.Message.Slot) >= Spec.GloasForkEpoch)
+                {
+                    RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+                    throw new Eth2ReqRespException($"Fulu data column sidecar chunk claims Gloas slot {sidecar.SignedBlockHeader.Message.Slot}");
+                }
+
                 if (!chunk.ContextBytes.AsSpan().SequenceEqual(ContextBytesFor(sidecar)))
                 {
                     RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
@@ -107,4 +114,94 @@ public abstract class DataColumnSidecarsProtocolBase(BeaconChainSpec spec) : Req
         cts.CancelAfter(RespTimeout);
         return ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, ContextBytesFor(sidecar), DataColumnSidecar.Encode(sidecar), cts.Token);
     }
+
+    /// <summary>The context bytes of a Gloas sidecar chunk: the fork digest of the sidecar's slot epoch.</summary>
+    /// <remarks>gloas/p2p-interface.md gives no context table for the Gloas sidecar, which has no block header, so the epoch comes from its own <c>slot</c>.</remarks>
+    protected byte[] ContextBytesFor(DataColumnSidecarGloas sidecar) =>
+        ForkDigest.Compute(Spec, Spec.GetEpoch(sidecar.Slot));
+
+    /// <summary>Reads Gloas-shaped sidecar chunks until the stream ends, refusing any chunk that fails a check that needs no bid.</summary>
+    /// <remarks>
+    /// Each chunk is bounded by gloas/p2p-interface.md <c>compute_max_data_column_sidecar_size</c>, must claim a Gloas-epoch
+    /// slot with matching context bytes, name a block root, and pass the bid-free part of <c>verify_data_column_sidecar</c>.
+    /// The commitment match and KZG proofs need the block's bid, so the caller checks them.
+    /// </remarks>
+    /// <param name="overallTimeout">Overrides <see cref="MaxSidecarsResponseDuration"/>; test-only seam, production call sites omit it.</param>
+    protected async Task<IReadOnlyList<DataColumnSidecarGloas>> ReadGloasSidecarChunksAsync(Stream stream, int maxSidecars, string protocolId, TimeSpan? overallTimeout = null)
+    {
+        int maxChunkSize = (int)Math.Min(DataColumnSidecarGloasSize.ComputeMax(Spec), (ulong)ReqRespFraming.MaxPayloadSize);
+        List<DataColumnSidecarGloas> sidecars = [];
+        using BoundedTimeout timeout = StartBoundedTimeout(TtfbTimeout + RespTimeout, overallTimeout ?? MaxSidecarsResponseDuration);
+        CancellationTokenSource cts = timeout.Cts;
+        try
+        {
+            while (await ReqRespFraming.ReadResponseChunkAsync(stream, ReqRespFraming.ForkContextLength, maxChunkSize, cts.Token) is { } chunk)
+            {
+                if (chunk.Result != ReqRespFraming.ResponseCode.Success)
+                {
+                    RecordFailure(protocolId, ReqRespFailureReason.PeerError);
+                    throw ErrorChunkToException(chunk);
+                }
+
+                if (sidecars.Count >= maxSidecars)
+                {
+                    RecordFailure(protocolId, ReqRespFailureReason.LimitExceeded);
+                    throw new Eth2ReqRespException($"Peer responded with more than the requested {maxSidecars} data column sidecars");
+                }
+
+                DataColumnSidecarGloas sidecar;
+                try
+                {
+                    DataColumnSidecarGloas.Decode(chunk.Payload, out sidecar);
+                }
+                catch (Exception e) when (e is not Eth2ReqRespException and not OperationCanceledException)
+                {
+                    RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+                    throw new Eth2ReqRespException($"Malformed Gloas data column sidecar chunk: {e.Message}");
+                }
+
+                if (sidecar.BeaconBlockRoot is null || !HasGloasStructure(sidecar))
+                {
+                    RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+                    throw new Eth2ReqRespException("Gloas data column sidecar chunk failed structural validation");
+                }
+
+                if (Spec.GetEpoch(sidecar.Slot) < Spec.GloasForkEpoch)
+                {
+                    RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+                    throw new Eth2ReqRespException($"Gloas data column sidecar chunk claims pre-Gloas slot {sidecar.Slot}");
+                }
+
+                if (!chunk.ContextBytes.AsSpan().SequenceEqual(ContextBytesFor(sidecar)))
+                {
+                    RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+                    throw new Eth2ReqRespException($"Gloas data column sidecar chunk context bytes do not match the fork digest of slot {sidecar.Slot}");
+                }
+
+                sidecars.Add(sidecar);
+                cts.CancelAfter(RespTimeout);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            RecordFailure(protocolId, ReqRespFailureReason.Timeout);
+            throw;
+        }
+
+        return sidecars;
+    }
+
+    protected Task WriteGloasSidecarChunkAsync(Stream stream, DataColumnSidecarGloas sidecar, CancellationTokenSource cts)
+    {
+        cts.CancelAfter(RespTimeout);
+        return ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, ContextBytesFor(sidecar), DataColumnSidecarGloas.Encode(sidecar), cts.Token);
+    }
+
+    // The bid-free part of gloas verify_data_column_sidecar; the bid's commitments are bounded by max_blobs_per_block at the block's epoch.
+    private bool HasGloasStructure(DataColumnSidecarGloas sidecar) =>
+        sidecar.Index < (ulong)Eip7594DasConstants.NumberOfColumns
+        && sidecar.Column is { Length: > 0 } column
+        && sidecar.KzgProofs is { } proofs
+        && proofs.Length == column.Length
+        && (ulong)column.Length <= (Spec.GetBlobParameters(Spec.GetEpoch(sidecar.Slot))?.MaxBlobsPerBlock ?? Spec.MaxBlobsPerBlockElectra);
 }
