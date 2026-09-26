@@ -1939,6 +1939,35 @@ public class TraceRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task VmTrace_call_mem_is_the_output_window([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        // Fill the window [0x100, 0x120) with 0x11, then CALL the identity precompile with the 2-byte input 0xffee.
+        string tail = new('1', 64);
+        byte[] code = Prepare.EvmCode
+            .StoreDataInMemory(0x100, tail)
+            .StoreDataInMemory(0, "ffee")
+            .PushData(0x20)
+            .PushData(0x100)
+            .PushData(2)
+            .PushData(0)
+            .PushData(0)
+            .PushData(IdentityPrecompile.Address)
+            .PushData(50000)
+            .Op(Instruction.CALL)
+            .Op(Instruction.STOP)
+            .Done;
+
+        JToken ops = (await TraceCallVmTrace(context, code.ToHexString(true), "vmTrace"))["ops"]!;
+        JToken call = ops.Single(op => op["pc"]!.Value<int>() == code.Length - 2);
+        Assert.That(call["ex"]!["mem"], Is.EqualTo(JToken.Parse($$"""{"data":"0xffee{{tail[4..]}}","off":256}""")).Using(JToken.EqualityComparer));
+    }
+
     private static async Task<JToken> TraceCallVmTrace(Context context, string bytecode, params string[] traceTypes)
     {
         string calls = $"[[{{\"from\":\"{TestItem.AddressA}\",\"to\":null,\"data\":\"{bytecode}\",\"gas\":\"0xf4240\"}},{JsonSerializer.Serialize(traceTypes)}]]";

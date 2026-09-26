@@ -214,16 +214,11 @@ public static partial class EvmInstructions
             vm.ReturnDataBuffer = default;
             EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
 
-            // Optionally report memory changes for refund tracing.
-            if (vm.IsTracingRefunds)
-            {
-                // Specific to Parity tracing: inspect 32 bytes from data offset.
-                ReadOnlyMemory<byte>? memoryTrace = vm.VmState.Memory.Inspect(in dataOffset, 32);
-                vm.TxTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? default : memoryTrace.Value.Span);
-            }
-
             if (TTracingInst.IsActive)
+            {
+                vm.TraceCallOutputWindow(in outputOffset, in outputLength);
                 vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas), EvmExceptionType.NotEnoughBalance);
+            }
 
             // Refund the remaining gas to the caller.
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
