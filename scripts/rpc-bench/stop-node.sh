@@ -23,6 +23,7 @@ LOG_OUT="${LOG_OUT:-$STATE_DIR/node$SUFFIX.log}"
 integrity_fail=0
 perf_fail=0
 dotnet_trace_fail=0
+dotnet_dump_fail=0
 
 # Stop the dotnet-trace collector first, while the container is still up: SIGINT delivered inside
 # the container is what finalizes the .nettrace, and the exec dies with the container.
@@ -124,10 +125,31 @@ if [[ "${PERF:-false}" == "true" ]]; then
   fi
 fi
 
+# Heap dump while the node is still up and idle after the measured cell; after the dotnet-trace stop
+# so the pause is not in the trace. Analyzed once the node is stopped, so the analysis does not compete
+# with it for memory.
+dump_name="rpcbench$SUFFIX.dmp"
+if [[ "${DOTNET_DUMP:-false}" == "true" ]]; then
+  log "Writing heap dump of the node -> $DIAG_DIR/dotnet-dump/$dump_name"
+  if collect_dotnet_dump "$CONTAINER_NAME" "$dump_name"; then
+    log "dotnet-dump: $(du -h "$DIAG_DIR/dotnet-dump/$dump_name" | cut -f1)"
+  else
+    log "ERROR: dotnet-dump collect failed"
+    dotnet_dump_fail=1
+  fi
+fi
+
 log "Stopping container '$CONTAINER_NAME' (grace ${STOP_GRACE}s)..."
 docker stop -t "$STOP_GRACE" "$CONTAINER_NAME" >/dev/null 2>&1 || true
 log "Capturing node logs -> $LOG_OUT"
 docker logs "$CONTAINER_NAME" > "$LOG_OUT" 2>&1 || true
+
+if [[ "${DOTNET_DUMP:-false}" == "true" && "$dotnet_dump_fail" == "0" ]]; then
+  log "Analyzing the heap dump (dotnet-dump reports under $DIAG_DIR/dotnet-dump)..."
+  analyze_dotnet_dump "$NODE_IMAGE" "$dump_name" || dotnet_dump_fail=1
+  # The reports are what ships; a multi-GB dump would dominate the artifact.
+  [[ "${DOTNET_DUMP_KEEP:-false}" == "true" ]] || rm -f "$DIAG_DIR/dotnet-dump/$dump_name"
+fi
 
 if [[ "${DOTTRACE:-}" == "true" ]]; then
   log "dotTrace snapshots under $DIAG_DIR/dottrace:"
@@ -172,4 +194,5 @@ log "  scratch removed."
 [[ "$integrity_fail" == "0" ]] || die "DB integrity check FAILED — snapshot verification did not pass."
 [[ "$perf_fail" == "0" ]] || die "perf profiling FAILED — no non-empty perf.folded was produced."
 [[ "$dotnet_trace_fail" == "0" ]] || die "dotnet-trace collection FAILED — no finalized .nettrace was produced."
+[[ "$dotnet_dump_fail" == "0" ]] || die "dotnet-dump FAILED — the heap dump or one of its reports was not produced."
 log "=== Node stopped; snapshot verified pristine ==="
