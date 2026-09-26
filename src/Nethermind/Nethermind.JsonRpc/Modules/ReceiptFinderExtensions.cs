@@ -30,23 +30,35 @@ namespace Nethermind.JsonRpc.Modules
                 : receiptFinder.GetBlockReceipts(searchResult.Object, specProvider);
         }
 
-        public static ResultWrapper<ReceiptForRpc[]?> GetBlockReceipts(this IReceiptFinder receiptFinder, Block block, ISpecProvider specProvider)
+        internal static ResultWrapper<ReceiptForRpc[]?> GetBlockReceipts(this IReceiptFinder receiptFinder, Block block, ISpecProvider specProvider)
         {
             Transaction[] transactions = block.Transactions;
             TxReceipt[] receipts = receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
             ReceiptForRpc[] result = new ReceiptForRpc[Math.Min(receipts.Length, transactions.Length)];
+            // A running sum equals the per-receipt scan only when every index is its position.
+            bool positionalIndexes = HasPositionalIndexes(receipts);
             int logIndexStart = 0;
             for (int i = 0; i < result.Length; i++)
             {
                 TxReceipt receipt = receipts[i];
                 Transaction transaction = transactions[i];
-                int receiptLogIndexStart = receipt.Index == i ? logIndexStart : receipts.GetBlockLogFirstIndex(receipt.Index);
+                int receiptLogIndexStart = positionalIndexes ? logIndexStart : receipts.GetBlockLogFirstIndex(receipt.Index);
                 result[i] = new ReceiptForRpc(transaction.Hash, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header), receiptLogIndexStart);
                 logIndexStart += receipt.Logs?.Length ?? 0;
             }
 
             return ResultWrapper<ReceiptForRpc[]?>.Success(result);
+        }
+
+        private static bool HasPositionalIndexes(TxReceipt[] receipts)
+        {
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                if (receipts[i].Index != i) return false;
+            }
+
+            return true;
         }
     }
 }
