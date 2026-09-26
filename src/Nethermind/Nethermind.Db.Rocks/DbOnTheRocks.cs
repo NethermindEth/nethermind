@@ -1340,7 +1340,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         try
         {
             readOptions.SetTailing(!ordered);
-            // Without total order, a prefix-extractor database (code) skips its prefix-hash memtable on SeekToFirst.
+            // A prefix-extractor database (code) needs total order for a full scan: otherwise SeekToFirst skips its
+            // prefix-hash memtable, and the hash index cannot resume a batch outside the resume key's prefix bucket.
             readOptions.SetTotalOrderSeek(true);
             iterator = CreateIterator(readOptions, ch);
 
