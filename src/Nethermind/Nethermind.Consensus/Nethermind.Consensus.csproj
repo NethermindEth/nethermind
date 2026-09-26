@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.Blockchain.Test" />
+    <InternalsVisibleTo Include="Nethermind.Runner.Test" />
     <PackageReference Include="Collections.Pooled" />
   </ItemGroup>
 

@@ -246,7 +246,8 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         try
         {
             using Scope<Components> scope = _environments.BuildAndOverride(parent);
-            if (scope.Component.Executor?.CanSeed != true || scope.Component.SpecProvider.GetSpec(block.Header).BlockLevelAccessListsEnabled) return false;
+            if (scope.Component.Executor?.CanSeed != true
+                || (!seeds.SeedsFromBlockAccessLists && scope.Component.SpecProvider.GetSpec(block.Header).BlockLevelAccessListsEnabled)) return false;
             IBlockTracer<TTrace> tracer = forTransaction(scope.Component.WorldState, hash);
             try
             {

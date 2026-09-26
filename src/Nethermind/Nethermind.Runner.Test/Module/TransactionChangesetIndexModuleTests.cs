@@ -275,7 +275,12 @@ public class TransactionChangesetIndexModuleTests
             .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = historyEnabled }))
             .Build();
 
-        Assert.That(container.Resolve<IPrefixStateSeedSource>(), Is.TypeOf(expected));
+        IPrefixStateSeedSource resolved = container.Resolve<IPrefixStateSeedSource>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved, Is.TypeOf<BlockAccessListPrefixStateSeedSource>(), "a block carrying an access list is seeded from it on every node");
+            Assert.That(((BlockAccessListPrefixStateSeedSource)resolved).Fallback, Is.TypeOf(expected), "blocks without an access list follow the flat history switch");
+        }
     }
 
     [Test]

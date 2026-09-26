@@ -54,6 +54,8 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .As<IPrefixStateSeedSource>()
             .ExternallyOwned()
             .PreserveExistingDefaults();
+        // A block carrying an access list seeds from that list; any other block is left to the source underneath.
+        builder.AddDecorator<IPrefixStateSeedSource, BlockAccessListPrefixStateSeedSource>();
 
         builder
             .AddSingleton<IEthSyncingInfo, EthSyncingInfo>()

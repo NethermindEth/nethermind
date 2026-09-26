@@ -73,7 +73,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Blockchain.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class BlockProcessorTests
+public partial class BlockProcessorTests
 {
     public static IEnumerable<TestCaseData> TransactionTraceBoundaryCases()
     {
@@ -1062,7 +1062,8 @@ public class BlockProcessorTests
                 builder.AddDecorator<IBlockProcessor>((_, inner) => new BoundaryHidingBlockProcessor(inner, hideRewardBoundary.Value));
             if (refuseOverlay) builder.AddDecorator<IWorldState, OverlayRefusingState>();
             if (refuseNonEmpty) builder.AddDecorator<IWorldState, NonEmptyOverlayRefusingState>();
-            if (executions is not null) builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new CountingTransactionAdapter(inner, executions));
+            // The factory, not the adapter, so that the processors the access list manager builds are counted too.
+            if (executions is not null) builder.AddDecorator<TransactionProcessorAdapterFactory>((_, inner) => processor => new CountingTransactionAdapter(inner(processor), executions));
         });
         return new ParallelBlockTracer.OwnedEnvironment(scope.Resolve<IOverridableEnv<ParallelBlockTracer.Components>>(), scope);
     }
