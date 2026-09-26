@@ -594,7 +594,8 @@ namespace Nethermind.Trie
 
                 node.ResolveNode(TrieStore, path);
 
-                if (node.IsLeaf || node.IsExtension)
+                // Resolved, so anything but a branch is a leaf or an extension.
+                if (!node.IsBranch)
                 {
                     int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                     if (commonPrefixLength == node.Key!.Length)
@@ -942,7 +943,8 @@ namespace Nethermind.Trie
                         return node.FullRlp;
                     }
 
-                    if (node.IsLeaf || node.IsExtension)
+                    // Resolved, so anything but a branch is a leaf or an extension.
+                    if (!node.IsBranch)
                     {
                         int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                         if (commonPrefixLength == node.Key!.Length)

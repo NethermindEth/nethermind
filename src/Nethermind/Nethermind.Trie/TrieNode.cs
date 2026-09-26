@@ -150,14 +150,11 @@ namespace Nethermind.Trie
 
         // Acquire pairs with the release publication of _nodeData in DecodeRlp: a concurrent resolver may publish a
         // decode while another thread tests whether the node is resolved, and the decoded fields must be visible with it.
-        public NodeType NodeType => Volatile.Read(ref _nodeData)?.NodeType ?? NodeType.Unknown;
-        public INodeData? NodeData => Volatile.Read(ref _nodeData);
+        public NodeType NodeType => ReadNodeData()?.NodeType ?? NodeType.Unknown;
+        public INodeData? NodeData => ReadNodeData();
 
-        public bool IsLeaf => NodeType == NodeType.Leaf;
-
-        public bool IsBranch => NodeType == NodeType.Branch;
-
-        public bool IsExtension => NodeType == NodeType.Extension;
+        // BranchData is sealed and the only branch data, so one type test answers this without the NodeType dispatch.
+        public bool IsBranch => ReadNodeData() is BranchData;
 
         public byte[]? Key
         {
@@ -562,7 +559,7 @@ namespace Nethermind.Trie
             if (rlp.IsNull || IsDirty)
             {
                 CappedArray<byte> oldRlp = rlp.IsNotNull ? rlp : CappedArray<byte>.Empty;
-                CappedArray<byte> fullRlp = NodeType == NodeType.Branch
+                CappedArray<byte> fullRlp = IsBranch
                     ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
                         canBeParallel: isRoot && canBeParallel)
                     : RlpEncode(tree, ref path, bufferPool, canBeParallel);
@@ -777,10 +774,7 @@ namespace Nethermind.Trie
 
         public TrieNode? GetChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int childIndex, bool keepChildRef = false)
         {
-            /* extensions store value before the child while branches store children before the value
-             * so just to treat them in the same way we update index on extensions
-             */
-            childIndex = IsExtension ? childIndex + 1 : childIndex;
+            // No index shift for an extension: both ExtensionData slots hold the child, and SeekChildPosition skips the key.
             object? childOrRef = ResolveChildWithChildPath(tree, ref childPath, childIndex);
 
             TrieNode? child;
@@ -855,11 +849,7 @@ namespace Nethermind.Trie
         /// when setting to object[] array
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void SetItem(int i, TrieNode? node)
-        {
-            int index = IsExtension ? i + 1 : i;
-            _nodeData![i] = node ?? _nullNode;
-        }
+        private void SetItem(int i, TrieNode? node) => _nodeData![i] = node ?? _nullNode;
 
         public long GetMemorySize(bool recursive)
         {
