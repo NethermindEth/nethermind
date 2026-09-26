@@ -239,7 +239,7 @@ namespace Nethermind.Facade.Find
                             if (filter.Accepts(ref log))
                             {
                                 // On CL workload, recovery happens about 70% of the time.
-                                iterator.RecoverIfNeeded(ref receipt);
+                                iterator.RecoverLogFieldsIfNeeded(ref receipt);
 
                                 logList ??= [];
                                 Hash256[] topics = log.Topics;
