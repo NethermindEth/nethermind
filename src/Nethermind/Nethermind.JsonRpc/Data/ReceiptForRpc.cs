@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -31,7 +30,7 @@ namespace Nethermind.JsonRpc.Data
             From = receipt.Sender;
             To = receipt.Recipient;
             ContractAddress = receipt.ContractAddress;
-            Logs = (receipt.Logs ?? []).Select((l, idx) => new LogEntryForRpc(receipt, l, blockTimestamp, idx + logIndexStart)).ToArray();
+            Logs = CreateLogs(receipt, blockTimestamp, logIndexStart);
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
             Status = receipt.PostTransactionState is null ? receipt.StatusCode : null;
@@ -105,6 +104,22 @@ namespace Nethermind.JsonRpc.Data
         public FrameReceiptForRpc[]? FrameReceipts { get; set; }
 
         public TxType Type { get; set; }
+
+        private static LogEntryForRpc[] CreateLogs(TxReceipt receipt, ulong blockTimestamp, int logIndexStart)
+        {
+            if (receipt.Logs is not { Length: > 0 } logs)
+            {
+                return [];
+            }
+
+            LogEntryForRpc[] result = new LogEntryForRpc[logs.Length];
+            for (int i = 0; i < logs.Length; i++)
+            {
+                result[i] = new LogEntryForRpc(receipt, logs[i], blockTimestamp, logIndexStart + i);
+            }
+
+            return result;
+        }
 
         public TxReceipt ToReceipt()
         {

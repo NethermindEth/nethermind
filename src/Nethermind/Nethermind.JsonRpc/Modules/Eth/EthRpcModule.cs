@@ -1182,7 +1182,7 @@ public partial class EthRpcModule(
         return searchResult switch
         {
             { IsError: true } => ResultWrapper<ReceiptForRpc[]?>.Success(null),
-            _ => _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider)
+            _ => _receiptFinder.GetBlockReceipts(searchResult.Object, _specProvider)
         };
     }
 
