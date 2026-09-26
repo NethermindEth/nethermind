@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
             : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
         {
-            protected bool NoBaseFee { get; private set; }
+            protected bool NoBaseFee { get; set; }
             private BlockOverride? _blockOverride;
             protected BlockOverride? BlockOverride => _blockOverride;
             protected UInt256? BlobBaseFeeOverride => _blockOverride?.BlobBaseFee;
@@ -230,6 +230,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 BigInteger feeCap = (BigInteger)priorityFee + (BigInteger)header.BaseFeePerGas * 2;
                 Transaction tx = result.Data;
                 tx.DecodedMaxFeePerGas = (UInt256)(feeCap & (BigInteger)UInt256.MaxValue);
+                NoBaseFee = tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero;
                 if (feeCap > (BigInteger)UInt256.MaxValue && call.GetType() == typeof(EIP1559TransactionForRpc))
                     _feeCapBeyond256Bits = feeCap;
 
