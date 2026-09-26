@@ -65,7 +65,7 @@ public static class ParityReplayEnvelopeWriter
         Span<byte> hex = addressBytes[2..];
 
         using ArrayPoolListRef<KeyValuePair<Address, ParityAccountStateChange>> sorted = new(stateChanges.Count, stateChanges);
-        sorted.Sort(default(ByAddress));
+        sorted.Sort(static (x, y) => x.Key.CompareTo(y.Key));
         foreach ((Address address, ParityAccountStateChange stateChange) in sorted.AsSpan())
         {
             address.Bytes.OutputBytesToByteHex(hex, false);
@@ -124,11 +124,5 @@ public static class ParityReplayEnvelopeWriter
         {
             WriteActionRecursively(writer, action.Subtraces[i], options);
         }
-    }
-
-    private readonly struct ByAddress : IComparer<KeyValuePair<Address, ParityAccountStateChange>>
-    {
-        public int Compare(KeyValuePair<Address, ParityAccountStateChange> x, KeyValuePair<Address, ParityAccountStateChange> y) =>
-            x.Key.CompareTo(y.Key);
     }
 }

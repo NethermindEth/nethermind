@@ -196,7 +196,7 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
         Span<byte> keyHex = keyName[2..];
 
         using ArrayPoolListRef<KeyValuePair<UInt256, ParityStateChange<byte[]>>> sorted = new(storage.Count, storage);
-        sorted.Sort(default(ByKey));
+        sorted.Sort(static (x, y) => x.Key.CompareTo(y.Key));
         foreach ((UInt256 key, ParityStateChange<byte[]> change) in sorted.AsSpan())
         {
             key.ToBigEndian(keyBytes);
@@ -204,11 +204,5 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
             writer.WritePropertyName(keyName);
             WriteStorageChange(writer, change, isNew, options);
         }
-    }
-
-    private readonly struct ByKey : IComparer<KeyValuePair<UInt256, ParityStateChange<byte[]>>>
-    {
-        public int Compare(KeyValuePair<UInt256, ParityStateChange<byte[]>> x, KeyValuePair<UInt256, ParityStateChange<byte[]>> y) =>
-            x.Key.CompareTo(y.Key);
     }
 }
