@@ -172,6 +172,20 @@ internal sealed partial class McpEthTools
                 }
             }
 
+            // Explicit block numbers are not looked up, so a range past the head (up to 2^64 - 1) is rejected here, before any
+            // block is scanned; the eth module would reject it too, but only after the receipt check below walked the range.
+            if (blockFinder.Head?.Number is not { } head)
+            {
+                return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.Unavailable, "The node has no head block yet; it is probably still starting or syncing."));
+            }
+
+            if (end > head)
+            {
+                return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, resume is null
+                    ? $"The range ends at block {end}, past the node's current head block ({head}); use a toBlock of at most {head} or \"latest\"."
+                    : $"The query ends at block {end}, past the node's current head block ({head}) after a reorganisation; restart the query without 'cursor'."));
+            }
+
             (ulong scanTo, bool indexed) = PlanLogPage(start, end, selective);
             LogFilter logFilter = CreateLogFilter(addresses, topicFilter);
             if (!indexed && FindMissingReceipts(start, scanTo, logFilter, token) is { } missingReceipts)
@@ -237,9 +251,15 @@ internal sealed partial class McpEthTools
     private int StreamLogCap => rpcConfig.EnableLogsStreamMode && rpcConfig.MaxLogsPerResponse > 0 ? rpcConfig.MaxLogsPerResponse : 0;
 
     /// <summary>Returns an <c>unavailable</c> error for the first block in the range whose bloom matches the filter but whose receipts are missing.</summary>
+    /// <remarks>The loop stops at <paramref name="to"/> without incrementing past it, so it terminates even at <see cref="ulong.MaxValue"/>.</remarks>
     private CallToolResult? FindMissingReceipts(ulong from, ulong to, LogFilter filter, CancellationToken token)
     {
-        for (ulong number = from; number <= to; number++)
+        if (from > to)
+        {
+            return null;
+        }
+
+        for (ulong number = from; ; number++)
         {
             if ((number - from) % LogCancellationCheckInterval == 0)
             {
@@ -252,9 +272,12 @@ internal sealed partial class McpEthTools
             {
                 return missing;
             }
-        }
 
-        return null;
+            if (number == to)
+            {
+                return null;
+            }
+        }
     }
 
     /// <summary>Serves one block from its receipts, for a block with more matching logs than one <c>eth_getLogs</c> response carries.</summary>

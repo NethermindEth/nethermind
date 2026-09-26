@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Text;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -24,8 +25,9 @@ public sealed record McpTokenInfo(Address Address, string? Name, string? Symbol,
 /// Both ABI <c>string</c> and legacy <c>bytes32</c> results (such as MKR's) are accepted; texts are stripped of control
 /// characters and capped at <see cref="MaxTextLength"/> characters, since they are untrusted contract output shown to an LLM.</para>
 /// <para>Results read at the head are cached per chain and address in a bounded LRU of <see cref="CacheCapacity"/> entries
-/// for at most <see cref="CacheTtl"/>, so a proxy upgrade or reorg that changes a token's symbol or decimals is picked up
-/// again; reads at older blocks bypass the cache, since a token may not exist yet or may have been upgraded since. Results
+/// for at most <see cref="CacheTtl"/> from the start of the read, so a proxy upgrade or reorg that changes a token's symbol
+/// or decimals is picked up again. A read is cached only if the head did not move while it ran and no read that started
+/// after it has already been cached, so a slow read of the old state never replaces a newer entry; reads at older blocks bypass the cache, since a token may not exist yet or may have been upgraded since. Results
 /// affected by a transient failure (state not available, node busy, unexpected error) are returned but not cached;
 /// reverts and malformed return data are permanent and cached as missing fields.</para>
 /// </remarks>
@@ -56,6 +58,7 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
     private readonly LinkedList<CacheEntry> _order = new();
     private readonly ILogger _logger = logManager.GetClassLogger<McpTokenMetadata>();
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
+    private long _readSequence;
 
     /// <summary>Creates the metadata reader without logging.</summary>
     public McpTokenMetadata() : this(LimboLogs.Instance, null)
@@ -73,21 +76,37 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
 
     /// <summary>Returns the token metadata at <paramref name="block"/>, or <see langword="null"/> if <paramref name="token"/> has no code.</summary>
     /// <remarks>Never throws for contract misbehaviour; returns <see langword="null"/> also when the code cannot be read (for example state not available).</remarks>
-    public McpTokenInfo? Get(IEthRpcModule eth, Address token, BlockParameter block)
+    public McpTokenInfo? Get(IEthRpcModule eth, Address token, BlockParameter block) =>
+        TryGet(eth, token, block, null, out McpTokenInfo? info) ? info : null;
+
+    /// <summary>Reads the token metadata at <paramref name="block"/> like <see cref="Get"/>, checking <paramref name="stop"/> before every RPC.</summary>
+    /// <returns><see langword="false"/> if <paramref name="stop"/> interrupted the read; nothing is cached then.</returns>
+    /// <param name="eth">The rented eth module.</param>
+    /// <param name="token">The token contract.</param>
+    /// <param name="block">The block to read at.</param>
+    /// <param name="stop">Returns <see langword="true"/> once no further RPC may start; cached metadata is still returned.</param>
+    /// <param name="info">The metadata, or <see langword="null"/> if the token has no code or it cannot be read.</param>
+    internal bool TryGet(IEthRpcModule eth, Address token, BlockParameter block, Func<bool>? stop, out McpTokenInfo? info)
     {
+        info = null;
         ResultWrapper<ulong> chainIdResult = eth.eth_chainId();
         ulong chainId = chainIdResult.Result.ResultType == ResultType.Success ? chainIdResult.Data : 0;
         (ulong, AddressAsKey) key = (chainId, token);
         bool cacheable = IsHead(block);
+        // Taken before any state is read: a read that starts later sees a head at least as new.
+        long sequence = Interlocked.Increment(ref _readSequence);
+        DateTimeOffset started = _time.GetUtcNow();
+        Hash256? head = blockFinder?.Head?.Hash;
         lock (_lock)
         {
             if (cacheable && _cache.TryGetValue(key, out LinkedListNode<CacheEntry>? node))
             {
                 _order.Remove(node);
-                if (node.Value.Expires > _time.GetUtcNow())
+                if (node.Value.Expires > started)
                 {
                     _order.AddFirst(node);
-                    return node.Value.Info;
+                    info = node.Value.Info;
+                    return true;
                 }
 
                 _cache.Remove(key);
@@ -96,28 +115,33 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
 
         try
         {
+            if (stop?.Invoke() == true) return false;
             using ResultWrapper<byte[]> code = eth.eth_getCode(token, block);
             if (code.Result.ResultType != ResultType.Success || code.Data is not { Length: > 0 })
             {
-                return null;
+                return true;
             }
 
             bool transient = false;
+            if (stop?.Invoke() == true) return false;
             string? name = ReadText(eth, token, block, NameSelector, ref transient);
+            if (stop?.Invoke() == true) return false;
             string? symbol = ReadText(eth, token, block, SymbolSelector, ref transient);
+            if (stop?.Invoke() == true) return false;
             byte? decimals = ReadDecimals(eth, token, block, ref transient);
-            McpTokenInfo info = new(token, name, symbol, decimals);
-            if (cacheable && !transient)
+            info = new McpTokenInfo(token, name, symbol, decimals);
+            // A moved head means the calls may have read different blocks, and the entry would describe neither.
+            if (cacheable && !transient && blockFinder?.Head?.Hash == head)
             {
-                Add(key, info);
+                Add(key, info, sequence, started + CacheTtl);
             }
 
-            return info;
+            return true;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             if (_logger.IsDebug) _logger.Debug($"MCP token metadata for {token} failed: {e.Message}");
-            return null;
+            return true;
         }
     }
 
@@ -230,16 +254,22 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
         return data[31];
     }
 
-    private void Add((ulong, AddressAsKey) key, McpTokenInfo info)
+    private void Add((ulong, AddressAsKey) key, McpTokenInfo info, long sequence, DateTimeOffset expires)
     {
         lock (_lock)
         {
             if (_cache.TryGetValue(key, out LinkedListNode<CacheEntry>? existing))
             {
+                // A read that started later saw state at least as new: an older read finishing last must not replace it.
+                if (existing.Value.Sequence > sequence)
+                {
+                    return;
+                }
+
                 _order.Remove(existing);
             }
 
-            _cache[key] = _order.AddFirst(new CacheEntry(key, info, _time.GetUtcNow() + CacheTtl));
+            _cache[key] = _order.AddFirst(new CacheEntry(key, info, expires, sequence));
             while (_cache.Count > CacheCapacity && _order.Last is { } last)
             {
                 _order.RemoveLast();
@@ -248,5 +278,5 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
         }
     }
 
-    private sealed record CacheEntry((ulong ChainId, AddressAsKey Address) Key, McpTokenInfo Info, DateTimeOffset Expires);
+    private sealed record CacheEntry((ulong ChainId, AddressAsKey Address) Key, McpTokenInfo Info, DateTimeOffset Expires, long Sequence);
 }

@@ -389,18 +389,21 @@ internal sealed class McpTransactionTools(
 
         // Token movements from the receipt's logs.
         List<McpTokenMovement> movements = [];
+        McpTokenTally tally = new();
         if (receipt?.Logs is { } logs)
         {
             foreach (LogEntryForRpc log in logs)
             {
-                McpTxTokens.Extract(log.ToLogEntry(), movements, profile.WrappedNativeToken);
+                McpTxTokens.Extract(log.ToLogEntry(), movements, profile.WrappedNativeToken, tally);
             }
         }
+
+        if (McpTxTokens.UndecodableNote(tally.Undecodable) is { } undecodable) context.Notes.Add(undecodable);
 
         Dictionary<AddressAsKey, McpTokenInfo> tokens = [];
         if (movements.Count > 0)
         {
-            (tokens, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, TokensOf(movements), MaxTokenLookups, token, () => context.Clock.Elapsed > _tokenDeadline);
+            (tokens, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, TokensOf(movements), MaxTokenLookups, token, () => context.Clock.Elapsed > _tokenDeadline, DetachedEth());
             if (skipped > 0)
             {
                 context.Notes.Add($"Token metadata was not read for {skipped} token(s) (at most {MaxTokenLookups} per call, within the time budget); they show raw amounts.");
@@ -414,7 +417,9 @@ internal sealed class McpTransactionTools(
             }
 
             json["tokenTransfers"] = transfers;
-            if (movements.Count > MaxTokenTransfers) json["tokenTransfersOmitted"] = movements.Count - MaxTokenTransfers;
+            // Batch entries beyond McpTxTokens.MaxBatchMovements are counted in the tally, not materialized.
+            int transfersOmitted = movements.Count - transfers.Count + tally.Omitted;
+            if (transfersOmitted > 0) json["tokenTransfersOmitted"] = transfersOmitted;
             JsonArray flows = McpTxTokens.NetFlows(movements, tokens, MaxNetFlows);
             if (flows.Count > 0) json["netTokenFlows"] = flows;
         }
@@ -967,6 +972,8 @@ internal sealed class McpTransactionTools(
         List<JsonObject> callJsons = [];
         List<McpTokenMovement> allMovements = [];
         List<(int Call, List<McpTokenMovement> Movements)> perCall = [];
+        Dictionary<int, int> batchOmitted = [];
+        int undecodableBatches = 0;
         List<string> notes = ["Simulation only: nothing was signed or broadcast, and gas was not charged."];
         string status = "success";
         int? firstFailure = null;
@@ -1017,6 +1024,7 @@ internal sealed class McpTransactionTools(
             }
 
             List<McpTokenMovement> movements = [];
+            McpTokenTally tally = new();
             JsonArray logsJson = [];
             JsonArray native = [];
             int nativeOmitted = 0;
@@ -1046,7 +1054,7 @@ internal sealed class McpTransactionTools(
                 }
 
                 LogEntry entry = new(log.Address, log.Data, log.Topics);
-                McpDecodedLog? decoded = McpTxTokens.Extract(entry, movements, profile.WrappedNativeToken);
+                McpDecodedLog? decoded = McpTxTokens.Extract(entry, movements, profile.WrappedNativeToken, tally);
                 if (++logCount > MaxSimulateLogs)
                 {
                     continue;
@@ -1076,15 +1084,18 @@ internal sealed class McpTransactionTools(
             if (native.Count > 0) json["nativeTransfers"] = native;
             if (nativeOmitted > 0) json["nativeTransfersOmitted"] = nativeOmitted;
             perCall.Add((index, movements));
+            if (tally.Omitted > 0) batchOmitted[index] = tally.Omitted;
+            undecodableBatches += tally.Undecodable;
             allMovements.AddRange(movements);
             callJsons.Add(json);
             index++;
         }
 
         Dictionary<AddressAsKey, McpTokenInfo> tokens = [];
+        if (McpTxTokens.UndecodableNote(undecodableBatches) is { } undecodable) notes.Add(undecodable);
         if (allMovements.Count > 0)
         {
-            (tokens, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, TokensOf(allMovements), MaxTokenLookups, token, tokenBudgetSpent);
+            (tokens, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, TokensOf(allMovements), MaxTokenLookups, token, tokenBudgetSpent, DetachedEth());
             if (skipped > 0) notes.Add($"Token metadata was not read for {skipped} token(s) (at most {MaxTokenLookups} per call, within the time budget); they show raw amounts.");
             foreach ((int call, List<McpTokenMovement> movements) in perCall)
             {
@@ -1098,7 +1109,8 @@ internal sealed class McpTransactionTools(
                 }
 
                 callJsons[call]["tokenTransfers"] = transfers;
-                if (movements.Count > transfers.Count) callJsons[call]["tokenTransfersOmitted"] = movements.Count - transfers.Count;
+                int transfersOmitted = movements.Count - transfers.Count + batchOmitted.GetValueOrDefault(call);
+                if (transfersOmitted > 0) callJsons[call]["tokenTransfersOmitted"] = transfersOmitted;
             }
         }
 
@@ -1599,6 +1611,7 @@ internal sealed class McpTransactionTools(
         Dictionary<AddressAsKey, string> standards = [];
         int transfers = 0;
         List<McpTokenMovement> scratch = [];
+        McpTokenTally tally = new();
         foreach (ReceiptForRpc receipt in receipts)
         {
             if (receipt.Status is null) statusUnknown = true;
@@ -1613,17 +1626,27 @@ internal sealed class McpTransactionTools(
             foreach (LogEntryForRpc log in receipt.Logs ?? [])
             {
                 scratch.Clear();
-                McpTxTokens.Extract(log.ToLogEntry(), scratch, profile.WrappedNativeToken);
+                int omittedBefore = tally.Omitted;
+                McpTxTokens.Extract(log.ToLogEntry(), scratch, profile.WrappedNativeToken, tally);
                 foreach (McpTokenMovement movement in scratch)
                 {
                     transfers++;
                     tokenCounts[movement.Token] = tokenCounts.TryGetValue(movement.Token, out int count) ? count + 1 : 1;
                     standards.TryAdd(movement.Token, movement.Standard);
                 }
+
+                // Batch entries that were counted but not materialized all belong to the emitting token.
+                int omitted = tally.Omitted - omittedBefore;
+                if (omitted > 0)
+                {
+                    transfers += omitted;
+                    tokenCounts[log.Address!] = tokenCounts.GetValueOrDefault(log.Address!) + omitted;
+                }
             }
         }
 
         UInt256 baseFeesPaid = baseFee is { } fee ? fee * (UInt256)gasUsed : UInt256.Zero;
+        if (McpTxTokens.UndecodableNote(tally.Undecodable) is { } undecodable) notes.Add(undecodable);
         if (statusUnknown)
         {
             // EIP-658: receipts before Byzantium carry a post-state root instead of a status code.
@@ -1644,7 +1667,7 @@ internal sealed class McpTransactionTools(
         top.Sort(static (a, b) => b.Value.CompareTo(a.Value));
         List<Address> topTokens = [];
         for (int i = 0; i < top.Count && i < BlockTopCount; i++) topTokens.Add(top[i].Key);
-        (Dictionary<AddressAsKey, McpTokenInfo> infos, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, topTokens, BlockTopCount, token, tokenBudgetSpent);
+        (Dictionary<AddressAsKey, McpTokenInfo> infos, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, topTokens, BlockTopCount, token, tokenBudgetSpent, DetachedEth());
         if (skipped > 0)
         {
             notes.Add($"Token metadata was not read for {skipped} of the top tokens within the time budget; they are shown by address only.");
@@ -1714,6 +1737,13 @@ internal sealed class McpTransactionTools(
     }
 
     private string Display(Address address) => Label(address) is { } label ? $"{label} ({McpTxFormat.Short(address)})" : McpTxFormat.Short(address);
+
+    // Token metadata reads run on their own eth module, so a slow read can be left behind at the token deadline.
+    private McpDetachedEth DetachedEth() => new(async () =>
+    {
+        ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call));
+        return (lease.Module, lease);
+    }, executor.TrackDetached);
 
     private static IEnumerable<Address> TokensOf(List<McpTokenMovement> movements)
     {

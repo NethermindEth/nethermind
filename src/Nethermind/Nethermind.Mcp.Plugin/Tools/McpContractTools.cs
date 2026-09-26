@@ -71,6 +71,8 @@ internal sealed class McpContractTools(
     private const int MaxEnsNameLength = 255;
     private const ulong Erc165Gas = 30_000;
     private const ulong ImplementationGetterGas = 50_000;
+    // A Universal Resolver call walks the registry, probes the resolver's interfaces and may batch calls, so it needs more than a plain helper call.
+    private const ulong UniversalResolverGas = 2_000_000;
 
     private const string BlockDescription =
         "Block selector: \"latest\" (default), \"earliest\", \"safe\", \"finalized\", a block number as 0x-hex or decimal string, or a 32-byte block hash. \"pending\" is not supported.";
@@ -108,6 +110,8 @@ internal sealed class McpContractTools(
     private readonly TimeSpan _softDeadline = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout) * 0.7);
 
     private ulong InternalGas => Math.Min(InternalCallGas, _maxCallGas);
+
+    private ulong UniversalResolverCallGas => Math.Min(UniversalResolverGas, _maxCallGas);
 
     /// <inheritdoc/>
     public IEnumerable<McpServerTool> CreateServerTools() => McpToolFactory.Create(this, DescribeLimits, _maxResultSize);
@@ -503,16 +507,19 @@ internal sealed class McpContractTools(
 
     /// <summary>Resolves an ENS name to an address.</summary>
     [McpServerTool(Name = "resolve_ens", Title = "Resolve ENS name", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("Resolves an ENS name (such as \"vitalik.eth\") to its address on Ethereum mainnet, Sepolia or Holesky, reading the ENS registry and the name's " +
-        "resolver on-chain: ENSIP-1 namehash, registry owner and resolver, then the resolver's addr record; names without their own resolver are tried via an " +
-        "ENSIP-10 wildcard resolver of a parent. Names are lowercased; only ASCII names (a-z, 0-9, '-', leading '_') are supported, Unicode/emoji names are rejected. " +
-        "Offchain (CCIP-Read) resolvers cannot be followed. On chains without ENS (Gnosis, Chiado, Hoodi) it fails with unavailable. " +
-        "Output: {name, node, registry, owner, resolver, address, resolvedVia, blockNumber, blockHash, message?}; address is null when the name has no address record.")]
+    [Description("Resolves an ENS name (such as \"vitalik.eth\") to its address on Ethereum mainnet, Sepolia or Holesky, on-chain through the ENS Universal " +
+        "Resolver (the path ENS apps use; it covers ENSv2 names on Sepolia and ENSIP-10 wildcard resolvers). At blocks before the Universal Resolver existed " +
+        "it reads the ENS registry and the name's resolver directly (namehash, registry owner and resolver, addr record, ENSIP-10 wildcard of a parent). " +
+        "Names are lowercased; only ASCII names (a-z, 0-9, '-', leading '_') are supported, Unicode/emoji names are rejected. " +
+        "Offchain (CCIP-Read) names cannot be resolved: the node makes no outbound HTTP requests, so such names return offchain: true and a null address. " +
+        "owner is the ENSv1 registry owner, null on Sepolia whose ENSv1 registry is legacy. On chains without ENS (Gnosis, Chiado, Hoodi) it fails with unavailable. " +
+        "Output: {name, node, registry, universalResolver?, owner, resolver, address, resolvedVia, offchain?, blockNumber, blockHash, message?}; address is null when " +
+        "the name has no address record.")]
     [McpToolOutputSchema("""
         {"type":"object","properties":{"result":{"type":"object","properties":{
         "name":{"type":"string"},"node":{"type":"string"},"registry":{"type":"string"},
         "owner":{"type":["string","null"]},"resolver":{"type":["string","null"]},"address":{"type":["string","null"]},
-        "resolvedVia":{"type":"string"},
+        "resolvedVia":{"type":"string"},"universalResolver":{"type":"string"},"offchain":{"type":"boolean"},
         """ + BlockSchema + """
         ,"message":{"type":"string"}},
         "required":["name","node","registry","owner","resolver","address","resolvedVia","blockNumber"]}},"required":["result"]}
@@ -541,7 +548,7 @@ internal sealed class McpContractTools(
                 return Task.FromResult(failure);
             }
 
-            EnsResolution resolution = ResolveName(eth, registry, normalized, pinned);
+            EnsResolution resolution = ResolveName(eth, normalized, pinned);
             if (resolution.Transient)
             {
                 return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.Unavailable, "The ENS contracts could not be read at this block; retry later or use another block."));
@@ -557,6 +564,8 @@ internal sealed class McpContractTools(
                 ["address"] = resolution.Resolved is null ? null : McpEthHelpers.Checksum(resolution.Resolved),
                 ["resolvedVia"] = resolution.Via,
             };
+            if (resolution.UniversalResolver is not null) output["universalResolver"] = McpEthHelpers.Checksum(resolution.UniversalResolver);
+            if (resolution.Offchain) output["offchain"] = true;
             AddBlock(output, header);
             if (resolution.Message is not null) output["message"] = resolution.Message;
             return Task.FromResult(Success(output));
@@ -671,9 +680,9 @@ internal sealed class McpContractTools(
                 }
             }
 
-            if (chain.EnsRegistryAddress is { } registry && Continue("ens"))
+            if ((chain.EnsUniversalResolverAddress is not null || chain.EnsRegistryAddress is not null) && Continue("ens"))
             {
-                JsonObject? ens = ReverseResolve(eth, registry, account, pinned);
+                JsonObject? ens = ReverseResolve(eth, account, pinned);
                 if (ens is not null) output["ens"] = ens;
             }
 
@@ -863,7 +872,86 @@ internal sealed class McpContractTools(
             : new JsonObject { ["type"] = "EIP-897", ["implementation"] = McpEthHelpers.Checksum(getter) };
     }
 
-    private EnsResolution ResolveName(IEthRpcModule eth, Address registry, string name, BlockParameter block)
+    // The Universal Resolver is the recommended path (and the only one that sees ENSv2 names on Sepolia); the registry is read
+    // directly only at blocks where the Universal Resolver has no code yet.
+    private EnsResolution ResolveName(IEthRpcModule eth, string name, BlockParameter block)
+    {
+        if (chain.EnsUniversalResolverAddress is { } universalResolver
+            && ResolveViaUniversalResolver(eth, universalResolver, name, block) is { } resolution)
+        {
+            return resolution;
+        }
+
+        return chain.EnsRegistryAddress is { } registry
+            ? ResolveViaRegistry(eth, registry, name, block)
+            : new EnsResolution(McpEns.NameHash(name), null, null, null, "none", "ENS is not available at this block.");
+    }
+
+    /// <summary>Resolves the address of <paramref name="name"/> with the Universal Resolver's <c>resolve(bytes,bytes)</c>, or returns <see langword="null"/> when it has no code at <paramref name="block"/>.</summary>
+    private EnsResolution? ResolveViaUniversalResolver(IEthRpcModule eth, Address universalResolver, string name, BlockParameter block)
+    {
+        Hash256 node = McpEns.NameHash(name);
+        byte[] addrCall = Concat(McpEns.AddrSelector, node.Bytes.ToArray());
+        CallOutcome outcome = CallContract(eth, universalResolver, Concat(McpEns.ResolveSelector, EncodeTwoBytes(McpEns.DnsEncode(name), addrCall)), block, UniversalResolverCallGas);
+        if (outcome.Transient)
+        {
+            return new EnsResolution(node, null, null, null, "none", null, Transient: true);
+        }
+
+        if (outcome.Data is { Length: 0 })
+        {
+            return null;
+        }
+
+        Address? owner = RegistryOwner(eth, node, block);
+        const string ViaUniversal = "universal resolver";
+        if (outcome.Data is { } data)
+        {
+            // resolve returns (bytes result, address resolver); result is the ABI-encoded addr(bytes32) answer.
+            if (data.Length < 64 || !McpAbiCodec.TryDecode([McpAbiType.Bytes, McpAbiType.Address], data, out object?[]? values, out _)
+                || values[0] is not string resultHex)
+            {
+                return new EnsResolution(node, owner, null, null, "none", "The Universal Resolver returned an unexpected response.") { UniversalResolver = universalResolver };
+            }
+
+            Address? resolver = ReadAddress(data[32..64]);
+            Address? resolved = resultHex.Length == 2 + 64 ? ReadAddress(Convert.FromHexString(resultHex.AsSpan(2))) : null;
+            return new EnsResolution(node, owner, resolver, resolved, ViaUniversal,
+                resolved is null ? "The name's resolver has no address record for it." : null) { UniversalResolver = universalResolver };
+        }
+
+        if (outcome.RevertData is not { Length: >= 4 } revert)
+        {
+            return new EnsResolution(node, owner, null, null, "none", $"The Universal Resolver call failed: {outcome.Describe()}") { UniversalResolver = universalResolver };
+        }
+
+        ReadOnlySpan<byte> selector = revert.AsSpan(0, 4);
+        (Address? Resolver, string Via, string Message, bool Offchain) failure = selector switch
+        {
+            _ when selector.SequenceEqual(McpEns.OffchainLookupSelector) => (null, ViaUniversal,
+                "The name resolves offchain (EIP-3668 CCIP-Read). Offchain resolution is not supported: this read-only node tool makes no outbound HTTP requests, " +
+                "so the address cannot be determined here; resolve it with a CCIP-Read-capable client.", true),
+            _ when selector.SequenceEqual(McpEns.ResolverNotFoundSelector) => (null, "none",
+                "The name has no resolver (neither it nor any parent name has one): it is not registered, or has no records.", false),
+            _ when selector.SequenceEqual(McpEns.ResolverNotContractSelector) => (revert.Length >= 4 + 64 ? ReadAddress(revert[(4 + 32)..(4 + 64)]) : null, ViaUniversal,
+                "The name's resolver is not a contract, so it has no records.", false),
+            _ when selector.SequenceEqual(McpEns.UnsupportedResolverProfileSelector) => (null, ViaUniversal,
+                "The name's resolver does not support address records (addr).", false),
+            _ when selector.SequenceEqual(McpEns.ResolverErrorSelector) => (null, ViaUniversal,
+                "The name's resolver reverted when asked for the address.", false),
+            _ => (null, "none", $"The Universal Resolver reverted: {McpKnownAbi.DecodeRevert(revert).Message}", false),
+        };
+
+        return new EnsResolution(node, owner, failure.Resolver, null, failure.Via, failure.Message) { UniversalResolver = universalResolver, Offchain = failure.Offchain };
+    }
+
+    // The ENSv1 registry owner, reported only where that registry is still the live one (not on Sepolia, whose ENSv1 registry is legacy).
+    private Address? RegistryOwner(IEthRpcModule eth, Hash256 node, BlockParameter block) =>
+        chain.EnsRegistryIsAuthoritative && chain.EnsRegistryAddress is { } registry
+            ? ReadAddress(CallContract(eth, registry, Concat(McpEns.OwnerSelector, node.Bytes.ToArray()), block, InternalGas).Data)
+            : null;
+
+    private EnsResolution ResolveViaRegistry(IEthRpcModule eth, Address registry, string name, BlockParameter block)
     {
         Hash256 node = McpEns.NameHash(name);
         CallOutcome ownerCall = CallContract(eth, registry, Concat(McpEns.OwnerSelector, node.Bytes.ToArray()), block, InternalGas);
@@ -922,7 +1010,56 @@ internal sealed class McpContractTools(
             owner is null ? "The name is not registered (no owner and no resolver)." : "The name is registered but has no resolver set.");
     }
 
-    private JsonObject? ReverseResolve(IEthRpcModule eth, Address registry, Address account, BlockParameter block)
+    private JsonObject? ReverseResolve(IEthRpcModule eth, Address account, BlockParameter block)
+    {
+        if (chain.EnsUniversalResolverAddress is { } universalResolver)
+        {
+            // ENSIP-19: reverse(address bytes, coin type) returns the primary name only after checking it resolves back to the address.
+            CallOutcome outcome = CallContract(eth, universalResolver, Concat(McpEns.ReverseSelector, EncodeBytesAndWord(account.Bytes.ToArray(), McpEns.EthCoinType)),
+                block, UniversalResolverCallGas);
+            if (outcome.Data is { Length: > 0 } data)
+            {
+                return McpAbiCodec.TryDecode([McpAbiType.String, McpAbiType.Address, McpAbiType.Address], data, out object?[]? values, out _)
+                    && values[0] is string { Length: > 0 } primary
+                    ? PrimaryName(primary, verified: true)
+                    : null;
+            }
+
+            if (outcome.RevertData is { Length: >= 4 } revert && revert.AsSpan(0, 4).SequenceEqual(McpEns.ReverseAddressMismatchSelector)
+                && McpAbiCodec.TryDecode([McpAbiType.String, McpAbiType.Bytes], revert.AsSpan(4), out object?[]? mismatch, out _)
+                && mismatch[0] is string { Length: > 0 } claimed)
+            {
+                return PrimaryName(claimed, verified: false);
+            }
+
+            // No primary name, an offchain one, or a failed read; only a Universal Resolver without code falls back to the registry.
+            if (outcome.Data is not { Length: 0 })
+            {
+                return null;
+            }
+        }
+
+        return chain.EnsRegistryAddress is { } registry ? ReverseResolveViaRegistry(eth, registry, account, block) : null;
+    }
+
+    // A primary name is shown as verified only if it also passes this tool's strict normalisation unchanged; anything else is shown sanitised and unverified.
+    private static JsonObject? PrimaryName(string name, bool verified)
+    {
+        if (name.Length > MaxEnsNameLength)
+        {
+            return null;
+        }
+
+        string? normalized = McpEns.TryNormalize(name, out string? n, out _) ? n : null;
+        bool isVerified = verified && normalized == name;
+        return new JsonObject
+        {
+            ["name"] = isVerified ? normalized : McpTokenMetadata.Sanitize(normalized ?? name) ?? string.Empty,
+            ["verified"] = isVerified
+        };
+    }
+
+    private JsonObject? ReverseResolveViaRegistry(IEthRpcModule eth, Address registry, Address account, BlockParameter block)
     {
         Hash256 reverseNode = McpEns.NameHash(McpEns.ReverseName(account));
         Address? resolver = ReadAddress(CallContract(eth, registry, Concat(McpEns.ResolverSelector, reverseNode.Bytes.ToArray()), block, InternalGas).Data);
@@ -941,7 +1078,7 @@ internal sealed class McpContractTools(
         // A reverse record is a free-form claim; it only counts once the name resolves back to the same address.
         // A verified name is normalized (a-z, 0-9, '-', '_' and dots, at most 255 characters), so it is shown exactly as verified.
         string? verifiedName = McpEns.TryNormalize(reverseName, out string? normalized, out _)
-            && ResolveName(eth, registry, normalized, block).Resolved == account ? normalized : null;
+            && ResolveViaRegistry(eth, registry, normalized, block).Resolved == account ? normalized : null;
         return new JsonObject
         {
             ["name"] = verifiedName ?? McpTokenMetadata.Sanitize(normalized ?? reverseName) ?? string.Empty,
@@ -1038,7 +1175,19 @@ internal sealed class McpContractTools(
         return new Address(word.AsSpan(12));
     }
 
-    // ABI-encodes (bytes, bytes) by hand; the ENSIP-10 call is the only place that needs it.
+    // ABI-encodes (bytes, uint256) by hand, for the Universal Resolver's reverse(bytes,uint256).
+    private static byte[] EncodeBytesAndWord(byte[] bytes, ulong value)
+    {
+        int padded = (bytes.Length + 31) / 32 * 32;
+        byte[] result = new byte[96 + padded];
+        BinaryPrimitives.WriteUInt64BigEndian(result.AsSpan(24, 8), 64);
+        BinaryPrimitives.WriteUInt64BigEndian(result.AsSpan(56, 8), value);
+        BinaryPrimitives.WriteUInt64BigEndian(result.AsSpan(88, 8), (ulong)bytes.Length);
+        bytes.CopyTo(result, 96);
+        return result;
+    }
+
+    // ABI-encodes (bytes, bytes) by hand, for ENSIP-10 resolve(bytes,bytes).
     private static byte[] EncodeTwoBytes(byte[] first, byte[] second)
     {
         int firstPadded = (first.Length + 31) / 32 * 32;
@@ -1243,7 +1392,14 @@ internal sealed class McpContractTools(
     }
 
     /// <summary>The result of resolving an ENS name.</summary>
-    private sealed record EnsResolution(Hash256 Node, Address? Owner, Address? Resolver, Address? Resolved, string Via, string? Message, bool Transient = false);
+    private sealed record EnsResolution(Hash256 Node, Address? Owner, Address? Resolver, Address? Resolved, string Via, string? Message, bool Transient = false)
+    {
+        /// <summary>Gets the Universal Resolver that answered, or <see langword="null"/> when the registry was read directly.</summary>
+        public Address? UniversalResolver { get; init; }
+
+        /// <summary>Gets whether the name resolves offchain (EIP-3668), which this tool cannot follow.</summary>
+        public bool Offchain { get; init; }
+    }
 
     /// <summary>Adds token symbols and formatted amounts to decoded token events, looking up at most <see cref="MaxTokenLookups"/> distinct tokens.</summary>
     private sealed class LogDecorator(McpTokenMetadata metadata, IEthRpcModule eth, BlockParameter block)

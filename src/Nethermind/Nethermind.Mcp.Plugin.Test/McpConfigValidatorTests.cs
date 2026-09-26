@@ -254,6 +254,39 @@ public class McpConfigValidatorTests
             Assert.That(exception.Message, Does.Not.Contain(token.Trim()), "the token must never appear in errors");
     }
 
+    [TestCase("\n")]
+    [TestCase("\r\n")]
+    [TestCase("\t")]
+    [TestCase(" ")]
+    [TestCase("\0")]
+    [TestCase("\u007f")]
+    [TestCase("é")]
+    public void Auth_token_with_characters_an_authorization_header_cannot_carry_is_rejected_without_leaking_it(string separator)
+    {
+        string first = new('a', 32);
+        string second = new('b', 32);
+        using TempPath file = TempPath.GetTempFile();
+        File.WriteAllText(file.Path, first + separator + second + "\n");
+
+        InvalidConfigurationException exception = AssertInvalid(new McpConfig { AuthTokenFile = file.Path }, EnabledRpc(), ExitCodes.ForbiddenOptionValue);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("Mcp.AuthTokenFile").And.Contain("visible ASCII"));
+            Assert.That(exception.Message, Does.Not.Contain(first).And.Not.Contain(second), "the token must never appear in errors");
+        }
+    }
+
+    [Test]
+    public void Auth_token_with_every_visible_ascii_character_is_accepted()
+    {
+        string token = new([.. Enumerable.Range(0x21, 0x7e - 0x21 + 1).Select(static c => (char)c)]);
+        using TempPath file = TempPath.GetTempFile();
+        File.WriteAllText(file.Path, token + "\r\n");
+
+        Assert.That(McpConfigValidator.LoadAuthToken(file.Path), Is.EqualTo(token));
+    }
+
     [Test]
     public void Auth_token_is_trimmed_and_accepted()
     {

@@ -204,7 +204,7 @@ internal static class McpConfigValidator
     }
 
     /// <summary>Reads the bearer token from <paramref name="path"/>, or returns <see langword="null"/> when no file is configured.</summary>
-    /// <exception cref="InvalidConfigurationException">The file cannot be read or the token is shorter than <see cref="MinAuthTokenLength"/>.</exception>
+    /// <exception cref="InvalidConfigurationException">The file cannot be read, the token is shorter than <see cref="MinAuthTokenLength"/>, or it holds a character other than visible ASCII.</exception>
     internal static string? LoadAuthToken(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
@@ -221,6 +221,13 @@ internal static class McpConfigValidator
 
         if (token.Length < MinAuthTokenLength)
             throw Forbidden($"Mcp.AuthTokenFile '{path}' must contain a token of at least {MinAuthTokenLength} characters.");
+
+        // Clients send the token in an Authorization header, which cannot carry control characters, spaces or non-ASCII text
+        // (RFC 9110 field values; RFC 6750 b64token is a subset of visible ASCII). The message names the position, never the token.
+        int invalid = token.AsSpan().IndexOfAnyExceptInRange('\x21', '\x7e');
+        if (invalid >= 0)
+            throw Forbidden($"Mcp.AuthTokenFile '{path}' holds a token with a character that is not visible ASCII (U+{(int)token[invalid]:X4} at position {invalid + 1}), " +
+                "which no client can send in an Authorization header. Put the token on a single line using only visible ASCII, e.g. `openssl rand -hex 32`.");
 
         return token;
     }

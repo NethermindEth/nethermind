@@ -453,6 +453,45 @@ public class McpTransactionToolsTests
     }
 
     [Test]
+    public async Task Simulate_omits_effects_of_a_reverted_internal_call()
+    {
+        Address caller = new("0xc400000000000000000000000000000000000000");
+        Address reverter = new("0xc500000000000000000000000000000000000000");
+        Address token = new("0xc600000000000000000000000000000000000000");
+
+        // CALL(gas, target, value, 0, 0, 0, 0) and discard the success flag.
+        static string Call(Address target, byte value) => $"600060006000600060{value:x2}73{target.Bytes.ToHexString()}5af150";
+        // Transfer(caller -> AddressD, 42) emitted by the executing contract.
+        string transferLog = "602a600052" + "7f" + TestItem.AddressD.ToHash().ToHash256().Bytes.ToHexString()
+            + "7f" + caller.ToHash().ToHash256().Bytes.ToHexString() + "7f" + TransferLog.TransferSignature.Bytes.ToHexString() + "60206000a3";
+        // reverter emits a Transfer and reverts; caller pays it 5 wei and swallows the revert, then pays token 2 wei,
+        // which emits a Transfer and returns.
+        string overrides = $$$"""
+            {"{{{caller}}}":{"balance":"0xde0b6b3a7640000","code":"0x{{{Call(reverter, 5) + Call(token, 2)}}}00"},
+             "{{{reverter}}}":{"code":"0x{{{transferLog}}}60006000fd"},
+             "{{{token}}}":{"code":"0x{{{transferLog}}}00"}}
+            """;
+        JsonElement result = await Success("simulate_transaction",
+            ("to", caller.ToString()),
+            ("stateOverrides", JsonDocument.Parse(overrides).RootElement));
+
+        JsonElement call = result.GetProperty("calls")[0];
+        JsonElement native = call.GetProperty("nativeTransfers");
+        JsonElement logs = call.GetProperty("logs");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("success"));
+            Assert.That(native.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(native[0].GetProperty("from").GetString(), Is.EqualTo(caller.ToString(true, true)));
+            Assert.That(native[0].GetProperty("to").GetString(), Is.EqualTo(token.ToString(true, true)));
+            Assert.That(native[0].GetProperty("value").GetString(), Is.EqualTo("0x2"));
+            Assert.That(logs.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(logs[0].GetProperty("address").GetString(), Is.EqualTo(token.ToString(true, true)));
+            Assert.That(call.GetProperty("tokenTransfers").GetArrayLength(), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public async Task Simulate_limits_and_bad_input()
     {
         string to = _scenario.TokenContract.ToString();

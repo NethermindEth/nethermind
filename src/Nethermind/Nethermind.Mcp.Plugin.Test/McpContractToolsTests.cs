@@ -609,6 +609,31 @@ internal static class TestContracts
         .Label("name").ReturnBlob(AbiString(name))
         .Build();
 
+    /// <summary>
+    /// A contract that answers by exact calldata: it looks up slot keccak256(calldata) and, for a stored value <c>i</c> (1-based),
+    /// returns or reverts with <paramref name="responses"/>[i - 1]; any other calldata reverts with <paramref name="fallback"/>.
+    /// </summary>
+    public static byte[] CalldataResponder(IReadOnlyList<(byte[] Blob, bool Revert)> responses, byte[] fallback)
+    {
+        EvmAssembler asm = new EvmAssembler()
+            .Op(Instruction.CALLDATASIZE).Push(0).Push(0).Op(Instruction.CALLDATACOPY)
+            .Op(Instruction.CALLDATASIZE).Push(0).Op(Instruction.KECCAK256).Op(Instruction.SLOAD);
+        for (int i = 0; i < responses.Count; i++)
+        {
+            asm.JumpIfValue((ulong)i + 1, $"r{i}");
+        }
+
+        asm.RevertBlob(fallback);
+        for (int i = 0; i < responses.Count; i++)
+        {
+            asm.Label($"r{i}");
+            if (responses[i].Revert) asm.RevertBlob(responses[i].Blob);
+            else asm.ReturnBlob(responses[i].Blob);
+        }
+
+        return asm.Build();
+    }
+
     public static byte[] AbiString(string text) =>
         McpAbiCodec.TryEncode([new McpAbiParam(string.Empty, McpAbiType.String)], [JsonSerializer.SerializeToElement(text)], 4096, out byte[]? data, out _) ? data : [];
 
@@ -661,6 +686,16 @@ internal static class TestContracts
         public EvmAssembler JumpIfSelector(string signature, string label)
         {
             Op(Instruction.DUP1).PushBytes(McpAbiSignature.Parse(signature).Selector).Op(Instruction.EQ);
+            _code.Add((byte)Instruction.PUSH2);
+            _fixups.Add((_code.Count, label));
+            _code.Add(0);
+            _code.Add(0);
+            return Op(Instruction.JUMPI);
+        }
+
+        public EvmAssembler JumpIfValue(ulong value, string label)
+        {
+            Op(Instruction.DUP1).Push(value).Op(Instruction.EQ);
             _code.Add((byte)Instruction.PUSH2);
             _fixups.Add((_code.Count, label));
             _code.Add(0);

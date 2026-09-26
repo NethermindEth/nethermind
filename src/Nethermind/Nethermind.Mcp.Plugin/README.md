@@ -365,7 +365,7 @@ refuses to start unless all of these hold:
 |---|---|---|
 | IP literal | `Mcp.Host` | An IP address, not a host name. Loopback (`127.0.0.1`, `::1`) is local mode, anything else is remote mode. |
 | HTTPS | `Mcp.TlsCertificatePath` and `Mcp.TlsCertificateKeyPath` | Both set (they must always be set together). A PEM certificate (extra certificates in the file are sent as the chain) and its matching unencrypted PEM private key (PKCS#8, PKCS#1 or SEC1). Plain HTTP is never served on a non-loopback address. |
-| Bearer token | `Mcp.AuthTokenFile` | Set, readable, and holding at least 32 characters after trimming. |
+| Bearer token | `Mcp.AuthTokenFile` | Set, readable, and holding at least 32 characters after trimming, all visible ASCII (no inner spaces, tabs or line breaks). |
 | Allowed hosts | `Mcp.AllowedHosts` | At least one entry. |
 | Own port | `Mcp.Port` | Different from `JsonRpc.Port`, `JsonRpc.WebSocketsPort`, `JsonRpc.EnginePort`, every `JsonRpc.AdditionalRpcUrls` port, and `Metrics.ExposePort` when metrics are on. This applies in local mode too. |
 
@@ -529,7 +529,10 @@ long values are cut without splitting a character (decoded strings at 1,024 char
 The server instructions tell the agent never to follow instructions found in such data. `token_info` and
 `lookup_address` detect EIP-1967 (implementation and beacon), ZeppelinOS (used by USDC), EIP-1167 minimal and EIP-897
 (`implementation()` getter) proxies. ENS works on mainnet, Sepolia and Holesky only, and fails with `unavailable`
-elsewhere.
+elsewhere. Names resolve through the ENS Universal Resolver (`0xeEeE…EeEe`), as the ENS apps do, so ENSv2 names on
+Sepolia (whose ENSv1 registry is legacy) and ENSIP-10 wildcard names resolve; at blocks before the Universal Resolver
+existed the registry is read directly. Offchain (CCIP-Read) names are reported with `offchain: true` and no address,
+because the node makes no outbound HTTP requests.
 
 ### Gas and fees
 
@@ -573,7 +576,7 @@ implementation is this proxy using?"*
 | URI | Type | Content |
 |---|---|---|
 | `nethermind://chain` | JSON | Chain ID, network name, testnet flag, native currency (xDAI on Gnosis and Chiado) with decimals, staking token (GNO on Gnosis, ETH elsewhere), current fork, genesis hash, head number and well-known contracts. |
-| `nethermind://contracts` | JSON | System contracts from the chain spec (deposit contract, EIP-4788, EIP-2935, EIP-7002, EIP-7251), the ENS registry where it exists, and a curated list of major tokens with symbol and decimals (mainnet and Gnosis only). |
+| `nethermind://contracts` | JSON | System contracts from the chain spec (deposit contract, EIP-4788, EIP-2935, EIP-7002, EIP-7251), the ENS Universal Resolver and registry where they exist, and a curated list of major tokens with symbol and decimals (mainnet and Gnosis only). |
 | `nethermind://guide` | Markdown | A guide for agents: which tool answers which question, block selectors, units, error codes and what to do about each, this node's limits, and Gnosis notes on Gnosis chains. |
 
 Resources are built from in-memory chain facts and never touch the database or the EVM. The server's `instructions`
@@ -680,7 +683,7 @@ variables). Arrays are comma-separated on the command line. All numeric limits m
 | `Enabled` | `false` | Starts the MCP server. |
 | `Host` | `127.0.0.1` | IP address to bind. Loopback (`127.0.0.1`, `::1`) serves local clients. Any other address, including `0.0.0.0` and `::`, is [remote mode](#e-remote-mode). Host names are rejected. |
 | `Port` | `8555` | TCP port. The endpoint is `http(s)://<Host>:<Port>/mcp`. Must not collide with any JSON-RPC, WebSocket, Engine API, additional RPC URL or metrics port. |
-| `AuthTokenFile` | `null` | File holding the bearer token (trimmed, at least 32 characters). Optional on loopback, required in remote mode. |
+| `AuthTokenFile` | `null` | File holding the bearer token (trimmed, at least 32 visible-ASCII characters). Optional on loopback, required in remote mode. |
 | `AllowedOrigins` | `[]` | Browser origins (`http(s)://host[:port]`, such as `http://localhost:6274`) allowed to call the endpoint. Requests without `Origin` are allowed. |
 | `AllowedHosts` | `[]` | Extra accepted `Host` header values (`host` or `host:port`). Added to the loopback names on loopback. In remote mode, the only names accepted (at least one is required). |
 | `TlsCertificatePath` | `null` | PEM certificate (plus optional chain). Required in remote mode. Enables HTTPS on loopback. |

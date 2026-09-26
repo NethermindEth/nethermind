@@ -40,6 +40,27 @@ public static class McpEns
     /// <summary>The EIP-3668 <c>OffchainLookup(address,string[],bytes,bytes4,bytes)</c> error selector.</summary>
     public static readonly byte[] OffchainLookupSelector = [0x55, 0x6f, 0x18, 0x30];
 
+    /// <summary>The Universal Resolver <c>reverse(bytes,uint256)</c> selector (ENSIP-19 primary names).</summary>
+    public static readonly byte[] ReverseSelector = Keccak.Compute("reverse(bytes,uint256)").Bytes[..4].ToArray();
+
+    /// <summary>The Universal Resolver <c>ResolverNotFound(bytes)</c> error selector.</summary>
+    public static readonly byte[] ResolverNotFoundSelector = [0x77, 0x20, 0x9f, 0xe8];
+
+    /// <summary>The Universal Resolver <c>ResolverNotContract(bytes,address)</c> error selector.</summary>
+    public static readonly byte[] ResolverNotContractSelector = [0x1e, 0x95, 0x35, 0xf2];
+
+    /// <summary>The Universal Resolver <c>UnsupportedResolverProfile(bytes4)</c> error selector.</summary>
+    public static readonly byte[] UnsupportedResolverProfileSelector = [0x7b, 0x1c, 0x46, 0x1b];
+
+    /// <summary>The Universal Resolver <c>ResolverError(bytes)</c> error selector.</summary>
+    public static readonly byte[] ResolverErrorSelector = [0x95, 0xc0, 0xc7, 0x52];
+
+    /// <summary>The Universal Resolver <c>ReverseAddressMismatch(string,bytes)</c> error selector.</summary>
+    public static readonly byte[] ReverseAddressMismatchSelector = [0xef, 0x9c, 0x03, 0xce];
+
+    /// <summary>The SLIP-44 coin type of Ether, used for ENSIP-19 reverse resolution on Ethereum.</summary>
+    public const ulong EthCoinType = 60;
+
     /// <summary>Normalises <paramref name="name"/> (trim and ASCII lowercase) and validates every label.</summary>
     public static bool TryNormalize(string? name, [NotNullWhen(true)] out string? normalized, [NotNullWhen(false)] out string? error)
     {

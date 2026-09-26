@@ -108,6 +108,40 @@ public class McpLogPagingTests
         }
     }
 
+    [TestCase(ulong.MaxValue, ulong.MaxValue, true)]
+    [TestCase(ulong.MaxValue - 1, ulong.MaxValue, true)]
+    [TestCase((ulong)long.MaxValue, (ulong)long.MaxValue, true)]
+    [TestCase((ulong)long.MaxValue, (ulong)long.MaxValue + 1, true)]
+    [TestCase(0UL, ulong.MaxValue, false)]
+    [TestCase(0UL, (ulong)long.MaxValue, false)]
+    public async Task Range_beyond_the_head_is_rejected_before_any_scan(ulong from, ulong to, bool byTopic)
+    {
+        List<(string, object?)> args = [("fromBlock", Hex(from)), ("toBlock", Hex(to))];
+        if (byTopic) args.Add(("topics", Json(new object?[] { PagingTopic.ToString() })));
+
+        JsonElement error = McpAssert.Error(await McpToolCalls.Call(_client, "get_logs", [.. args]), McpAssert.InvalidInput);
+
+        Assert.That(error.GetProperty("message").GetString(), Does.Contain("head block"));
+    }
+
+    [Test]
+    public async Task Range_ending_one_past_the_head_is_rejected_and_ending_at_the_head_is_served()
+    {
+        ulong head = _node.Chain.BlockTree.Head!.Number;
+
+        JsonElement future = McpAssert.Error(await McpToolCalls.Call(_client, "get_logs", [("fromBlock", Hex(head + 1)), ("toBlock", Hex(head + 1))]), McpAssert.InvalidInput);
+        JsonElement straddling = McpAssert.Error(await McpToolCalls.Call(_client, "get_logs", [("fromBlock", Hex(head)), ("toBlock", Hex(head + 1))]), McpAssert.InvalidInput);
+        JsonElement atHead = McpAssert.Success(await McpToolCalls.Call(_client, "get_logs", [("fromBlock", Hex(head)), ("toBlock", Hex(head))]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(future.GetProperty("message").GetString(), Does.Contain($"head block ({head})"));
+            Assert.That(straddling.GetProperty("message").GetString(), Does.Contain($"head block ({head})"));
+            McpAssert.Quantity(atHead.GetProperty("toBlock"), Hex(head));
+            Assert.That(atHead.GetProperty("truncated").GetBoolean(), Is.False);
+        }
+    }
+
     [Test]
     public async Task Pages_stay_within_the_byte_budget()
     {

@@ -12,7 +12,13 @@ namespace Nethermind.Mcp.Plugin.Tools;
 public sealed class McpChainProfile(ChainSpec chainSpec, ISpecProvider specProvider)
 {
     private const string TokenKind = "token";
+
+    // ENS deployments, from https://docs.ens.domains/learn/deployments/ (source of truth: ensdomains/ens-contracts and, for
+    // Sepolia's ENSv2, ensdomains/contracts-v2 deployments/sepolia/UpgradableUniversalResolverProxy.json). Mainnet, Sepolia and
+    // Holesky share both addresses. Sepolia runs ENSv2: its ENSv1 registry still exists but is no longer used, and the
+    // Universal Resolver (an upgradable proxy) resolves through the ENSv2 deployment.
     private static readonly Address EnsRegistry = new("0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e");
+    private static readonly Address EnsUniversalResolver = new("0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe");
 
     // Canonical deployments, cross-checked against Etherscan/Gnosisscan token pages and the issuers' own docs.
     // Only addresses with a single, uncontested canonical deployment are listed: a wrong address is worse than a missing one.
@@ -75,10 +81,17 @@ public sealed class McpChainProfile(ChainSpec chainSpec, ISpecProvider specProvi
     /// <summary>Gets the symbol of the token validators stake: <c>GNO</c> on Gnosis chains, otherwise <c>ETH</c>.</summary>
     public string StakingTokenSymbol => IsGnosisFamily ? "GNO" : "ETH";
 
-    /// <summary>Gets the ENS registry address on networks where the canonical deployment exists, otherwise <see langword="null"/>.</summary>
-    public Address? EnsRegistryAddress => specProvider.ChainId is BlockchainIds.Mainnet or BlockchainIds.Sepolia or BlockchainIds.Holesky
-        ? EnsRegistry
-        : null;
+    /// <summary>Gets the ENS (ENSv1) registry address on networks where the canonical deployment exists, otherwise <see langword="null"/>.</summary>
+    /// <remarks>On Sepolia this registry is legacy (see <see cref="EnsRegistryIsAuthoritative"/>); it is only used for blocks where the Universal Resolver has no code.</remarks>
+    public Address? EnsRegistryAddress => HasEns ? EnsRegistry : null;
+
+    /// <summary>Gets the ENS Universal Resolver (ENSIP-10 <c>resolve</c>, ENSIP-19 <c>reverse</c>), the officially recommended resolution entry point, where ENS publishes one.</summary>
+    public Address? EnsUniversalResolverAddress => HasEns ? EnsUniversalResolver : null;
+
+    /// <summary>Gets whether the ENSv1 registry is the live source of names and owners (mainnet and Holesky; not Sepolia, which moved to ENSv2).</summary>
+    public bool EnsRegistryIsAuthoritative => specProvider.ChainId is BlockchainIds.Mainnet or BlockchainIds.Holesky;
+
+    private bool HasEns => specProvider.ChainId is BlockchainIds.Mainnet or BlockchainIds.Sepolia or BlockchainIds.Holesky;
 
     /// <summary>Gets the beacon-chain deposit contract of the current fork, if any.</summary>
     /// <remarks>On Gnosis chains validators deposit GNO, not the native currency, through this contract.</remarks>
@@ -98,7 +111,8 @@ public sealed class McpChainProfile(ChainSpec chainSpec, ISpecProvider specProvi
             Add(contracts, "EIP-2935 block hash history", spec.Eip2935ContractAddress, "system");
             Add(contracts, "EIP-7002 withdrawal requests", spec.Eip7002ContractAddress, "system");
             Add(contracts, "EIP-7251 consolidation requests", spec.Eip7251ContractAddress, "system");
-            Add(contracts, "ENS registry", EnsRegistryAddress, "ens");
+            Add(contracts, "ENS Universal Resolver", EnsUniversalResolverAddress, "ens");
+            Add(contracts, EnsRegistryIsAuthoritative ? "ENS registry" : "ENS registry (legacy ENSv1, no longer used on this network)", EnsRegistryAddress, "ens");
             contracts.AddRange(Tokens);
             return contracts;
 
