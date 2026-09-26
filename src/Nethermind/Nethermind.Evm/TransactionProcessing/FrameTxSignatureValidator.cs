@@ -32,7 +32,12 @@ public static class FrameTxSignatureValidator
     /// <summary>Address of the secp256r1 (P256VERIFY) precompile — EIP-7951 / RIP-7212.</summary>
     public static readonly Address P256VerifyPrecompileAddress = PrecompiledAddresses.P256Verify;
 
-    public static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures = false)
+    public static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
+        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false);
+
+    /// <summary>Same validation, optionally accepting a SECP256K1 or P256 entry with empty signature bytes as a
+    /// placeholder; only execution that skips validation may pass <paramref name="allowEmptySignatures"/>.</summary>
+    internal static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures)
         => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures);
 
     /// <summary>Same validation for callers without a sig hash: computed lazily, so a transaction whose
