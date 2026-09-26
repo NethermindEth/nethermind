@@ -364,10 +364,24 @@ public class StorageProviderTests(bool useFlat)
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(pool.Rent(1), Is.SameAs(fitting));
-            Dictionary<UInt256, int> fresh = pool.Rent(1);
+            Assert.That(pool.Rent(2048), Is.SameAs(fitting));
+            Dictionary<UInt256, int> fresh = pool.Rent(2048);
             Assert.That(fresh, Is.Not.SameAs(tooSmall).And.Not.SameAs(otherComparer));
             Assert.That(fresh.Comparer, Is.SameAs(UInt256Comparer.Instance));
+        }
+    }
+
+    [Test]
+    public void Large_map_pool_does_not_hand_out_a_much_larger_map()
+    {
+        PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
+        Dictionary<UInt256, int> large = new(16 * 1024, UInt256Comparer.Instance);
+        pool.Return(large);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.Rent(2048), Is.Not.SameAs(large));
+            Assert.That(pool.Rent(10 * 1024), Is.SameAs(large));
         }
     }
 

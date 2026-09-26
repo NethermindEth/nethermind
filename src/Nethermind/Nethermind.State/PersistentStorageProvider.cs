@@ -1000,27 +1000,34 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <remarks>
     /// Keeps at most <see cref="MaxRetainedEntries"/> entries of capacity, and only maps between the smallest capacity its
     /// owner rents and <see cref="MaxRetainedCapacity"/> built with the pool's comparer: anything else would never be
-    /// rented again, or would be rented with the wrong comparer.
+    /// rented again, or would be rented with the wrong comparer. A rent takes a retained map only when it is at most
+    /// <see cref="MaxRentOversize"/> times the request: a much larger map spreads its entries over a bucket array that
+    /// misses the cache on every lookup.
     /// </remarks>
     internal sealed class LargeMapPool<TKey, TValue>(IEqualityComparer<TKey>? comparer, int minRetainedCapacity) where TKey : notnull
     {
         internal const int MaxRetainedEntries = 256 * 1024;
-        internal const int MaxRetainedCapacity = 128 * 1024;
+        internal const int MaxRetainedCapacity = 32 * 1024;
+        internal const int MaxRentOversize = 2;
         private readonly IEqualityComparer<TKey> _comparer = comparer ?? EqualityComparer<TKey>.Default;
         private readonly Lock _lock = new();
         private readonly List<Dictionary<TKey, TValue>> _retained = [];
         private int _retainedEntries;
 
-        /// <summary>The smallest retained map with at least <paramref name="minCapacity"/> capacity, or a new one.</summary>
+        /// <summary>
+        /// The smallest retained map with at least <paramref name="minCapacity"/> capacity and at most
+        /// <see cref="MaxRentOversize"/> times that, or a new one.
+        /// </summary>
         public Dictionary<TKey, TValue> Rent(int minCapacity)
         {
+            long maxCapacity = (long)minCapacity * MaxRentOversize;
             lock (_lock)
             {
                 int best = -1;
                 for (int i = 0; i < _retained.Count; i++)
                 {
                     int capacity = _retained[i].Capacity;
-                    if (capacity >= minCapacity && (best < 0 || capacity < _retained[best].Capacity)) best = i;
+                    if (capacity >= minCapacity && capacity <= maxCapacity && (best < 0 || capacity < _retained[best].Capacity)) best = i;
                 }
 
                 if (best >= 0)
