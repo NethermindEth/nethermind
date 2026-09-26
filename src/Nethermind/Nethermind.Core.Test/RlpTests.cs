@@ -245,6 +245,14 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void GuardLimit_without_a_limit_applies_the_default_limit()
+        {
+            int limit = RlpLimit.DefaultLimit.Limit;
+            Assert.That(() => Rlp.GuardLimit(limit, int.MaxValue), Throws.Nothing);
+            Assert.That(() => Rlp.GuardLimit(limit + 1, int.MaxValue), Throws.TypeOf<RlpLimitException>());
+        }
+
+        [Test]
         public void Serializing_sequences()
         {
             Rlp output = Rlp.Encode(

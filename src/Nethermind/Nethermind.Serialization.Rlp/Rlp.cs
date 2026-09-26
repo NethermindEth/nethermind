@@ -885,7 +885,9 @@ namespace Nethermind.Serialization.Rlp
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
         {
-            RlpLimit l = limit ?? RlpLimit.DefaultLimit;
+            // Equal to RlpLimit.DefaultLimit; constructing it spares every inlined guard the static read and its
+            // type initialization check.
+            RlpLimit l = limit ?? new RlpLimit();
             // First test rejects either bound being negative.
             if ((bytesLeft | l.Limit) < 0 || (uint)count > (uint)bytesLeft || (uint)count > (uint)l.Limit)
             {
