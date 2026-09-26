@@ -5,8 +5,11 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.IO;
+using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -39,6 +42,13 @@ namespace Nethermind.BeaconChain.StateTransition.Hashing;
 /// is rebuilt level-by-level in parallel instead of patching paths.
 /// </para>
 /// <para>
+/// <see cref="BeaconStateGloas"/> gets its own caches for the fields EIP-7916 retypes to
+/// <c>ProgressiveList</c> (validators, balances, participation, inactivity scores) and for the
+/// builder registry, all held as progressive trees, plus a per-element reference diff for
+/// <c>ptc_window</c>. The root vectors and sync committees are shared by both forks' calls, which
+/// is safe because every cache diffs against its own snapshot.
+/// </para>
+/// <para>
 /// Use one instance per followed state lineage, like the rest of <see cref="EpochCache"/>. After
 /// a reorg either keep the instance (hashing a sibling state stays correct, only the first call
 /// pays for the larger diff) or call <see cref="Reset"/> to drop the caches. Not thread-safe.
@@ -58,6 +68,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private const ulong SlashingsChunkCount = 2048;
     private const ulong ProposerLookaheadChunkCount = 16;
     private const int FieldCount = 38;
+    private const int GloasFieldCount = 46;
     private const int ParallelLeafThreshold = 2048;
 
     private static readonly Fork s_defaultFork = new();
@@ -65,12 +76,15 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private static readonly Eth1Data s_defaultEth1Data = new();
     private static readonly Checkpoint s_defaultCheckpoint = new();
     private static readonly BitArray s_defaultJustificationBits = new(4);
+    private static readonly BitArray s_defaultExecutionPayloadAvailability = new((int)Presets.SlotsPerHistoricalRoot);
+    // EIP-7495 active_fields of the Gloas BeaconState: all 46 fields are present.
+    private static readonly byte[] s_gloasActiveFields = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x3F];
 
-    private readonly ValidatorListCache _validators = new();
-    private readonly BasicListCache _balances = new(UInt64ListDepth);
-    private readonly BasicListCache _inactivityScores = new(UInt64ListDepth);
-    private readonly BasicListCache _previousEpochParticipation = new(ParticipationDepth);
-    private readonly BasicListCache _currentEpochParticipation = new(ParticipationDepth);
+    private readonly ContainerListCache<Validator> _validators = new(new BoundedChunkTree(ValidatorsDepth));
+    private readonly BasicListCache _balances = new(new BoundedChunkTree(UInt64ListDepth));
+    private readonly BasicListCache _inactivityScores = new(new BoundedChunkTree(UInt64ListDepth));
+    private readonly BasicListCache _previousEpochParticipation = new(new BoundedChunkTree(ParticipationDepth));
+    private readonly BasicListCache _currentEpochParticipation = new(new BoundedChunkTree(ParticipationDepth));
     private readonly HashVectorCache _blockRoots = new(RootsVectorDepth);
     private readonly HashVectorCache _stateRoots = new(RootsVectorDepth);
     private readonly HashVectorCache _randaoMixes = new(RandaoMixesDepth);
@@ -78,6 +92,15 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private readonly ContainerMemo<SyncCommittee> _nextSyncCommittee = new();
     private readonly ContainerMemo<ExecutionPayloadHeader> _latestExecutionPayloadHeader = new();
     private readonly UInt256[] _fieldRoots = new UInt256[FieldCount];
+
+    private readonly ContainerListCache<Validator> _gloasValidators = new(new ProgressiveChunkTree());
+    private readonly BasicListCache _gloasBalances = new(new ProgressiveChunkTree());
+    private readonly BasicListCache _gloasInactivityScores = new(new ProgressiveChunkTree());
+    private readonly BasicListCache _gloasPreviousEpochParticipation = new(new ProgressiveChunkTree());
+    private readonly BasicListCache _gloasCurrentEpochParticipation = new(new ProgressiveChunkTree());
+    private readonly ContainerListCache<Builder> _builders = new(new ProgressiveChunkTree());
+    private readonly ContainerVectorCache<PayloadTimelinessCommittee> _ptcWindow = new((int)Presets.PtcWindowLength);
+    private readonly UInt256[] _gloasFieldRoots = new UInt256[GloasFieldCount];
 
     /// <inheritdoc/>
     public Hash256 HashTreeRoot(BeaconStateFulu state)
@@ -132,6 +155,70 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         return new Hash256(root.ToLittleEndian());
     }
 
+    /// <inheritdoc/>
+    public Hash256 HashTreeRoot(BeaconStateGloas state)
+    {
+        // The generated Merkleize rejects these three fields; the fixed sizes of the others are enforced by decode.
+        if (state.BuilderPendingPayments?.Length != (int)Presets.BuilderPendingPaymentsLength)
+            throw new InvalidDataException($"Invalid SSZ value for {nameof(BeaconStateGloas)}.{nameof(state.BuilderPendingPayments)}: expected {Presets.BuilderPendingPaymentsLength} elements but found {state.BuilderPendingPayments?.Length ?? 0}.");
+        if (state.LatestExecutionPayloadBid is null)
+            throw new InvalidDataException($"Invalid SSZ value for {nameof(BeaconStateGloas)}.{nameof(state.LatestExecutionPayloadBid)}: null variable fields are not decodable.");
+        if (state.ExecutionPayloadAvailability is not null && state.ExecutionPayloadAvailability.Length != (int)Presets.SlotsPerHistoricalRoot)
+            throw new InvalidDataException($"Invalid SSZ value for {nameof(BeaconStateGloas)}.{nameof(state.ExecutionPayloadAvailability)}: expected {Presets.SlotsPerHistoricalRoot} bits but found {state.ExecutionPayloadAvailability.Length}.");
+
+        UInt256[] roots = _gloasFieldRoots;
+        roots[0] = new UInt256(state.GenesisTime);
+        roots[1] = state.GenesisValidatorsRoot is null ? default : new UInt256(state.GenesisValidatorsRoot.Bytes);
+        roots[2] = new UInt256(state.Slot);
+        Fork.Merkleize(state.Fork ?? s_defaultFork, out roots[3]);
+        BeaconBlockHeader.Merkleize(state.LatestBlockHeader ?? s_defaultLatestBlockHeader, out roots[4]);
+        roots[5] = _blockRoots.Root(state.BlockRoots);
+        roots[6] = _stateRoots.Root(state.StateRoots);
+        roots[7] = RootListRoot(state.HistoricalRoots, HistoricalRootsLimit);
+        Eth1Data.Merkleize(state.Eth1Data ?? s_defaultEth1Data, out roots[8]);
+        Eth1Data.MerkleizeList(state.Eth1DataVotes ?? [], 2048, out roots[9]);
+        roots[10] = new UInt256(state.Eth1DepositIndex);
+        roots[11] = _gloasValidators.Root(state.Validators);
+        roots[12] = _gloasBalances.Root(MemoryMarshal.AsBytes<ulong>(state.Balances), state.Balances?.Length ?? 0);
+        roots[13] = _randaoMixes.Root(state.RandaoMixes);
+        Merkle.Merkleize(out roots[14], MemoryMarshal.AsBytes<ulong>(state.Slashings), SlashingsChunkCount);
+        roots[15] = _gloasPreviousEpochParticipation.Root(state.PreviousEpochParticipation, state.PreviousEpochParticipation?.Length ?? 0);
+        roots[16] = _gloasCurrentEpochParticipation.Root(state.CurrentEpochParticipation, state.CurrentEpochParticipation?.Length ?? 0);
+        Merkle.Merkleize(out roots[17], state.JustificationBits ?? s_defaultJustificationBits);
+        Checkpoint.Merkleize(state.PreviousJustifiedCheckpoint ?? s_defaultCheckpoint, out roots[18]);
+        Checkpoint.Merkleize(state.CurrentJustifiedCheckpoint ?? s_defaultCheckpoint, out roots[19]);
+        Checkpoint.Merkleize(state.FinalizedCheckpoint ?? s_defaultCheckpoint, out roots[20]);
+        roots[21] = _gloasInactivityScores.Root(MemoryMarshal.AsBytes<ulong>(state.InactivityScores), state.InactivityScores?.Length ?? 0);
+        roots[22] = _currentSyncCommittee.Root(state.CurrentSyncCommittee);
+        roots[23] = _nextSyncCommittee.Root(state.NextSyncCommittee);
+        roots[24] = state.LatestBlockHash is null ? default : new UInt256(state.LatestBlockHash.Bytes);
+        roots[25] = new UInt256(state.NextWithdrawalIndex);
+        roots[26] = new UInt256(state.NextWithdrawalValidatorIndex);
+        HistoricalSummary.MerkleizeList(state.HistoricalSummaries ?? [], 16_777_216, out roots[27]);
+        roots[28] = new UInt256(state.DepositRequestsStartIndex);
+        roots[29] = new UInt256(state.DepositBalanceToConsume);
+        roots[30] = new UInt256(state.ExitBalanceToConsume);
+        roots[31] = new UInt256(state.EarliestExitEpoch);
+        roots[32] = new UInt256(state.ConsolidationBalanceToConsume);
+        roots[33] = new UInt256(state.EarliestConsolidationEpoch);
+        PendingDeposit.MerkleizeProgressiveList(state.PendingDeposits ?? [], out roots[34]);
+        PendingPartialWithdrawal.MerkleizeProgressiveList(state.PendingPartialWithdrawals ?? [], out roots[35]);
+        PendingConsolidation.MerkleizeProgressiveList(state.PendingConsolidations ?? [], out roots[36]);
+        Merkle.Merkleize(out roots[37], MemoryMarshal.AsBytes<ulong>(state.ProposerLookahead), ProposerLookaheadChunkCount);
+        roots[38] = _builders.Root(state.Builders);
+        roots[39] = new UInt256(state.NextWithdrawalBuilderIndex);
+        Merkle.Merkleize(out roots[40], state.ExecutionPayloadAvailability ?? s_defaultExecutionPayloadAvailability);
+        BuilderPendingPayment.MerkleizeVector(state.BuilderPendingPayments, out roots[41]);
+        BuilderPendingWithdrawal.MerkleizeProgressiveList(state.BuilderPendingWithdrawals ?? [], out roots[42]);
+        ExecutionPayloadBid.Merkleize(state.LatestExecutionPayloadBid, out roots[43]);
+        Withdrawal.MerkleizeProgressiveList(state.PayloadExpectedWithdrawals ?? [], out roots[44]);
+        roots[45] = _ptcWindow.Root(state.PtcWindow);
+
+        Merkle.MerkleizeProgressive(out UInt256 root, roots);
+        Merkle.MixInActiveFields(ref root, s_gloasActiveFields);
+        return new Hash256(root.ToLittleEndian());
+    }
+
     /// <summary>Drops every snapshot and cached subtree; the next call hashes from scratch.</summary>
     public void Reset()
     {
@@ -146,6 +233,13 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         _currentSyncCommittee.Reset();
         _nextSyncCommittee.Reset();
         _latestExecutionPayloadHeader.Reset();
+        _gloasValidators.Reset();
+        _gloasBalances.Reset();
+        _gloasInactivityScores.Reset();
+        _gloasPreviousEpochParticipation.Reset();
+        _gloasCurrentEpochParticipation.Reset();
+        _builders.Reset();
+        _ptcWindow.Reset();
     }
 
     /// <summary>Computes the root of a <c>List[Root, limit]</c> (small on mainnet: frozen since Capella).</summary>
@@ -194,23 +288,23 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     }
 
     /// <summary>
-    /// Caches <c>List[Validator, 2^40]</c>: per-validator leaf roots plus the tree above, diffed
-    /// by element reference against the previous call (validators are immutable-by-convention, so
-    /// a mutation is always a replaced instance).
+    /// Caches a list of containers (the validator and builder registries): per-element leaf roots
+    /// plus the tree above, diffed by element reference against the previous call (elements are
+    /// immutable-by-convention, so a mutation is always a replaced instance).
     /// </summary>
-    private sealed class ValidatorListCache
+    private sealed class ContainerListCache<T>(IChunkTree tree) where T : class, ISszCodec<T>
     {
-        private readonly MerkleChunkTree _tree = new(ValidatorsDepth);
-        private Validator?[] _snapshot = [];
+        private readonly IChunkTree _tree = tree;
+        private T?[] _snapshot = [];
         private int _count;
 
-        public UInt256 Root(Validator[]? validators)
+        public UInt256 Root(T[]? items)
         {
-            int count = validators?.Length ?? 0;
+            int count = items?.Length ?? 0;
             bool shrunk = count < _count;
             if (shrunk)
                 _count = 0;
-            UInt256[] leaves = _tree.SetLeafCount(count);
+            _tree.SetLeafCount(count);
             if (_snapshot.Length < count)
                 Array.Resize(ref _snapshot, Math.Max(count, _snapshot.Length * 2));
 
@@ -218,10 +312,10 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
             int dirtyCount = 0;
             for (int i = 0; i < count; i++)
             {
-                Validator validator = validators![i];
-                if (i < _count && ReferenceEquals(validator, _snapshot[i]))
+                T item = items![i];
+                if (i < _count && ReferenceEquals(item, _snapshot[i]))
                     continue;
-                _snapshot[i] = validator;
+                _snapshot[i] = item;
                 dirty[dirtyCount++] = i;
             }
             _count = count;
@@ -229,18 +323,19 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
             if (dirtyCount >= ParallelLeafThreshold)
             {
                 int[] dirtyLocal = dirty;
-                Validator[] validatorsLocal = validators!;
+                T[] itemsLocal = items!;
+                IChunkTree treeLocal = _tree;
                 Parallel.For(0, dirtyCount, r =>
                 {
                     int i = dirtyLocal[r];
-                    Validator.Merkleize(validatorsLocal[i], out leaves[i]);
+                    T.Merkleize(itemsLocal[i], out treeLocal.Leaf(i));
                 });
             }
             else
                 for (int r = 0; r < dirtyCount; r++)
                 {
                     int i = dirty[r];
-                    Validator.Merkleize(validators![i], out leaves[i]);
+                    T.Merkleize(items![i], out _tree.Leaf(i));
                 }
 
             if (shrunk || dirtyCount * 2 > count)
@@ -266,9 +361,9 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     /// Caches a basic-type SSZ list (uint64 balances/inactivity scores, byte participation):
     /// a value snapshot diffed per 32-byte chunk, with dirty-path updates.
     /// </summary>
-    private sealed class BasicListCache(int depth)
+    private sealed class BasicListCache(IChunkTree tree)
     {
-        private readonly MerkleChunkTree _tree = new(depth);
+        private readonly IChunkTree _tree = tree;
         private byte[] _snapshot = [];
         private int _snapshotLength;
 
@@ -281,7 +376,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
             if (shrunk)
                 oldChunkCount = 0; // Stale boundary nodes: rediff everything and rebuild below.
 
-            UInt256[] leaves = _tree.SetLeafCount(chunkCount);
+            _tree.SetLeafCount(chunkCount);
             if (_snapshot.Length < alignedLength)
                 Array.Resize(ref _snapshot, Math.Max(alignedLength, _snapshot.Length * 2));
 
@@ -298,7 +393,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
                 if (i < oldChunkCount && dataChunks[i] == snapshotChunks[i])
                     continue;
                 snapshotChunks[i] = dataChunks[i];
-                leaves[i] = dataChunks[i];
+                _tree.Leaf(i) = dataChunks[i];
                 dirty[dirtyCount++] = i;
             }
             if (fullChunks < chunkCount)
@@ -310,7 +405,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
                 if (fullChunks >= oldChunkCount || chunk != snapshotChunks[fullChunks])
                 {
                     snapshotChunks[fullChunks] = chunk;
-                    leaves[fullChunks] = chunk;
+                    _tree.Leaf(fullChunks) = chunk;
                     dirty[dirtyCount++] = fullChunks;
                 }
             }
@@ -382,6 +477,183 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         {
             _tree.Reset();
             _snapshot = [];
+        }
+    }
+
+    /// <summary>
+    /// Caches a <c>Vector[T, length]</c> whose elements are replaced, never mutated in place
+    /// (<c>ptc_window</c>): per-element roots diffed by element reference.
+    /// </summary>
+    private sealed class ContainerVectorCache<T>(int length) where T : class, ISszCodec<T>
+    {
+        private readonly T?[] _snapshot = new T?[length];
+        private readonly UInt256[] _roots = new UInt256[length];
+        private bool _cached;
+
+        public UInt256 Root(T[]? vector)
+        {
+            if (vector?.Length != length)
+                throw new InvalidDataException($"Expected an SSZ vector of {length} {typeof(T).Name} elements, got {vector?.Length ?? 0}");
+
+            for (int i = 0; i < length; i++)
+            {
+                T element = vector[i];
+                if (_cached && ReferenceEquals(element, _snapshot[i]))
+                    continue;
+                T.Merkleize(element, out _roots[i]);
+                _snapshot[i] = element;
+            }
+            _cached = true;
+
+            Merkle.Merkleize(out UInt256 root, _roots);
+            return root;
+        }
+
+        public void Reset()
+        {
+            Array.Clear(_snapshot);
+            _cached = false;
+        }
+    }
+
+    /// <summary>The chunk tree a list cache writes its leaves into; follows the <see cref="MerkleChunkTree"/> contract.</summary>
+    private interface IChunkTree
+    {
+        void SetLeafCount(int count);
+
+        ref UInt256 Leaf(int index);
+
+        void Rebuild();
+
+        void Update(int[] dirtyIndices, int dirtyCount);
+
+        /// <summary>The root of the chunks, before the list length is mixed in.</summary>
+        UInt256 Root { get; }
+
+        void Reset();
+    }
+
+    /// <summary>A bounded <c>List[T, N]</c> tree: one <see cref="MerkleChunkTree"/> as deep as the limit.</summary>
+    private sealed class BoundedChunkTree(int depth) : IChunkTree
+    {
+        private readonly MerkleChunkTree _tree = new(depth);
+        private UInt256[] _leaves = [];
+
+        public void SetLeafCount(int count) => _leaves = _tree.SetLeafCount(count);
+
+        public ref UInt256 Leaf(int index) => ref _leaves[index];
+
+        public void Rebuild() => _tree.Rebuild();
+
+        public void Update(int[] dirtyIndices, int dirtyCount) => _tree.Update(dirtyIndices, dirtyCount);
+
+        public UInt256 Root => _tree.Root;
+
+        public void Reset()
+        {
+            _tree.Reset();
+            _leaves = [];
+        }
+    }
+
+    /// <summary>
+    /// An EIP-7916 <c>ProgressiveList</c> tree: subtrees of 1, 4, 16, ... chunks, each a
+    /// <see cref="MerkleChunkTree"/>, chained as <c>hash(subtree_k, rest)</c> ending in a zero chunk.
+    /// </summary>
+    /// <remarks>Matches <see cref="Merkle.MerkleizeProgressive"/>, including the zero root of an empty tree.</remarks>
+    private sealed class ProgressiveChunkTree : IChunkTree
+    {
+        private MerkleChunkTree[] _subtrees = [];
+        private UInt256[][] _leaves = [];
+
+        public void SetLeafCount(int count)
+        {
+            int subtreeCount = 0;
+            while (SubtreeStart(subtreeCount) < count)
+                subtreeCount++;
+
+            int oldSubtreeCount = _subtrees.Length;
+            if (subtreeCount != oldSubtreeCount)
+            {
+                Array.Resize(ref _subtrees, subtreeCount);
+                Array.Resize(ref _leaves, subtreeCount);
+                for (int k = oldSubtreeCount; k < subtreeCount; k++)
+                {
+                    _subtrees[k] = new MerkleChunkTree(2 * k);
+                }
+            }
+
+            for (int k = 0; k < subtreeCount; k++)
+            {
+                _leaves[k] = _subtrees[k].SetLeafCount((int)Math.Min(count - SubtreeStart(k), 1L << (2 * k)));
+            }
+        }
+
+        public ref UInt256 Leaf(int index)
+        {
+            int k = SubtreeOf(index);
+            return ref _leaves[k][index - (int)SubtreeStart(k)];
+        }
+
+        public void Rebuild()
+        {
+            foreach (MerkleChunkTree subtree in _subtrees)
+            {
+                subtree.Rebuild();
+            }
+        }
+
+        public void Update(int[] dirtyIndices, int dirtyCount)
+        {
+            int[] local = ArrayPool<int>.Shared.Rent(Math.Max(1, dirtyCount));
+            int read = 0;
+            while (read < dirtyCount)
+            {
+                int k = SubtreeOf(dirtyIndices[read]);
+                long start = SubtreeStart(k);
+                long end = SubtreeStart(k + 1);
+                int localCount = 0;
+                for (; read < dirtyCount && dirtyIndices[read] < end; read++)
+                {
+                    local[localCount++] = dirtyIndices[read] - (int)start;
+                }
+                _subtrees[k].Update(local, localCount);
+            }
+            ArrayPool<int>.Shared.Return(local);
+        }
+
+        public UInt256 Root
+        {
+            get
+            {
+                UInt256 root = UInt256.Zero;
+                for (int k = _subtrees.Length - 1; k >= 0; k--)
+                {
+                    root = HashPair(_subtrees[k].Root, root);
+                }
+                return root;
+            }
+        }
+
+        public void Reset()
+        {
+            _subtrees = [];
+            _leaves = [];
+        }
+
+        /// <summary>The first leaf index of subtree <paramref name="k"/>, <c>(4^k - 1) / 3</c>.</summary>
+        private static long SubtreeStart(int k) => ((1L << (2 * k)) - 1) / 3;
+
+        private static int SubtreeOf(int index) => BitOperations.Log2(3UL * (uint)index + 1) >> 1;
+
+        private static UInt256 HashPair(in UInt256 left, in UInt256 right)
+        {
+            Span<UInt256> pair = stackalloc UInt256[2];
+            pair[0] = left;
+            pair[1] = right;
+            Span<byte> hash = stackalloc byte[32];
+            SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(pair), hash);
+            return new UInt256(hash);
         }
     }
 }
