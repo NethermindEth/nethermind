@@ -144,13 +144,17 @@ public class BootnodeDiscoveryV5NodeSourceTests
             DiscoveryPort = discoveryPort,
             P2PPort = 0
         };
+        IIPResolver.NethermindIp resolvedIp = externalIpV6 is null
+            ? new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback)
+            : new IIPResolver.NethermindIp(IPAddress.IPv6Any, IPAddress.Loopback, externalIpV4: null, externalIpV6);
+        NetworkListenerState listenerState = new(resolvedIp.LocalIp, resolvedIp.LocalIp, LimboLogs.Instance);
+        listenerState.SetDiscoveryAddress(resolvedIp.LocalIp);
         BootnodeNodeRecordProvider provider = new(
             protectedPrivateKey,
             new EthereumEcdsa(1),
             networkConfig,
-            externalIpV6 is null
-                ? new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback)
-                : new IIPResolver.NethermindIp(IPAddress.IPv6Any, IPAddress.Loopback, externalIpV4: null, externalIpV6),
+            resolvedIp,
+            listenerState,
             LimboLogs.Instance,
             dataDir);
         NodeRecord nodeRecord = await provider.GetCurrentAsync();

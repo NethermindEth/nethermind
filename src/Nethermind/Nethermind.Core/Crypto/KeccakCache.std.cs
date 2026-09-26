@@ -59,6 +59,40 @@ public static unsafe partial class KeccakCache
             goto Uncommon;
         }
 
+        ref Entry e = ref GetEntry(input, out uint combined);
+        if (TryRead(input, ref e, combined, out keccak256)) return;
+        keccak256 = ValueKeccak.Compute(input);
+        Write(input, ref e, combined, in keccak256);
+
+        return;
+
+    Uncommon:
+        keccak256 = input.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool TryGet(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
+    {
+        if (input.Length is 0 or > Entry.MaxPayloadLength)
+        {
+            Unsafe.SkipInit(out keccak256);
+            return false;
+        }
+        ref Entry e = ref GetEntry(input, out uint combined);
+        return TryRead(input, ref e, combined, out keccak256);
+    }
+
+    /// <summary>Stores a previously computed Keccak-256 hash of <paramref name="input"/>.</summary>
+    internal static void Store(ReadOnlySpan<byte> input, in ValueHash256 keccak256)
+    {
+        if (input.Length is 0 or > Entry.MaxPayloadLength) return;
+        ref Entry e = ref GetEntry(input, out uint combined);
+        Write(input, ref e, combined, in keccak256);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ref Entry GetEntry(ReadOnlySpan<byte> input, out uint combined)
+    {
         int hashCode = input.FastHash();
         uint index = (uint)hashCode & BucketMask;
 
@@ -74,8 +108,15 @@ public static unsafe partial class KeccakCache
 
         // Half the hash is encoded in the bucket so we only need half of it and can use other half for length.
         // This allows to create a combined value that represents a part of the hash, the input's length and the lock marker.
-        uint combined = (HashMask & (uint)hashCode) | (uint)input.Length;
+        combined = (HashMask & (uint)hashCode) | (uint)input.Length;
 
+        return ref e;
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryRead(ReadOnlySpan<byte> input, ref Entry e, uint combined, out ValueHash256 keccak256)
+    {
         // Seqlock pattern: read sequence, speculatively read data, verify sequence unchanged.
         // This is lock-free for reads - no CAS required unless we need to write.
         uint seq1 = Volatile.Read(ref e.Combined);
@@ -100,7 +141,7 @@ public static unsafe partial class KeccakCache
                     copyVec == Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input)))
                 {
                     keccak256 = cachedKeccak;
-                    return;
+                    return true;
                 }
             }
             else if (input.Length == InputLengthOfAddress)
@@ -121,7 +162,28 @@ public static unsafe partial class KeccakCache
                     copyAligned == Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref inputRef, sizeof(uint))))
                 {
                     keccak256 = cachedKeccak;
-                    return;
+                    return true;
+                }
+            }
+            else if (input.Length == 64)
+            {
+                Vector256<byte> copyLow = Unsafe.ReadUnaligned<Vector256<byte>>(ref e.Value.Start);
+                Vector256<byte> copyHigh = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref e.Value.Start, 32));
+                ValueHash256 cachedKeccak = e.Keccak256;
+
+                if (!Sse.IsSupported)
+                    Interlocked.MemoryBarrier();
+
+                if (seq1 == Volatile.Read(ref e.Combined))
+                {
+                    ref byte inputRef = ref MemoryMarshal.GetReference(input);
+                    Vector256<byte> difference = (copyLow ^ Unsafe.ReadUnaligned<Vector256<byte>>(ref inputRef)) |
+                        (copyHigh ^ Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref inputRef, 32)));
+                    if (difference == Vector256<byte>.Zero)
+                    {
+                        keccak256 = cachedKeccak;
+                        return true;
+                    }
                 }
             }
             else
@@ -138,13 +200,18 @@ public static unsafe partial class KeccakCache
                     MemoryMarshal.CreateReadOnlySpan(ref copy.Start, input.Length).SequenceEqual(input))
                 {
                     keccak256 = cachedKeccak;
-                    return;
+                    return true;
                 }
             }
         }
 
-        keccak256 = ValueKeccak.Compute(input);
+        Unsafe.SkipInit(out keccak256);
+        return false;
+    }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Write(ReadOnlySpan<byte> input, ref Entry e, uint combined, in ValueHash256 keccak256)
+    {
         uint existing = Volatile.Read(ref e.Combined);
 
         // Increment 8-bit version counter (wraps after 256) to detect ABA in seqlock readers.
@@ -182,11 +249,6 @@ public static unsafe partial class KeccakCache
             // Release the lock, by setting to combined with new version (without lock).
             Volatile.Write(ref e.Combined, toStore);
         }
-
-        return;
-
-    Uncommon:
-        keccak256 = input.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(input);
     }
 
     /// <summary>

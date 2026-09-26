@@ -47,10 +47,14 @@ public partial class FlashbotsModuleTests
     }
 
     protected static async Task<EngineModuleTests.MergeTestBlockchain> CreateBlockChain(
-        IReleaseSpec? releaseSpec = null)
-        => await new EngineModuleTests.MergeTestBlockchain()
+        IReleaseSpec? releaseSpec = null, IFlashbotsConfig? flashbotsConfig = null)
+    {
+        flashbotsConfig ??= new FlashbotsConfig();
+        return await new EngineModuleTests.MergeTestBlockchain()
             .BuildMergeTestBlockchain(configurer: (builder) => builder
                 .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance))
-                .AddModule(new FlashbotsModule(new FlashbotsConfig(), new JsonRpcConfig()))
+                .AddSingleton(flashbotsConfig)
+                .AddModule(new FlashbotsModule(flashbotsConfig, new JsonRpcConfig()))
             );
+    }
 }

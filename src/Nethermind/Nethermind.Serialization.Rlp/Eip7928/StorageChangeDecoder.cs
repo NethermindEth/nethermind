@@ -10,7 +10,7 @@ public class StorageChangeDecoder : IndexedChangeDecoder<StorageChange>
     public static readonly StorageChangeDecoder Instance = new();
 
     protected override StorageChange DecodeFields(ref RlpReader ctx)
-        => new(ctx.DecodeUInt(), ctx.DecodeEvmWord());
+        => new(ctx.DecodeUInt(), ctx.DecodeUInt256());
 
     protected override void EncodeValue<TWriter>(ref TWriter writer, StorageChange item)
         => writer.Encode(item.Value);

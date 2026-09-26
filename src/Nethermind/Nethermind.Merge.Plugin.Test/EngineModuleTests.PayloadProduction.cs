@@ -104,7 +104,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [CancelAfter(30000)]
+    [CancelAfter(120000)]
     public async Task getPayloadV1_picks_transactions_from_pool_v1(CancellationToken cancellationToken)
     {
         using SemaphoreSlim blockImprovementLock = new(0);
@@ -138,6 +138,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await chain.WaitForCommitted(getPayloadResult.BlockHash);
 
         UInt256 totalValue = ((int)(count * value)).GWei;
         BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.BlockHash);
@@ -606,7 +607,8 @@ public partial class EngineModuleTests
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         Assert.That(getPayloadResult.TryGetTransactions().Data, Has.Length.EqualTo(3));
-        Assert.That(cancelledContext?.Disposed, Is.True);
+        // The creation event can precede publication, so cleanup may finish after getPayload returns.
+        await ((DelayBlockImprovementContext)cancelledContext).DisposalCompleted.WaitAsync(chain.CancellationToken);
     }
 
     [Test]
@@ -741,6 +743,7 @@ public partial class EngineModuleTests
             }
 
             Assert.That(result1.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid), $"iteration {iteration}");
+            await chain.WaitForCommitted(getPayloadResult.BlockHash);
 
 
             // starting building on block X

@@ -35,6 +35,8 @@ namespace Nethermind.Network.Test.P2P
         public void Setup()
         {
             _session = Substitute.For<ISession>();
+            // PublicKeyA is this node's own identity; the tests treat PublicKeyB as the authenticated remote one.
+            _session.RemoteNodeId.Returns(TestItem.PublicKeyB);
             _serializer = new MessageSerializationService(
                 SerializerInfo.Create(new HelloMessageSerializer()),
                 SerializerInfo.Create(new PingMessageSerializer()),
@@ -314,6 +316,31 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
+        public void On_hello_claiming_another_node_id_than_authenticated_disconnects()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            List<ProtocolEventArgs> requestedProtocols = [];
+            p2PProtocolHandler.SubprotocolRequested += (_, args) => requestedProtocols.Add(args);
+
+            using HelloMessage message = new()
+            {
+                Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
+                NodeId = TestItem.PublicKeyC,
+                ClientId = "Nethermind/v1.0",
+                ListenPort = 30303,
+                P2PVersion = 5,
+            };
+
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.UnexpectedIdentity, Arg.Any<string>());
+            Assert.That(requestedProtocols, Is.Empty);
+            Assert.That(p2PProtocolHandler.AgreedCapabilities, Is.Empty);
+            Assert.That(p2PProtocolHandler.AvailableCapabilities, Is.Empty);
+        }
+
+        [Test]
         public void Duplicate_add_capability_is_ignored()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
@@ -363,6 +390,107 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
+        public void Repeated_hello_disconnects_with_breach_of_protocol()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            List<ProtocolEventArgs> requestedProtocols = [];
+            p2PProtocolHandler.SubprotocolRequested += (_, args) => requestedProtocols.Add(args);
+
+            using HelloMessage firstHello = CreateHello();
+            using HelloMessage secondHello = CreateHello();
+
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(firstHello));
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(secondHello));
+
+            using (Assert.EnterMultipleScope())
+            {
+                _session.Received(1).InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+                Assert.That(requestedProtocols, Has.Exactly(1).Items,
+                    "the repeated Hello must not re-run subprotocol negotiation");
+                Assert.That(p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(new Capability(Protocol.Eth, 68))), Is.EqualTo(1),
+                    "the repeated Hello must not append a duplicate agreed capability");
+            }
+        }
+
+        [Test]
+        public void Second_hello_is_rejected_even_when_handling_the_first_throws()
+        {
+            // Pins that _receivedHello is set before HandleHello runs.
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+
+            bool throwOnNextNotification = true;
+            p2PProtocolHandler.ProtocolInitialized += (_, _) =>
+            {
+                if (throwOnNextNotification)
+                {
+                    throwOnNextNotification = false;
+                    throw new InvalidOperationException("simulated failure while handling the first Hello");
+                }
+            };
+
+            using HelloMessage firstHello = CreateHello();
+            using HelloMessage secondHello = CreateHello();
+
+            Assert.Throws<InvalidOperationException>(() => p2PProtocolHandler.HandleMessage(CreateP2PPacket(firstHello)));
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(secondHello));
+
+            using (Assert.EnterMultipleScope())
+            {
+                _session.Received(1).InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+                Assert.That(p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(new Capability(Protocol.Eth, 68))), Is.EqualTo(1),
+                    "the faulted first Hello must not be re-applied by the second");
+            }
+        }
+
+        [Test]
+        public void Malformed_repeated_hello_disconnects_without_deserializing()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+
+            using HelloMessage firstHello = CreateHello();
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(firstHello));
+
+            Packet malformedSecondHello = new(CreateMalformedHelloData())
+            {
+                Protocol = Protocol.P2P,
+                PacketType = P2PMessageCode.Hello,
+            };
+
+            Assert.DoesNotThrow(() => p2PProtocolHandler.HandleMessage(malformedSecondHello));
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+        }
+
+        [Test]
+        public void Second_hello_is_rejected_after_the_first_fails_to_deserialize()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            List<ProtocolEventArgs> requestedProtocols = [];
+            p2PProtocolHandler.SubprotocolRequested += (_, args) => requestedProtocols.Add(args);
+
+            Packet malformedFirstHello = new(CreateMalformedHelloData())
+            {
+                Protocol = Protocol.P2P,
+                PacketType = P2PMessageCode.Hello,
+            };
+            using HelloMessage secondHello = CreateHello();
+
+            Assert.Catch<RlpException>(() => p2PProtocolHandler.HandleMessage(malformedFirstHello));
+            Assert.DoesNotThrow(() => p2PProtocolHandler.HandleMessage(CreateP2PPacket(secondHello)));
+
+            using (Assert.EnterMultipleScope())
+            {
+                _session.Received(1).InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
+                Assert.That(requestedProtocols, Is.Empty,
+                    "a Hello arriving after a malformed first attempt must not be negotiated");
+            }
+        }
+
+        [Test]
         public void Too_many_add_capability_messages_disconnect()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
@@ -390,6 +518,25 @@ namespace Nethermind.Network.Test.P2P
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
             };
+        }
+
+        private static HelloMessage CreateHello() => new()
+        {
+            Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
+            NodeId = TestItem.PublicKeyB,
+        };
+
+        /// <summary>
+        /// A valid Hello, truncated mid-stream so its RLP list header no longer matches the payload -
+        /// deserializing it throws, which is what the repeated-Hello guard must avoid triggering.
+        /// </summary>
+        private byte[] CreateMalformedHelloData()
+        {
+            using HelloMessage hello = CreateHello();
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(hello).AsDisposable();
+            data.ReadByte(); // adaptive packet type
+            byte[] full = data.ReadAllBytesAsArray();
+            return full[..(full.Length / 2)];
         }
     }
 }

@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -11,7 +12,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -26,6 +26,7 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
@@ -55,8 +56,6 @@ public class OptimismEthRpcModule(
     IJsonRpcClient? sequencerRpcClient,
     IEthereumEcdsa ecdsa,
     ITxSealer sealer,
-    ILogIndexConfig? logIndexConfig,
-    IReceiptConfig receiptConfig,
     IOptimismSpecHelper opSpecHelper,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
@@ -77,8 +76,6 @@ public class OptimismEthRpcModule(
         feeHistoryOracle,
         protocolsManager,
         forkInfo,
-        logIndexConfig,
-        receiptConfig,
         secondsPerSlot,
         headBlockSignal,
         capabilitiesProvider,
@@ -149,8 +146,27 @@ public class OptimismEthRpcModule(
             return await base.eth_sendRawTransaction(transaction);
         }
 
-        Hash256? result = await sequencerRpcClient.Post<Hash256>(nameof(eth_sendRawTransaction), transaction);
-        return result is null ? ResultWrapper<Hash256>.Fail("Failed to forward transaction") : ResultWrapper<Hash256>.Success(result);
+        string? response = await sequencerRpcClient.Post(nameof(eth_sendRawTransaction), transaction);
+        JsonRpcResponse<Hash256>? forwarded = null;
+        if (!string.IsNullOrWhiteSpace(response))
+        {
+            try
+            {
+                forwarded = JsonSerializer.Deserialize<JsonRpcResponse<Hash256>>(response, EthereumJsonSerializer.JsonOptions);
+            }
+            catch (JsonException e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Sequencer returned a non-JSON-RPC response to eth_sendRawTransaction: {e.Message}");
+            }
+        }
+
+        // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it.
+        if (forwarded?.Error is { } error)
+        {
+            return ResultWrapper<Hash256>.Fail(error.Message ?? "Sequencer rejected the transaction", error.Code);
+        }
+
+        return forwarded?.Result is { } result ? ResultWrapper<Hash256>.Success(result) : ResultWrapper<Hash256>.Fail("Failed to forward transaction");
     }
 
     public override ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)

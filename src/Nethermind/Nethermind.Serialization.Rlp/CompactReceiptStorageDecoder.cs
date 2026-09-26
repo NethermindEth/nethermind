@@ -21,13 +21,13 @@ namespace Nethermind.Serialization.Rlp
         protected override TxReceipt? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (RlpHelpers.TryConsumeNull(ref decoderContext, out ReadOnlySpan<byte> rlp, out int position)) return null;
+            if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
             TxReceipt txReceipt = new();
-            position = RlpHelpers.ReadSequenceLength(rlp, position, out int receiptLength);
+            rlp.ReadSequenceLength(ref position, out int receiptLength);
             int receiptEnd = position + receiptLength;
 
-            position = RlpHelpers.DecodeByteArray(rlp, position, out byte[] firstItem);
+            rlp.DecodeByteArray(ref position, out byte[] firstItem);
             if (firstItem.Length == 1)
             {
                 txReceipt.StatusCode = firstItem[0];
@@ -37,12 +37,12 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
-            (position, txReceipt.Sender) = RlpHelpers.DecodeAddressOrNull(rlp, position);
-            (position, txReceipt.GasUsedTotal) = RlpHelpers.DecodeULong(rlp, position);
+            txReceipt.Sender = rlp.DecodeAddressOrNull(ref position);
+            txReceipt.GasUsedTotal = rlp.DecodeULong(ref position);
 
-            int sequenceStart = RlpHelpers.ReadSequenceLength(rlp, position, out int sequenceLength);
-            int lastCheck = sequenceStart + sequenceLength;
-            decoderContext.Position = sequenceStart;
+            rlp.ReadSequenceLength(ref position, out int sequenceLength);
+            int lastCheck = position + sequenceLength;
+            decoderContext.Position = position;
 
             // Don't know the size exactly, I'll just assume its just an address and add some margin
             using ArrayPoolListRef<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
@@ -63,6 +63,17 @@ namespace Nethermind.Serialization.Rlp
             if (!allowExtraBytes)
             {
                 RlpHelpers.Check(decoderContext.Position, lastCheck);
+            }
+
+            // EIP-8141: only frame receipts carry data past the logs sequence — a trailing extension holding the
+            // payer and per-frame receipts. Pre-fork receipts end at the logs, so the branch never fires for them.
+            if (decoderContext.Position < receiptEnd)
+            {
+                txReceipt.TxType = TxType.FrameTx;
+                // Null-tolerant like the sender above: an earlier build wrote a payer-less receipt, and
+                // refusing to parse it would take the whole block's receipt array with it.
+                txReceipt.Payer = decoderContext.DecodeAddressOrNull();
+                txReceipt.FrameReceipts = FrameReceiptRlp.DecodeStoredFrames(ref decoderContext, CompactLogEntryDecoder.Instance);
             }
 
             // Handle any remaining extra bytes
@@ -112,10 +123,10 @@ namespace Nethermind.Serialization.Rlp
             item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
 
-            // Handle any remaining extra bytes
-            bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
-            if (decoderContext.Position < receiptEnd && allowExtraBytes)
+            // EIP-8141: skip a frame-tx receipt's trailing extension so the next receipt in the array stays aligned.
+            if (decoderContext.Position < receiptEnd)
             {
+                item.TxType = TxType.FrameTx;
                 decoderContext.Position = receiptEnd;
             }
         }
@@ -161,6 +172,13 @@ namespace Nethermind.Serialization.Rlp
             {
                 CompactLogEntryDecoder.Instance.Encode(ref writer, logs[i]);
             }
+
+            if (item.TxType == TxType.FrameTx)
+            {
+                // Repeats the logs the top-level union already holds, at the cost noted above: DecodeStructRef
+                // hands eth_getLogs one contiguous LogsRlp span, which N per-frame sequences cannot supply.
+                FrameReceiptRlp.EncodeStoredExtension(ref writer, item, CompactLogEntryDecoder.Instance);
+            }
         }
 
         private static (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
@@ -186,6 +204,11 @@ namespace Nethermind.Serialization.Rlp
 
             int logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
+
+            if (item.TxType == TxType.FrameTx)
+            {
+                contentLength += FrameReceiptRlp.GetStoredExtensionLength(item, CompactLogEntryDecoder.Instance);
+            }
 
             return (contentLength, logsLength);
         }

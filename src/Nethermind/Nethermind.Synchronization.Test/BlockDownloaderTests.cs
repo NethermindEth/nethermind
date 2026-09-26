@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -18,7 +19,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Evm;
 using Nethermind.Network;
 using Nethermind.Specs;
@@ -80,6 +83,7 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = enableFastSync,
+            SnapSync = enableFastSync,
             StateMinDistanceFromHead = fastSynclag
         }));
         Context ctx = node.Resolve<Context>();
@@ -138,6 +142,7 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
+            SnapSync = true,
             StateMinDistanceFromHead = fastSyncLag,
         }));
         Context ctx = node.Resolve<Context>();
@@ -158,6 +163,47 @@ public partial class BlockDownloaderTests
             .Select(i => (ulong)i)
             .ToList();
         Assert.That(newHeadSequence, Is.EqualTo(expectedNewHeadSequence));
+    }
+
+    [Test]
+    public async Task Suggested_state_roots_match_highest_known_header([Values] bool suggestAsync, [Values] bool alreadyKnown)
+    {
+        await using IContainer node = CreateNode();
+        IBlockTree blockTree = node.Resolve<IBlockTree>();
+        IFullStateFinder stateFinder = node.Resolve<IFullStateFinder>();
+        Assert.That(stateFinder.FindBestFullState(), Is.Zero);
+
+        Block genesisRootBlock = Build.A.Block.WithNumber(2).WithStateRoot(blockTree.Genesis!.StateRoot!).TestObject;
+        blockTree.Insert(genesisRootBlock.Header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        Assert.That(stateFinder.FindBestFullState(), Is.EqualTo(2), "genesis registers its state root");
+
+        Block matchingRootBlock = Build.A.Block.WithNumber(4).WithStateRoot(TestItem.KeccakA).TestObject;
+        Block unknownRootBlock = Build.A.Block.WithNumber(7).WithStateRoot(TestItem.KeccakB).TestObject;
+        blockTree.Insert(Build.A.Block.WithNumber(4).WithStateRoot(TestItem.KeccakB).TestObject.Header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        blockTree.Insert(matchingRootBlock.Header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded | BlockTreeInsertHeaderOptions.NotOnMainChain);
+        blockTree.Insert(unknownRootBlock.Header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        Assert.That(stateFinder.FindBestFullState(), Is.EqualTo(2), "inserted headers do not register state roots");
+
+        Block rejectedBlock = Build.A.Block.WithNumber(1).WithParentHash(TestItem.KeccakC).WithStateRoot(TestItem.KeccakB).TestObject;
+        AddBlockResult rejectedResult = suggestAsync
+            ? await blockTree.SuggestBlockAsync(rejectedBlock)
+            : blockTree.SuggestBlock(rejectedBlock);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejectedResult, Is.EqualTo(AddBlockResult.UnknownParent));
+            Assert.That(stateFinder.FindBestFullState(), Is.EqualTo(2), "rejected suggestions do not register state roots");
+        }
+
+        Block suggestedBlock = Build.A.Block.WithParent(blockTree.Genesis).WithStateRoot(TestItem.KeccakA).TestObject;
+        if (alreadyKnown) blockTree.SuggestHeader(suggestedBlock.Header);
+        AddBlockResult result = suggestAsync
+            ? await blockTree.SuggestBlockAsync(suggestedBlock)
+            : blockTree.SuggestBlock(suggestedBlock);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(alreadyKnown ? AddBlockResult.AlreadyKnown : AddBlockResult.Added));
+            Assert.That(stateFinder.FindBestFullState(), Is.EqualTo(4), "state availability follows roots, not suggested heights");
+        }
     }
 
     [Test]
@@ -206,6 +252,7 @@ public partial class BlockDownloaderTests
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
+            SnapSync = true,
             StateMinDistanceFromHead = fastSyncLag,
         }),
             configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
@@ -231,7 +278,8 @@ public partial class BlockDownloaderTests
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
-            FastSync = true
+            FastSync = true,
+            SnapSync = true
         }),
             configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
 
@@ -242,6 +290,57 @@ public partial class BlockDownloaderTests
             CancellationToken.None);
 
         Assert.That(async () => await act(), Throws.Nothing);
+    }
+
+    [Test]
+    public async Task Defers_downloaded_blocks_without_blaming_peer_when_tree_is_unavailable()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(true);
+        logger.IsError.Returns(true);
+        await using IContainer node = CreateNode(builder =>
+            builder.AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger))));
+        Context ctx = node.Resolve<Context>();
+        SyncPeerMock syncPeer = new(5, false, Response.AllCorrect | Response.WithTransactions);
+        PeerInfo peer = new(syncPeer);
+        ctx.ConfigureBestPeer(peer);
+        Assert.That(await ctx.HandleOneRequest(peer), Is.EqualTo(SyncResponseHandlingResult.OK));
+        Hash256? headBefore = ctx.BlockTree.BestSuggestedHeader!.Hash;
+        logger.ClearReceivedCalls();
+
+        TaskCompletionSource<LevelVisitOutcome> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockTreeVisitor visitor = Substitute.For<IBlockTreeVisitor>();
+        visitor.PreventsAcceptingNewBlocks.Returns(true);
+        visitor.EndLevelExclusive.Returns(1UL);
+        visitor.VisitLevelStart(Arg.Any<ChainLevelInfo>(), 0, Arg.Any<CancellationToken>()).Returns(release.Task);
+        Task visit = ctx.BlockTree.Accept(visitor, CancellationToken.None);
+        try
+        {
+            Assert.That(ctx.BlockTree.CanAcceptNewBlocks, Is.False);
+            using BlocksRequest? request = await ctx.FullSyncFeedComponent.Feed.PrepareRequest();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(request, Is.Null);
+                Assert.That(ctx.BlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(headBefore));
+                Assert.That(() => logger.Received(1).Debug(Arg.Is<string>(message =>
+                    message.Contains("Block download deferred: Block tree cannot accept block/header from peer") &&
+                    message.Contains(peer.ToString()))), Throws.Nothing);
+                Assert.That(() => logger.DidNotReceiveWithAnyArgs().Error(default!, default), Throws.Nothing);
+                Assert.That(() => logger.DidNotReceiveWithAnyArgs().Error(default!, default, default), Throws.Nothing);
+            }
+        }
+        finally
+        {
+            release.SetResult(LevelVisitOutcome.StopVisiting);
+            await visit;
+        }
+
+        await ctx.FullSyncUntilNoRequest(peer);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(4));
+            Assert.That(() => ctx.PeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!), Throws.Nothing);
+        }
     }
 
     [Test]
@@ -258,7 +357,8 @@ public partial class BlockDownloaderTests
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
-            FastSync = true
+            FastSync = true,
+            SnapSync = true
         }),
             configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
 
@@ -286,7 +386,8 @@ public partial class BlockDownloaderTests
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
-            FastSync = true
+            FastSync = true,
+            SnapSync = true
         }),
             configurer: (builder) => builder.AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider));
 
@@ -307,7 +408,8 @@ public partial class BlockDownloaderTests
 
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
-            FastSync = true
+            FastSync = true,
+            SnapSync = true
         }),
             configurer: (builder) => builder
                 .AddSingleton<IForwardHeaderProvider>(mockForwardHeaderProvider)
@@ -639,6 +741,7 @@ public partial class BlockDownloaderTests
         ISyncConfig syncConfig = new SyncConfig()
         {
             FastSync = true,
+            SnapSync = true,
             StateMinDistanceFromHead = fastSyncLag,
             PivotNumber = syncPivot.Number,
             PivotHash = syncPivot.Hash!.ToString(),
@@ -892,16 +995,21 @@ public partial class BlockDownloaderTests
         CreateNode(configProvider: new ConfigProvider(new SyncConfig()
         {
             FastSync = true,
+            SnapSync = true,
             StateMinDistanceFromHead = fastSyncLag,
         }));
 
     private IContainer CreateNode(Action<ContainerBuilder>? configurer = null, IConfigProvider? configProvider = null)
     {
         configProvider ??= new ConfigProvider();
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = TestStateBackend.UseFlatDb;
 
         Block genesis = Build.A.Block.Genesis.TestObject;
         ContainerBuilder b = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
+            .AddSingleton<SuggestedStateRoots>()
+            .AddSingleton<IFullStateFinder, SuggestedFullStateFinder>()
+            .AddDecorator<IBlockTree, StateTrackingBlockTree>()
             .AddSingleton<IReceiptStorage, InMemoryReceiptStorage>()
             .AddSingleton<ISealValidator>(Always.Valid)
             .AddSingleton<ISpecProvider>(new MainnetSpecProvider())
@@ -1073,6 +1181,55 @@ public partial class BlockDownloaderTests
             BlockTree = this.BlockTree;
             ReceiptStorage = this.ReceiptStorage;
             PeerPool = this.PeerPool;
+        }
+    }
+
+    private sealed class SuggestedStateRoots
+    {
+        private readonly ConcurrentDictionary<Hash256, bool> _roots = new();
+
+        public bool Contains(Hash256 stateRoot) => _roots.ContainsKey(stateRoot);
+
+        public AddBlockResult Record(Block block, AddBlockResult result)
+        {
+            if (result is AddBlockResult.Added or AddBlockResult.AlreadyKnown)
+            {
+                _roots.TryAdd(block.StateRoot!, true);
+            }
+
+            return result;
+        }
+    }
+
+    private sealed class StateTrackingBlockTree(IBlockTree blockTree, SuggestedStateRoots stateRoots) : BlockTreeTestDouble(blockTree)
+    {
+        public override AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
+            stateRoots.Record(block, base.SuggestBlock(block, options));
+
+        public override async ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
+            stateRoots.Record(block, await base.SuggestBlockAsync(block, options));
+    }
+
+    private sealed class SuggestedFullStateFinder(IBlockTree blockTree, SuggestedStateRoots stateRoots) : IFullStateFinder
+    {
+        public ulong FindBestFullState()
+        {
+            for (ulong number = blockTree.BestKnownNumber; ; number--)
+            {
+                if (blockTree.FindLevel(number) is { } level)
+                {
+                    foreach (BlockInfo blockInfo in level.BlockInfos)
+                    {
+                        BlockHeader? header = blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, number);
+                        if (header?.StateRoot is { } stateRoot && stateRoots.Contains(stateRoot))
+                        {
+                            return number;
+                        }
+                    }
+                }
+
+                if (number == 0) return 0;
+            }
         }
     }
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -12,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -28,27 +30,10 @@ public class OptimismWithdrawalTests
     {
         IWorldState state = TestWorldStateFactory.CreateForTest();
         using IDisposable _ = state.BeginScope(IWorldState.PreGenesis);
-
-        BlockHeader header = Build.A.BlockHeader
-            .WithNumber(1)
-            .WithTimestamp(timestamp)
-            .WithDifficulty(0)
-            .WithNonce(0)
-            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
-            .WithExtraData(Bytes.FromHexString("0x00ffffffffffffffff"))
-            .WithWithdrawalsRoot(withdrawalHash)
-            .TestObject;
+        SetActualStorageRoot(state);
 
         IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
-        Block block = Build.A.Block
-            .WithHeader(header)
-            .WithTransactions(0, releaseSpec)
-            .TestObject;
-
-        state.CreateAccount(PreDeploys.L2ToL1MessagePasser, 1, 1);
-
-        // This will make the storage root of ActualStorageRoot
-        state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [1]);
+        Block block = BuildBlock(timestamp, withdrawalHash, releaseSpec);
 
         OptimismWithdrawalProcessor processor = new(state, TestLogManager.Instance, Spec.Instance);
         processor.ProcessWithdrawals(block, releaseSpec);
@@ -80,7 +65,7 @@ public class OptimismWithdrawalTests
 
         // Initialize the storage root
         state.CreateAccount(PreDeploys.L2ToL1MessagePasser, 1, 1);
-        state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [10]);
+        state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), (UInt256)10);
         state.Commit(releaseSpec);
 
         BlockHeader headerA = Build.A.BlockHeader
@@ -101,7 +86,7 @@ public class OptimismWithdrawalTests
         Assert.That(blockA.WithdrawalsRoot, Is.EqualTo(new Hash256("0xe11ca0cf3ff4b6b4f02b42f419c244e0ed4fffac24c14999b2b5bc978c21e652")));
 
         // Modify the storage root
-        state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), [20]);
+        state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), (UInt256)20);
 
         BlockHeader headerB = Build.A.BlockHeader
             .WithNumber(2)
@@ -120,4 +105,48 @@ public class OptimismWithdrawalTests
         processor.ProcessWithdrawals(blockB, releaseSpec);
         Assert.That(blockB.WithdrawalsRoot, Is.EqualTo(new Hash256("0x69b9a1b510f62bae4a767b9030b74cacd8e5bef0e5af497f961c642405f5fb62")));
     }
+
+    /// <summary>
+    /// Block producer scopes wrap the withdrawal processor in <see cref="BlockProductionWithdrawalProcessor"/>;
+    /// the Isthmus root must survive that wrapper.
+    /// </summary>
+    [Test]
+    public void WithdrawalsRoot_Is_Kept_By_Block_Production_Wrapper_Post_Isthmus()
+    {
+        IWorldState state = TestWorldStateFactory.CreateForTest();
+        using IDisposable _ = state.BeginScope(IWorldState.PreGenesis);
+        SetActualStorageRoot(state);
+
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
+        releaseSpec.WithdrawalsEnabled.Returns(true);
+        Block block = BuildBlock(Spec.IsthmusTimeStamp, null, releaseSpec);
+
+        BlockProductionWithdrawalProcessor processor = new(new OptimismWithdrawalProcessor(state, TestLogManager.Instance, Spec.Instance));
+        processor.ProcessWithdrawals(block, releaseSpec);
+
+        Assert.That(block.WithdrawalsRoot, Is.EqualTo(ActualStorageRoot));
+    }
+
+    /// <summary>
+    /// Sets the <see cref="PreDeploys.L2ToL1MessagePasser"/> storage so that its root is <see cref="ActualStorageRoot"/>.
+    /// </summary>
+    private static void SetActualStorageRoot(IWorldState state)
+    {
+        state.CreateAccount(PreDeploys.L2ToL1MessagePasser, 1, 1);
+        state.Set(new StorageCell(PreDeploys.L2ToL1MessagePasser, UInt256.One), (UInt256)1);
+    }
+
+    private static Block BuildBlock(ulong timestamp, Hash256? withdrawalsRoot, IReleaseSpec releaseSpec) =>
+        Build.A.Block
+            .WithHeader(Build.A.BlockHeader
+                .WithNumber(1)
+                .WithTimestamp(timestamp)
+                .WithDifficulty(0)
+                .WithNonce(0)
+                .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
+                .WithExtraData(Bytes.FromHexString("0x00ffffffffffffffff"))
+                .WithWithdrawalsRoot(withdrawalsRoot)
+                .TestObject)
+            .WithTransactions(0, releaseSpec)
+            .TestObject;
 }

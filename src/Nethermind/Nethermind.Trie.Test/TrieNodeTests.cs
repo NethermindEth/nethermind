@@ -26,6 +26,112 @@ namespace Nethermind.Trie.Test;
 [Parallelizable(ParallelScope.All)]
 public class TrieNodeTests
 {
+    /// <param name="dirtyChildWidth">
+    /// Children per dirty child, which sets the RLP length and so the padded length its batch
+    /// groups by: 0 is a leaf, 3 a branch, both one rate block; 4, 12 and 15 are branches padding
+    /// to two, three and four blocks; 16 is a saturated branch at exactly 532 bytes.
+    /// </param>
+    [Test]
+    public void Reencoding_full_branch_matches_fresh_encoding(
+        [Values(0, 7, 15)] int changedIndex, [Values(0, 1, 2, 3)] int replacementKind,
+        [Values(0, 2, 3, 8, 15)] int dirtyBranchCount,
+        [Values(0, 3, 4, 12, 15, 16)] int dirtyChildWidth,
+        [Values(false, true)] bool mixChildKinds,
+        [Values(false, true)] bool canBeParallel)
+    {
+        AssertDirtyChildLengthClass(dirtyChildWidth);
+
+        TrieNode original = new(NodeType.Branch);
+        TrieNode expected = new(NodeType.Branch);
+        for (int i = 0; i < 16; i++)
+        {
+            Hash256 hash = Keccak.Compute([(byte)i]);
+            original.SetChild(i, new TrieNode(NodeType.Unknown, hash));
+            expected.SetChild(i, new TrieNode(NodeType.Unknown, hash));
+        }
+        TreePath path = TreePath.Empty;
+        CappedArray<byte> oldRlp = original.RlpEncode(NullTrieNodeResolver.Instance, ref path);
+        Assert.That(oldRlp.Length, Is.EqualTo(532));
+        TrieNode restored = new(NodeType.Branch, oldRlp);
+        restored.ResolveNode(NullTrieNodeResolver.Instance, path);
+        restored = restored.Clone();
+        TrieNode? replacement = replacementKind switch
+        {
+            0 => null,
+            1 => new Context().TiniestLeaf,
+            _ => new TrieNode(NodeType.Unknown, Keccak.Compute([0xff]))
+        };
+        restored.SetChild(changedIndex, replacement);
+        expected.SetChild(changedIndex, replacement);
+        if (replacementKind == 3) restored.UnresolveChild(changedIndex);
+
+        List<TrieNode> dirtyChildren = new(dirtyBranchCount);
+        for (int i = 1; i <= dirtyBranchCount; i++)
+        {
+            int index = (changedIndex + i) % TrieNode.BranchesCount;
+            // A parent holding both kinds is what lets a leaf join a batch the branches opened.
+            int width = mixChildKinds && (i & 1) == 1 ? 0 : dirtyChildWidth;
+            // Separate instances per side. Sharing them would let the first encoding fix every hash
+            // and the second reuse it, and would keep the fresh parent off the paths taken by a
+            // parent that has no RLP yet.
+            TrieNode restoredChild = BuildDirtyChild(index, width);
+            TrieNode expectedChild = BuildDirtyChild(index, width);
+            dirtyChildren.Add(restoredChild);
+            dirtyChildren.Add(expectedChild);
+            restored.SetChild(index, restoredChild);
+            expected.SetChild(index, expectedChild);
+        }
+
+        CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: canBeParallel);
+        CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path, canBeParallel: canBeParallel);
+        Assert.That(actual.ToArray(), Is.EqualTo(expectedRlp.ToArray()));
+        AssertChildHashesMatchScalarKeccak(dirtyChildren);
+    }
+
+    /// <remarks>
+    /// The encodings above could still agree on a wrong hash, so only a comparison against a
+    /// separately computed digest covers the batch kernels.
+    /// </remarks>
+    private static void AssertChildHashesMatchScalarKeccak(List<TrieNode> children)
+    {
+        foreach (TrieNode child in children)
+        {
+            Assert.That(child.FullRlp.Length, Is.GreaterThanOrEqualTo(Hash256.Size), "a child this short would be inlined, not hashed");
+            Assert.That(child.Keccak, Is.EqualTo(Keccak.Compute(child.FullRlp.AsSpan())));
+        }
+    }
+
+    private static TrieNode BuildDirtyChild(int seed, int width)
+    {
+        if (width == 0)
+        {
+            // Long enough to be hashed rather than inlined into the parent, short enough for one block.
+            return TrieNodeFactory.CreateLeaf([(byte)seed, 0x1], new CappedArray<byte>(Keccak.Compute([(byte)seed]).BytesToArray()));
+        }
+
+        TrieNode branch = new(NodeType.Branch);
+        for (int childIndex = 0; childIndex < width; childIndex++)
+        {
+            branch.SetChild(childIndex, new TrieNode(NodeType.Unknown, Keccak.Compute([(byte)seed, (byte)childIndex])));
+        }
+
+        return branch;
+    }
+
+    /// <remarks>
+    /// Guards the parameterisation itself: without this the widths could all encode into the same
+    /// length class and the test would silently stop covering the paths it names.
+    /// </remarks>
+    private static void AssertDirtyChildLengthClass(int width)
+    {
+        TreePath path = TreePath.Empty;
+        int length = BuildDirtyChild(0, width).RlpEncode(NullTrieNodeResolver.Instance, ref path).Length;
+        Assert.That(length, Is.GreaterThanOrEqualTo(Hash256.Size), "a child this short would be inlined, not hashed");
+        int expectedBlocks = width switch { 0 or 3 => 1, 4 => 2, 12 => 3, _ => 4 };
+        Assert.That(length / 136 + 1, Is.EqualTo(expectedBlocks), $"width {width} should pad to {expectedBlocks} rate block(s)");
+        if (width == 16) Assert.That(length, Is.EqualTo(532), "a saturated branch has its own kernel");
+    }
+
     // private TrieNode _tiniestLeaf;
     // private TrieNode _heavyLeaf;
     // private TrieNode _accountLeaf;
@@ -99,149 +205,161 @@ public class TrieNodeTests
         Assert.Throws<TrieException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty));
     }
 
-    [Test]
-    public void Warmer_owned_resolution_preserves_unrelated_flags()
+    // A malformed node reaches the RLP reader as an out-of-range read rather than an RlpException: an empty key
+    // indexes an empty span, a truncated length prefix slices past the end. Neither may escape the Try variant.
+    [TestCase(new byte[] { 0xc2, 0x80, 0x01 })]
+    [TestCase(new byte[] { 0xf8 })]
+    public void Undecodable_rlp_is_kept_and_loaded_once(byte[] invalidRlp)
     {
-        (byte[] rlp, _) = EncodedLeaf();
-        TrieNode trieNode = new(NodeType.Unknown, rlp);
-        trieNode.MarkWarmerOwned();
-        trieNode.IsBoundaryProofNode = true;
-        trieNode.IsPersisted = false;
-
-        TreePath path = TreePath.Empty;
-        Assert.That(trieNode.TryResolveNode(NullTrieNodeResolver.Instance, ref path), Is.True);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(trieNode.IsWarmerOwned, Is.True);
-            Assert.That(trieNode.IsWarmerResolved, Is.True);
-            Assert.That(trieNode.IsBoundaryProofNode, Is.True);
-            Assert.That(trieNode.IsPersisted, Is.False);
-        }
-    }
-
-    [Test]
-    public void Inline_child_of_warmer_owned_node_uses_owned_resolution()
-    {
-        TrieNode inlineLeaf = TrieNodeFactory.CreateLeaf([0x3, 0x4], new CappedArray<byte>(new byte[] { 0x5 }));
-        TrieNode branch = new(NodeType.Branch);
-        branch.SetChild(0, inlineLeaf);
-        TreePath path = TreePath.Empty;
-        branch.ResolveKey(NullTrieNodeResolver.Instance, ref path);
-
-        TrieNode owned = new(NodeType.Unknown, branch.Keccak!);
-        owned.MarkWarmerOwned();
-        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
-        resolver.TryLoadRlp(TreePath.Empty, branch.Keccak!, ReadFlags.None).Returns(branch.FullRlp.ToArray());
-
-        Assert.That(owned.TryResolveNode(resolver, ref path), Is.True);
-
-        owned.AppendChildPath(ref path, 0);
-        TrieNode child = owned.GetChildWithChildPath(NullTrieNodeResolver.Instance, ref path, 0, keepChildRef: true)!;
-        Assert.That(child.TryResolveNode(NullTrieNodeResolver.Instance, ref path), Is.True);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(child.IsWarmerOwned, Is.True);
-            Assert.That(child.IsWarmerResolved, Is.True);
-        }
-    }
-
-    [Test]
-    public void Child_slot_reuses_nodes_except_unresolved_warmer_nodes(
-        [Values] bool warmerOwned, [Values] bool resolved, [Values] bool iterator)
-    {
-        (byte[] rlp, Hash256 hash) = EncodedLeaf();
-        TrieNode child = new(NodeType.Unknown, hash, rlp);
-        if (warmerOwned) child.MarkWarmerOwned();
-        TreePath path = TreePath.Empty;
-        if (resolved) child.ResolveNode(NullTrieNodeResolver.Instance, path);
-
-        TrieNode branch = new(NodeType.Branch);
-        branch.SetChild(0, child);
-        branch.ResolveKey(NullTrieNodeResolver.Instance, ref path);
-        TrieNode parent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
-        parent.ResolveNode(NullTrieNodeResolver.Instance, path);
-        parent.AppendChildPath(ref path, 0);
-
-        ITrieNodeResolver firstResolver = Substitute.For<ITrieNodeResolver>();
-        firstResolver.FindCachedOrUnknown(path, hash).Returns(child);
-        TrieNode? first = iterator
-            ? parent.CreateChildIterator().GetChildWithChildPath(firstResolver, ref path, 0)
-            : parent.GetChildWithChildPath(firstResolver, ref path, 0);
-        Assert.That(first, Is.SameAs(child));
-
-        TrieNode replacement = new(NodeType.Unknown, hash, rlp);
-        ITrieNodeResolver secondResolver = Substitute.For<ITrieNodeResolver>();
-        secondResolver.FindCachedOrUnknown(path, hash).Returns(replacement);
-        TrieNode? second = iterator
-            ? parent.CreateChildIterator().GetChildWithChildPath(secondResolver, ref path, 0)
-            : parent.GetChildWithChildPath(secondResolver, ref path, 0);
-
-        Assert.That(second, Is.SameAs(warmerOwned && !resolved ? replacement : child));
-    }
-
-    [Test]
-    public void Concurrent_warmer_owned_try_resolve_loads_once()
-    {
-        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        Hash256 hash = new(ValueKeccak.Compute(invalidRlp));
         TrieNode trieNode = new(NodeType.Unknown, hash);
-        trieNode.MarkWarmerOwned();
-
-        int loads = 0;
-        using ManualResetEventSlim loadStarted = new(false);
-        using ManualResetEventSlim allowLoad = new(false);
         ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
-        resolver.TryLoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
-        {
-            Interlocked.Increment(ref loads);
-            loadStarted.Set();
-            if (!allowLoad.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException("owned resolver was not released");
-            return rlp;
-        });
-
-        using ManualResetEventSlim start = new(false);
-        Task[] tasks = new Task[4];
-        for (int i = 0; i < tasks.Length; i++)
-        {
-            tasks[i] = Task.Run(() =>
-            {
-                start.Wait();
-                TreePath path = TreePath.Empty;
-                Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.True);
-            });
-        }
-
-        start.Set();
-        bool firstLoadStarted = loadStarted.Wait(TimeSpan.FromSeconds(30));
-        allowLoad.Set();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(firstLoadStarted, Is.True);
-            Assert.That(Task.WaitAll(tasks, TimeSpan.FromSeconds(30)), Is.True);
-            Assert.That(Volatile.Read(ref loads), Is.EqualTo(1));
-        }
-    }
-
-    [Test]
-    public void Warmer_owned_try_resolve_rejects_rlp_of_another_node()
-    {
-        (byte[] unrelatedRlp, _) = EncodedLeaf();
-        Hash256 requestedHash = Keccak.Compute("requested node");
-        TrieNode trieNode = new(NodeType.Unknown, requestedHash);
-        trieNode.MarkWarmerOwned();
-
-        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
-        resolver.TryLoadRlp(TreePath.Empty, requestedHash, ReadFlags.None).Returns(unrelatedRlp);
+        resolver.TryLoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(invalidRlp);
 
         TreePath path = TreePath.Empty;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.False);
-            Assert.That(trieNode.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(trieNode.IsWarmerResolved, Is.False);
-            Assert.That(trieNode.FullRlp.IsNotNull, Is.False);
+            Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.False);
+            Assert.That(trieNode.FullRlp.IsNotNull, Is.True);
+        }
+
+        resolver.Received(1).TryLoadRlp(TreePath.Empty, hash, ReadFlags.None);
+    }
+
+    // Warmer jobs resolve one shared node concurrently: a decode another job published while this load was in
+    // flight must be kept, not replaced by a second decode of the same bytes.
+    [Test]
+    public void Try_or_throw_resolve_keeps_a_decode_published_during_the_load([Values] bool tryResolve)
+    {
+        (byte[] rlp, Hash256 hash) = EncodedLeaf();
+        TrieNode trieNode = new(NodeType.Unknown, hash);
+        ITrieNodeResolver racingResolver = Substitute.For<ITrieNodeResolver>();
+        racingResolver.LoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(rlp);
+        INodeData? racingDecode = null;
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        void PublishRacingDecode()
+        {
+            trieNode.ResolveNode(racingResolver, TreePath.Empty);
+            racingDecode = trieNode.NodeData;
+        }
+
+        if (tryResolve)
+        {
+            resolver.TryLoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+            {
+                PublishRacingDecode();
+                return rlp;
+            });
+        }
+        else
+        {
+            resolver.LoadRlp(TreePath.Empty, hash, ReadFlags.None).Returns(_ =>
+            {
+                PublishRacingDecode();
+                return rlp;
+            });
+        }
+
+        TreePath path = TreePath.Empty;
+        using (Assert.EnterMultipleScope())
+        {
+            if (tryResolve)
+            {
+                Assert.That(trieNode.TryResolveNode(resolver, ref path), Is.True);
+            }
+            else
+            {
+                trieNode.ResolveNode(resolver, path);
+            }
+
+            Assert.That(trieNode.NodeData, Is.SameAs(racingDecode));
+        }
+    }
+
+    [Test]
+    public void Warmer_owned_child_is_memoized_in_the_parent_only_once_decoded([Values] bool iterator)
+    {
+        (TrieNode parent, byte[] childRlp, Hash256 childHash) = ResolvedParentOfHashedLeaf();
+
+        TrieNode placeholder = new(NodeType.Unknown, childHash);
+        placeholder.MarkWarmerOwned();
+        int lookups = 0;
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.FindCachedOrUnknown(Arg.Any<TreePath>(), childHash).Returns(_ =>
+        {
+            lookups++;
+            return placeholder;
+        });
+        resolver.TryLoadRlp(Arg.Any<TreePath>(), childHash, ReadFlags.None).Returns(childRlp);
+
+        TreePath childPath = TreePath.Empty;
+        parent.AppendChildPath(ref childPath, 0);
+        TrieNode.ChildIterator childIterator = parent.CreateChildIterator();
+        TrieNode first = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode second = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        int lookupsWhileUnresolved = lookups;
+
+        Assert.That(placeholder.TryResolveNode(resolver, ref childPath), Is.True);
+        TrieNode third = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode fourth = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.SameAs(placeholder));
+            Assert.That(second, Is.SameAs(placeholder));
+            Assert.That(lookupsWhileUnresolved, Is.EqualTo(2), "an unresolved placeholder was memoized into the parent");
+            Assert.That(third, Is.SameAs(placeholder));
+            Assert.That(fourth, Is.SameAs(placeholder));
+            Assert.That(lookups, Is.EqualTo(3), "the resolved node was not memoized into the parent");
+        }
+    }
+
+    // The live resolver answers the hash of an undecoded warmer child with a node of its own; that
+    // node must take the slot, or every traversal through the parent repeats the lookup, load and decode.
+    [Test]
+    public void Non_warmer_child_answering_an_undecoded_warmer_slot_is_memoized_in_the_parent([Values] bool iterator)
+    {
+        (TrieNode parent, _, Hash256 childHash) = ResolvedParentOfHashedLeaf();
+
+        TrieNode placeholder = new(NodeType.Unknown, childHash);
+        placeholder.MarkWarmerOwned();
+        TrieNode liveNode = new(NodeType.Unknown, childHash);
+        int lookups = 0;
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.FindCachedOrUnknown(Arg.Any<TreePath>(), childHash).Returns(_ =>
+        {
+            lookups++;
+            return lookups == 1 ? placeholder : liveNode;
+        });
+
+        TreePath childPath = TreePath.Empty;
+        parent.AppendChildPath(ref childPath, 0);
+        TrieNode.ChildIterator childIterator = parent.CreateChildIterator();
+        TrieNode first = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode second = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+        TrieNode third = iterator
+            ? childIterator.GetChildWithChildPath(resolver, ref childPath, 0)!
+            : parent.GetChildWithChildPath(resolver, ref childPath, 0, keepChildRef: true)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.SameAs(placeholder));
+            Assert.That(second, Is.SameAs(liveNode));
+            Assert.That(third, Is.SameAs(liveNode));
+            Assert.That(lookups, Is.EqualTo(2), "a non-warmer child answering an undecoded warmer slot was not memoized into the parent");
         }
     }
 
@@ -361,13 +479,10 @@ public class TrieNodeTests
     }
 
     [Test]
-    public void Resolves_full_branch_children_to_their_individual_hashes([Values(0x0001, 0x0003, 0x0007, 0x5555, 0xffff)] int branchMask)
+    public void Resolves_full_branch_children_to_their_individual_hashes(
+        [Values(0x0001, 0x0003, 0x0007, 0x000f, 0x001f, 0x003f, 0x007f, 0x5555, 0x01ff, 0x03ff, 0x07ff, 0x7fff, 0xffff)] int branchMask,
+        [Values] bool inlineNonCandidate)
     {
-        if (!System.Runtime.Intrinsics.X86.Avx512F.VL.IsSupported)
-        {
-            Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
-        }
-
         TrieNode root = new(NodeType.Branch);
         TrieNode?[] branches = new TrieNode?[TrieNode.BranchesCount];
 
@@ -391,8 +506,9 @@ public class TrieNodeTests
         if (branchMask != 0xffff)
         {
             const int nonCandidateIndex = TrieNode.BranchesCount - 1;
-            nonCandidate = new TrieNode(NodeType.Branch);
-            nonCandidate.SetChild(0, new TrieNode(NodeType.Unknown, Keccak.Compute([0xff])));
+            nonCandidate = inlineNonCandidate ? new Context().TiniestLeaf : new TrieNode(NodeType.Branch);
+            if (!inlineNonCandidate)
+                nonCandidate.SetChild(0, new TrieNode(NodeType.Unknown, Keccak.Compute([0xff])));
             root.SetChild(nonCandidateIndex, nonCandidate);
         }
 
@@ -414,10 +530,21 @@ public class TrieNodeTests
             if (nonCandidate is not null)
             {
                 Assert.That(nonCandidate.FullRlp.Length, Is.Not.EqualTo(532), "non-candidate RLP length");
-                Assert.That(nonCandidate.Keccak, Is.EqualTo(Keccak.Compute(nonCandidate.FullRlp.AsSpan())),
+                Assert.That(nonCandidate.Keccak, Is.EqualTo(inlineNonCandidate ? null : Keccak.Compute(nonCandidate.FullRlp.AsSpan())),
                     "non-candidate hash");
             }
             Assert.That(root.Keccak, Is.EqualTo(Keccak.Compute(root.FullRlp.AsSpan())), "root hash");
+            Assert.That(path, Is.EqualTo(TreePath.Empty), "path restored");
+
+            TrieNode expected = new(NodeType.Branch);
+            for (int i = 0; i < branches.Length; i++)
+            {
+                if (branches[i] is { } branch)
+                    expected.SetChild(i, new TrieNode(NodeType.Unknown, Keccak.Compute(branch.FullRlp.AsSpan())));
+            }
+            if (nonCandidate is not null) expected.SetChild(TrieNode.BranchesCount - 1, nonCandidate);
+            Assert.That(root.FullRlp.ToArray(), Is.EqualTo(expected.RlpEncode(NullTrieNodeResolver.Instance, ref path).ToArray()),
+                "parent references match individually hashed children");
         }
     }
 
@@ -1256,6 +1383,18 @@ public class TrieNodeTests
         TreePath path = TreePath.Empty;
         leaf.ResolveKey(NullTrieNodeResolver.Instance, ref path);
         return (leaf.FullRlp.ToArray()!, leaf.Keccak!);
+    }
+
+    private static (TrieNode Parent, byte[] ChildRlp, Hash256 ChildHash) ResolvedParentOfHashedLeaf()
+    {
+        (byte[] childRlp, Hash256 childHash) = EncodedLeaf();
+        TrieNode branch = new(NodeType.Branch);
+        branch.SetChild(0, new TrieNode(NodeType.Unknown, childHash));
+        TreePath path = TreePath.Empty;
+        branch.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        TrieNode parent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
+        Assert.That(parent.TryResolveNode(NullTrieNodeResolver.Instance, ref path), Is.True);
+        return (parent, childRlp, childHash);
     }
 
     private class InMemoryScopedTrieStore : IScopedTrieStore

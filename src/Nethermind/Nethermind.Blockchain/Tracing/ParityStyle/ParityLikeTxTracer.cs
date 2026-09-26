@@ -56,7 +56,6 @@ public class ParityLikeTxTracer : TxTracer
         if ((_parityTraceTypes & ParityTraceTypes.Trace) != 0)
         {
             IsTracingActions = true;
-            IsTracingReceipt = true;
         }
 
         if ((_parityTraceTypes & ParityTraceTypes.VmTrace) != 0)
@@ -64,12 +63,12 @@ public class ParityLikeTxTracer : TxTracer
             IsTracingActions = true;
             IsTracingInstructions = true;
             IsTracingCode = true;
-            IsTracingReceipt = true;
         }
     }
 
     public sealed override bool IsTracingActions { get; protected set; }
-    public sealed override bool IsTracingReceipt { get; protected set; }
+    public sealed override bool IsTracingReceipt => true;
+    public override bool IsCollectingLogs => false;
     public sealed override bool IsTracingInstructions { get; protected set; }
     public sealed override bool IsTracingCode { get; protected set; }
     public sealed override bool IsTracingState { get; protected set; }
@@ -237,6 +236,12 @@ public class ParityLikeTxTracer : TxTracer
             throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
         }
 
+        if (!IsTracingActions)
+        {
+            _trace.Output = output;
+            return;
+        }
+
         _trace.Action ??= CreateRootActionFromTx();
 
         if (_trace.Action.TraceAddress.Length == 0)
@@ -256,6 +261,8 @@ public class ParityLikeTxTracer : TxTracer
         }
 
         _trace.Output = output;
+
+        if (!IsTracingActions) return;
 
         if (_trace.Action is null)
         {
@@ -299,11 +306,11 @@ public class ParityLikeTxTracer : TxTracer
 
     public override void ReportOperationRemainingGas(ulong gas)
     {
-        if (!_gasAlreadySetForCurrentOp)
+        if (!_gasAlreadySetForCurrentOp && _currentOperation is not null)
         {
             _gasAlreadySetForCurrentOp = true;
 
-            _currentOperation!.Cost -= (_treatGasParityStyle ? 0UL : gas);
+            _currentOperation.Cost -= (_treatGasParityStyle ? 0UL : gas);
 
             // based on Parity behaviour - adding stipend to the gas cost
             if (_currentOperation.Cost == 7400UL)
@@ -328,7 +335,7 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
+    public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
         _currentOperation!.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
 
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -494,6 +501,16 @@ public class ParityLikeTxTracer : TxTracer
         // TODO: use memory pool?
         _currentVmTrace.VmTrace.Code = byteCode.ToArray();
 
-    public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable) =>
-        _currentOperation!.Used = gasAvailable;
+    public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
+    {
+        if (_currentOperation is null) return;
+        _currentOperation.Used = gasAvailable;
+
+        if (!_gasAlreadySetForCurrentOp)
+        {
+            _gasAlreadySetForCurrentOp = true;
+            _currentOperation.Push = _currentPushList.ToArray();
+            _treatGasParityStyle = false;
+        }
+    }
 }

@@ -15,13 +15,15 @@ public class BlockProductionWithdrawalProcessor(IWithdrawalProcessor processor) 
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
-        _processor.ProcessWithdrawals(block, spec);
-
+        // Set before the wrapped processor runs so a processor that derives the root itself
+        // (OP Isthmus uses the L2ToL1MessagePasser storage root) is not overwritten.
         if (spec.WithdrawalsEnabled)
         {
-            block.Header.WithdrawalsRoot = block.Withdrawals is null || block.Withdrawals.Length == 0
+            block.Header.WithdrawalsRoot = block.Withdrawals is null
                 ? Keccak.EmptyTreeHash
-                : new WithdrawalTrie(block.Withdrawals!).RootHash;
+                : WithdrawalTrie.CalculateRoot(block.Withdrawals!);
         }
+
+        _processor.ProcessWithdrawals(block, spec);
     }
 }
