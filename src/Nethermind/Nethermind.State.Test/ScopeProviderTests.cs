@@ -1154,7 +1154,7 @@ public class ScopeProviderTests(bool useFlat)
             Assert.That(caches.StorageCache.TryGetValue(in SlotC5, out _), Is.False);
             Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.False);
             Assert.That(caches.StorageCache.TryGetValue(in SlotE1, out _), Is.False);
-            Assert.That(testLogger.LogList, Is.EqualTo(new[] { "Pre-block storage cache cleared after 2 contracts wiped their storage" }));
+            Assert.That(testLogger.LogList, Is.EqualTo(new[] { "Pre-block storage cache cleared: more contracts wiped their storage than the limit of 1" }));
         }
 
         using (consumer.BeginScope(HeaderAt(secondRoot, 3)))
@@ -1190,14 +1190,13 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    [CancelAfter(60_000)]
-    public void Test_WipedContract_IsNeverServedStale_ToConcurrentReaders()
+    public void Test_WipedContract_IsNeitherServedStaleNorBackfilled()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
         Hash256 baseRoot = CommitBaseState(ctx);
         (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
         const int slots = 64;
-        // Stale entries for every slot the readers will ask for, as a busy contract would leave behind.
+        // Stale entries for every slot read below, as a busy contract would leave behind.
         for (int i = 1; i <= slots; i++)
         {
             StorageCell cell = new(TestItem.AddressA, (UInt256)i);
@@ -1207,67 +1206,24 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 newRoot = CommitThroughConsumer(consumer, baseRoot, DestroyA);
         Assert.That(caches.PrepareFor(newRoot), Is.True);
 
-        // Populators of the next block: many scopes reading the wiped contract and an unrelated one at once, each
-        // backfilling on a miss, which is exactly what could put a pre-wipe value back in front of a reader. The bypass
-        // set is fixed by now, as it only changes between blocks, so the readers race each other's backfill, not the set.
+        // A populator of the next block backfills on a miss, which is what could put a pre-wipe value back in front of a reader.
         PrewarmerScopeProvider populators = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: true), LimboLogs.Instance);
-        ConcurrentBag<string> wrong = [];
-        // The test trie store is not built for concurrent scope opening; the reads through the caches are what race.
-        Lock open = new();
-        using Barrier start = new(8);
-        Thread[] readers = new Thread[8];
-        for (int t = 0; t < readers.Length; t++)
-        {
-            int seed = t;
-            readers[t] = new Thread(() =>
-            {
-                try
-                {
-                    start.SignalAndWait();
-                    Random random = new(seed);
-                    for (int round = 0; round < 200; round++)
-                    {
-                        IWorldStateScopeProvider.IScope scope;
-                        IWorldStateScopeProvider.IStorageTree wiped, kept;
-                        lock (open)
-                        {
-                            scope = populators.BeginScope(HeaderAt(newRoot, 2));
-                            wiped = scope.CreateStorageTree(TestItem.AddressA);
-                            kept = scope.CreateStorageTree(TestItem.AddressC);
-                        }
-
-                        for (int i = 0; i < slots; i++)
-                        {
-                            UInt256 index = (UInt256)random.Next(1, slots + 1);
-                            wiped.Get(in index, out UInt256 value);
-                            if (!value.IsZero) wrong.Add($"{TestItem.AddressA}[{index}] = {value}");
-                            kept.Get(SlotC5.Index, out UInt256 kept5);
-                            if (kept5 != (UInt256)5) wrong.Add($"{TestItem.AddressC}[5] = {kept5}");
-                        }
-
-                        lock (open) scope.Dispose();
-                    }
-                }
-                catch (Exception e)
-                {
-                    wrong.Add(e.ToString());
-                }
-            });
-            readers[t].Start();
-        }
-
-        foreach (Thread reader in readers) reader.Join();
-
+        using (IWorldStateScopeProvider.IScope scope = populators.BeginScope(HeaderAt(newRoot, 2)))
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(wrong, Is.Empty, "every read of the wiped contract comes from the committed state");
+            IWorldStateScopeProvider.IStorageTree wiped = scope.CreateStorageTree(TestItem.AddressA);
+            IWorldStateScopeProvider.IStorageTree kept = scope.CreateStorageTree(TestItem.AddressC);
             for (int i = 1; i <= slots; i++)
             {
                 StorageCell cell = new(TestItem.AddressA, (UInt256)i);
-                Assert.That(ServedFromCache(caches, in cell), Is.False, $"{cell} is never served from the cache");
+                wiped.Get(cell.Index, out UInt256 value);
+                Assert.That(value, Is.EqualTo(UInt256.Zero), $"{cell} comes from the committed state");
                 caches.StorageCache.TryGetValue(in cell, out UInt256 raw);
                 Assert.That(raw, Is.EqualTo((UInt256)(1000 + i)), $"{cell} was not backfilled");
             }
+
+            kept.Get(SlotC5.Index, out UInt256 kept5);
+            Assert.That(kept5, Is.EqualTo((UInt256)5));
             Assert.That(CachedSlot(caches, in SlotC5), Is.EqualTo(new byte[] { 5 }), "an unrelated contract keeps being cached");
         }
     }

@@ -34,9 +34,7 @@ public class PreBlockCaches
     private Task? _pendingWriteBack;
     // State root the account and storage caches reflect; null until PrepareFor establishes one.
     private Hash256? _validFor;
-    // Contracts whose pre-block storage a committed block wiped since the storage cache was last cleared. Their cached
-    // slots may be stale and cannot be enumerated, so reads of them bypass the storage cache until the next clear drops
-    // those slots with everything else; see BypassesStorageCache.
+    // See BypassesStorageCache.
     private readonly WipedContracts _storageBypass;
 
     [ThreadStatic]
@@ -67,10 +65,16 @@ public class PreBlockCaches
     /// wiped the storage the contract held before it, so any of its slots still cached may be stale.
     /// </summary>
     /// <remarks>
+    /// A contract's cached slots cannot be enumerated, so a wipe cannot remove them; the contract bypasses the cache
+    /// instead until the next clear of the storage cache drops those slots with everything else. Past
+    /// <see cref="PreBlockCachesConfig.MaxStorageWipesBeforeClear"/> such contracts, the write-back clears the storage
+    /// cache at once.
+    /// <para>
     /// The set only grows in a write-back and only empties once the storage cache has been cleared, so a
     /// <see langword="true"/> is always safe to act on, and a <see langword="false"/> holds until the next write-back.
     /// Anything that reads the storage cache for a block therefore asks after the driver has prepared the caches for
     /// it, which joins the write-back of the block before.
+    /// </para>
     /// </remarks>
     public bool BypassesStorageCache(Address address) => _storageBypass.Contains(address);
 
@@ -164,8 +168,7 @@ public class PreBlockCaches
             isDirty |= clearCache();
         }
 
-        // Only once the storage cache is cleared: the wiped contracts' stale slots went with it.
-        ResetStorageBypass();
+        _storageBypass.Clear();
         _validFor = null;
         return isDirty;
     }
@@ -174,19 +177,9 @@ public class PreBlockCaches
     private void ClearStateCachesCore()
     {
         _storageCache.Clear();
-        ResetStorageBypass();
+        _storageBypass.Clear();
         _stateCache.Clear();
         _validFor = null;
-    }
-
-    /// <summary>Forgets the wiped contracts. Only after the storage cache has been cleared, which dropped their slots.</summary>
-    private void ResetStorageBypass() => _storageBypass.Clear();
-
-    /// <summary>Clears the storage cache together with the wiped contracts it no longer holds anything for.</summary>
-    private void ClearStorageCacheCore()
-    {
-        _storageCache.Clear();
-        ResetStorageBypass();
     }
 
     /// <summary>Drops the per-block precompile results once a block has finished; the account and storage caches carry over.</summary>
@@ -277,12 +270,10 @@ public class PreBlockCaches
     /// its start calls <see cref="PrepareFor"/>, which joins, before the session's own thread exists.
     /// </para>
     /// <para>
-    /// <see cref="IWorldStateScopeProvider.IStorageWriteBatch.Clear"/> cannot drop a contract's pre-block slots, which
-    /// cannot be enumerated, so it makes reads of that contract's storage bypass the cache instead (see
-    /// <see cref="BypassesStorageCache"/>) and the rest of the block is written back as usual. Only once
-    /// <see cref="PreBlockCachesConfig.MaxStorageWipesBeforeClear"/> contracts bypass it is the whole storage cache
-    /// dropped; the batch then stops accepting storage writes, so the snapshot ends there instead of refilling the
-    /// cache with the one block it holds.
+    /// <see cref="IWorldStateScopeProvider.IStorageWriteBatch.Clear"/> makes the contract bypass the storage cache (see
+    /// <see cref="BypassesStorageCache"/>) and the rest of the block is written back as usual. When it clears the whole
+    /// storage cache instead, the batch stops accepting storage writes, so the snapshot ends there instead of refilling
+    /// the cache with the one block it holds.
     /// </para>
     /// </remarks>
     /// <param name="takeSnapshot">
@@ -445,15 +436,9 @@ public class PreBlockCaches
     }
 
     /// <summary>
-    /// Writes one contract's slots into the storage cache, or, on <see cref="Clear"/>, marks the contract wiped.
+    /// Writes one contract's slots into the storage cache, or, on <see cref="Clear"/>, makes the contract bypass it
+    /// (see <see cref="BypassesStorageCache"/>).
     /// </summary>
-    /// <remarks>
-    /// A contract's cached slots cannot be enumerated, so a wipe cannot remove them. Instead the contract joins the
-    /// set of contracts whose storage reads bypass the cache (<see cref="BypassesStorageCache"/>), and none of its
-    /// slots are written back, so the rest of the cache and the rest of the block carry on. Only when that set would
-    /// outgrow <see cref="PreBlockCachesConfig.MaxStorageWipesBeforeClear"/> is the whole storage cache cleared, which
-    /// empties the set and ends the write-back's storage writes as before.
-    /// </remarks>
     private sealed class StorageWriteBackBatch(PreBlockCaches caches) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         private Address _address = null!;
@@ -496,16 +481,16 @@ public class PreBlockCaches
             }
 
             // Too many to bypass: drop everything instead, which also forgets the contracts already bypassed.
-            int wipes = bypass.Count + 1;
-            caches.ClearStorageCacheCore();
+            caches._storageCache.Clear();
+            bypass.Clear();
             Cleared = true;
-            if (Logger.IsInfo) ReportStorageCacheCleared(Logger, wipes);
+            if (Logger.IsInfo) ReportStorageCacheCleared(Logger, bypass.Capacity);
         }
 
         /// <remarks>Out of line because it is rare: once per <see cref="PreBlockCachesConfig.MaxStorageWipesBeforeClear"/> wipes.</remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void ReportStorageCacheCleared(ILogger logger, int wipes) =>
-            logger.Info($"Pre-block storage cache cleared after {wipes} contracts wiped their storage");
+        private static void ReportStorageCacheCleared(ILogger logger, int limit) =>
+            logger.Info($"Pre-block storage cache cleared: more contracts wiped their storage than the limit of {limit}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void ReportStorageBypassed(ILogger logger, Address address) =>
@@ -537,6 +522,8 @@ public class PreBlockCaches
         }
 
         public int Count => Volatile.Read(ref _count);
+
+        public int Capacity => _capacity;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Contains(Address address) => Volatile.Read(ref _count) != 0 && ContainsCore(address);
@@ -664,9 +651,8 @@ public sealed record PreBlockCachesConfig
     /// How many contracts that wiped their storage may bypass the storage cache before it is cleared instead. Default 4096.
     /// </summary>
     /// <remarks>
-    /// A wipe leaves the contract's cached slots stale and they cannot be enumerated, so its storage reads bypass the
-    /// cache until the next clear. Pre-Cancun history wipes contracts in a large share of blocks; the cap turns what
-    /// would be a clear per such block into one per this many wipes, and bounds the per-block cost of publishing the set.
+    /// See <see cref="PreBlockCaches.BypassesStorageCache"/>. Pre-Cancun history wipes contracts in a large share of
+    /// blocks; the cap turns what would be a clear per such block into one per this many wipes.
     /// </remarks>
     public int MaxStorageWipesBeforeClear { get; init; } = 4096;
 }
