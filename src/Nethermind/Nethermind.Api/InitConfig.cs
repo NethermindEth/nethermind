@@ -44,6 +44,10 @@ namespace Nethermind.Api
         public string? DataDir { get; set; }
         public bool HealCanonicalChain { get; set; } = false;
         public long HealCanonicalChainDepth { get; set; } = 8192;
+        public long GcPaceGen0IntervalMs { get; set; } = 0;
+        public long GcPaceGen1IntervalMs { get; set; } = 0;
+        public long GcPaceGen2IntervalMs { get; set; } = 0;
+        public long GcPaceWarmupSeconds { get; set; } = 0;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb
