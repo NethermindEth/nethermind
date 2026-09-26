@@ -9,10 +9,7 @@ namespace Nethermind.JsonRpc;
 
 /// <summary>A payload serialized once with the options responses are written with, then written as is.</summary>
 [JsonConverter(typeof(SerializedJsonConverter))]
-internal sealed class SerializedJson(byte[] utf8Json)
-{
-    public byte[] Utf8Json { get; } = utf8Json;
-}
+internal readonly record struct SerializedJson(byte[] Utf8Json);
 
 internal sealed class SerializedJsonConverter : JsonConverter<SerializedJson>
 {

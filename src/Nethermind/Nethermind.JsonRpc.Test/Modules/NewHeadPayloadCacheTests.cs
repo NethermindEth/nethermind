@@ -29,7 +29,7 @@ public class NewHeadPayloadCacheTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(second, Is.SameAs(first), "every subscriber of the head must share one serialized payload");
+            Assert.That(second.Utf8Json, Is.SameAs(first.Utf8Json), "every subscriber of the head must share one serialized payload");
             factory.Received(1).Create(block, includeTransactions, specProvider);
         }
     }
@@ -46,8 +46,8 @@ public class NewHeadPayloadCacheTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(payloads.Get(head, includeTransactions: true), Is.Not.SameAs(hashes), "the full-transaction payload is a different payload");
-            Assert.That(payloads.Get(next, includeTransactions: false), Is.Not.SameAs(hashes), "a new head must not be served the previous head's payload");
+            Assert.That(payloads.Get(head, includeTransactions: true).Utf8Json, Is.Not.SameAs(hashes.Utf8Json), "the full-transaction payload is a different payload");
+            Assert.That(payloads.Get(next, includeTransactions: false).Utf8Json, Is.Not.SameAs(hashes.Utf8Json), "a new head must not be served the previous head's payload");
         }
     }
 
