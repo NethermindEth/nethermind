@@ -19,9 +19,11 @@ public partial class EthRpcModule
         return false;
     }
 
-    private Result<FrameForRpc[]> FillFrameGas(FrameTransactionForRpc request, BlockHeader header,
+    /// <returns>The filled frames, or the failure with <see cref="ErrorCodes.ExecutionReverted"/> when a frame reverted.</returns>
+    private Result<FrameForRpc[]> FillFrameGas(FrameTransactionForRpc request, BlockHeader header, out int errorCode,
         Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
     {
+        errorCode = ErrorCodes.InvalidInput;
         if (!_blockchainBridge.HasStateForBlock(header)) return Result<FrameForRpc[]>.Fail("No state available for block");
         if (blockOverride?.GasLimit > _rpcConfig.GasCap.EffectiveGasCap()) return Result<FrameForRpc[]>.Fail("block gas override exceeds the RPC gas cap");
         // The next block's rules, which the estimate runs under.
@@ -47,7 +49,8 @@ public partial class EthRpcModule
         }
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         Result<TxFrame[]> result = _blockchainBridge.EstimateFrameGas(executionHeader, tx, fillExecution, fillState,
-            _rpcConfig.GasCap.EffectiveGasCap(), _rpcConfig.EstimateErrorMargin, stateOverride, blockOverride, timeout.Token);
+            _rpcConfig.GasCap.EffectiveGasCap(), _rpcConfig.EstimateErrorMargin, stateOverride, blockOverride, timeout.Token, out bool executionReverted);
+        if (executionReverted) errorCode = ErrorCodes.ExecutionReverted;
         if (!result.Success(out TxFrame[]? frames, out error)) return Result<FrameForRpc[]>.Fail(error!);
         return FrameForRpc.FromFrames(frames);
     }

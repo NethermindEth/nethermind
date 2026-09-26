@@ -24,9 +24,11 @@ public partial class GasEstimator
     /// frame being searched takes what the others leave, while each later frame holds a reservation measured by a
     /// first probe that splits the rooms evenly.</remarks>
     /// <param name="context">The block the estimate runs in; each probe runs in a copy of its header.</param>
+    /// <param name="executionReverted">Whether the failure is a frame of an otherwise valid transaction reverting.</param>
     public Result<TxFrame[]> EstimateFrameGas(Transaction transaction, BlockExecutionContext context,
-        bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin, CancellationToken token)
+        bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin, CancellationToken token, out bool executionReverted)
     {
+        executionReverted = false;
         if (errorMargin < 0 || errorMargin >= MaxErrorMargin)
             return Result<TxFrame[]>.Fail(errorMargin < 0 ? InvalidErrorMarginNegative : InvalidErrorMarginTooHigh);
         Transaction tx = new();
@@ -83,6 +85,7 @@ public partial class GasEstimator
         tx.GasPrice = 0;
         tx.DecodedMaxFeePerGas = 0;
         int probes = 0;
+        bool lastProbeReverted = false;
         TxFrameReceipt[]? receipts = null;
         int? reservationFailure = null;
 
@@ -102,7 +105,10 @@ public partial class GasEstimator
             RaiseToUpperLimits(i);
             reservationFailure = null;
             if (probes < MaxFrameProbes - 1 && !TryProbe(i, atUpperLimits: true, out string? error))
+            {
+                executionReverted = lastProbeReverted;
                 return Result<TxFrame[]>.Fail(error!);
+            }
             if (fillState[i]) Minimize(i, false, receipts?[i]);
             if (fillExecution[i]) Minimize(i, true, receipts?[i]);
         }
@@ -117,6 +123,7 @@ public partial class GasEstimator
         tx.GasPrice = gasPrice;
         tx.DecodedMaxFeePerGas = feeCap;
         Probe(realFees: true, out string? finalError);
+        executionReverted = finalError is not null && lastProbeReverted;
         return finalError is null ? frames : Result<TxFrame[]>.Fail(finalError);
 
         // Frames before index hold their final limits and later frames their reservations; index takes the rest.
@@ -172,6 +179,7 @@ public partial class GasEstimator
             transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(probeHeader, spec, blobBaseFee));
             TransactionResult result = transactionProcessor.CallAndRestore(probe, output.WithCancellation(token));
             error = result.GetErrorMessage(output.Error);
+            lastProbeReverted = result.TransactionExecuted && output.FrameError == EvmExceptionType.Revert;
             if (error is null && output.FailedFrame is { } index)
                 error = $"frame {index} failed: {output.FrameError}";
             if (error is null && output.Receipts is null) error = "frame transaction simulation failed";

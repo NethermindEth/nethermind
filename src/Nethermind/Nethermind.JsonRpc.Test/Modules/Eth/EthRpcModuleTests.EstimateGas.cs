@@ -205,7 +205,7 @@ public partial class EthRpcModuleTests
         bool[] fill = [true, true];
         Dictionary<Address, AccountOverride>? stateOverride = withOverride ? new() { [TestItem.AddressB] = new AccountOverride { Balance = 1 } } : null;
 
-        Result<TxFrame[]> result = ctx.Test.Bridge.EstimateFrameGas(pruned, tx, fill, fill, 1_000_000, 150, stateOverride, null, default);
+        Result<TxFrame[]> result = ctx.Test.Bridge.EstimateFrameGas(pruned, tx, fill, fill, 1_000_000, 150, stateOverride, null, default, out _);
 
         Assert.That(result.Error, Does.StartWith("No state available"));
     }
@@ -222,9 +222,9 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(response)["error"]!["message"]!.Value<string>(), Does.Contain("VERIFY frame reverted"));
     }
 
-    [TestCase("0x5f5ffd", "Revert")]
-    [TestCase("0x5b5f56", "OutOfGas")]
-    public async Task FrameGas_EstimateGas_ReportsFrameThatFailsAtEveryBudget(string code, string error)
+    [TestCase("0x5f5ffd", "Revert", ErrorCodes.ExecutionReverted)]
+    [TestCase("0x5b5f56", "OutOfGas", ErrorCodes.InvalidInput)]
+    public async Task FrameGas_EstimateGas_ReportsFrameThatFailsAtEveryBudget(string code, string error, int errorCode)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
@@ -232,7 +232,12 @@ public partial class EthRpcModuleTests
 
         string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
 
-        Assert.That(JToken.Parse(response)["error"]!["message"]!.Value<string>(), Does.Contain($"frame 1 failed: {error}"));
+        JToken rpcError = JToken.Parse(response)["error"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpcError["message"]!.Value<string>(), Does.Contain($"frame 1 failed: {error}"));
+            Assert.That(rpcError["code"]!.Value<int>(), Is.EqualTo(errorCode));
+        }
     }
 
     [Test]

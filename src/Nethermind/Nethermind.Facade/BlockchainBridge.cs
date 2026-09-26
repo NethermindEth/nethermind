@@ -223,8 +223,9 @@ namespace Nethermind.Facade
                 : EstimateGasShareable(header, tx, errorMargin, cancellationToken);
 
         public Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
-            Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken)
+            Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken, out bool executionReverted)
         {
+            executionReverted = false;
             BlockHeader executionHeader = header.Clone();
             // The next block's context, as the gas estimate that follows uses.
             if (HasOverrides(stateOverride, null, blockOverride))
@@ -234,14 +235,14 @@ namespace Nethermind.Facade
                 using IDisposable _ = scope;
                 GasEstimator estimator = new(scope.Component.TransactionProcessor, scope.Component.WorldState, specProvider, blocksConfig);
                 return estimator.EstimateFrameGas(tx, CreateCallContext(executionHeader, tx, treatBlockHeaderAsParentBlock: true, blobBaseFeeOverride: null),
-                    fillExecution, fillState, gasCap, errorMargin, cancellationToken);
+                    fillExecution, fillState, gasCap, errorMargin, cancellationToken, out executionReverted);
             }
             if (!shareableTxProcessorSource.TryBuild(executionHeader, out IReadOnlyTxProcessingScope? shared))
                 return Result<TxFrame[]>.Fail(StateUnavailable(header).Error!);
             using IDisposable __ = shared;
             GasEstimator sharedEstimator = new(shared.TransactionProcessor, shared.WorldState, specProvider, blocksConfig);
             return sharedEstimator.EstimateFrameGas(tx, CreateCallContext(executionHeader, tx, treatBlockHeaderAsParentBlock: true, blobBaseFeeOverride: null),
-                fillExecution, fillState, gasCap, errorMargin, cancellationToken);
+                fillExecution, fillState, gasCap, errorMargin, cancellationToken, out executionReverted);
         }
 
         private CallOutput EstimateGasShareable(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
