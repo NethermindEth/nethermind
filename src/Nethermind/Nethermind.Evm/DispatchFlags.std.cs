@@ -24,6 +24,13 @@ internal static partial class DispatchFlags
     /// <summary>Whether dispatch counts the opcodes it runs, for the opcode metric and the cancellation poll.</summary>
     public static bool CountOpcodes => true;
 
+    /// <summary>Whether every executed code is followed in memory by zero bytes that dispatch may read.</summary>
+    /// <remarks>
+    /// When set, dispatch reads the next opcode and PUSH immediates without testing the program counter against
+    /// the code length: running off the end reads STOP from the padding. See <c>CodeInfo.PadForDispatch</c>.
+    /// </remarks>
+    public static bool PaddedCode => false;
+
     /// <summary>Whether the coming transaction can be cancelled part-way through.</summary>
     public static bool Cancelable(bool tracerIsCancelable) => tracerIsCancelable;
 

@@ -124,7 +124,7 @@ public static partial class EvmInstructions
                 programCounter += Size;
                 return EvmExceptionType.StackOverflow;
             }
-            if (remainingCode <= Size)
+            if (!DispatchFlags.PaddedCode && remainingCode <= Size)
             {
                 // Implicit STOP discards the stack, and no tracer or subsequent opcode can observe this push.
                 programCounter += Size;

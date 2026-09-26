@@ -18,6 +18,9 @@ internal static partial class DispatchFlags
     /// <summary>The guest publishes no metrics and cannot be cancelled, so nothing reads an opcode count.</summary>
     public static bool CountOpcodes => false;
 
+    /// <summary>Every code the guest builds a <c>CodeInfo</c> for is padded, which saves dispatch its end-of-code tests.</summary>
+    public static bool PaddedCode => true;
+
     public static bool Tracing(bool isTracing) => ConstTracing;
 
     public static bool Cancelable(bool tracerIsCancelable) => ConstCancelable;

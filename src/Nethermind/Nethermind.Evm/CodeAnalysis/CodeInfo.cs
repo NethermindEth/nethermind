@@ -33,6 +33,7 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
+        PadForDispatch(ref code);
         Code = code;
         if (code.Length == 0)
         {
@@ -53,6 +54,10 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
 
     public ReadOnlyMemory<byte> Code { get; }
     public ReadOnlySpan<byte> CodeSpan => Code.Span;
+
+    /// <summary>Copies the code into a buffer dispatch may read past its end, in builds that dispatch without end-of-code tests.</summary>
+    static partial void PadForDispatch(ref ReadOnlyMemory<byte> code);
+
     private Address? _delegatedAddress;
     internal Address? DelegatedAddress
     {
