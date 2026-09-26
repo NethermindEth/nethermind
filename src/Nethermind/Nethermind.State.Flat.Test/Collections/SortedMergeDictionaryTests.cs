@@ -192,6 +192,21 @@ public class SortedMergeDictionaryTests
     }
 
     [Test]
+    public void PooledRun_RentRoundingUpToTheLargePoolThreshold_GetsItsArrayBack([Values(2049, 2729)] int count)
+    {
+        // With a 24-byte entry, 64 KiB is 2,730 entries, while ArrayPool.Shared would round these counts up to 4,096.
+        Dictionary<int, long> source = [];
+        for (int i = 0; i < count; i++) source[i] = i;
+
+        SortedMergeDictionary<int, long>.Entry[] first;
+        using (SortedMergeDictionary<int, long>.PooledRun run = SortedMergeDictionary<int, long>.BuildRunFromUnsorted(source, Cmp))
+            first = run.AsRun().Entries;
+
+        using SortedMergeDictionary<int, long>.PooledRun again = SortedMergeDictionary<int, long>.BuildRunFromUnsorted(source, Cmp);
+        Assert.That(again.AsRun().Entries, Is.SameAs(first));
+    }
+
+    [Test]
     public void NoResizeClear_ThenRebuild_ReflectsNewDataAndReusesInstance()
     {
         using SortedMergeDictionary<int, int> dict = new();
