@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -41,6 +42,7 @@ public class PbtScopeProvider(
     public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
         StateId stateId = new(baseBlock);
+        long start = Stopwatch.GetTimestamp();
         if (manager.TryGatherBundle(stateId, usage) is not { } bundle)
         {
             scope = null;
@@ -48,6 +50,7 @@ public class PbtScopeProvider(
         }
 
         scope = new PbtWorldStateScope(stateId, baseBlock, bundle, _codeDb, manager, childHeaders, resourcePool, usage, isReadOnly, _trieWarmer, config, logManager);
+        Metrics.PbtBeginScopeTime.Observe(Stopwatch.GetTimestamp() - start);
         return true;
     }
 }
