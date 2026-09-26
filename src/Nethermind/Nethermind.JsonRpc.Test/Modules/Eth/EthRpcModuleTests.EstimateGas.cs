@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
@@ -491,6 +492,58 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
 
         Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo($"failed with {blockGasLimit} gas: invalid instruction"), serialized);
+    }
+
+    private const string OneEther = "0xde0b6b3a7640000";
+    private const string BelowBaseCostAtOneGwei = "0x1319718a0c00"; // 20999 gwei
+
+    // PUSH1 1, PUSH1 0, SSTORE, STOP
+    private const string StoringCode = "0x600160005500";
+
+    [TestCase("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}""", OneEther, "tip above the zero fee cap", TestName = "Priority fee only")]
+    [TestCase("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}""", BelowBaseCostAtOneGwei, "tip above the zero fee cap", TestName = "Priority fee only, balance below the base cost at the priority fee")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0x3b9aca00"}""", OneEther, "unpriced", TestName = "Fee cap only")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", OneEther, "rejected as input", TestName = "Fee cap below the priority fee")]
+    [TestCase("""{"gasPrice":"0x3b9aca00"}""", OneEther, "unpriced", TestName = "Legacy gas price")]
+    [TestCase("""{"gasPrice":"0x3b9aca00"}""", BelowBaseCostAtOneGwei, "allowance 20999", TestName = "Legacy gas price, balance below the base cost")]
+    [TestCase("""{}""", OneEther, "unpriced", TestName = "No fee fields")]
+    public async Task Estimate_gas_fee_field_shapes(string feeFields, string balance, string expectation)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        ulong blockGasLimit = ctx.Test.BlockTree.Head!.GasLimit;
+        string sender = TestItem.AddressA.ToString(withEip55Checksum: true);
+        JsonObject request = JsonNode.Parse(feeFields)!.AsObject();
+        request["from"] = sender;
+        request["to"] = "0xc200000000000000000000000000000000000000";
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"{{{sender}}}":{"balance":"{{{balance}}}"},"0xc200000000000000000000000000000000000000":{"code":"{{{StoringCode}}}"}}""");
+        object? blockOverride = JsonSerializer.Deserialize<object>("""{"baseFeePerGas":"0x7"}""");
+        object? unpricedRequest = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{sender}}","to":"0xc200000000000000000000000000000000000000"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", JsonSerializer.Deserialize<object>(request.ToJsonString()), "latest", stateOverride, blockOverride);
+        string unpriced = await ctx.Test.TestEthRpc("eth_estimateGas", unpricedRequest, "latest", stateOverride, blockOverride);
+
+        string tipAboveFeeCap = $"failed with {blockGasLimit} gas: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 1000000000, maxFeePerGas: ";
+        switch (expectation)
+        {
+            case "unpriced":
+                Assert.That(JToken.Parse(serialized)["result"]?.Value<string>(), Is.EqualTo(JToken.Parse(unpriced)["result"]!.Value<string>()).And.Not.Null,
+                    $"a priced request the balance funds estimates as an unpriced one: {serialized}");
+                break;
+            case "tip above the zero fee cap":
+                Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(tipAboveFeeCap + "0"),
+                    $"no fee cap skips the balance cap, and the run is rejected for its priority fee: {serialized}");
+                break;
+            case "rejected as input":
+                Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("maxFeePerGas (10) < maxPriorityFeePerGas (1000000000)"),
+                    $"both fee fields are checked against each other before estimation: {serialized}");
+                break;
+            default:
+                Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("gas required exceeds allowance (20999)"),
+                    $"20999 gwei funds 20999 gas at 1 gwei: {serialized}");
+                break;
+        }
     }
 
     private static async Task<string> EstimateGasAgainstCode(string code, ulong? gas)

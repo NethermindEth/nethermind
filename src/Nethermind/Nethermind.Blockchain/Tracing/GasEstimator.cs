@@ -266,7 +266,21 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
             // Only a creation can run out of gas after its frame completes, while depositing the code.
             _tracer = new EstimationTracer(tracksFrames: tx.IsContractCreation);
             _cancellableTracer = _tracer.WithCancellation(token);
+            _tipAboveFeeCap = TipAboveFeeCap(tx, blockContext.Spec);
         }
+
+        private readonly string? _tipAboveFeeCap;
+
+        /// <summary>
+        /// A priced transaction whose priority fee exceeds its fee cap is rejected before any gas is bought, whatever
+        /// its gas limit; the processor checks only the fee cap against the base fee when validation is skipped.
+        /// </summary>
+        private static string? TipAboveFeeCap(Transaction tx, IReleaseSpec spec) =>
+            spec.IsEip1559Enabled
+            && !(tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero)
+            && tx.MaxFeePerGas < tx.MaxPriorityFeePerGas
+                ? $"{TxErrorMessages.TipAboveFeeCap}: address {tx.SenderAddress!.ToString(withEip55Checksum: true)}, maxPriorityFeePerGas: {tx.MaxPriorityFeePerGas}, maxFeePerGas: {tx.MaxFeePerGas}"
+                : null;
 
         public bool TryDescribeFailure(ulong gasLimit, in Run run, out string text) =>
             ExecutionFailureText.TryDescribe(_transactionProcessor, CloneWithGasLimit(gasLimit), in _blockContext, run.ExceptionType, run.Error!, _token, out text);
@@ -281,6 +295,9 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
 
         public Run Run(ulong gasLimit, UInt256? maxFeePerBlobGas = null)
         {
+            if (_tipAboveFeeCap is not null)
+                return new Run(RunStatus.Rejected, Error: _tipAboveFeeCap);
+
             Transaction txClone = CloneWithGasLimit(gasLimit);
             if (maxFeePerBlobGas is not null)
                 txClone.MaxFeePerBlobGas = maxFeePerBlobGas;

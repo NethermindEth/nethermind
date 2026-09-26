@@ -745,6 +745,7 @@ namespace Nethermind.Evm.Test.Tracing
             ulong gasLimit = 100_000;
             Transaction tx = Build.A.Transaction
                 .WithType(TxType.SetCode)
+                .WithMaxFeePerGas(1)
                 .WithGasLimit(gasLimit)
                 .WithTo(target)
                 .WithSenderAddress(TestItem.AddressA)
