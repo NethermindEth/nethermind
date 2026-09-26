@@ -46,8 +46,9 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
     /// <remarks>
     /// gloas/p2p-interface.md ExecutionPayloadEnvelopesByRange v1: envelopes come from the current fork choice view, never for a
     /// block whose payload the chain treats as empty. A block's payload is on the chain when its child's
-    /// <c>bid.parent_block_hash</c> equals its own <c>bid.block_hash</c>; the head has no child, so its envelope is served
-    /// when the pool holds it, which only a verified envelope reaches. The chain is walked through parent roots from the head,
+    /// <c>bid.parent_block_hash</c> equals its own <c>bid.block_hash</c>. The head's payload is on the chain only when its fork
+    /// choice node is <c>PAYLOAD_STATUS_FULL</c>; fork choice does not report that yet, so the head's envelope is never served,
+    /// because a held envelope does not make the head FULL. The chain is walked through parent roots from the head,
     /// not read from the canonical slot index, because that index can keep a reorged-out root at a slot the head chain skips.
     /// </remarks>
     /// <exception cref="Eth2ReqRespException">Reaching <paramref name="startSlot"/> takes more than <see cref="MaxCanonicalWalk"/> blocks (<c>ResourceUnavailable</c>), or a stored block on the chain is unreadable (<c>ServerError</c>).</exception>
@@ -74,7 +75,7 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
                 break;
             }
 
-            bool payloadOnChain = child is null || child.ParentBlockHash == link.BlockHash;
+            bool payloadOnChain = child is not null && child.ParentBlockHash == link.BlockHash;
             if (link.Slot - startSlot < count && payloadOnChain && TryGet(root, out SignedExecutionPayloadEnvelope? envelope))
             {
                 served.Add(envelope!);

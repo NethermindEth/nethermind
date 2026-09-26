@@ -32,12 +32,16 @@ public class ExecutionPayloadEnvelopePoolDiTests
         SignedBeaconBlockGloas block = CreateMinimalGloasBlock(FirstGloasSlot);
         Hash256 root = SszRoots.HashTreeRoot(block.Message!);
         store.PutForkedBlock(root, new ForkedSignedBeaconBlock.OfGloas(block));
+        SignedBeaconBlockGloas child = CreateMinimalGloasBlock(FirstGloasSlot + 1, root);
+        child.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash = block.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlockHash;
+        Hash256 childRoot = SszRoots.HashTreeRoot(child.Message);
+        store.PutForkedBlock(childRoot, new ForkedSignedBeaconBlock.OfGloas(child));
         status.CurrentStatus = new StatusMessageV2
         {
             ForkDigest = ForkDigest.Compute(Sepolia, Sepolia.GloasForkEpoch),
             FinalizedRoot = Hash256.Zero,
-            HeadRoot = root,
-            HeadSlot = FirstGloasSlot,
+            HeadRoot = childRoot,
+            HeadSlot = FirstGloasSlot + 1,
         };
         pool.Add(root, new SignedExecutionPayloadEnvelope
         {
