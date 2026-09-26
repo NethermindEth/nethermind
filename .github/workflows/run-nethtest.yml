@@ -301,14 +301,14 @@ jobs:
                 # over the Amsterdam corpus the other lanes already run. frameTest runs the engine
                 # payloads; frameBlockTest runs the block-import path over the same subtree.
                 if run_sequential; then
-                  emit "$type" sequential frames '' false false 4 1
+                  emit "$type" sequential frames false false 4 1
                 fi
                 ;;
               frameTxTest)
                 # The same subtree's raw-tx fixtures. Like txTest these touch neither the state
                 # layout nor block execution, so the layout and BAL toggles are left unset.
                 if run_sequential; then
-                  emit "$type" sequential frames '' '' '' 4 1
+                  emit "$type" sequential frames '' '' 4 1
                 fi
                 ;;
               *)
