@@ -46,6 +46,7 @@ public class FlatDbConfig : IFlatDbConfig
     public ulong MaxReorgDepth { get; set; } = 256;
     public ulong MinReorgDepth { get; set; } = 128;
     public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
+    public bool PersistViaSstIngestion { get; set; } = false;
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public bool EnableCarryForwardCache { get; set; } = true;
     public int WarmReadConcurrency { get; set; } = -1;

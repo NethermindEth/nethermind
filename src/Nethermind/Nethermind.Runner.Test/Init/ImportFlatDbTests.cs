@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -52,6 +53,7 @@ public class ImportFlatDbTests
     [TearDown]
     public void TearDown()
     {
+        (_persistence as IDisposable)?.Dispose();
         _trieDb.Dispose();
         _columnsDb.Dispose();
     }

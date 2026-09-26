@@ -34,7 +34,11 @@ public class FlatTreeSyncStoreTests
     }
 
     [TearDown]
-    public void TearDown() => _columnsDb.Dispose();
+    public void TearDown()
+    {
+        (_persistence as IDisposable)?.Dispose();
+        _columnsDb.Dispose();
+    }
 
     private void WriteStorageDirectToDb(Address address, UInt256 slot, byte[] value)
     {
