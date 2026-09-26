@@ -1072,7 +1072,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         private readonly DefaultableDictionary BlockChange = new();
         private bool _wasWritten = false;
-        private bool _hasJournalledWrites = false;
         // Round 0 is never issued, so it means no write journalled.
         private ulong _journalledRound;
         // Whether the contract held storage before the block and whether the block cleared it: together they say if a
@@ -1233,7 +1232,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _provider = null;
             _backend = null;
             _wasWritten = false;
-            _hasJournalledWrites = false;
             _journalledRound = 0;
             ForgetLastRead();
             _hadStorageBeforeBlock = false;
@@ -1254,7 +1252,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// It is never cleared while the journal could still hold an entry: a revert leaves it set, costing
         /// only a probe that misses, and contracts are dropped only once the journal is empty.
         /// </remarks>
-        public bool HasJournalledWrites => _hasJournalledWrites;
+        public bool HasJournalledWrites => _journalledRound != 0;
 
         /// <summary>Whether the write journal may hold a cell of this contract in the given originals round.</summary>
         /// <remarks>
@@ -1266,11 +1264,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// <summary>Marks that this contract has journalled at least one write this block and this round.</summary>
         /// <remarks>Also runs off the block thread: the sequential BAL apply executes as iteration 0 of the
         /// parallel executor's loop, whose join publishes the flag before the block thread reads it.</remarks>
-        public void MarkJournalled()
-        {
-            _hasJournalledWrites = true;
-            _journalledRound = Provider._originalsRound;
-        }
+        public void MarkJournalled() => _journalledRound = Provider._originalsRound;
 
         public void SaveChange(in StorageCell storageCell, in UInt256 value)
         {
