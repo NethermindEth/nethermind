@@ -9,6 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -213,35 +214,50 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
         // An IL is a per-call parameter not bound to block.Hash, so never short-circuit when one is supplied.
-        if (_blockTree.IsOnMainChainBehindOrEqualHead(block.Header))
+        // The canonical marker on its own is too weak to answer from: forward sync and the fast-headers backfill
+        // both mark blocks canonical without executing them, and the state a block committed may since have been
+        // pruned. A block sync placed there without running it falls through to processing - an inclusion-list
+        // payload too, whose answer below reads the state root and so cannot tell the state this block committed
+        // from one it merely shares a root with.
+        bool isCanonicalBehindHead = _blockTree.IsOnMainChainBehindOrEqualHead(block.Header);
+        bool hasInclusionList = HasInclusionList(block);
+        if (isCanonicalBehindHead && WasExecuted(block))
         {
-            if (!HasInclusionList(block))
+            if (!hasInclusionList)
             {
-                if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
-                return NewPayloadV1Result.Valid(block.Hash);
-            }
+                // A block being re-executed is already marked processed from its first run, so it can be made head
+                // while that re-execution is still committing the state it restores. Its own commit is waited for,
+                // as the parent's is below, before the state is read a second time.
+                if (IsVerdictServiceable(block)
+                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && IsVerdictServiceable(block)))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                    return NewPayloadV1Result.Valid(block.Hash);
+                }
 
-            // Reuse the cached result for this exact (block, IL) so re-validating a known-canonical block
-            // whose parent state may be pruned doesn't regress to SYNCING; a different IL falls through.
-            if (TryGetCachedResult(block, out ResultWrapper<PayloadStatusV1>? cachedResult))
+                // A stale canonical marker can point outside the head's ancestry. Let the parent-state and
+                // bounded ancestry checks below decide whether re-execution is safe.
+            }
+            else
             {
-                if (_logger.IsInfo) _logger.Info($"Valid... A new payload with a known inclusion-list result. Block {block.ToString(Block.Format.Short)} found in main chain.");
-                return cachedResult;
-            }
+                // bogota.md newPayloadV6 (2.1) requires a VALID response to carry a compliance answer.
+                // Reuse a known compliance result while its VALID verdict is still serviceable;
+                // a different list must be judged against the current state.
+                if (IsVerdictServiceable(block) && TryGetCachedResult(block, out ResultWrapper<PayloadStatusV1>? cachedResult))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Valid... A new payload with a known inclusion-list result. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                    return cachedResult;
+                }
 
-            // Compliance depends only on the block, the list and the state the block committed, so a
-            // canonical block is answerable from that state alone. Re-executing it instead would replay
-            // the whole pruning window whenever a consensus client resends the recent chain.
-            if (_stateReader.HasStateForBlock(block.Header))
-            {
-                if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
-                return EvaluateInclusionListFromState(block);
+                // Compliance depends on the state this block committed, so wait for an in-flight commit
+                // before judging a new list against that state.
+                if (_stateReader.HasStateForBlock(block.Header)
+                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && _stateReader.HasStateForBlock(block.Header)))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
+                    return EvaluateInclusionListFromState(block);
+                }
             }
-
-            // bogota.md engine_newPayloadV6 (2.1) requires a VALID response to carry a compliance answer,
-            // and with the block's state pruned there is none to derive.
-            if (_logger.IsInfo) _logger.Info($"Syncing... A new payload whose inclusion list is no longer evaluable. Block {block.ToString(Block.Format.Short)} found in main chain.");
-            return NewPayloadV1Result.Syncing;
         }
 
         // The parent may have been answered VALID a moment ago and still be committing: its processed flag and its
@@ -251,6 +267,17 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
+            // A block our own chain level already points at is not something to sync towards: inserting it as a
+            // beacon block would arm the beacon pivot behind the head, and the lookup below misses the backfilled
+            // headers whose bodies were never stored. Nor is it validated first - that would only decide the insert,
+            // and a failure is recorded against the chain, so every block descending from it, the head included,
+            // would then be answered INVALID.
+            if (isCanonicalBehindHead)
+            {
+                if (_logger.IsInfo) _logger.Info($"Syncing... Block already known in blockTree {block}.");
+                return NewPayloadV1Result.Syncing;
+            }
+
             if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out string? error, validateHashes: false))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"suggested block is invalid, {error}"));
@@ -276,6 +303,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, insertHeaderOptions);
 
             if (_logger.IsInfo) _logger.Info($"Syncing... Inserting block {block}.");
+            return NewPayloadV1Result.Syncing;
+        }
+
+        // Re-executing a block in the head's ancestry could delete the node's own chain if a check tightened
+        // since acceptance. Only a stale marker outside that ancestry can be processed safely. When the
+        // bounded walk cannot establish ancestry, keep the chain intact and answer SYNCING.
+        if (isCanonicalBehindHead && IsAncestorOfHead(block.Header) is not false)
+        {
+            if (_logger.IsInfo) _logger.Info($"Syncing... A new payload found in main chain that cannot safely be re-executed. Block {block.ToString(Block.Format.Short)}.");
             return NewPayloadV1Result.Syncing;
         }
 
@@ -337,6 +373,51 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         throw new InvalidOperationException($"Unknown validation result {result}.");
 
     private static bool HasInclusionList(Block block) => block.InclusionListTransactions is { Length: > 0 };
+
+    /// <summary>Whether this node ran <paramref name="block"/> itself, as opposed to only downloading it.</summary>
+    /// <remarks>
+    /// The canonical marker is not evidence of execution on its own: the fast-headers backfill, forward sync and
+    /// era import all place blocks on the main chain without ever running them.
+    /// </remarks>
+    private bool WasExecuted(Block block) =>
+        _blockTree.GetInfo(block.Number, block.Hash!).Info is { WasProcessed: true };
+
+    /// <summary>Whether the current head descends from <paramref name="header"/>.</summary>
+    /// <remarks>
+    /// The chain-level marker cannot answer this: sync moves it without moving the head, leaving stale markers the
+    /// head does not descend from. Returns null when the ancestry is missing or too deep to check within a
+    /// bounded number of header reads; a caller must then avoid re-executing the block.
+    /// </remarks>
+    private bool? IsAncestorOfHead(BlockHeader header)
+    {
+        BlockHeader? current = _blockTree.Head?.Header;
+        if (current is null || current.Number < header.Number) return null;
+
+        // An archive node can have parent state arbitrarily far behind head.
+        const ulong maxAncestorLookupDepth = 128;
+        if (current.Number - header.Number > maxAncestorLookupDepth) return null;
+
+        while (current is not null && current.Number > header.Number)
+        {
+            current = _blockTree.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        }
+
+        return current is null ? null : current.Hash == header.Hash;
+    }
+
+    /// <summary>Whether a VALID verdict for <paramref name="block"/> still describes something this node can act on.</summary>
+    /// <remarks>
+    /// A VALID answer invites the CL to make the block head and build on it. Either the state the block committed
+    /// is still readable, so the node can build the next payload on it, or the block sits below the latest known
+    /// finalized block, where the MAY-skip clause of
+    /// <see href="https://github.com/ethereum/execution-apis/pull/786">execution-apis#786</see> lets
+    /// <c>engine_forkchoiceUpdated</c> answer without moving the head - so it can never become the base for the
+    /// next payload and the missing state cannot strand block production.
+    /// The answer is not stable within one request: a block that has its verdict but has not committed yet gains
+    /// its state part way through, so callers re-read rather than share one result.
+    /// </remarks>
+    private bool IsVerdictServiceable(Block block) =>
+        _stateReader.HasStateForBlock(block.Header) || _blockTree.IsOnMainChainBehindFinalized(block.Header);
 
     // An absent IL digests to default, matching non-IL cache entries.
     private static ValueHash256 ComputeInclusionListDigest(Block block)
@@ -541,10 +622,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         (ValidationResult? result, string? validationMessage) = (null, null);
         ValidationResult terminalResult = ValidationResult.Syncing;
 
-        // If duplicate, reuse results
+        // If duplicate, reuse results. Invalidity is permanent, but a cached VALID (or unsatisfied-IL) verdict
+        // describes a state this node may no longer hold, so it is only reused while it stays serviceable. An
+        // unsatisfied-IL verdict that falls through is re-judged on re-execution, to the same answer.
         if (_latestBlocks is not null
             && _latestBlocks.TryGet(block.Hash!, out CachedPayloadResult cachedResult)
-            && cachedResult.InclusionListDigest == ilDigest)
+            && cachedResult.InclusionListDigest == ilDigest
+            && (cachedResult.Result == ValidationResult.Invalid || IsVerdictServiceable(block)))
         {
             if (cachedResult.Result == ValidationResult.Invalid)
             {
@@ -600,7 +684,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // processed and marked as valid.
                 // if marked as processed by the block tree then return VALID, otherwise null so that it's processed a few lines below
                 // an IL-bearing payload bypasses this shortcut so that the current call's IL is re-validated
-                AddBlockResult.AlreadyKnown => _blockTree.WasProcessed(block.Number, block.Hash!) && !HasInclusionList(block) ? ValidationResult.Valid : null,
+                // Re-read rather than reuse the cache check's answer above: SuggestBlockAsync and the wait for a
+                // copy in flight sit between the two, and the commit this block is waiting on lands in that gap.
+                AddBlockResult.AlreadyKnown => !HasInclusionList(block) && WasExecuted(block) && IsVerdictServiceable(block)
+                    ? ValidationResult.Valid
+                    : null,
                 _ => null
             };
 
