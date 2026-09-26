@@ -47,6 +47,19 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData("6003565b00", 21012UL, 4).SetName("Jump_to_next_instruction"),
         new TestCaseData("600456fe5b5b00", 21013UL, 5).SetName("Jump_to_consecutive_markers"),
         new TestCaseData("6003565b", 21012UL, 3).SetName("Jump_to_final_byte"),
+        new TestCaseData("610004565b", 21012UL, 3).SetName("Push2_jump_to_final_byte"),
+        new TestCaseData("60016005575b", 21017UL, 4).SetName("JumpI_taken_to_final_byte"),
+        new TestCaseData("6000600057", 21016UL, 3).SetName("JumpI_not_taken_at_end"),
+    ];
+
+    // Untraced dispatch runs off the end into the zero padding that follows the code.
+    private static readonly TestCaseData[] EndOfCodeCases =
+    [
+        new TestCaseData("7f", 21003UL, 1).SetName("Push32_without_immediate"),
+        new TestCaseData("7f01", 21003UL, 1).SetName("Push32_truncated"),
+        new TestCaseData("61ff", 21003UL, 1).SetName("Push2_truncated"),
+        new TestCaseData("6000600001", 21009UL, 3).SetName("Add_at_end"),
+        new TestCaseData("600060000100", 21009UL, 4).SetName("Explicit_stop_at_end"),
     ];
 
     private static readonly TestCaseData[] JumpFailureCases =
@@ -661,7 +674,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(JumpCompletionCases))]
-    public void Untraced_jump_completion_preserves_semantics(string bytecode, ulong expectedGas, int expectedOpCodeCount)
+    [TestCaseSource(nameof(EndOfCodeCases))]
+    public void Untraced_completion_preserves_semantics(string bytecode, ulong expectedGas, int expectedOpCodeCount)
     {
         TestAllTracerWithOutput receipt = ExecuteUntraced(100000UL, Bytes.FromHexString(bytecode));
 

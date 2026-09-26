@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using InlineIL;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -48,6 +49,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         public static bool IsActive => true;
     }
+
+    /// <summary>Whether dispatch may read past the end of the code instead of checking the program counter.</summary>
+    /// <remarks>
+    /// No opcode moves the counter more than <see cref="CodeAnalysis.CodeInfo.ExecutionPadding"/> - 1 bytes past the end,
+    /// and the padding is all STOP, so running off the end halts on its own. Traced runs keep the checks because an
+    /// implicit STOP is traced at the original end of the code.
+    /// </remarks>
+    private static bool ReadsPastCodeEnd<TTracingInst>() where TTracingInst : struct, IFlag => !TTracingInst.IsActive;
+
+    /// <summary>Whether the chain halted on a STOP read from the padding rather than from the code.</summary>
+    /// <remarks>A STOP inside the code leaves the counter at most at the code length; one in the padding leaves it past it.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool HaltedInPadding<TTracingInst>(EvmExceptionType exceptionType, nint finalProgramCounter, nint codeLength)
+        where TTracingInst : struct, IFlag =>
+        ReadsPastCodeEnd<TTracingInst>() && exceptionType == EvmExceptionType.Stop && (nuint)finalProgramCounter > (nuint)codeLength;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]
@@ -189,10 +205,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if ((nuint)programCounter >= (nuint)stack.CodeLength)
             return EvmExceptionType.None;
 
+        Debug.Assert(Unsafe.AreSame(ref stack.Code, ref MemoryMarshal.GetReference(VmState.Env.CodeInfo.ExecutionCodeSpan)),
+            "Dispatch must run over CodeInfo's own bytes, which carry the padding it may read into.");
+
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] handlers = _opcodeHandlers;
 
         // Safety: the 256-entry opcode table remains pinned for the complete tail-call chain. Every
-        // bytecode read is preceded by a program-counter bounds check, and a byte is a valid table index.
+        // bytecode read is preceded by a program-counter bounds check, or lands in the padding that
+        // follows CodeInfo.ExecutionCodeSpan, and a byte is a valid table index.
         fixed (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>* opcodeHandlers = &handlers[0])
         {
             if (!TCancelable.IsActive)
@@ -207,6 +227,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 EvmExceptionType ordinaryExceptionType = opcodeHandlers[opcode](ref stack, ref gas, ref state, programCounter, 0);
                 OpCodeCount += state.OpCodeCount;
                 programCounter = state.FinalProgramCounter;
+                // Running off the end reports as it does under checked dispatch: the padding STOP is not an opcode of the code.
+                if (HaltedInPadding<TTracingInst>(ordinaryExceptionType, programCounter, stack.CodeLength))
+                {
+                    OpCodeCount--;
+                    ordinaryExceptionType = EvmExceptionType.None;
+                }
                 return ordinaryExceptionType;
             }
 
@@ -242,6 +268,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             OpCodeCount += cancelableState.OpCodeCount;
             programCounter = cancelableState.FinalProgramCounter;
+            if (HaltedInPadding<TTracingInst>(exceptionType, programCounter, stack.CodeLength))
+            {
+                OpCodeCount--;
+                exceptionType = EvmExceptionType.None;
+            }
             return exceptionType;
         }
     }
@@ -277,9 +308,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.StackUnderflow);
             if (TOpcode.StackGrowth > 0 && stack.Head >= EvmStack.MaxStackSize - TOpcode.StackGrowth)
                 return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.StackOverflow);
-            // Only untraced PUSH bodies opt in: no subsequent opcode can observe the final stack value.
-            if (TOpcode.PushSize >= 0 && pc + TOpcode.PushSize >= stack.CodeLength)
-                return ExitCheckedOpcode(ref state, pc + TOpcode.PushSize, opCodeCount, EvmExceptionType.None);
 
             EvmExceptionType checkedResult = TOpcode.Execute(ref stack, ref gas, TOpcode.UsesVm ? state.Vm : null!, ref pc);
             Debug.Assert(checkedResult == EvmExceptionType.None, "HasCheckedBody must not fail after dispatch validates its preconditions.");
@@ -297,7 +325,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // Its load chain then overlaps the rest of the handler. Zero means the counter ran off the end of
         // the code. No table entry is null, so zero cannot mean anything else.
         nint next = 0;
-        if ((TOpcode.HasCheckedBody && TOpcode.PushSize >= 0) || (nuint)pc < (nuint)stack.CodeLength)
+        if (ReadsPastCodeEnd<TTracingInst>() || (nuint)pc < (nuint)stack.CodeLength)
             next = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
 
         if (!TOpcode.HasCheckedBody && exceptionType != EvmExceptionType.None)
@@ -311,7 +339,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         // Reaching here means the halt check passed, so the status is None and gas is valid: the exit
         // block returns exactly that, and one copy of it is smaller than two.
-        if (!(TOpcode.HasCheckedBody && TOpcode.PushSize >= 0) && next == 0)
+        if (!ReadsPastCodeEnd<TTracingInst>() && next == 0)
             goto Exit;
 
         if (TCancelable.IsActive && (opCodeCount & CancellationCheckMask) == 0)
@@ -403,7 +431,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // JIT fold the two transfers back into a single indirect branch.
         if (pc != fallthroughPc)
         {
-            if ((nuint)pc >= (nuint)stack.CodeLength)
+            if (!ReadsPastCodeEnd<TTracingInst>() && (nuint)pc >= (nuint)stack.CodeLength)
                 goto Exit;
 
             nint taken = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, pc)];
@@ -428,7 +456,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
         else
         {
-            if ((nuint)fallthroughPc >= (nuint)stack.CodeLength)
+            if (!ReadsPastCodeEnd<TTracingInst>() && (nuint)fallthroughPc >= (nuint)stack.CodeLength)
                 goto Exit;
 
             nint notTaken = (nint)state.OpcodeHandlers[Unsafe.Add(ref stack.Code, fallthroughPc)];
