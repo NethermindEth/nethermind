@@ -41,14 +41,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
-    private Dictionary<StorageCell, UInt256> _originalValues = [];
-    // The provider's own map while a pooled large one holds the round's entries.
-    private Dictionary<StorageCell, UInt256>? _parkedOriginalValues;
-    // A map past the trim limit is cut back every round, so it would regrow on the LOH. A resize takes the next prime
-    // at least twice the capacity, under 2.4 times it here (3,371 grows to 7,013, 4,049 to 8,419), so a full map above
-    // 5/12 of the limit moves into a pooled one instead.
-    private const int OriginalsGrowIntoLargeAbove = Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity * 5 / 12;
-    private static readonly LargeMapPool<StorageCell, UInt256> OriginalsPool = new(comparer: null, minRetainedCapacity: (OriginalsGrowIntoLargeAbove + 1) * 2);
+    private readonly Dictionary<StorageCell, UInt256> _originalValues = [];
     // Memoizes captured values only; transaction originals still resolve through the journal.
     private StorageCell _lastCapturedCell;
     private UInt256 _lastCapturedOriginal;
@@ -69,13 +62,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private void EndOriginalsRound()
     {
         _lastCapturedCell = default;
-        if (_parkedOriginalValues is not null)
-        {
-            OriginalsPool.Return(_originalValues);
-            _originalValues = _parkedOriginalValues;
-            _parkedOriginalValues = null;
-        }
-
         _originalValues.ClearAndTrim();
         if ((_originalsRound += 2) == (1UL << 33)) _originalsRound = 2;
     }
@@ -629,12 +615,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     private void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
     {
-        Dictionary<StorageCell, UInt256> originals = _originalValues;
-        if (originals.Count == originals.Capacity && originals.Capacity > OriginalsGrowIntoLargeAbove && !originals.ContainsKey(cell))
-        {
-            GrowOriginalsIntoLarge();
-        }
-
         ref UInt256 slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_originalValues, cell, out bool exists);
         if (!exists)
         {
@@ -642,25 +622,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
         _lastCapturedCell = cell;
         _lastCapturedOriginal = slot;
-    }
-
-    private void GrowOriginalsIntoLarge()
-    {
-        Dictionary<StorageCell, UInt256> current = _originalValues;
-        Dictionary<StorageCell, UInt256> large = OriginalsPool.Rent(current.Count * 2);
-        foreach (KeyValuePair<StorageCell, UInt256> entry in current) large.Add(entry.Key, entry.Value);
-
-        if (_parkedOriginalValues is null)
-        {
-            current.Clear();
-            _parkedOriginalValues = current;
-        }
-        else
-        {
-            OriginalsPool.Return(current); // an earlier large map that filled up
-        }
-
-        _originalValues = large;
     }
 
     [SkipLocalsInit]
