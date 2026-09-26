@@ -23,7 +23,8 @@ public partial class GasEstimator
     /// <c>FrameTransactionForRpc.ToTransaction</c> enforces on explicit limits. Frames are minimised in order: the
     /// frame being searched takes what the others leave, while each later frame holds a reservation measured by a
     /// first probe that splits the rooms evenly.</remarks>
-    public Result<TxFrame[]> EstimateFrameGas(Transaction transaction, BlockHeader header,
+    /// <param name="context">The block the estimate runs in; each probe runs in a copy of its header.</param>
+    public Result<TxFrame[]> EstimateFrameGas(Transaction transaction, BlockExecutionContext context,
         bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin, CancellationToken token)
     {
         if (errorMargin < 0 || errorMargin >= MaxErrorMargin)
@@ -34,7 +35,9 @@ public partial class GasEstimator
         tx.Frames = frames;
         tx.SenderAddress ??= Address.Zero;
         tx.Nonce = stateProvider.GetNonce(tx.SenderAddress);
-        IReleaseSpec spec = specProvider.GetSpec(header);
+        BlockHeader header = context.Header;
+        IReleaseSpec spec = context.Spec;
+        UInt256 blobBaseFee = new(context.BlobBaseFee.Bytes, isBigEndian: true);
         ulong executionCap = Math.Min(gasCap, Math.Min(header.GasLimit, Eip7825Constants.DefaultTxGasLimitCap));
         ulong stateCap = Math.Min(gasCap, header.GasLimit);
         if (!FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out ulong reservedExecution, out ulong reservedState, estimateSignatureBytes: true)
@@ -166,7 +169,7 @@ public partial class GasEstimator
             probeHeader.GasUsed = 0;
             if (!realFees) probeHeader.BaseFeePerGas = 0;
             FrameEstimateTracer output = new();
-            transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(probeHeader, spec));
+            transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(probeHeader, spec, blobBaseFee));
             TransactionResult result = transactionProcessor.CallAndRestore(probe, output.WithCancellation(token));
             error = result.GetErrorMessage(output.Error);
             if (error is null && output.FailedFrame is { } index)

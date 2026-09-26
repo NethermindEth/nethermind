@@ -38,7 +38,7 @@ public class FrameGasEstimatorTests
         bool[] fill = new bool[frames.Length];
         Array.Fill(fill, true);
 
-        Result<TxFrame[]> result = estimator.EstimateFrameGas(tx, header, fill, fill, GasCap, 150, CancellationToken.None);
+        Result<TxFrame[]> result = estimator.EstimateFrameGas(tx, new BlockExecutionContext(header, Eip8141Prototype.Instance), fill, fill, GasCap, 150, CancellationToken.None);
 
         Assert.That(result.IsError, Is.False, result.Error);
         using (Assert.EnterMultipleScope())

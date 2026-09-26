@@ -183,6 +183,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FrameGas_EstimateGas_RunsInTheNextBlock()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        // Reverts unless NUMBER is the block after the head, as it is for the gas estimate itself.
+        string nextNumber = (ctx.Test.BlockTree.Head!.Number + 1).ToString("x16");
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.Frames![1].Target}}}":{"code":"0x4367{{{nextNumber}}}146011575f5ffd5b00"}}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
     public async Task FrameGas_EstimateGas_ReportsVerifierRevert()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));

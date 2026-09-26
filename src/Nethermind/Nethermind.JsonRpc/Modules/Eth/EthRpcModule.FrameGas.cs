@@ -24,7 +24,8 @@ public partial class EthRpcModule
     {
         if (!_blockchainBridge.HasStateForBlock(header)) return Result<FrameForRpc[]>.Fail("No state available for block");
         if (blockOverride?.GasLimit > _rpcConfig.GasCap.EffectiveGasCap()) return Result<FrameForRpc[]>.Fail("block gas override exceeds the RPC gas cap");
-        IReleaseSpec spec = _specProvider.GetSpec(header);
+        // The next block's rules, which the estimate runs under.
+        IReleaseSpec spec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _secondsPerSlot);
         Result<Transaction> converted = request.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
         if (!converted.Success(out Transaction? tx, out string? error)) return Result<FrameForRpc[]>.Fail(error);
         tx.ChainId = _blockchainBridge.GetChainId();
