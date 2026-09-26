@@ -507,17 +507,13 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             return Verdict.Ignore(GossipDropReason.Duplicate);
         }
 
-        // Handle does not pass this topic's fork, so an envelope for a pre-Gloas slot is caught by its payload slot.
         ExecutionPayloadGloas payload = message.Payload!;
-        if (!SignedBeaconBlockCodec.IsGloasSlot(payload.SlotNumber, spec))
-        {
-            return Verdict.Ignore(GossipDropReason.InvalidField);
-        }
-
         switch (ReadEnvelopeBlock(blockRoot, payload.SlotNumber, out EnvelopeBlock? block))
         {
+            // Handle does not pass this topic's fork, so an unheld envelope for a pre-Gloas slot is dropped by its payload slot
+            // rather than queued; a held Gloas block reaches the spec's slot-match REJECT instead.
             case EnvelopeBlockLookup.NotHeld:
-                return null;
+                return SignedBeaconBlockCodec.IsGloasSlot(payload.SlotNumber, spec) ? null : Verdict.Ignore(GossipDropReason.InvalidField);
             case EnvelopeBlockLookup.BudgetSpent:
                 return Verdict.Ignore(GossipDropReason.StoreDecodeBudgetSpent);
         }
