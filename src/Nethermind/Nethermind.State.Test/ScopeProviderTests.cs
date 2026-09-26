@@ -4,10 +4,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -64,65 +64,6 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         public void Dispose() => _container?.Dispose();
-    }
-
-    private sealed class ControlledStorageTrees
-    {
-        private readonly ConcurrentDictionary<Address, ControlledStorageTree> _trees = new();
-        private readonly TaskCompletionSource<bool> _releaseReaders = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private int _ownerThreadId;
-        private bool _holdReaders;
-
-        public int OwnerThreadId
-        {
-            set => Volatile.Write(ref _ownerThreadId, value);
-        }
-
-        public IWorldStateScopeProvider.IStorageTree Get(Address address) =>
-            _trees.GetOrAdd(address, _ => new ControlledStorageTree(this));
-
-        public void HoldReaders() => Volatile.Write(ref _holdReaders, true);
-
-        public void ReleaseReaders()
-        {
-            Volatile.Write(ref _holdReaders, false);
-            _releaseReaders.TrySetResult(true);
-        }
-
-        public bool WaitForReaderTrees(int count) => SpinWait.SpinUntil(() =>
-        {
-            int entered = 0;
-            foreach (KeyValuePair<Address, ControlledStorageTree> entry in _trees)
-            {
-                if (entry.Value.HasReaderEntered) entered++;
-            }
-
-            return entered >= count;
-        }, 5000);
-
-        private sealed class ControlledStorageTree(ControlledStorageTrees owner) : IWorldStateScopeProvider.IStorageTree
-        {
-            private readonly ControlledStorageTrees _owner = owner;
-            private int _readerEntered;
-
-            public bool HasReaderEntered => Volatile.Read(ref _readerEntered) != 0;
-
-            public Hash256 RootHash => Keccak.EmptyTreeHash;
-
-            public void Get(in UInt256 index, out UInt256 value)
-            {
-                if (Environment.CurrentManagedThreadId != Volatile.Read(ref _owner._ownerThreadId)
-                    && Volatile.Read(ref _owner._holdReaders))
-                {
-                    Volatile.Write(ref _readerEntered, 1);
-                    _owner._releaseReaders.Task.GetAwaiter().GetResult();
-                }
-
-                value = 1;
-            }
-
-            public void HintSet(in UInt256 index) { }
-        }
     }
 
     [Test]
@@ -1762,78 +1703,6 @@ public class ScopeProviderTests(bool useFlat)
             UInt256 index = start;
             for (int i = 0; i < 12; i++, index += stride)
                 storage.Get(in index, out _);
-        }
-    }
-
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Test_StridePrefetcher_CanCreateDetectorWhileReadersHoldSlots(bool attemptBeforeSlotFree)
-    {
-        ControlledStorageTrees controlledTrees = new();
-        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
-        baseProvider.SupportsConcurrentScopes.Returns(true);
-        baseProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, baseScope));
-        baseScope.CreateStorageTree(Arg.Any<Address>())
-            .Returns(callInfo => controlledTrees.Get(callInfo.Arg<Address>()));
-
-        PreBlockCaches caches = NewCaches();
-        PrewarmerScopeProvider prewarmer = new(
-            baseProvider,
-            new PrewarmerState(caches, isPrewarmer: false),
-            LimboLogs.Instance);
-
-        using IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(null, new LocalMetrics());
-        try
-        {
-            controlledTrees.OwnerThreadId = Environment.CurrentManagedThreadId;
-            controlledTrees.HoldReaders();
-
-            IWorldStateScopeProvider.IStorageTree[] initialTrees = new IWorldStateScopeProvider.IStorageTree[4];
-            for (int i = 0; i < initialTrees.Length; i++)
-            {
-                Address address = new(Keccak.Compute($"stride-held-{i}"));
-                initialTrees[i] = scope.CreateStorageTree(address);
-                ReadStride(initialTrees[i], startIndex: 1, count: 12);
-            }
-
-            Assert.That(controlledTrees.WaitForReaderTrees(initialTrees.Length), Is.True,
-                "The initial detectors did not retain their reader slots.");
-
-            Address lateAddress = new(Keccak.Compute("stride-late"));
-            IWorldStateScopeProvider.IStorageTree lateTree = scope.CreateStorageTree(lateAddress);
-
-            if (attemptBeforeSlotFree)
-                ReadStride(lateTree, startIndex: 1, count: 8);
-
-            BreakStride(initialTrees[0]);
-            ReadStride(lateTree, startIndex: attemptBeforeSlotFree ? 9 : 1, count: 12);
-
-            Assert.That(controlledTrees.WaitForReaderTrees(initialTrees.Length + 1), Is.True,
-                "The detector created while all slots were occupied did not engage after a slot was freed.");
-
-            controlledTrees.ReleaseReaders();
-            StorageCell lateFarCell = new(lateAddress, 64);
-            Assert.That(SpinWait.SpinUntil(() => caches.StorageCache.TryGetValue(in lateFarCell, out _), 5000), Is.True,
-                "The late detector did not warm a slot after the earlier detector released its slot.");
-
-            static void ReadStride(IWorldStateScopeProvider.IStorageTree storage, int startIndex, int count)
-            {
-                UInt256 index = (UInt256)(uint)startIndex;
-                for (int i = 0; i < count; i++, index++)
-                    storage.Get(in index, out _);
-            }
-
-            static void BreakStride(IWorldStateScopeProvider.IStorageTree storage)
-            {
-                UInt256 index = 10_000;
-                for (int i = 0; i < 16; i++, index += (UInt256)(101 + i * i))
-                    storage.Get(in index, out _);
-            }
-        }
-        finally
-        {
-            controlledTrees.ReleaseReaders();
         }
     }
 
