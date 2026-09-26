@@ -224,13 +224,18 @@ internal sealed class StorageStridePrefetcher(
         int idlePolls = 0;
         while (!_broken && !_token.IsCancellationRequested)
         {
-            long k = Interlocked.Increment(ref _issued);
-            while (k - Volatile.Read(ref _consumed) > MaxLookahead)
+            // Claim a position only once it is inside the lookahead window: a reader that gives up at the
+            // gate then leaves no claimed-but-unread position for the readers still running to skip over.
+            long issued = Volatile.Read(ref _issued);
+            if (issued + 1 - Volatile.Read(ref _consumed) > MaxLookahead)
             {
-                if (_broken || _token.IsCancellationRequested) return;
                 if (++idlePolls > IdlePollLimit) return;
                 Thread.Sleep(1);
+                continue;
             }
+
+            long k = issued + 1;
+            if (Interlocked.CompareExchange(ref _issued, k, issued) != issued) continue;
 
             idlePolls = 0;
             try

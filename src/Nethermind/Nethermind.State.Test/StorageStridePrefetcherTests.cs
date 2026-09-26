@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -336,6 +337,52 @@ public class StorageStridePrefetcherTests
         Assert.DoesNotThrow(() => prefetcher.Dispose());
     }
 
+    [Test]
+    public void ReadAhead_LeavesNoUnreadSlotWhenAReaderGivesUpAtTheLookaheadGate()
+    {
+        using CancellationTokenSource cts = new();
+        using ManualResetEventSlim releaseStarter = new();
+        StarterGatedStorageTree tree = new(releaseStarter);
+        StorageStridePrefetcher prefetcher = new(
+            () =>
+            {
+                // The factory runs on the starter thread, which is itself one of the readers.
+                tree.StarterThreadId = Environment.CurrentManagedThreadId;
+                return tree;
+            },
+            new SeqlockCache<StorageCell, UInt256>(),
+            TestItem.AddressA,
+            cts.Token,
+            readerConcurrency: 2,
+            tryReserveEngagement: static () => StorageStridePrefetcher.EngagementResult.Granted);
+
+        try
+        {
+            UInt256 index = 1;
+            for (; index <= 8; index++)
+                prefetcher.OnRead(in index);
+
+            // The starter parks on its first slot while the sibling fills the lookahead window, waits at the
+            // gate for a consumer that does not move, and gives up.
+            Assert.That(SpinWait.SpinUntil(() => tree.Sibling is not null, 5000), Is.True, "the sibling reader never started");
+            Assert.That(tree.Sibling.Join(TimeSpan.FromSeconds(30)), Is.True, "the sibling reader never gave up at the gate");
+            UInt256 firstSlotPastWindow = tree.MaxRead + 1;
+
+            // The consumer resumes, and the surviving starter must carry on from the first slot nobody has read.
+            for (int i = 0; i < 10; i++, index++)
+                prefetcher.OnRead(in index);
+            releaseStarter.Set();
+            Assert.That(SpinWait.SpinUntil(() => tree.WasRead(firstSlotPastWindow), 5000), Is.True,
+                "the slot the reader that gave up had claimed was never read");
+        }
+        finally
+        {
+            releaseStarter.Set();
+            cts.Cancel();
+            prefetcher.Dispose();
+        }
+    }
+
     /// <remarks>
     /// This and the next test drive the reader cap of <see cref="PrewarmerScopeProvider"/> over a substituted
     /// backend whose readers stay parked in their first read, so every engaged detector holds its reader slot
@@ -458,6 +505,40 @@ public class StorageStridePrefetcherTests
         UInt256 index = 10_000;
         for (int i = 0; i < 16; i++, index += (UInt256)(101 + i * i))
             storage.Get(in index, out _);
+    }
+
+    /// <summary>Records every slot read, parking the starter thread's reads until released.</summary>
+    private sealed class StarterGatedStorageTree(ManualResetEventSlim releaseStarter) : IWorldStateScopeProvider.IStorageTree
+    {
+        private readonly ConcurrentDictionary<UInt256, byte> _reads = new();
+        private int _starterThreadId;
+        private Thread _sibling;
+
+        public int StarterThreadId
+        {
+            set => Volatile.Write(ref _starterThreadId, value);
+        }
+
+        public Thread Sibling => Volatile.Read(ref _sibling);
+
+        public UInt256 MaxRead => _reads.Max(static read => read.Key);
+
+        public bool WasRead(in UInt256 index) => _reads.ContainsKey(index);
+
+        public Hash256 RootHash => Keccak.EmptyTreeHash;
+
+        public void Get(in UInt256 index, out UInt256 value)
+        {
+            if (Environment.CurrentManagedThreadId == Volatile.Read(ref _starterThreadId))
+                releaseStarter.Wait(TimeSpan.FromSeconds(30));
+            else
+                Interlocked.CompareExchange(ref _sibling, Thread.CurrentThread, null);
+
+            _reads.TryAdd(index, 0);
+            value = default;
+        }
+
+        public void HintSet(in UInt256 index) { }
     }
 
     private sealed class ControlledStorageTrees
