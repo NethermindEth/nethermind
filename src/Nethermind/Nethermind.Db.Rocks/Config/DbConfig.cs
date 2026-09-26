@@ -168,6 +168,8 @@ public class DbConfig : IDbConfig
 
     public ulong? CodeDbRowCacheSize { get; set; } = 16UL.MiB;
     public string CodeDbRocksDbOptions { get; set; } =
+        // Snappy decodes byte runs in 64-byte copies; LZ4 reads large repetitive code about twice as fast
+        "compression=kLZ4Compression;" +
         "write_buffer_size=16000000;" +
         "block_based_table_factory.block_cache=16000000;" +
         "optimize_filters_for_hits=false;" +

@@ -172,6 +172,16 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void CodeDb_uses_lz4_compression()
+        {
+            using IContainer container = CreateRocksDbContainer(new DbConfig());
+            using IDb db = container.Resolve<IDbFactory>().CreateDb(new DbSettings(DbNames.Code, DbPath));
+            db.Flush();
+
+            Assert.That(ReadOptionsFile(DbPath), Does.Contain("compression=kLZ4Compression"));
+        }
+
+        [Test]
         public async Task Dispose_while_writing_does_not_cause_access_violation_exception()
         {
             IDbConfig config = new DbConfig();
