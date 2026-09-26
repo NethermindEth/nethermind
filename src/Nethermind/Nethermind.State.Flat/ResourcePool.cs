@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
@@ -111,25 +110,46 @@ public class ResourcePool : IResourcePool
     }
 
     // Using stack for better cpu cache effectiveness
-    private class ConcurrentStackPool<T>(int maxCapacity = 16) where T : notnull, IDisposable, IResettable
+    private sealed class ConcurrentStackPool<T>(int maxCapacity = 16) where T : class, IDisposable, IResettable
     {
-        private readonly ConcurrentStack<T> _queue = new();
-        public double PooledItemCount => _queue.Count;
+        private readonly T?[] _items = new T?[maxCapacity];
+        private readonly Lock _lock = new();
+        private int _count;
 
-        public bool TryGet([NotNullWhen(true)] out T? item) => _queue.TryPop(out item);
+        public double PooledItemCount => Volatile.Read(ref _count);
+
+        public bool TryGet([NotNullWhen(true)] out T? item)
+        {
+            lock (_lock)
+            {
+                if (_count == 0)
+                {
+                    item = null;
+                    return false;
+                }
+
+                int top = --_count;
+                item = _items[top]!;
+                _items[top] = null;
+                return true;
+            }
+        }
 
         public bool Return(T item)
         {
             item.Reset();
-            if (_queue.Count >= maxCapacity)
+            lock (_lock)
             {
-                item.Dispose();
-                return false;
+                if (_count < _items.Length)
+                {
+                    _items[_count++] = item;
+                    return true;
+                }
             }
-            _queue.Push(item);
-            return true;
-        }
 
+            item.Dispose();
+            return false;
+        }
     }
 
     private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int cachedResourcePoolSize)

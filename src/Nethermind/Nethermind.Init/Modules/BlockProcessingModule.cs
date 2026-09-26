@@ -102,7 +102,9 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                     blockFinder, specProvider, txPoolConfig, logManager))
             .Add<BlockchainProcessorFacade>()
 
-            .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
+            .AddSingleton<OverridableEnvFactory>()
+                .Bind<IOverridableEnvFactory, OverridableEnvFactory>()
+                .Bind<ITraceEnvFactory, OverridableEnvFactory>()
             .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))
 
             // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
