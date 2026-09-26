@@ -154,6 +154,66 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_call_rejects_a_chain_id_for_another_chain_as_invalid_params(
+        [Values("trace_call", "trace_callMany")] string method, [Values("0x0", "0x2")] string type, [Values] bool matching)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong chainId = blockchain.BlockTree.ChainId;
+        ulong requestedChainId = matching ? chainId : chainId + 1;
+        object transaction = new { type, from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x186a0", chainId = $"0x{requestedChainId:x}" };
+        string[] traceTypes = ["trace"];
+        object other = new { from = TestItem.AddressA, to = TestItem.AddressC, gas = "0x186a0" };
+        object[] parameters = method == "trace_call"
+            ? [transaction, traceTypes, "latest"]
+            : [new[] { new object[] { other, traceTypes }, new object[] { transaction, traceTypes } }, "latest"];
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+        using JsonDocument document = JsonDocument.Parse(response);
+        if (matching)
+        {
+            Assert.That(document.RootElement.TryGetProperty("result", out _), Is.True, response);
+            return;
+        }
+
+        AssertOtherChainError(document, response, chainId, requestedChainId);
+    }
+
+    [Test]
+    public async Task Trace_call_rejects_a_chain_id_for_another_chain_before_other_errors(
+        [Values("trace_call", "trace_callMany")] string method, [Values("latest", "0x100000")] string blockParameter)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong chainId = blockchain.BlockTree.ChainId;
+        string otherChainId = $"0x{chainId + 1:x}";
+        // A creation without data fails conversion, and block 0x100000 does not exist.
+        object[] parameters = method == "trace_call"
+            ? [new { from = TestItem.AddressA, gas = "0x186a0", chainId = otherChainId }, new[] { "trace" }, blockParameter]
+            : [new[]
+            {
+                new object[] { new { from = TestItem.AddressA, gas = "0x186a0" }, new[] { "trace" } },
+                new object[] { new { from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x186a0", chainId = otherChainId }, new[] { "trace" } },
+            }, blockParameter];
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+        using JsonDocument document = JsonDocument.Parse(response);
+        AssertOtherChainError(document, response, chainId, chainId + 1);
+    }
+
+    private static void AssertOtherChainError(JsonDocument document, string response, ulong chainId, ulong requestedChainId)
+    {
+        JsonElement error = document.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
+            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo($"invalid chain id (have={chainId}, want={requestedChainId})"), response);
+        }
+    }
+
+    [Test]
     public async Task Trace_replayBlockTransactions_returns_error_for_missing_block_or_parent([Values] bool parentMissing)
     {
         Context context = new();
