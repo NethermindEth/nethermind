@@ -504,6 +504,12 @@ public partial class EngineModuleTests
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
         await improvementWaitTask;
 
+        // An improvement starts building before it is stored for its payload, so a fast build can finish while
+        // the previous context is still the stored one. getPayload returns the stored context: wait for it.
+        ObservablePayloadPreparationService payloadPreparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
+        Assert.That(() => payloadPreparation.StoredBestBlock(payloadId)?.Transactions.Length, Is.EqualTo(11).After(10_000, 10),
+            "precondition: the improvement with every transaction is the stored context");
+
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()
@@ -848,7 +854,7 @@ public partial class EngineModuleTests
         TimeSpan timePerSlot,
         TimeSpan? delay = null
     ) =>
-        (producer, txPool, ctxFactory, timer, logManager) => new PayloadPreparationService(
+        (producer, txPool, ctxFactory, timer, logManager) => new ObservablePayloadPreparationService(
             producer,
             txPool,
             ctxFactory,
@@ -944,5 +950,22 @@ public partial class EngineModuleTests
                 { TestName = "Blob count higher than lowered maximum" + nameSuffix };
             }
         }
+    }
+
+    /// <summary>Exposes which improvement is stored for a payload, the one <c>getPayload</c> returns.</summary>
+    private sealed class ObservablePayloadPreparationService(
+        IBlockProducer blockProducer,
+        ITxPool txPool,
+        IBlockImprovementContextFactory blockImprovementContextFactory,
+        ITimerFactory timerFactory,
+        ILogManager logManager,
+        TimeSpan timePerSlot,
+        int slotsPerOldPayloadCleanup,
+        TimeSpan? improvementDelay)
+        : PayloadPreparationService(blockProducer, txPool, blockImprovementContextFactory, timerFactory, logManager, timePerSlot,
+            slotsPerOldPayloadCleanup: slotsPerOldPayloadCleanup, improvementDelay: improvementDelay)
+    {
+        public Block? StoredBestBlock(string payloadId) =>
+            _payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? context) ? context.Best.CurrentBestBlock : null;
     }
 }
