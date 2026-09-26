@@ -11,6 +11,7 @@ using System.IO;
 using System.Net;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -31,9 +32,11 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Authentication;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
@@ -48,8 +51,10 @@ using Nethermind.Flashbots;
 using Nethermind.HealthChecks;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -59,7 +64,11 @@ using Nethermind.Network.Config;
 using Nethermind.Optimism;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
+using Nethermind.Runner.Ethereum.Steps;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.OverridableEnv;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.TxPool;
@@ -67,6 +76,7 @@ using Nethermind.Xdc.Spec;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
+using BlockchainMetrics = Nethermind.Blockchain.Metrics;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Runner.Test;
@@ -74,6 +84,319 @@ namespace Nethermind.Runner.Test;
 [TestFixture, Parallelizable(ParallelScope.None)]
 public class EthereumRunnerTests
 {
+    [Test]
+    public async Task Startup_pipeline_warmup_waits_for_cleanup_after_cancellation([Values] bool cancelStartup)
+    {
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using CancellationTokenSource startup = new();
+        Task waiting = StartupWarmupTask.RunAsync(async token =>
+        {
+            using CancellationTokenRegistration registration = token.Register(() => cancelled.TrySetResult());
+            started.SetResult();
+            await released.Task;
+        }, NullLogger.Instance, cancelStartup ? RunnerTimeout : TimeSpan.FromSeconds(1), startup.Token);
+        try
+        {
+            await started.Task.WaitAsync(RunnerTimeout);
+            if (cancelStartup) startup.Cancel();
+            await cancelled.Task.WaitAsync(RunnerTimeout);
+            Assert.That(waiting.IsCompleted, Is.False, "RPC startup must wait for cleanup.");
+            released.SetResult();
+            if (cancelStartup)
+                Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(RunnerTimeout));
+            else
+                await waiting.WaitAsync(RunnerTimeout);
+        }
+        finally
+        {
+            released.TrySetResult();
+            try { await waiting.WaitAsync(RunnerTimeout); }
+            catch (OperationCanceledException) { Assert.That(startup.IsCancellationRequested, Is.True); }
+        }
+    }
+
+    [Test]
+    public async Task Startup_pipeline_warmup_failure_does_not_abort_startup([Values] bool fail)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        await StartupWarmupTask.RunAsync(_ => fail
+            ? Task.FromException(new InvalidOperationException("warmup failure"))
+            : Task.CompletedTask, new ILogger(logger), RunnerTimeout, CancellationToken.None);
+
+        logger.Received(fail ? 1 : 0).Warn(Arg.Is<string>(message => message.Contains("warmup failure")));
+    }
+
+    public enum WarmupScenario { Disabled, Diagnostic, CustomSpec, MissingMerge, CustomPipeline, Supported }
+
+    [TestCase(WarmupScenario.Disabled, "disabled by configuration.")]
+    [TestCase(WarmupScenario.Diagnostic, "a database diagnostic mode is enabled.")]
+    [TestCase(WarmupScenario.CustomSpec, "the chain uses a custom spec provider.")]
+    [TestCase(WarmupScenario.MissingMerge, "the standard Merge plugin is not enabled.")]
+    [TestCase(WarmupScenario.CustomPipeline, "the chain uses a custom processing pipeline.")]
+    [TestCase(WarmupScenario.Supported, null)]
+    public async Task Startup_pipeline_warmup_checks_supported_configuration(WarmupScenario scenario, string? expectedReason)
+    {
+        ChainSpec spec = LoadWarmupChainSpec();
+        InitConfig config = new()
+        {
+            PipelineWarmupEnabled = scenario != WarmupScenario.Disabled,
+            DiagnosticMode = scenario == WarmupScenario.Diagnostic ? DiagnosticMode.MemDb : DiagnosticMode.None
+        };
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new PseudoNethermindModule(spec, new ConfigProvider(new InitConfig { DiagnosticMode = DiagnosticMode.MemDb }), NullLogManager.Instance))
+            .AddModule(new MergePluginModule())
+            .Build();
+        INethermindApi api = Substitute.For<INethermindApi>();
+        api.Config<IInitConfig>().Returns(config);
+        api.SpecProvider.Returns(scenario == WarmupScenario.CustomSpec ? null : new ChainSpecBasedSpecProvider(spec));
+        api.Plugins.Returns(scenario == WarmupScenario.MissingMerge ? [] : new INethermindPlugin[] { new MergePlugin(spec, new MergeConfig()) });
+        if (scenario == WarmupScenario.Supported) api.MainProcessingContext.Returns(container.Resolve<IMainProcessingContext>());
+
+        Assert.That(StartRpc.GetPipelineWarmupSkipReason(api), Is.EqualTo(expectedReason));
+    }
+
+    [TestCase("foundation", false, false)]
+    [TestCase("foundation", true, false)]
+    [TestCase("hoodi", false, false)]
+    [TestCase("hoodi", true, false)]
+    [TestCase("sepolia", false, false)]
+    [TestCase("sepolia", true, false)]
+    [TestCase("foundation", false, true)]
+    [TestCase("amsterdam", false, false)]
+    [TestCase("amsterdam", true, false)]
+    public async Task Startup_pipeline_warmup_processes_payload(string chain, bool flatState, bool authenticated)
+    {
+        ChainSpec spec = LoadWarmupChainSpec(chain);
+        Block originalGenesis = spec.Genesis!;
+        Hash256 originalGenesisHash = originalGenesis.Hash!;
+        Dictionary<Address, ChainSpecAllocation>? originalAllocations = spec.Allocations;
+        using TempPath dataDirectory = TempPath.GetTempDirectory();
+        using TempPath secretPath = TempPath.GetTempFile();
+        const string secret = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        await File.WriteAllTextAsync(secretPath.Path, secret);
+        IRpcAuthentication authentication = authenticated
+            ? JwtAuthentication.FromFile(secretPath.Path, Timestamper.Default, NullLogger.Instance)
+            : NoAuthentication.Instance;
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        // Holding the node's RPC and engine ports fails the warmup if it binds them, where the consensus client could reach it.
+        using System.Net.Sockets.TcpListener livePorts = new(IPAddress.Loopback, 0);
+        livePorts.Start();
+        int livePort = ((IPEndPoint)livePorts.LocalEndpoint).Port;
+        ConfigProvider liveConfig = new(new InitConfig { BaseDbPath = dataDirectory.Path },
+            new JsonRpcConfig
+            {
+                Host = "127.0.0.1", Port = livePort, EnginePort = livePort, EnabledModules = [ModuleType.Eth], JwtSecretFile = secretPath.Path,
+                RequestQueueLimit = 7, MaxConcurrentSharedRequests = 11
+            });
+        ThreadPool.GetMinThreads(out int minWorkerThreads, out int minCompletionPortThreads);
+
+        await StartupPipelineWarmer.WarmupAsync(spec, liveConfig, flatState, cancellation.Token, authentication);
+
+        ThreadPool.GetMinThreads(out int warmedWorkerThreads, out int warmedCompletionPortThreads);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((warmedWorkerThreads, warmedCompletionPortThreads), Is.EqualTo((minWorkerThreads, minCompletionPortThreads)));
+            AssertRpcLimit(RpcLimits.Default.AcquireQueuedSlot, RpcLimits.Default.DecrementQueuedCalls, 7);
+            AssertRpcLimit(RpcLimits.Default.AcquireSharedSlot, RpcLimits.Default.DecrementSharedCalls, 11);
+            Assert.That(spec.Genesis, Is.SameAs(originalGenesis));
+            Assert.That(originalGenesis.Hash, Is.EqualTo(originalGenesisHash));
+            Assert.That(spec.Allocations, Is.SameAs(originalAllocations));
+            Assert.That(File.ReadAllText(secretPath.Path), Is.EqualTo(secret));
+            Assert.That(Directory.EnumerateDirectories(Path.Combine(dataDirectory.Path, "startup-warmup")), Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Startup_pipeline_warmup_keeps_live_head_metrics()
+    {
+        using BasicTestBlockchain live = await BasicTestBlockchain.Create();
+        // Live heights above the warm chain's make a warm value left in a gauge visible.
+        for (int i = 0; i < 4; i++) await live.AddBlock();
+        using TempPath dataDirectory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+
+        // The live chain advances before the warm blocks publish, as a restarted node does while it replays to its head.
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(dataDirectory.Path), false, cancellation.Token,
+            configureContainer: OnWarmRpcStart(() => live.AddBlock().GetAwaiter().GetResult()), liveBlockTree: live.BlockTree);
+
+        ulong liveHead = live.BlockTree.Head!.Number;
+        Assert.That((BlockchainMetrics.Blocks, BlockchainMetrics.BlockchainHeight, BlockchainMetrics.BestKnownBlockNumber),
+            Is.EqualTo((liveHead, liveHead, live.BlockTree.BestKnownNumber)));
+    }
+
+    [Test]
+    public async Task Startup_pipeline_warmup_restores_live_metrics_after_warm_reports()
+    {
+        using BasicTestBlockchain live = await BasicTestBlockchain.Create();
+        for (int i = 0; i < 4; i++) await live.AddBlock();
+        using ManualResetEventSlim reporting = new();
+        using ManualResetEventSlim release = new();
+        // Holds the warm report on its thread-pool thread, before it publishes the height gauges.
+        InterfaceLogger slowBlockLogger = Substitute.For<InterfaceLogger>();
+        slowBlockLogger.IsWarn.Returns(true);
+        slowBlockLogger.When(l => l.Warn(Arg.Any<string>())).Do(_ =>
+        {
+            reporting.Set();
+            release.Wait();
+        });
+        ILogger slowBlocks = new(slowBlockLogger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetLogger("SlowBlocks").Returns(slowBlocks);
+        StartupPipelineWarmer.WarmMetrics warmMetrics = new();
+        IProcessingStats stats = new StartupPipelineWarmer.WarmProcessingStats(live.StateReader, logManager, new BlocksConfig { SlowBlockThresholdMs = 0 }, warmMetrics);
+
+        stats.UpdateStats([Nethermind.Core.Test.Builders.Build.A.Block.WithNumber(2).TestObject], null, 1_000);
+        Assert.That(reporting.Wait(RunnerTimeout), Is.True);
+        Task restore = warmMetrics.RestoreLiveAsync(live.BlockTree);
+        bool restoredBeforeReport = restore.IsCompleted;
+        release.Set();
+        await restore.WaitAsync(RunnerTimeout);
+        // The warm report has published by now, so a restore that ran before it would have been overwritten.
+        Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref warmMetrics.PendingReports) == 0, RunnerTimeout), Is.True);
+
+        ulong liveHead = live.BlockTree.Head!.Number;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restoredBeforeReport, Is.False);
+            Assert.That((BlockchainMetrics.Blocks, BlockchainMetrics.BlockchainHeight), Is.EqualTo((liveHead, liveHead)));
+        }
+    }
+
+    [TestCase(2UL, new ulong[] { 10 }, 0UL, 10UL, TestName = "Warm metric value is replaced by the live value")]
+    [TestCase(9UL, new ulong[] { 10 }, 0UL, 9UL, TestName = "Live metric value published after the warm one is kept")]
+    [TestCase(2UL, new ulong[] { 10, 11 }, 0UL, 11UL, TestName = "Live head moving during the metric swap is followed")]
+    [TestCase(2UL, new ulong[] { 10 }, 12UL, 12UL, TestName = "Live metric value published during the swap is kept")]
+    public void Startup_pipeline_warmup_replaces_only_warm_metric_values(ulong gauge, ulong[] liveValues, ulong publishedOnFirstRead, ulong expected)
+    {
+        const ulong warmValue = 2;
+        ulong[] metric = [gauge];
+        int reads = 0;
+
+        StartupPipelineWarmer.ReplaceWarmValue(ref metric[0], warmValue, () =>
+        {
+            if (reads == 0 && publishedOnFirstRead != 0) metric[0] = publishedOnFirstRead;
+            return liveValues[Math.Min(reads++, liveValues.Length - 1)];
+        });
+
+        Assert.That(metric[0], Is.EqualTo(expected));
+    }
+
+    private static void AssertRpcLimit(Action acquire, Action release, int limit)
+    {
+        int acquired = 0;
+        try
+        {
+            for (; acquired < limit; acquired++) acquire();
+            Assert.Throws<LimitExceededException>(() =>
+            {
+                acquire();
+                acquired++;
+            });
+        }
+        finally
+        {
+            for (int i = 0; i < acquired; i++) release();
+        }
+    }
+
+    [Test]
+    public void Startup_pipeline_warmup_cancellation_does_not_create_storage()
+    {
+        using TempPath dataDirectory = TempPath.GetTempDirectory();
+
+        Assert.ThrowsAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(new ChainSpec(),
+            WarmupConfig(dataDirectory.Path), false, new CancellationToken(canceled: true)));
+
+        Assert.That(Directory.Exists(dataDirectory.Path), Is.False);
+    }
+
+    [Test]
+    public void Startup_pipeline_warmup_cleans_up_after_rpc_start_cancellation([Values] bool flatState)
+    {
+        ChainSpec spec = LoadWarmupChainSpec();
+        using TempPath dataDirectory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+
+        Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(spec,
+            WarmupConfig(dataDirectory.Path), flatState, cancellation.Token, configureContainer: CancelWhenRpcStarts(cancellation)));
+
+        Assert.That(Directory.EnumerateDirectories(Path.Combine(dataDirectory.Path, "startup-warmup")), Is.Empty);
+    }
+
+    private static IConfigProvider WarmupConfig(string dataDirectory) => new ConfigProvider(new InitConfig { BaseDbPath = dataDirectory });
+
+    private static Action<ContainerBuilder> CancelWhenRpcStarts(CancellationTokenSource cancellation, Action? beforeCancel = null) =>
+        OnWarmRpcStart(() =>
+        {
+            beforeCancel?.Invoke();
+            cancellation.Cancel();
+        });
+
+    private static Action<ContainerBuilder> OnWarmRpcStart(Action action)
+    {
+        IJsonRpcServiceConfigurer configurer = Substitute.For<IJsonRpcServiceConfigurer>();
+        configurer.When(c => c.Configure(Arg.Any<Microsoft.Extensions.DependencyInjection.IServiceCollection>())).Do(_ => action());
+        return builder => builder.AddSingleton(configurer);
+    }
+
+    private static ChainSpec LoadWarmupChainSpec(string chain = "foundation")
+    {
+        if (chain == "amsterdam")
+        {
+            using Stream source = typeof(IConfig).Assembly.GetManifestResourceStream("Nethermind.Config.chainspec.hoodi.json")!;
+            JsonNode genesis = JsonNode.Parse(source)!;
+            genesis["config"]!["amsterdamTime"] = 0;
+            using MemoryStream modified = new(System.Text.Encoding.UTF8.GetBytes(genesis.ToJsonString()));
+            return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), NullLogManager.Instance).Load(modified);
+        }
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), NullLogManager.Instance);
+        return loader.LoadEmbeddedOrFromFile($"chainspec/{chain}.json");
+    }
+
+    [Test, Platform("Win")]
+    public void Startup_pipeline_warmup_cleanup_failure_preserves_cancellation()
+    {
+        using TempPath dataDirectory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        FileStream? lockedFile = null;
+        try
+        {
+            Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
+                WarmupConfig(dataDirectory.Path), false, cancellation.Token, logger: new ILogger(logger),
+                configureContainer: CancelWhenRpcStarts(cancellation, () =>
+                {
+                    string directory = Directory.GetDirectories(Path.Combine(dataDirectory.Path, "startup-warmup"))[0];
+                    lockedFile = new FileStream(Path.Combine(directory, "locked"), FileMode.Create, FileAccess.Write, FileShare.None);
+                })));
+            logger.Received(1).Warn(Arg.Is<string>(message => message.Contains("Could not delete startup warmup directory")));
+        }
+        finally
+        {
+            lockedFile?.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task Startup_pipeline_warmup_does_not_control_instruction_warmup([Values] bool pipelineWarmupEnabled, [Values] bool evmWarmupEnabled)
+    {
+        IOverridableEnvFactory envFactory = Substitute.For<IOverridableEnvFactory>();
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IInitConfig>(new InitConfig { PipelineWarmupEnabled = pipelineWarmupEnabled, EvmWarmupEnabled = evmWarmupEnabled })
+            .AddSingleton(envFactory)
+            .AddSingleton<EvmWarmer>()
+            .Build();
+
+        await container.Resolve<EvmWarmer>().Execute(CancellationToken.None);
+
+        envFactory.Received(evmWarmupEnabled ? 1 : 0).Create();
+    }
+
     static EthereumRunnerTests()
     {
         // Trigger plugins loading early to ensure TypeDiscovery caches plugin's types
