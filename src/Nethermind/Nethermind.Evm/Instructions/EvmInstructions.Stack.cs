@@ -131,14 +131,18 @@ public static partial class EvmInstructions
                 return EvmExceptionType.None;
             }
         }
+        ushort destination;
         if (!TTracingInst.IsActive &&
             ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size))
-                is Instruction.JUMP or Instruction.JUMPI))
+                is Instruction.JUMP or Instruction.JUMPI) &&
+            // Fuse only onto a destination already known valid, or onto a JUMPI that will not be taken and so never
+            // validates it; otherwise the push and the jump run unfused and the jump handler does whatever analysis
+            // the destination still needs. Either way the gas, the stack and the outcome are the same.
+            (stack.IsKnownJumpDestination(destination = BinaryPrimitives.ReverseEndianness(
+                Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter))))
+             || (nextInstruction == Instruction.JUMPI && stack.PeekUInt256IsZero())))
         {
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
-            ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
-            destination = BinaryPrimitives.ReverseEndianness(destination);
-
             if (nextInstruction == Instruction.JUMP)
             {
                 vm.OpCodeCount++;
@@ -157,12 +161,8 @@ public static partial class EvmInstructions
                 }
             }
 
-            // Validate the jump destination and update the program counter if valid.
-            nint jumpTarget = JumpDestination((int)destination, ref stack);
-            if (jumpTarget < 0)
-                goto InvalidJumpDestination;
-            // Skip the JUMPDEST byte we just validated, charging its gas and count here.
-            programCounter = jumpTarget + 1;
+            // Skip the JUMPDEST byte validated above, charging its gas and count here.
+            programCounter = (nint)destination + 1;
             PrefetchCodeAtDestination(ref stack, programCounter);
             vm.OpCodeCount++;
             if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
@@ -191,8 +191,6 @@ public static partial class EvmInstructions
     Success:
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
-    InvalidJumpDestination:
-        return EvmExceptionType.InvalidJumpDestination;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
