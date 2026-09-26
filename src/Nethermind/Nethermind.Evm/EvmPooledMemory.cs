@@ -880,11 +880,10 @@ public struct EvmPooledMemory
         {
             // Over-zero to a chunk boundary so sequential MSTORE growth stays amortized; size the window from
             // requiredEnd rather than the expansion delta to limit wasted clearing for small frames.
-            // requiredEnd fits in the backing array. Shifting 29 set bits by clz(end - 1) gives chunk - 1;
+            // requiredEnd fits in the backing array. Shifting 61 set bits by clz(end - 1) gives chunk - 1;
             // forcing bit 10 and masking to 12 bits implements the 256–4096 byte clamp.
-            uint value = (uint)(requiredEnd - 1) | 1024U;
-            int leadingZeros = Bytes.LeadingZeroBits(value) - 32;
-            ulong zeroMask = (0x1fffffffU >> leadingZeros) & 0xfffU;
+            ulong value = (requiredEnd - 1) | 1024UL;
+            ulong zeroMask = (0x1fff_ffff_ffff_ffffUL >> Bytes.LeadingZeroBits(value)) & 0xfffUL;
             ulong target = Math.Min((ulong)memory.Length, (requiredEnd + zeroMask) & ~zeroMask);
             Array.Clear(memory, (int)initializedSize, (int)(target - initializedSize));
             initializedSize = target;
