@@ -169,18 +169,17 @@ public class GuestJumpDestinationTests
         Assert.That(actual, Is.EqualTo(expected), () => Describe(code, expected, actual));
         if (code[0] == (byte)Instruction.STOP) expected = JumpDestinationAnalyzer.EmptyBitmap;
         CodeInfo incremental = new(code);
-        long[] incrementalBitmap = incremental.IncrementalJumpBitmap;
         byte stackMemory = 0;
         EvmStack stack = new(0, ref stackMemory, code, incremental);
         for (int i = 0; i < code.Length; i++)
         {
             Assert.That(stack.IsJumpDestination(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"stack forward {i}");
-            Assert.That(incremental.AnalyzeJump(i, incrementalBitmap, code), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"forward {i}");
+            Assert.That(incremental.AnalyzeJump(i, code), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"forward {i}");
         }
         for (int i = code.Length - 1; i >= 0; i--)
         {
             Assert.That(stack.IsJumpDestination(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"stack backward {i}");
-            Assert.That(incremental.AnalyzeJump(i, incrementalBitmap, code), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"backward {i}");
+            Assert.That(incremental.AnalyzeJump(i, code), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"backward {i}");
         }
     }
 

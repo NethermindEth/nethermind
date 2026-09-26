@@ -22,7 +22,7 @@ public ref partial struct EvmStack
         if ((uint)destination >= (uint)CodeLength) return false;
         long[] bitmap = _jumpDestinations!;
         return JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination)
-            || (_codeInfo is not null && _codeInfo.AnalyzeJump(destination, bitmap, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength)));
+            || (_codeInfo is not null && _codeInfo.AnalyzeJump(destination, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength)));
     }
 
     /// <summary>Whether jump destinations are analyzed only when the code jumps to them.</summary>

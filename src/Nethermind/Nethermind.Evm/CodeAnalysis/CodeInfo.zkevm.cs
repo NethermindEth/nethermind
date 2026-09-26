@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -21,19 +20,18 @@ public sealed partial class CodeInfo
 
     /// <summary>Extends the scan far enough to decide <paramref name="destination"/>, and reports whether it is a jump destination.</summary>
     /// <param name="destination">A destination inside the code.</param>
-    /// <param name="bitmap">This code's <see cref="IncrementalJumpBitmap"/>.</param>
-    /// <param name="code">This code.</param>
+    /// <param name="code">The bytes of <see cref="Code"/>, as the caller already holds them.</param>
     /// <remarks>
     /// The guest pays for every byte it scans, and a frame typically jumps into a prefix of the code, so
     /// the scan stops at the first instruction boundary beyond the requested destination. A PUSH can
     /// overshoot it, but the resume cursor never splits an immediate or rewinds for an earlier query.
-    /// The caller passes the bitmap and code it already holds.
+    /// Requires <see cref="IncrementalJumpBitmap"/> to have been read already, as building a stack over
+    /// non-empty code does; the field is read directly to keep its lazy getter out of the jump handlers.
     /// </remarks>
-    internal bool AnalyzeJump(int destination, long[] bitmap, ReadOnlySpan<byte> code)
+    internal bool AnalyzeJump(int destination, ReadOnlySpan<byte> code)
     {
-        // Another bitmap would advance the cursor without the bits it covers ever being set.
-        Debug.Assert(ReferenceEquals(bitmap, _incrementalJumpBitmap), "AnalyzeJump must scan into this code's own bitmap");
         if (code[0] == (byte)Instruction.STOP || code[destination] != (byte)Instruction.JUMPDEST) return false;
+        long[] bitmap = _incrementalJumpBitmap!;
         _analyzedUntil = (nint)JumpDestinationAnalyzer.ScanUntil((nuint)_analyzedUntil, destination, bitmap, code);
         return JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination);
     }
