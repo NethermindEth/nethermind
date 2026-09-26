@@ -37,7 +37,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public int OpCodeCount;
 
         /// <summary>The opcode count from which a taken jump leaves the chain for a cancellation poll.</summary>
-        /// <remarks>Written by the cancelable driver before it enters the chain and read only on taken jumps.</remarks>
+        /// <remarks>Set by the cancelable driver before it enters the chain; the chain reads it only in bodies that may jump.</remarks>
         public int CancellationPollAt;
     }
 

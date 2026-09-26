@@ -333,7 +333,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     [TestCase(1024, false, Instruction.RETURNDATASIZE)]
     [TestCase(1024, true, Instruction.RETURNDATASIZE)]
     [TestCase(2048, true, Instruction.RETURNDATASIZE)]
-    public void Cancellation_WhenCodeTakesNoJump_IsPolledOnlyBeforeTheFirstOpcode(
+    public void Cancellation_is_polled_only_before_the_first_opcode_when_code_takes_no_jump(
         int continuingOpcodeCount,
         bool appendStop,
         Instruction opcode)
@@ -360,7 +360,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     ];
 
     [TestCaseSource(nameof(EndlessLoops))]
-    public void Cancellation_WhenLoopRunsPastPollInterval_IsPolledAtTakenJump(string loop)
+    public void Cancellation_is_polled_at_a_taken_jump_once_the_loop_passes_the_interval(string loop)
     {
         CountingCancellationTracer tracer = new(cancelAtPoll: 2);
 
@@ -369,7 +369,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [TestCaseSource(nameof(EndlessLoops))]
-    public void Cancellation_WhenLoopIsNotCancelled_IsPolledOncePerInterval(string loop)
+    public void Cancellation_is_polled_at_most_once_per_interval_in_an_uncancelled_loop(string loop)
     {
         CountingCancellationTracer tracer = new();
 
