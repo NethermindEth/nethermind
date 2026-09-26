@@ -148,6 +148,11 @@ public interface IJsonRpcConfig : IConfig
     public int? TraceModuleConcurrentInstances { get; set; }
 
     [ConfigItem(
+        Description = "The maximum number of workers tracing the transactions of one block at once in `debug_traceBlock*` and `trace_block`, for blocks that carry an access list: each transaction is traced alone on the state the list records before it. Debug and trace share this budget. `0` or `1` traces such blocks sequentially; larger values are capped at the number of logical processors and at 16.",
+        DefaultValue = "4")]
+    public int TraceBlockParallelism { get; set; }
+
+    [ConfigItem(
         Description = """
             The number of concurrent instances for non-sharable calls:
 

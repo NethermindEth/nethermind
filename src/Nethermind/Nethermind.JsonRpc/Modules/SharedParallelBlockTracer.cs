@@ -16,26 +16,26 @@ namespace Nethermind.JsonRpc.Modules;
 /// environments are retained per factory; active workers share the node-wide budget. Built the
 /// first time a module asks, with the same container configuration the module's own environment gets.</summary>
 public sealed class SharedParallelBlockTracer(
-    IOverridableEnvFactory envFactory,
+    ITraceEnvFactory envFactory,
     ILifetimeScope rootLifetimeScope,
     IPrefixStateSeedSource prefixSeeds,
-    ParallelTraceBudget budget,
+    ParallelTraceBudgets budgets,
     ILogManager logManager,
     Func<ContainerBuilder, ContainerBuilder> configureProcessing)
 {
     private readonly Lock _lock = new();
     private ParallelBlockTracer? _tracer;
 
-    /// <summary>Null on a node without the index: nothing to seed from, nothing to build.</summary>
+    /// <summary>Null when nothing can seed a block, or when no seed this chain can take allows two workers.</summary>
     public IParallelBlockTracer? Get()
     {
-        if (!prefixSeeds.Enabled || budget.Degree < 2) return null;
+        if (!prefixSeeds.Enabled || !budgets.AllowsParallelTracing) return null;
 
         lock (_lock)
         {
             if (_tracer is null)
             {
-                _tracer = new ParallelBlockTracer(BuildEnvironment, prefixSeeds, budget, logManager);
+                _tracer = new ParallelBlockTracer(BuildEnvironment, prefixSeeds, budgets, logManager);
                 rootLifetimeScope.Disposer.AddInstanceForDisposal(_tracer);
             }
 
@@ -45,7 +45,7 @@ public sealed class SharedParallelBlockTracer(
 
     private IOverridableEnv<ParallelBlockTracer.Components> BuildEnvironment()
     {
-        IOverridableEnv env = envFactory.Create();
+        IOverridableEnv env = envFactory.CreateForTracing();
         ILifetimeScope scope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             configureProcessing(builder)
                 .AddModule(env)

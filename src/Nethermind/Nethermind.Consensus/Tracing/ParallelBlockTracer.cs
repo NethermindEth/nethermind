@@ -33,12 +33,13 @@ namespace Nethermind.Consensus.Tracing;
 /// the first block and kept: they spend their time blocked in state reads, and a thread pool hands out threads for
 /// blocked work too slowly for a block to ever see the whole degree. There are twice as many threads as the degree
 /// and the degree is enforced per transaction by a semaphore, so two blocks traced at once interleave transaction by
-/// transaction instead of the second waiting for the whole of the first. The calling thread is one of the workers.</remarks>
+/// transaction instead of the second waiting for the whole of the first. The calling thread is one of the workers.
+/// Each block draws on the budget of the seed it stands on, so the setting for that kind of seed bounds its workers.</remarks>
 public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 {
     private readonly ShareableOverridableEnvSource<Components> _environments;
     private readonly IPrefixStateSeedSource _seeds;
-    private readonly ParallelTraceBudget _slots;
+    private readonly ParallelTraceBudgets _budgets;
     private readonly Workers _workers;
     private readonly int _degree;
     private readonly ILogger _logger;
@@ -51,12 +52,12 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         get { lock (_runs) return _disposed; }
     }
 
-    /// <summary>Owns the supplied environments, but borrows the budget. Dispose the tracer before the budget.</summary>
-    public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, ParallelTraceBudget budget, ILogManager logManager)
+    /// <summary>Owns the supplied environments, but borrows the budgets. Dispose the tracer before the budgets.</summary>
+    public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, ParallelTraceBudgets budgets, ILogManager logManager)
     {
-        _degree = budget.Degree;
+        _degree = budgets.TotalDegree;
         _environments = new ShareableOverridableEnvSource<Components>(buildEnvironment, _degree);
-        _slots = budget;
+        _budgets = budgets;
         _workers = new Workers(2 * _degree);
         _seeds = seeds;
         _logger = logManager.GetClassLogger<ParallelBlockTracer>();
@@ -92,7 +93,8 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         out IReadOnlyList<TTrace>? traces)
     {
         traces = null;
-        if (_degree < 2 || !_seeds.Enabled || block.Transactions.Length < 2 || !HashesKnown(block.Transactions)) return false;
+        if (!_seeds.Enabled || block.Transactions.Length < 2 || !HashesKnown(block.Transactions)) return false;
+        if (!_budgets.TryGetParallel(block.Header, out ParallelTraceBudget? slots)) return false;
 
         // Counted under the same lock disposal takes, so a tracer being disposed either sees this run and waits for
         // it or refuses it outright: the caller traces a share of the block on its own thread, and nothing it holds
@@ -114,9 +116,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                 Cursor cursor = new();
 
                 IPrefixStateSeedSource callerSeeds = covered.CreateWorkerSeeds();
-                if (!TraceOne(block, parent, transactions, cursor.Next(), callerSeeds, forTransaction, results, emitter, stop.Token)) return false;
+                if (!TraceOne(block, parent, transactions, cursor.Next(), slots, callerSeeds, forTransaction, results, emitter, stop.Token)) return false;
 
-                int helpers = Math.Min(_degree, transactions.Length - 1) - 1;
+                int helpers = Math.Min(slots.Degree, transactions.Length - 1) - 1;
                 Task[] tasks = new Task[Math.Max(0, helpers)];
                 workers = tasks.Length + 1;
                 int queued = 0;
@@ -126,10 +128,10 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                     for (; queued < tasks.Length; queued++)
                     {
                         IPrefixStateSeedSource seeds = covered.CreateWorkerSeeds();
-                        tasks[queued] = QueueWorker(() => TraceMany(block, parent, transactions, cursor, seeds, forTransaction, results, emitter, stop), stop.Token);
+                        tasks[queued] = QueueWorker(() => TraceMany(block, parent, transactions, cursor, slots, seeds, forTransaction, results, emitter, stop), stop.Token);
                     }
 
-                    TraceMany(block, parent, transactions, cursor, callerSeeds, forTransaction, results, emitter, stop);
+                    TraceMany(block, parent, transactions, cursor, slots, callerSeeds, forTransaction, results, emitter, stop);
                 }
                 catch (Exception exception)
                 {
@@ -143,7 +145,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
                 if (afterTransactions is not null)
                 {
-                    results[transactions.Length] = TraceAfterTransactions(block, parent, covered.CreateWorkerSeeds(), afterTransactions, token);
+                    results[transactions.Length] = TraceAfterTransactions(block, parent, slots, covered.CreateWorkerSeeds(), afterTransactions, token);
                     emitter.Publish();
                 }
 
@@ -199,6 +201,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
     internal Task QueueWorker(Action action, CancellationToken token) => _workers.Run(action, token);
 
+    /// <summary>One environment per permit of every budget, so no permit holder finds the pool exhausted.</summary>
+    internal Scope<Components> RentEnvironment(BlockHeader parent) => _environments.BuildAndOverride(parent);
+
     private bool Enter()
     {
         lock (_runs)
@@ -218,14 +223,14 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         }
     }
 
-    private void TraceMany<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, Cursor cursor, IPrefixStateSeedSource seeds,
+    private void TraceMany<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, Cursor cursor, ParallelTraceBudget slots, IPrefixStateSeedSource seeds,
         Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, IReadOnlyCollection<TTrace>?[] results, Emitter<TTrace> emitter, CancellationTokenSource stop)
     {
         try
         {
             for (int i = cursor.Next(); i < transactions.Length; i = cursor.Next())
             {
-                if (!TraceOne(block, parent, transactions, i, seeds, forTransaction, results, emitter, stop.Token))
+                if (!TraceOne(block, parent, transactions, i, slots, seeds, forTransaction, results, emitter, stop.Token))
                     throw new InvalidOperationException("The tracer bounded the first transaction and refused a later one.");
             }
         }
@@ -237,16 +242,16 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     }
 
     /// <summary>False when the environment cannot seed or the tracer cannot be bounded; the caller replays the block.</summary>
-    private bool TraceOne<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, int index, IPrefixStateSeedSource seeds,
+    private bool TraceOne<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, int index, ParallelTraceBudget slots, IPrefixStateSeedSource seeds,
         Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, IReadOnlyCollection<TTrace>?[] results, Emitter<TTrace> emitter, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         Hash256 hash = transactions[index].Hash!;
-        _slots.Wait(token);
+        slots.Wait(token);
         try
         {
-            using Scope<Components> scope = _environments.BuildAndOverride(parent);
-            if (scope.Component.Executor?.CanSeed != true || scope.Component.SpecProvider.GetSpec(block.Header).BlockLevelAccessListsEnabled) return false;
+            using Scope<Components> scope = RentEnvironment(parent);
+            if (scope.Component.Executor?.CanSeed != true) return false;
             IBlockTracer<TTrace> tracer = forTransaction(scope.Component.WorldState, hash);
             try
             {
@@ -272,7 +277,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         }
         finally
         {
-            _slots.Release();
+            slots.Release();
         }
 
         // Outside the permit and the environment on purpose: writing the trace out ends in a blocking flush of the
@@ -283,13 +288,13 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         return true;
     }
 
-    private IReadOnlyCollection<TTrace> TraceAfterTransactions<TTrace>(Block block, BlockHeader parent, IPrefixStateSeedSource seeds,
+    private IReadOnlyCollection<TTrace> TraceAfterTransactions<TTrace>(Block block, BlockHeader parent, ParallelTraceBudget slots, IPrefixStateSeedSource seeds,
         Func<IWorldState, IBlockTracer<TTrace>> afterTransactions, CancellationToken token)
     {
-        _slots.Wait(token);
+        slots.Wait(token);
         try
         {
-            using Scope<Components> scope = _environments.BuildAndOverride(parent);
+            using Scope<Components> scope = RentEnvironment(parent);
             IBlockTracer<TTrace> tracer = afterTransactions(scope.Component.WorldState);
             try
             {
@@ -307,7 +312,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         }
         finally
         {
-            _slots.Release();
+            slots.Release();
         }
     }
 
