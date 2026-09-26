@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Ssz;
 
@@ -32,6 +34,17 @@ public partial class DataColumnsByRootIdentifier
     [SszList(128)] // NUMBER_OF_COLUMNS
     public ulong[]? Columns { get; set; }
 }
+
+/// <summary>A <c>data_column_sidecars_by_range</c> or <c>by_root</c> dial: the wire request and whether the response must be Gloas-shaped.</summary>
+/// <remarks>
+/// The request SSZ is the same for both shapes (gloas/p2p-interface.md changes only the <c>DataColumnSidecar</c> response),
+/// and the libp2p host dispatches a dial through the first <c>ISessionProtocol</c> closing of a protocol type only,
+/// so one closing per protocol carries the shape with the request.
+/// </remarks>
+public readonly record struct DataColumnSidecarsDial<TRequest>(TRequest Request, bool Gloas);
+
+/// <summary>A data column sidecars response in the shape its <see cref="DataColumnSidecarsDial{TRequest}"/> asked for; the other list is empty.</summary>
+public sealed record ForkedDataColumnSidecars(IReadOnlyList<DataColumnSidecar> Fulu, IReadOnlyList<DataColumnSidecarGloas> Gloas);
 
 /// <summary>Fulu req/resp <c>DataColumnsByRootIdentifiers</c>: bare SSZ list, <c>LIMIT = MAX_REQUEST_BLOCKS_DENEB</c> (p2p-interface.md).</summary>
 [SszContainer(isCollectionItself: true)]

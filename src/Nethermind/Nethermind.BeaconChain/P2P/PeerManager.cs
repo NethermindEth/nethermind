@@ -853,6 +853,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <summary>Internal so a test can assert ban state without dialing: see <see cref="RecordDisconnect(string,long,long,ulong,string)"/>.</summary>
     internal bool IsBannedForTest(string peerId) => IsBanned(peerId);
 
+    internal static long MessagesSentForTest(IBeaconSyncPeer peer) => ((ManagedPeer)peer).MessagesSent;
+
     /// <summary>Internal so a test can put an address straight into the "dialing" reservation set,
     /// to exercise <see cref="TryGetPeer"/>'s own guard without racing a real dial's transient window.
     /// <paramref name="enr"/> lets a test also exercise the Beacon API's <c>enr</c> field without a live dial.</summary>
@@ -929,8 +931,17 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return await p2p.RequestDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token);
         }
 
-        public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
-            throw new NotSupportedException("The Gloas data_column_sidecars_by_range dial is not implemented");
+        public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
+        {
+            RecordMessageSent();
+            return await p2p.RequestGloasDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token);
+        }
+
+        public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
+        {
+            RecordMessageSent();
+            return await p2p.RequestGloasDataColumnSidecarsByRootAsync(Session, identifiers, token);
+        }
 
         public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token)
         {

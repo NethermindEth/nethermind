@@ -15,7 +15,7 @@ using Nethermind.Libp2p.Core;
 
 namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 
-/// <summary>The Fulu <c>data_column_sidecars_by_range</c> v1 protocol.</summary>
+/// <summary>The Fulu <c>data_column_sidecars_by_range</c> v1 protocol, dialable for Fulu or Gloas-shaped sidecars.</summary>
 /// <remarks>
 /// The listen side serves custodied columns from the local <see cref="DataColumnSidecarPool"/>,
 /// skipping slots or columns it does not hold. It serves only the block <see cref="BeaconChainStore"/>
@@ -23,23 +23,49 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 /// responder's view of the current fork choice; a competing block's columns are never served.
 /// The dial side validates per-chunk fork-digest context
 /// bytes (in the shared base) and that every returned sidecar's slot and column were actually asked for.
+/// A Gloas dial's window must lie wholly in Gloas epochs.
 /// </remarks>
 public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, DataColumnSidecarPool pool, BeaconChainStore store) : DataColumnSidecarsProtocolBase(spec),
-    ISessionProtocol<DataColumnSidecarsByRangeRequest, IReadOnlyList<DataColumnSidecar>>
+    ISessionProtocol<DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>
 {
     /// <summary>Fixed part (2 x Uint64 + a 4-byte list offset) plus the variable columns list, bounded by NUMBER_OF_COLUMNS: an upper bound for framing, not an exact length (the columns list may be shorter).</summary>
     private const int MaxRequestLength = 2 * sizeof(ulong) + 4 + Eip7594DasConstants.NumberOfColumns * sizeof(ulong);
 
     public string Id => "/eth2/beacon_chain/req/data_column_sidecars_by_range/1/ssz_snappy";
 
-    public async Task<IReadOnlyList<DataColumnSidecar>> DialAsync(IChannel downChannel, ISessionContext context, DataColumnSidecarsByRangeRequest request)
+    /// <exception cref="ArgumentOutOfRangeException">The columns are empty or too many; or, for a Gloas dial, the window is empty, runs past the last slot or starts before the Gloas fork.</exception>
+    public async Task<ForkedDataColumnSidecars> DialAsync(IChannel downChannel, ISessionContext context, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest> dial) =>
+        dial.Gloas
+            ? new ForkedDataColumnSidecars([], await DialGloasAsync(downChannel, dial.Request))
+            : new ForkedDataColumnSidecars(await DialFuluAsync(downChannel, dial.Request), []);
+
+    private async Task<IReadOnlyList<DataColumnSidecar>> DialFuluAsync(IChannel downChannel, DataColumnSidecarsByRangeRequest request)
     {
-        int requestedColumns = request.Columns?.Length ?? 0;
-        if (requestedColumns == 0 || requestedColumns > Eip7594DasConstants.NumberOfColumns)
+        int requestedColumns = ValidateRequestedColumns(request.Columns, nameof(request));
+
+        Stream stream = new ChannelStreamAdapter(downChannel);
+        using (CancellationTokenSource cts = StartTimeout(RespTimeout))
         {
-            // Never trust an oversized/empty ask on the wire: reject it before dialing rather than
-            // let the listen side's fixed-size ReadRequestAsync bound be the only thing catching this.
-            throw new ArgumentOutOfRangeException(nameof(request), requestedColumns, $"Columns must be 1..{Eip7594DasConstants.NumberOfColumns}");
+            await WriteRequestAndEofAsync(downChannel, stream, DataColumnSidecarsByRangeRequest.Encode(request), cts.Token);
+        }
+
+        IReadOnlyList<DataColumnSidecar> sidecars = await ReadSidecarChunksAsync(stream, MaxSidecars(request.Count, requestedColumns), Id);
+
+        HashSet<ulong> requestedColumnSet = [.. request.Columns!];
+        foreach (DataColumnSidecar sidecar in sidecars)
+        {
+            ThrowIfNotRequested(request.StartSlot, request.Count, requestedColumnSet, sidecar.SignedBlockHeader!.Message!.Slot, sidecar.Index);
+        }
+
+        return sidecars;
+    }
+
+    private async Task<IReadOnlyList<DataColumnSidecarGloas>> DialGloasAsync(IChannel downChannel, DataColumnSidecarsByRangeRequest request)
+    {
+        int requestedColumns = ValidateRequestedColumns(request.Columns, nameof(request));
+        if (request.Count == 0 || request.Count - 1 > ulong.MaxValue - request.StartSlot || Spec.GetEpoch(request.StartSlot) < Spec.GloasForkEpoch)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), request.StartSlot, $"The window of {request.Count} slots from slot {request.StartSlot} must be non-empty and lie wholly in Gloas epochs");
         }
 
         Stream stream = new ChannelStreamAdapter(downChannel);
@@ -48,22 +74,40 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
             await WriteRequestAndEofAsync(downChannel, stream, DataColumnSidecarsByRangeRequest.Encode(request), cts.Token);
         }
 
-        ulong slotCount = Math.Min(request.Count, BlocksProtocolBase.MaxRequestBlocks);
-        int maxSidecars = (int)Math.Min(MaxRequestDataColumnSidecars, slotCount * (ulong)requestedColumns);
-        IReadOnlyList<DataColumnSidecar> sidecars = await ReadSidecarChunksAsync(stream, maxSidecars, Id);
+        IReadOnlyList<DataColumnSidecarGloas> sidecars = await ReadGloasSidecarChunksAsync(stream, MaxSidecars(request.Count, requestedColumns), Id);
 
         HashSet<ulong> requestedColumnSet = [.. request.Columns!];
-        foreach (DataColumnSidecar sidecar in sidecars)
+        foreach (DataColumnSidecarGloas sidecar in sidecars)
         {
-            ulong slot = sidecar.SignedBlockHeader!.Message!.Slot;
-            if (slot < request.StartSlot || slot - request.StartSlot >= request.Count || !requestedColumnSet.Contains(sidecar.Index))
-            {
-                RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
-                throw new Eth2ReqRespException($"Data column sidecar at slot {slot} index {sidecar.Index} outside the requested range or columns");
-            }
+            ThrowIfNotRequested(request.StartSlot, request.Count, requestedColumnSet, sidecar.Slot, sidecar.Index);
         }
 
         return sidecars;
+    }
+
+    // Never trust an oversized/empty ask on the wire: reject it before dialing rather than
+    // let the listen side's fixed-size ReadRequestAsync bound be the only thing catching this.
+    private static int ValidateRequestedColumns(ulong[]? columns, string paramName)
+    {
+        int requestedColumns = columns?.Length ?? 0;
+        if (requestedColumns == 0 || requestedColumns > Eip7594DasConstants.NumberOfColumns)
+        {
+            throw new ArgumentOutOfRangeException(paramName, requestedColumns, $"Columns must be 1..{Eip7594DasConstants.NumberOfColumns}");
+        }
+
+        return requestedColumns;
+    }
+
+    private static int MaxSidecars(ulong count, int requestedColumns) =>
+        (int)Math.Min(MaxRequestDataColumnSidecars, Math.Min(count, BlocksProtocolBase.MaxRequestBlocks) * (ulong)requestedColumns);
+
+    private void ThrowIfNotRequested(ulong startSlot, ulong count, HashSet<ulong> requestedColumns, ulong slot, ulong column)
+    {
+        if (slot < startSlot || slot - startSlot >= count || !requestedColumns.Contains(column))
+        {
+            RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            throw new Eth2ReqRespException($"Data column sidecar at slot {slot} index {column} outside the requested range or columns");
+        }
     }
 
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
