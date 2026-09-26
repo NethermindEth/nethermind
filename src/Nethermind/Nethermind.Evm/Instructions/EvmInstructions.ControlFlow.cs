@@ -38,26 +38,6 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Marks a valid jump destination.
-    /// This instruction only deducts the jump destination gas cost without modifying the stack.
-    /// </summary>
-    /// <param name="vm">The virtual machine instance.</param>
-    /// <param name="stack">The execution stack.</param>
-    /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <returns>
-    /// <see cref="EvmExceptionType.None"/> on success.
-    /// </returns>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        // Deduct the gas cost specific for a jump destination marker.
-        if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-
-        return EvmExceptionType.None;
-    }
-
-    /// <summary>
     /// Executes an unconditional jump.
     /// Pops a jump destination from the stack and validates it.
     /// If the destination is valid, updates the program counter; otherwise, returns an error.
