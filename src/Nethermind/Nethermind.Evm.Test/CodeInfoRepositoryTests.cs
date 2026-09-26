@@ -203,16 +203,11 @@ public class CodeInfoRepositoryTests
             stateProvider.CreateAccount(TestItem.AddressA, 0);
         }
 
-        bool codeInfoLoaderCalled = false;
-        CodeInfoRepository sut = new(stateProvider, new EthereumPrecompileProvider(), (_, _, _) =>
-        {
-            codeInfoLoaderCalled = true;
-            return CodeInfo.Empty;
-        });
+        LoadTrackingCodeInfoRepository sut = new(stateProvider);
 
         Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.False);
 
-        Assert.That(codeInfoLoaderCalled, Is.False);
+        Assert.That(sut.LoadCalled, Is.False);
     }
 
     public static IEnumerable<TestCaseData> DelegationCodeCases()
@@ -384,5 +379,16 @@ public class CodeInfoRepositoryTests
         EthereumCodeInfoRepository sut = new(stateProvider);
 
         Assert.That(sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec), Is.EqualTo(new CodeInfo(code)));
+    }
+
+    private sealed class LoadTrackingCodeInfoRepository(IWorldState worldState) : CodeInfoRepository(worldState, new EthereumPrecompileProvider())
+    {
+        public bool LoadCalled { get; private set; }
+
+        protected override CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash)
+        {
+            LoadCalled = true;
+            return CodeInfo.Empty;
+        }
     }
 }
