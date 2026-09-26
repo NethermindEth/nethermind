@@ -559,6 +559,51 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public void Raw_utf8_params_read_null_input_as_omitted()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule
+            .eth_call(
+                Arg.Any<SignableTransactionForRpc>(),
+                Arg.Any<BlockParameter?>(),
+                Arg.Any<Dictionary<Address, AccountOverride>?>(),
+                Arg.Any<BlockOverride?>())
+            .ReturnsForAnyArgs(static _ => ResultWrapper<HexBytes>.Success(default));
+
+        RpcTest.AssertSuccess(TestRawRequest(ethRpcModule, "eth_call", """[{"data":"0x602a","input":null},"latest"]"""));
+
+        ethRpcModule.Received(1).eth_call(
+            Arg.Is<SignableTransactionForRpc>(static tx => tx is LegacyTransactionForRpc && ((LegacyTransactionForRpc)tx).Input!.SequenceEqual(new byte[] { 0x60, 0x2a })),
+            Arg.Any<BlockParameter?>(),
+            Arg.Any<Dictionary<Address, AccountOverride>?>(),
+            Arg.Any<BlockOverride?>());
+    }
+
+    [TestCase("", null)]
+    [TestCase(",\"after\":null", null)]
+    [TestCase(",\"after\":1", 1)]
+    [TestCase(",\"after\":\"0x1\"", 1)]
+    public void Raw_utf8_params_read_null_trace_filter_after_as_omitted(string after, int? expected)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+        traceRpcModule.trace_filter(Arg.Any<TraceFilterForRpc>()).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success([]));
+
+        RpcTest.AssertSuccess(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\"{after}}}]"));
+
+        traceRpcModule.Received(1).trace_filter(Arg.Is<TraceFilterForRpc>(filter => filter.After == expected));
+    }
+
+    [Test]
+    public void Raw_utf8_params_reject_invalid_trace_filter_after([Values("true", "[]", "\"0xg\"")] string after)
+    {
+        ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
+
+        AssertJsonRpcError(TestRawRequest(traceRpcModule, nameof(ITraceRpcModule.trace_filter), $"[{{\"fromBlock\":\"latest\",\"after\":{after}}}]"), ErrorCodes.InvalidParams);
+
+        traceRpcModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
     public void Missing_marker_on_an_optional_argument_binds_its_default([Values(false, true)] bool rawUtf8)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
