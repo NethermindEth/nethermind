@@ -20,7 +20,7 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.DelegatorHasPendingTx;
 
             if ((!state.SenderAccount.HasCode || !worldState.IsDelegatedCode(state.SenderAccount.CodeHash))
-                && !pendingDelegations.HasPending(tx.SenderAddress!))
+                && !pendingDelegations.HasPending(tx.SenderAddress!, state.SenderAccount.Nonce))
                 return AcceptTxResult.Accepted;
             // Every fresh EIP-8250 key is current at sequence 0, so the count bound the account-nonce gate gave
             // this sender is taken directly: one authorization must not invalidate a bucketful at once.
@@ -53,8 +53,9 @@ namespace Nethermind.TxPool.Filters
                 {
                     continue;
                 }
-                if (standardPool.ContainsBucket(authority)
-                    || blobPool.ContainsBucket(authority))
+                // An authorization below the authority's nonce can never apply, so it cannot disturb the pending transactions.
+                if ((standardPool.ContainsBucket(authority) || blobPool.ContainsBucket(authority))
+                    && authorization.Nonce >= worldState.GetNonce(authority))
                 {
                     return true;
                 }

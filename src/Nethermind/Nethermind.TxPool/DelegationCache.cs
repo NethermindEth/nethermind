@@ -4,40 +4,61 @@
 using Nethermind.Core;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Nethermind.TxPool;
 
 internal sealed class DelegationCache(ulong chainId)
 {
-    private readonly ConcurrentDictionary<AddressAsKey, int> _pendingDelegations = new();
+    // Keyed by authority for a lock-free miss; the nonce lists are read and written only under _lock.
+    private readonly ConcurrentDictionary<AddressAsKey, List<ulong>> _pendingNonces = new();
+    private readonly Lock _lock = new();
 
     /// <summary>Returns the authority <paramref name="tuple"/> can delegate on this chain, or <c>null</c> when it cannot.</summary>
     /// <remarks>EIP-7702 skips a tuple whose chain id is neither 0 nor the local one, so such a tuple never delegates its authority.</remarks>
     public Address? GetAuthority(AuthorizationTuple tuple) =>
         tuple.ChainId.IsZero || tuple.ChainId == chainId ? tuple.Authority : null;
 
-    public bool HasPending(AddressAsKey key) => _pendingDelegations.ContainsKey(key);
-
-    public void DecrementDelegationCount(AddressAsKey key) => InternalIncrement(key, false);
-    public void IncrementDelegationCount(AddressAsKey key) => InternalIncrement(key, true);
-
-    private void InternalIncrement(AddressAsKey key, bool increment)
+    /// <summary>Whether a pooled authorization by <paramref name="authority"/> can still apply at or after <paramref name="accountNonce"/>.</summary>
+    /// <remarks>An authorization applies only while its nonce equals the authority's, and account nonces never decrease,
+    /// so one below <paramref name="accountNonce"/> can never apply again.</remarks>
+    public bool HasPending(AddressAsKey authority, ulong accountNonce)
     {
-        int value = increment ? 1 : -1;
-        int lastCount = _pendingDelegations.AddOrUpdate(key,
-            (k) =>
-            {
-                if (increment)
-                    return 1;
-                return 0;
-            },
-            (k, c) => c + value);
+        if (!_pendingNonces.TryGetValue(authority, out List<ulong>? nonces))
+            return false;
 
-        if (lastCount == 0)
+        lock (_lock)
         {
-            //Remove() is threadsafe and only removes if the count is the same as the updated one
-            ((ICollection<KeyValuePair<AddressAsKey, int>>)_pendingDelegations).Remove(
-                new KeyValuePair<AddressAsKey, int>(key, lastCount));
+            foreach (ulong nonce in nonces)
+            {
+                if (nonce >= accountNonce)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void Add(AuthorizationTuple tuple)
+    {
+        if (GetAuthority(tuple) is not { } authority)
+            return;
+
+        lock (_lock)
+        {
+            _pendingNonces.GetOrAdd(authority, static _ => []).Add(tuple.Nonce);
+        }
+    }
+
+    public void Remove(AuthorizationTuple tuple)
+    {
+        if (GetAuthority(tuple) is not { } authority)
+            return;
+
+        lock (_lock)
+        {
+            if (_pendingNonces.TryGetValue(authority, out List<ulong>? nonces) && nonces.Remove(tuple.Nonce) && nonces.Count == 0)
+                _pendingNonces.TryRemove(authority, out _);
         }
     }
 }

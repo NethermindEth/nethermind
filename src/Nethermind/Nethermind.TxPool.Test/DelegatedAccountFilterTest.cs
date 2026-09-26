@@ -201,7 +201,7 @@ internal class DelegatedAccountFilterTest
     {
         (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) = CreatePools();
         DelegationCache pendingDelegations = new(TestBlockchainIds.ChainId);
-        pendingDelegations.IncrementDelegationCount(TestItem.AddressA);
+        pendingDelegations.Add(new AuthorizationTuple(0, TestItem.AddressC, 1, new Core.Crypto.Signature(new byte[64], 0), TestItem.AddressA));
         DelegatedAccountFilter filter = CreateFilter(standardPool, blobPool, delegationCache: pendingDelegations);
         Transaction transaction = Build.A.Transaction.WithNonce(nonce).SignedAndResolved(Ecdsa, TestItem.PrivateKeyA).TestObject;
         TestReadOnlyStateProvider stateProvider = new();
@@ -250,7 +250,7 @@ internal class DelegatedAccountFilterTest
     {
         (TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) = CreatePools();
         DelegationCache pendingDelegations = new(TestBlockchainIds.ChainId);
-        pendingDelegations.IncrementDelegationCount(TestItem.AddressA);
+        pendingDelegations.Add(new AuthorizationTuple(0, TestItem.AddressC, 0, new Core.Crypto.Signature(new byte[64], 0), TestItem.AddressA));
         DelegatedAccountFilter filter = CreateFilter(standardPool, blobPool, delegationCache: pendingDelegations);
         Transaction transaction = Build.A.Transaction
             .WithNonce(1)
