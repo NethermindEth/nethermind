@@ -1129,6 +1129,34 @@ namespace Nethermind.Db.Test
                 "the bounds share their capped:8 prefix, so this range keeps the prefix index and must still yield every key in it");
         }
 
+        [Test]
+        public void GetAll_on_a_prefix_extractor_database_returns_every_key(
+            [Values] bool flush,
+            [Values] bool ordered,
+            [Values(16, DbOnTheRocks.FullEnumerationBatchSize + 16)] int count)
+        {
+            string dbPath = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
+            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
+            Directory.CreateDirectory(dbPath);
+
+            IDbConfig config = new DbConfig();
+            using DbOnTheRocks db = new(dbPath, GetRocksDbSettings(dbPath, "Code"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+
+            for (int i = 0; i < count; i++)
+            {
+                db.PutSpan(Keccak.Compute(i.ToBigEndianByteArray()).Bytes, [(byte)i], WriteFlags.None);
+            }
+
+            if (flush) db.Flush();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.GetAll(ordered).Count(), Is.EqualTo(count));
+                Assert.That(db.GetAllKeys(ordered).Count(), Is.EqualTo(count));
+                Assert.That(db.GetAllValues(ordered).Count(), Is.EqualTo(count));
+            }
+        }
+
         [TestCase(0, 0, ExpectedResult = false, TestName = "CrossesPrefixBucket_OnADatabaseWithoutAnExtractor_IsFalse")]
         [TestCase(8, 3, ExpectedResult = true, TestName = "CrossesPrefixBucket_OnBoundsShorterThanThePrefix_IsTrue")]
         [TestCase(8, 8, ExpectedResult = false, TestName = "CrossesPrefixBucket_OnBoundsSharingThePrefix_IsFalse")]
