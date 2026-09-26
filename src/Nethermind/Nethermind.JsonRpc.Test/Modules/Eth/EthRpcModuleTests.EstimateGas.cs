@@ -197,6 +197,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FrameGas_EstimateFrameGas_ReportsMissingState([Values] bool withOverride)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        BlockHeader pruned = Build.A.BlockHeader.WithNumber(1_000).WithStateRoot(TestItem.KeccakA).TestObject;
+        Transaction tx = FrameGasRequest().ToTransaction().Data!;
+        bool[] fill = [true, true];
+        Dictionary<Address, AccountOverride>? stateOverride = withOverride ? new() { [TestItem.AddressB] = new AccountOverride { Balance = 1 } } : null;
+
+        Result<TxFrame[]> result = ctx.Test.Bridge.EstimateFrameGas(pruned, tx, fill, fill, 1_000_000, 150, stateOverride, null, default);
+
+        Assert.That(result.Error, Does.StartWith("No state available"));
+    }
+
+    [Test]
     public async Task FrameGas_EstimateGas_ReportsVerifierRevert()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));

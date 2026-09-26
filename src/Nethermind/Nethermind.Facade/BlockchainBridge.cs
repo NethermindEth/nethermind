@@ -229,12 +229,16 @@ namespace Nethermind.Facade
             // The next block's context, as the gas estimate that follows uses.
             if (HasOverrides(stateOverride, null, blockOverride))
             {
-                using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(executionHeader, stateOverride, blockOverride);
+                if (!processingEnv.TryBuildAndOverride(executionHeader, stateOverride, blockOverride, out Scope<BlockProcessingComponents>? scope))
+                    return Result<TxFrame[]>.Fail(StateUnavailable(header).Error!);
+                using IDisposable _ = scope;
                 GasEstimator estimator = new(scope.Component.TransactionProcessor, scope.Component.WorldState, specProvider, blocksConfig);
                 return estimator.EstimateFrameGas(tx, CreateCallContext(executionHeader, tx, treatBlockHeaderAsParentBlock: true, blobBaseFeeOverride: null),
                     fillExecution, fillState, gasCap, errorMargin, cancellationToken);
             }
-            using IReadOnlyTxProcessingScope shared = shareableTxProcessorSource.Build(executionHeader);
+            if (!shareableTxProcessorSource.TryBuild(executionHeader, out IReadOnlyTxProcessingScope? shared))
+                return Result<TxFrame[]>.Fail(StateUnavailable(header).Error!);
+            using IDisposable __ = shared;
             GasEstimator sharedEstimator = new(shared.TransactionProcessor, shared.WorldState, specProvider, blocksConfig);
             return sharedEstimator.EstimateFrameGas(tx, CreateCallContext(executionHeader, tx, treatBlockHeaderAsParentBlock: true, blobBaseFeeOverride: null),
                 fillExecution, fillState, gasCap, errorMargin, cancellationToken);
