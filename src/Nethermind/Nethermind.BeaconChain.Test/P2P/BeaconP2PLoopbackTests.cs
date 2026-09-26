@@ -132,6 +132,7 @@ public class BeaconP2PLoopbackTests
         server.Pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, gloasSlot, heldRoot));
         server.Pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(7, gloasSlot, heldRoot));
         server.Pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, gloasSlot, pendingRoot), "gossip peer");
+        server.Store.SetCanonicalRoot(gloasSlot, heldRoot);
         DataColumnSidecar fulu = DataColumnSidecarTestFixture.BuildValidSidecar(3, spec.GloasForkEpoch * spec.SlotsPerEpoch - 1, blobCount: 1);
         Hash256 fuluRoot = SszRoots.HashTreeRoot(fulu.SignedBlockHeader!.Message!);
         server.Pool.Add(fuluRoot, fulu.SignedBlockHeader.Message!.Slot, fulu);
@@ -157,9 +158,9 @@ public class BeaconP2PLoopbackTests
                 "served verified Gloas columns in request order under the Gloas digest, never the pending candidate");
             Assert.That(PeerManager.MessagesSentForTest(peer), Is.EqualTo(messagesSent + 1), "the by-root ask counts as a message sent");
 
-            // The listen side serves only Fulu slots by range; this proves the Gloas closing resolves on the shared protocol id.
             IReadOnlyList<DataColumnSidecarGloas> byRange = await peer.RequestGloasDataColumnSidecarsByRangeAsync(gloasSlot, 1, [3], token);
-            Assert.That(byRange, Is.Empty);
+            Assert.That(byRange.Select(static s => (s.BeaconBlockRoot, s.Index, s.Slot)), Is.EqualTo(new[] { (heldRoot, 3UL, gloasSlot) }),
+                "served the canonical block's verified Gloas column by range, read in the Gloas shape");
             Assert.That(PeerManager.MessagesSentForTest(peer), Is.EqualTo(messagesSent + 2), "the by-range ask counts as a message sent");
 
             ISession toServer = await client.P2P.DialPeerAsync(LoopbackAddress(server.P2P), token);
