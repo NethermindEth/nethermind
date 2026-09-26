@@ -119,9 +119,12 @@ public partial class RangeSyncTests
         string id,
         ulong headSlot,
         Func<ulong, ulong, ForkedSignedBeaconBlock[]> handler,
-        Func<ulong, ulong, ulong[], DataColumnSidecar[]>? columnHandler = null) : IBeaconSyncPeer
+        Func<ulong, ulong, ulong[], DataColumnSidecar[]>? columnHandler = null,
+        Func<ulong, ulong, ulong[], DataColumnSidecarGloas[]>? gloasColumnHandler = null,
+        Func<DataColumnsByRootIdentifier[], DataColumnSidecarGloas[]>? gloasRootHandler = null) : IBeaconSyncPeer
     {
-        public int Failures { get; private set; }
+        public List<PeerFailureReason> Reports { get; } = [];
+        public int Failures => Reports.Count;
         public int Requests { get; private set; }
         public int ColumnRequests { get; private set; }
 
@@ -144,10 +147,10 @@ public partial class RangeSyncTests
         }
 
         public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
-            throw new NotSupportedException();
+            Task.FromResult<IReadOnlyList<DataColumnSidecarGloas>>(gloasColumnHandler is null ? throw new NotSupportedException() : gloasColumnHandler(startSlot, count, columns));
 
         public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) =>
-            throw new NotSupportedException();
+            Task.FromResult<IReadOnlyList<DataColumnSidecarGloas>>(gloasRootHandler is null ? throw new NotSupportedException() : gloasRootHandler(identifiers));
 
         public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token) =>
             throw new NotSupportedException();
@@ -155,16 +158,16 @@ public partial class RangeSyncTests
         public Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token) =>
             throw new NotSupportedException();
 
-        public void ReportFailure(PeerFailureReason reason, string? detail = null) => Failures++;
+        public void ReportFailure(PeerFailureReason reason, string? detail = null) => Reports.Add(reason);
     }
 
-    private sealed class FixedIPResolver(IPAddress ip) : IIPResolver
+    internal sealed class FixedIPResolver(IPAddress ip) : IIPResolver
     {
         public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default) =>
             new(new IIPResolver.NethermindIp(ip, ip));
     }
 
-    private sealed class StubPool(params IBeaconSyncPeer[] peers) : IBeaconSyncPeerPool
+    internal sealed class StubPool(params IBeaconSyncPeer[] peers) : IBeaconSyncPeerPool
     {
         public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) =>
             [.. peers.Where(p => p.HeadSlot >= minHeadSlot)];
