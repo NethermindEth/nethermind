@@ -387,6 +387,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                             writer, pipeWriter, ct, storeFilter: filter);
                         foreach ((Block block, BlockHeader? parentHeader) in blocks)
                         {
+                            if (filter.IsExhausted) break;
                             if (!TryStreamBlockInParallel(parentHeader!, block, types, streamingTracer, ct))
                                 ExecuteBlockStreaming(parentHeader!, block, streamingTracer, ct);
                         }
@@ -402,13 +403,24 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IEnumerable<ParityTxTraceFromStore> RunBufferedTraceFilter(List<(Block Block, BlockHeader? Parent)> blocks, TxTraceFilter filter, CancellationToken cancellationToken)
         {
-            List<ParityLikeTxTrace> txTraces = [];
-            foreach ((Block block, BlockHeader? parentHeader) in blocks)
+            ArrayPoolList<ParityTxTraceFromStore> result = new(blocks.Count);
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                txTraces.AddRange(ExecuteBlockParallelOrReplay(parentHeader!, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, cancellationToken));
+                foreach ((Block block, BlockHeader? parentHeader) in blocks)
+                {
+                    if (filter.IsExhausted) break;
+                    cancellationToken.ThrowIfCancellationRequested();
+                    IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlockParallelOrReplay(parentHeader!, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, cancellationToken);
+                    result.AddRange(filter.FilterTxTraces(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
+                }
             }
-            return filter.FilterTxTraces(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
+            catch
+            {
+                result.Dispose();
+                throw;
+            }
+
+            return result;
         }
 
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
