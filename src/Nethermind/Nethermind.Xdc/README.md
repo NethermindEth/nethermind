@@ -746,10 +746,8 @@ The node config only has to point at the chainspec and turn on block production;
   "Init": {
     "ChainSpecPath": "/work/chainspec.json",
     "BaseDbPath": "nethermind_db/xdc-subnet",
-    "LogFileName": "xdc-subnet.log",
-    "StateDbKeyScheme": "Hash"
+    "LogFileName": "xdc-subnet.log"
   },
-  "FlatDb": { "Enabled": false },
   "TxPool": { "BlobsSupport": "Disabled" },
   "Blocks": { "TargetBlockGasLimit": 420000000 },
   "Sync": { "FastSync": true, "NeedToWaitForHeader": true, "VerifyTrieOnStateSyncFinished": true },
@@ -762,14 +760,11 @@ The node config only has to point at the chainspec and turn on block production;
 dotnet run --project src/Nethermind/Nethermind.Runner -c release -- --config ./xdc-subnet-node.json --data-dir ./subnet-node-1
 ```
 
-- `FlatDb.Enabled: false` and `Init.StateDbKeyScheme: "Hash"` are not optional, and the shipped XDC configs
-  set the same pair for the same reason: the Go nodes state-sync from their peers with `GetNodeData`, which
-  [`SyncServer`](../Nethermind.Synchronization/SyncServer.cs) answers out of `IWorldStateManager.HashServer`.
-  That is null under the flat backend, and null under the default `Current` key scheme, which resolves to
-  `HalfPath`. A node left on the defaults syncs itself and produces blocks perfectly well, but serves code
-  and nothing else, so a Go node pointed at it never finishes state sync. The first switch selects the
-  patricia trie store, the second makes its nodes hash-keyed; `StateDbKeyScheme` applies only to a new
-  database, so changing either on a node that already has state means resyncing it.
+- XDC nodes state-sync from their peers with `GetNodeData`. Nethermind keeps its state in FlatDB, which has
+  no hash-keyed trie nodes, so [`SyncServer`](../Nethermind.Synchronization/SyncServer.cs) answers
+  `GetNodeData` with contract code and nothing else. A node that joins from a pivot, Go or Nethermind, needs a
+  Go peer that already holds the state; with Nethermind peers alone it never finishes state sync. Nodes that
+  start with the subnet at genesis have no state to download.
 - A relative `ChainSpecPath` resolves against the executable's directory, so either drop the chainspec into
   the build output's `chainspec/` folder or give an absolute path. Embedded chainspecs are probed before the
   filesystem — even for an absolute path — so give the file a name that doesn't collide with a shipped one
