@@ -190,8 +190,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (_lastCapturedCell.Address is null || _lastCapturedCell.Index != storageCell.Index || _lastCapturedCell.Address != storageCell.Address)
             LoadCapturedOriginal(in storageCell);
 
-        // With no transaction snapshot every head is newer than the boundary and carries OriginalIdx -1,
-        // so only stacked transactions (BuildUp) can be answered from the journal.
+        // Journal originals (OriginalIdx != -1) only exist above a transaction snapshot, so with none on the
+        // stack the captured original is the answer.
         if (_transactionChangesSnapshots.Count != 0 && _intraBlockCache.Count != 0)
         {
             ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, storageCell);
