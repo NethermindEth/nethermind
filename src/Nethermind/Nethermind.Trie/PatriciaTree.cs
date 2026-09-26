@@ -901,6 +901,7 @@ namespace Nethermind.Trie
 
             public void Push(TraverseStackFrame frame) => _entries[_count++] = frame;
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool TryPop(out TraverseStackFrame frame)
             {
                 if (_count == 0) { frame = default; return false; }

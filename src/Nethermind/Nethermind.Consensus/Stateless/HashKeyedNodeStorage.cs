@@ -91,6 +91,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
         => Find(new NodeKey(keccak));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private byte[]? Find(NodeKey key)
     {
         if (_nodes.Count != 0 && _nodes.TryGetValue(key, out byte[]? value)) return value;
