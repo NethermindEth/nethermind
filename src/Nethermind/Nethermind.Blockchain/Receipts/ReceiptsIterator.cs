@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Receipts
             _receipts = null;
             _receiptIndex = 0;
             _recoveryContextFactory = recoveryContextFactory;
-            _logRecoveryContextFactory = logRecoveryContextFactory;
+            _logRecoveryContextFactory = logRecoveryContextFactory ?? recoveryContextFactory;
             _recoveryContextConfigured = false;
             _recoveryContext = null;
             _receiptRefDecoder = receiptRefDecoder;
@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain.Receipts
         /// the other receipt fields stay as decoded for the rest of the iteration.
         /// </summary>
         public void RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current) =>
-            RecoverIfNeeded(ref current, _logRecoveryContextFactory ?? _recoveryContextFactory);
+            RecoverIfNeeded(ref current, _logRecoveryContextFactory);
 
         private void RecoverIfNeeded(ref TxReceiptStructRef current, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory)
         {
