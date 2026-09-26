@@ -600,17 +600,20 @@ public class BlockhashProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spanAllocated, Is.LessThan(Iterations), $"span={spanAllocated} hash={hashAllocated}");
-            Assert.That(hashAllocated, blockHashInState ? Is.GreaterThan(Iterations * 8) : Is.LessThan(Iterations),
+            Assert.That(spanAllocated, Is.LessThan(Iterations * MaxBytesPerLookup), $"span={spanAllocated} hash={hashAllocated}");
+            Assert.That(hashAllocated, blockHashInState ? Is.GreaterThan(Iterations * 8) : Is.LessThan(Iterations * MaxBytesPerLookup),
                 "only the storage-backed path materialises a Hash256 per lookup");
         }
     }
 
-    /// <summary>Asserts that <paramref name="lookups"/> allocates less than one byte per lookup.</summary>
-    /// <remarks>A per-lookup allocation costs at least an object header on every call, so this still fails for one,
-    /// while a rare one-off allocation by the runtime on this thread does not fail the test.</remarks>
+    /// <summary>Allocation budget per lookup, below the 24-byte minimum object size on 64-bit.</summary>
+    /// <remarks>Any per-lookup allocation exceeds it on every call, while a rare one-off allocation by the runtime on
+    /// the test thread (2,112 bytes over 1,000 lookups has been seen in CI) stays inside it.</remarks>
+    private const int MaxBytesPerLookup = 8;
+
+    /// <summary>Asserts that <paramref name="lookups"/> allocates less than <see cref="MaxBytesPerLookup"/> per lookup.</summary>
     private static void AssertNoPerLookupAllocation(int repeats, int lookupsPerRepeat, Action lookups, string? message = null) =>
-        Assert.That(AllocatedBy(repeats, lookups), Is.LessThan(repeats * lookupsPerRepeat), message);
+        Assert.That(AllocatedBy(repeats, lookups), Is.LessThan(repeats * lookupsPerRepeat * MaxBytesPerLookup), message);
 
     private static long AllocatedBy(int repeats, Action action)
     {
