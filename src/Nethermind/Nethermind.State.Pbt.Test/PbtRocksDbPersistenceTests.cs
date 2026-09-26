@@ -55,6 +55,7 @@ public class PbtRocksDbPersistenceTests
     private static ReadOnlySpan<byte> SchemaEpochKey => "schemaEpoch"u8;
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
     private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
+    private static ReadOnlySpan<byte> PrefixlessBranchOmissionKey => "prefixlessBranchOmission"u8;
 
     [TestCase(null, PbtNodeGroupKeyLayout.Padded, PbtNodeGroupKeyLayout.Variable, TestName = "Unstamped_epoch_20_store_is_padded")]
     [TestCase(new byte[] { 0 }, PbtNodeGroupKeyLayout.Padded, PbtNodeGroupKeyLayout.Variable, TestName = "Padded_stamp_rejects_variable")]
@@ -78,11 +79,35 @@ public class PbtRocksDbPersistenceTests
         }
     }
 
-    [Test]
-    public void Fresh_store_is_stamped_with_the_configured_layout([Values] PbtNodeGroupKeyLayout layout)
+    [TestCase(null, PbtPrefixlessBranchOmission.OddLevels, PbtPrefixlessBranchOmission.Interior, TestName = "Unstamped_store_omits_odd_levels")]
+    [TestCase(new byte[] { 0 }, PbtPrefixlessBranchOmission.None, PbtPrefixlessBranchOmission.OddLevels, TestName = "None_stamp_rejects_odd_levels")]
+    [TestCase(new byte[] { 1 }, PbtPrefixlessBranchOmission.Interior, PbtPrefixlessBranchOmission.OddLevels, TestName = "Interior_stamp_rejects_odd_levels")]
+    [TestCase(new byte[] { 2 }, PbtPrefixlessBranchOmission.OddLevels, PbtPrefixlessBranchOmission.Interior, TestName = "Odd_levels_stamp_rejects_interior")]
+    [TestCase(new byte[] { 3 }, null, PbtPrefixlessBranchOmission.OddLevels, TestName = "Unknown_omission_stamp_is_rejected")]
+    [TestCase(new byte[] { 2, 2 }, null, PbtPrefixlessBranchOmission.OddLevels, TestName = "Malformed_omission_stamp_is_rejected")]
+    public void Prefixless_branch_omission_stamp_gates_the_configured_omission(byte[]? stamp, PbtPrefixlessBranchOmission? accepted, PbtPrefixlessBranchOmission rejected)
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence persistence = new(db, new PbtConfig { NodeGroupKeyLayout = layout });
+        IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
+        metadata[SchemaEpochKey] = Epoch(20);
+        metadata[NodeGroupKeyLayoutKey] = [(byte)PbtNodeGroupKeyLayout.Variable];
+        if (stamp is not null) metadata[PrefixlessBranchOmissionKey] = stamp;
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (accepted is not null)
+                Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { PrefixlessBranchOmission = accepted.Value }), Throws.Nothing);
+            Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { PrefixlessBranchOmission = rejected }),
+                Throws.TypeOf<InvalidDataException>().With.Message.Contains("omission"));
+            Assert.That(metadata.Get(PrefixlessBranchOmissionKey), Is.EqualTo(stamp));
+        }
+    }
+
+    [Test]
+    public void Fresh_store_is_stamped_with_the_configured_layout([Values] PbtNodeGroupKeyLayout layout, [Values] PbtPrefixlessBranchOmission omission)
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig { NodeGroupKeyLayout = layout, PrefixlessBranchOmission = omission });
         PbtNodePath groupKey = new(Bytes.FromHexString("80"), 8);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
         {
@@ -94,9 +119,10 @@ public class PbtRocksDbPersistenceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(NodeGroupKeyLayoutKey), Is.EqualTo(new[] { (byte)layout }));
+            Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(PrefixlessBranchOmissionKey), Is.EqualTo(new[] { (byte)omission }));
             Assert.That(db.GetColumnDb(PbtColumns.TopNodeGroups).Get(groupKey.ToStorageKey(PbtColumns.TopNodeGroups, layout)), Is.Not.Null);
             Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EqualTo(new[] { groupKey.ToPath<PbtStorageNodePath>() }));
-            Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { NodeGroupKeyLayout = layout }), Throws.Nothing);
+            Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { NodeGroupKeyLayout = layout, PrefixlessBranchOmission = omission }), Throws.Nothing);
         }
     }
 

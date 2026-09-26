@@ -270,7 +270,7 @@ public class PbtAnchorPublicationTests
         foreach (PbtColumns column in harness.Target.ColumnKeys)
         {
             IEnumerable<byte[]> keys = harness.Target.GetColumnDb(column).GetAllKeys();
-            if (column == PbtColumns.Metadata) Assert.That(keys, Is.EquivalentTo(new[] { "schemaEpoch"u8.ToArray(), "nodeGroupKeyLayout"u8.ToArray() }));
+            if (column == PbtColumns.Metadata) Assert.That(keys, Is.EquivalentTo(new[] { "schemaEpoch"u8.ToArray(), "nodeGroupKeyLayout"u8.ToArray(), "prefixlessBranchOmission"u8.ToArray() }));
             else Assert.That(keys, Is.Empty, column.ToString());
         }
     }

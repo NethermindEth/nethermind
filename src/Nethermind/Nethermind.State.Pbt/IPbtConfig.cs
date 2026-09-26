@@ -125,7 +125,7 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "The persisted node-group key layout: Padded (the group path zero-padded to the column key length, then its nibble count) or Variable (the group path bytes, then 0 for a byte-aligned path or 1 for a nibble-aligned one). Fixed when the pbt database is created; a populated database created with the other layout is rejected.", DefaultValue = "Variable", HiddenFromDocs = true)]
     PbtNodeGroupKeyLayout NodeGroupKeyLayout { get; set; }
 
-    [ConfigItem(Description = "Which prefixless branches without inline leaves are left out of stored node groups and recomputed from their children on read: Interior (relative depths 1-3), OddLevels (relative depths 1 and 3, keeping depth 2) or None (store every node). All layouts are readable, so the setting can change on an existing database; groups convert as they are rewritten.", DefaultValue = "OddLevels", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Which prefixless branches without inline leaves are left out of stored node groups and recomputed from their children on read: Interior (relative depths 1-3), OddLevels (relative depths 1 and 3, keeping depth 2) or None (store every node). A database is stamped with the setting when it is created, and the setting must match it afterwards.", DefaultValue = "OddLevels", HiddenFromDocs = true)]
     PbtPrefixlessBranchOmission PrefixlessBranchOmission { get; set; }
 
     [ConfigItem(Description = "Cache persisted account and storage-run reads across heads, so a new head does not re-read the serving working set from the database. Only the write-set of each persisted batch is dropped.", DefaultValue = "true", HiddenFromDocs = true)]
