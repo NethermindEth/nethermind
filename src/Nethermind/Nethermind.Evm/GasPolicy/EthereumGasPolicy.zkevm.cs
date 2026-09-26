@@ -9,6 +9,10 @@ namespace Nethermind.Evm.GasPolicy;
 public partial struct EthereumGasPolicy
 {
     /// <inheritdoc/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SetRemainingGas(ref EthereumGasPolicy gas, ulong value) => gas.Value = value;
+
+    /// <inheritdoc/>
     /// <remarks>
     /// Subtracts first and tests the sign, which saves the compare RISC-V has no immediate form for. The sign is
     /// exact while <see cref="Value"/> is at most 2^63-1: header validation rejects a block gas limit above that, a

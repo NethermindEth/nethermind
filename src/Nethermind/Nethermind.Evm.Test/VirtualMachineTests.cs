@@ -470,37 +470,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     [Test]
     public void Checked_opcode_bodies_have_boundary_cases()
     {
-        Dictionary<string, Instruction[]> coveredBodies = new()
-        {
-            ["Math2Opcode"] = [Instruction.ADD, Instruction.MUL, Instruction.SUB, Instruction.DIV, Instruction.SDIV, Instruction.MOD, Instruction.SMOD, Instruction.LT, Instruction.GT, Instruction.SLT, Instruction.SGT],
-            ["Math3Opcode"] = [Instruction.ADDMOD, Instruction.MULMOD],
-            ["Math1Opcode"] = [Instruction.ISZERO, Instruction.NOT],
-            ["BitwiseOpcode"] = [Instruction.EQ, Instruction.AND, Instruction.OR, Instruction.XOR],
-            ["CountLeadingZerosOpcode"] = [Instruction.CLZ],
-            ["ByteOpcode"] = [Instruction.BYTE],
-            ["ShiftOpcode"] = [Instruction.SHL, Instruction.SHR],
-            ["SarOpcode"] = [Instruction.SAR],
-            ["EnvAddressOpcode"] = [Instruction.ADDRESS, Instruction.CALLER],
-            ["Env32BytesOpcode"] = [Instruction.ORIGIN, Instruction.CHAINID],
-            ["EnvUInt256Opcode"] = [Instruction.CALLVALUE],
-            ["EnvUInt32Opcode"] = [Instruction.CALLDATASIZE],
-            ["EnvUInt64Opcode"] = [Instruction.MSIZE],
-            ["BlkAddressOpcode"] = [Instruction.COINBASE],
-            ["BlkUInt256Opcode"] = [Instruction.GASPRICE, Instruction.BASEFEE],
-            ["BlkUInt64Opcode"] = [Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.GASLIMIT],
-            ["CallDataLoadOpcode"] = [Instruction.CALLDATALOAD],
-            ["CodeSizeOpcode"] = [Instruction.CODESIZE],
-            ["ReturnDataSizeOpcode"] = [Instruction.RETURNDATASIZE],
-            ["PrevRandaoOpcode"] = [Instruction.PREVRANDAO],
-            ["SelfBalanceOpcode"] = [Instruction.SELFBALANCE],
-            ["PopOpcode"] = [Instruction.POP],
-            ["ProgramCounterOpcode"] = [Instruction.PC],
-            ["GasOpcode"] = [Instruction.GAS],
-            ["Push0Opcode"] = [Instruction.PUSH0],
-            ["PushOpcode"] = OpcodeRange(Instruction.PUSH1, Instruction.PUSH32),
-            ["DupOpcode"] = OpcodeRange(Instruction.DUP1, Instruction.DUP16),
-            ["SwapOpcode"] = OpcodeRange(Instruction.SWAP1, Instruction.SWAP16),
-        };
+        Dictionary<string, Instruction[]> coveredBodies = CheckedBodyOpcodes;
         HashSet<Instruction> coveredOpcodes = [.. StackGrowingOpcodes()];
         foreach (TestCaseData testCase in FixedCostOpcodeGasCases())
             coveredOpcodes.Add((Instruction)testCase.Arguments[0]);
@@ -520,6 +490,105 @@ public class VirtualMachineTests : VirtualMachineTestsBase
                     foreach (Instruction opcode in opcodes)
                         Assert.That(coveredOpcodes, Does.Contain(opcode), $"Missing {name}: {opcode}.");
             }
+        }
+    }
+
+    /// <summary>The opcodes each checked-body family serves; maintained by hand.</summary>
+    private static readonly Dictionary<string, Instruction[]> CheckedBodyOpcodes = new()
+    {
+        ["Math2Opcode"] = [Instruction.ADD, Instruction.MUL, Instruction.SUB, Instruction.DIV, Instruction.SDIV, Instruction.MOD, Instruction.SMOD, Instruction.LT, Instruction.GT, Instruction.SLT, Instruction.SGT],
+        ["Math3Opcode"] = [Instruction.ADDMOD, Instruction.MULMOD],
+        ["Math1Opcode"] = [Instruction.ISZERO, Instruction.NOT],
+        ["BitwiseOpcode"] = [Instruction.EQ, Instruction.AND, Instruction.OR, Instruction.XOR],
+        ["CountLeadingZerosOpcode"] = [Instruction.CLZ],
+        ["ByteOpcode"] = [Instruction.BYTE],
+        ["ShiftOpcode"] = [Instruction.SHL, Instruction.SHR],
+        ["SarOpcode"] = [Instruction.SAR],
+        ["EnvAddressOpcode"] = [Instruction.ADDRESS, Instruction.CALLER],
+        ["Env32BytesOpcode"] = [Instruction.ORIGIN, Instruction.CHAINID],
+        ["EnvUInt256Opcode"] = [Instruction.CALLVALUE],
+        ["EnvUInt32Opcode"] = [Instruction.CALLDATASIZE],
+        ["EnvUInt64Opcode"] = [Instruction.MSIZE],
+        ["BlkAddressOpcode"] = [Instruction.COINBASE],
+        ["BlkUInt256Opcode"] = [Instruction.GASPRICE, Instruction.BASEFEE],
+        ["BlkUInt64Opcode"] = [Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.GASLIMIT],
+        ["CallDataLoadOpcode"] = [Instruction.CALLDATALOAD],
+        ["CodeSizeOpcode"] = [Instruction.CODESIZE],
+        ["ReturnDataSizeOpcode"] = [Instruction.RETURNDATASIZE],
+        ["PrevRandaoOpcode"] = [Instruction.PREVRANDAO],
+        ["SelfBalanceOpcode"] = [Instruction.SELFBALANCE],
+        ["PopOpcode"] = [Instruction.POP],
+        ["ProgramCounterOpcode"] = [Instruction.PC],
+        ["GasOpcode"] = [Instruction.GAS],
+        ["Push0Opcode"] = [Instruction.PUSH0],
+        ["PushOpcode"] = OpcodeRange(Instruction.PUSH1, Instruction.PUSH32),
+        ["DupOpcode"] = OpcodeRange(Instruction.DUP1, Instruction.DUP16),
+        ["SwapOpcode"] = OpcodeRange(Instruction.SWAP1, Instruction.SWAP16),
+    };
+
+    /// <remarks>
+    /// The guest carries the stack head in a register and moves it by a checked body's declared <c>StackGrowth</c>
+    /// instead of reading it back, so a declaration the opcode disagrees with would corrupt only the guest's stack.
+    /// Each family's first opcode runs over a stack deep enough for any opcode's inputs, and ahead of enough zero
+    /// bytes that a STOP follows it even past a PUSH's immediates.
+    /// </remarks>
+    [Test]
+    public void Checked_opcode_bodies_declare_their_net_stack_change()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Type body in typeof(VirtualMachine<>).GetNestedTypes(BindingFlags.NonPublic))
+            {
+                if (!body.IsValueType || body.GetProperty("HasCheckedBody", BindingFlags.Public | BindingFlags.Static) is null)
+                    continue;
+
+                int growth = (int?)CloseOverEthereumGasPolicy(body).GetProperty("StackGrowth", BindingFlags.Public | BindingFlags.Static)?.GetValue(null) ?? 0;
+                Instruction opcode = CheckedBodyOpcodes[body.Name.Split('`')[0]][0];
+                const int inputs = 17;
+
+                byte[] code = new byte[inputs * 2 + 1 + EvmStack.WordSize + 1];
+                for (int i = 0; i < inputs; i++)
+                {
+                    code[i * 2] = (byte)Instruction.PUSH1;
+                    code[i * 2 + 1] = 1;
+                }
+                code[inputs * 2] = (byte)opcode;
+                (Block block, Transaction transaction) = PrepareTx(Activation, 100_000UL, code);
+                block.Header.Number = MainnetSpecProvider.OsakaActivation.BlockNumber;
+                block.Header.Timestamp = MainnetSpecProvider.OsakaBlockTimestamp;
+                GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+                _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+                GethTxTraceEntry stop = tracer.BuildResult().Entries[^1];
+                Assert.That(stop.Opcode, Is.EqualTo(nameof(Instruction.STOP)), $"{body.Name} ({opcode})");
+                Assert.That(stop.Stack!.Value.Length / EvmStack.WordSize - inputs, Is.EqualTo(growth), $"{body.Name} ({opcode})");
+            }
+        }
+    }
+
+    /// <summary>Closes a nested body type over <see cref="EthereumGasPolicy"/> and the first types that satisfy its other parameters.</summary>
+    private static Type CloseOverEthereumGasPolicy(Type body)
+    {
+        Type[] parameters = body.GetGenericArguments();
+        Type[] arguments = new Type[parameters.Length];
+        arguments[0] = typeof(EthereumGasPolicy);
+        Type[] candidates = [.. typeof(EvmInstructions).Assembly.GetTypes().Concat(typeof(OffFlag).Assembly.GetTypes())
+            .Where(static type => type.IsValueType && (!type.IsGenericTypeDefinition || type.GetGenericArguments().Length == 1))
+            .Select(static type => type.IsGenericTypeDefinition ? TryClose(type, typeof(EthereumGasPolicy)) : type)
+            .OfType<Type>()];
+        for (int i = 1; i < parameters.Length; i++)
+        {
+            Type[] constraints = [.. parameters[i].GetGenericParameterConstraints()
+                .Select(constraint => constraint.ContainsGenericParameters ? constraint.GetGenericTypeDefinition().MakeGenericType(typeof(EthereumGasPolicy)) : constraint)];
+            arguments[i] = candidates.First(candidate => constraints.All(constraint => constraint.IsAssignableFrom(candidate)));
+        }
+
+        return body.MakeGenericType(arguments);
+
+        static Type? TryClose(Type definition, Type argument)
+        {
+            try { return definition.MakeGenericType(argument); }
+            catch (ArgumentException) { return null; }
         }
     }
 

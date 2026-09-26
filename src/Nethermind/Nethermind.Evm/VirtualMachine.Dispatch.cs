@@ -19,6 +19,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     // Poll cancellation every 1024 opcodes (low bits of the per-frame op counter).
     private const int CancellationCheckMask = 1023;
 
+#if !ZK_EVM
+    // The guest's dispatch state, loop and handlers take a wider signature; see VirtualMachine.Dispatch.zkevm.cs.
     internal struct DispatchState
     {
         public delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>* OpcodeHandlers;
@@ -35,6 +37,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>How many opcodes the chain ran. Written only as the chain leaves.</summary>
         public int OpCodeCount;
     }
+#endif
 
     /// <summary>The dispatch table the running transaction uses, resolved once by <c>PrepareOpcodes</c>.</summary>
     private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] _opcodeHandlers = null!;
@@ -172,6 +175,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
     }
 
+#if !ZK_EVM
     /// <summary>Runs the current frame's bytecode until it halts, faults, or yields a child frame.</summary>
     /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
     /// <returns>
@@ -471,4 +475,5 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return result.Exception;
         }
     }
+#endif
 }
