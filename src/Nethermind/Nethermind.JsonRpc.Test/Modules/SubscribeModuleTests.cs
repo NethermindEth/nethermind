@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.WebSockets;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -446,7 +447,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 jsonRpcResult.TryDequeue(out JsonRpcResult result);
 
-                Assert.That(((JsonRpcSubscriptionResponse<BlockForRpc>)result.Response!).Params!.Result.Difficulty, Is.EqualTo((UInt256)i));
+                using JsonDocument notification = JsonDocument.Parse(RpcTest.SerializeResponse(result.Response!));
+                Assert.That(notification.RootElement.GetProperty("params").GetProperty("result").GetProperty("difficulty").GetString(),
+                    Is.EqualTo($"0x{i:x}"), $"notification {i} must carry block {i}");
             }
         }
 
