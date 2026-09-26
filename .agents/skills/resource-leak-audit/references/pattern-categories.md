@@ -5,7 +5,7 @@ Search ALL of these (Full Audit Mode) or the relevant subset (PR Mode).
 ## Tier 1 — High-Frequency Accumulating Leaks (per-peer, per-block, per-request)
 
 - [ ] **CancellationTokenSource** — every `new CancellationTokenSource(` and `CreateLinkedTokenSource(`. Is `.Dispose()` called? Not just `.Cancel()` — cancelling does NOT dispose. Linked CTS especially leak. Also search `.Cancel()` on CTS fields and verify `.Dispose()` follows.
-- [ ] **Byte array / buffer pool leaks** — `ArrayPool<T>.Shared.Rent(` without `Return(`. Return must be in `try/finally` — any exception between Rent and Return leaks the buffer.
+- [ ] **Byte array / buffer pool leaks** — `ArrayPool<T>.Shared.Rent(` without `Return(` on the normal and expected-failure paths. A missing `finally` is not a finding for `ArrayPool<T>.Shared`, except in zkVM guest entry-point code and `BFLAT_REFS` assemblies: an array abandoned by an unexpected exception is GC-reclaimable (see robustness.md). Other pools and ref-counted wrappers still need guaranteed release.
 - [ ] **Ref-counted network buffers** — Buffer allocation (`ReadBytes(`, `Allocate(`, `Buffer(`) without `Release()` / `SafeRelease()` / `Complete()`. Check error paths. Discover buffer types by searching `Release()` and `SafeRelease()` definitions.
 - [ ] **TaskCompletionSource never completed** — Field declarations. Uncompleted TCS holds continuation chain alive forever. Verify all paths complete or cancel. Check disconnect/timeout/Dispose/shutdown. Check thread-safety on reassignment.
 - [ ] **Event handler subscriptions preventing GC** — `+=` without matching `-=`. Search `+=` in constructors, check for `-=` in Dispose. Also search empty Dispose() bodies.

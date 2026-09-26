@@ -20,7 +20,7 @@ allowed-tools:
 
 Nethermind is an Ethereum execution client built on .NET. Consensus correctness is non-negotiable — a wrong opcode, a missed fork condition, or an Engine API violation means invalid blocks on a live network.
 
-**For domain findings, only comment when you have HIGH CONFIDENCE (>80%) that a real issue exists — if uncertain, stay silent. Rule violations found by the project rules check are exempt from this threshold: always report them (see "When to stay silent").**
+Report a domain finding only when you are at least 80% confident it is a real issue. Rule violations found by the project rules check are exempt from this threshold (see "When to stay silent").
 Be concise: one sentence per comment when possible.
 
 `Codebase Rules` means the rule files under `.agents/rules/` (indexed in AGENTS.md).
@@ -83,30 +83,27 @@ Review each changed `.cs` file independently. Read the diff, check it, report fi
 - **Minimize context reads:** Only read files outside the diff to verify a specific finding (e.g., confirming a DI module registration). Do not speculatively read files "for context".
 - **Stay in the diff:** Findings must only come from changed files.
 - **Batch verification reads:** If reviewing a file surfaces multiple findings that each need a different context file, read all context files in one parallel batch — don't round-trip one at a time.
-- **Never fabricate:** at checkpoints, state findings or "no findings" per category — never invent a finding to fill one. (The final report omits clean categories; checkpoints do not.)
+- **Never fabricate:** never invent a finding to fill a category.
 - **Never invent exceptions to rules** — see "When to stay silent". If a `Codebase Rules` rule covers a pattern and the code matches, report it; dismissing it is the author's call, not yours.
 
 ### Tool call discipline
 
 - **Stat before diff.** Always run `--stat` (Step 4) before fetching full diffs.
 - **One combined diff call, not N.** Small files: single `git diff` call. Large files: subagents run their own.
-- **If the code execution tool is available:** prefer programmatic tool calling for Phase 1 recon. Write a single Python script that runs all git commands, filters, categorizes, sizes diffs, and returns structured JSON.
-- **Otherwise:** emit independent tool calls in one parallel batch. Never sequentially call tools that could have been parallel.
-- **Dependent calls are sequential.** If you need file A's content to decide whether to read file B, that's two turns. That's fine.
 - **Don't fetch what you won't read.** A diff fetched into context but never analyzed is pure waste.
 
 ---
 
 ## Plan
 
-Follow these steps in order. At each checkpoint, list your findings for that category (or explicitly state "no findings") before proceeding to the next step. Do not skip steps.
+Follow these steps in order. At each checkpoint, list the findings so far; a category with nothing to report needs no entry.
 
 1. **Scope** — Run Phase 1 recon (see Operational constraints). List every changed file grouped by project, noting which were skipped and why. Note which review categories apply.
 2. **Checkpoint: scope** — Report file list and applicable categories.
 3. **Project rules check** — For small files: check the diff against `Codebase Rules`. See "Project rules check" section below. Large files: checked by subagents (Step 4b).
-4. **Checkpoint: rules violations** — List every rule violation with file:line, or state "no violations" per category.
+4. **Checkpoint: rules violations** — List every rule violation with file:line.
 5. **Domain checks** — Apply all domain review sections below as applicable. Large files: checked by subagents (Step 4b). Collect all subagent findings before proceeding.
-6. **Checkpoint: domain** — List every domain finding, or state "no findings" per category.
+6. **Checkpoint: domain** — List every domain finding.
 7. **Verification pass** — Treat each finding from steps 4 and 6 — including subagent findings — as a hypothesis. For each one:
    1. Identify what specific evidence would **falsify** it.
    2. Check for that evidence.
@@ -138,8 +135,6 @@ Also skip: naming conventions, missing XML docs on `internal`/`private` members,
 ## Project rules check
 
 For every changed file, check the diff against `Codebase Rules` in step 3. Those rules define conventions for DI patterns, coding style, robustness, performance, test infrastructure, package management, and `.github` automation.
-
-**Reminder: You must report findings for every rule category, even if the finding is "no violations". Do not skip any.**
 
 ---
 
