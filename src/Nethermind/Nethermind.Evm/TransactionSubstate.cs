@@ -4,8 +4,6 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -54,10 +52,7 @@ public readonly ref struct TransactionSubstate
     public ReadOnlyMemory<byte> Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
-    public int LogCount => _logs?.Count ?? 0;
-
-    /// <remarks>Throws for a substate created without a journal instead of handing out a shared list.</remarks>
-    public JournalCollection<LogEntry> Logs => _logs ?? ThrowNoLogJournal();
+    public JournalCollection<LogEntry>? Logs => _logs;
     public JournalSet<Address>? DestroyList => _destroyList;
     internal bool ShouldRestoreRipemdTouch { get; init; }
 
@@ -112,10 +107,6 @@ public readonly ref struct TransactionSubstate
     public bool DestroyListContains(Address? address) => address is not null && _destroyList?.Contains(address) == true;
 
     public LogEntry[] LogsToArray() => _logs is null ? [] : _logs.ToArray();
-
-    [DoesNotReturn, StackTraceHidden]
-    private static JournalCollection<LogEntry> ThrowNoLogJournal() =>
-        throw new InvalidOperationException("This substate was created without a log journal.");
 
     public static string EncodeErrorMessage(ReadOnlySpan<byte> span)
     {
