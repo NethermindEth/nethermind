@@ -14,6 +14,13 @@ namespace Nethermind.Trie
         private byte ReadBlockAndFlags() => Volatile.Read(ref _blockAndFlags);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private INodeData? ReadNodeData() => Volatile.Read(ref _nodeData);
+
+        public bool IsLeaf => NodeType == NodeType.Leaf;
+
+        public bool IsExtension => NodeType == NodeType.Extension;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private byte ExchangeBlockAndFlags(byte newValue, byte comparand)
             => Interlocked.CompareExchange(ref _blockAndFlags, newValue, comparand);
 
