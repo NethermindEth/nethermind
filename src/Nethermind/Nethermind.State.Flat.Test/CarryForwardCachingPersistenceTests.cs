@@ -602,7 +602,10 @@ public class CarryForwardCachingPersistenceTests
                 parent.SlotMultiGetCalls++;
                 parent.BatchSlotKeys.Add(storageCells.ToArray());
                 for (int i = 0; i < storageCells.Length; i++)
+                {
                     found[i] = TryGetSlot(storageCells[i].Address, storageCells[i].Index, ref slots[i]);
+                    if (!found[i]) slots[i] = default;
+                }
 
                 Action? callback = parent.OnBatchSlotsRead;
                 parent.OnBatchSlotsRead = null;

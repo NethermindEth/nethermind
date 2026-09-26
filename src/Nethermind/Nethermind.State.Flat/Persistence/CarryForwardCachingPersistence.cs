@@ -292,7 +292,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             bool current = parent.IsCurrent(generation);
             if (!current)
             {
-                GetSlotsFromInner(storageCells, slots, found);
+                inner.GetSlots(storageCells, slots, found);
                 return;
             }
 
@@ -317,7 +317,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             if (missingCount == 0)
             {
                 if (!parent.IsCurrent(generation))
-                    GetSlotsFromInner(storageCells, slots, found);
+                    inner.GetSlots(storageCells, slots, found);
                 return;
             }
 
@@ -326,7 +326,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.GetSlots(missingCells.AsSpan(), missingSlots.AsSpan(), missingFound.AsSpan());
             if (!parent.IsCurrent(generation))
             {
-                GetSlotsFromInner(storageCells, slots, found);
+                inner.GetSlots(storageCells, slots, found);
                 return;
             }
 
@@ -340,13 +340,6 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 found[destinationIndex] = slotFound;
                 parent.TryCacheSlot((cell.Address, cell.Index), new CachedSlot(slotFound, slotFound ? slot : default), generation);
             }
-        }
-
-        private void GetSlotsFromInner(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
-        {
-            inner.GetSlots(storageCells, slots, found);
-            for (int i = 0; i < found.Length; i++)
-                if (!found[i]) slots[i] = default;
         }
 
         public StateId CurrentState => inner.CurrentState;

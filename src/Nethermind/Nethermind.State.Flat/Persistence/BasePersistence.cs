@@ -287,6 +287,12 @@ public static class BasePersistence
     public interface IHashedFlatReader
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
+
+        /// <summary>
+        /// Batched <see cref="GetAccount"/>: <c>accounts[i]</c> receives the stored encoding of the account at
+        /// <c>addresses[i]</c>, or <c>null</c> if it is absent. Output and block-cache contract as
+        /// <see cref="IPersistence.IPersistenceReader.GetAccounts"/>.
+        /// </summary>
         [SkipLocalsInit]
         public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<byte[]?> accounts)
         {
@@ -301,6 +307,11 @@ public static class BasePersistence
             }
         }
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue);
+
+        /// <summary>
+        /// Batched <see cref="TryGetStorage"/>. Output and block-cache contract as
+        /// <see cref="IPersistence.IPersistenceReader.GetSlots"/>, with <paramref name="values"/> in the role of its slots.
+        /// </summary>
         public void GetStorages(
             ReadOnlySpan<ValueHash256> addresses,
             ReadOnlySpan<ValueHash256> slots,
@@ -343,6 +354,8 @@ public static class BasePersistence
     public interface IFlatReader
     {
         public Account? GetAccount(Address address);
+
+        /// <inheritdoc cref="IPersistence.IPersistenceReader.GetAccounts"/>
         public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
         {
             if (addresses.Length != accounts.Length)
@@ -352,6 +365,8 @@ public static class BasePersistence
                 accounts[i] = GetAccount(addresses[i]);
         }
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
+
+        /// <inheritdoc cref="IPersistence.IPersistenceReader.GetSlots"/>
         public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
         {
             if (storageCells.Length != slots.Length || storageCells.Length != found.Length)
@@ -522,8 +537,6 @@ public static class BasePersistence
             }
 
             _flatReader.GetStorages(addressHashes.AsSpan(), slotHashes.AsSpan(), slots, found);
-            for (int i = 0; i < found.Length; i++)
-                if (!found[i]) slots[i] = default;
         }
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash)
@@ -570,12 +583,8 @@ public static class BasePersistence
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
 
-        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
-        {
+        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found) =>
             _flatReader.GetSlots(storageCells, slots, found);
-            for (int i = 0; i < found.Length; i++)
-                if (!found[i]) slots[i] = default;
-        }
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStateRlp(path, flags);

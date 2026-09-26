@@ -35,6 +35,12 @@ public interface IPersistence
     {
         Account? GetAccount(Address address);
 
+        /// <summary>Batched <see cref="GetAccount"/>: <c>accounts[i]</c> receives the account at <c>addresses[i]</c>, or <c>null</c> if it is absent.</summary>
+        /// <remarks>
+        /// Every element of <paramref name="accounts"/> is written, so callers need not pre-clear it. Where the batch reaches
+        /// the batched RocksDB read (the hashed flat layouts), it uses <see cref="ReadFlags.HintCacheMiss"/> and does not fill
+        /// the block cache: that suits bulk warm-up whose results land in managed caches, not a caller that wants the blocks cached.
+        /// </remarks>
         void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
         {
             if (addresses.Length != accounts.Length)
@@ -48,6 +54,12 @@ public interface IPersistence
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
 
+        /// <summary>Batched <see cref="TryGetSlot"/>: <c>found[i]</c> and <c>slots[i]</c> receive the result for <c>storageCells[i]</c>.</summary>
+        /// <remarks>
+        /// Every element of <paramref name="slots"/> and <paramref name="found"/> is written, and <c>slots[i]</c> is
+        /// <c>default</c> where <c>found[i]</c> is <c>false</c>, so callers need not pre-clear and forwarding readers need
+        /// not re-clear. The block cache is bypassed as for <see cref="GetAccounts"/>.
+        /// </remarks>
         void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
         {
             if (storageCells.Length != slots.Length || storageCells.Length != found.Length)

@@ -317,7 +317,10 @@ public class ReadOnlySnapshotBundleTests
             MultiGetCalls++;
             RequestedCells = storageCells.ToArray();
             for (int i = 0; i < storageCells.Length; i++)
+            {
                 found[i] = TryGetSlot(storageCells[i].Address, storageCells[i].Index, ref slots[i]);
+                if (!found[i]) slots[i] = default;
+            }
         }
 
         public StateId CurrentState => default;
