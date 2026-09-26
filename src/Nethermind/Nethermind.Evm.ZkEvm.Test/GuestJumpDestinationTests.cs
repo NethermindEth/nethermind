@@ -149,10 +149,11 @@ public class GuestJumpDestinationTests
         byte stackMemory = 0;
         EvmStack stack = new(0, ref stackMemory, code, codeInfo);
 
+        Assert.That(stack.IsKnownJumpDestination(3), Is.False, "not scanned yet");
+        Assert.That(stack.IsJumpDestination(3), Is.True);
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stack.IsKnownJumpDestination(3), Is.False, "not scanned yet");
-            Assert.That(stack.IsJumpDestination(3), Is.True);
             Assert.That(stack.IsKnownJumpDestination(3), Is.True, "scanned by the jump above");
             Assert.That(stack.IsKnownJumpDestination(2), Is.False, "push data");
             Assert.That(stack.IsKnownJumpDestination(4), Is.False, "past the end");

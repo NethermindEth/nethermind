@@ -140,8 +140,10 @@ public static partial class EvmInstructions
             destination = BinaryPrimitives.ReverseEndianness(destination);
             // With lazy analysis the destination may not be analyzed yet, and analyzing it here would put a call into
             // this handler, so the push and the jump run unfused and the jump handler does the analysis. Either way
-            // the gas, the stack and the outcome are the same.
-            if (EvmStack.AnalyzesJumpDestinationsLazily && !stack.IsKnownJumpDestination(destination))
+            // the gas, the stack and the outcome are the same. A JUMPI that is not taken never looks at its
+            // destination, so it stays fused; the condition is only peeked, leaving the stack intact for the fallback.
+            if (EvmStack.AnalyzesJumpDestinationsLazily && !stack.IsKnownJumpDestination(destination)
+                && (nextInstruction == Instruction.JUMP || !stack.EnsureDepth(1) || !EvmStack.IsSlotZero(ref stack.PeekBytesByRefUnchecked())))
                 goto Unfused;
 
             if (nextInstruction == Instruction.JUMP)

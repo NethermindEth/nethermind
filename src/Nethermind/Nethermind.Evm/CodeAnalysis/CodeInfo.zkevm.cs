@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -30,6 +31,8 @@ public sealed partial class CodeInfo
     /// </remarks>
     internal bool AnalyzeJump(int destination, long[] bitmap, ReadOnlySpan<byte> code)
     {
+        // Another bitmap would advance the cursor without the bits it covers ever being set.
+        Debug.Assert(ReferenceEquals(bitmap, _incrementalJumpBitmap), "AnalyzeJump must scan into this code's own bitmap");
         if (code[0] == (byte)Instruction.STOP || code[destination] != (byte)Instruction.JUMPDEST) return false;
         _analyzedUntil = (nint)JumpDestinationAnalyzer.ScanUntil((nuint)_analyzedUntil, destination, bitmap, code);
         return JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination);
