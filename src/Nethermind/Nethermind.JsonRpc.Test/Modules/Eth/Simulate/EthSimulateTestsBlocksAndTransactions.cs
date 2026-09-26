@@ -593,6 +593,65 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
     }
 
+    [Test]
+    public async Task Test_eth_simulateV1_drops_logs_and_transfers_of_reverted_frames([Values] bool eip7708)
+    {
+        Address caller = new("0xc400000000000000000000000000000000000000");
+        Address reverter = new("0xc500000000000000000000000000000000000000");
+        Address logger = new("0xc600000000000000000000000000000000000000");
+
+        // CALL(gas, target, value, 0, 0, 0, 0) and discard the success flag.
+        static string Call(Address target, byte value) => $"600060006000600060{value:x2}73{target.Bytes.ToHexString()}5af150";
+        const string Log0 = "60006000a0";
+        // logger: LOG0, STOP. reverter: pays logger 1 wei, LOG0, REVERT. caller: pays reverter 5 wei and
+        // swallows its revert, pays logger 2 wei, LOG0, STOP.
+        string loggerCode = Log0 + "00";
+        string reverterCode = Call(logger, 1) + Log0 + "60006000fd";
+        string callerCode = Call(reverter, 5) + Call(logger, 2) + Log0 + "00";
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            TraceTransfers = true,
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 100.Ether } },
+                        { caller, new AccountOverride { Balance = 1.Ether, Code = Bytes.FromHexString(callerCode) } },
+                        { reverter, new AccountOverride { Code = Bytes.FromHexString(reverterCode) } },
+                        { logger, new AccountOverride { Code = Bytes.FromHexString(loggerCode) } }
+                    },
+                    Calls =
+                    [
+                        // A reverted transaction emits no logs, so it must not consume log indices either.
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = reverter, Gas = 200_000, GasPrice = 0 },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = caller, Gas = 200_000, GasPrice = 0 }
+                    ]
+                }
+            ]
+        };
+
+        OverridableReleaseSpec spec = new(London.Instance);
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(spec);
+        spec.IsEip7708Enabled = eip7708;
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+        SimulateCallResult[] calls = result.Data[0].Calls.ToArray();
+        Assert.That(calls[0].Status, Is.EqualTo(StatusCode.Failure));
+        Assert.That(calls[0].Logs, Is.Empty);
+        Assert.That(calls[1].Status, Is.EqualTo(StatusCode.Success));
+
+        Log[] logs = calls[1].Logs.ToArray();
+        Address transferSender = eip7708 ? TransferLog.Sender : TransferLog.Erc20Sender;
+        Assert.That(logs.Select(static l => l.Address), Is.EqualTo(new[] { transferSender, logger, caller }));
+        Assert.That(logs[0].Topics, Is.EqualTo(new[] { TransferLog.TransferSignature, caller.ToHash().ToHash256(), logger.ToHash().ToHash256() }));
+        Assert.That(new UInt256(logs[0].Data, isBigEndian: true), Is.EqualTo((UInt256)2));
+        Assert.That(logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 0, 1, 2 }));
+    }
+
     [TestCase(
         """{"blockStateCalls":[{"stateOverrides":{"0x0000000000000000000000000000000000000001":{"MovePrecompileToAddress":"0x0000000000000000000000000000000000000001"}}}]}""",
         ErrorCodes.MovePrecompileSelfReference,
