@@ -5,7 +5,6 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;

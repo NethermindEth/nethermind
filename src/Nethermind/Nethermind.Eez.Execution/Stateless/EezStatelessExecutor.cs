@@ -14,7 +14,6 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
-using Nethermind.TxPool;
 
 namespace Nethermind.Eez.Execution.Stateless;
 
