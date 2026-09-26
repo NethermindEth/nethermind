@@ -421,6 +421,27 @@ namespace Nethermind.Evm.Test
             }
         }
 
+        [TestCase(false, false, false, false, true, TestName = "Nested_return_scratch_WithoutRetainingTracer_IsUsed")]
+        [TestCase(true, false, false, false, false, TestName = "Nested_return_scratch_WhenTracingActions_IsNotUsed")]
+        [TestCase(false, true, false, false, false, TestName = "Nested_return_scratch_WhenTracingInstructions_IsNotUsed")]
+        [TestCase(false, false, true, false, false, TestName = "Nested_return_scratch_WhenTracingMemory_IsNotUsed")]
+        [TestCase(false, false, false, true, false, TestName = "Nested_return_scratch_WhenTracingReturnData_IsNotUsed")]
+        public void Nested_return_scratch_follows_tracer_capabilities(
+            bool actions, bool instructions, bool memory, bool returnData, bool expectScratch)
+        {
+            (Address largeTarget, _, byte[] largeOutput, _) = SetUpSiblingReturnTargets(false);
+            byte[] parentCode = Prepare.EvmCode
+                .CALL(100_000, largeTarget, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done;
+
+            ExecuteDirect(parentCode, new TracingFlagsTracer(actions, instructions, memory, returnData));
+
+            Assert.That(Machine.RetainedReturnDataScratchLength,
+                expectScratch ? Is.GreaterThanOrEqualTo(largeOutput.Length) : Is.Zero,
+                "a tracer that may keep a nested output must disable the reusable return scratch");
+        }
+
         private (Address LargeTarget, Address SmallTarget, byte[] LargeOutput, byte[] SmallOutput) SetUpSiblingReturnTargets(bool smallReverts)
         {
             Address largeTarget = TestItem.AddressC;
@@ -457,6 +478,17 @@ namespace Nethermind.Evm.Test
                     machine.ReturnData = output;
                     Assigned = true;
                 }
+            }
+        }
+
+        private sealed class TracingFlagsTracer : TxTracer
+        {
+            public TracingFlagsTracer(bool actions, bool instructions, bool memory, bool returnData)
+            {
+                IsTracingActions = actions;
+                IsTracingInstructions = instructions;
+                IsTracingMemory = memory;
+                IsTracingReturnData = returnData;
             }
         }
 

@@ -214,14 +214,11 @@ public partial class VirtualMachine<TGasPolicy>(
     internal void StageReturnData(ReadOnlySpan<byte> returnData)
     {
         // Only nested non-create outputs are consumed before this buffer can be reused by a later child call.
-        bool allowReuse = !returnData.IsEmpty
+        bool allowReuse = _tracerAllowsReturnScratch
+            && !returnData.IsEmpty
             && returnData.Length <= ReturnDataScratch.MaxRetainedLength
             && !_currentState.IsTopLevel
-            && !_currentState.ExecutionType.IsAnyCreate()
-            && !_txTracer.IsTracingActions
-            && !_txTracer.IsTracingInstructions
-            && !_txTracer.IsTracingMemory
-            && !_txTracer.IsTracingReturnData;
+            && !_currentState.ExecutionType.IsAnyCreate();
 
         ReturnData = _returnDataScratch.Stage(returnData, allowReuse);
     }
@@ -237,6 +234,7 @@ public partial class VirtualMachine<TGasPolicy>(
     internal bool IsTracingAccess { get => DispatchFlags.Tracing(field); private set; }
     internal bool IsTracingOpLevelStorage { get => DispatchFlags.Tracing(field); private set; }
     private bool IsTracingImplicitStop { get => DispatchFlags.Tracing(field); set; }
+    private bool _tracerAllowsReturnScratch;
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -292,6 +290,10 @@ public partial class VirtualMachine<TGasPolicy>(
         IsTracingAccess = txTracer.IsTracingAccess;
         IsTracingOpLevelStorage = txTracer.IsTracingOpLevelStorage;
         IsTracingImplicitStop = txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
+        _tracerAllowsReturnScratch = !txTracer.IsTracingActions
+            && !txTracer.IsTracingInstructions
+            && !txTracer.IsTracingMemory
+            && !txTracer.IsTracingReturnData;
         DispatchFlags.Validate(txTracer);
         _worldState = worldState;
         _isInstructionTraceActive = false;
