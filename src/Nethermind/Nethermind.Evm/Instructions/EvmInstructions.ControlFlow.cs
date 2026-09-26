@@ -151,6 +151,7 @@ public static partial class EvmInstructions
     }
 
     /// <summary>Steps past a landed-on <c>JUMPDEST</c> and returns whether its gas charge succeeded.</summary>
+    /// <remarks>An EIP-7979 <c>CALLDEST</c> is priced as a <c>JUMPDEST</c>, so this also steps past one.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool SkipJumpDest<TGasPolicy, TSkipJumpDest>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, nint destination, out nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -166,6 +167,70 @@ public static partial class EvmInstructions
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// EIP-7979 <c>CALLSUB</c>: pops a destination, which must be a <c>CALLDEST</c>, pushes the position of the
+    /// next instruction onto the frame's return stack and jumps to the destination.
+    /// </summary>
+    /// <param name="programCounter">The program counter, already past <c>CALLSUB</c>; the destination is returned rather than written back.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/> on success; <see cref="EvmExceptionType.OutOfGas"/>, <see cref="EvmExceptionType.StackUnderflow"/>,
+    /// <see cref="EvmExceptionType.InvalidJumpDestination"/> or <see cref="EvmExceptionType.ReturnStackOverflow"/> on failure.
+    /// </returns>
+    [SkipLocalsInit]
+    public static OpcodeResult InstructionCallSub<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionCallSub<TGasPolicy, OffFlag>(ref stack, ref gas, vm, programCounter);
+
+    /// <summary>
+    /// <see cref="InstructionCallSub{TGasPolicy}"/> for non-traced tables: a valid call also counts and charges
+    /// the target <c>CALLDEST</c> and leaves PC on the instruction after it, eliminating the marker's dispatch.
+    /// </summary>
+    [SkipLocalsInit]
+    internal static OpcodeResult InstructionCallSubAndSkipCallDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionCallSub<TGasPolicy, OnFlag>(ref stack, ref gas, vm, programCounter);
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static OpcodeResult InstructionCallSub<TGasPolicy, TSkipCallDest>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipCallDest : struct, IFlag
+    {
+        if (!TGasPolicy.UpdateGas<CallSubGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+        if (!stack.EnsureDepth(1)) goto StackUnderflow;
+        nint destination = CallDestination(ref stack.PopBytesByRefUnchecked(), ref stack);
+        if (destination < 0) goto InvalidJumpDestination;
+        if (!vm.VmState.TryPushReturnAddress((int)programCounter)) goto ReturnStackOverflow;
+        if (!SkipJumpDest<TGasPolicy, TSkipCallDest>(vm, ref gas, destination, out programCounter))
+            return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+        PrefetchCodeAtDestination(ref stack, programCounter);
+
+        return new OpcodeResult(programCounter, EvmExceptionType.None);
+        // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
+    InvalidJumpDestination:
+        return new OpcodeResult(programCounter, EvmExceptionType.InvalidJumpDestination);
+    ReturnStackOverflow:
+        return new OpcodeResult(programCounter, EvmExceptionType.ReturnStackOverflow);
+    }
+
+    /// <summary>EIP-7979 <c>RETURNSUB</c>: resumes at the position popped off the frame's return stack.</summary>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/> on success; <see cref="EvmExceptionType.OutOfGas"/> or
+    /// <see cref="EvmExceptionType.ReturnStackUnderflow"/> on failure.
+    /// </returns>
+    /// <remarks>The popped position needs no check: only <c>CALLSUB</c> pushes, and at most one past the end of the code.</remarks>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionReturnSub<TGasPolicy>(ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        if (!TGasPolicy.UpdateGas<ReturnSubGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        if (!vm.VmState.TryPopReturnAddress(out int returnAddress)) return EvmExceptionType.ReturnStackUnderflow;
+        programCounter = returnAddress;
+        return EvmExceptionType.None;
     }
 
     /// <summary>
@@ -355,6 +420,23 @@ public static partial class EvmInstructions
         stack.IsJumpDestination(jumpDestination)
             ? jumpDestination
             : -1;
+
+    /// <summary>
+    /// Reads an EIP-7979 <c>CALLSUB</c> destination out of the stack slot that holds it, returning it, or <c>-1</c>
+    /// when it is not a <c>CALLDEST</c>.
+    /// </summary>
+    /// <remarks>
+    /// Requires <see cref="EvmStack.UseCallDestinations"/>, whose bitmap marks both markers; the code byte tells
+    /// them apart. A marked position is inside the code, so the byte read is in bounds.
+    /// </remarks>
+    /// <inheritdoc cref="JumpDestination(ref byte, ref EvmStack)" path="/param"/>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static nint CallDestination(ref byte slot, ref EvmStack stack)
+    {
+        nint destination = JumpDestination(ref slot, ref stack);
+        return destination >= 0 && Unsafe.Add(ref stack.Code, destination) == (byte)Instruction.CALLDEST ? destination : -1;
+    }
 
     /// <summary>Prefetches the bytecode cache line at a taken jump's next instruction.</summary>
     /// <remarks>Hints the target explicitly to reduce cache misses after non-sequential control flow.</remarks>

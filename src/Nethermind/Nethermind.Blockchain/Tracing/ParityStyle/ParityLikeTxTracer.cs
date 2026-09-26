@@ -99,6 +99,8 @@ public class ParityLikeTxTracer : TxTracer
         EvmExceptionType.OutOfGas => "Out of gas",
         EvmExceptionType.InvalidJumpDestination => "Bad jump destination",
         EvmExceptionType.AccessViolation => "Access violation",
+        EvmExceptionType.ReturnStackOverflow => "Return stack overflow",
+        EvmExceptionType.ReturnStackUnderflow => "Return stack underflow",
         EvmExceptionType.StaticCallViolation => "Static call violation",
         EvmExceptionType.Revert => "Reverted",
         _ => "Error",

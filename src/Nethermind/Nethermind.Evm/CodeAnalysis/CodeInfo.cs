@@ -123,6 +123,11 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
         get => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
     }
 
+    /// <summary>The EIP-7979 bitmap of <c>JUMPDEST</c> and <c>CALLDEST</c> positions in this code, built on first use.</summary>
+    /// <param name="eip8024">Whether EIP-8024 immediates are instruction data rather than instructions.</param>
+    internal long[] GetJumpAndCallDestinationBitmap(bool eip8024)
+        => _analyzer?.GetJumpAndCallDestinationBitmap(eip8024) ?? JumpDestinationAnalyzer.EmptyBitmap;
+
     public override bool Equals(object? obj)
         => Equals(obj as CodeInfo);
 

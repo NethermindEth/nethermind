@@ -53,6 +53,10 @@ public class VmState<TGasPolicy> : IDisposable
     /// </summary>
     public bool NewAccountCharged { get; private set; } // TODO: move to CallEnv
 
+    // EIP-7979 return addresses: allocated on the first CALLSUB, then kept with the pooled state.
+    private int[]? _returnStack;
+    private int _returnStackHead;
+
     private bool _isDisposed = true;
 
     private EvmPooledMemory _memory;
@@ -171,6 +175,7 @@ public class VmState<TGasPolicy> : IDisposable
         OutputLength = outputLength;
         Refund = 0;
         DataStackHead = 0;
+        _returnStackHead = 0;
         ProgramCounter = 0;
         ExecutionType = executionType;
         IsTopLevel = isTopLevel;
@@ -326,6 +331,36 @@ public class VmState<TGasPolicy> : IDisposable
         Debug.Assert(array is not null);
         nint addr = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(array));
         return (nuint)((-addr) & 31);
+    }
+
+    /// <summary>Pushes an EIP-7979 return address onto this frame's return stack.</summary>
+    /// <returns><c>false</c> when the return stack already holds <see cref="EvmStack.ReturnStackLimit"/> addresses.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryPushReturnAddress(int address)
+    {
+        int head = _returnStackHead;
+        if (head >= EvmStack.ReturnStackLimit) return false;
+        int[] returnStack = _returnStack ??= new int[EvmStack.ReturnStackLimit];
+        returnStack[head] = address;
+        _returnStackHead = head + 1;
+        return true;
+    }
+
+    /// <summary>Pops the most recent EIP-7979 return address off this frame's return stack.</summary>
+    /// <returns><c>false</c> when the return stack is empty.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryPopReturnAddress(out int address)
+    {
+        int head = _returnStackHead - 1;
+        if (head < 0)
+        {
+            address = 0;
+            return false;
+        }
+
+        address = _returnStack![head];
+        _returnStackHead = head;
+        return true;
     }
 
     public void CommitToParent(VmState<TGasPolicy> parentState)

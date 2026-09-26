@@ -1448,6 +1448,12 @@ public partial class VirtualMachine<TGasPolicy>(
             vmState.InitializeStacks(codeSpan, out stack);
         }
 
+        IReleaseSpec spec = Spec;
+        if (spec.IsEip7979Enabled)
+        {
+            stack.UseCallDestinations(spec.IsEip8024Enabled);
+        }
+
         // Operate on the frame gas by reference so exceptional halts keep the latest
         // gas/state-gas accounting without needing interpreter-wide exception handling.
         ref TGasPolicy gas = ref vmState.Gas;
@@ -1595,7 +1601,9 @@ public partial class VirtualMachine<TGasPolicy>(
             EvmExceptionType.StackOverflow or
             EvmExceptionType.StackUnderflow or
             EvmExceptionType.InvalidJumpDestination or
-            EvmExceptionType.AccessViolation => new(exceptionType),
+            EvmExceptionType.AccessViolation or
+            EvmExceptionType.ReturnStackOverflow or
+            EvmExceptionType.ReturnStackUnderflow => new(exceptionType),
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
         };
     }
