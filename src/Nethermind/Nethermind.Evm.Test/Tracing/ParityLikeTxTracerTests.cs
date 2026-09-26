@@ -460,7 +460,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> operations = TraceParityVmOperations(code, streaming);
+        IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> operations = TraceVmOperations(code, streaming);
 
         int frameIndex = 0;
         while (frameIndex < operations.Count && !operations[frameIndex].HasSubtrace)

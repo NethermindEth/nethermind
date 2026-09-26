@@ -72,7 +72,7 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
 
     private ulong PayCost(byte[] code) => OpcodeCost(code, Instruction.PAY);
 
-    // Gas charged at the opcode's step, per the Geth-style trace.
+    // Gas charged at the opcode's step, per the debug_trace* struct log.
     private ulong OpcodeCost(byte[] code, Instruction opcode)
     {
         foreach (GethTxTraceEntry entry in ExecuteAndTrace(GasLimit, code).Entries)
@@ -259,7 +259,7 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Parity_trace_shows_pay_as_a_call_subtrace()
+    public void Trace_module_shows_pay_as_a_call_subtrace()
     {
         TestState.CreateAccount(Existing, 5);
         (Block block, Transaction transaction) = PrepareTx(Activation, GasLimit, Pay(Prepare.EvmCode, Existing, 7).STOP().Done);
@@ -276,12 +276,12 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Parity_vm_trace_reports_pay_cost_and_push([Values] bool streaming)
+    public void Vm_trace_reports_pay_cost_and_push([Values] bool streaming)
     {
         TestState.CreateAccount(Existing, 5);
         byte[] code = Pay(Prepare.EvmCode, Existing, 7).Op(Instruction.POP).STOP().Done;
 
-        IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> operations = TraceParityVmOperations(code, streaming);
+        IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> operations = TraceVmOperations(code, streaming);
 
         // PUSH value, PUSH target, PAY, POP, STOP
         Assert.That(operations.Select(static op => (op.Cost, op.Pushes)), Is.EqualTo(new[]

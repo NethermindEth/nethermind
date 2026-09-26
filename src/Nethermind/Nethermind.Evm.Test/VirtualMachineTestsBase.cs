@@ -137,11 +137,8 @@ public abstract class VirtualMachineTestsBase
         return tracer.BuildResult();
     }
 
-    /// <summary>
-    /// deprecated. Please use activation instead of blockNumber.
-    /// </summary>
-    /// <summary>Runs <paramref name="code"/> under a Parity vmTrace, buffered or streamed, and returns each top-level operation.</summary>
-    protected IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> TraceParityVmOperations(byte[] code, bool streaming)
+    /// <summary>Runs <paramref name="code"/> under a <c>trace_*</c> vmTrace, buffered or streamed, and returns each top-level operation.</summary>
+    protected IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> TraceVmOperations(byte[] code, bool streaming)
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
         BlockExecutionContext context = new(block.Header, Spec);
@@ -186,6 +183,9 @@ public abstract class VirtualMachineTestsBase
         return operations;
     }
 
+    /// <summary>
+    /// deprecated. Please use activation instead of blockNumber.
+    /// </summary>
     protected TestAllTracerWithOutput Execute(ulong blockNumber, params byte[] code) => Execute((blockNumber, Timestamp), code);
 
     protected TestAllTracerWithOutput Execute(ForkActivation activation, params byte[] code) => Execute(activation, 100000UL, code);
