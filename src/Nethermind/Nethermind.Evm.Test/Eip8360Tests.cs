@@ -36,6 +36,7 @@ public class Eip8360Tests : VirtualMachineTestsBase
     private static readonly Address Factory = TestItem.AddressC;
     private static readonly Address Library = TestItem.AddressD;
     private static readonly Address Sink = TestItem.AddressE;
+    private static readonly Address IdentityPrecompile = Address.FromNumber(4);
     private static readonly byte[] Salt = new UInt256(8360).ToBigEndian();
     private const ulong GasLimit = 5_000_000;
     private const long CallGas = 1_000_000;
@@ -58,6 +59,7 @@ public class Eip8360Tests : VirtualMachineTestsBase
         TestState.CreateAccount(Sender, 1000.Ether);
         // Pre-funded so value sent to it never pays EIP-8037 new-account state gas.
         TestState.CreateAccount(Sink, 1);
+        TestState.CreateAccount(IdentityPrecompile, 1);
         TestState.Commit(Spec);
         TestState.CommitTree(0);
     }
@@ -160,6 +162,21 @@ public class Eip8360Tests : VirtualMachineTestsBase
             Assert.That(Storage(tcreated, 0), Is.EqualTo(UInt256.Zero), "nothing reaches persistent storage");
             Assert.That(Storage(Library, 0), Is.EqualTo((UInt256)expectedLibraryStorage), "called accounts keep persistent storage");
         }
+    }
+
+    [Test]
+    public void Storage_is_transient_without_net_gas_metering()
+    {
+        IReleaseSpec unmetered = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8360Enabled = true, IsEip1283Enabled = false, IsEip2200Enabled = false };
+        byte[] init = Prepare.EvmCode.SSTORE(0, [7]).ForInitOf(ReturnWord(Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD))).Done;
+        InstallCode(Factory, Prepare.EvmCode
+            .Data(TCreateAndStore(init, UInt256.Zero))
+            .Data(CallAndStoreWord(TCreateAddress(Factory, init), UInt256.Zero, slot: 1))
+            .STOP()
+            .Done);
+
+        Assert.That(Run(spec: unmetered).StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(FactorySlot(1), Is.EqualTo((UInt256)7), "the legacy SSTORE handler writes the same transient slot SLOAD reads");
     }
 
     [Test]
@@ -309,21 +326,22 @@ public class Eip8360Tests : VirtualMachineTestsBase
     {
         long newAccount = GasCostOf.NewAccountState;
         long accountWrite = (long)Eip8038Constants.AccountWrite;
-        yield return new TestCaseData(0, 5, 0, 0, newAccount, 0L, 5).SetName("First balance from zero charges state gas");
-        yield return new TestCaseData(0, 5, 5, 0, 0L, accountWrite, 0).SetName("Returning to a zero original refills state gas and refunds ACCOUNT_WRITE");
-        yield return new TestCaseData(0, 5, 2, 0, newAccount, 0L, 3).SetName("Partial drain keeps the state charge");
-        yield return new TestCaseData(3, 5, 0, 0, 0L, 0L, 8).SetName("Non-zero original balance pays no state gas");
-        yield return new TestCaseData(3, 5, 5, 0, 0L, accountWrite, 3).SetName("Restoring a non-zero original balance refunds ACCOUNT_WRITE");
-        yield return new TestCaseData(0, 0, 0, 4, newAccount, 0L, 4).SetName("Value CALLed into a TCREATE account charges state gas");
+        yield return new TestCaseData(0, 5, 0, 0, newAccount, 0L, 5, Sink).SetName("First balance from zero charges state gas");
+        yield return new TestCaseData(0, 5, 5, 0, 0L, accountWrite, 0, Sink).SetName("Returning to a zero original refills state gas and refunds ACCOUNT_WRITE");
+        yield return new TestCaseData(0, 5, 5, 0, 0L, accountWrite, 0, IdentityPrecompile).SetName("Draining into a precompile refills state gas");
+        yield return new TestCaseData(0, 5, 2, 0, newAccount, 0L, 3, Sink).SetName("Partial drain keeps the state charge");
+        yield return new TestCaseData(3, 5, 0, 0, 0L, 0L, 8, Sink).SetName("Non-zero original balance pays no state gas");
+        yield return new TestCaseData(3, 5, 5, 0, 0L, accountWrite, 3, Sink).SetName("Restoring a non-zero original balance refunds ACCOUNT_WRITE");
+        yield return new TestCaseData(0, 0, 0, 4, newAccount, 0L, 4, Sink).SetName("Value CALLed into a TCREATE account charges state gas");
     }
 
     [TestCaseSource(nameof(BalanceTableCases))]
     public void Balance_changes_follow_the_eip_tables(int preFund, int endowment, int sentOut, int calledIn,
-        long expectedStateGas, long expectedRefund, int expectedFinalBalance)
+        long expectedStateGas, long expectedRefund, int expectedFinalBalance, Address sentTo)
     {
         byte[] init = sentOut == 0
             ? EmptyInit
-            : Prepare.EvmCode.CallWithValue(Sink, CallGas, (UInt256)sentOut).Op(Instruction.POP).STOP().Done;
+            : Prepare.EvmCode.CallWithValue(sentTo, CallGas, (UInt256)sentOut).Op(Instruction.POP).STOP().Done;
         Address tcreated = TCreateAddress(Factory, init);
         if (preFund != 0)
         {
@@ -346,6 +364,34 @@ public class Eip8360Tests : VirtualMachineTestsBase
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo((ulong)expectedStateGas), "state gas");
             Assert.That(tracer.Refund, Is.EqualTo(expectedRefund), "ACCOUNT_WRITE refund");
             AssertFinalized(tcreated, (UInt256)expectedFinalBalance);
+        }
+    }
+
+    [TestCase(true, TestName = "SELFDESTRUCT draining a TCREATE account refills state gas")]
+    [TestCase(false, TestName = "SELFDESTRUCT crediting a TCREATE account charges state gas")]
+    public void Self_destruct_follows_the_eip_tables(bool fromTransientCreate)
+    {
+        byte[] init = fromTransientCreate ? Prepare.EvmCode.SELFDESTRUCT(Sink).Done : EmptyInit;
+        Address tcreated = TCreateAddress(Factory, init);
+        // A pre-existing library, so EIP-6780 only moves its balance.
+        InstallCode(Library, Prepare.EvmCode.SELFDESTRUCT(tcreated).Done, 4);
+        Prepare factory = Prepare.EvmCode.TCreate(init, Salt, (UInt256)(fromTransientCreate ? 5 : 0)).Op(Instruction.POP);
+        if (!fromTransientCreate)
+        {
+            factory.Call(Library, CallGas).Op(Instruction.POP);
+        }
+
+        InstallCode(Factory, factory.STOP().Done, 100);
+
+        TestAllTracerWithOutput tracer = Run();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(fromTransientCreate ? 0UL : (ulong)GasCostOf.NewAccountState), "state gas");
+            Assert.That(tracer.Refund, Is.EqualTo(fromTransientCreate ? (long)Eip8038Constants.AccountWrite : 0L), "ACCOUNT_WRITE refund");
+            Assert.That(TestState.GetBalance(Sink), Is.EqualTo((UInt256)(fromTransientCreate ? 6 : 1)));
+            AssertFinalized(tcreated, (UInt256)(fromTransientCreate ? 0 : 4));
         }
     }
 
@@ -399,7 +445,7 @@ public class Eip8360Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Parity_trace_reports_a_tcreate_action()
+    public void Trace_module_reports_a_tcreate_action()
     {
         InstallCode(Factory, TCreateAndStore(EmptyInit, 0));
         (Block block, Transaction tx) = BuildFactoryCall();

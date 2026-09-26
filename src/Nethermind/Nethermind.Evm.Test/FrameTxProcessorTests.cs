@@ -256,6 +256,30 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_FrameTcreatesContract_KeepsOnlyItsBalanceAfterTheFrameTx()
+    {
+        _spec.IsEip8360Enabled = true;
+        byte[] runtime = [(byte)Instruction.PUSH0];
+        byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
+        byte[] salt = new byte[32];
+        Address tcreated = ContractAddress.FromTransientCreate(Observer, salt, init);
+
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.TCreate(init, salt, 2).Op(Instruction.POP).Op(Instruction.STOP).Done, 10);
+
+        TransactionResult result = Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo((UInt256)8), "the TCREATE ran and moved its endowment");
+            Assert.That(_stateProvider.GetBalance(tcreated), Is.EqualTo((UInt256)2), "EIP-8360 keeps the balance");
+            Assert.That(_stateProvider.GetNonce(tcreated), Is.EqualTo(0UL), "EIP-8360 resets the nonce at the end of the frame tx");
+            Assert.That(_stateProvider.IsContract(tcreated), Is.False, "EIP-8360 drops the code at the end of the frame tx");
+        }
+    }
+
+    [Test]
     public void CallAndRestore_FrameSelfDestructsSameTxContract_DoesNotLeakTheDestroyMarkAcrossTheRestore()
     {
         byte[] childInitCode = Prepare.EvmCode.PushData(Recipient).Op(Instruction.SELFDESTRUCT).Done;

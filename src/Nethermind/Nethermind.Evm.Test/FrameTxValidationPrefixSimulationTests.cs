@@ -387,6 +387,7 @@ public class FrameTxValidationPrefixSimulationTests
 
         yield return new TestCaseData((byte)Instruction.CREATE, 3).SetName("banned CREATE");
         yield return new TestCaseData((byte)Instruction.CREATE2, 4).SetName("banned CREATE2");
+        yield return new TestCaseData((byte)Instruction.TCREATE, 4).SetName("banned TCREATE");
     }
 
     [TestCaseSource(nameof(BannedOpcodes))]
