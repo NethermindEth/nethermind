@@ -20,7 +20,7 @@ public partial class EthRpcModule
     }
 
     /// <returns>The filled frames, or the failure with <see cref="ErrorCodes.ExecutionReverted"/> when a frame reverted.</returns>
-    private Result<FrameForRpc[]> FillFrameGas(FrameTransactionForRpc request, BlockHeader header, out int errorCode,
+    private Result<FrameForRpc[]> FillFrameGas(FrameTransactionForRpc request, BlockHeader header, CancellationToken token, out int errorCode,
         Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null)
     {
         errorCode = ErrorCodes.InvalidInput;
@@ -47,9 +47,8 @@ public partial class EthRpcModule
             executionHeader.BaseFeePerGas = 0;
             if (blockOverride?.BaseFeePerGas is not null) blockOverride = blockOverride.WithBaseFee(0);
         }
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         Result<TxFrame[]> result = _blockchainBridge.EstimateFrameGas(executionHeader, tx, fillExecution, fillState,
-            _rpcConfig.GasCap.EffectiveGasCap(), _rpcConfig.EstimateErrorMargin, stateOverride, blockOverride, timeout.Token, out bool executionReverted);
+            _rpcConfig.GasCap.EffectiveGasCap(), _rpcConfig.EstimateErrorMargin, stateOverride, blockOverride, token, out bool executionReverted);
         if (executionReverted) errorCode = ErrorCodes.ExecutionReverted;
         if (!result.Success(out TxFrame[]? frames, out error)) return Result<FrameForRpc[]>.Fail(error!);
         return FrameForRpc.FromFrames(frames);

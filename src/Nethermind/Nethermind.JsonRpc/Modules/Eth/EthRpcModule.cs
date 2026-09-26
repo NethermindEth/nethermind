@@ -501,7 +501,8 @@ public partial class EthRpcModule(
 
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {
-            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, out int errorCode);
+            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode);
             if (!frameGasResult)
                 return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, errorCode);
             frameTx.Frames = frameGasResult.Data;
@@ -644,9 +645,13 @@ public partial class EthRpcModule(
         {
             SearchResult<BlockHeader> search = _blockFinder.SearchForHeader(blockParameter);
             if (search.IsError) return ResultWrapper<UInt256?>.Fail(search);
-            Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, out int errorCode, stateOverride, blockOverride);
+            // One timeout covers filling the frame limits and the estimate that follows.
+            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, timeout.Token, out int errorCode, stateOverride, blockOverride);
             if (!result) return ResultWrapper<UInt256?>.Fail(result.Error!, errorCode);
             frameTx.Frames = result.Data;
+            return new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
+                .ExecuteTx(transactionCall, blockParameter, stateOverride, blockOverride, timeout.Token);
         }
         return new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
             .ExecuteTx(transactionCall, blockParameter, stateOverride, blockOverride);
