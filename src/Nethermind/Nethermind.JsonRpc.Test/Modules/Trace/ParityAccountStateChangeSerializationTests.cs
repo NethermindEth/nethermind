@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Test.Data;
@@ -60,6 +62,33 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             TestToJson(result,
                 $$$"""{"balance":{"-":"{{{quantity}}}"},"code":{"-":"{{{code}}}"},"nonce":{"-":"{{{quantity}}}"},"storage":{}}""");
         }
+
+        [Test]
+        public void Serialize_WhenStorageKeysAreUnordered_WritesThemAscendingAsFullWidthHex()
+        {
+            UInt256[] keys = [UInt256.MaxValue, 1, UInt256.One << 255, 0, (UInt256)0xabcdef << 100];
+            ParityAccountStateChange result = new() { Storage = [] };
+            foreach (UInt256 key in keys)
+            {
+                result.Storage[key] = new ParityStateChange<byte[]>([1], [2]);
+            }
+
+            StringBuilder expected = new("{\"balance\":\"=\",\"code\":\"=\",\"nonce\":\"=\",\"storage\":{");
+            UInt256[] ascending = [.. keys.Order()];
+            for (int i = 0; i < ascending.Length; i++)
+            {
+                string hex = ascending[i].ToString("x64");
+                if (i > 0) expected.Append(',');
+                expected.Append("\"0x").Append(hex[^64..]).Append("\":{\"*\":{\"from\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"to\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}");
+            }
+
+            expected.Append("}}");
+            TestToJson(result, expected.ToString());
+        }
+
+        [Test]
+        public void Serialize_WhenStorageIsEmpty_WritesAnEmptyObject() =>
+            TestToJson(new ParityAccountStateChange { Storage = [] }, "{\"balance\":\"=\",\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
 
         [Test]
         public void Can_serialize_nulls()
