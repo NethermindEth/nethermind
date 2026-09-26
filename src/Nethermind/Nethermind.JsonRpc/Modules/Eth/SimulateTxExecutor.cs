@@ -54,7 +54,9 @@ public class SimulateTxExecutor<TTrace>(
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
 
                         IReleaseSpec spec = specProvider.GetSpec(header);
-                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation, gasCap: _rpcConfig.GasCap, spec: spec);
+                        Result<Transaction> txResult = call.Validation
+                            ? callTransactionModel.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec)
+                            : callTransactionModel.ToTransaction(validateUserInput: false, gasCap: _rpcConfig.GasCap, spec: spec);
                         if (!txResult.Success(out Transaction? tx, out string? error))
                         {
                             return error;
