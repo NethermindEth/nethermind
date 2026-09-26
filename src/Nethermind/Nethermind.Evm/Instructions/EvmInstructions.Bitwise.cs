@@ -21,26 +21,26 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void WriteSmallWordToSlot(ref byte slot, ulong value)
     {
-        // Clearing the slot at the widest store the target has, then overwriting the last limb, costs
-        // fewer stores than writing four limbs and leaves the value's own store independent of them.
+        // The next opcode usually reads the slot back with a full-width vector load, which the CPU can
+        // forward only from a single store covering it. Build the word in a register and store it whole.
+        // Stack words are in UInt256 limb layout: the value is limb 0, as is.
         if (Vector256.IsHardwareAccelerated)
         {
-            EvmWord.Zero.StoreUnsafe(ref slot);
+            Vector256.CreateScalar(value).AsByte().StoreUnsafe(ref slot);
         }
         else if (Vector128.IsHardwareAccelerated)
         {
-            Vector128<byte>.Zero.StoreUnsafe(ref slot);
+            Vector128.CreateScalar(value).AsByte().StoreUnsafe(ref slot);
             Vector128<byte>.Zero.StoreUnsafe(ref slot, (nuint)Vector128<byte>.Count);
         }
         else
         {
             ref ulong parts = ref As<byte, ulong>(ref slot);
+            parts = value;
             Add(ref parts, 1) = 0;
             Add(ref parts, 2) = 0;
             Add(ref parts, 3) = 0;
         }
-        // Stack words are in UInt256 limb layout: the value is limb 0, as is.
-        WriteUnaligned(ref slot, value);
     }
 
     /// <summary>

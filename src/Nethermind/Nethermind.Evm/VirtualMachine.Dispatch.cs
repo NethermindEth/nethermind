@@ -283,10 +283,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (!TOpcode.TryConsumeGas(ref gas))
                 return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.OutOfGas);
-            if (TOpcode.StackInputs != 0 && !stack.EnsureDepth(TOpcode.StackInputs))
-                return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.StackUnderflow);
-            if (TOpcode.StackGrowth > 0 && stack.Head >= EvmStack.MaxStackSize - TOpcode.StackGrowth)
-                return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.StackOverflow);
+            if (TOpcode.StackInputs != 0 && TOpcode.StackGrowth > 0)
+            {
+                // The head has to lie in [inputs, limit - growth), so one unsigned compare covers both bounds
+                // and only the exit works out which one failed.
+                if ((nuint)(stack.Head - TOpcode.StackInputs) >= (nuint)(EvmStack.MaxStackSize - TOpcode.StackGrowth - TOpcode.StackInputs))
+                    return ExitCheckedOpcode(ref state, pc, opCodeCount,
+                        stack.Head < TOpcode.StackInputs ? EvmExceptionType.StackUnderflow : EvmExceptionType.StackOverflow);
+            }
+            else
+            {
+                if (TOpcode.StackInputs != 0 && !stack.EnsureDepth(TOpcode.StackInputs))
+                    return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.StackUnderflow);
+                if (TOpcode.StackGrowth > 0 && stack.Head >= EvmStack.MaxStackSize - TOpcode.StackGrowth)
+                    return ExitCheckedOpcode(ref state, pc, opCodeCount, EvmExceptionType.StackOverflow);
+            }
             // Only untraced PUSH bodies opt in: no subsequent opcode can observe the final stack value.
             if (TOpcode.PushSize >= 0 && pc + TOpcode.PushSize >= stack.CodeLength)
                 return ExitCheckedOpcode(ref state, pc + TOpcode.PushSize, opCodeCount, EvmExceptionType.None);

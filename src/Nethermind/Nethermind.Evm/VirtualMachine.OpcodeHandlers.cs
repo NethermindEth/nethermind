@@ -639,8 +639,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct SignExtendOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool HasCheckedBody
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => !TTracingInst.IsActive;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.LowGasCost>(ref gas);
+        public static int StackInputs => 2;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSignExtend<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+            HasCheckedBody ? EvmInstructions.SignExtendCore<TTracingInst, OffFlag>(ref stack)
+                : EvmInstructions.InstructionSignExtend<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
@@ -1259,8 +1269,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct JumpDestOpcode : IOpcodeBody
     {
+        public static bool HasCheckedBody => true;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.JumpDestGasCost>(ref gas);
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionJumpDest(ref stack, ref gas, vm);
+            EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
