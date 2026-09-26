@@ -146,6 +146,7 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
 
     [TestCase("B1", GasCostOf.JumpDest, EvmExceptionType.None, TestName = "CALLDEST costs 1")]
     [TestCase("6000B0", GasCostOf.VeryLow + GasCostOf.CallSub, EvmExceptionType.InvalidJumpDestination, TestName = "CALLSUB costs 8 before its destination check")]
+    [TestCase("6004B000B1", GasCostOf.VeryLow + GasCostOf.CallSub + GasCostOf.JumpDest, EvmExceptionType.None, TestName = "CALLSUB charges the landed-on CALLDEST")]
     [TestCase("B2", GasCostOf.ReturnSub, EvmExceptionType.ReturnStackUnderflow, TestName = "RETURNSUB costs 5 before its return stack check")]
     public void Charges_gas_before_halting(string hex, ulong cost, EvmExceptionType errorWithEnoughGas)
     {

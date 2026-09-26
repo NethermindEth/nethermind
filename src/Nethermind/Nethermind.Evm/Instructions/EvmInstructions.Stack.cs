@@ -1054,6 +1054,14 @@ public static partial class EvmInstructions
             : stack.Exchange<TTracingInst>(n, m);
     }
 
+    /// <summary>Whether <paramref name="immediate"/> is a valid EIP-8024 <c>DUPN</c>/<c>SWAPN</c> immediate; 0x5b-0x7f are disallowed.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsValidEip8024SingleImmediate(byte immediate) => (uint)(immediate - 0x5B) > 0x24;
+
+    /// <summary>Whether <paramref name="immediate"/> is a valid EIP-8024 <c>EXCHANGE</c> immediate; 0x52-0x7f are disallowed.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsValidEip8024PairImmediate(byte immediate) => (uint)(immediate - 0x52) > 0x2D;
+
     // EIP-8024 specifies that a missing immediate beyond end of code evaluates to zero.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte ReadEip8024ImmediateOrZero(ref byte code, nint codeLength, nint programCounter)
@@ -1074,7 +1082,7 @@ public static partial class EvmInstructions
         byte imm = ReadEip8024ImmediateOrZero(ref stack.Code, stack.CodeLength, programCounter);
         depth = (imm + 145) & 0xFF;
 
-        if ((uint)(imm - 0x5B) <= 0x24)
+        if (!IsValidEip8024SingleImmediate(imm))
             return false;
 
         programCounter++;
@@ -1107,7 +1115,7 @@ public static partial class EvmInstructions
         n = ((q & mask) | (r & ~mask)) + 2;
         m = (((r + 1) & mask) | ((29 - q) & ~mask)) + 1;
 
-        if ((uint)(imm - 0x52) <= 0x2D)
+        if (!IsValidEip8024PairImmediate(imm))
             return false;
 
         programCounter++;

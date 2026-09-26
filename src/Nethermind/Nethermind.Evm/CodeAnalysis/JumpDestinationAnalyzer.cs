@@ -80,8 +80,8 @@ public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skip
     /// <summary>Whether <paramref name="next"/> is a valid EIP-8024 immediate of <paramref name="op"/>, and so not an instruction.</summary>
     private static bool IsEip8024Immediate(int op, byte next) => op switch
     {
-        (int)Instruction.DUPN or (int)Instruction.SWAPN => (uint)(next - 0x5B) > 0x7F - 0x5B,
-        (int)Instruction.EXCHANGE => (uint)(next - 0x52) > 0x7F - 0x52,
+        (int)Instruction.DUPN or (int)Instruction.SWAPN => EvmInstructions.IsValidEip8024SingleImmediate(next),
+        (int)Instruction.EXCHANGE => EvmInstructions.IsValidEip8024PairImmediate(next),
         _ => false,
     };
 

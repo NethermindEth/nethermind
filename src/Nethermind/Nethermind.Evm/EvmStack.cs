@@ -87,14 +87,6 @@ public ref partial struct EvmStack
             _jumpDestinations = _codeInfo.GetJumpAndCallDestinationBitmap(eip8024);
     }
 
-    /// <summary>Reports whether <paramref name="destination"/> is a <c>CALLDEST</c> instruction, the only EIP-7979 <c>CALLSUB</c> target.</summary>
-    /// <remarks>Requires <see cref="UseCallDestinations"/>, whose bitmap marks both markers; the code byte tells them apart.</remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal bool IsCallDestination(int destination) =>
-        (uint)destination < (uint)CodeLength
-        && IsJumpDestination(destination)
-        && Unsafe.Add(ref Code, destination) == (byte)Instruction.CALLDEST;
-
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;
     /// callers must check with <see cref="Unsafe.IsNullRef{T}"/> before writing.

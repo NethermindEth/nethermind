@@ -425,17 +425,17 @@ public static partial class EvmInstructions
     /// Reads an EIP-7979 <c>CALLSUB</c> destination out of the stack slot that holds it, returning it, or <c>-1</c>
     /// when it is not a <c>CALLDEST</c>.
     /// </summary>
+    /// <remarks>
+    /// Requires <see cref="EvmStack.UseCallDestinations"/>, whose bitmap marks both markers; the code byte tells
+    /// them apart. A marked position is inside the code, so the byte read is in bounds.
+    /// </remarks>
     /// <inheritdoc cref="JumpDestination(ref byte, ref EvmStack)" path="/param"/>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static nint CallDestination(ref byte slot, ref EvmStack stack)
     {
-        ref ulong parts = ref Unsafe.As<byte, ulong>(ref slot);
-        ulong low = parts;
-        if ((Unsafe.Add(ref parts, 1) | Unsafe.Add(ref parts, 2) | Unsafe.Add(ref parts, 3) | (low >> 32)) != 0)
-            return -1;
-        int destination = (int)(uint)low;
-        return stack.IsCallDestination(destination) ? destination : -1;
+        nint destination = JumpDestination(ref slot, ref stack);
+        return destination >= 0 && Unsafe.Add(ref stack.Code, destination) == (byte)Instruction.CALLDEST ? destination : -1;
     }
 
     /// <summary>Prefetches the bytecode cache line at a taken jump's next instruction.</summary>
