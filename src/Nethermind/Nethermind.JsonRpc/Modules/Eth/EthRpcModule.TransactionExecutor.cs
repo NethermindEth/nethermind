@@ -34,10 +34,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected IReleaseSpec GetSpec(BlockHeader header) => specProvider.GetSpec(header);
 
+            /// <summary>Whether a fee cap below the priority fee is rejected as input rather than left to execution.</summary>
+            protected virtual bool ValidatesFeeCapOrder => true;
+
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
                 IReleaseSpec spec = GetSpec(header);
-                Result<Transaction> result = call.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
+                Result<Transaction> result = call.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec, validateFeeCapOrder: ValidatesFeeCapOrder);
                 if (result.IsError) return result;
 
                 Transaction tx = result.Data;
@@ -147,6 +150,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             : TxExecutor<UInt256?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
             private readonly int _errorMargin = rpcConfig.EstimateErrorMargin;
+
+            protected override bool ValidatesFeeCapOrder => false;
 
             public override ResultWrapper<UInt256?> Execute(
                 TransactionForRpc transactionCall,

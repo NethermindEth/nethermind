@@ -68,7 +68,11 @@ public abstract class TransactionForRpc
         BlockTimestamp = extraData.BlockTimestamp;
     }
 
-    public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+    /// <param name="validateFeeCapOrder">
+    /// With <paramref name="validateUserInput"/>, whether a fee cap below the priority fee is rejected here; a call
+    /// that leaves the pair to execution, where it fails before any gas is bought, passes false.
+    /// </param>
+    public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null, bool validateFeeCapOrder = true)
         => new Transaction { Type = ResolveType(spec) };
 
     private TxType ResolveType(IReleaseSpec? spec)
