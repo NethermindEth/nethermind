@@ -64,7 +64,7 @@ internal static class StartupPipelineWarmer
     // Exceeds the 64-item thresholds for parallel trie roots and background bloom computation.
     private const int TransactionCount = 128;
 
-    /// <summary>Exercises one Ethereum payload using disposable storage.</summary>
+    /// <summary>Exercises an Ethereum payload and a contract call using disposable storage.</summary>
     /// <remarks>
     /// Uses production component types so any tiered compilation observes RocksDB rather than a substitute database.
     /// The workload is deliberately bounded; it does not force a JIT tier or prevent runtime promotion.
@@ -109,6 +109,42 @@ internal static class StartupPipelineWarmer
         PrivateKey[] keys, Action<ContainerBuilder>? configureContainer, WarmMetrics warmMetrics, CancellationToken cancellationToken)
     {
         ulong timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        ChainSpec chainSpec = CreateChainSpec(source, liveConfig.GetConfig<IBlocksConfig>().MinGasPrice, keys);
+        ConfigProvider config = CreateConfig(liveConfig, flatState, directory, token is not null, keys[0]);
+        // A separate root prevents a fallback registration from reaching the live database or world state.
+        ProcessExitSource exitSource = new(cancellationToken);
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new NethermindRunnerModule(new EthereumJsonSerializer(), chainSpec, config, exitSource,
+                [new EthashPlugin(chainSpec, config.GetConfig<IMiningConfig>()), new MergePlugin(chainSpec, config.GetConfig<IMergeConfig>()), new HealthChecksPlugin()],
+                // Enables every log level without output, so message construction is compiled too.
+                null, LimboLogs.Instance))
+            .AddSingleton<ISpecProvider>(new ChainSpecBasedSpecProvider(source))
+            .AddSingleton(warmMetrics)
+            .AddScoped<IProcessingStats, WarmProcessingStats>();
+        // A disposable secret exercises production authentication without granting access to the live Engine API.
+        builder.AddSingleton(authentication);
+        configureContainer?.Invoke(builder);
+        try
+        {
+            await using IContainer container = builder.Build();
+            try
+            {
+                await InitializeNodeAsync(container, config, cancellationToken);
+                await ExercisePipelineAsync(container, chainSpec.Genesis!.Header, timestamp, config.GetConfig<IJsonRpcConfig>().Port, token, keys, cancellationToken);
+            }
+            finally
+            {
+                await StopNodeAsync(container, exitSource, warmMetrics);
+            }
+        }
+        finally
+        {
+            exitSource.Exit(0);
+        }
+    }
+
+    private static ChainSpec CreateChainSpec(ChainSpec source, UInt256 minGasPrice, PrivateKey[] keys)
+    {
         // Preserve fork-dependent genesis fields loaded by the chain-spec loader, including Cancun-at-genesis chains.
         BlockHeader genesisHeader = source.Genesis!.Header.Clone();
         genesisHeader.StateRoot = Keccak.EmptyTreeHash;
@@ -143,19 +179,23 @@ internal static class StartupPipelineWarmer
                 [Eip2935Constants.BlockHashHistoryAddress] = new() { Code = Eip2935Constants.Code }
             }
         };
-        UInt256 minGasPrice = liveConfig.GetConfig<IBlocksConfig>().MinGasPrice;
         if (UInt256.AddOverflow(minGasPrice, (UInt256)2_000_000_000, out UInt256 feeBudget)
             || UInt256.AddOverflow(feeBudget, genesisHeader.BaseFeePerGas, out feeBudget)
             || UInt256.MultiplyOverflow(feeBudget, (UInt256)60_000_000, out UInt256 balance)
             || UInt256.AddOverflow(balance, (UInt256)TransactionCount, out balance))
             throw new InvalidOperationException("Startup warmup cannot fund the configured minimum gas price.");
         for (int i = 0; i < SenderCount; i++) chainSpec.Allocations[keys[i].Address] = new() { Balance = balance };
+        return chainSpec;
+    }
+
+    private static ConfigProvider CreateConfig(IConfigProvider liveConfig, bool flatState, string directory, bool authenticated, PrivateKey nodeKey)
+    {
         IJsonRpcConfig liveRpcConfig = liveConfig.GetConfig<IJsonRpcConfig>();
         int port = GetFreeLoopbackPort();
         IMergeConfig mergeConfig = liveConfig.GetConfig<IMergeConfig>();
         ITxPoolConfig liveTxPoolConfig = liveConfig.GetConfig<ITxPoolConfig>();
         // Live values only for pipeline-shaping settings; ports, paths, and outward-facing services keep isolated defaults.
-        ConfigProvider config = new(
+        return new ConfigProvider(
             liveConfig.GetConfig<IBlocksConfig>(),
             new TxPoolConfig
             {
@@ -171,7 +211,7 @@ internal static class StartupPipelineWarmer
                 RequestQueueLimit = liveRpcConfig.RequestQueueLimit,
                 MaxConcurrentSharedRequests = liveRpcConfig.MaxConcurrentSharedRequests,
                 JwtSecretFile = Path.Combine(directory, "jwt-secret"),
-                UnsecureDevNoRpcAuthentication = token is null,
+                UnsecureDevNoRpcAuthentication = !authenticated,
                 // Modules that subscribe to block processing are created only when enabled.
                 EnabledModules = [.. liveRpcConfig.EnabledModules.Union(liveRpcConfig.EngineEnabledModules).Append(ModuleType.Engine).Distinct()],
                 PreloadRpcModules = false,
@@ -186,7 +226,7 @@ internal static class StartupPipelineWarmer
                 StaticNodesPath = Path.Combine(directory, "static-nodes.json"),
                 TrustedNodesPath = Path.Combine(directory, "trusted-nodes.json")
             },
-            new KeyStoreConfig { KeyStoreDirectory = Path.Combine(directory, "keystore"), TestNodeKey = keys[0].ToString() },
+            new KeyStoreConfig { KeyStoreDirectory = Path.Combine(directory, "keystore"), TestNodeKey = nodeKey.ToString() },
             new NetworkConfig { LocalIp = "127.0.0.1", ExternalIp = "127.0.0.1", DiscoveryDns = null },
             new HealthChecksConfig { LowStorageSpaceShutdownThreshold = 0 },
             new DbConfig { SharedBlockCacheSize = 16 * 1024 * 1024, EnableMetricsUpdater = false },
@@ -210,84 +250,74 @@ internal static class StartupPipelineWarmer
                 CompactMemory = mergeConfig.CompactMemory,
                 PostBlockGcDelayMs = mergeConfig.PostBlockGcDelayMs ?? (int)(mergeConfig.SecondsPerSlot * 1000 / 8)
             });
+    }
 
-        // A separate root prevents a fallback registration from reaching the live database or world state.
-        ProcessExitSource exitSource = new(cancellationToken);
-        ContainerBuilder builder = new ContainerBuilder()
-            .AddModule(new NethermindRunnerModule(new EthereumJsonSerializer(), chainSpec, config, exitSource,
-                [new EthashPlugin(chainSpec, config.GetConfig<IMiningConfig>()), new MergePlugin(chainSpec, config.GetConfig<IMergeConfig>()), new HealthChecksPlugin()],
-                // Enables every log level without output, so message construction is compiled too.
-                null, LimboLogs.Instance))
-            .AddSingleton<ISpecProvider>(new ChainSpecBasedSpecProvider(source))
-            .AddSingleton(warmMetrics)
-            .AddScoped<IProcessingStats, WarmProcessingStats>();
-        // A disposable secret exercises production authentication without granting access to the live Engine API.
-        builder.AddSingleton(authentication);
-        configureContainer?.Invoke(builder);
+    private static async Task InitializeNodeAsync(IContainer container, IConfigProvider config, CancellationToken cancellationToken)
+    {
+        // Reuse the live process's decoders without starting another peer network.
+        await container.Resolve<EthereumStepsManager>().InitializeThrough(typeof(StartRpc), cancellationToken,
+            typeof(InitTxTypesAndRlp), typeof(InitializeNetwork));
+        container.Resolve<IMergeSyncController>().StopSyncing();
+        container.Resolve<ISyncModeSelector>().Update();
+        if (config.GetConfig<IInitConfig>().DisableGcOnNewPayload && config.GetConfig<IMergeConfig>().PrioritizeBlockLatency && !container.Resolve<IGCStrategy>().CanStartNoGCRegion())
+            throw new InvalidOperationException("Startup warmup did not reach the production no-GC-region strategy.");
+    }
+
+    private static async Task ExercisePipelineAsync(IContainer container, BlockHeader genesisHeader, ulong timestamp, int port, string? token,
+        PrivateKey[] keys, CancellationToken cancellationToken)
+    {
+        IMainProcessingContext main = container.Resolve<IMainProcessingContext>();
+        EthereumJsonSerializer serializer = container.Resolve<EthereumJsonSerializer>();
+        string address = $"http://127.0.0.1:{port}";
+        using HttpClient client = new(new SocketsHttpHandler { UseProxy = false });
+        if (token is not null) client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        // Consensus clients check the chain id on connect, which creates the Eth module and its block subscribers.
+        await PostAsync(client, serializer, address, "eth_chainId", [], cancellationToken);
+        // The pool validates against the head's fork, so move the head off the source genesis before submitting typed transactions.
+        Block head = await BuildBlockAsync(container, genesisHeader, timestamp - 1, 0, cancellationToken);
+        await SendPayloadAsync(client, serializer, address, head, container.Resolve<ISpecProvider>().GetSpec(head.Header), cancellationToken);
+        SubmitTransactions(container, keys);
+        Block block = await BuildBlockAsync(container, head.Header, timestamp, TransactionCount, cancellationToken);
+        int processedTransactions = 0;
+        int unexpectedReceipts = 0;
+        main.TransactionProcessed += (_, args) =>
+        {
+            Interlocked.Increment(ref processedTransactions);
+            if (args.TxReceipt.StatusCode != (args.Transaction.To == RevertContract ? 0 : 1))
+                Interlocked.Increment(ref unexpectedReceipts);
+        };
+        await SendPayloadAsync(client, serializer, address, block, container.Resolve<ISpecProvider>().GetSpec(block.Header), cancellationToken);
+        await main.BlockProcessingQueue.WaitUntilRemovedAsync(block.Hash!).AsTask().WaitAsync(cancellationToken);
+        if (processedTransactions != block.Transactions.Length)
+            throw new InvalidOperationException("Startup warmup did not execute every transaction through the payload pipeline.");
+        if (unexpectedReceipts != 0)
+            throw new InvalidOperationException("Startup warmup did not exercise the expected transfer, storage, and revert paths.");
+
+        object call = new { from = keys[0].Address, to = StorageContract, gas = "0xf4240", input = new byte[32] };
+        JsonElement callResult = await PostAsync(client, serializer, address, "eth_call", [call, "latest"], cancellationToken);
+        if (callResult.GetString() != "0x")
+            throw new InvalidOperationException("Startup warmup contract call returned unexpected data.");
+    }
+
+    private static async Task StopNodeAsync(IContainer container, ProcessExitSource exitSource, WarmMetrics warmMetrics)
+    {
+        exitSource.Exit(0);
         try
         {
-            await using IContainer container = builder.Build();
-            try
-            {
-                // Reuse the live process's decoders without starting another peer network.
-                await container.Resolve<EthereumStepsManager>().InitializeThrough(typeof(StartRpc), cancellationToken,
-                    typeof(InitTxTypesAndRlp), typeof(InitializeNetwork));
-                IMainProcessingContext main = container.Resolve<IMainProcessingContext>();
-                container.Resolve<IMergeSyncController>().StopSyncing();
-                container.Resolve<ISyncModeSelector>().Update();
-                if (config.GetConfig<IInitConfig>().DisableGcOnNewPayload && mergeConfig.PrioritizeBlockLatency && !container.Resolve<IGCStrategy>().CanStartNoGCRegion())
-                    throw new InvalidOperationException("Startup warmup did not reach the production no-GC-region strategy.");
-                EthereumJsonSerializer serializer = container.Resolve<EthereumJsonSerializer>();
-                string address = $"http://127.0.0.1:{port}";
-                using HttpClient client = new(new SocketsHttpHandler { UseProxy = false });
-                if (token is not null) client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-                // Consensus clients check the chain id on connect, which creates the Eth module and its block subscribers.
-                await PostAsync(client, serializer, address, "eth_chainId", [], cancellationToken);
-                // The pool validates against the head's fork, so move the head off the source genesis before submitting typed transactions.
-                Block head = await BuildBlockAsync(container, genesisHeader, timestamp - 1, 0, cancellationToken);
-                await SendPayloadAsync(client, serializer, address, head, container.Resolve<ISpecProvider>().GetSpec(head.Header), cancellationToken);
-                SubmitTransactions(container, keys);
-                Block block = await BuildBlockAsync(container, head.Header, timestamp, TransactionCount, cancellationToken);
-                int processedTransactions = 0;
-                int unexpectedReceipts = 0;
-                main.TransactionProcessed += (_, args) =>
-                {
-                    Interlocked.Increment(ref processedTransactions);
-                    if (args.TxReceipt.StatusCode != (args.Transaction.To == RevertContract ? 0 : 1))
-                        Interlocked.Increment(ref unexpectedReceipts);
-                };
-                await SendPayloadAsync(client, serializer, address, block, container.Resolve<ISpecProvider>().GetSpec(block.Header), cancellationToken);
-                await main.BlockProcessingQueue.WaitUntilRemovedAsync(block.Hash!).AsTask().WaitAsync(cancellationToken);
-                if (processedTransactions != block.Transactions.Length)
-                    throw new InvalidOperationException("Startup warmup did not execute every transaction through the payload pipeline.");
-                if (unexpectedReceipts != 0)
-                    throw new InvalidOperationException("Startup warmup did not exercise the expected transfer, storage, and revert paths.");
-            }
-            finally
-            {
-                exitSource.Exit(0);
-                try
-                {
-                    await container.Resolve<IServiceStopper>().StopAllServices();
-                }
-                finally
-                {
-                    try
-                    {
-                        await container.Resolve<GCKeeper>().StopAsync();
-                    }
-                    finally
-                    {
-                        // Services have stopped queuing reports; storage must remain alive until their readers finish.
-                        await warmMetrics.DrainAsync();
-                    }
-                    warmMetrics.BestKnownNumber = container.Resolve<IBlockTree>().BestKnownNumber;
-                }
-            }
+            await container.Resolve<IServiceStopper>().StopAllServices();
         }
         finally
         {
-            exitSource.Exit(0);
+            try
+            {
+                await container.Resolve<GCKeeper>().StopAsync();
+            }
+            finally
+            {
+                // Services have stopped queuing reports; storage must remain alive until their readers finish.
+                await warmMetrics.DrainAsync();
+            }
+            warmMetrics.BestKnownNumber = container.Resolve<IBlockTree>().BestKnownNumber;
         }
     }
 
@@ -381,37 +411,47 @@ internal static class StartupPipelineWarmer
         for (int i = 0; i < TransactionCount; i++)
         {
             PrivateKey sender = keys[i % SenderCount];
-            TxType type = i == 2 && spec.IsEip7702Enabled ? TxType.SetCode
-                : (i % 3) switch
-                {
-                    1 when spec.IsEip2930Enabled => TxType.AccessList,
-                    2 when spec.IsEip1559Enabled => TxType.EIP1559,
-                    _ => TxType.Legacy
-                };
-            byte[] slot = new byte[32];
-            slot[^1] = (byte)i;
-            Transaction tx = new()
-            {
-                Type = type,
-                ChainId = specProvider.ChainId,
-                Nonce = (ulong)(i / SenderCount),
-                // Under Amsterdam pricing the authorization plus two fresh slots exceeds 250k gas.
-                GasLimit = type == TxType.SetCode ? 1_000_000UL : 250_000UL,
-                GasPrice = type is TxType.Legacy or TxType.AccessList ? price : tip,
-                DecodedMaxFeePerGas = price,
-                To = i switch { 0 => Address.Zero, 1 => RevertContract, 3 => authority.Address, _ => StorageContract },
-                Value = 1,
-                Data = slot,
-                AccessList = type == TxType.Legacy ? null : new AccessList.Builder().AddAddress(StorageContract).AddStorage(new UInt256(slot, true)).Build(),
-                AuthorizationList = type == TxType.SetCode ? [ecdsa.Sign(authority, specProvider.ChainId, StorageContract, 0)] : null,
-                SenderAddress = sender.Address
-            };
-            ecdsa.Sign(sender, tx, spec.IsEip155Enabled);
-            tx.Hash = tx.CalculateHash();
+            Transaction tx = CreateTransaction(i, sender, authority, specProvider.ChainId, spec, ecdsa, tip, price);
             AcceptTxResult accepted = txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
             if (!accepted) throw new InvalidOperationException($"Startup warmup transaction was not accepted: {accepted}");
         }
     }
+
+    private static Transaction CreateTransaction(int i, PrivateKey sender, PrivateKey authority, ulong chainId, IReleaseSpec spec,
+        IEthereumEcdsa ecdsa, UInt256 tip, UInt256 price)
+    {
+        TxType type = GetTransactionType(i, spec);
+        byte[] slot = new byte[32];
+        slot[^1] = (byte)i;
+        Transaction tx = new()
+        {
+            Type = type,
+            ChainId = chainId,
+            Nonce = (ulong)(i / SenderCount),
+            // Under Amsterdam pricing the authorization plus two fresh slots exceeds 250k gas.
+            GasLimit = type == TxType.SetCode ? 1_000_000UL : 250_000UL,
+            GasPrice = type is TxType.Legacy or TxType.AccessList ? price : tip,
+            DecodedMaxFeePerGas = price,
+            To = i switch { 0 => Address.Zero, 1 => RevertContract, 3 => authority.Address, _ => StorageContract },
+            Value = 1,
+            Data = slot,
+            AccessList = type == TxType.Legacy ? null : new AccessList.Builder().AddAddress(StorageContract).AddStorage(new UInt256(slot, true)).Build(),
+            AuthorizationList = type == TxType.SetCode ? [ecdsa.Sign(authority, chainId, StorageContract, 0)] : null,
+            SenderAddress = sender.Address
+        };
+        ecdsa.Sign(sender, tx, spec.IsEip155Enabled);
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
+
+    private static TxType GetTransactionType(int index, IReleaseSpec spec) =>
+        index == 2 && spec.IsEip7702Enabled ? TxType.SetCode
+            : (index % 3) switch
+            {
+                1 when spec.IsEip2930Enabled => TxType.AccessList,
+                2 when spec.IsEip1559Enabled => TxType.EIP1559,
+                _ => TxType.Legacy
+            };
 
     private static async Task<Block> BuildBlockAsync(IContainer container, BlockHeader parent, ulong timestamp, int transactionCount, CancellationToken cancellationToken)
     {
@@ -449,6 +489,18 @@ internal static class StartupPipelineWarmer
 
     private static async Task SendPayloadAsync(HttpClient client, EthereumJsonSerializer serializer, string address, Block block, IReleaseSpec spec, CancellationToken cancellationToken)
     {
+        await SendNewPayloadAsync(client, serializer, address, block, spec, cancellationToken);
+        await SendForkchoiceUpdatedAsync(client, serializer, address, block, spec, cancellationToken);
+    }
+
+    private static async Task SendNewPayloadAsync(HttpClient client, EthereumJsonSerializer serializer, string address, Block block, IReleaseSpec spec, CancellationToken cancellationToken)
+    {
+        (string method, object[] parameters) = CreatePayloadRequest(block, spec);
+        EnsureValid(await PostAsync(client, serializer, address, method, parameters, cancellationToken), method);
+    }
+
+    private static (string Method, object[] Parameters) CreatePayloadRequest(Block block, IReleaseSpec spec)
+    {
         string method = spec.IsEip7805Enabled ? "engine_newPayloadV6"
             : spec.IsEip7928Enabled ? "engine_newPayloadV5"
             : spec.RequestsEnabled ? "engine_newPayloadV4"
@@ -461,7 +513,11 @@ internal static class StartupPipelineWarmer
             : spec.RequestsEnabled
             ? [payload, Array.Empty<Hash256>(), Keccak.Zero, Array.Empty<byte[]>()]
             : spec.IsEip4844Enabled ? [payload, Array.Empty<Hash256>(), Keccak.Zero] : [payload];
-        EnsureValid(await PostAsync(client, serializer, address, method, parameters, cancellationToken), method);
+        return (method, parameters);
+    }
+
+    private static async Task SendForkchoiceUpdatedAsync(HttpClient client, EthereumJsonSerializer serializer, string address, Block block, IReleaseSpec spec, CancellationToken cancellationToken)
+    {
         string forkchoiceUpdated = spec.IsEip7805Enabled ? "engine_forkchoiceUpdatedV5"
             : spec.IsEip7843Enabled ? "engine_forkchoiceUpdatedV4"
             : spec.IsEip4844Enabled ? "engine_forkchoiceUpdatedV3"

@@ -214,6 +214,7 @@ public class EthereumRunnerTests
         bool nestedWarmupRan = false;
         bool liveRpcInfoPreserved = false;
         int outerPort = 0;
+        IJsonRpcLocalStats? warmRpcStats = null;
         using NodeInfoScope? nodeInfo = throughStartRpc ? new NodeInfoScope() : null;
         await StartupPipelineWarmer.WarmupAsync(spec, liveConfig, flatState, cancellation.Token, authentication,
             configureContainer: builder =>
@@ -222,13 +223,14 @@ public class EthereumRunnerTests
                 {
                     builder.AddDecorator<IJsonRpcConfig>((_, config) =>
                     {
-                        File.WriteAllLines(config.CallsFilterFilePath, ["^eth_chainId$", "^engine_newPayloadV6$", "^engine_forkchoiceUpdatedV5$"]);
+                        File.WriteAllLines(config.CallsFilterFilePath, ["^eth_chainId$", "^eth_call$", "^engine_newPayloadV6$", "^engine_forkchoiceUpdatedV5$"]);
                         return config;
                     });
                 }
                 builder.RegisterBuildCallback(container =>
                 {
                     warmAuthentication = container.Resolve<IRpcAuthentication>();
+                    warmRpcStats = container.Resolve<IJsonRpcLocalStats>();
                     outerPort = container.Resolve<IJsonRpcConfig>().Port;
                 });
                 if (throughStartRpc)
@@ -271,6 +273,7 @@ public class EthereumRunnerTests
         ThreadPool.GetMinThreads(out int warmedWorkerThreads, out int warmedCompletionPortThreads);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(warmRpcStats!.GetMethodStats("eth_call").Successes, Is.EqualTo(1), "warmup must execute a contract call through RPC");
             Assert.That((warmedWorkerThreads, warmedCompletionPortThreads), Is.EqualTo((minWorkerThreads, minCompletionPortThreads)));
             AssertRpcLimit(RpcLimits.Default.AcquireQueuedSlot, RpcLimits.Default.DecrementQueuedCalls, 7);
             AssertRpcLimit(RpcLimits.Default.AcquireSharedSlot, RpcLimits.Default.DecrementSharedCalls, 11);
