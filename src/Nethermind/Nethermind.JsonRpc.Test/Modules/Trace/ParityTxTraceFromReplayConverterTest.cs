@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -141,6 +142,35 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             result.StateChanges = new Dictionary<Address, ParityAccountStateChange> { { TestItem.AddressC, stateChange } };
             TestToJson(new ParityTxTraceFromReplay(result, includeTransactionHash), expectedResult);
+        }
+
+        [Test]
+        public void Serialize_WhenStateDiffAccountsAreUnordered_BothWritersListThemByAscendingAddress()
+        {
+            Address[] addresses = [TestItem.AddressF, TestItem.AddressA, TestItem.AddressD, TestItem.AddressC, TestItem.AddressE, TestItem.AddressB];
+            ParityLikeTxTrace trace = new() { StateChanges = [] };
+            foreach (Address address in addresses)
+            {
+                trace.StateChanges[address] = new ParityAccountStateChange { Balance = new ParityStateChange<UInt256?>(1, 2) };
+            }
+
+            string[] ascending = [.. addresses.Select(static a => a.ToString()).Order(StringComparer.Ordinal)];
+
+            string replayJson = new EthereumJsonSerializer().Serialize(new ParityTxTraceFromReplay(trace));
+            ArrayBufferWriter<byte> buffer = new();
+            using (Utf8JsonWriter writer = new(buffer))
+            {
+                ParityReplayEnvelopeWriter.WriteFromTrace(writer, trace, includeTxHash: false, EthereumJsonSerializer.JsonOptions);
+            }
+
+            using JsonDocument replay = JsonDocument.Parse(replayJson);
+            using JsonDocument streamed = JsonDocument.Parse(buffer.WrittenMemory);
+            JsonElement replayDiff = replay.RootElement.GetProperty("stateDiff");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(replayDiff.EnumerateObject().Select(static p => p.Name), Is.EqualTo(ascending), "the buffered replay writes stateDiff accounts in ascending address order");
+                Assert.That(streamed.RootElement.GetProperty("stateDiff").GetRawText(), Is.EqualTo(replayDiff.GetRawText()), "the streamed envelope writes the same stateDiff as the buffered replay");
+            }
         }
 
         [Test]
