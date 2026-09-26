@@ -418,6 +418,16 @@ namespace Nethermind.Core.Specs
         bool IsEip8131Enabled { get; }
 
         /// <summary>
+        /// EIP-8279: Block Access List Byte Floor.
+        /// </summary>
+        /// <remarks>
+        /// Meters the bytes execution adds to the EIP-7928 block access list at 64 gas per byte into the transaction
+        /// floor, checked against the gas limit before each insertion, and adds each authorization's worst-case block
+        /// access list bytes to the static floor. Requires EIP-8131.
+        /// </remarks>
+        bool IsEip8279Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
