@@ -98,6 +98,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             Instruction.SLOAD, Instruction.SSTORE, Instruction.BALANCE,
             Instruction.EXTCODECOPY, Instruction.EXTCODEHASH, Instruction.EXTCODESIZE, Instruction.SELFDESTRUCT,
             Instruction.CALL, Instruction.CALLCODE, Instruction.STATICCALL, Instruction.DELEGATECALL, Instruction.CREATE,
+            Instruction.PAY,
         ];
         foreach (Instruction instruction in stackInstructions)
         {
