@@ -188,8 +188,13 @@ public class EthereumRunnerTests
         ConfigProvider liveConfig = new(new InitConfig { BaseDbPath = dataDirectory.Path },
             new JsonRpcConfig
             {
-                Host = "127.0.0.1", Port = livePort, EnginePort = livePort, EnabledModules = [ModuleType.Eth], JwtSecretFile = secretPath.Path,
-                RequestQueueLimit = 7, MaxConcurrentSharedRequests = 11
+                Host = "127.0.0.1",
+                Port = livePort,
+                EnginePort = livePort,
+                EnabledModules = [ModuleType.Eth],
+                JwtSecretFile = secretPath.Path,
+                RequestQueueLimit = 7,
+                MaxConcurrentSharedRequests = 11
             });
         ThreadPool.GetMinThreads(out int minWorkerThreads, out int minCompletionPortThreads);
 
