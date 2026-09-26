@@ -55,7 +55,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     /// <summary>Owns the supplied environments, but borrows the budgets. Dispose the tracer before the budgets.</summary>
     public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, ParallelTraceBudgets budgets, ILogManager logManager)
     {
-        _degree = budgets.MaxDegree;
+        _degree = budgets.TotalDegree;
         _environments = new ShareableOverridableEnvSource<Components>(buildEnvironment, _degree);
         _budgets = budgets;
         _workers = new Workers(2 * _degree);
@@ -201,6 +201,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
     internal Task QueueWorker(Action action, CancellationToken token) => _workers.Run(action, token);
 
+    /// <summary>One environment per permit of every budget, so no permit holder finds the pool exhausted.</summary>
+    internal Scope<Components> RentEnvironment(BlockHeader parent) => _environments.BuildAndOverride(parent);
+
     private bool Enter()
     {
         lock (_runs)
@@ -247,7 +250,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         slots.Wait(token);
         try
         {
-            using Scope<Components> scope = _environments.BuildAndOverride(parent);
+            using Scope<Components> scope = RentEnvironment(parent);
             if (scope.Component.Executor?.CanSeed != true) return false;
             IBlockTracer<TTrace> tracer = forTransaction(scope.Component.WorldState, hash);
             try
@@ -291,7 +294,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         slots.Wait(token);
         try
         {
-            using Scope<Components> scope = _environments.BuildAndOverride(parent);
+            using Scope<Components> scope = RentEnvironment(parent);
             IBlockTracer<TTrace> tracer = afterTransactions(scope.Component.WorldState);
             try
             {

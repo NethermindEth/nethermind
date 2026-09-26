@@ -20,8 +20,9 @@ public sealed class ParallelTraceBudgets(ISpecProvider specProvider, ParallelTra
     /// <summary>Whether any block this chain carries could be traced by two workers or more.</summary>
     public bool AllowsParallelTracing => (_chainHasAccessLists && accessLists.Degree >= 2) || changesets?.Degree >= 2;
 
-    /// <summary>The most workers any one block may use.</summary>
-    public int MaxDegree => Math.Max(_chainHasAccessLists ? accessLists.Degree : 1, changesets?.Degree ?? 1);
+    /// <summary>The most workers every budget this node can use may hold at once: the budgets are independent, so a
+    /// block of each kind traced side by side holds permits of both.</summary>
+    public int TotalDegree => Math.Max(1, (_chainHasAccessLists ? accessLists.Degree : 0) + (changesets?.Degree ?? 0));
 
     /// <summary>The budget of the seed <paramref name="header"/> takes; false when it allows a single worker only.</summary>
     public bool TryGetParallel(BlockHeader header, [NotNullWhen(true)] out ParallelTraceBudget? budget)

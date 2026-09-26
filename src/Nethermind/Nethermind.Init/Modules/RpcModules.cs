@@ -12,8 +12,8 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Core.Timers;
+using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Simulate;
@@ -132,7 +132,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
     /// arms them; without it their setting must not start a parallel tracer that could never seed a block.</summary>
     private ParallelTraceBudgets CreateParallelTraceBudgets(ISpecProvider specProvider, IFlatDbConfig flatDbConfig, ParallelTraceBudget changesets) =>
         new(specProvider,
-            flatDbConfig.HistoryEnabled && flatDbConfig.HistoryTransactionIndexEnabled ? changesets : null,
+            flatDbConfig.Enabled && flatDbConfig.HistoryEnabled && flatDbConfig.HistoryTransactionIndexEnabled ? changesets : null,
             ParallelTraceBudget.Bounded(jsonRpcConfig.TraceBlockParallelism));
 
     private IAdminRpcModule CreateAdminRpcModule(IComponentContext ctx) => new AdminRpcModule(

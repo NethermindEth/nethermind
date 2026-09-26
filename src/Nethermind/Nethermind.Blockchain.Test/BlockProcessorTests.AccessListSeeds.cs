@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +18,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
@@ -29,6 +31,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 
@@ -344,6 +347,59 @@ public partial class BlockProcessorTests
         }
     }
 
+    [Test]
+    public async Task AccessListSeed_WhenTheStoredListIsCorrupt_ReplaysThePrefixWithTheSameTrace()
+    {
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await AddSharedStateBlock(chain));
+        chain.Container.Resolve<IBlockAccessListStore>().Insert((ulong)block.Number, block.Hash!, new byte[] { 0xf8, 0xff, 0x01 });
+        Hash256 target = block.Transactions[^1].Hash!;
+        GethTraceOptions options = new() { TxHash = target, Tracer = "prestateTracer", TracerConfig = JsonDocument.Parse("{\"diffMode\":true}").RootElement };
+        ExecutionCounter replayed = new();
+        ExecutionCounter seeded = new();
+
+        string expected = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, options), seeds: null, replayed));
+        string actual = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, options), chain.Container.Resolve<IPrefixStateSeedSource>(), seeded));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeded.Calls, Is.EqualTo(block.Transactions.Length), "a list that does not decode is treated as missing and the prefix replayed");
+            Assert.That(actual, Is.EqualTo(expected), "the trace succeeds and equals the replay rather than failing on the corrupt list");
+        }
+    }
+
+    [Test]
+    public void ParallelBlockTracer_WhenBothBudgetsAreFullyHeld_StillRentsAnEnvironmentPerPermit()
+    {
+        // Blocks with and without access lists draw on independent budgets, so traces of both kinds side by side hold
+        // every permit of both at once; each permit holder must still find an environment.
+        using ParallelTraceBudget changesets = new(2);
+        using ParallelTraceBudget accessLists = new(3);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)10, Amsterdam.Instance));
+        ParallelTraceBudgets budgets = new(specProvider, changesets, accessLists);
+        using ParallelBlockTracer parallel = new(() => new StubEnvironment(), NullPrefixStateSeedSource.Instance, budgets, LimboLogs.Instance);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        for (int i = 0; i < changesets.Degree; i++) changesets.Wait(CancellationToken.None);
+        for (int i = 0; i < accessLists.Degree; i++) accessLists.Wait(CancellationToken.None);
+        List<IDisposable> rented = [];
+
+        try
+        {
+            Assert.That(() =>
+            {
+                for (int i = 0; i < changesets.Degree + accessLists.Degree; i++) rented.Add(parallel.RentEnvironment(parent));
+            }, Throws.Nothing, "the pool holds one environment for every permit of every budget");
+            Assert.That(budgets.TotalDegree, Is.EqualTo(changesets.Degree + accessLists.Degree), "the pool is sized by the sum, not the larger budget");
+        }
+        finally
+        {
+            foreach (IDisposable scope in rented) scope.Dispose();
+            for (int i = 0; i < changesets.Degree; i++) changesets.Release();
+            for (int i = 0; i < accessLists.Degree; i++) accessLists.Release();
+        }
+    }
+
     private static readonly Address SecondContract = new("0x00000000000000000000000000000000000c0de2");
 
     // slot0 = 1
@@ -451,5 +507,26 @@ public partial class BlockProcessorTests
         IBlockTracer<TTrace> tracer = tracerFor(scope.Resolve<IWorldState>());
         processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, TransactionTraceBoundary.Wrap(tracer, target, seeds), CancellationToken.None);
         return tracer.BuildResult();
+    }
+
+    private sealed class StubEnvironment : IOverridableEnv<ParallelBlockTracer.Components>
+    {
+        public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, BlockOverride? blockOverride,
+            [NotNullWhen(true)] out Scope<ParallelBlockTracer.Components>? scope)
+        {
+            scope = new Scope<ParallelBlockTracer.Components>(new ParallelBlockTracer.Components(null!, null!, null!), new NoLease());
+            return true;
+        }
+
+        public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride,
+            [NotNullWhen(true)] out Scope<ParallelBlockTracer.Components>? scope) =>
+            TryBuildAndOverride(targetBlock, stateOverride, specOverride, null, out scope);
+    }
+
+    private sealed class NoLease : IDisposable
+    {
+        public void Dispose()
+        {
+        }
     }
 }

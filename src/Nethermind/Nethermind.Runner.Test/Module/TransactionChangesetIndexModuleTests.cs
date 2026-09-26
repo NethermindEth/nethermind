@@ -310,15 +310,16 @@ public class TransactionChangesetIndexModuleTests
         }
     }
 
-    [TestCase(true, 3, true, TestName = "ParallelTraceBudgets_WithChangesetSeeds_TraceOtherBlocksOnTheFlatHistorySetting")]
-    [TestCase(true, 1, false, TestName = "ParallelTraceBudgets_WithChangesetSeedsSetToOne_TraceOtherBlocksSequentially")]
-    [TestCase(false, 3, false, TestName = "ParallelTraceBudgets_WithoutChangesetSeeds_NeverTraceOtherBlocksInParallel")]
-    public void ParallelTraceBudgets_ForBlocksWithoutAccessLists_FollowTheFlatHistorySetting(bool indexEnabled, int configured, bool expected)
+    [TestCase(true, true, 3, true, TestName = "ParallelTraceBudgets_WithChangesetSeeds_TraceOtherBlocksOnTheFlatHistorySetting")]
+    [TestCase(true, true, 1, false, TestName = "ParallelTraceBudgets_WithChangesetSeedsSetToOne_TraceOtherBlocksSequentially")]
+    [TestCase(true, false, 3, false, TestName = "ParallelTraceBudgets_WithoutChangesetSeeds_NeverTraceOtherBlocksInParallel")]
+    [TestCase(false, true, 3, false, TestName = "ParallelTraceBudgets_WithFlatOff_NeverTraceOtherBlocksInParallel")]
+    public void ParallelTraceBudgets_ForBlocksWithoutAccessLists_FollowTheFlatHistorySetting(bool flatEnabled, bool indexEnabled, int configured, bool expected)
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new FlatDbConfig
             {
-                Enabled = true,
+                Enabled = flatEnabled,
                 HistoryEnabled = true,
                 HistoryTransactionIndexEnabled = indexEnabled,
                 HistoryTransactionIndexTraceParallelism = configured,

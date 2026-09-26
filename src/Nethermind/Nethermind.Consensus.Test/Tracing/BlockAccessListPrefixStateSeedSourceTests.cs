@@ -12,6 +12,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -60,7 +62,7 @@ public class BlockAccessListPrefixStateSeedSourceTests
             .WithBlockAccessListHash(TestItem.KeccakA).WithBlockAccessList(carried).TestObject;
 
     private static BlockAccessListPrefixStateSeedSource BuildSource(IBlockAccessListStore store, IPrefixStateSeedSource inner = null) =>
-        new(inner ?? NullPrefixStateSeedSource.Instance, store, new TestSpecProvider(Amsterdam.Instance));
+        new(inner ?? NullPrefixStateSeedSource.Instance, store, new TestSpecProvider(Amsterdam.Instance), LimboLogs.Instance);
 
     [TestCase(0, false, 0, TestName = "TryGetStorage_BeforeTheFirstTransaction_IsNotSeeded")]
     [TestCase(1, true, 10, TestName = "TryGetStorage_AfterTheFirstTransaction_ReturnsItsWrite")]
@@ -300,6 +302,47 @@ public class BlockAccessListPrefixStateSeedSourceTests
         slot.Disarm();
     }
 
+    [Test]
+    public void TrySeed_WhenTheListIsStoredAfterARefusal_SeedsFromIt()
+    {
+        IBlockAccessListStore store = Substitute.For<IBlockAccessListStore>();
+        Block block = BuildBlock();
+        store.Get(ForkBlock, block.Hash).Returns((ReadOnlyBlockAccessList)null, BuildAccessList(TestItem.KeccakA));
+        BlockAccessListPrefixStateSeedSource seeds = BuildSource(store);
+        StateReadOverlaySlot slot = new();
+
+        bool beforeStored = seeds.TrySeed(block, 1, slot);
+        bool afterStored = seeds.TrySeed(block, 1, slot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(beforeStored, Is.False, "precondition: with nothing stored the block is replayed");
+            Assert.That(afterStored, Is.True, "a refusal is not cached, so a list written since is used on the next trace");
+            store.Received(2).Get(ForkBlock, block.Hash);
+        }
+        slot.Disarm();
+    }
+
+    [Test]
+    public void TrySeed_WhenTheStoredListDoesNotDecode_RefusesAndAsksAgainNextTime()
+    {
+        IBlockAccessListStore store = Substitute.For<IBlockAccessListStore>();
+        Block block = BuildBlock();
+        store.Get(ForkBlock, block.Hash).Returns(_ => throw new RlpException("corrupt"), _ => BuildAccessList(TestItem.KeccakA));
+        BlockAccessListPrefixStateSeedSource seeds = BuildSource(store);
+        StateReadOverlaySlot slot = new();
+
+        bool corrupt = seeds.TrySeed(block, 1, slot);
+        bool repaired = seeds.TrySeed(block, 1, slot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(corrupt, Is.False, "a list that does not decode is treated as missing, so the block replays instead of failing");
+            Assert.That(repaired, Is.True, "the refusal is not cached");
+        }
+        slot.Disarm();
+    }
+
     [TestCase(TransactionCount, true, TestName = "TrySeed_AtTheEndOfTheBlock_SeedsWhatFollowsTheTransactions")]
     [TestCase(TransactionCount + 1, false, TestName = "TrySeed_PastTheEndOfTheBlock_Refuses")]
     public void TrySeed_BoundsTheIndexByTheTransactionCount(int transactionIndex, bool expected)
@@ -328,7 +371,7 @@ public class BlockAccessListPrefixStateSeedSourceTests
         StateReadOverlaySlot slot = new();
         inner.TrySeed(block, 2, slot).Returns(true);
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)ForkBlock, Amsterdam.Instance));
-        BlockAccessListPrefixStateSeedSource seeds = new(inner, store, specProvider);
+        BlockAccessListPrefixStateSeedSource seeds = new(inner, store, specProvider, LimboLogs.Instance);
 
         using (Assert.EnterMultipleScope())
         {
@@ -342,7 +385,7 @@ public class BlockAccessListPrefixStateSeedSourceTests
     public void Enabled_OnAChainWithoutAccessLists_FollowsTheSourceUnderneath()
     {
         IPrefixStateSeedSource inner = Substitute.For<IPrefixStateSeedSource>();
-        BlockAccessListPrefixStateSeedSource seeds = new(inner, Substitute.For<IBlockAccessListStore>(), new TestSpecProvider(Prague.Instance));
+        BlockAccessListPrefixStateSeedSource seeds = new(inner, Substitute.For<IBlockAccessListStore>(), new TestSpecProvider(Prague.Instance), LimboLogs.Instance);
 
         bool disabled = seeds.Enabled;
         inner.Enabled.Returns(true);

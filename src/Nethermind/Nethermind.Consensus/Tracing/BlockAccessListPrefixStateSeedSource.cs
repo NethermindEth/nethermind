@@ -12,6 +12,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
 
@@ -23,7 +25,7 @@ namespace Nethermind.Consensus.Tracing;
 /// prefix is replayed as it always was; <paramref name="inner"/> is never asked about such a block. Arming costs one
 /// lookup in a small cache of validated lists. A miss reads, decodes and hashes the list once, which the header
 /// commitment forces, and indexes it in time linear in its size; concurrent misses on one block share that work.</remarks>
-public sealed class BlockAccessListPrefixStateSeedSource(IPrefixStateSeedSource inner, IBlockAccessListStore store, ISpecProvider specProvider)
+public sealed class BlockAccessListPrefixStateSeedSource(IPrefixStateSeedSource inner, IBlockAccessListStore store, ISpecProvider specProvider, ILogManager logManager)
     : IPrefixStateSeedSource
 {
     private const int ValidatedBlocks = 4;
@@ -31,6 +33,8 @@ public sealed class BlockAccessListPrefixStateSeedSource(IPrefixStateSeedSource 
     private readonly bool _chainHasAccessLists = specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
     private readonly ClockCache<ValueHash256, Lazy<BlockAccessListPrefix?>> _validated = new(ValidatedBlocks);
     private readonly Lock _validatedLock = new();
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListPrefixStateSeedSource>();
+    private int _reportedCorruption;
 
     public bool Enabled => _chainHasAccessLists || inner.Enabled;
 
@@ -70,6 +74,7 @@ public sealed class BlockAccessListPrefixStateSeedSource(IPrefixStateSeedSource 
             throw;
         }
 
+        if (prefix is null) Forget(blockHash, validation);
         return prefix is not null;
     }
 
@@ -83,7 +88,8 @@ public sealed class BlockAccessListPrefixStateSeedSource(IPrefixStateSeedSource 
         return validation;
     }
 
-    /// <summary>A store that failed is asked again on the next trace rather than failing every trace of the block.</summary>
+    /// <summary>A store that failed, or held no list the header commits to, is asked again on the next trace: the list
+    /// may be written after the block, and only a validated list is worth keeping.</summary>
     private void Forget(Hash256 blockHash, Lazy<BlockAccessListPrefix?> failed)
     {
         using Lock.Scope scope = _validatedLock.EnterScope();
@@ -96,8 +102,23 @@ public sealed class BlockAccessListPrefixStateSeedSource(IPrefixStateSeedSource 
         Hash256 commitment = block.Header.BlockAccessListHash!;
         ReadOnlyBlockAccessList? accessList = block.BlockAccessList is { WireHash: { } own } carried && own == commitment
             ? carried
-            : store.Get((ulong)block.Number, blockHash);
+            : ReadStored(block, blockHash);
 
         return accessList?.WireHash == commitment ? new BlockAccessListPrefix(blockHash, accessList, block.Transactions.Length) : null;
+    }
+
+    /// <summary>A stored list that does not decode is treated as missing: the block is replayed, which needs no list.</summary>
+    private ReadOnlyBlockAccessList? ReadStored(Block block, Hash256 blockHash)
+    {
+        try
+        {
+            return store.Get((ulong)block.Number, blockHash);
+        }
+        catch (RlpException e)
+        {
+            if (Interlocked.Exchange(ref _reportedCorruption, 1) == 0 && _logger.IsWarn)
+                _logger.Warn($"The stored access list of block {block.Number} ({blockHash}) does not decode; its traces replay the transactions ahead of the target. Further such lists are not reported. {e.Message}");
+            return null;
+        }
     }
 }
