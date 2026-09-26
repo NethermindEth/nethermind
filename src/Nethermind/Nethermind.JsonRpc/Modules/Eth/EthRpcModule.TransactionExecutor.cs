@@ -201,10 +201,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, bool optimize)
             : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
-            private const string ZeroMaxFeePerGas = "maxFeePerGas must be non-zero";
-            private const string ZeroGasPriceAfterLondon = "gasPrice must be non-zero after london fork";
-            private const string FeeFieldsBeforeLondon = "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active";
-
             private BigInteger? _feeCapBeyond256Bits;
 
             protected override bool ValidatesFeeCapOrder => false;
@@ -218,7 +214,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
                 bool isLondon = GetSpec(header).IsEip1559Enabled;
-                if (FeeDefaultsError(call, isLondon) is { } feeDefaultsError)
+                if (FeeDefaultRules.Error(call, isLondon) is { } feeDefaultsError)
                     return feeDefaultsError;
 
                 Result<Transaction> result = base.Prepare(call, header);
@@ -238,30 +234,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     _feeCapBeyond256Bits = feeCap;
 
                 return tx;
-            }
-
-            private static string? FeeDefaultsError(TransactionForRpc call, bool isLondon)
-            {
-                if (call is BlobTransactionForRpc { MaxFeePerBlobGas: { IsZero: true } } || call is not LegacyTransactionForRpc legacy)
-                    return null;
-
-                UInt256? gasPrice = legacy.GasPrice;
-                UInt256? maxFeePerGas = (call as EIP1559TransactionForRpc)?.MaxFeePerGas;
-                UInt256? maxPriorityFeePerGas = (call as EIP1559TransactionForRpc)?.MaxPriorityFeePerGas;
-                if (gasPrice is not null && (maxFeePerGas is not null || maxPriorityFeePerGas is not null || call is SetCodeTransactionForRpc))
-                    return null;
-
-                if (gasPrice is null && maxFeePerGas is { } feeCap && maxPriorityFeePerGas is { } priorityFee)
-                {
-                    return feeCap.IsZero ? ZeroMaxFeePerGas
-                        : feeCap < priorityFee ? $"maxFeePerGas ({feeCap.ToHexString(skipLeadingZeros: true)}) < maxPriorityFeePerGas ({priorityFee.ToHexString(skipLeadingZeros: true)})"
-                        : null;
-                }
-
-                if (gasPrice is not null)
-                    return gasPrice.Value.IsZero && isLondon ? ZeroGasPriceAfterLondon : null;
-
-                return !isLondon && (maxFeePerGas is not null || maxPriorityFeePerGas is not null) ? FeeFieldsBeforeLondon : null;
             }
 
             /// <summary>The hash of an unsigned dynamic-fee <paramref name="tx"/> carrying <paramref name="feeCap"/>.</summary>

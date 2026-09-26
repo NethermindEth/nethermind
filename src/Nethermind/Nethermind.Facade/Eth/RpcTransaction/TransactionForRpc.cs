@@ -100,20 +100,18 @@ public abstract class TransactionForRpc
     /// Validates fields required for signing (gas, fee, nonce), promotes type-defaulted
     /// transactions to EIP-1559, and returns the resulting <see cref="Transaction"/>.
     /// </summary>
-    public Result<Transaction> ToSignableTransaction()
-    {
-        if (Gas is null)
-            return Result<Transaction>.Fail("gas not specified");
+    public Result<Transaction> ToSignableTransaction() =>
+        MissingSigningField() is { } missing
+            ? Result<Transaction>.Fail(missing)
+            : PromoteToEip1559IfTypeDefaulted().ToValidatedTransaction();
 
-        if (!HasFeeFields(this))
-            return Result<Transaction>.Fail("missing gasPrice or maxFeePerGas/maxPriorityFeePerGas");
-
+    /// <summary>The first field signing needs that the request leaves out, or null when gas, fees and nonce are set.</summary>
+    public string? MissingSigningField() =>
+        Gas is null ? "gas not specified"
+        : !HasFeeFields(this) ? "missing gasPrice or maxFeePerGas/maxPriorityFeePerGas"
         // All concrete tx subtypes (AccessList, EIP1559, Blob, SetCode) derive from LegacyTransactionForRpc.
-        if (this is not LegacyTransactionForRpc { Nonce: not null })
-            return Result<Transaction>.Fail("nonce not specified");
-
-        return PromoteToEip1559IfTypeDefaulted().ToValidatedTransaction();
-    }
+        : this is not LegacyTransactionForRpc { Nonce: not null } ? "nonce not specified"
+        : null;
 
     private static bool HasFeeFields(TransactionForRpc rpcTx) =>
         rpcTx is EIP1559TransactionForRpc { MaxFeePerGas: not null, MaxPriorityFeePerGas: not null }
