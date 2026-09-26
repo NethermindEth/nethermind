@@ -64,6 +64,13 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         public override bool IsTracingInstructions => false;
     }
 
+    private sealed class StackPushTracer : TestAllTracerWithOutput
+    {
+        public List<byte[]> Pushes { get; } = [];
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => Pushes.Add(stackItem.ToArray());
+    }
+
     private sealed class CountingCancellationTracer(int cancelAtPoll = int.MaxValue) : TestAllTracerWithOutput, ITxTracer
     {
         public int PollCount { get; private set; }
@@ -1610,6 +1617,30 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SSet), "gas");
             AssertStorage(UInt256.Zero, UInt256.One);
+        }
+    }
+
+    [TestCase(0, 2, "0x01", TestName = "Exp_ZeroExponent_ReportsOneByteOne")]
+    [TestCase(160, 0, "0x00", TestName = "Exp_ZeroBase_ReportsOneByteZero")]
+    [TestCase(160, 1, "0x01", TestName = "Exp_OneBase_ReportsOneByteOne")]
+    [TestCase(160, 2, "0x0000000000000000000000010000000000000000000000000000000000000000", TestName = "Exp_Computed_ReportsFullWord")]
+    public void Exp_WhenTraced_ReportsResultPush(int exponent, int baseValue, string expectedPush)
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH1,
+            (byte)exponent,
+            (byte)Instruction.PUSH1,
+            (byte)baseValue,
+            (byte)Instruction.EXP,
+        ];
+        StackPushTracer tracer = Execute(new StackPushTracer(), code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null, "EXP with both operands on the stack succeeds");
+            Assert.That(tracer.Pushes, Has.Count.EqualTo(3), "two PUSH1 results then the EXP result");
+            Assert.That(tracer.Pushes[2], Is.EqualTo(Bytes.FromHexString(expectedPush)), "EXP reports the same push shape for each result path");
         }
     }
 
