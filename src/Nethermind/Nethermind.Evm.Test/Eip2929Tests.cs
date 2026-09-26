@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -35,6 +36,26 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
             Assert.That(result.StatusCode, Is.EqualTo(1));
             AssertGas(result, GasCostOf.Transaction + expectedGasExcludingTx);
+        }
+
+        [Test]
+        public void Cold_sload_that_runs_out_of_gas_leaves_the_slot_cold_for_the_next_call([Values] bool firstCallAffordsTheSlot)
+        {
+            // The child costs 3 for the push, then 2100 for the cold slot or 100 once it is warm.
+            byte[] child = Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD).Op(Instruction.POP).Done;
+            TestState.CreateAccount(TestItem.AddressC, UInt256.Zero);
+            TestState.InsertCode(TestItem.AddressC, child, SpecProvider.GenesisSpec);
+
+            // The second call can afford the slot only if the first one left it warm.
+            byte[] code = Prepare.EvmCode
+                .Call(TestItem.AddressC, firstCallAffordsTheSlot ? 5_000 : 2_000).Op(Instruction.POP)
+                .Call(TestItem.AddressC, 1_000)
+                .PushData(0).Op(Instruction.SSTORE)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(code);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage((UInt256)0, firstCallAffordsTheSlot ? UInt256.One : UInt256.Zero);
         }
 
         private sealed class StorageObservationTracer(bool storage) : TestAllTracerWithOutput

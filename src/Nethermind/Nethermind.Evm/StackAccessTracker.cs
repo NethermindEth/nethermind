@@ -55,6 +55,21 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public readonly bool WarmUp(in StorageCell storageCell)
         => _trackingState.AccessedStorageCells.Add(storageCell);
 
+    /// <summary>Warms <paramref name="storageCell"/> up and reports whether it was cold.</summary>
+    /// <remarks>
+    /// <see cref="IsCold(in StorageCell)"/> followed by <see cref="WarmUp(in StorageCell)"/> in one set probe. The
+    /// cell is warm even if the caller then runs out of gas; that halts the frame, whose revert restores the set
+    /// unless access is traced, so the tracing path keeps the two calls.
+    /// </remarks>
+    internal readonly bool TryWarmUp(in StorageCell storageCell)
+    {
+        if (_trackingState.IsKnownWarm(in storageCell)) return false;
+
+        bool wasCold = _trackingState.AccessedStorageCells.Add(storageCell);
+        _trackingState.RememberWarm(in storageCell);
+        return wasCold;
+    }
+
     public readonly void WarmUp(AccessList? accessList)
     {
         if (accessList?.IsEmpty == false)
