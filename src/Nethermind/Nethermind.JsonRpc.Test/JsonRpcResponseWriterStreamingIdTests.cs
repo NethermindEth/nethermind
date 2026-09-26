@@ -125,7 +125,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         transport.Write("[1,"u8);
         using JsonRpcSuccessResponse response = CreateInvalidTransactionResponse(commitMode);
 
-        await JsonRpcResponseWriter.WriteWithOutcomeAsync(transport, response, EthereumJsonSerializer.JsonOptions,
+        await JsonRpcResponseWriter.WriteAsync(transport, response, EthereumJsonSerializer.JsonOptions,
             isBatch: true, CancellationToken.None);
         transport.Write("]"u8);
         await transport.CompleteAsync();
@@ -137,6 +137,23 @@ public class JsonRpcResponseWriterStreamingIdTests
             Assert.That(document.RootElement[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
             Assert.That(transport.WrittenCount, Is.EqualTo(initialWrittenCount + stream.Length));
         }
+    }
+
+    [Test]
+    public async Task Pre_cancelled_direct_write_is_cancelled_without_output()
+    {
+        using CancellationTokenSource cancellation = new();
+        await cancellation.CancelAsync();
+        using JsonRpcSuccessResponse response = new() { Result = new ChunkedResult() };
+        Pipe pipe = new();
+        ValueTask write = JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, cancellation.Token);
+
+        Assert.That(write.IsCanceled, Is.True, "a cancelled write must not look like a failure to task-based callers");
+        Assert.That(async () => await write, Throws.TypeOf<OperationCanceledException>());
+        await pipe.Writer.CompleteAsync();
+        ReadResult read = await pipe.Reader.ReadAsync();
+        Assert.That(read.Buffer.IsEmpty, Is.True);
+        await pipe.Reader.CompleteAsync();
     }
 
     [Test]
@@ -318,7 +335,7 @@ public class JsonRpcResponseWriterStreamingIdTests
             : new CountingStreamPipeWriter(stream, initialWrittenCount: 1234);
         CountingResult result = new();
         using JsonRpcSuccessResponse response = new() { Result = result };
-        await JsonRpcResponseWriter.WriteWithOutcomeAsync(transport, response, EthereumJsonSerializer.JsonOptions,
+        await JsonRpcResponseWriter.WriteAsync(transport, response, EthereumJsonSerializer.JsonOptions,
             isBatch: true, CancellationToken.None);
         await transport.CompleteAsync();
 

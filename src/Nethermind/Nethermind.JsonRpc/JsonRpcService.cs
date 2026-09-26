@@ -1140,6 +1140,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         internal bool ReportCompletion { get; set; }
 
+        /// <summary>The outcome of the error that replaced a failed deferred result, if any.</summary>
+        internal JsonRpcResponseWriteOutcome? Replacement { get; set; }
+
         /// <summary>Maps a deferred error through the normal invocation error mapping.</summary>
         /// <remarks>The original response owns the module rental; the replacement must not return it twice.</remarks>
         internal JsonRpcErrorResponse MapException(Exception exception) =>

@@ -50,34 +50,48 @@ public static class JsonRpcResponseWriter
         => WriteAsync(writer, response, options, isBatch: false, cancellationToken);
 
     /// <summary>Writes <paramref name="response"/>, using the streamable result path when required.</summary>
-    public static async ValueTask WriteAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, bool isBatch, CancellationToken cancellationToken)
-        => await WriteWithOutcomeAsync(writer, response, options, isBatch, cancellationToken);
-
-    internal static async ValueTask<JsonRpcResponseWriteOutcome> WriteWithOutcomeAsync(
-        PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, bool isBatch,
-        CancellationToken cancellationToken)
+    /// <remarks>
+    /// Only a deferred execution result is staged for recovery; any other streamable result is written directly into
+    /// <paramref name="writer"/>. A replaced failure is reported through <see cref="JsonRpcResponseWriteOutcome.Of"/>.
+    /// </remarks>
+    public static ValueTask WriteAsync(PipeWriter writer, JsonRpcResponse response, JsonSerializerOptions options, bool isBatch, CancellationToken cancellationToken)
     {
         if (!response.TryGetStreamableResult(out IStreamableResult? streamable))
         {
             Write(writer, response, options);
-            return JsonRpcResponseWriteOutcome.Of(response);
+            return ValueTask.CompletedTask;
         }
 
-        if (response.Streaming is null)
+        if (response.Streaming is { } streaming)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            await WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
-            return JsonRpcResponseWriteOutcome.Of(response);
+            return WriteDeferredAsync(writer, response, streaming, streamable, options, isBatch, cancellationToken);
         }
 
+        return cancellationToken.IsCancellationRequested
+            ? CancelledAsync(cancellationToken)
+            : WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+    }
+
+    /// <summary>Completes as cancelled with the <see cref="OperationCanceledException"/> itself, as an async method does.</summary>
+    private static async ValueTask CancelledAsync(CancellationToken cancellationToken) =>
+        await ValueTask.FromException(new OperationCanceledException(cancellationToken));
+
+    private static async ValueTask WriteDeferredAsync(
+        PipeWriter writer,
+        JsonRpcResponse response,
+        JsonRpcService.StreamingContext streaming,
+        IStreamableResult streamable,
+        JsonSerializerOptions options,
+        bool isBatch,
+        CancellationToken cancellationToken)
+    {
         bool? success = null;
         try
         {
-            JsonRpcResponseWriteOutcome outcome = writer is RewindableStreamPipeWriter buffered
+            streaming.Replacement = writer is RewindableStreamPipeWriter buffered
                 ? await WriteRewindableStreamableAsync(buffered, response, streamable, options, isBatch, cancellationToken)
                 : await WriteStreamableWithErrorHandlingAsync(writer, response, streamable, options, isBatch, cancellationToken);
-            success = outcome.Success;
-            return outcome;
+            success = streaming.Replacement?.Success ?? true;
         }
         catch when (!cancellationToken.IsCancellationRequested)
         {
@@ -86,7 +100,7 @@ public static class JsonRpcResponseWriter
         }
         finally
         {
-            response.Streaming.Complete(success);
+            streaming.Complete(success);
         }
     }
 
@@ -115,7 +129,8 @@ public static class JsonRpcResponseWriter
     public static bool IsResourceUnavailableError(JsonRpcResponse? response) =>
         response?.IsResourceUnavailableError == true;
 
-    private static async ValueTask<JsonRpcResponseWriteOutcome> WriteStreamableWithErrorHandlingAsync(
+    /// <returns>The outcome of the error that replaced a failure, or <see langword="null"/> after success.</returns>
+    private static async ValueTask<JsonRpcResponseWriteOutcome?> WriteStreamableWithErrorHandlingAsync(
         PipeWriter writer,
         JsonRpcResponse response,
         IStreamableResult streamable,
@@ -136,7 +151,7 @@ public static class JsonRpcResponseWriter
             return WriteReplacementError(writer, response, ex, options);
         }
         staged.Commit();
-        return JsonRpcResponseWriteOutcome.Of(response);
+        return null;
     }
 
     /// <summary>Writes into a writer that buffers the whole response, replacing the current response on failure.</summary>
@@ -144,7 +159,8 @@ public static class JsonRpcResponseWriter
     /// A failure rewinds the writer to where the current response began, keeping preceding batch items, so the
     /// response is not staged a second time.
     /// </remarks>
-    private static async ValueTask<JsonRpcResponseWriteOutcome> WriteRewindableStreamableAsync(
+    /// <returns>The outcome of the error that replaced a failure, or <see langword="null"/> after success.</returns>
+    private static async ValueTask<JsonRpcResponseWriteOutcome?> WriteRewindableStreamableAsync(
         RewindableStreamPipeWriter writer,
         JsonRpcResponse response,
         IStreamableResult streamable,
@@ -162,7 +178,7 @@ public static class JsonRpcResponseWriter
             writer.Rewind(checkpoint);
             return WriteReplacementError(writer, response, ex, options);
         }
-        return JsonRpcResponseWriteOutcome.Of(response);
+        return null;
     }
 
     private static JsonRpcResponseWriteOutcome WriteReplacementError(PipeWriter writer, JsonRpcResponse response, Exception exception, JsonSerializerOptions options)
@@ -362,8 +378,9 @@ internal interface IJsonRpcRawResponse
 
 internal readonly record struct JsonRpcResponseWriteOutcome(bool Success, bool IsResourceUnavailable)
 {
+    /// <summary>Returns the outcome of a written response, including an error that replaced a failed deferred result.</summary>
     internal static JsonRpcResponseWriteOutcome Of(JsonRpcResponse response) =>
-        new(!response.TryGetError(out Error? error) || error is null, response.IsResourceUnavailableError);
+        response.Streaming?.Replacement ?? new(!response.TryGetError(out Error? error) || error is null, response.IsResourceUnavailableError);
 
     internal RpcReport ApplyTo(RpcReport report) => report with { Success = Success };
 }

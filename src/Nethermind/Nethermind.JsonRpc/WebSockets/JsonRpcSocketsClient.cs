@@ -172,7 +172,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         bool failed = false;
         try
         {
-            (long responseSize, _) = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, response, cancellationToken);
+            long responseSize = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, response, cancellationToken);
             return (int)responseSize;
         }
         catch (Exception ex)

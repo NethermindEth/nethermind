@@ -42,19 +42,65 @@ internal sealed class HttpJsonRpcResponseSink(
         return WriteStartedAsync(response, report, isBatch: false, cancellationToken);
     }
 
-    private async ValueTask WriteStartedAsync(JsonRpcResponse response, RpcReport report, bool isBatch, CancellationToken cancellationToken)
+    private ValueTask WriteStartedAsync(JsonRpcResponse response, RpcReport report, bool isBatch, CancellationToken cancellationToken)
     {
-        JsonRpcResponseWriteOutcome outcome;
+        ValueTask writeTask;
         try
         {
-            outcome = await JsonRpcResponseWriter.WriteWithOutcomeAsync(
-                _writer!, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken);
+            // A non-streamed response is serialized synchronously and can fail before a task exists.
+            writeTask = JsonRpcResponseWriter.WriteAsync(_writer!, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken);
         }
         catch
         {
             ReportWrite(report with { Success = false }, isBatch);
             throw;
         }
+
+        if (writeTask.IsCompletedSuccessfully)
+        {
+            writeTask.GetAwaiter().GetResult();
+            CompleteWrite(response, report, isBatch);
+            return ValueTask.CompletedTask;
+        }
+
+        // Only a deferred result can be replaced while it is written, so any other response is reported as is and
+        // its continuation does not need to keep the response.
+        return response.Streaming is null
+            ? WriteAfterWriteAsync(writeTask, JsonRpcResponseWriteOutcome.Of(response).ApplyTo(report), isBatch)
+            : WriteDeferredAfterWriteAsync(writeTask, response, report, isBatch);
+    }
+
+    private async ValueTask WriteAfterWriteAsync(ValueTask writeTask, RpcReport report, bool isBatch)
+    {
+        try
+        {
+            await writeTask;
+        }
+        catch
+        {
+            ReportWrite(report with { Success = false }, isBatch);
+            throw;
+        }
+        ReportWrite(report, isBatch);
+    }
+
+    private async ValueTask WriteDeferredAfterWriteAsync(ValueTask writeTask, JsonRpcResponse response, RpcReport report, bool isBatch)
+    {
+        try
+        {
+            await writeTask;
+        }
+        catch
+        {
+            ReportWrite(report with { Success = false }, isBatch);
+            throw;
+        }
+        CompleteWrite(response, report, isBatch);
+    }
+
+    private void CompleteWrite(JsonRpcResponse response, RpcReport report, bool isBatch)
+    {
+        JsonRpcResponseWriteOutcome outcome = JsonRpcResponseWriteOutcome.Of(response);
         if (!isBatch && !context.Response.HasStarted && outcome.IsResourceUnavailable)
         {
             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
