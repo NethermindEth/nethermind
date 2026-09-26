@@ -16,13 +16,7 @@ namespace Nethermind.Core.Crypto
     {
         public const int VOffset = 27;
         public const int Size = 65;
-        [StructLayout(LayoutKind.Sequential, Pack = 8)]
-        private struct SignatureBytes
-        {
-            public Vector512<byte> Value;
-        }
-
-        private SignatureBytes _signature;
+        private Vector512<byte> _signature;
 
         public Signature(ReadOnlySpan<byte> bytes, int recoveryId)
         {
@@ -66,7 +60,7 @@ namespace Nethermind.Core.Crypto
         {
         }
         [JsonIgnore]
-        public Span<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _signature.Value, 1));
+        public Span<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref _signature, 1));
         public override Memory<byte> Memory => CreateMemory(64);
 
         public ulong V { get; set; }
@@ -113,7 +107,7 @@ namespace Nethermind.Core.Crypto
         {
             if (other is null) return false;
             if (ReferenceEquals(this, other)) return true;
-            return _signature.Value == other._signature.Value && V == other.V;
+            return _signature == other._signature && V == other.V;
         }
 
         public override bool Equals(object? obj)
