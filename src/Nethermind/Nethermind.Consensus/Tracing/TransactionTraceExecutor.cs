@@ -50,13 +50,15 @@ public sealed class TransactionTraceExecutor(
         inner.SetupTxTimingMetrics(block);
         if (balManager.Enabled) balManager.NextTransaction();
 
-        // A seeded prefix stands in for the transactions ahead of the target: they are neither executed nor traced,
-        // and a block access list under construction would miss them, so seeding yields to it.
+        // A seeded prefix stands in for the transactions ahead of the target: they are neither executed nor traced.
+        // The access list generated alongside misses them, which is harmless only because a trace discards it and a
+        // caller that reads it forces full construction above. Which seed a block carrying a list may take is the
+        // seed source's rule, not this executor's.
         try
         {
             int first = 0;
             int target = -1;
-            if (boundary.Seeds is { } seeds && readOverlay is not null && !balManager.Enabled)
+            if (boundary.Seeds is { } seeds && readOverlay is not null)
             {
                 target = boundary.IndexOf(block);
                 if (target > 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)

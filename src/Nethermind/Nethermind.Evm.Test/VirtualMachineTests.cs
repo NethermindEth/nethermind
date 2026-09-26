@@ -64,6 +64,13 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         public override bool IsTracingInstructions => false;
     }
 
+    private sealed class StackPushTracer : TestAllTracerWithOutput
+    {
+        public List<byte[]> Pushes { get; } = [];
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => Pushes.Add(stackItem.ToArray());
+    }
+
     private sealed class CountingCancellationTracer(int cancelAtPoll = int.MaxValue) : TestAllTracerWithOutput, ITxTracer
     {
         public int PollCount { get; private set; }
@@ -382,10 +389,10 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             (Instruction.ADD, 2, 3), (Instruction.MUL, 2, 5), (Instruction.SUB, 2, 3),
             (Instruction.ADDMOD, 3, 8), (Instruction.MULMOD, 3, 8),
             (Instruction.DIV, 2, 5), (Instruction.SDIV, 2, 5), (Instruction.MOD, 2, 5),
-            (Instruction.SMOD, 2, 5), (Instruction.LT, 2, 3), (Instruction.GT, 2, 3),
+            (Instruction.SMOD, 2, 5), (Instruction.SIGNEXTEND, 2, 5), (Instruction.LT, 2, 3), (Instruction.GT, 2, 3),
             (Instruction.SLT, 2, 3), (Instruction.SGT, 2, 3), (Instruction.EQ, 2, 3),
             (Instruction.ISZERO, 1, 3), (Instruction.NOT, 1, 3),
-            (Instruction.POP, 1, 2),
+            (Instruction.POP, 1, 2), (Instruction.JUMPDEST, 0, 1),
             (Instruction.CALLDATALOAD, 1, 3),
             (Instruction.BYTE, 2, 3), (Instruction.CLZ, 1, 5),
             (Instruction.SHL, 2, 3), (Instruction.SHR, 2, 3), (Instruction.SAR, 2, 3),
@@ -409,7 +416,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
                                 .SetName($"Fixed_cost_full_stack_{opcode}_tracer_{tracerMode}_depth_{fullDepth}_gas_{sufficientGas}");
             foreach (int tracerMode in new[] { 0, 1, 2 })
             {
-                foreach (bool sufficientStack in new[] { false, true })
+                foreach (bool sufficientStack in depth == 0 ? new[] { true } : new[] { false, true })
                 {
                     foreach (bool sufficientGas in new[] { false, true })
                     {
@@ -474,6 +481,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             ["Math1Opcode"] = [Instruction.ISZERO, Instruction.NOT],
             ["BitwiseOpcode"] = [Instruction.EQ, Instruction.AND, Instruction.OR, Instruction.XOR],
             ["CountLeadingZerosOpcode"] = [Instruction.CLZ],
+            ["SignExtendOpcode"] = [Instruction.SIGNEXTEND],
             ["ByteOpcode"] = [Instruction.BYTE],
             ["ShiftOpcode"] = [Instruction.SHL, Instruction.SHR],
             ["SarOpcode"] = [Instruction.SAR],
@@ -492,6 +500,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             ["SelfBalanceOpcode"] = [Instruction.SELFBALANCE],
             ["PopOpcode"] = [Instruction.POP],
             ["ProgramCounterOpcode"] = [Instruction.PC],
+            ["JumpDestOpcode"] = [Instruction.JUMPDEST],
             ["GasOpcode"] = [Instruction.GAS],
             ["Push0Opcode"] = [Instruction.PUSH0],
             ["PushOpcode"] = OpcodeRange(Instruction.PUSH1, Instruction.PUSH32),
@@ -1610,6 +1619,30 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         {
             Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SSet), "gas");
             AssertStorage(UInt256.Zero, UInt256.One);
+        }
+    }
+
+    [TestCase(0, 2, "0x01", TestName = "Exp_ZeroExponent_ReportsOneByteOne")]
+    [TestCase(160, 0, "0x00", TestName = "Exp_ZeroBase_ReportsOneByteZero")]
+    [TestCase(160, 1, "0x01", TestName = "Exp_OneBase_ReportsOneByteOne")]
+    [TestCase(160, 2, "0x0000000000000000000000010000000000000000000000000000000000000000", TestName = "Exp_Computed_ReportsFullWord")]
+    public void Exp_WhenTraced_ReportsResultPush(int exponent, int baseValue, string expectedPush)
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH1,
+            (byte)exponent,
+            (byte)Instruction.PUSH1,
+            (byte)baseValue,
+            (byte)Instruction.EXP,
+        ];
+        StackPushTracer tracer = Execute(new StackPushTracer(), code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.Null, "EXP with both operands on the stack succeeds");
+            Assert.That(tracer.Pushes, Has.Count.EqualTo(3), "two PUSH1 results then the EXP result");
+            Assert.That(tracer.Pushes[2], Is.EqualTo(Bytes.FromHexString(expectedPush)), "EXP reports the same push shape for each result path");
         }
     }
 

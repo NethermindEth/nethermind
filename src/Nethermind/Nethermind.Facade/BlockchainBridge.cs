@@ -521,7 +521,7 @@ namespace Nethermind.Facade
                 }
             }
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
-            transaction.Hash = transaction.CalculateHash();
+            transaction.Hash = transaction.Type <= TxType.FrameTx ? null : transaction.CalculateHash();
             return new BlockExecutionContext(callHeader, releaseSpec, blobBaseFee);
         }
 

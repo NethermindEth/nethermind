@@ -30,30 +30,13 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
     public readonly bool IsCold(Address? address) => address is null || !_trackingState.AccessedAddresses.Contains(address);
 
-    /// <remarks>
-    /// A loop reading one slot asks this of the same cell every iteration, and the set probe costs about as
-    /// much as the storage read that follows it. Remembering the last cell found warm answers the repeat
-    /// from an inlined compare. Only <see cref="Restore"/> and the pooled reset can take a cell back out of
-    /// the set, and both forget it; adding never invalidates, so a remembered cell cannot go stale warm.
-    /// </remarks>
-    public readonly bool IsCold(in StorageCell storageCell)
-    {
-        if (_trackingState.IsKnownWarm(in storageCell)) return false;
-
-        if (_trackingState.AccessedStorageCells.Contains(storageCell))
-        {
-            _trackingState.RememberWarm(in storageCell);
-            return false;
-        }
-
-        return true;
-    }
+    public readonly bool IsCold(in StorageCell storageCell) => _trackingState.IsCold(in storageCell);
 
     public readonly bool WarmUp(Address address)
         => _trackingState.AccessedAddresses.Add(address);
 
-    public readonly bool WarmUp(in StorageCell storageCell)
-        => _trackingState.AccessedStorageCells.Add(storageCell);
+    /// <returns><see langword="true"/> when the cell was cold.</returns>
+    public readonly bool WarmUp(in StorageCell storageCell) => _trackingState.WarmUp(in storageCell);
 
     public readonly void WarmUp(AccessList? accessList)
     {
@@ -130,9 +113,37 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         private StorageCell _lastWarmCell;
         private bool _hasLastWarmCell;
 
-        public bool IsKnownWarm(in StorageCell storageCell) => _hasLastWarmCell && _lastWarmCell.Equals(in storageCell);
+        /// <remarks>
+        /// A loop reading one slot asks this of the same cell every iteration, and the set probe costs about as
+        /// much as the storage read that follows it. Remembering the last cell found warm answers the repeat
+        /// from an inlined compare. Only <see cref="StackAccessTracker.Restore"/> and the pooled reset can take a cell back out of
+        /// the set, and both forget it; adding never invalidates, so a remembered cell cannot go stale warm.
+        /// </remarks>
+        public bool IsCold(in StorageCell storageCell)
+        {
+            if (IsKnownWarm(in storageCell)) return false;
 
-        public void RememberWarm(in StorageCell storageCell)
+            if (AccessedStorageCells.Contains(storageCell))
+            {
+                RememberWarm(in storageCell);
+                return false;
+            }
+
+            return true;
+        }
+
+        public bool WarmUp(in StorageCell storageCell)
+        {
+            if (IsKnownWarm(in storageCell)) return false;
+
+            bool wasCold = AccessedStorageCells.Add(storageCell);
+            RememberWarm(in storageCell);
+            return wasCold;
+        }
+
+        private bool IsKnownWarm(in StorageCell storageCell) => _hasLastWarmCell && _lastWarmCell.Equals(in storageCell);
+
+        private void RememberWarm(in StorageCell storageCell)
         {
             _lastWarmCell = storageCell;
             _hasLastWarmCell = true;

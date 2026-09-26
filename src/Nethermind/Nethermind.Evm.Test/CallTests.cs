@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -361,6 +362,44 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void Top_level_create_deployed_code_survives_a_later_nested_return()
+        {
+            byte[] runtimeCode = Prepare.EvmCode
+                .PushData(0x2a).PushData(0).Op(Instruction.MSTORE8)
+                .PushData(1).PushData(0).Op(Instruction.RETURN)
+                .Op(Instruction.STOP).Op(Instruction.STOP).Op(Instruction.STOP)
+                .Op(Instruction.STOP).Op(Instruction.STOP).Op(Instruction.STOP)
+                .Done;
+            Assert.That(BitOperations.IsPow2(runtimeCode.Length), "precondition: a power-of-two length would fill the reusable scratch exactly");
+            byte[] initCode = Prepare.EvmCode.StoreDataInMemory(0, runtimeCode)
+                .RETURN(0, (UInt256)runtimeCode.Length)
+                .Done;
+            (Block block, Transaction deployTx) = PrepareInitTx(Activation, 100_000, initCode);
+            Address deployed = ContractAddress.From(Sender, deployTx.Nonce);
+            _processor.Execute(deployTx, new BlockExecutionContext(block.Header, Spec), new ReceiptOnlyTracer());
+
+            Address filler = TestItem.AddressC;
+            byte[] fillerOutput = Enumerable.Repeat((byte)0x99, runtimeCode.Length).ToArray();
+            TestState.CreateAccount(filler, UInt256.Zero);
+            TestState.InsertCode(filler,
+                Prepare.EvmCode.StoreDataInMemory(0, fillerOutput).RETURN(0, (UInt256)fillerOutput.Length).Done,
+                SpecProvider.GenesisSpec);
+
+            Assert.That(TestState.GetCode(deployed), Is.EqualTo(runtimeCode), "precondition: the create stores the returned bytes");
+
+            ExecuteDirect(Prepare.EvmCode
+                .CALL(100_000, filler, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .RETURN(0, (UInt256)runtimeCode.Length)
+                .Done, new ReceiptOnlyTracer());
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Machine.RetainedReturnDataScratchLength, Is.GreaterThanOrEqualTo(fillerOutput.Length), "the nested return went through the reusable scratch");
+                Assert.That(TestState.GetCode(deployed), Is.EqualTo(runtimeCode), "later return staging must not rewrite stored code");
+            }
+        }
+
+        [Test]
         public void Tracer_can_retain_nested_return_output_after_later_sibling_return()
         {
             (Address largeTarget, Address smallTarget, byte[] largeOutput, byte[] smallOutput) = SetUpSiblingReturnTargets(false);
@@ -380,6 +419,27 @@ namespace Nethermind.Evm.Test
                 Assert.That(tracer.Outputs[1].ToArray(), Is.EqualTo(smallOutput));
                 Assert.That(Machine.RetainedReturnDataScratchLength, Is.Zero);
             }
+        }
+
+        [TestCase(false, false, false, false, true, TestName = "Nested_return_scratch_WithoutRetainingTracer_IsUsed")]
+        [TestCase(true, false, false, false, false, TestName = "Nested_return_scratch_WhenTracingActions_IsNotUsed")]
+        [TestCase(false, true, false, false, false, TestName = "Nested_return_scratch_WhenTracingInstructions_IsNotUsed")]
+        [TestCase(false, false, true, false, false, TestName = "Nested_return_scratch_WhenTracingMemory_IsNotUsed")]
+        [TestCase(false, false, false, true, false, TestName = "Nested_return_scratch_WhenTracingReturnData_IsNotUsed")]
+        public void Nested_return_scratch_follows_tracer_capabilities(
+            bool actions, bool instructions, bool memory, bool returnData, bool expectScratch)
+        {
+            (Address largeTarget, _, byte[] largeOutput, _) = SetUpSiblingReturnTargets(false);
+            byte[] parentCode = Prepare.EvmCode
+                .CALL(100_000, largeTarget, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done;
+
+            ExecuteDirect(parentCode, new TracingFlagsTracer(actions, instructions, memory, returnData));
+
+            Assert.That(Machine.RetainedReturnDataScratchLength,
+                expectScratch ? Is.GreaterThanOrEqualTo(largeOutput.Length) : Is.Zero,
+                "a tracer that may keep a nested output must disable the reusable return scratch");
         }
 
         private (Address LargeTarget, Address SmallTarget, byte[] LargeOutput, byte[] SmallOutput) SetUpSiblingReturnTargets(bool smallReverts)
@@ -418,6 +478,17 @@ namespace Nethermind.Evm.Test
                     machine.ReturnData = output;
                     Assigned = true;
                 }
+            }
+        }
+
+        private sealed class TracingFlagsTracer : TxTracer
+        {
+            public TracingFlagsTracer(bool actions, bool instructions, bool memory, bool returnData)
+            {
+                IsTracingActions = actions;
+                IsTracingInstructions = instructions;
+                IsTracingMemory = memory;
+                IsTracingReturnData = returnData;
             }
         }
 
