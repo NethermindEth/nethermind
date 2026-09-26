@@ -1296,6 +1296,13 @@ public class ScopeProviderTests(bool useFlat)
             consumer.CommitTree(2);
             Assert.That(caches.PrepareFor(consumer.StateRoot), Is.True);
 
+            // An empty storage root answers every read with zero without consulting the cache, so give A a new one.
+            consumer.CreateAccount(TestItem.AddressA, 1);
+            consumer.Set(new StorageCell(TestItem.AddressA, 3), (UInt256)1);
+            consumer.Commit(Cancun.Instance);
+            consumer.CommitTree(3);
+            Assert.That(caches.PrepareFor(consumer.StateRoot), Is.True);
+
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(caches.BypassesStorageCache(TestItem.AddressA), Is.True, "precondition");
