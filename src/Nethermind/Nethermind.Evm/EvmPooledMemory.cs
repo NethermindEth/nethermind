@@ -15,7 +15,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct EvmPooledMemory
+public partial struct EvmPooledMemory
 {
     public const int WordSize = 32;
     // Matches the minimum rental tier, avoiding an earlier spill boundary for small frames.
@@ -614,12 +614,15 @@ public struct EvmPooledMemory
         // Full Yellow Paper memory cost is bounded above by ~8.8e12 gas, which fits comfortably
         // in ulong -- so the outOfGas propagation that older revisions carried is unreachable.
         // newActiveWords >= activeWords by the caller's gating condition, so the subtractions are safe.
-        ulong cost = (newActiveWords - activeWords) * GasCostOf.Memory +
-            ((newActiveWords * newActiveWords) >> 9) -
-            ((activeWords * activeWords) >> 9);
-
-        return cost;
+        return ExpansionCost(activeWords, newActiveWords);
     }
+
+    /// <summary>The Yellow Paper memory cost of growing from <paramref name="activeWords"/> to <paramref name="newActiveWords"/> words.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ExpansionCost(ulong activeWords, ulong newActiveWords) =>
+        ((newActiveWords * newActiveWords) >> 9) -
+        ((activeWords * activeWords) >> 9) +
+        (newActiveWords - activeWords) * GasCostOf.Memory;
 
     private static readonly TraceMemory EmptyTraceMemory = new(0, default);
 

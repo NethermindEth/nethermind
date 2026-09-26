@@ -311,8 +311,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         lookup[(int)Instruction.INVALID] = TerminatingOpcodeHandler<InvalidOpcode, TTracingInst, TCancelable>();
 
+        ConfigureBuildHandlers<TTracingInst, TCancelable>(lookup, spec);
         return lookup;
     }
+
+    /// <summary>Replaces entries of a freshly built table with handlers that only this build carries.</summary>
+    static partial void ConfigureBuildHandlers<TTracingInst, TCancelable>(
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] lookup,
+        IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag;
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
         GetCallHandler<TOpCall, TTracingInst, TCancelable>(IReleaseSpec spec)

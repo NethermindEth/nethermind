@@ -18,14 +18,16 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.ZkEvm.Test;
 
-/// <summary>Runs programs through the guest's untraced table and through its traced one, which runs every body unchecked.</summary>
+/// <summary>Runs programs through the guest's untraced table, and through its cancelable and traced ones for reference.</summary>
 /// <remarks>
 /// Untraced dispatch carries the remaining gas and the stack head in registers, pays checked bodies' charges and tests
-/// their stack bounds itself, and skips POP's body. Traced dispatch hands the unchecked bodies the frame's stack and gas
-/// policy, and they do their own charges and tests. Both must reach the same outcome - fault, gas, program counter,
-/// stack and memory - on every input, so the programs lean on the limits dispatch tests: gas that runs out, stacks at
-/// the limit, destinations the bitmap does or does not hold yet, and immediates cut short by the end of the code.
-/// Opcodes that need a world state, and KECCAK256, which a ZK_EVM test process cannot hash, run as INVALID in both tables.
+/// their stack bounds itself, skips POP's body, and runs the guest handlers, which fuse common opcode sequences. The
+/// cancelable table dispatches the same way through the shared handlers only, and the traced one hands the unchecked
+/// bodies the frame's stack and gas policy, so they do their own charges and tests. All must reach the same outcome -
+/// fault, gas, program counter, stack and memory - on every input, so the programs lean on the shapes the guest handlers
+/// fuse and on the limits dispatch tests: gas that runs out inside a fused step, stacks at the limit, destinations the
+/// bitmap does or does not hold yet, and immediates cut short by the end of the code. Opcodes that need a world state,
+/// and KECCAK256, which a ZK_EVM test process cannot hash, run as INVALID in every table.
 /// </remarks>
 public class GuestDispatchDifferentialTests
 {
@@ -35,10 +37,12 @@ public class GuestDispatchDifferentialTests
     private static readonly ISpecProvider SpecProvider = new SingleReleaseSpecProvider(ReleaseSpec, BlockchainIds.Mainnet, BlockchainIds.Mainnet);
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
 
+    public enum Table { Untraced, Cancelable, Traced }
+
     private readonly record struct Outcome(EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize);
 
     [Test]
-    public void Random_programs_match_the_unchecked_bodies([Range(0, 7)] int seed)
+    public void Random_programs_match_the_shared_handlers([Range(0, 7)] int seed)
     {
         List<string> mismatches = [];
         for (int i = 0; i < ProgramsPerSeed && mismatches.Count < 5; i++)
@@ -52,23 +56,24 @@ public class GuestDispatchDifferentialTests
 
             // One code info per table across the passes, so later passes see the bitmap the earlier ones left.
             CodeInfo untracedInfo = new(code);
+            CodeInfo cancelableInfo = new(code);
             CodeInfo tracedInfo = new(code);
             for (int pass = 0; pass < 4; pass++)
             {
                 if (pass >= 2)
                 {
                     // Gas boundaries: exactly what a fresh run uses, then one short of it.
-                    Outcome fresh = Run(gas, input, head, new CodeInfo(code), traced: true);
+                    Outcome fresh = Run(gas, input, head, new CodeInfo(code), Table.Traced);
                     if (IsFault(fresh.Exception)) break;
                     ulong used = gas - fresh.GasLeft;
                     gas = used - Math.Min(used, (ulong)(pass - 2));
                 }
 
-                Outcome untraced = Run(gas, input, head, untracedInfo, traced: false);
-                Outcome traced = Run(gas, input, head, tracedInfo, traced: true);
-                bool equal = untraced.Exception == traced.Exception && (IsFault(untraced.Exception) || untraced == traced);
-                if (!equal)
-                    mismatches.Add($"program {i} pass {pass} gas {gas} head {head} code {Convert.ToHexString(code)} input {Convert.ToHexString(input)}\n untraced {untraced}\n traced   {traced}");
+                Outcome untraced = Run(gas, input, head, untracedInfo, Table.Untraced);
+                Outcome cancelable = Run(gas, input, head, cancelableInfo, Table.Cancelable);
+                Outcome traced = Run(gas, input, head, tracedInfo, Table.Traced);
+                if (!Matches(untraced, cancelable) || !Matches(untraced, traced))
+                    mismatches.Add($"program {i} pass {pass} gas {gas} head {head} code {Convert.ToHexString(code)} input {Convert.ToHexString(input)}\n untraced   {untraced}\n cancelable {cancelable}\n traced     {traced}");
             }
         }
 
@@ -76,7 +81,7 @@ public class GuestDispatchDifferentialTests
     }
 
     [Test]
-    public void Gas_observes_the_charges_of_preceding_opcodes([Values] bool traced)
+    public void Gas_observes_the_charges_of_preceding_opcodes([Values] Table table)
     {
         // Checked and fixed-cost bodies charge gas that dispatch carries by value between handlers.
         byte[] code =
@@ -89,9 +94,9 @@ public class GuestDispatchDifferentialTests
         const ulong gas = 100_000;
         const ulong charged = 5 * GasCostOf.VeryLow + GasCostOf.High + GasCostOf.Mid + 2 * GasCostOf.JumpDest + GasCostOf.Base;
 
-        Outcome outcome = Run(gas, [], 0, new CodeInfo(code), traced);
+        Outcome outcome = Run(gas, [], 0, new CodeInfo(code), table);
         byte[] pushLeft = [(byte)Instruction.PUSH8, .. ((UInt256)(gas - charged)).ToBigEndian()[^8..]];
-        Outcome pushed = Run(gas, [], 0, new CodeInfo(pushLeft), traced);
+        Outcome pushed = Run(gas, [], 0, new CodeInfo(pushLeft), table);
 
         using (Assert.EnterMultipleScope())
         {
@@ -102,9 +107,9 @@ public class GuestDispatchDifferentialTests
         }
     }
 
-    /// <remarks>POP, CALLDATALOAD and CLZ run checked in the traced table too, so the random programs cannot cover them.</remarks>
+    /// <remarks>POP, CALLDATALOAD and CLZ run checked in every table, so the random programs cannot cover them.</remarks>
     [Test]
-    public void Always_checked_bodies_keep_the_carried_head([Values] bool traced)
+    public void Always_checked_bodies_keep_the_carried_head([Values] Table table)
     {
         byte[] input = [0x00, 0x0f, .. new byte[30]];
         byte[] code = [(byte)Instruction.PUSH1, 0, (byte)Instruction.CALLDATALOAD, (byte)Instruction.CLZ, (byte)Instruction.PUSH0, (byte)Instruction.POP];
@@ -113,8 +118,8 @@ public class GuestDispatchDifferentialTests
 
         byte[] pushLeadingZeros = [(byte)Instruction.PUSH1, 12];
 
-        Outcome outcome = Run(gas, input, 0, new CodeInfo(code), traced);
-        Outcome pushed = Run(gas, [], 0, new CodeInfo(pushLeadingZeros), traced);
+        Outcome outcome = Run(gas, input, 0, new CodeInfo(code), table);
+        Outcome pushed = Run(gas, [], 0, new CodeInfo(pushLeadingZeros), table);
 
         using (Assert.EnterMultipleScope())
         {
@@ -126,6 +131,9 @@ public class GuestDispatchDifferentialTests
     }
 
     private static bool IsFault(EvmExceptionType exception) => exception is not (EvmExceptionType.None or EvmExceptionType.Stop);
+
+    private static bool Matches(Outcome outcome, Outcome reference) =>
+        outcome.Exception == reference.Exception && (IsFault(outcome.Exception) || outcome == reference);
 
     private static byte[] Generate(Random random)
     {
@@ -234,7 +242,7 @@ public class GuestDispatchDifferentialTests
         _ => (byte)random.Next(256),
     };
 
-    private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, bool traced)
+    private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table)
     {
         DispatchingVirtualMachine vm = new();
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData);
@@ -264,7 +272,12 @@ public class GuestDispatchDifferentialTests
 
         // The table's declared entry type is the host's signature; its entries take the guest's.
         nint[] handlers = new nint[256];
-        fixed (void* source = traced ? vm.GetOpcodeHandlers<OnFlag, OffFlag>() : vm.GetOpcodeHandlers<OffFlag, OffFlag>())
+        fixed (void* source = table switch
+        {
+            Table.Untraced => vm.GetOpcodeHandlers<OffFlag, OffFlag>(),
+            Table.Cancelable => vm.GetOpcodeHandlers<OffFlag, OnFlag>(),
+            _ => vm.GetOpcodeHandlers<OnFlag, OffFlag>(),
+        })
             new ReadOnlySpan<nint>(source, handlers.Length).CopyTo(handlers);
         for (int opcode = 0; opcode < handlers.Length; opcode++)
         {
@@ -277,12 +290,12 @@ public class GuestDispatchDifferentialTests
         EvmExceptionType exception;
         nint pc;
         nint finalHead;
-        fixed (nint* table = handlers)
+        fixed (nint* entries = handlers)
         {
             EvmStack stack = new(head, vm.Tracer, ref stackBytes[start], codeInfo.CodeSpan, codeInfo);
-            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm };
+            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = entries, Vm = vm };
             exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
-                table[codeInfo.CodeSpan[0]])(ref stack, gas, ref state, 0, stack.Head, table, ref stack.Code, stack.CodeLength);
+                entries[codeInfo.CodeSpan[0]])(ref stack, gas, ref state, 0, stack.Head, entries, ref stack.Code, stack.CodeLength);
             pc = state.FinalProgramCounter;
             finalHead = state.Head;
         }

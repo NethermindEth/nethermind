@@ -105,9 +105,10 @@ public sealed class ModuleWeaver : BaseModuleWeaver
                 if (instruction.OpCode == OpCodes.Ldftn)
                 {
                     // RawCalliHelper calls table entries as exact code, so a shared-generic (fat) pointer would break NativeAOT.
-                    if (!expected.Contains(target))
+                    if (expected.Contains(target))
+                        actual.Add(target);
+                    else if (!IsBuildHandler(target))
                         throw new WeavingException($"Opcode table references {target.FullName}, which is not a named opcode handler.");
-                    actual.Add(target);
                 }
                 else
                 {
@@ -117,6 +118,23 @@ public sealed class ModuleWeaver : BaseModuleWeaver
         }
         if (!actual.SetEquals(expected))
             throw new WeavingException("Named opcode handlers are not all reachable from the opcode table factories.");
+    }
+
+    /// <summary>Whether <paramref name="method"/> is a handler a build installs over a named one.</summary>
+    /// <remarks>
+    /// A <c>RawCalliHelper</c> method other than the templates the named handlers are cloned from, whose generic
+    /// parameters, its own and its declaring types', are all value types: every instantiation of it is exact code, so a
+    /// thin pointer.
+    /// </remarks>
+    private static bool IsBuildHandler(MethodDefinition method)
+    {
+        if (method.DeclaringType.Name != "RawCalliHelper" || method.Name is "ExecuteOpcode" or "ExecuteJumpIfOpcode")
+            return false;
+        foreach (GenericParameter parameter in method.GenericParameters)
+            if (!parameter.HasNotNullableValueTypeConstraint) return false;
+        foreach (GenericParameter parameter in method.DeclaringType.GenericParameters)
+            if (!parameter.HasNotNullableValueTypeConstraint) return false;
+        return true;
     }
 
     /// <summary>The type holding the dispatch handlers: the nested <c>RawCalliHelper</c> when there is one.</summary>

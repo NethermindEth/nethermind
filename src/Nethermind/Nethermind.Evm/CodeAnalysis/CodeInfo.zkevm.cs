@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
@@ -55,4 +56,16 @@ public sealed partial class CodeInfo
     internal bool AnalyzeJump(int destination, long[] bitmap, ReadOnlySpan<byte> code) =>
         code[0] != (byte)Instruction.STOP && code[destination] == (byte)Instruction.JUMPDEST &&
         JumpDestinationAnalyzer.AnalyzeJump(destination, bitmap, code, ref _analyzedUntil);
+
+    /// <summary>Reports whether a single look-back proves <paramref name="destination"/> a jump destination.</summary>
+    /// <param name="destination">A destination inside the code.</param>
+    /// <param name="code">The first byte of this code.</param>
+    /// <remarks>
+    /// The part of <see cref="AnalyzeJump"/> that needs no call and no bounds check, so a frameless handler can take
+    /// it; the caller marks a proven destination. A false answer leaves the destination to <see cref="AnalyzeJump"/>.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool IsJumpProvenByLookBack(nint destination, ref byte code) =>
+        code != (byte)Instruction.STOP && Unsafe.Add(ref code, destination) == (byte)Instruction.JUMPDEST &&
+        JumpDestinationAnalyzer.IsProvenByLookBack(destination, ref code, _analyzedUntil);
 }

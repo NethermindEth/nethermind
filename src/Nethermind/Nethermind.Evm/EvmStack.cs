@@ -2131,13 +2131,40 @@ public ref partial struct EvmStack
         ref byte bottom = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
         ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
 
-        EvmWord buffer = Unsafe.ReadUnaligned<EvmWord>(ref bottom);
-        Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<EvmWord>(ref top));
-        Unsafe.WriteUnaligned(ref top, buffer);
+        if (Vector128.IsHardwareAccelerated)
+        {
+            EvmWord buffer = Unsafe.ReadUnaligned<EvmWord>(ref bottom);
+            Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<EvmWord>(ref top));
+            Unsafe.WriteUnaligned(ref top, buffer);
+        }
+        else
+        {
+            // Without vector registers the word buffer above goes through a stack temporary; the two slots
+            // never overlap, so swapping them a limb at a time needs only two scalar registers.
+            ref ulong bottomLimbs = ref Unsafe.As<byte, ulong>(ref bottom);
+            ref ulong topLimbs = ref Unsafe.As<byte, ulong>(ref top);
+            SwapLimb(ref bottomLimbs, ref topLimbs, 0);
+            SwapLimb(ref bottomLimbs, ref topLimbs, 1);
+            SwapLimb(ref bottomLimbs, ref topLimbs, 2);
+            SwapLimb(ref bottomLimbs, ref topLimbs, 3);
+        }
 
         if (TTracingInst.IsActive) Trace(depth);
 
         return EvmExceptionType.None;
+    }
+
+    /// <summary>Swaps limb <paramref name="limb"/> of the word at <paramref name="first"/> with the same limb of the word at <paramref name="second"/>.</summary>
+    /// <remarks>
+    /// Spelled as a load and two stores through the base refs rather than a swap of two limb refs: those refs
+    /// become locals that the JIT materialises with an add each, where these addresses fold into the accesses.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void SwapLimb(ref ulong first, ref ulong second, nint limb)
+    {
+        ulong value = Unsafe.Add(ref first, limb);
+        Unsafe.Add(ref first, limb) = Unsafe.Add(ref second, limb);
+        Unsafe.Add(ref second, limb) = value;
     }
 
     [SkipLocalsInit]
