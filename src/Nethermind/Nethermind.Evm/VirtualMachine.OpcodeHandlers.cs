@@ -296,6 +296,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.STATICCALL] = GetCallHandler<EvmInstructions.OpStaticCall, TTracingInst, TCancelable>(spec);
         if (spec.RevertOpcodeEnabled)
             lookup[(int)Instruction.REVERT] = TerminatingOpcodeHandler<RevertOpcode, TTracingInst, TCancelable>();
+        if (spec.IsEip5920Enabled)
+            lookup[(int)Instruction.PAY] = GetPayHandler<TTracingInst, TCancelable>(spec);
 
         lookup[(int)Instruction.INVALID] = TerminatingOpcodeHandler<InvalidOpcode, TTracingInst, TCancelable>();
 
@@ -373,6 +375,39 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             (true, false) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OnFlag, OffFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
             (false, true) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OffFlag, OnFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
             (false, false) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OffFlag, OffFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
+        };
+
+    // EIP-5920 requires EIP-2929 and EIP-7523, so the access and empty-account rules are fixed on; the
+    // value and new-account surcharges follow the same fork rules as CALL's.
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+        GetPayHandler<TTracingInst, TCancelable>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag =>
+        SpecFlags.Eip8038(spec)
+            ? GetPayHandler<TTracingInst, TCancelable, Eip8038On>(spec)
+            : GetPayHandler<TTracingInst, TCancelable, Eip8038Off>(spec);
+
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+        GetPayHandler<TTracingInst, TCancelable, Eip8038>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
+        where Eip8038 : struct, IEip8038Flag =>
+        SpecFlags.Eip2780<Eip8038>(spec)
+            ? GetPayHandler<TTracingInst, TCancelable, Eip8038, OnFlag>(spec)
+            : GetPayHandler<TTracingInst, TCancelable, Eip8038, OffFlag>(spec);
+
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+        GetPayHandler<TTracingInst, TCancelable, Eip8038, Eip2780>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
+        where Eip8038 : struct, IEip8038Flag
+        where Eip2780 : struct, IFlag =>
+        (SpecFlags.Eip8037<Eip8038>(spec), SpecFlags.Eip7708<Eip8038>(spec)) switch
+        {
+            (true, true) => OpcodeHandler<PayOpcode<TTracingInst, OnFlag, OnFlag, EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
+            (true, false) => OpcodeHandler<PayOpcode<TTracingInst, OnFlag, OffFlag, EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
+            (false, true) => OpcodeHandler<PayOpcode<TTracingInst, OffFlag, OnFlag, EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
+            (false, false) => OpcodeHandler<PayOpcode<TTracingInst, OffFlag, OffFlag, EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
         };
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
@@ -1447,6 +1482,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708, TSpec>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct PayOpcode<TTracingInst, TEip8037, TEip7708, TSpec> : IOpcodeBody
+        where TTracingInst : struct, IFlag
+        where TEip8037 : struct, IFlag
+        where TEip7708 : struct, IFlag
+        where TSpec : struct, EvmInstructions.ICallSpec
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionPay<TGasPolicy, TTracingInst, TEip8037, TEip7708, TSpec>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]

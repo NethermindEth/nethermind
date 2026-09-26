@@ -83,7 +83,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
     private static bool RequiresStack(Instruction opcode) => opcode is Instruction.SLOAD or Instruction.SSTORE
         or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH or Instruction.EXTCODESIZE
-        or Instruction.BALANCE or Instruction.SELFDESTRUCT
+        or Instruction.BALANCE or Instruction.SELFDESTRUCT or Instruction.PAY
         or Instruction.DELEGATECALL or Instruction.CALL or Instruction.STATICCALL or Instruction.CALLCODE
         or Instruction.CREATE or Instruction.CREATE2;
 
@@ -168,6 +168,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             case Instruction.EXTCODESIZE:
             case Instruction.BALANCE:
             case Instruction.SELFDESTRUCT:
+            case Instruction.PAY:
                 if (stackLen >= 1)
                 {
                     address = stack.PeekAddress(0);
