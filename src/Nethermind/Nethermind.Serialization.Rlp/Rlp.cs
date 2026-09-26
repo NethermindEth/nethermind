@@ -53,11 +53,6 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
-        static Rlp()
-        {
-            RegisterDecoders(typeof(Rlp).Assembly);
-            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
-        }
 
         /// <summary>
         /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
@@ -77,15 +72,13 @@ namespace Nethermind.Serialization.Rlp
 
         private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = [];
         private static readonly Lock _decoderLock = new();
-        private static readonly CappedArray<byte>[] s_intPreEncodes = CreatePreEncodes();
 
         public static void ResetDecoders()
         {
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
             Volatile.Write(ref _decodersSnapshot, null);
-            RegisterDecoders(typeof(Rlp).Assembly);
-            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+            RegisterDefaultDecoders();
         }
 
         public static void RegisterDecoder(RlpDecoderKey key, IRlpDecoder decoder)
@@ -258,7 +251,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static CappedArray<byte> EncodeToCappedArray(int item, ICappedArrayPool? bufferPool = null)
         {
-            CappedArray<byte>[] cache = s_intPreEncodes;
+            CappedArray<byte>[] cache = IntPreEncodes.Cache;
             if ((uint)item < (uint)cache.Length)
             {
                 return cache[item];
@@ -883,6 +876,11 @@ namespace Nethermind.Serialization.Rlp
 
         private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
 
+        // A field initializer rather than a static constructor keeps the type beforefieldinit, so static methods
+        // that read no static field (e.g. LengthOf) need no type initialization check on every call. Declared after
+        // every other initialized static field: registration constructs decoders, which may read them.
+        private static readonly bool _defaultDecodersRegistered = RegisterDefaultDecoders();
+
         [StackTraceHidden]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)
@@ -949,6 +947,14 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return cache;
+        }
+
+        /// <remarks>
+        /// A separate type so the table is built on first use rather than by the <see cref="Rlp"/> type initializer.
+        /// </remarks>
+        private static class IntPreEncodes
+        {
+            public static readonly CappedArray<byte>[] Cache = CreatePreEncodes();
         }
     }
 

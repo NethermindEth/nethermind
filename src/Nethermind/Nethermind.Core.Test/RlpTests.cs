@@ -313,6 +313,10 @@ namespace Nethermind.Core.Test
             AssertValueWriterMatchesExpected(writer, buffer, expected);
         }
 
+        [Test]
+        public void EncodeToCappedArray_encodes_int_like_Rlp([Values(0, 1, 127, 128, 1023, 1024, 65536, int.MaxValue)] int value) =>
+            Assert.That(Rlp.EncodeToCappedArray(value).ToArray(), Is.EqualTo(Rlp.Encode(value).Bytes));
+
         [TestCaseSource(nameof(ValueWriterUInt256Cases))]
         public void RlpWriter_encodes_uint256_like_Rlp(UInt256 value)
         {
