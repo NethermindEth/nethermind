@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -883,7 +882,9 @@ public struct EvmPooledMemory
             // requiredEnd rather than the expansion delta to limit wasted clearing for small frames.
             // requiredEnd fits in the backing array. Shifting 29 set bits by clz(end - 1) gives chunk - 1;
             // forcing bit 10 and masking to 12 bits implements the 256–4096 byte clamp.
-            ulong zeroMask = (0x1fffffffU >> BitOperations.LeadingZeroCount((uint)(requiredEnd - 1) | 1024U)) & 0xfffU;
+            uint value = (uint)(requiredEnd - 1) | 1024U;
+            int leadingZeros = Bytes.LeadingZeroBits(value) - 32;
+            ulong zeroMask = (0x1fffffffU >> leadingZeros) & 0xfffU;
             ulong target = Math.Min((ulong)memory.Length, (requiredEnd + zeroMask) & ~zeroMask);
             Array.Clear(memory, (int)initializedSize, (int)(target - initializedSize));
             initializedSize = target;
