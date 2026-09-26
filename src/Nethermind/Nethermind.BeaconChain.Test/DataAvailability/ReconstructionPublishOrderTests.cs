@@ -43,14 +43,14 @@ public class ReconstructionPublishOrderTests
         ColumnGossipRouter router = new(Spec, new SlotClock(Spec, new ManualTimestamper(now)), LimboLogs.Instance, pool);
         Dictionary<string, EchoingTopic> topics = [];
         byte[] digest = ForkDigest.Compute(Spec, 419_072);
-        router.Start(id => topics[id] = new EchoingTopic(), digest, subscribedSubnets);
+        router.Start(id => topics[id] = new EchoingTopic(message => router.Handle(SubnetOf(id), gloasTopic: false, message)), digest, subscribedSubnets);
         List<DataColumnSidecar> raised = [];
         router.DataColumnSidecarReceived += raised.Add;
 
         for (ulong column = 0; column < (ulong)required; column++)
         {
             DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, CurrentSlot);
-            topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(column))].Deliver(Snappy.CompressToArray(DataColumnSidecar.Encode(sidecar)));
+            router.Handle(column, gloasTopic: false, Snappy.CompressToArray(DataColumnSidecar.Encode(sidecar)));
         }
 
         EchoingTopic publishedTo = topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName((ulong)required))];
@@ -64,10 +64,17 @@ public class ReconstructionPublishOrderTests
         });
     }
 
-    /// <summary>A topic that delivers everything published on it straight back to its own subscribers, as a mesh peer relaying it would.</summary>
-    private sealed class EchoingTopic : ITopic
+    private static ulong SubnetOf(string topic)
     {
-        public event Action<byte[]>? OnMessage;
+        GossipTopics.TryParse(topic, out _, out string? name);
+        GossipTopics.TryParseDataColumnSidecarTopicName(name!, out ulong subnet);
+        return subnet;
+    }
+
+    /// <summary>A topic that hands everything published on it straight back to the router's validator entry, as a mesh peer relaying it would.</summary>
+    private sealed class EchoingTopic(Action<byte[]> receive) : ITopic
+    {
+        public event Action<byte[]>? OnMessage { add { } remove { } }
 
         public List<byte[]> Published { get; } = [];
 
@@ -80,11 +87,9 @@ public class ReconstructionPublishOrderTests
         public void Publish(byte[] value)
         {
             Published.Add(value);
-            OnMessage?.Invoke(value);
+            receive(value);
         }
 
         public void Publish(IMessage value) { }
-
-        public void Deliver(byte[] message) => OnMessage?.Invoke(message);
     }
 }

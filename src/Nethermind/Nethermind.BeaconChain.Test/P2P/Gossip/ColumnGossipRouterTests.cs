@@ -45,8 +45,6 @@ public class ColumnGossipRouterTests
         byte[] bpo2Digest = ForkDigest.Compute(Spec, 419_072);
         Dictionary<string, FakeTopic> topics = [];
         ColumnGossipRouter router = CreateRouter();
-        int received = 0;
-        router.DataColumnSidecarReceived += _ => received++;
 
         Assert.That(() => router.RotateDigest(bpo2Digest), Throws.InvalidOperationException, "rotation requires Start");
 
@@ -62,19 +60,13 @@ public class ColumnGossipRouterTests
         Assert.That(topics.Keys, Is.EquivalentTo(expectedTopics), "exactly the given subnets are subscribed, not all 128");
 
         FakeTopic subnet5Bpo1 = topics[GossipTopics.Topic(bpo1Digest, GossipTopics.DataColumnSidecarTopicName(5))];
-        subnet5Bpo1.Deliver(Message(DataColumnSidecarTestFixture.BuildValidSidecar(5, CurrentSlot)));
-        Assert.That(received, Is.EqualTo(1));
-
         router.RotateDigest(bpo2Digest);
         FakeTopic subnet5Bpo2 = topics[GossipTopics.Topic(bpo2Digest, GossipTopics.DataColumnSidecarTopicName(5))];
-        subnet5Bpo1.Deliver(Message(DataColumnSidecarTestFixture.BuildValidSidecar(5, CurrentSlot - 1, seed: 0x20)));
-        subnet5Bpo2.Deliver(Message(DataColumnSidecarTestFixture.BuildValidSidecar(5, CurrentSlot - 2, seed: 0x30)));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(subnet5Bpo1.IsSubscribed, Is.False, "old subnet topics are unsubscribed on rotation");
             Assert.That(subnet5Bpo2.IsSubscribed, "new subnet topics are subscribed on rotation");
-            Assert.That(received, Is.EqualTo(2), "only the new digest topic delivers after rotation");
         }
     }
 
@@ -89,7 +81,7 @@ public class ColumnGossipRouterTests
         router.DataColumnSidecarReceived += s => received = s;
 
         DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex, CurrentSlot);
-        topics[GossipTopics.Topic(ForkDigest.Compute(Spec, 419_072), GossipTopics.DataColumnSidecarTopicName(SubnetId))].Deliver(Message(sidecar));
+        router.Handle(SubnetId, gloasTopic: false, Message(sidecar));
 
         Assert.That(received, Is.Not.Null);
         Hash256 blockRoot = SszRoots.HashTreeRoot(sidecar.SignedBlockHeader!.Message!);
@@ -119,7 +111,7 @@ public class ColumnGossipRouterTests
             tasks[c] = Task.Run(() =>
             {
                 DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(c, CurrentSlot);
-                topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(c))].Deliver(Message(sidecar));
+                router.Handle(c, gloasTopic: false, Message(sidecar));
             });
         }
 
@@ -149,7 +141,7 @@ public class ColumnGossipRouterTests
         for (ulong column = 0; column < (ulong)required; column++)
         {
             DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, CurrentSlot);
-            topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(column))].Deliver(Message(sidecar));
+            router.Handle(column, gloasTopic: false, Message(sidecar));
         }
 
         // Never called TryReconstruct/SelectNewlyReconstructed directly: everything below is only
@@ -182,7 +174,7 @@ public class ColumnGossipRouterTests
         // re-accepted or re-raised. Whether the mark precedes the publish is pinned by ReconstructionPublishOrderTests.
         int receivedBeforeReplay = receivedEvents.Count;
         DataColumnSidecar replay = DataColumnSidecarTestFixture.BuildValidSidecar((ulong)required, CurrentSlot);
-        topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName((ulong)required))].Deliver(Message(replay));
+        router.Handle((ulong)required, gloasTopic: false, Message(replay));
 
         using (Assert.EnterMultipleScope())
         {
@@ -267,7 +259,7 @@ public class ColumnGossipRouterTests
         int received = 0;
         router.DataColumnSidecarReceived += _ => received++;
 
-        topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(SubnetId))].Deliver(Message(build()));
+        router.Handle(SubnetId, gloasTopic: false, Message(build()));
 
         using (Assert.EnterMultipleScope())
         {
@@ -287,9 +279,8 @@ public class ColumnGossipRouterTests
         router.DataColumnSidecarReceived += _ => received++;
         byte[] message = Message(DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex, CurrentSlot));
 
-        FakeTopic topic = topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(SubnetId))];
-        topic.Deliver(message);
-        topic.Deliver(message);
+        router.Handle(SubnetId, gloasTopic: false, message);
+        router.Handle(SubnetId, gloasTopic: false, message);
 
         using (Assert.EnterMultipleScope())
         {
@@ -300,7 +291,7 @@ public class ColumnGossipRouterTests
 
     private sealed class FakeTopic : ITopic
     {
-        public event Action<byte[]>? OnMessage;
+        public event Action<byte[]>? OnMessage { add { } remove { } }
 
         public bool IsSubscribed { get; private set; }
 
@@ -313,7 +304,5 @@ public class ColumnGossipRouterTests
         public void Publish(byte[] value) => Published.Add(value);
 
         public void Publish(IMessage value) { }
-
-        public void Deliver(byte[] message) => OnMessage?.Invoke(message);
     }
 }

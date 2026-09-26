@@ -56,6 +56,43 @@ public class FuluDriverSupportTests
             }),
             Throws.TypeOf<AssertionException>().With.Message.Contains("'b' does not run its vector"));
 
+    /// <summary>A suite whose keys mix runnable and not-implemented vectors must not pass or fail by which vector comes first.</summary>
+    [Test]
+    public void AssertEveryKeyRunsSomeVector_passes_when_a_later_vector_of_a_key_runs()
+    {
+        List<string> ran = [];
+
+        FuluDriverSupport.AssertEveryKeyRunsSomeVector(KeyedCases, static c => c.Key, c =>
+        {
+            ran.Add(c.Name);
+            if (c.Name == "a1")
+                throw new NotImplementedInDriverException("not modelled");
+        });
+
+        Assert.That(ran, Is.EqualTo(new[] { "a1", "a2", "b1" }));
+    }
+
+    /// <summary>Only a not-implemented vector defers to the next one; a vector that really fails must not be hidden by a later pass.</summary>
+    [Test]
+    public void AssertEveryKeyRunsSomeVector_fails_at_once_when_an_earlier_vector_really_fails() =>
+        Assert.That(
+            () => FuluDriverSupport.AssertEveryKeyRunsSomeVector(KeyedCases, static c => c.Key, static c =>
+            {
+                if (c.Name == "a1")
+                    throw new InvalidOperationException("wrong verdict");
+            }),
+            Throws.InvalidOperationException.With.Message.EqualTo("wrong verdict"));
+
+    [Test]
+    public void AssertEveryKeyRunsSomeVector_fails_when_every_vector_of_a_key_is_not_implemented() =>
+        Assert.That(
+            () => FuluDriverSupport.AssertEveryKeyRunsSomeVector(KeyedCases, static c => c.Key, static c =>
+            {
+                if (c.Key == "a")
+                    throw new NotImplementedInDriverException("not modelled");
+            }),
+            Throws.TypeOf<AssertionException>().With.Message.Contains("'a' reports every vector not implemented"));
+
     [Test]
     public void AssertEveryKeyRunsAVector_fails_when_no_vectors_are_enumerated() =>
         Assert.That(
