@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public Address[]? ToAddress { get; set; }
 
-        public int After { get; set; }
+        public int? After { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public int? Count { get; set; }

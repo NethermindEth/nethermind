@@ -519,6 +519,29 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_filter_null_member_is_omitted(
+        [Values("after", "count", "fromAddress", "toAddress", "fromBlock", "toBlock")] string member, [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        // A null fromBlock is latest, so the range ends at latest for it to stay valid.
+        string range = member == "fromBlock" ? "\"toBlock\":\"latest\"" : member == "toBlock" ? "\"fromBlock\":\"latest\"" : "\"fromBlock\":\"0x1\",\"toBlock\":\"latest\"";
+        using JsonDocument withNull = JsonDocument.Parse($"{{{range},\"{member}\":null}}");
+        using JsonDocument omitted = JsonDocument.Parse($"{{{range}}}");
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", withNull.RootElement);
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.TryGetProperty("result", out JsonElement result) && result.GetArrayLength() > 0, Is.True, response);
+            Assert.That(response, Is.EqualTo(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", omitted.RootElement)));
+        }
+    }
+
+    [Test]
     public async Task Trace_filter_return_expected_json()
     {
         Context context = new();
@@ -1215,6 +1238,27 @@ public class TraceRpcModuleTests
             "trace_call", transaction, traceTypes, blockParameter);
 
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
+    }
+
+    // Shaped like trace-interop's field-null-members probe: a null `input` after `data`, and the other optional members null.
+    [Test]
+    public async Task Trace_call_null_input_keeps_data()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        string fields = $"\"from\":\"{TestItem.AddressA}\",\"gas\":\"0x493e0\",\"gasPrice\":\"0x77359400\",\"data\":\"0x602a60005260206000f3\"";
+        using JsonDocument withNulls = JsonDocument.Parse(
+            $"{{{fields},\"input\":null,\"accessList\":null,\"authorizationList\":null,\"blobVersionedHashes\":null,\"chainId\":null,\"maxFeePerBlobGas\":null,\"maxFeePerGas\":null,\"maxPriorityFeePerGas\":null,\"nonce\":null,\"type\":null,\"value\":null}}");
+        using JsonDocument omitted = JsonDocument.Parse($"{{{fields}}}");
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", withNulls.RootElement, new[] { "trace" }, "latest");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["result"]?["output"]?.Value<string>(), Is.EqualTo($"0x{new UInt256(42).ToBigEndian().ToHexString()}"), response);
+            Assert.That(response, Is.EqualTo(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", omitted.RootElement, new[] { "trace" }, "latest")));
+        }
     }
 
     private static readonly IEnumerable<(object, string[], string)> Trace_call_without_blockParameter_test_cases = [

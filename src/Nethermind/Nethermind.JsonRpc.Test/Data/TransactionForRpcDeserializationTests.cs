@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -139,6 +140,18 @@ public class TransactionForRpcDeserializationTests
     [TestCase("""{"data":"0xABC","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length data")]
     [TestCase("""{"input":"0x1ab"}""", TestName = "EIP1559 tx odd-length input")]
     public void Test_OddLengthInputOrData_ThrowsJsonException(string txJson) => Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>(txJson));
+
+    [TestCase("""{"data":"0x602a","input":null}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"input":null,"data":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"input":"0x602a","data":null}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"data":null,"input":"0x602a"}""", ExpectedResult = "0x602a")]
+    [TestCase("""{"input":null}""", ExpectedResult = "0x")]
+    [TestCase("""{"data":null,"input":null}""", ExpectedResult = "0x")]
+    [TestCase("""{"data":"0x602a","input":"0x"}""", ExpectedResult = "0x")]
+    [TestCase("""{"data":"0x602a","input":""}""", ExpectedResult = "0x")]
+    [TestCase("""{"input":"","data":"0x602a"}""", ExpectedResult = "0x602a")]
+    public string Test_NullInputOrData_IsOmitted(string txJson) =>
+        _serializer.Deserialize<TransactionForRpc>(txJson)!.ToTransaction().Data!.Data.ToArray().ToHexString(true);
 
     [TestCaseSource(nameof(DefaultedTypeResolutionCases))]
     public TxType Test_DefaultedType_ResolvesCorrectly(IReleaseSpec spec, bool hasAccessList)

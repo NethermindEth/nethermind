@@ -312,6 +312,33 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
+    public async Task trace_filter_from_store_reads_null_member_as_omitted(
+        [Values("after", "count", "fromAddress", "toAddress")] string member, [Values] bool streaming)
+    {
+        TestContext test = new(streaming: streaming);
+        test.DbTrace.Action = new ParityTraceAction { Type = "call", CallType = "call", From = TestItem.AddressA, To = TestItem.AddressB };
+        test.Store.Set(test.DbTrace.BlockHash!, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize(new[] { test.DbTrace }));
+        const string range = "\"fromBlock\":\"latest\",\"toBlock\":\"latest\"";
+
+        async Task<string> Filter(string json)
+        {
+            // Read and written as the RPC server does, so the streaming case runs the streamed filter.
+            TraceFilterForRpc filter = JsonSerializer.Deserialize<TraceFilterForRpc>(json, EthereumJsonSerializer.JsonRpcRequestOptions)!;
+            using JsonRpcResponse response = test.Module.trace_filter(filter);
+            return Encoding.UTF8.GetString(await Serialize(response));
+        }
+
+        string withNull = await Filter($"{{{range},\"{member}\":null}}");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(withNull)["result"]!.Select(static trace => (string?)trace["action"]!["to"]), Is.EqualTo(new[] { TestItem.AddressB.ToString() }), withNull);
+            Assert.That(withNull, Is.EqualTo(await Filter($"{{{range}}}")));
+        }
+        test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
     public async Task trace_block_to_async_stream()
     {
         TestContext test = new();
