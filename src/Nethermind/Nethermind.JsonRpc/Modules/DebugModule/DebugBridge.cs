@@ -399,7 +399,7 @@ public class DebugBridge : IDebugBridge
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
             GethLikeTxTrace? trace;
-            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: gasCap, spec: spec);
+            Result<Transaction> txResult = txForRpc.ToValidatedTransaction(gasCap: gasCap, spec: spec);
             if (txResult.IsError)
             {
                 trace = CreateFailTrace(txForRpc.Gas);
