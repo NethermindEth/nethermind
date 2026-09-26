@@ -6,15 +6,25 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.State;
+using Nethermind.Trie;
 
 namespace Nethermind.TxPool;
 
-public class NonceManager(IAccountStateProvider accounts, int minSweepThreshold = NonceManager.DefaultMinSweepThreshold) : INonceManager
+public class NonceManager(
+    IChainHeadInfoProvider chainHeadInfoProvider,
+    IStateHeaderProvider stateHeaderProvider,
+    IStateReader stateReader,
+    int minSweepThreshold = NonceManager.DefaultMinSweepThreshold) : INonceManager
 {
     internal const int DefaultMinSweepThreshold = 1024;
 
     private readonly ConcurrentDictionary<AddressAsKey, AddressNonceManager> _addressNonceManagers = new();
-    private readonly IAccountStateProvider _accounts = accounts;
+    private readonly IAccountStateProvider _accounts = chainHeadInfoProvider.ReadOnlyStateProvider;
+    private readonly IChainHeadInfoProvider _chainHeadInfoProvider = chainHeadInfoProvider;
+    private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
+    private readonly IStateReader _stateReader = stateReader;
     private readonly int _minSweepThreshold = minSweepThreshold;
     private int _sweepThreshold = minSweepThreshold;
     private int _sweeping;
@@ -54,12 +64,15 @@ public class NonceManager(IAccountStateProvider accounts, int minSweepThreshold 
     }
 
     /// <summary>
-    /// Drops the addresses whose every recorded nonce is already below the account nonce: such an entry decides
-    /// nothing a fresh one would not. Busy entries are skipped rather than waited for.
+    /// Drops the addresses whose every accepted nonce is below their nonce at the reorg-safe block, and the addresses
+    /// that never had a nonce accepted. A reorg that keeps the reorg-safe block cannot lower the account nonce below
+    /// what it was there, so a fresh entry never hands out a nonce the dropped one did. Busy entries are skipped
+    /// rather than waited for.
     /// </summary>
     /// <remarks>
-    /// Runs on the submitting thread and reads one account nonce per tracked address. The threshold doubles after
-    /// each sweep, so the cost stays constant per submission on average, but a single submission can pay for a scan.
+    /// Runs on the submitting thread and reads one account nonce per tracked address that had a nonce accepted. The
+    /// threshold doubles after each sweep, so the cost stays constant per submission on average, but a single
+    /// submission can pay for a scan. Without state at the reorg-safe block only the never-accepted entries go.
     /// </remarks>
     private void SweepConfirmed()
     {
@@ -67,9 +80,13 @@ public class NonceManager(IAccountStateProvider accounts, int minSweepThreshold 
 
         try
         {
+            BlockHeader? reorgSafeHeader = FindReorgSafeHeader();
             foreach (KeyValuePair<AddressAsKey, AddressNonceManager> entry in _addressNonceManagers)
             {
-                if (entry.Value.TryRetire(_accounts.GetNonce(entry.Key)))
+                ulong? reorgSafeNonce = reorgSafeHeader is not null && entry.Value.HasAcceptedNonce
+                    ? GetReorgSafeNonce(reorgSafeHeader, entry.Key)
+                    : null;
+                if (entry.Value.TryRetire(reorgSafeNonce))
                 {
                     _addressNonceManagers.TryRemove(entry);
                 }
@@ -83,6 +100,32 @@ public class NonceManager(IAccountStateProvider accounts, int minSweepThreshold 
         }
     }
 
+    /// <summary>
+    /// The canonical header at <c>min(finalized, head - </c><see cref="Reorganization.MaxDepth"/><c>)</c>, or
+    /// <c>null</c> when it or its state is unavailable.
+    /// </summary>
+    private BlockHeader? FindReorgSafeHeader()
+    {
+        ulong reorgSafeNumber = ulong.Min(
+            _stateHeaderProvider.FinalizedBlockNumber,
+            _chainHeadInfoProvider.HeadNumber.SaturatingSub(Reorganization.MaxDepth));
+        BlockHeader? header = _stateHeaderProvider.GetFinalizedHeader(reorgSafeNumber);
+        return header is not null && _stateReader.HasStateForBlock(header) ? header : null;
+    }
+
+    private ulong? GetReorgSafeNonce(BlockHeader reorgSafeHeader, Address address)
+    {
+        try
+        {
+            return _stateReader.GetNonce(reorgSafeHeader, address);
+        }
+        catch (MissingTrieNodeException)
+        {
+            // Pruned after FindReorgSafeHeader looked, which counts as unavailable, not as nonce 0.
+            return null;
+        }
+    }
+
     private class AddressNonceManager
     {
         private readonly HashSet<ulong> _usedNonces = [];
@@ -90,6 +133,7 @@ public class NonceManager(IAccountStateProvider accounts, int minSweepThreshold 
         private ulong _currentNonce;
         private ulong _reservedNonce;
         private ulong _previousAccountNonce;
+        private ulong? _highestAcceptedNonce;
         private volatile bool _isRetired;
 
         private readonly SemaphoreSlim _accountLock = new(1);
@@ -97,6 +141,8 @@ public class NonceManager(IAccountStateProvider accounts, int minSweepThreshold 
         public AddressNonceManager() => _txAccepted = TxAccepted;
 
         public bool IsRetired => _isRetired;
+
+        public bool HasAcceptedNonce => _highestAcceptedNonce.HasValue;
 
         public NonceLocker ReserveNonce(ulong accountNonce, out ulong reservedNonce)
         {
@@ -111,6 +157,7 @@ public class NonceManager(IAccountStateProvider accounts, int minSweepThreshold 
         private void TxAccepted()
         {
             _usedNonces.Add(_reservedNonce);
+            _highestAcceptedNonce = ulong.Max(_highestAcceptedNonce ?? 0, _reservedNonce);
             while (_usedNonces.Contains(_currentNonce))
             {
                 _currentNonce++;
@@ -124,18 +171,17 @@ public class NonceManager(IAccountStateProvider accounts, int minSweepThreshold 
             return locker;
         }
 
-        public bool TryRetire(ulong accountNonce)
+        /// <param name="reorgSafeNonce">
+        /// The account nonce at the reorg-safe block, or <c>null</c> when that state is unavailable.
+        /// </param>
+        public bool TryRetire(ulong? reorgSafeNonce)
         {
             if (!_accountLock.Wait(0)) return false;
 
             try
             {
-                if (_currentNonce > accountNonce) return false;
-
-                foreach (ulong usedNonce in _usedNonces)
-                {
-                    if (usedNonce >= accountNonce) return false;
-                }
+                bool everyAcceptedNonceIsReorgSafe = _highestAcceptedNonce is null || _highestAcceptedNonce < reorgSafeNonce;
+                if (!everyAcceptedNonceIsReorgSafe) return false;
 
                 _isRetired = true;
                 return true;
