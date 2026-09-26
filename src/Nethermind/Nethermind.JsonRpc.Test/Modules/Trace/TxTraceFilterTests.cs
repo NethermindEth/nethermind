@@ -55,4 +55,20 @@ public class TxTraceFilterTests
         Assert.That(traceFilter.ShouldUseTxTrace(action1), Is.EqualTo(false));
 
     }
+
+    [TestCase(2, 2, false, TestName = "CountLeft")]
+    [TestCase(2, 3, true, TestName = "CountReached")]
+    [TestCase(null, 3, false, TestName = "NoCount")]
+    [TestCase(0, 0, true, TestName = "ZeroCount")]
+    public void IsExhausted_WhenMatchesAreConsumed_ReportsWhetherAnotherTraceCanBeAccepted(int? count, int matches, bool expected)
+    {
+        TxTraceFilter traceFilter = new(null, null, 1, count);
+        ParityTraceAction action = new() { From = TestItem.AddressA };
+        for (int i = 0; i < matches; i++)
+        {
+            traceFilter.ShouldUseTxTrace(action);
+        }
+
+        Assert.That(traceFilter.IsExhausted, Is.EqualTo(expected), "the filter is exhausted exactly when count traces were accepted after skipping after");
+    }
 }

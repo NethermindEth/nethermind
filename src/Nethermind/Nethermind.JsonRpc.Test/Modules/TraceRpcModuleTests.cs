@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -305,6 +306,48 @@ public class TraceRpcModuleTests
                 Assert.Throws<OperationCanceledException>(() => result.Data.ToArray());
             }
             Assert.That(timeout.DisposeCount, Is.EqualTo(1));
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    // The timeout is already cancelled when the result is produced, so executing any block would fail: a filter
+    // that can accept nothing more must leave the blocks unexecuted on both the buffered and the streamed path.
+    [Test]
+    [NonParallelizable]
+    public async Task Trace_filter_WhenCountIsZero_ExecutesNoBlock([Values] bool streamed)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        try
+        {
+            using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_filter(new TraceFilterForRpc
+            {
+                FromBlock = new BlockParameter(1),
+                ToBlock = BlockParameter.Latest,
+                Count = 0
+            });
+            timeout.Cancel();
+
+            if (streamed)
+            {
+                ArrayBufferWriter<byte> buffer = new();
+                using (Utf8JsonWriter writer = new(buffer))
+                {
+                    ((JsonStreamingResultBase)result.Data).WriteAsJson(writer);
+                }
+
+                Assert.That(Encoding.UTF8.GetString(buffer.WrittenSpan), Is.EqualTo("[]"), "no trace is requested, so the stream must finish without executing a block");
+            }
+            else
+            {
+                Assert.That(result.Data.ToArray(), Is.Empty, "no trace is requested, so no block may be executed");
+            }
         }
         finally
         {
