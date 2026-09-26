@@ -33,6 +33,11 @@ public class FlatScopeProvider(
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock), usage);
 
+    // Trie verification makes every flat read also traverse the scope's storage trie, and
+    // StorageTree/PatriciaTree traversal is not thread-safe, so background readers must not share a
+    // scope's trees while it is on. The plain flat read path (snapshot bundles) is safe.
+    public bool SupportsConcurrentScopes => !configuration.VerifyWithTrie;
+
     public bool HasStateForTargetBlock(BlockHeader targetBlock) => this.HasRootForTarget(_stateHeaderProvider, targetBlock);
 
     public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>

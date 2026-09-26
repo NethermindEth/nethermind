@@ -23,6 +23,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     public bool HasRoot(BlockHeader? baseBlock) =>
         baseScopeProvider.HasRoot(baseBlock);
 
+    public bool SupportsConcurrentScopes => baseScopeProvider.SupportsConcurrentScopes;
+
     public bool HasStateForTargetBlock(BlockHeader targetBlock) =>
         baseScopeProvider.HasStateForTargetBlock(targetBlock);
 
