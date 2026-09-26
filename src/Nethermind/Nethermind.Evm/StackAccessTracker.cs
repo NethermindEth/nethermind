@@ -52,8 +52,16 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public readonly bool WarmUp(Address address)
         => _trackingState.AccessedAddresses.Add(address);
 
+    /// <summary>Warms the cell, answering a repeat of the last warm cell without probing the set.</summary>
+    /// <returns><see langword="true"/> when the cell was cold.</returns>
     public readonly bool WarmUp(in StorageCell storageCell)
-        => _trackingState.AccessedStorageCells.Add(storageCell);
+    {
+        if (_trackingState.IsKnownWarm(in storageCell)) return false;
+
+        bool wasCold = _trackingState.AccessedStorageCells.Add(storageCell);
+        _trackingState.RememberWarm(in storageCell);
+        return wasCold;
+    }
 
     public readonly void WarmUp(AccessList? accessList)
     {

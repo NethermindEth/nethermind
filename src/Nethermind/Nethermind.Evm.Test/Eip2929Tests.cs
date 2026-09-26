@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -35,6 +36,40 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
             Assert.That(result.StatusCode, Is.EqualTo(1));
             AssertGas(result, GasCostOf.Transaction + expectedGasExcludingTx);
+        }
+
+        /// <remarks>
+        /// 1. A delegate call runs out of gas on a cold SLOAD of the caller's slot 1 (or, as the baseline, slot 2).
+        /// 2. The caller then loads slot 1 itself.
+        /// The halted frame must leave slot 1 cold, so both runs pay the same gas.
+        /// </remarks>
+        [Test]
+        public void Cold_sload_out_of_gas_in_a_sub_call_leaves_the_slot_cold()
+        {
+            ulong gasWhenSubCallTouchesTheSlot = GasOfSloadAfterHaltedSubCall(TestItem.AddressD, subCallSlot: 1);
+            ulong gasWhenSubCallTouchesAnotherSlot = GasOfSloadAfterHaltedSubCall(TestItem.AddressE, subCallSlot: 2);
+
+            Assert.That(gasWhenSubCallTouchesTheSlot, Is.EqualTo(gasWhenSubCallTouchesAnotherSlot),
+                "the out-of-gas sub call must not leave the caller's slot warm");
+        }
+
+        private ulong GasOfSloadAfterHaltedSubCall(Address subCall, int subCallSlot)
+        {
+            byte[] subCallCode = Prepare.EvmCode.PushData(subCallSlot).Op(Instruction.SLOAD).Done;
+            TestState.CreateAccount(subCall, 1.Ether);
+            TestState.InsertCode(subCall, subCallCode, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .DelegateCall(subCall, 1000)
+                .Op(Instruction.POP)
+                .PushData(1)
+                .Op(Instruction.SLOAD)
+                .Op(Instruction.POP)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(code);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success), "precondition: only the sub call halts");
+            return result.GasSpent;
         }
 
         private sealed class StorageObservationTracer(bool storage) : TestAllTracerWithOutput
