@@ -676,6 +676,19 @@ public class TraceRpcModuleTests
             Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{author}\"],\"mode\":null"), Is.Empty);
             Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{recipient}\"]"), Is.EqualTo(calls));
             Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{recipient}\"],\"mode\":null"), Is.EqualTo(calls));
+            // An empty list does not restrict, the same as an omitted one, under every mode.
+            foreach (string mode in new[] { "", ",\"mode\":\"intersection\"", ",\"mode\":\"union\"" })
+            {
+                string[] byAuthor = await Filter($",\"toAddress\":[\"{author}\"]{mode}");
+                string[] bySender = await Filter($",\"fromAddress\":[\"{sender}\"]{mode}");
+                Assert.That(byAuthor, Is.EqualTo(rewards), mode);
+                Assert.That(bySender, Is.EqualTo(calls), mode);
+                Assert.That(await Filter($",\"fromAddress\":[],\"toAddress\":[\"{author}\"]{mode}"), Is.EqualTo(byAuthor), mode);
+                Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[]{mode}"), Is.EqualTo(bySender), mode);
+                Assert.That(await Filter($",\"fromAddress\":[],\"toAddress\":[]{mode}"), Is.EqualTo(all), mode);
+                Assert.That(await Filter($",\"fromAddress\":[]{mode}"), Is.EqualTo(all), mode);
+                Assert.That(await Filter($",\"toAddress\":[]{mode}"), Is.EqualTo(all), mode);
+            }
         }
     }
 

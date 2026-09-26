@@ -10,7 +10,7 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 
 /// <summary>
 /// How <see cref="TraceFilterForRpc.FromAddress"/> and <see cref="TraceFilterForRpc.ToAddress"/> combine.
-/// An omitted or null list never restricts; within a list any address matches.
+/// An omitted, null or empty list never restricts; within a list any address matches.
 /// </summary>
 [JsonConverter(typeof(TraceFilterModeConverter))]
 public enum TraceFilterMode

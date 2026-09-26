@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -62,8 +61,16 @@ public class TxTraceFilterTests
         yield return new TestCaseData(TraceFilterMode.Union, null, null, new[] { true, true, true, true, true }).SetName("union without lists");
         yield return new TestCaseData(TraceFilterMode.Union, new[] { TestItem.AddressB }, new[] { TestItem.AddressD }, new[] { false, true, false, true, false }).SetName("union excludes reward without recipient match");
         yield return new TestCaseData(TraceFilterMode.Union, new[] { TestItem.AddressD, TestItem.AddressA }, new[] { TestItem.AddressD, TestItem.AddressB }, new[] { true, false, true, true, false }).SetName("union of lists with several addresses");
-        // An empty list matches no address, so under union it adds no matches.
-        yield return new TestCaseData(TraceFilterMode.Union, Array.Empty<Address>(), c, new[] { false, true, true, false, true }).SetName("union with an empty sender list");
+        // An empty list does not restrict, the same as an omitted one.
+        Address[] none = [];
+        yield return new TestCaseData(TraceFilterMode.Union, none, c, new[] { false, true, true, false, true }).SetName("union with an empty sender list");
+        yield return new TestCaseData(TraceFilterMode.Union, a, none, new[] { true, false, true, false, false }).SetName("union with an empty recipient list");
+        yield return new TestCaseData(TraceFilterMode.Union, none, none, new[] { true, true, true, true, true }).SetName("union with both lists empty");
+        yield return new TestCaseData(TraceFilterMode.Union, none, null, new[] { true, true, true, true, true }).SetName("union with an empty sender list only");
+        yield return new TestCaseData(TraceFilterMode.Intersection, none, c, new[] { false, true, true, false, true }).SetName("intersection with an empty sender list");
+        yield return new TestCaseData(TraceFilterMode.Intersection, a, none, new[] { true, false, true, false, false }).SetName("intersection with an empty recipient list");
+        yield return new TestCaseData(TraceFilterMode.Intersection, none, none, new[] { true, true, true, true, true }).SetName("intersection with both lists empty");
+        yield return new TestCaseData(TraceFilterMode.Intersection, null, none, new[] { true, true, true, true, true }).SetName("intersection with an empty recipient list only");
         yield return new TestCaseData(TraceFilterMode.Intersection, a, c, new[] { false, false, true, false, false }).SetName("intersection of both lists");
         yield return new TestCaseData(TraceFilterMode.Intersection, new[] { TestItem.AddressD, TestItem.AddressA }, new[] { TestItem.AddressD, TestItem.AddressB }, new[] { true, false, false, false, false }).SetName("intersection of lists with several addresses");
         yield return new TestCaseData(TraceFilterMode.Intersection, null, c, new[] { false, true, true, false, true }).SetName("intersection with recipient list only");
