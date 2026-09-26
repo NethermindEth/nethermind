@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -99,7 +100,8 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                     ctx.Resolve<ILogManager>(),
                     ctx.Resolve<IBlocksConfig>(),
                     ctx.Resolve<IWithdrawalProcessorFactory>(),
-                    ctx.Resolve<BalTxProcessorFactory>()));
+                    ctx.Resolve<BalTxProcessorFactory>(),
+                    ctx.Resolve<IExecutionRequestsProcessorFactory>()));
             if (recordsTransactionDiffs)
             {
                 // At scope level so the tx processor and the code repository share one slice.

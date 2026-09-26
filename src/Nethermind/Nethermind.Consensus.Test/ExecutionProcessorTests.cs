@@ -411,5 +411,49 @@ public class ExecutionProcessorTests
     }
 
     [Test]
+    public void ProcessExecutionRequests_WithCodelessRequestContractsByDefault_RejectsBlock()
+    {
+        IWorldState codelessState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = codelessState.BeginScope(IWorldState.PreGenesis);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        ExecutionRequestsProcessor processor = new(_transactionProcessor);
+
+        Assert.That(() => processor.ProcessExecutionRequests(block, codelessState, [], _spec),
+            Throws.TypeOf<InvalidBlockException>().With.Message.Contains(BlockErrorMessages.WithdrawalsContractEmpty),
+            "EIP-7002 makes a block invalid when the withdrawal request predeploy has no code");
+    }
+
+    [Test]
+    public void ProcessExecutionRequests_WithCodelessRequestContractsProducingNoRequests_RecordsEmptyRequestsWithoutCallingThem()
+    {
+        IWorldState codelessState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = codelessState.BeginScope(IWorldState.PreGenesis);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        ExecutionRequestsProcessor processor = new(_transactionProcessor,
+            new ExecutionRequestsOptions { CodelessRequestContracts = CodelessRequestContractBehavior.ProduceNoRequests });
+
+        processor.ProcessExecutionRequests(block, codelessState, [], _spec);
+
+        Assert.That(block.Header.RequestsHash, Is.EqualTo(ExecutionRequestExtensions.EmptyRequestsHash),
+            "codeless predeploys contribute no requests");
+        _transactionProcessor.DidNotReceiveWithAnyArgs().Execute(default!, default!);
+    }
+
+    [Test]
+    public void ProcessExecutionRequests_WithCodelessRequestContractsUnderBlockAccessLists_RejectsBlock()
+    {
+        IWorldState codelessState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = codelessState.BeginScope(IWorldState.PreGenesis);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        _spec.IsEip7928Enabled.Returns(true);
+        ExecutionRequestsProcessor processor = new(_transactionProcessor,
+            new ExecutionRequestsOptions { CodelessRequestContracts = CodelessRequestContractBehavior.ProduceNoRequests });
+
+        Assert.That(() => processor.ProcessExecutionRequests(block, codelessState, [], _spec),
+            Throws.TypeOf<InvalidBlockException>().With.Message.Contains("block access lists"),
+            "a skipped call would be missing from the block access list, so the block is refused rather than mis-recorded");
+    }
+
+    [Test]
     public void ShouldUseCorrectDepositTopic() => Assert.That(ExecutionRequestsProcessor.DepositEventAbi.Hash, Is.EqualTo(new Hash256("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5")));
 }

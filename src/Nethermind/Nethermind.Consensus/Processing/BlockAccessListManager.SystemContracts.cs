@@ -82,7 +82,7 @@ public partial class BlockAccessListManager
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
         IExecutionRequestsProcessor executionRequestsProcessor =
-            (executionRequestsProcessorFactory ?? ExecutionRequestsProcessorFactory.Instance).Create(postExecution.TxProcessor);
+            executionRequestsProcessorFactory.Create(postExecution.TxProcessor);
         executionRequestsProcessor.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 }
