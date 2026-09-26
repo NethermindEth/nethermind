@@ -86,17 +86,17 @@ public class JsonRpcSocketsClientTests
     private static SocketSinkFixture CreateSocketSink(RpcEndpoint endpoint = RpcEndpoint.Ws, long maxBatchResponseBodySize = 10_000)
     {
         MemoryMessageStream stream = new();
-        SocketSendLock sendSemaphore = new();
-        SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, new NullJsonRpcLocalStats(), maxBatchResponseBodySize, sendSemaphore, new JsonRpcContext(endpoint));
-        return new SocketSinkFixture(stream, sendSemaphore, sink);
+        SocketSendLock sendLock = new();
+        SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, new NullJsonRpcLocalStats(), maxBatchResponseBodySize, sendLock, new JsonRpcContext(endpoint));
+        return new SocketSinkFixture(stream, sendLock, sink);
     }
 
-    private readonly record struct SocketSinkFixture(MemoryMessageStream Stream, SocketSendLock SendSemaphore, SocketJsonRpcResponseSink<MemoryMessageStream> Sink) : IDisposable
+    private readonly record struct SocketSinkFixture(MemoryMessageStream Stream, SocketSendLock SendLock, SocketJsonRpcResponseSink<MemoryMessageStream> Sink) : IDisposable
     {
         public void Dispose()
         {
             Sink.Dispose();
-            SendSemaphore.Dispose();
+            SendLock.Dispose();
             Stream.Dispose();
         }
     }
@@ -212,10 +212,10 @@ public class JsonRpcSocketsClientTests
     public async Task Socket_sink_reports_deferred_failure([Values] bool committed, [Values] bool batch)
     {
         using MemoryMessageStream stream = new();
-        using SocketSendLock semaphore = new();
+        using SocketSendLock sendLock = new();
         IJsonRpcLocalStats stats = Substitute.For<IJsonRpcLocalStats>();
         stats.IsEnabled.Returns(true);
-        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, stats, null, semaphore, new JsonRpcContext(RpcEndpoint.Ws));
+        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, stats, null, sendLock, new JsonRpcContext(RpcEndpoint.Ws));
         using JsonRpcSuccessResponse response = new()
         {
             Result = new TimedOutStreamable(committed),
@@ -236,7 +236,7 @@ public class JsonRpcSocketsClientTests
         {
             sink.Dispose();
             byte[] partial = stream.ToArray();
-            using SocketJsonRpcResponseSink<MemoryMessageStream> next = new(stream, stats, null, semaphore, new JsonRpcContext(RpcEndpoint.Ws));
+            using SocketJsonRpcResponseSink<MemoryMessageStream> next = new(stream, stats, null, sendLock, new JsonRpcContext(RpcEndpoint.Ws));
             using JsonRpcSuccessResponse nextResponse = new() { Result = "next" };
             Assert.ThrowsAsync<IOException>(async () => await next.WriteSingleAsync(nextResponse, default, CancellationToken.None));
             Assert.ThrowsAsync<IOException>(async () => await next.BeginBatchAsync(CancellationToken.None));
@@ -1002,12 +1002,12 @@ public class JsonRpcSocketsClientTests
         CancellationToken cancellationToken = default)
         where TStream : Stream, IMessageBorderPreservingStream
     {
-        using SocketSendLock sendSemaphore = new();
+        using SocketSendLock sendLock = new();
         using SocketJsonRpcResponseSink<TStream> sink = new(
             stream,
             new NullJsonRpcLocalStats(),
             maxBatchResponseBodySize,
-            sendSemaphore,
+            sendLock,
             new JsonRpcContext(endpoint));
 
         await sink.BeginBatchAsync(cancellationToken);

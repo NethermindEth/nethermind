@@ -16,7 +16,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     TStream stream,
     IJsonRpcLocalStats jsonRpcLocalStats,
     long? maxBatchResponseBodySize,
-    SocketSendLock sendSemaphore,
+    SocketSendLock sendLock,
     JsonRpcContext jsonRpcContext) : IJsonRpcResponseSink, IDisposable
     where TStream : Stream, IMessageBorderPreservingStream
 {
@@ -24,15 +24,15 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     private long _topLevelResponseBytes;
     private long _batchStartTimestamp;
     private bool _isFirstBatchItem = true;
-    private bool _holdsSemaphore;
+    private bool _holdsSendLock;
 
     public long BytesWritten { get; private set; }
     public bool StopRequested { get; private set; }
 
     public async ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
-        await sendSemaphore.WaitAsync(cancellationToken);
-        _holdsSemaphore = true;
+        await sendLock.WaitAsync(cancellationToken);
+        _holdsSendLock = true;
 
         try
         {
@@ -50,20 +50,20 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         }
         catch (Exception ex)
         {
-            sendSemaphore.Fault(ex);
+            sendLock.Fault(ex);
             if (_reportCalls) jsonRpcLocalStats.ReportCall(report with { Success = false });
             throw;
         }
         finally
         {
-            ReleaseSemaphore();
+            ReleaseSendLock();
         }
     }
 
     public async ValueTask BeginBatchAsync(CancellationToken cancellationToken)
     {
-        await sendSemaphore.WaitAsync(cancellationToken);
-        _holdsSemaphore = true;
+        await sendLock.WaitAsync(cancellationToken);
+        _holdsSendLock = true;
         _topLevelResponseBytes = 1;
         _batchStartTimestamp = _reportCalls ? Stopwatch.GetTimestamp() : 0;
         _isFirstBatchItem = true;
@@ -91,7 +91,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         }
         catch (Exception ex)
         {
-            sendSemaphore.Fault(ex);
+            sendLock.Fault(ex);
             if (_reportCalls) jsonRpcLocalStats.ReportCall(report with { Success = false });
             throw;
         }
@@ -124,30 +124,30 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         }
         catch (Exception ex)
         {
-            sendSemaphore.Fault(ex);
+            sendLock.Fault(ex);
             throw;
         }
         finally
         {
-            ReleaseSemaphore();
+            ReleaseSendLock();
         }
     }
 
     public void Dispose()
     {
-        if (_holdsSemaphore) sendSemaphore.Fault();
-        ReleaseSemaphore();
+        if (_holdsSendLock) sendLock.Fault();
+        ReleaseSendLock();
     }
 
-    private void ReleaseSemaphore()
+    private void ReleaseSendLock()
     {
-        if (!_holdsSemaphore)
+        if (!_holdsSendLock)
         {
             return;
         }
 
-        _holdsSemaphore = false;
-        sendSemaphore.Release();
+        _holdsSendLock = false;
+        sendLock.Release();
     }
 }
 
