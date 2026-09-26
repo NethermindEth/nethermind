@@ -60,6 +60,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TCancelable : struct, IFlag =>
         &ExecuteJumpIfOpcode<TTracingInst, TCancelable>;
 
+    /// <summary>Whether <paramref name="spec"/> assigns <paramref name="opcode"/> an operation.</summary>
+    /// <remarks>Builds a dispatch table, so it is for diagnostics after a failure, not for execution.</remarks>
+    public static bool IsDefined(Instruction opcode, IReleaseSpec spec)
+    {
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] lookup = GenerateOpcodeHandlers<OffFlag, OffFlag>(spec);
+        // Every undefined opcode holds the one bad-instruction entry the table was filled with; 0x0c is never assigned.
+        const byte NeverAssigned = 0x0c;
+        return (nint)lookup[(byte)opcode] != (nint)lookup[NeverAssigned];
+    }
+
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]
         GenerateOpcodeHandlers<TTracingInst, TCancelable>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag

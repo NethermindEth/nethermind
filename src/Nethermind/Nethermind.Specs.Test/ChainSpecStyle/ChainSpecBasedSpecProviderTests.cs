@@ -750,9 +750,9 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     // #13202: "Chainspec file is misconfigured!" was emitted once per eth_estimateGas call on a syncing mainnet
-    // node running the chainspec we ship. eth_estimateGas asks for the spec at (head + 1, wall-clock now) - see
-    // BlockchainBridge's treatBlockHeaderAsParentBlock path - so while the head is below the chain's largest block
-    // transition and the clock is past the first timestamp fork, the old per-call check was always true.
+    // node running the chainspec we ship. eth_estimateGas asked for the spec at (head + 1, wall-clock now), so
+    // while the head was below the chain's largest block transition and the clock was past the first timestamp
+    // fork, the old per-call check was always true.
     [TestCase("foundation")]
     [TestCase("gnosis")]
     public void No_misconfiguration_warning_for_a_shipped_chainspec_below_its_last_block_transition(string chain)
