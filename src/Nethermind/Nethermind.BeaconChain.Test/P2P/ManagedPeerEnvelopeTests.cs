@@ -29,9 +29,10 @@ public class ManagedPeerEnvelopeTests
     {
         EnvelopeChain chain = new();
         (Hash256 firstRoot, Hash256 firstHash) = chain.Put(AnchorSlot, Hash256.Zero, Hash256.Zero);
-        (Hash256 secondRoot, _) = chain.Put(AnchorSlot + 7, firstRoot, firstHash);
+        (Hash256 secondRoot, Hash256 secondHash) = chain.Put(AnchorSlot + 7, firstRoot, firstHash);
+        (Hash256 headRoot, _) = chain.Put(AnchorSlot + 8, secondRoot, secondHash);
         chain.AddEnvelopes(firstRoot, secondRoot);
-        chain.SetHead(secondRoot, AnchorSlot + 7);
+        chain.SetHead(headRoot, AnchorSlot + 8);
 
         (BeaconP2P server, _, _) = CreateNode(chain.Pool, chain.Store);
         (BeaconP2P client, BeaconChainStatusHolder clientStatus, BeaconChainConfig clientConfig) = CreateNode(new ExecutionPayloadEnvelopePool(), new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()));
