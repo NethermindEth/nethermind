@@ -620,6 +620,13 @@ jobs:
             echo "extra_filter=(?!(?:$EXCLUSIONS)).*" >> "$GITHUB_OUTPUT"
           fi
 
+          # Every for_bogota fixture states inclusionListSatisfied, so a release that stopped stating it
+          # would leave the EIP-7805 fork-choice rule uncovered with the lane still green. An explicit
+          # `filter` input may legitimately narrow the run to nothing, so it opts out.
+          if [ "$TEST_TYPE" = "focilTest" ] && [ -z "$FILTER" ]; then
+            echo "min_il_assertions=1" >> "$GITHUB_OUTPUT"
+          fi
+
           echo "fixture_dir=$FIXTURE_DIR" >> "$GITHUB_OUTPUT"
           echo "runner_flag=$RUNNER_FLAG" >> "$GITHUB_OUTPUT"
           echo "Found fixture directory: $FIXTURE_DIR"
@@ -634,6 +641,7 @@ jobs:
           EEST_ARCHIVE: ${{ steps.eest_release.outputs.archive }}
           RUNNER_FLAG: ${{ steps.fixtures.outputs.runner_flag }}
           EXTRA_FILTER: ${{ steps.fixtures.outputs.extra_filter }}
+          MIN_IL_ASSERTIONS: ${{ steps.fixtures.outputs.min_il_assertions }}
           FORK_ALIAS: ${{ steps.fixtures.outputs.fork_alias }}
         run: |
           # An explicit `filter` input wins; otherwise fall back to the known-failure exclusions.
@@ -722,6 +730,36 @@ jobs:
               echo "| Passed | **$PASSED** |"
               echo "| Failed | **$FAILED** |"
             } >> "$GITHUB_STEP_SUMMARY"
+
+            # The inclusion-list tripwire reports on stderr and fails the run without failing a test, so
+            # without this a tripped lane is a red job above an all-green table.
+            IL_COVERAGE=$(sed 's/\x1b\[[0-9;]*m//g' "$STDERR_FILE" 2>/dev/null \
+              | grep -E "^(engine_forkchoiceUpdated inclusionListSatisfied asserted|COVERAGE GAP)" || true)
+            if [ -n "$IL_COVERAGE" ]; then
+              {
+                echo ""
+                echo "### EIP-7805 fork-choice assertion coverage"
+                echo ""
+                echo '```'
+                echo "$IL_COVERAGE"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+
+              COVERAGE_GAP=$(echo "$IL_COVERAGE" | grep "^COVERAGE GAP" || true)
+              if [ -n "$COVERAGE_GAP" ]; then
+                echo "::error::$COVERAGE_GAP"
+              fi
+            elif [ -n "$MIN_IL_ASSERTIONS" ]; then
+              # nethtest writes those lines last, so their absence means the run died before them or stderr
+              # was still draining — never that coverage was fine.
+              {
+                echo ""
+                echo "### EIP-7805 fork-choice assertion coverage"
+                echo ""
+                echo "Not reported, although this lane requires at least $MIN_IL_ASSERTIONS assertion(s)."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning::nethtest reported no inclusion-list assertion count, although this lane requires one"
+            fi
 
             if [ "$FAILED" -gt 0 ]; then
               MAX_SUMMARY_FAILURES=500
@@ -943,6 +981,23 @@ jobs:
                 echo "::error::$TEST_TYPE ran $RAN cases, fewer than the $MIN_CASES expected; the fixture scope or the release pin has moved"
                 rc=1
               fi
+            fi
+          fi
+
+          # nethtest reports the count for every engine run; only the unfiltered FOCIL lane requires it.
+          # The stderr tee can finish just after the process exits, so give it a moment to flush the line.
+          if [ -n "$MIN_IL_ASSERTIONS" ] && [ "$rc" -eq 0 ]; then
+            IL_ASSERTIONS=""
+            for attempt in 1 2 3 4 5; do
+              IL_ASSERTIONS=$(sed -nE 's/^engine_forkchoiceUpdated inclusionListSatisfied asserted ([0-9]+) time\(s\)$/\1/p' "$STDERR_FILE" | tail -n 1)
+              [ -n "$IL_ASSERTIONS" ] && break
+              sleep 1
+            done
+            if [ -z "$IL_ASSERTIONS" ] || [ "$IL_ASSERTIONS" -lt "$MIN_IL_ASSERTIONS" ]; then
+              COVERAGE_GAP="COVERAGE GAP: expected at least $MIN_IL_ASSERTIONS fork-choice inclusion-list assertion(s), observed ${IL_ASSERTIONS:-none}"
+              echo "$COVERAGE_GAP" | tee -a "$STDERR_FILE" >&2
+              echo "::error::$COVERAGE_GAP"
+              rc=1
             fi
           fi
 
