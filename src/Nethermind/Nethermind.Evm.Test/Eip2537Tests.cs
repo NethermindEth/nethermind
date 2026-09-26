@@ -1,10 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
 using Nethermind.Core;
 using NUnit.Framework;
 using Nethermind.Specs;
@@ -221,61 +217,5 @@ public class Eip2537Tests : VirtualMachineTestsBase
             GasCostOf.CallPrecompileEip2929 +
             23800
         );
-    }
-
-    private static IEnumerable<TestCaseData> MultiItemInputs()
-    {
-        const string scalar = "0000000000000000000000000000000000000000000000000000000000000002";
-        const int items = 4;
-        yield return new TestCaseData(Bls12381PairingCheckPrecompile.Instance,
-            string.Concat(Enumerable.Repeat(Bls12381PairingCheckPrecompileTests.G1Generator + Bls12381PairingCheckPrecompileTests.G2Generator, items)))
-            .SetArgDisplayNames("pairing");
-        yield return new TestCaseData(Bls12381G1MsmPrecompile.Instance,
-            string.Concat(Enumerable.Repeat(Bls12381PairingCheckPrecompileTests.G1Generator + scalar, items)))
-            .SetArgDisplayNames("g1_msm");
-        yield return new TestCaseData(Bls12381G2MsmPrecompile.Instance,
-            string.Concat(Enumerable.Repeat(Bls12381PairingCheckPrecompileTests.G2Generator + scalar, items)))
-            .SetArgDisplayNames("g2_msm");
-    }
-
-    [TestCaseSource(nameof(MultiItemInputs))]
-    [NonParallelizable]
-    public void Multi_item_input_completes_while_thread_pool_is_saturated(IPrecompile precompile, string input)
-    {
-        byte[] data = Convert.FromHexString(input);
-        ThreadPool.GetMinThreads(out int minWorkers, out _);
-        // more blockers than the pool starts at once or injects within the join timeout
-        int blockers = minWorkers + 64;
-        using ManualResetEventSlim release = new(false);
-        using CountdownEvent released = new(blockers);
-        for (int i = 0; i < blockers; i++)
-        {
-            ThreadPool.UnsafeQueueUserWorkItem(_ =>
-            {
-                release.Wait();
-                released.Signal();
-            }, null);
-        }
-
-        Result<byte[]> result = default;
-        Thread caller = new(() => result = precompile.Run(data, Spec)) { IsBackground = true };
-        bool completed;
-        try
-        {
-            caller.Start();
-            completed = caller.Join(TimeSpan.FromSeconds(5));
-        }
-        finally
-        {
-            release.Set();
-            caller.Join();
-            released.Wait();
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(completed, Is.True, "precompile waited for a thread-pool worker");
-            Assert.That(result.IsError, Is.False, result.Error);
-        }
     }
 }

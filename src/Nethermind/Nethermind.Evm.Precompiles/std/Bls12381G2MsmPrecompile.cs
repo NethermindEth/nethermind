@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using G2 = Nethermind.Crypto.Bls.P2;
 using G2Affine = Nethermind.Crypto.Bls.P2Affine;
 
@@ -76,35 +75,12 @@ public partial class Bls12381G2MsmPrecompile
         if (npoints == 0)
             return Eip2537.G2Infinity;
 
-        Result result = Result.Success;
-
+        Memory<long> pointMemory = pointBuffer.AsMemory();
+        Memory<byte> scalarMemory = scalarBuffer.AsMemory();
         // decode points to rawPoints buffer
         // n.b. subgroup checks carried out as part of decoding
-#pragma warning disable CS0162 // Unreachable code detected
-        if (Eip2537.DisableConcurrency)
-        {
-            for (int i = 0; i < pointDestinations.Count && result; i++)
-            {
-                result = Eip2537.TryDecodeG2ToBuffer(inputData, pointBuffer.AsMemory(), scalarBuffer.AsMemory(), pointDestinations[i], i);
-            }
-        }
-        else
-        {
-            Memory<long> pointMemory = pointBuffer.AsMemory();
-            Memory<byte> scalarMemory = scalarBuffer.AsMemory();
-            // Within a worker budget the caller decodes too and never waits for a helper that has not started.
-            using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
-            ParallelUnbalancedWork.For(0, pointDestinations.Count, index =>
-            {
-                if (!result) return;
-                Result local = Eip2537.TryDecodeG2ToBuffer(inputData, pointMemory, scalarMemory, pointDestinations[index], index);
-                if (!local)
-                {
-                    result = local;
-                }
-            });
-        }
-#pragma warning restore CS0162 // Unreachable code detected
+        Result result = Eip2537.DecodeAll(pointDestinations.Count,
+            index => Eip2537.TryDecodeG2ToBuffer(inputData, pointMemory, scalarMemory, pointDestinations[index], index));
 
         if (!result)
             return result.Error!;

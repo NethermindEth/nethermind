@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 using G2Affine = Nethermind.Crypto.Bls.P2Affine;
 using GT = Nethermind.Crypto.Bls.PT;
@@ -43,35 +42,11 @@ public partial class Bls12381PairingCheckPrecompile
             pairDestinations.Add(dest);
         }
 
-        Result result = Result.Success;
-
+        Memory<long> g1Memory = g1Points.AsMemory();
+        Memory<long> g2Memory = g2Points.AsMemory();
         // decode + on-curve/subgroup-validate each pair into its slot
-#pragma warning disable CS0162 // Unreachable code detected
-        if (Eip2537.DisableConcurrency)
-        {
-            for (int i = 0; i < pairDestinations.Count && result; i++)
-            {
-                result = TryDecodePairToBuffer(inputData, g1Points.AsMemory(), g2Points.AsMemory(), pairDestinations[i], i);
-            }
-        }
-        else
-        {
-            Memory<long> g1Memory = g1Points.AsMemory();
-            Memory<long> g2Memory = g2Points.AsMemory();
-            // Within a worker budget the caller decodes too and never waits for a helper that has not started.
-            using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
-            ParallelUnbalancedWork.For(0, pairDestinations.Count, index =>
-            {
-                if (!result) return;
-                Result local = TryDecodePairToBuffer(inputData, g1Memory, g2Memory, pairDestinations[index], index);
-                if (!local)
-                {
-                    // racy but safe: workers only ever store a failure, so post-barrier result fails iff any pair did
-                    result = local;
-                }
-            });
-        }
-#pragma warning restore CS0162 // Unreachable code detected
+        Result result = Eip2537.DecodeAll(pairDestinations.Count,
+            index => TryDecodePairToBuffer(inputData, g1Memory, g2Memory, pairDestinations[index], index));
 
         if (!result)
             return result.Error!;

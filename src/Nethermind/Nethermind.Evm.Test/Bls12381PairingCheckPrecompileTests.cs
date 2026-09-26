@@ -1,8 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using Nethermind.Core;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -118,8 +123,8 @@ public class Bls12381PairingCheckPrecompileTests : PrecompileTests<Bls12381Pairi
 
     private const string G1Infinity = "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
     private const string G2Infinity = G1Infinity + G1Infinity;
-    internal const string G1Generator = "0000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1";
-    internal const string G2Generator = "00000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be";
+    private const string G1Generator = "0000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb0000000000000000000000000000000008b3f481e3aaa0f1a09e30ed741d8ae4fcf5e095d5d00af600db18cb2c04b3edd03cc744a2888ae40caa232946c5e7e1";
+    private const string G2Generator = "00000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb80000000000000000000000000000000013e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be";
     // on curve but not in the r-order subgroup, from fail-pairing_check_bls.json
     private const string G1NotInSubgroup = "000000000000000000000000000000000123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef00000000000000000000000000000000193fb7cedb32b2c3adc06ec11a96bc0d661869316f5e4a577a9f7c179593987beb4fb2ee424dbb2f5dd891e228b46c4a";
     private const string G2NotInSubgroup = "00000000000000000000000000000000197bfd0342bbc8bee2beced2f173e1a87be576379b343e93232d6cef98d84b1d696e5612ff283ce2cfdccb2cfb65fa0c00000000000000000000000000000000184e811f55e6f9d84d77d2f79102fd7ea7422f4759df5bf7f6331d550245e3f1bcf6a30e3b29110d85e0ca16f9f6ae7a000000000000000000000000000000000f10e1eb3c1e53d2ad9cf2d398b2dc22c5842fab0a74b174f691a7e914975da3564d835cd7d2982815b8ac57f507348f000000000000000000000000000000000767d1c453890f1b9110fda82f5815c27281aba3f026ee868e4176a0654feea41a96575e0c4d58a14dbfbcc05b5010b1";
@@ -142,4 +147,60 @@ public class Bls12381PairingCheckPrecompileTests : PrecompileTests<Bls12381Pairi
     [TestCase(G1Generator + G2Generator + G1NotInSubgroup + G2Infinity)]
     [TestCase(G1Generator + G2Generator + G1Infinity + G2NotInSubgroup)]
     public void Subgroup_invalid_point_in_infinity_pair_is_rejected(string input) => RunTest(input, "", false);
+
+    private static IEnumerable<TestCaseData> MultiItemInputs()
+    {
+        const string scalar = "0000000000000000000000000000000000000000000000000000000000000002";
+        const int items = 4;
+        yield return new TestCaseData(Bls12381PairingCheckPrecompile.Instance,
+            string.Concat(Enumerable.Repeat(G1Generator + G2Generator, items)))
+            .SetArgDisplayNames("pairing");
+        yield return new TestCaseData(Bls12381G1MsmPrecompile.Instance,
+            string.Concat(Enumerable.Repeat(G1Generator + scalar, items)))
+            .SetArgDisplayNames("g1_msm");
+        yield return new TestCaseData(Bls12381G2MsmPrecompile.Instance,
+            string.Concat(Enumerable.Repeat(G2Generator + scalar, items)))
+            .SetArgDisplayNames("g2_msm");
+    }
+
+    [TestCaseSource(nameof(MultiItemInputs))]
+    [NonParallelizable]
+    public void Multi_item_input_completes_while_thread_pool_is_saturated(IPrecompile precompile, string input)
+    {
+        byte[] data = Convert.FromHexString(input);
+        ThreadPool.GetMinThreads(out int minWorkers, out _);
+        // more blockers than the pool starts at once or injects within the join timeout
+        int blockers = minWorkers + 64;
+        using ManualResetEventSlim release = new(false);
+        using CountdownEvent released = new(blockers);
+        for (int i = 0; i < blockers; i++)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(_ =>
+            {
+                release.Wait();
+                released.Signal();
+            }, null);
+        }
+
+        Result<byte[]> result = default;
+        Thread caller = new(() => result = precompile.Run(data, Prague.Instance)) { IsBackground = true };
+        bool completed;
+        try
+        {
+            caller.Start();
+            completed = caller.Join(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            release.Set();
+            caller.Join();
+            released.Wait();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True, "precompile waited for a thread-pool worker");
+            Assert.That(result.IsError, Is.False, result.Error);
+        }
+    }
 }
