@@ -535,13 +535,9 @@ public static class FrameTxValidation
     /// <param name="intrinsicGas">The intrinsic cost, charged before any frame runs.</param>
     /// <param name="floorGas">The minimum chargeable gas, or 0 when floor pricing is not active.</param>
     /// <param name="maxGas">The gas reserved against the payer's balance and the block gas limit.</param>
-    /// <param name="estimateSignatureBytes">Reserve non-zero bytes for fixed-size empty signatures during simulation only.</param>
     /// <returns><c>false</c>, with all outputs 0, if the transaction carries no frames or the budget overflows <see cref="ulong"/>.</returns>
-    public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes = false)
+    public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {
-        if (estimateSignatureBytes)
-            return CalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas, estimateSignatureBytes: true);
-
         // Read once: re-reading them to stamp the memo would key a value on stats it was not computed from.
         (int ZeroBytes, int NonZeroBytes) referenceCalldata = transaction.ReferenceCalldataStats;
         (int ZeroBytes, int NonZeroBytes) frameCalldata = transaction.FrameCalldataStats;
@@ -704,12 +700,31 @@ public static class FrameTxValidation
         return true;
     }
 
+    /// <inheritdoc cref="TryCalculateGasBudget(Transaction, IReleaseSpec, out ulong, out ulong, out ulong)"/>
+    /// <param name="estimateSignatureBytes">Prices each empty SECP256K1 or P256 signature at its full length, as the
+    /// signed transaction will carry it; for simulation, which accepts such placeholders. Such a budget is not memoized.</param>
+    public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes) =>
+        estimateSignatureBytes
+            ? CalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas, estimateSignatureBytes: true)
+            : TryCalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas);
+
     /// <summary>Calculates the maximum execution and state gas a frame transaction can add to a block.</summary>
     public static bool TryCalculateBlockGasReservations(
         Transaction transaction,
         IReleaseSpec spec,
         out ulong executionReservation,
-        out ulong stateReservation, bool estimateSignatureBytes = false)
+        out ulong stateReservation) =>
+        TryCalculateBlockGasReservations(transaction, spec, out executionReservation, out stateReservation, estimateSignatureBytes: false);
+
+    /// <inheritdoc cref="TryCalculateBlockGasReservations(Transaction, IReleaseSpec, out ulong, out ulong)"/>
+    /// <param name="estimateSignatureBytes">Prices each empty SECP256K1 or P256 signature at its full length, as in
+    /// <see cref="TryCalculateGasBudget(Transaction, IReleaseSpec, out ulong, out ulong, out ulong, bool)"/>.</param>
+    public static bool TryCalculateBlockGasReservations(
+        Transaction transaction,
+        IReleaseSpec spec,
+        out ulong executionReservation,
+        out ulong stateReservation,
+        bool estimateSignatureBytes)
     {
         executionReservation = 0;
         stateReservation = 0;
