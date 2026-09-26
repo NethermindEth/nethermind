@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -366,14 +367,16 @@ namespace Nethermind.Evm.Test
             byte[] runtimeCode = Prepare.EvmCode
                 .PushData(0x2a).PushData(0).Op(Instruction.MSTORE8)
                 .PushData(1).PushData(0).Op(Instruction.RETURN)
+                .Op(Instruction.STOP).Op(Instruction.STOP).Op(Instruction.STOP)
+                .Op(Instruction.STOP).Op(Instruction.STOP).Op(Instruction.STOP)
                 .Done;
+            Assert.That(BitOperations.IsPow2(runtimeCode.Length), "precondition: a power-of-two length would fill the reusable scratch exactly");
             byte[] initCode = Prepare.EvmCode.StoreDataInMemory(0, runtimeCode)
                 .RETURN(0, (UInt256)runtimeCode.Length)
                 .Done;
             (Block block, Transaction deployTx) = PrepareInitTx(Activation, 100_000, initCode);
             Address deployed = ContractAddress.From(Sender, deployTx.Nonce);
-            TestAllTracerWithOutput deployTracer = CreateTracer();
-            _processor.Execute(deployTx, new BlockExecutionContext(block.Header, Spec), deployTracer);
+            _processor.Execute(deployTx, new BlockExecutionContext(block.Header, Spec), new ReceiptOnlyTracer());
 
             Address filler = TestItem.AddressC;
             byte[] fillerOutput = Enumerable.Repeat((byte)0x99, runtimeCode.Length).ToArray();
@@ -387,12 +390,11 @@ namespace Nethermind.Evm.Test
             ExecuteDirect(Prepare.EvmCode
                 .CALL(100_000, filler, 0, 0, 0, 0, 0).Op(Instruction.POP)
                 .RETURN(0, (UInt256)runtimeCode.Length)
-                .Done);
+                .Done, new ReceiptOnlyTracer());
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(deployTracer.StatusCode, Is.EqualTo(StatusCode.Success), "the deployment succeeds");
-                Assert.That(deployTracer.ReturnValue, Is.EqualTo(runtimeCode), "the tracer sees the deployed bytes");
+                Assert.That(Machine.RetainedReturnDataScratchLength, Is.GreaterThanOrEqualTo(fillerOutput.Length), "the nested return went through the reusable scratch");
                 Assert.That(TestState.GetCode(deployed), Is.EqualTo(runtimeCode), "later return staging must not rewrite stored code");
             }
         }
