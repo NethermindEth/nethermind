@@ -415,7 +415,6 @@ public static partial class EvmInstructions
         // Charge the fixed gas cost for exponentiation.
         if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        // The base is popped and the exponent's slot becomes the result slot, as with the other binary ops.
         if (!stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
         ref UInt256 exponent = ref As<byte, UInt256>(ref topRef);
