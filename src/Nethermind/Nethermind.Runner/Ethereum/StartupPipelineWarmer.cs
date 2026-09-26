@@ -153,10 +153,16 @@ internal static class StartupPipelineWarmer
         IJsonRpcConfig liveRpcConfig = liveConfig.GetConfig<IJsonRpcConfig>();
         int port = GetFreeLoopbackPort();
         IMergeConfig mergeConfig = liveConfig.GetConfig<IMergeConfig>();
+        ITxPoolConfig liveTxPoolConfig = liveConfig.GetConfig<ITxPoolConfig>();
         // Live values only for pipeline-shaping settings; ports, paths, and outward-facing services keep isolated defaults.
         ConfigProvider config = new(
             liveConfig.GetConfig<IBlocksConfig>(),
-            liveConfig.GetConfig<ITxPoolConfig>(),
+            new TxPoolConfig
+            {
+                BlobsSupport = liveTxPoolConfig.BlobsSupport,
+                PersistentBroadcastEnabled = liveTxPoolConfig.PersistentBroadcastEnabled,
+                ProofsTranslationEnabled = liveTxPoolConfig.ProofsTranslationEnabled
+            },
             liveConfig.GetConfig<IReceiptConfig>(),
             new JsonRpcConfig
             {

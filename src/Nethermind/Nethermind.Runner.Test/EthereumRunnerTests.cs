@@ -218,6 +218,14 @@ public class EthereumRunnerTests
         await StartupPipelineWarmer.WarmupAsync(spec, liveConfig, flatState, cancellation.Token, authentication,
             configureContainer: builder =>
             {
+                if (chain == "bogota")
+                {
+                    builder.AddDecorator<IJsonRpcConfig>((_, config) =>
+                    {
+                        File.WriteAllLines(config.CallsFilterFilePath, ["^eth_chainId$", "^engine_newPayloadV6$", "^engine_forkchoiceUpdatedV5$"]);
+                        return config;
+                    });
+                }
                 builder.RegisterBuildCallback(container =>
                 {
                     warmAuthentication = container.Resolve<IRpcAuthentication>();
@@ -274,6 +282,38 @@ public class EthereumRunnerTests
             else
                 Assert.That(File.ReadAllText(secretPath.Path), Is.EqualTo(expectedSecret));
             Assert.That(Directory.EnumerateDirectories(Path.Combine(dataDirectory.Path, "startup-warmup")), Is.Empty);
+        }
+    }
+
+    public enum WarmupTxPoolLimit { PendingPerSender, GasLimit, Size, MaxTxSize }
+
+    [Test]
+    public async Task Startup_pipeline_warmup_ignores_live_txpool_admission_limits([Values] WarmupTxPoolLimit limit)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        TxPoolConfig livePool = new()
+        {
+            MaxPendingTxsPerSender = limit == WarmupTxPoolLimit.PendingPerSender ? 1 : 0,
+            GasLimit = limit == WarmupTxPoolLimit.GasLimit ? 250_000UL : null,
+            Size = limit == WarmupTxPoolLimit.Size ? 1 : 2048,
+            MaxTxSize = limit == WarmupTxPoolLimit.MaxTxSize ? 1 : 128 * 1024,
+            BlobsSupport = BlobsSupportMode.InMemory,
+            PersistentBroadcastEnabled = false,
+            ProofsTranslationEnabled = true
+        };
+        (int, ulong?, int, long?) original = (livePool.MaxPendingTxsPerSender, livePool.GasLimit, livePool.Size, livePool.MaxTxSize);
+        ConfigProvider config = new(new InitConfig { BaseDbPath = directory.Path }, livePool);
+        ITxPoolConfig? warmPool = null;
+
+        await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), config, false, cancellation.Token,
+            configureContainer: builder => builder.RegisterBuildCallback(container => warmPool = container.Resolve<ITxPoolConfig>()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((livePool.MaxPendingTxsPerSender, livePool.GasLimit, livePool.Size, livePool.MaxTxSize), Is.EqualTo(original));
+            Assert.That((warmPool!.BlobsSupport, warmPool.PersistentBroadcastEnabled, warmPool.ProofsTranslationEnabled),
+                Is.EqualTo((livePool.BlobsSupport, livePool.PersistentBroadcastEnabled, livePool.ProofsTranslationEnabled)));
         }
     }
 
@@ -453,7 +493,9 @@ public class EthereumRunnerTests
         using ManualResetEventSlim release = new();
         TaskCompletionSource reporting = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        bool disposed = false;
+        bool disposing = false;
+        ConcurrentExclusiveSchedulerPair scheduler = new(TaskScheduler.Default, maxConcurrencyLevel: 1);
+        TaskFactory cleanup = new(CancellationToken.None, TaskCreationOptions.None, TaskContinuationOptions.None, scheduler.ExclusiveScheduler);
         InterfaceLogger slowLogger = Substitute.For<InterfaceLogger>();
         slowLogger.IsWarn.Returns(true);
         slowLogger.When(logger => logger.Warn(Arg.Any<string>())).Do(_ =>
@@ -465,40 +507,47 @@ public class EthereumRunnerTests
         ILogger slowBlocks = new(slowLogger);
         logs.GetLogger("SlowBlocks").Returns(slowBlocks);
         logs.GetClassLogger<ProcessingStats>().Returns(LimboLogs.Instance.GetClassLogger<ProcessingStats>());
-        Task warmup = StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(directory.Path), false,
+        Task warmup = cleanup.StartNew(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(directory.Path), false,
             cancellation.Token, configureContainer: builder =>
             {
-                builder.Register(_ => new object()).OnRelease(_ => disposed = true).AutoActivate();
+                builder.RegisterBuildCallback(container => container.CurrentScopeEnding += (_, _) => disposing = true);
                 builder.RegisterType<StartupPipelineWarmer.WarmProcessingStats>().As<IProcessingStats>()
                     .WithParameter("logManager", logs)
                     .WithParameter("blocksConfig", new BlocksConfig { SlowBlockThresholdMs = 0 })
                     .InstancePerLifetimeScope();
-                builder.AddDecorator<IServiceStopper>((_, inner) => new ObservedServiceStopper(inner, stopped));
-            });
+                builder.AddDecorator<IServiceStopper>((context, inner) => new ObservedServiceStopper(inner, context.Resolve<Func<GCKeeper>>(), stopped));
+            })).Unwrap();
         try
         {
             await reporting.Task.WaitAsync(RunnerTimeout);
             await stopped.Task.WaitAsync(RunnerTimeout);
-            using (Assert.EnterMultipleScope())
+            // On the same serial scheduler, cleanup reaches either the report drain or disposal before this probe runs.
+            await cleanup.StartNew(() =>
             {
-                Assert.That(warmup.IsCompleted, Is.False);
-                Assert.That(disposed, Is.False, "reports still own their storage dependencies");
-            }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(warmup.IsCompleted, Is.False);
+                    Assert.That(disposing, Is.False, "reports still own their storage dependencies");
+                }
+            });
         }
         finally
         {
             release.Set();
             await warmup.WaitAsync(RunnerTimeout);
+            scheduler.Complete();
+            await scheduler.Completion.WaitAsync(RunnerTimeout);
         }
-        Assert.That(disposed, Is.True);
+        Assert.That(disposing, Is.True);
     }
 
-    private sealed class ObservedServiceStopper(IServiceStopper inner, TaskCompletionSource stopped) : IServiceStopper
+    private sealed class ObservedServiceStopper(IServiceStopper inner, Func<GCKeeper> gcKeeper, TaskCompletionSource stopped) : IServiceStopper
     {
         public void AddStoppable(IStoppableService service) => inner.AddStoppable(service);
         public async Task StopAllServices()
         {
             await inner.StopAllServices();
+            await (Task)typeof(GCKeeper).GetMethod("StopAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(gcKeeper(), null)!;
             stopped.TrySetResult();
         }
     }
