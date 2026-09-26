@@ -1310,10 +1310,13 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [TestCase(1 << 30, 4, false)]
-        [TestCase(1 << 30, 4, true)]
-        public void MultiGet_rejects_key_length_product_overflow(int keyLength, int valueCount, bool snapshot)
+        [Test]
+        public void MultiGet_rejects_key_length_product_overflow([Values] bool snapshot)
         {
+            // Their int product wraps to 0, so it matches the empty key buffer unless the guard widens to long.
+            const int keyLength = 1 << 30;
+            const int valueCount = 4;
+
             using IKeyValueStoreSnapshot? snapshotStore = snapshot ? ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot() : null;
             IReadOnlyKeyValueStore store = snapshotStore is null ? _db : snapshotStore;
             byte[] sentinel = [0xA5];
