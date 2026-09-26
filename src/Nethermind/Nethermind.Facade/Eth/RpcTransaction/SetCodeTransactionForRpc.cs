@@ -22,9 +22,9 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
     public SetCodeTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
         : base(transaction, extraData) => AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(transaction.AuthorizationList);
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null, bool validateFeeCapOrder = true)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
-        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec, validateFeeCapOrder);
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (baseResult.IsError) return baseResult;
 
         Transaction tx = baseResult.Data;

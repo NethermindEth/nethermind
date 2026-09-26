@@ -91,7 +91,7 @@ public class OptimismEthRpcModuleTest
 
     private sealed class NullSenderTransactionForRpc(Transaction transaction) : SignableTransactionForRpc
     {
-        public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null, bool validateFeeCapOrder = true)
+        public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
         {
             Transaction tx = new();
             transaction.CopyTo(tx);

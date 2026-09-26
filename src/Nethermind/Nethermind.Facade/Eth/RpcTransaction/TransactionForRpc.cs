@@ -68,12 +68,26 @@ public abstract class TransactionForRpc
         BlockTimestamp = extraData.BlockTimestamp;
     }
 
-    /// <param name="validateFeeCapOrder">
-    /// With <paramref name="validateUserInput"/>, whether a fee cap below the priority fee is rejected here; a call
-    /// that leaves the pair to execution, where it fails before any gas is bought, passes false.
-    /// </param>
-    public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null, bool validateFeeCapOrder = true)
+    public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
         => new Transaction { Type = ResolveType(spec) };
+
+    /// <summary>
+    /// Converts the request with its input validated, rejecting a fee cap below the priority fee as well; a call that
+    /// leaves that pair to execution, where it fails before any gas is bought, validates with <see cref="ToTransaction"/>.
+    /// </summary>
+    /// <remarks>
+    /// The pair is checked after the type-specific and gas price checks and before the missing contract data check,
+    /// so the first failing check still names the request.
+    /// </remarks>
+    public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
+    {
+        Result<Transaction> result = ToTransaction(validateUserInput: true, gasCap, spec);
+        return this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
+            && maxFeePerGas < maxPriorityFeePerGas
+            && (!result.IsError || result.Error == RpcTransactionErrors.ContractCreationWithoutData)
+                ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(maxFeePerGas, maxPriorityFeePerGas)
+                : result;
+    }
 
     private TxType ResolveType(IReleaseSpec? spec)
     {
@@ -98,7 +112,7 @@ public abstract class TransactionForRpc
         if (this is not LegacyTransactionForRpc { Nonce: not null })
             return Result<Transaction>.Fail("nonce not specified");
 
-        return PromoteToEip1559IfTypeDefaulted().ToTransaction(validateUserInput: true);
+        return PromoteToEip1559IfTypeDefaulted().ToValidatedTransaction();
     }
 
     private static bool HasFeeFields(TransactionForRpc rpcTx) =>
