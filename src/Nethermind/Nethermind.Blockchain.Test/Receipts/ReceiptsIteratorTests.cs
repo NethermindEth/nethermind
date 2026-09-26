@@ -125,6 +125,43 @@ public class ReceiptsIteratorTests
         Assert.That(iterator.TrySkipNext(), Is.False);
     }
 
+    // Recovery starts at the second receipt, so the first one is replayed through the log context too.
+    [Test]
+    public void RecoverLogFieldsIfNeeded_WithEncodedTransactions_RecoversBlockAndTransactionIdentity()
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.AccessList).Signed().TestObject,
+            Build.A.Transaction.WithNonce(3).WithType(TxType.EIP1559).Signed().TestObject,
+        ];
+        Block block = Build.A.Block.WithNumber(7).WithBaseFeePerGas(1).WithTransactions(transactions).TestObject;
+        block.Header.Hash = block.Header.CalculateHash();
+        TxReceipt[] receipts = [Build.A.Receipt.TestObject, Build.A.Receipt.TestObject, Build.A.Receipt.TestObject];
+        using ArrayPoolSpan<byte> stream = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);
+        Span<byte> span = stream;
+        BlockDecoder blockDecoder = new();
+        byte[] encodedBlock = blockDecoder.Encode(block).Bytes;
+        ReceiptsRecovery recovery = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId), MainnetSpecProvider.Instance, false);
+        ReceiptsIterator iterator = new(span, new TestMemDb(), static () => null, _decoder.GetRefDecoder(span),
+            () => recovery.CreateLogRecoveryContext(blockDecoder.DecodeToReceiptRecoveryBlock(null, encodedBlock, RlpBehaviors.None)!.Value));
+
+        Assert.That(iterator.TryGetNext(out _), Is.True, "precondition: the first receipt is read before recovery");
+        for (int i = 1; i < transactions.Length; i++)
+        {
+            Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True, $"receipt {i} must be read");
+            iterator.RecoverLogFieldsIfNeeded(ref receipt);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receipt.TxHash.ToCommitment(), Is.EqualTo(transactions[i].Hash), $"receipt {i} must carry its transaction's hash");
+                Assert.That(receipt.BlockHash.ToCommitment(), Is.EqualTo(block.Hash), $"receipt {i} must carry the block hash");
+                Assert.That(receipt.BlockNumber, Is.EqualTo(block.Number), $"receipt {i} must carry the block number");
+                Assert.That(receipt.Index, Is.EqualTo(i), $"receipt {i} must carry its transaction index");
+            }
+        }
+    }
+
     private ReceiptsIterator CreateIterator(TxReceipt[] receipts, Block block)
     {
         using ArrayPoolSpan<byte> stream = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);

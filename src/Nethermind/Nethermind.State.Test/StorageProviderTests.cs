@@ -609,6 +609,37 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Original_value_after_transaction_snapshots_unwind_is_the_block_original()
+    {
+        // 1. Block original 1 is committed.
+        // 2. tx0 writes 2 without a transaction snapshot, tx1 stacks on it and writes 3: its original is 2.
+        // 3. Reverting to before tx0 drops every transaction snapshot; a new write must meter against 1.
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        provider.Set(cell, (UInt256)1);
+        provider.Commit(Frontier.Instance);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cell, out _);
+        provider.Set(cell, (UInt256)2);
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.GetOriginal(in cell, out UInt256 stackedOriginal);
+        Assert.That(stackedOriginal, Is.EqualTo((UInt256)2), "a stacked transaction starts from the value tx0 left");
+        provider.Set(cell, (UInt256)3);
+        provider.GetOriginal(in cell, out stackedOriginal);
+        Assert.That(stackedOriginal, Is.EqualTo((UInt256)2), "a same-transaction write keeps the transaction original");
+
+        provider.Restore(Snapshot.EmptyPosition, Snapshot.EmptyPosition, Snapshot.EmptyPosition);
+        provider.Get(cell, out UInt256 afterRevert);
+        Assert.That(afterRevert, Is.EqualTo((UInt256)1), "precondition: both writes are reverted");
+        provider.Set(cell, (UInt256)4);
+        provider.Set(cell, (UInt256)5);
+        provider.GetOriginal(in cell, out UInt256 blockOriginal);
+        Assert.That(blockOriginal, Is.EqualTo((UInt256)1), "without transaction snapshots the original is the block original");
+    }
+
+    [Test]
     public void Original_value_requires_capture_even_when_a_write_head_exists([Values] bool writeFirst, [Values(0ul, 1ul, ulong.MaxValue)] ulong index)
     {
         using Context ctx = new(useFlat);

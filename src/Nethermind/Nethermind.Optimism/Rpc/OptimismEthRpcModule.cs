@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -81,37 +82,52 @@ public class OptimismEthRpcModule(
         capabilitiesProvider,
         blockForRpcFactory), IOptimismEthRpcModule
 {
-    public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
+    public override ResultWrapper<IEnumerable<ReceiptForRpc>?> eth_getBlockReceipts(BlockParameter blockParameter)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<ReceiptForRpc[]?>.Success(null);
+            return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null);
         }
 
         Block? block = searchResult.Object!;
-        TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
+        Transaction[] transactions = block.Transactions;
+        TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
         L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
 
-        OptimismReceiptForRpc[]? result = [.. receipts
-                .Zip(block.Transactions, (receipt, tx) =>
-                    receipt is OptimismTxReceipt optimismTxReceipt
-                        ? new OptimismReceiptForRpc(
-                            tx.Hash!,
-                            optimismTxReceipt,
-                            block.Timestamp,
-                            tx.GetGasInfo(spec, block.Header),
-                            l1BlockGasInfo.GetTxGasInfo(tx),
-                            receipts.GetBlockLogFirstIndex(receipt.Index))
-                        : new OptimismReceiptForRpc(
-                            tx.Hash!,
-                            receipt,
-                            block.Timestamp,
-                            tx.GetGasInfo(spec, block.Header),
-                            receipts.GetBlockLogFirstIndex(receipt.Index)))];
-        return ResultWrapper<ReceiptForRpc[]?>.Success(result);
+        int count = Math.Min(receipts.Length, transactions.Length);
+        ReceiptsForRpc<OptimismReceiptForRpc> result = new(count);
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                TxReceipt receipt = receipts[i];
+                Transaction tx = transactions[i];
+                result.Add(receipt is OptimismTxReceipt optimismTxReceipt
+                    ? new OptimismReceiptForRpc(
+                        tx.Hash!,
+                        optimismTxReceipt,
+                        block.Timestamp,
+                        tx.GetGasInfo(spec, block.Header),
+                        l1BlockGasInfo.GetTxGasInfo(tx),
+                        receipts.GetBlockLogFirstIndex(receipt.Index))
+                    : new OptimismReceiptForRpc(
+                        tx.Hash!,
+                        receipt,
+                        block.Timestamp,
+                        tx.GetGasInfo(spec, block.Header),
+                        receipts.GetBlockLogFirstIndex(receipt.Index)));
+            }
+        }
+        catch
+        {
+            result.Dispose();
+            throw;
+        }
+
+        return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(result);
     }
 
     public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
