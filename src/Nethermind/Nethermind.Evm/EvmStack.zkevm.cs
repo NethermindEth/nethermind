@@ -25,6 +25,10 @@ public ref partial struct EvmStack
             || (_codeInfo is not null && _codeInfo.AnalyzeJump(destination, bitmap, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength)));
     }
 
+    /// <summary>Whether jump destinations are analyzed only when the code jumps to them.</summary>
+    /// <remarks>A clear bit may only mean "not analyzed yet"; see <see cref="IsKnownJumpDestination"/>.</remarks>
+    internal const bool AnalyzesJumpDestinationsLazily = true;
+
     /// <summary>Reports whether <paramref name="destination"/> is a jump destination already analyzed.</summary>
     /// <remarks>
     /// A bit test and nothing else, so a false answer may only mean "not analyzed yet". The fused PUSH2+JUMP
