@@ -211,6 +211,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FrameGas_EstimateGas_FillsLaterFrameThatRevertsWithoutHeadroom()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.Frames = [.. request.Frames!, new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressD }];
+        // Reverts unless 2,000,000 gas remains, more than the frame's share of an even split.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{TestItem.AddressD}}}":{"code":"0x5a621e848010600c575f5ffd5b00"}}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
     public async Task FrameGas_EstimateGas_ReportsVerifierRevert()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));

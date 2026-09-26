@@ -87,7 +87,7 @@ public partial class GasEstimator
         int probes = 0;
         bool lastProbeReverted = false;
         TxFrameReceipt[]? receipts = null;
-        int? reservationFailure = null;
+        (int? Frame, EvmExceptionType? Error) reservationFailure = default;
 
         // Later frames keep a margin over what they used on the even split, so their reservation absorbs usage that
         // shifts as earlier frames are minimised.
@@ -103,7 +103,7 @@ public partial class GasEstimator
         {
             if (!fillExecution[i] && !fillState[i]) continue;
             RaiseToUpperLimits(i);
-            reservationFailure = null;
+            reservationFailure = default;
             if (probes < MaxFrameProbes - 1 && !TryProbe(i, atUpperLimits: true, out string? error))
             {
                 executionReverted = lastProbeReverted;
@@ -144,16 +144,16 @@ public partial class GasEstimator
                 fillState[index] ? state : frames[index].StateGasLimit);
         }
 
-        // Frames up to and including index must succeed. At its upper limits a later frame may run out of gas, since it
-        // holds only a reservation until its own turn; a smaller limit must not make any other later frame fail.
+        // Frames up to and including index must succeed. At its upper limits a later frame may fail, since it holds
+        // only a reservation until its own turn and may react to the gas it has; a smaller limit must not change that.
         bool TryProbe(int index, bool atUpperLimits, out string? error)
         {
             FrameEstimateTracer output = Probe(realFees: false, out string? failure);
-            bool reservationBound = output.FailedFrame > index && output.FrameError == EvmExceptionType.OutOfGas
-                && (atUpperLimits || output.FailedFrame == reservationFailure);
+            bool reservationBound = output.FailedFrame > index
+                && (atUpperLimits || (output.FailedFrame, output.FrameError) == reservationFailure);
             if (failure is null || reservationBound)
             {
-                if (atUpperLimits) reservationFailure = output.FailedFrame;
+                if (atUpperLimits) reservationFailure = (output.FailedFrame, output.FrameError);
                 receipts = output.Receipts;
                 error = null;
                 return true;
