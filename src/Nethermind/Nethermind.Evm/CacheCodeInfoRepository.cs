@@ -12,9 +12,68 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
-public class CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, ICodeCache codeCache) : ICodeInfoRepository
+public class CacheCodeInfoRepository : ICodeInfoRepository
 {
-    private readonly CachingCodeInfoRepository _inner = new(worldState, precompileProvider, codeCache);
+    private readonly IWorldState _worldState;
+    private readonly ICodeCache _codeCache;
+    private readonly CachingCodeInfoRepository _inner;
+
+    public CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, ICodeCache codeCache)
+    {
+        _worldState = worldState;
+        _codeCache = codeCache;
+        _inner = new CachingCodeInfoRepository(worldState, precompileProvider, this);
+    }
+
+    /// <summary>The code most recently resolved, so a repeat skips the shared cache's probe.</summary>
+    /// <remarks>
+    /// A single reference is self-validating: <see cref="StaticCodeCache"/> assigns <c>CodeHash</c> when it
+    /// stores, so matching against the hash re-read from the world state costs no allocation, and a stale
+    /// read can only miss (a partially-written hash has no keccak preimage), never answer with the wrong
+    /// body. Anything that changes an account's code — including a reverted deployment — produces a
+    /// different hash and misses; there is nothing to invalidate. Under <c>NoopCodeCache</c> (witness
+    /// generation, stateless execution) the hash stays default and the memo never fires, which is exactly
+    /// the every-lookup-through-the-world-state behaviour that mode requires.
+    /// </remarks>
+    private CodeInfo? _lastResolved;
+
+    /// <summary>Memo hits served before one is spent refreshing the shared cache's eviction ticker.</summary>
+    /// <remarks>A memo hit skips the probe that refreshes the ticker, so without this the hottest code
+    /// would age as though untouched and could be evicted out from under its own memo — costing a code-db
+    /// re-read and re-analysis on the next miss.</remarks>
+    private const int MemoHitsPerTickerRefresh = 64;
+    private int _memoHits;
+
+    private CodeInfo GetOrCacheCodeInfo(Address address, in ValueHash256 codeHash)
+    {
+        if (codeHash == ValueKeccak.OfAnEmptyString)
+        {
+            return CodeInfo.Empty;
+        }
+
+        CodeInfo? lastResolved = _lastResolved;
+        if (lastResolved is not null && lastResolved.CodeHash == codeHash && ++_memoHits < MemoHitsPerTickerRefresh)
+        {
+            // A memo hit is a cache hit: keep cache.code.hits and the cached-contracts-used stats counting.
+            Metrics.IncrementCodeDbCache();
+            return lastResolved;
+        }
+
+        _memoHits = 0;
+        CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
+        if (cachedCodeInfo is null)
+        {
+            cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, address, in codeHash);
+            _codeCache.Set(in codeHash, cachedCodeInfo);
+        }
+        else
+        {
+            Metrics.IncrementCodeDbCache();
+        }
+
+        _lastResolved = cachedCodeInfo;
+        return cachedCodeInfo;
+    }
 
     public bool IsCodeOverridable => _inner.IsCodeOverridable;
 
@@ -29,72 +88,25 @@ public class CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        if (CodeInfoRepository.InsertCode(worldState, code, codeOwner, spec, out ValueHash256 codeHash) && codeCache.Get(in codeHash) is null)
+        if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
         {
-            codeCache.Set(in codeHash, new CodeInfo(code));
+            _codeCache.Set(in codeHash, new CodeInfo(code));
         }
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
     {
-        bool result = CodeInfoRepository.SetDelegation(worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer);
-        if (result && codeSource != Address.Zero && codeCache.Get(in codeHash) is null)
+        bool result = CodeInfoRepository.SetDelegation(_worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer);
+        if (result && codeSource != Address.Zero && _codeCache.Get(in codeHash) is null)
         {
-            codeCache.Set(in codeHash, new CodeInfo(authorizedBuffer));
+            _codeCache.Set(in codeHash, new CodeInfo(authorizedBuffer));
         }
     }
 
-    private sealed class CachingCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, ICodeCache codeCache)
+    private sealed class CachingCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, CacheCodeInfoRepository owner)
         : CodeInfoRepository(worldState, precompileProvider)
     {
-        /// <summary>The code most recently resolved, so a repeat skips the shared cache's probe.</summary>
-        /// <remarks>
-        /// A single reference is self-validating: <see cref="StaticCodeCache"/> assigns <c>CodeHash</c> when it
-        /// stores, so matching against the hash re-read from the world state costs no allocation, and a stale
-        /// read can only miss (a partially-written hash has no keccak preimage), never answer with the wrong
-        /// body. Anything that changes an account's code - including a reverted deployment - produces a
-        /// different hash and misses; there is nothing to invalidate. Under <c>NoopCodeCache</c> (witness
-        /// generation, stateless execution) the hash stays default and the memo never fires, which is exactly
-        /// the every-lookup-through-the-world-state behaviour that mode requires.
-        /// </remarks>
-        private CodeInfo? _lastResolved;
-
-        /// <summary>Memo hits served before one is spent refreshing the shared cache's eviction ticker.</summary>
-        /// <remarks>A memo hit skips the probe that refreshes the ticker, so without this the hottest code
-        /// would age as though untouched and could be evicted out from under its own memo - costing a code-db
-        /// re-read and re-analysis on the next miss.</remarks>
-        private const int MemoHitsPerTickerRefresh = 64;
-        private int _memoHits;
-
-        protected override CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash)
-        {
-            if (codeHash == ValueKeccak.OfAnEmptyString)
-            {
-                return CodeInfo.Empty;
-            }
-
-            CodeInfo? lastResolved = _lastResolved;
-            if (lastResolved is not null && lastResolved.CodeHash == codeHash && ++_memoHits < MemoHitsPerTickerRefresh)
-            {
-                // A memo hit is a cache hit: keep cache.code.hits and the cached-contracts-used stats counting.
-                Metrics.IncrementCodeDbCache();
-                return lastResolved;
-            }
-
-            _memoHits = 0;
-            CodeInfo? cachedCodeInfo = codeCache.Get(in codeHash);
-            if (cachedCodeInfo is null)
-            {
-                cachedCodeInfo = GetCodeInfo(worldState, address, in codeHash);
-                codeCache.Set(in codeHash, cachedCodeInfo);
-            }
-            else
-            {
-                Metrics.IncrementCodeDbCache();
-            }
-
-            _lastResolved = cachedCodeInfo;
-            return cachedCodeInfo;
-        }
+        protected override CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash) =>
+            owner.GetOrCacheCodeInfo(address, in codeHash);
     }
 }
