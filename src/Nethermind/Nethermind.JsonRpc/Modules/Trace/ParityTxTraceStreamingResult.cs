@@ -33,10 +33,11 @@ public sealed class ParityTxTraceStreamingResult<T> : JsonStreamingResultBase, I
     public IEnumerator<T> GetEnumerator() =>
         MaterializeForInProcess is null
             ? Enumerable.Empty<T>().GetEnumerator()
-            : EnumerateAndDispose(MaterializeForInProcess());
+            : EnumerateAndDispose(MaterializeForInProcess);
 
-    private static IEnumerator<T> EnumerateAndDispose(IEnumerable<T> items)
+    private static IEnumerator<T> EnumerateAndDispose(Func<IEnumerable<T>> materialize)
     {
+        IEnumerable<T> items = materialize();
         using (items as IDisposable)
         {
             foreach (T item in items)
