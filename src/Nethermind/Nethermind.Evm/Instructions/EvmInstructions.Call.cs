@@ -341,12 +341,14 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
-        EvmExceptionType pushResult = stack.PushOne<TTracingInst>();
-        if (pushResult != EvmExceptionType.None) return pushResult;
-
-        // Action tracers see PAY as a zero-gas CALL that runs no code, like a value CALL to an EOA.
+        // Action tracers see PAY as a zero-gas CALL that runs no code, like a value CALL to an EOA. As for
+        // CALL, the instruction trace closes before the action and the result push is reported after it.
         bool reportsAction = vm.IsTracingActions;
-        if (reportsAction) vm.TxTracer.ReportAction(0, value, executingAccount, target, default, ExecutionType.CALL);
+        if (reportsAction)
+        {
+            if (TTracingInst.IsActive) vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+            vm.TxTracer.ReportAction(0, value, executingAccount, target, default, ExecutionType.CALL);
+        }
 
         // A self-payment moves no ether and, like a self-CALL, writes neither balance.
         if (hasValueTransfer && target != executingAccount)
@@ -357,7 +359,12 @@ public static partial class EvmInstructions
         }
 
         if (reportsAction) vm.TxTracer.ReportActionEnd(0, default);
-        return EvmExceptionType.None;
+
+        // Two words were popped, so this push cannot overflow and leave the transfer half-reported.
+        EvmExceptionType pushResult = stack.PushOne<TTracingInst>();
+        if (TTracingInst.IsActive && reportsAction)
+            vm.TxTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGas(in gas));
+        return pushResult;
 
     OutOfGas:
         return EvmExceptionType.OutOfGas;

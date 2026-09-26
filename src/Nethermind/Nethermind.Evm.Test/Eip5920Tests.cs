@@ -275,6 +275,21 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Parity_vm_trace_reports_pay_cost_and_push([Values] bool streaming)
+    {
+        TestState.CreateAccount(Existing, 5);
+        byte[] code = Pay(Prepare.EvmCode, Existing, 7).Op(Instruction.POP).STOP().Done;
+
+        IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> operations = TraceParityVmOperations(code, streaming);
+
+        // PUSH value, PUSH target, PAY, POP, STOP
+        Assert.That(operations.Select(static op => (op.Cost, op.Pushes)), Is.EqualTo(new[]
+        {
+            (GasCostOf.VeryLow, 1), (GasCostOf.VeryLow, 1), (ColdAccess + ValueCost, 1), (GasCostOf.Base, 0), (GasCostOf.Free, 0),
+        }));
+    }
+
     [TestCase(0, TestName = "Zero-value PAY in a static frame halts")]
     [TestCase(1, TestName = "Value-bearing PAY in a static frame halts")]
     public void Pay_in_static_frame_halts(int value)
