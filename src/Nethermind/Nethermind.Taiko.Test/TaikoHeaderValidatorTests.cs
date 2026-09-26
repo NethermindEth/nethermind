@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -491,5 +492,52 @@ public class TaikoHeaderValidatorTests
         bool valid = validator.Validate(header, parent, isUncle: false, out string? error);
 
         Assert.That(valid, Is.True, error);
+    }
+
+    /// <summary>
+    /// Shasta extraData is exactly basefeeSharingPctg (1 byte) followed by proposalId (6 bytes);
+    /// taiko-geth and alethia-reth reject any other length. Pacaya keeps the generic 32-byte limit.
+    /// </summary>
+    [TestCase(typeof(TaikoShastaReleaseSpec), 6, false)]
+    [TestCase(typeof(TaikoShastaReleaseSpec), 7, true)]
+    [TestCase(typeof(TaikoShastaReleaseSpec), 8, false)]
+    [TestCase(typeof(TaikoShastaReleaseSpec), 32, false)]
+    [TestCase(typeof(TaikoUnzenReleaseSpec), 6, false)]
+    [TestCase(typeof(TaikoUnzenReleaseSpec), 7, true)]
+    [TestCase(typeof(TaikoUnzenReleaseSpec), 8, false)]
+    [TestCase(typeof(TaikoUnzenReleaseSpec), 32, false)]
+    [TestCase(typeof(TaikoPacayaReleaseSpec), 8, true)]
+    [TestCase(typeof(TaikoPacayaReleaseSpec), 32, true)]
+    public void Shasta_RequiresExactExtraDataLength(Type specType, int length, bool accepted)
+    {
+        ITaikoReleaseSpec spec = (ITaikoReleaseSpec)Activator.CreateInstance(specType)!;
+        TaikoHeaderValidator validator = MakeValidator(ProviderFor(spec));
+
+        BlockHeader parent = ParentWithBaseFee();
+        BlockHeaderBuilder builder = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithParent(parent)
+            .WithTimestamp(1)
+            .WithBaseFee(25_000_000)
+            .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
+            .WithWithdrawalsRoot(Keccak.EmptyTreeHash)
+            .WithExtraData(new byte[length])
+            .WithDifficulty(0);
+        if (spec.IsEip4844Enabled)
+        {
+            builder = builder
+                .WithRequestsHash(ExecutionRequestExtensions.EmptyRequestsHash)
+                .WithBlobGasUsed(0)
+                .WithExcessBlobGas(0)
+                .WithParentBeaconBlockRoot(Keccak.Zero);
+        }
+
+        bool valid = validator.Validate(builder.TestObject, parent, isUncle: false, out string? error);
+
+        Assert.That(valid, Is.EqualTo(accepted), error);
+        if (!accepted)
+        {
+            Assert.That(error, Does.Contain("ExtraData"));
+        }
     }
 }
