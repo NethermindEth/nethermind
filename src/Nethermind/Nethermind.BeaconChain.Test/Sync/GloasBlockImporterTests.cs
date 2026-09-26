@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -236,9 +237,11 @@ public class GloasBlockImporterTests
     /// Fork choice resolves checkpoint states by root, possibly epochs after the block, and the per-block Gloas tier
     /// holds only the last two epochs of blocks. The first block of an epoch, and the parent of a block that skipped an
     /// epoch's first slot, are checkpoint blocks and must outlive that tier; a block that is neither must not linger.
+    /// A child at an epoch's first slot after a whole empty epoch still skipped the empty epoch's first slot; one whose
+    /// parent is the previous epoch's last block skipped nothing, so that parent is no checkpoint block.
     /// </summary>
     [Test]
-    public void Checkpoint_block_states_outlive_the_per_block_tier()
+    public void Checkpoint_block_states_outlive_the_per_block_tier([Values] bool skipWholeEpoch)
     {
         SignedGloasChain chain = new();
         BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
@@ -247,12 +250,19 @@ public class GloasBlockImporterTests
         SignedGloasChain.Block lastBeforeSkip = chain.Next(middle, ForkSlot + 2, full: false, 0xB2);
         Import(importer, epochStart, middle, lastBeforeSkip);
 
-        // Skips slot 64; the 64 blocks after slot 65 push every older state out of the per-block tier.
+        // Skips slot 64 (or all of epoch 2); the 64 blocks after each early block push its state out of the per-block tier.
         SignedGloasChain.Block tip = lastBeforeSkip;
-        for (ulong slot = 2 * ForkSlot + 1; slot <= 4 * ForkSlot + 1; slot++)
+        SignedGloasChain.Block? lastOfEpoch = null;
+        ulong resumeSlot = skipWholeEpoch ? 3 * ForkSlot : 2 * ForkSlot + 1;
+        ulong nextEpochStart = (resumeSlot / ForkSlot + 1) * ForkSlot;
+        for (ulong slot = resumeSlot; slot <= resumeSlot + 3 * ForkSlot; slot++)
         {
             tip = chain.Next(tip, slot, full: false, (byte)(slot + 0x60));
             Import(importer, tip);
+            if (slot == nextEpochStart - 1)
+            {
+                lastOfEpoch = tip;
+            }
         }
 
         using (Assert.EnterMultipleScope())
@@ -260,7 +270,36 @@ public class GloasBlockImporterTests
             Assert.That(importer.ImportEnvelope(epochStart.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "an epoch's first block");
             Assert.That(importer.ImportEnvelope(lastBeforeSkip.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "the checkpoint block of the epoch whose first slot was skipped");
             Assert.That(importer.ImportEnvelope(middle.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "a block that is no checkpoint ages out");
+            Assert.That(importer.ImportEnvelope(lastOfEpoch!.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "the parent of the next epoch's first block is no checkpoint and ages out");
         }
+    }
+
+    /// <summary>
+    /// specs/gloas/fork-choice.md <c>on_block</c> reads timeliness from <c>store.time</c>, which follows the node's clock when the
+    /// block arrived: only a block of the current slot that arrives before <c>get_attestation_due_ms</c>
+    /// (<c>ATTESTATION_DUE_BPS_GLOAS</c>, 3000 ms into a 12 s slot) is timely and takes the proposer boost. With no boost set
+    /// before the import, a boost still unset after it means the block was recorded not timely. The clock moving on during
+    /// the import itself, as it does while the state transition runs, is not lateness of the block.
+    /// </summary>
+    [TestCase(ForkSlot, 1000L, 0L, true)]
+    [TestCase(ForkSlot, 2999L, 0L, true)]
+    [TestCase(ForkSlot, 3000L, 0L, false)]
+    [TestCase(ForkSlot, 5000L, 0L, false)]
+    [TestCase(ForkSlot + 1, 1000L, 0L, false)]
+    [TestCase(ForkSlot, 2000L, 1000L, true)]
+    public void Proposer_boost_follows_the_clock_at_import(ulong clockSlot, long msIntoSlot, long msPerClockRead, bool boosted)
+    {
+        SignedGloasChain chain = new();
+        ForkChoiceSnapshotHolder snapshots = new();
+        DateTime arrival = DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + clockSlot * chain.Spec.SecondsPerSlot).AddMilliseconds(msIntoSlot);
+        SlotClock clock = new(chain.Spec, new AdvancingTimestamper(arrival, TimeSpan.FromMilliseconds(msPerClockRead)));
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, clock: clock);
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+
+        Import(importer, first);
+        importer.ComputeHead();
+
+        Assert.That(snapshots.Current!.ProposerBoostRoot, Is.EqualTo(boosted ? first.Root : Hash256.Zero));
     }
 
     /// <summary>
@@ -312,6 +351,162 @@ public class GloasBlockImporterTests
             Assert.That(expected, Is.True);
             Assert.That(otherProposer, Is.False);
         }
+    }
+
+    public enum HeldProposal
+    {
+        Signed,
+        BodyAltered,
+        OtherProposerSigned,
+        ParentNotDeferred,
+        PastAncestorLookahead,
+        NotAfterParentSlot,
+        FromTheFuture,
+    }
+
+    /// <summary>
+    /// A child of a deferred block is deferred too, once its proposer and signature check out against the nearest ancestor
+    /// fork choice holds: the queue it then waits in is bounded, so an unsigned block must not take a place there. Past that
+    /// ancestor's lookahead window the deferred blocks in between feed the proposer seed, so the child is not deferred at all.
+    /// The <c>on_block</c> slot checks still apply, against the deferred parent's slot and the node's clock.
+    /// </summary>
+    [TestCase(HeldProposal.Signed, BlockImportResult.ParentPayloadUnverified)]
+    [TestCase(HeldProposal.BodyAltered, BlockImportResult.Invalid)]
+    [TestCase(HeldProposal.OtherProposerSigned, BlockImportResult.Invalid)]
+    [TestCase(HeldProposal.ParentNotDeferred, BlockImportResult.UnknownParent)]
+    [TestCase(HeldProposal.PastAncestorLookahead, BlockImportResult.UnknownParent)]
+    [TestCase(HeldProposal.NotAfterParentSlot, BlockImportResult.Invalid)]
+    [TestCase(HeldProposal.FromTheFuture, BlockImportResult.Invalid)]
+    public void Child_of_a_deferred_block_is_deferred_only_when_its_expected_proposer_signed_it(HeldProposal proposal, BlockImportResult expected)
+    {
+        SignedGloasChain chain = new();
+        SlotClock? clock = proposal == HeldProposal.FromTheFuture ? ClockAt(chain, ForkSlot + 2, millisecondsEarly: GossipRouter.MaximumGossipClockDisparityMs + 1) : null;
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: clock);
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block parked = chain.Next(first, ForkSlot + 1, full: true, 0xA2);
+        SignedGloasChain.Block held = chain.Next(parked, proposal == HeldProposal.PastAncestorLookahead ? 3 * ForkSlot : ForkSlot + 2, full: false, 0xA3);
+        Import(importer, first);
+        if (proposal != HeldProposal.ParentNotDeferred)
+        {
+            Assert.That(importer.Import(parked.Forked, parked.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture: the parent waits on its own parent's payload");
+        }
+
+        BeaconBlockGloas message = held.Signed.Message!;
+        switch (proposal)
+        {
+            case HeldProposal.BodyAltered:
+                message.Body!.Graffiti = Hash(0x66);
+                break;
+            case HeldProposal.OtherProposerSigned:
+                // Validly signed by the validator it names, so only the lookahead can tell it is not the expected proposer.
+                message.ProposerIndex = (message.ProposerIndex + 1) % ValidatorCount;
+                SignAsProposer(held.Signed, first.PostState);
+                break;
+            case HeldProposal.NotAfterParentSlot:
+                // Signed by the expected proposer of the parent's slot, so only the slot check can refuse it.
+                message.Slot = parked.Signed.Message!.Slot;
+                message.ProposerIndex = parked.Signed.Message.ProposerIndex;
+                SignAsProposer(held.Signed, first.PostState);
+                break;
+        }
+
+        Assert.That(importer.Import(held.Forked, SszRoots.HashTreeRoot(message), verifySignatures: true), Is.EqualTo(expected));
+    }
+
+    /// <summary>
+    /// A deferred block found invalid once its parent's envelope imports is no longer deferred, so its signed child has no
+    /// parent at all; answered deferred, the child would wait in the bounded queue for a block that never imports.
+    /// </summary>
+    [Test]
+    public void Child_of_a_deferred_block_found_invalid_is_no_longer_deferred()
+    {
+        SignedGloasChain chain = new();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block parked = chain.Next(first, ForkSlot + 1, full: true, 0xA2);
+        SignedGloasChain.Block child = chain.Next(parked, ForkSlot + 2, full: false, 0xA3);
+        Import(importer, first);
+        parked.Signed.Message!.StateRoot = Hash(0x77);
+        SignAsProposer(parked.Signed, first.PostState);
+        Hash256 parkedRoot = SszRoots.HashTreeRoot(parked.Signed.Message);
+        child.Signed.Message!.ParentRoot = parkedRoot;
+        SignAsProposer(child.Signed, first.PostState);
+        Hash256 childRoot = SszRoots.HashTreeRoot(child.Signed.Message);
+
+        BlockImportResult parkedBeforeEnvelope = importer.Import(parked.Forked, parkedRoot, verifySignatures: true);
+        BlockImportResult childBeforeEnvelope = importer.Import(child.Forked, childRoot, verifySignatures: true);
+        ExecutionPayloadEnvelopeImportResult envelope = importer.ImportEnvelope(first.Envelope);
+        BlockImportResult parkedAfterEnvelope = importer.Import(parked.Forked, parkedRoot, verifySignatures: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parkedBeforeEnvelope, Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture: only the proposer and signature are checked before the envelope");
+            Assert.That(childBeforeEnvelope, Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture: the child is deferred behind it");
+            Assert.That(envelope, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+            Assert.That(parkedAfterEnvelope, Is.EqualTo(BlockImportResult.Invalid), "fixture: the state root does not match");
+            Assert.That(importer.Import(child.Forked, childRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.UnknownParent));
+        }
+    }
+
+    /// <summary>
+    /// The deferred blocks a node remembers are bounded, since equivocating proposers can sign any number of them, and
+    /// forgotten once finalized past, since such a block can never import; otherwise stale ones would take the places of real ones.
+    /// </summary>
+    [Test]
+    public void Deferred_blocks_are_bounded_and_forgotten_once_finalized()
+    {
+        SignedGloasChain chain = new();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block parked = chain.Next(first, ForkSlot + 1, full: true, 0xA2);
+        SignedGloasChain.Block finalized = chain.Next(first, ForkSlot + 2, full: false, 0xA3);
+        Import(importer, first, finalized);
+
+        const int maxDeferredBlocks = 256;
+        BeaconBlockGloas message = parked.Signed.Message!;
+        for (int i = 0; i <= maxDeferredBlocks; i++)
+        {
+            message.Body!.Graffiti = Keccak.Compute(BitConverter.GetBytes(i));
+            SignAsProposer(parked.Signed, first.PostState);
+            Assert.That(importer.Import(parked.Forked, SszRoots.HashTreeRoot(message), verifySignatures: true), Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture: each equivocation is signed by the expected proposer");
+        }
+
+        int deferredWhenFull = DeferredCount(importer);
+        Finalize(importer, new CheckpointRef(2, finalized.Root));
+        importer.OnFinalized(new CheckpointRef(2, finalized.Root));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deferredWhenFull, Is.EqualTo(maxDeferredBlocks));
+            Assert.That(DeferredCount(importer), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Deferred_block_at_the_finalized_slot_is_forgotten_once_finalized()
+    {
+        SignedGloasChain chain = new();
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block finalized = chain.Next(first, ForkSlot + 2, full: false, 0xA3);
+        SignedGloasChain.Block sibling = chain.Next(first, ForkSlot + 2, full: true, 0xA4);
+        Import(importer, first, finalized);
+        Assert.That(importer.Import(sibling.Forked, sibling.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture");
+
+        Finalize(importer, new CheckpointRef(2, finalized.Root));
+        importer.OnFinalized(new CheckpointRef(2, finalized.Root));
+
+        Assert.That(DeferredCount(importer), Is.Zero, "on_block refuses a block at the finalized slot, so it must not keep a deferral place");
+    }
+
+    private static int DeferredCount(BlockImporter importer) =>
+        ((ICollection)typeof(BlockImporter).GetField("_deferred", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!).Count;
+
+    /// <summary>Signs <paramref name="block"/> with the key of the proposer it names, under the proposer domain of <paramref name="state"/>.</summary>
+    private static void SignAsProposer(SignedBeaconBlockGloas block, BeaconStateGloas state)
+    {
+        Hash256 proposerDomain = state.GetDomain(DomainType.BeaconProposer, state.GetCurrentEpoch());
+        block.Signature = Sign(ValidatorKey((int)block.Message!.ProposerIndex), Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(block.Message), proposerDomain));
     }
 
     public enum Forgery
@@ -586,6 +781,22 @@ public class GloasBlockImporterTests
         foreach (SignedGloasChain.Block block in blocks)
         {
             Assert.That(importer.Import(block.Forked, block.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported), $"fixture: block at slot {block.Signed.Message!.Slot}");
+        }
+    }
+
+    /// <summary>A clock that moves on by <paramref name="step"/> after every read, as the wall clock does while an import runs.</summary>
+    private sealed class AdvancingTimestamper(DateTime start, TimeSpan step) : ITimestamper
+    {
+        private DateTime _now = start;
+
+        public DateTime UtcNow
+        {
+            get
+            {
+                DateTime now = _now;
+                _now += step;
+                return now;
+            }
         }
     }
 }
