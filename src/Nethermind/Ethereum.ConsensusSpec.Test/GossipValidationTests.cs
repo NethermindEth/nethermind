@@ -37,6 +37,8 @@ public class GossipValidationTests
 {
     private const string Suite = "networking";
 
+    private const string NotImplementedSentinel = "";
+
     /// <summary>The <c>networking</c> handlers driven, per fork: exactly the topics <see cref="GossipRouter"/> validates on a Fulu or Gloas digest.</summary>
     internal static readonly (string Fork, string[] Handlers)[] Suites =
     [
@@ -126,9 +128,19 @@ public class GossipValidationTests
     }
 
     // Not-implemented vectors are Inconclusive, so a driver that reports every vector that way still runs green.
+    // Every handler has both kinds by design, so a not-implemented sentinel leads each handler and the check must look past it.
     [Test]
-    public void Every_fork_and_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
-        FuluDriverSupport.AssertEveryKeyRunsAVector(TestedCases(), KeyOf, static testCase => Run(testCase));
+    public void Every_fork_and_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented()
+    {
+        List<GossipValidationCase> cases = TestedCases();
+        IEnumerable<GossipValidationCase> sentinels = cases.DistinctBy(KeyOf).Select(static c => c with { CasePath = NotImplementedSentinel });
+        FuluDriverSupport.AssertEveryKeyRunsSomeVector([.. sentinels, .. cases], KeyOf, static testCase =>
+        {
+            if (testCase.CasePath == NotImplementedSentinel)
+                throw new NotImplementedInDriverException("sentinel");
+            Run(testCase);
+        });
+    }
 
     // A row no message reaches is stale, and a vector that hides an unchecked reject behind a pass runs green.
     [Test]

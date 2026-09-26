@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Security.Cryptography;
 using System.Threading;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
@@ -47,6 +46,9 @@ public enum ColumnGossipDropReason
 
     /// <summary>A sidecar on a subnet this node has not subscribed.</summary>
     UnsubscribedSubnet,
+
+    /// <summary>A Gloas sidecar whose stored block is not cached and not canonical at a recent slot, after this slot's store decodes are spent.</summary>
+    StoreDecodeBudgetSpent,
 }
 
 /// <summary>
@@ -70,7 +72,8 @@ public enum ColumnGossipDropReason
 /// A Gloas sidecar (gloas/p2p-interface.md) needs no state: its block is read from <paramref name="store"/>, which holds only
 /// blocks fork choice accepted, so a held block stands in for both "seen" and "passes validation". A sidecar that verifies
 /// against the block's bid is stored in <paramref name="pool"/> and returned as <see cref="MessageValidity.Accepted"/>, because
-/// the spec requires a valid sidecar to be re-broadcast. A sidecar whose block is not held is parked as a pending candidate.
+/// the spec requires a valid sidecar to be re-broadcast. A sidecar for the current or next slot whose block is not held is
+/// parked as a pending candidate.
 /// </para>
 /// </remarks>
 /// <param name="store">Where a Gloas sidecar's block is read from; <c>null</c> holds no block, so every Gloas sidecar is parked.</param>
@@ -84,7 +87,19 @@ public sealed class ColumnGossipRouter(
     IBeaconChainStatusSource? status = null)
 {
     private const int SeenCacheSize = 4096;
-    private const int GloasBlockCacheSize = 64;
+    internal const int GloasBlockCacheSize = 64;
+    internal const int NonGloasBlockCacheSize = 4096;
+
+    /// <summary>The most stored blocks decoded per slot for sidecars whose block is not cached and not canonical at a recent slot.</summary>
+    /// <remarks>
+    /// The pinned pubsub library has no peer scoring, so a REJECT costs its sender nothing and cannot bound decode work.
+    /// A sidecar whose root is the canonical block at its own slot, for the current or previous slot, is decoded outside
+    /// the budget: that is the honest case, and such a root is decoded once and then cached. A record the store does not
+    /// hold costs a key lookup, not a decode, and is still parked. The budget covers the rest, such as a competing block or
+    /// one stored but not yet canonical, of which an honest slot has at most a few; once it is spent, such a sidecar is
+    /// Ignored until the next slot after a key lookup and a canonical-index read, with no block decoded.
+    /// </remarks>
+    internal const int StoreDecodesPerSlot = 16;
 
     private readonly ILogger _logger = logManager.GetClassLogger<ColumnGossipRouter>();
     private readonly LruKeyCache<(ulong Slot, ulong ProposerIndex, ulong Index)> _seenSidecars = new(SeenCacheSize, "beacon column gossip seen sidecars");
@@ -93,11 +108,18 @@ public sealed class ColumnGossipRouter(
     // Every column of a block reads the same bid, so a block is decoded from the store once, not once per column.
     private readonly LruCache<Hash256, GloasBlockColumns> _gloasBlocks = new(GloasBlockCacheSize, "beacon column gossip gloas blocks");
 
+    // A root whose stored block is not a readable Gloas block never becomes one, so it is decoded once, not once per message.
+    private readonly LruCache<Hash256, GloasBlockLookup> _nonGloasBlocks = new(NonGloasBlockCacheSize, "beacon column gossip non-gloas blocks");
+
+    private readonly Lock _storeDecodeLock = new();
+    private ulong _storeDecodeSlot;
+    private int _storeDecodesThisSlot;
+
     // gloas/p2p-interface.md compute_max_data_column_sidecar_size: the progressive lists carry no SSZ bound of their own.
     private readonly int _maxGloasSidecarSize = (int)Math.Min(DataColumnSidecarGloasSize.ComputeMax(spec), (ulong)Eth2MessageId.MaxGossipSize);
     private readonly long[] _dropCounts = new long[Enum.GetValues<ColumnGossipDropReason>().Length];
     private readonly Lock _subscriptionLock = new();
-    private readonly List<(ulong Subnet, ITopic Topic, Action<byte[]> Handler)> _subscriptions = [];
+    private readonly List<(ulong Subnet, ITopic Topic)> _subscriptions = [];
 
     // Per-block-root accumulation of held columns, purely to decide when to attempt reconstruction
     // (das-core.md "SHOULD reconstruct" at 50%+); keyed by the full header's hash tree root rather
@@ -140,9 +162,8 @@ public sealed class ColumnGossipRouter(
                 throw new InvalidOperationException($"{nameof(ColumnGossipRouter)} is not started");
             }
 
-            foreach ((ulong _, ITopic topic, Action<byte[]> handler) in _subscriptions)
+            foreach ((ulong _, ITopic topic) in _subscriptions)
             {
-                topic.OnMessage -= handler;
                 topic.Unsubscribe();
             }
 
@@ -154,15 +175,12 @@ public sealed class ColumnGossipRouter(
     private void SubscribeSubnets(byte[] forkDigest)
     {
         _currentForkDigest = forkDigest;
-        // The fork is bound at subscription, so a message still in flight on a rotated-out topic keeps that topic's type.
-        bool gloasTopic = IsGloasDigest(forkDigest);
+        // The pubsub validator consumes every message (GossipMessageValidator); a topic handler would process an Accepted one twice.
         foreach (ulong subnetId in _subnets)
         {
             ITopic topic = _getTopic!(GossipTopics.Topic(forkDigest, GossipTopics.DataColumnSidecarTopicName(subnetId)));
-            Action<byte[]> handler = message => Handle(subnetId, gloasTopic, message);
-            topic.OnMessage += handler;
             topic.Subscribe();
-            _subscriptions.Add((subnetId, topic, handler));
+            _subscriptions.Add((subnetId, topic));
         }
 
         if (_logger.IsInfo) _logger.Info($"Subscribed {_subnets.Count} data column sidecar subnets for fork digest 0x{Convert.ToHexStringLower(forkDigest)}");
@@ -329,21 +347,39 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.WrongSubnet, MessageValidity.Rejected);
         }
 
+        // A sidecar no bid can match is dropped before a store read or parking; the spec orders its REJECT after the block checks, so only Ignored.
+        bool blockCached = _gloasBlocks.TryGet(blockRoot, out GloasBlockColumns block);
+        if (!blockCached && ExceedsCandidateBounds(sidecar) is { } boundsReason)
+        {
+            return Drop(boundsReason, MessageValidity.Ignored);
+        }
+
         // [IGNORE] not from a future slot. One early for the next slot is parked: its message id stays dropped for the seen TTL.
         if (ValidateNotFromFuture(sidecar.Slot) is { } futureReason)
         {
             return sidecar.Slot == slotClock.CurrentSlot + 1
-                ? Park(sidecar, payload, futureReason)
+                ? Park(sidecar, futureReason)
                 : Drop(futureReason, MessageValidity.Ignored);
         }
 
+        // No Gloas block precedes the fork, so such a sidecar can match none; this also makes every stored pre-Gloas block a slot mismatch below.
+        if (!blockCached && spec.GetEpoch(sidecar.Slot) < spec.GloasForkEpoch)
+        {
+            return Drop(ColumnGossipDropReason.UnknownBlock, MessageValidity.Ignored);
+        }
+
         // [IGNORE] the block has been seen, and [REJECT] it passes validation: the store holds only blocks fork choice accepted.
-        switch (TryGetGloasBlock(blockRoot, out GloasBlockColumns block))
+        switch (blockCached ? GloasBlockLookup.Found : ReadGloasBlock(blockRoot, sidecar.Slot, out block))
         {
             case GloasBlockLookup.Unknown:
-                return Park(sidecar, payload, ColumnGossipDropReason.UnknownBlock);
-            case GloasBlockLookup.NotGloas:
+                return Park(sidecar, ColumnGossipDropReason.UnknownBlock);
+            case GloasBlockLookup.Unreadable:
                 return Drop(ColumnGossipDropReason.UnknownBlock, MessageValidity.Ignored);
+            case GloasBlockLookup.BudgetSpent:
+                return Drop(ColumnGossipDropReason.StoreDecodeBudgetSpent, MessageValidity.Ignored);
+            case GloasBlockLookup.PreGloas:
+                // [REJECT] the sidecar's slot matches the slot of the block: a pre-Gloas block's slot is before the sidecar's.
+                return Drop(ColumnGossipDropReason.SlotMismatch, MessageValidity.Rejected);
         }
 
         // [REJECT] the sidecar's slot matches the slot of the block.
@@ -381,43 +417,60 @@ public sealed class ColumnGossipRouter(
 
     /// <summary>
     /// Keeps a sidecar whose block is not yet held as a pending candidate (gloas/p2p-interface.md "MAY be queued until
-    /// block is retrieved"), once it passes the checks that bound what an unverified candidate can hold.
+    /// block is retrieved") when it is for the current or next slot, the only slots the future-slot IGNORE lets through.
     /// </summary>
     /// <remarks>
     /// The pubsub validator is not told which peer delivered a message, and <c>StrictNoSign</c> requires the message's
-    /// <c>from</c> to be absent, so a candidate's source key is the hash of its encoding: a forgery is always a separate
-    /// candidate and never replaces another one.
+    /// <c>from</c> to be absent, so a candidate has no source to be bounded by: the pool bounds candidates per
+    /// (root, column) and in total instead, and a forgery never displaces an earlier candidate.
     /// </remarks>
-    private MessageValidity Park(DataColumnSidecarGloas sidecar, byte[] payload, ColumnGossipDropReason reason)
+    private MessageValidity Park(DataColumnSidecarGloas sidecar, ColumnGossipDropReason reason)
+    {
+        ulong currentSlot = slotClock.CurrentSlot;
+        if (sidecar.Slot == currentSlot || sidecar.Slot == currentSlot + 1)
+        {
+            pool?.AddPendingGloas(sidecar, currentSlot);
+        }
+
+        return Drop(reason, MessageValidity.Ignored);
+    }
+
+    /// <summary>The stateless part of <c>verify_data_column_sidecar</c> plus the blob limit every accepted bid is within, or <c>null</c> when it passes.</summary>
+    private ColumnGossipDropReason? ExceedsCandidateBounds(DataColumnSidecarGloas sidecar)
     {
         if (sidecar.Index >= (ulong)Eip7594DasConstants.NumberOfColumns
             || sidecar.Column is not { Length: > 0 } column
             || sidecar.KzgProofs?.Length != column.Length)
         {
-            return Drop(ColumnGossipDropReason.FailedStructure, MessageValidity.Ignored);
+            return ColumnGossipDropReason.FailedStructure;
         }
 
         // A bid never commits more than max_blobs_per_block, so a longer column can never verify against one.
-        if ((ulong)column.Length > MaxBlobsPerBlock(sidecar.Slot))
-        {
-            return Drop(ColumnGossipDropReason.FailedBlobCount, MessageValidity.Ignored);
-        }
-
-        pool?.AddPendingGloas(sidecar, Convert.ToHexString(SHA256.HashData(payload)));
-        return Drop(reason, MessageValidity.Ignored);
+        return (ulong)column.Length > MaxBlobsPerBlock(sidecar.Slot) ? ColumnGossipDropReason.FailedBlobCount : null;
     }
 
-    private GloasBlockLookup TryGetGloasBlock(Hash256 blockRoot, out GloasBlockColumns block)
+    private GloasBlockLookup ReadGloasBlock(Hash256 blockRoot, ulong sidecarSlot, out GloasBlockColumns block)
     {
-        if (_gloasBlocks.TryGet(blockRoot, out block))
+        block = default;
+        if (_nonGloasBlocks.TryGet(blockRoot, out GloasBlockLookup cached))
         {
-            return GloasBlockLookup.Found;
+            return cached;
+        }
+
+        if (store is null || !store.HasBlock(blockRoot))
+        {
+            return GloasBlockLookup.Unknown;
+        }
+
+        if (!IsCanonicalAtRecentSlot(blockRoot, sidecarSlot) && !TryTakeStoreDecode())
+        {
+            return GloasBlockLookup.BudgetSpent;
         }
 
         ForkedSignedBeaconBlock? forked;
         try
         {
-            if (store is null || !store.TryGetForkedBlock(blockRoot, out forked))
+            if (!store.TryGetForkedBlock(blockRoot, out forked))
             {
                 return GloasBlockLookup.Unknown;
             }
@@ -425,17 +478,50 @@ public sealed class ColumnGossipRouter(
         catch (Exception e) when (e is BeaconStateException or InvalidDataException)
         {
             if (_logger.IsWarn) _logger.Warn($"Unreadable stored block {blockRoot} named by a data column sidecar: {e.Message}");
-            return GloasBlockLookup.NotGloas;
+            _nonGloasBlocks.Set(blockRoot, GloasBlockLookup.Unreadable);
+            return GloasBlockLookup.Unreadable;
         }
 
         if (forked is not ForkedSignedBeaconBlock.OfGloas { Block.Message: { } message })
         {
-            return GloasBlockLookup.NotGloas;
+            GloasBlockLookup lookup = forked is ForkedSignedBeaconBlock.OfFulu ? GloasBlockLookup.PreGloas : GloasBlockLookup.Unreadable;
+            _nonGloasBlocks.Set(blockRoot, lookup);
+            return lookup;
         }
 
         block = new GloasBlockColumns(message.Slot, message.Body?.SignedExecutionPayloadBid?.Message?.BlobKzgCommitments ?? []);
         _gloasBlocks.Set(blockRoot, block);
         return GloasBlockLookup.Found;
+    }
+
+    private bool TryTakeStoreDecode()
+    {
+        ulong currentSlot = slotClock.CurrentSlot;
+        lock (_storeDecodeLock)
+        {
+            if (currentSlot != _storeDecodeSlot)
+            {
+                _storeDecodeSlot = currentSlot;
+                _storeDecodesThisSlot = 0;
+            }
+
+            if (_storeDecodesThisSlot >= StoreDecodesPerSlot)
+            {
+                return false;
+            }
+
+            _storeDecodesThisSlot++;
+            return true;
+        }
+    }
+
+    // The canonical index maps a slot to the root of the block at that slot, so such a root is a Gloas block matching the sidecar's slot.
+    private bool IsCanonicalAtRecentSlot(Hash256 blockRoot, ulong sidecarSlot)
+    {
+        ulong currentSlot = slotClock.CurrentSlot;
+        return (sidecarSlot == currentSlot || sidecarSlot + 1 == currentSlot)
+            && store!.TryGetCanonicalRoot(sidecarSlot, out Hash256? canonical)
+            && canonical == blockRoot;
     }
 
     private ulong MaxBlobsPerBlock(ulong slot) =>
@@ -454,26 +540,13 @@ public sealed class ColumnGossipRouter(
         return false;
     }
 
-    private bool IsGloasDigest(byte[] digest)
-    {
-        foreach (ulong epoch in GossipTopics.DigestRotationEpochs(spec, spec.GloasForkEpoch))
-        {
-            if (ForkDigest.Compute(spec, epoch).AsSpan().SequenceEqual(digest))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /// <summary>
     /// Accumulates <paramref name="sidecar"/> under <paramref name="blockRoot"/> and, once this
     /// block's held columns cross <see cref="Eip7594DasConstants.RequiredColumnsForReconstruction"/>,
     /// reconstructs the full matrix and publishes the columns this node did not itself receive
     /// (Fulu p2p-interface.md "distributed blob publishing"). Runs at most once per block: a
     /// completed root is never revisited, so a later gossip arrival for the same block cannot
-    /// re-reconstruct or re-publish. Different subnets' <c>OnMessage</c> callbacks can fire
+    /// re-reconstruct or re-publish. Different subnets' validator calls can run
     /// concurrently on separate threads for the very columns reconstruction watches, so the
     /// read-check-mutate sequence over <see cref="_heldColumnsByBlockRoot"/> and
     /// <see cref="_reconstructedBlockRoots"/> runs under <see cref="_reconstructionLock"/>: each
@@ -543,7 +616,7 @@ public sealed class ColumnGossipRouter(
     {
         lock (_subscriptionLock)
         {
-            foreach ((ulong subscribedSubnet, ITopic subscribedTopic, _) in _subscriptions)
+            foreach ((ulong subscribedSubnet, ITopic subscribedTopic) in _subscriptions)
             {
                 if (subscribedSubnet == subnet)
                 {
@@ -582,6 +655,8 @@ public sealed class ColumnGossipRouter(
     {
         Found,
         Unknown,
-        NotGloas,
+        PreGloas,
+        Unreadable,
+        BudgetSpent,
     }
 }
