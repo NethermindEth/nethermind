@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -22,33 +23,43 @@ namespace Nethermind.JsonRpc.Modules
                 : new SearchResult<Hash256>(blockHash);
         }
 
-        public static ResultWrapper<ReceiptForRpc[]?> GetBlockReceipts(this IReceiptFinder receiptFinder, BlockParameter blockParameter, IBlockFinder blockFinder, ISpecProvider specProvider)
+        public static ResultWrapper<IEnumerable<ReceiptForRpc>?> GetBlockReceipts(this IReceiptFinder receiptFinder, BlockParameter blockParameter, IBlockFinder blockFinder, ISpecProvider specProvider)
         {
             SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
             return searchResult.IsError
-                ? ResultWrapper<ReceiptForRpc[]?>.Success(null)
+                ? ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null)
                 : receiptFinder.GetBlockReceipts(searchResult.Object, specProvider);
         }
 
-        internal static ResultWrapper<ReceiptForRpc[]?> GetBlockReceipts(this IReceiptFinder receiptFinder, Block block, ISpecProvider specProvider)
+        /// <remarks>The result owns pooled receipts; the RPC stack disposes it after serialization.</remarks>
+        internal static ResultWrapper<IEnumerable<ReceiptForRpc>?> GetBlockReceipts(this IReceiptFinder receiptFinder, Block block, ISpecProvider specProvider)
         {
             Transaction[] transactions = block.Transactions;
             TxReceipt[] receipts = receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            ReceiptForRpc[] result = new ReceiptForRpc[Math.Min(receipts.Length, transactions.Length)];
-            // A running sum equals the per-receipt scan only when every index is its position.
-            bool positionalIndexes = HasPositionalIndexes(receipts);
-            int logIndexStart = 0;
-            for (int i = 0; i < result.Length; i++)
+            int count = Math.Min(receipts.Length, transactions.Length);
+            ReceiptsForRpc<ReceiptForRpc> result = new(count);
+            try
             {
-                TxReceipt receipt = receipts[i];
-                Transaction transaction = transactions[i];
-                int receiptLogIndexStart = positionalIndexes ? logIndexStart : receipts.GetBlockLogFirstIndex(receipt.Index);
-                result[i] = new ReceiptForRpc(transaction.Hash, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header), receiptLogIndexStart);
-                logIndexStart += receipt.Logs?.Length ?? 0;
+                // A running sum equals the per-receipt scan only when every index is its position.
+                bool positionalIndexes = HasPositionalIndexes(receipts);
+                int logIndexStart = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    TxReceipt receipt = receipts[i];
+                    Transaction transaction = transactions[i];
+                    int receiptLogIndexStart = positionalIndexes ? logIndexStart : receipts.GetBlockLogFirstIndex(receipt.Index);
+                    result.Add(new ReceiptForRpc(transaction.Hash, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header), receiptLogIndexStart));
+                    logIndexStart += receipt.Logs?.Length ?? 0;
+                }
+            }
+            catch
+            {
+                result.Dispose();
+                throw;
             }
 
-            return ResultWrapper<ReceiptForRpc[]?>.Success(result);
+            return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(result);
         }
 
         private static bool HasPositionalIndexes(TxReceipt[] receipts)

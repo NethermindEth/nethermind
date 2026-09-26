@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -37,16 +39,33 @@ public class ReceiptFinderExtensionsTests
         Assert.That(logIndexes, Is.EqualTo(expected.Select(static e => (long?)e).ToArray()), "each receipt must start after the logs of the receipts with a lower index");
     }
 
+    [Test]
+    public void GetBlockReceipts_WhenResultDisposed_ReturnsPooledLogs()
+    {
+        ResultWrapper<IEnumerable<ReceiptForRpc>?> result = GetBlockReceipts([Receipt(0, logCount: 2)]);
+        IReadOnlyList<LogEntryForRpc> logs = result.Data!.Single().Logs!;
+        Assert.That(logs, Has.Count.EqualTo(2), "precondition: the receipt carries its logs until the result is disposed");
+
+        result.Dispose();
+
+        Assert.That(() => logs.GetEnumerator(), Throws.TypeOf<ObjectDisposedException>(), "disposing the RPC result must return every receipt's pooled logs");
+    }
+
     private static long?[] LogIndexes(TxReceipt[] receipts)
+    {
+        using ResultWrapper<IEnumerable<ReceiptForRpc>?> result = GetBlockReceipts(receipts);
+
+        return result.Data!.SelectMany(static r => r.Logs!).Select(static l => l.LogIndex).ToArray();
+    }
+
+    private static ResultWrapper<IEnumerable<ReceiptForRpc>?> GetBlockReceipts(TxReceipt[] receipts)
     {
         Transaction[] transactions = receipts.Select(static _ => Build.A.Transaction.SignedAndResolved().TestObject).ToArray();
         Block block = Build.A.Block.WithTransactions(transactions).TestObject;
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.Get(block).Returns(receipts);
 
-        ReceiptForRpc[] result = receiptFinder.GetBlockReceipts(block, MainnetSpecProvider.Instance).Data!;
-
-        return result.SelectMany(static r => r.Logs!).Select(static l => l.LogIndex).ToArray();
+        return receiptFinder.GetBlockReceipts(block, MainnetSpecProvider.Instance);
     }
 
     private static TxReceipt Receipt(int index, int logCount) =>
