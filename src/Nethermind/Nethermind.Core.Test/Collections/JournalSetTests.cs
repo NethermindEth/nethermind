@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Collections;
@@ -12,7 +11,7 @@ namespace Nethermind.Core.Test.Collections
     [Parallelizable(ParallelScope.All)]
     public class JournalSetTests
     {
-        private static JournalSet<int> CreateJournalSet(bool useSparseClear = false) => new(EqualityComparer<int>.Default, useSparseClear);
+        private static JournalSet<int> CreateJournalSet() => new(EqualityComparer<int>.Default);
 
         [Test]
         public void Can_restore_snapshot()
@@ -59,9 +58,16 @@ namespace Nethermind.Core.Test.Collections
 
         /// <remarks>Adds after a restore refill the freed slots, where a hash set's own order stops following insertion order.</remarks>
         [Test]
-        public void Enumerates_in_insertion_order_when_restored_slots_are_reused()
+        public void Enumerates_in_insertion_order_when_restored_slots_are_reused([Values] bool afterSparseClear)
         {
             JournalSet<int> journalSet = CreateJournalSet();
+            if (afterSparseClear)
+            {
+                journalSet.AddRange(Enumerable.Range(100, 8192));
+                journalSet.Restore(0);
+                journalSet.Clear();
+            }
+
             journalSet.AddRange([3, 1, 2]);
             int snapshot = journalSet.TakeSnapshot();
             journalSet.AddRange([6, 4, 5]);
@@ -76,60 +82,10 @@ namespace Nethermind.Core.Test.Collections
             }
         }
 
-        private static int[] EnumerateConcrete(JournalSet<int> journalSet)
-        {
-            using List<int>.Enumerator enumerator = journalSet.GetEnumerator();
-            List<int> items = [];
-            while (enumerator.MoveNext())
-            {
-                items.Add(enumerator.Current);
-            }
-
-            return items.ToArray();
-        }
-
-        [Test]
-        public void Sparse_journal_enumerates_in_journal_order_after_restore_and_readd()
-        {
-            JournalSet<int> journalSet = CreateJournalSet(useSparseClear: true);
-            journalSet.AddRange(Enumerable.Range(0, 8192));
-            journalSet.Restore(1);
-            journalSet.Clear();
-            journalSet.AddRange([8, 9, 10]);
-
-            Assert.That(EnumerateConcrete(journalSet), Is.EqualTo([8, 9, 10]));
-            int snapshot = journalSet.TakeSnapshot();
-            journalSet.AddRange([11, 12]);
-            journalSet.Restore(snapshot);
-            journalSet.AddRange([13, 14]);
-
-            int[] expected = [8, 9, 10, 13, 14];
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(EnumerateConcrete(journalSet), Is.EqualTo(expected));
-
-                int[] copied = Enumerable.Repeat(-1, expected.Length + 1).ToArray();
-                journalSet.CopyTo(copied, 1);
-                Assert.That(copied, Is.EqualTo([-1, .. expected]));
-
-                IEnumerable<int> generic = journalSet;
-                Assert.That(generic, Is.EqualTo(expected));
-
-                IEnumerable nongeneric = journalSet;
-                List<int> enumerated = [];
-                foreach (object item in nongeneric)
-                {
-                    enumerated.Add((int)item);
-                }
-
-                Assert.That(enumerated, Is.EqualTo(expected));
-            }
-        }
-
         [Test]
         public void Sparse_clear_preserves_add_and_restore_semantics_after_large_growth()
         {
-            JournalSet<int> journalSet = CreateJournalSet(useSparseClear: true);
+            JournalSet<int> journalSet = CreateJournalSet();
             journalSet.AddRange(Enumerable.Range(0, 8192));
             journalSet.Restore(0);
 
@@ -169,7 +125,7 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void Sparse_clear_supports_reference_items()
         {
-            JournalSet<string> journalSet = new(EqualityComparer<string>.Default, useSparseClear: true);
+            JournalSet<string> journalSet = new(EqualityComparer<string>.Default);
             journalSet.AddRange(Enumerable.Range(0, 4096).Select(static i => i.ToString()));
             journalSet.Restore(0);
             journalSet.Clear();
