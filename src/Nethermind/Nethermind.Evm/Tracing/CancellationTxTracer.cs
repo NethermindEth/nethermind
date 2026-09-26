@@ -13,7 +13,7 @@ namespace Nethermind.Evm.Tracing;
 
 /// <summary>Checks cancellation in tracer callbacks, never between an instruction's start and its completion.</summary>
 /// <remarks>Wrap the complete tracer graph so cancellation cannot interrupt delivery to sibling observers.</remarks>
-public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default) : ITxTracer, ITxTracerWrapper, IInstructionTracingFilter
+public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default) : ITxTracer, ITxTracerWrapper, IInstructionTracingFilter, IFrameTxReceiptTracer
 {
     private readonly bool _isTracingReceipt;
     private readonly bool _isTracingActions;
@@ -31,6 +31,17 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingBlockAccess;
     private readonly bool _isTracingFees;
     private readonly bool _isTracingOpLevelLogs;
+
+    /// <inheritdoc/>
+    public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) =>
+        (innerTracer as IFrameTxReceiptTracer)?.ReportFrameTxReceipt(payer, frameReceipts);
+
+    /// <inheritdoc/>
+    public void ReportFrameEnd(int frameIndex, EvmExceptionType? error)
+    {
+        token.ThrowIfCancellationRequested();
+        (innerTracer as IFrameTxReceiptTracer)?.ReportFrameEnd(frameIndex, error);
+    }
 
     public ITxTracer InnerTracer => innerTracer;
 

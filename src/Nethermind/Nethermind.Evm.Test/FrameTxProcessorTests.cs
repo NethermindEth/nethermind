@@ -109,13 +109,136 @@ public class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_InvalidProtocolSignature_ReturnsMalformedTransaction()
+    public void UnsignedFrameTransaction_RequiresPlaceholderAndSimulation(
+        [Values] bool placeholder,
+        [Values(ExecutionOptions.CommitAndRestore, ExecutionOptions.None, ExecutionOptions.Commit, ExecutionOptions.BuildUp, ExecutionOptions.SkipValidationAndCommit, ExecutionOptions.FrameValidationPrefixOnly)] ExecutionOptions options)
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient, value: 5));
+        tx.FrameSignatures = placeholder
+            ? [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)]
+            : [];
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            bool succeeds = placeholder && options.HasFlag(ExecutionOptions.SkipValidation);
+            Assert.That(result.TransactionExecuted, Is.EqualTo(succeeds));
+            if (!succeeds)
+            {
+                Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+                Assert.That(result.ErrorDescription, Does.Contain(placeholder
+                    ? FrameTxSignatureValidator.InvalidSignatureLength
+                    : options == ExecutionOptions.FrameValidationPrefixOnly ? "validation prefix frame reverted" : "VERIFY frame reverted"));
+            }
+            if (!succeeds || options.HasFlag(ExecutionOptions.Restore))
+            {
+                Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(0UL));
+                Assert.That(_stateProvider.GetBalance(Sender), Is.EqualTo((UInt256)1.Ether));
+                Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.Zero));
+            }
+        }
+    }
+
+    [Test]
+    public void CallAndRestore_UnsignedCustomVerifier_StillExecutes([Values] bool reverts,
+        [Values(TxFrameSignature.SchemeP256, TxFrameSignature.SchemeArbitrary)] byte scheme)
+    {
+        DeploySmartSender(reverts
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [new TxFrameSignature(scheme, null, default, scheme == TxFrameSignature.SchemeArbitrary ? new byte[] { 1, 2, 3 } : default)];
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.TransactionExecuted, Is.EqualTo(!reverts));
+        if (reverts) Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+    }
+
+    [Test]
+    public void CallAndRestore_DefaultVerifier_RejectsInvalidPlaceholders(
+        [Values(TxFrameSignature.SchemeP256, TxFrameSignature.SchemeArbitrary, TxFrameSignature.SchemeSecp256k1)] byte scheme)
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [new TxFrameSignature(scheme, null,
+            scheme == TxFrameSignature.SchemeSecp256k1 ? TestItem.KeccakA.Bytes.ToArray() : default, default)];
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+    }
+
+    [Test]
+    public void CallAndRestore_MixedSignatures_ValidatesSuppliedSignature([Values] bool valid)
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures =
+        [
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default),
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default),
+        ];
+        SignCanonicalHash(tx, 1, valid ? TestItem.PrivateKeyA : TestItem.PrivateKeyB, signer: null);
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.TransactionExecuted, Is.EqualTo(valid));
+        if (!valid) Assert.That(result.ErrorDescription, Does.Contain(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+    }
+
+    [Test]
+    public void CallAndRestore_ArbitraryDummyData_IsCheckedByCustomVerifier([Values] bool matches)
+    {
+        byte[] condition = Prepare.EvmCode
+            .PushData(0).PushData(1).PushData(0).PushData(0).Op(Instruction.SIGDATACOPY)
+            .PushData(0).Op(Instruction.MLOAD).PushData(0).Op(Instruction.BYTE)
+            .PushData(42).Op(Instruction.EQ).Done;
+        DeploySmartSender(BranchOnStackTop(condition,
+            ApproveCode(FrameFlags.ApproveExecutionAndPayment),
+            Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { matches ? (byte)42 : (byte)43 })];
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.TransactionExecuted, Is.EqualTo(matches));
+        if (!matches) Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+    }
+
+    [Test]
+    public void CallAndRestore_DefaultVerifier_RejectsDifferentSigner([Values] bool placeholder)
+    {
+        _stateProvider.CreateAccount(Sender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, default)];
+        if (!placeholder) SignCanonicalHash(tx, 0, TestItem.PrivateKeyB, TestItem.AddressB);
+
+        TransactionResult result = CallAndRestore(tx);
+
+        Assert.That(result.TransactionExecuted, Is.False);
+        Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+    }
+
+    [Test]
+    public void InvalidProtocolSignature_ReturnsMalformedTransaction([Values] bool simulate,
+        [Values(TxFrameSignature.SchemeSecp256k1, TxFrameSignature.SchemeP256)] byte scheme)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressD, default, new byte[65])];
+        tx.FrameSignatures = [new TxFrameSignature(scheme, TestItem.AddressD, default, new byte[65])];
 
-        TransactionResult result = Process(tx);
+        TransactionResult result = simulate ? CallAndRestore(tx) : Process(tx);
 
         using (Assert.EnterMultipleScope())
         {
@@ -692,6 +815,30 @@ public class FrameTxProcessorTests
 
         Assert.That(result.TransactionExecuted, Is.True);
         AssertStorage(Observer, 0, new UInt256(FrameTxSigHash.ComputeValue(tx).Bytes, isBigEndian: true));
+    }
+
+    [Test]
+    public void Simulation_TxParamMaxCost_PlaceholderCoversSignedSignature()
+    {
+        UInt256 placeholder = SimulatedMaxCost(signed: false);
+        UInt256 signed = SimulatedMaxCost(signed: true);
+
+        Assert.That(placeholder, Is.GreaterThanOrEqualTo(signed));
+    }
+
+    /// <summary>The <c>TXPARAM</c> max_cost a frame observes with a SECP256K1 entry, run as simulation with its state kept.</summary>
+    private UInt256 SimulatedMaxCost(bool signed)
+    {
+        Transaction tx = TxParamObserverTx(0x06);
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, default)];
+        if (signed) SignCanonicalHash(tx, 0, TestItem.PrivateKeyB, TestItem.AddressB);
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.SkipValidationAndCommit);
+
+        Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+        return StorageAt(new StorageCell(Observer, 0));
     }
 
     /// <summary>Builds the transaction whose body frame stores <c>TXPARAM param</c> into the observer's slot 0.</summary>
