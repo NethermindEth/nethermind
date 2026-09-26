@@ -69,7 +69,7 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
         CancellationTokenSource cts = timeout.Cts;
         try
         {
-            byte[] requestSsz = await ReqRespFraming.ReadRequestAsync(stream, MaxRequestLength, cts.Token);
+            byte[] requestSsz = await ReqRespFraming.ReadRequestAsync(stream, MaxRequestLength, cts.Token, allowEmpty: true);
             BeaconBlocksByRootRequest request;
             try
             {

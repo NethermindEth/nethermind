@@ -14,9 +14,9 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 
 /// <summary>The Gloas <c>execution_payload_envelopes_by_range</c> v1 protocol.</summary>
 /// <remarks>
-/// The listen side serves envelopes from the local <see cref="ExecutionPayloadEnvelopePool"/>,
-/// skipping slots it does not hold. The dial side validates per-chunk fork-digest context bytes
-/// (in the shared base) and strictly increasing slots within the requested range.
+/// The listen side serves the envelopes of the current head's chain the local <see cref="ExecutionPayloadEnvelopePool"/>
+/// holds (see <see cref="ExecutionPayloadEnvelopePool.GetCanonical"/>), skipping slots it does not hold. The dial side
+/// validates per-chunk fork-digest context bytes (in the shared base) and strictly increasing slots within the requested range.
 /// </remarks>
 public sealed class ExecutionPayloadEnvelopesByRangeProtocol(BeaconChainSpec spec, ExecutionPayloadEnvelopePool pool) : ExecutionPayloadEnvelopesProtocolBase(spec),
     ISessionProtocol<ExecutionPayloadEnvelopesByRangeRequest, IReadOnlyList<SignedExecutionPayloadEnvelope>>
@@ -77,18 +77,19 @@ public sealed class ExecutionPayloadEnvelopesByRangeProtocol(BeaconChainSpec spe
                 throw new Eth2ReqRespException("Execution-payload-envelopes-by-range request count must be positive");
             }
 
-            ulong count = Math.Min(request.Count, MaxRequestPayloads);
-            for (ulong slot = request.StartSlot; slot < request.StartSlot + count; slot++)
+            foreach (SignedExecutionPayloadEnvelope envelope in pool.GetCanonical(request.StartSlot, Math.Min(request.Count, MaxRequestPayloads)))
             {
-                if (pool.TryGet(slot, out SignedExecutionPayloadEnvelope? envelope))
-                {
-                    await WriteEnvelopeChunkAsync(stream, envelope!, cts);
-                }
+                await WriteEnvelopeChunkAsync(stream, envelope, cts);
             }
         }
         catch (Eth2ReqRespException e)
         {
-            RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            // A walk past the cap or our own unreadable block is not the peer's fault.
+            if (e.ResponseCode == ReqRespFraming.ResponseCode.InvalidRequest)
+            {
+                RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            }
+
             await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
         }
         catch (OperationCanceledException)

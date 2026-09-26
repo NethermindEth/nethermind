@@ -9,10 +9,13 @@ using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -25,8 +28,9 @@ namespace Ethereum.ConsensusSpec.Test;
 /// against the synchronous checks of <see cref="GossipRouter"/>, for <see cref="Suites"/>.
 /// </summary>
 /// <remarks>
-/// <see cref="GossipRouter"/> raises a message that passes its stateless checks and returns Ignored; the signature and
-/// state rules run later in the import pipeline. Each message's <see cref="RouterVerdict"/> is observed from the router's
+/// <see cref="GossipRouter"/> raises a message that passes its synchronous checks and returns Ignored; the signature and
+/// state rules run later in the import pipeline. The router reads blocks from a store seeded with the vector's <c>blocks</c>
+/// (see <see cref="SeedStore"/>). Each message's <see cref="RouterVerdict"/> is observed from the router's
 /// events and drop counters, and every verdict other than raised must match a row of <see cref="SynchronousVerdicts"/>.
 /// An expected <c>valid</c> must be raised, an expected <c>ignore</c> must never be Rejected, and an expected <c>reject</c>
 /// must be Rejected. An expected reject the router raises or only drops makes the vector not-implemented, named by its reason.
@@ -99,6 +103,8 @@ public class GossipValidationTests
                 // With no seen-index set the router cannot rule out the earlier IGNORE, so it only drops this REJECT.
                 ("attestation data is not slashable", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
             ],
+            // An envelope whose block is not held is raised, so "envelope's block has not been seen" and, as the store holds only
+            // accepted blocks, "envelope's block failed validation" have no row; neither has the signature, which needs the state.
             [GossipTopics.ExecutionPayload] =
             [
                 // gloas/p2p-interface.md: verify_execution_requests_limits on the envelope.
@@ -108,8 +114,11 @@ public class GossipValidationTests
                 ("too many withdrawal requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
                 ("envelope is from a slot before the latest finalized slot", RouterVerdict.Ignored(GossipDropReason.BeforeFinalized)),
                 ("already seen envelope for this block root from this builder", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
-                // A REJECT the router only drops, as it orders it after the block checks; gossip_validation.md lets it run in any order.
-                ("too many withdrawals", RouterVerdict.Ignored(GossipDropReason.LimitExceeded)),
+                ("block's slot does not match payload's slot number", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("envelope's builder index does not match the bid's builder index", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("payload's block hash does not match the bid's block hash", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("envelope's execution requests root does not match the bid's", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("too many withdrawals", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
             ],
         };
 
@@ -222,7 +231,7 @@ public class GossipValidationTests
                 HeadRoot = Hash256.Zero,
             },
         };
-        GossipRouter router = new(spec, new SlotClock(spec, timestamper), LimboLogs.Instance, status: status);
+        GossipRouter router = new(spec, new SlotClock(spec, timestamper), LimboLogs.Instance, SeedStore(testCase.CasePath, spec), status);
         int raised = 0;
         router.BeaconBlockReceived += _ => raised++;
         router.AggregateAndProofReceived += _ => raised++;
@@ -300,6 +309,25 @@ public class GossipValidationTests
         }
     }
 
+    /// <summary>A spec-aware in-memory store holding the blocks meta.yaml lists under <c>blocks</c>, except those marked <c>failed</c>.</summary>
+    /// <remarks>A node stores only the blocks fork choice accepted, so a block that failed validation is never held.</remarks>
+    /// <param name="casePath">The vector directory holding meta.yaml and the block files.</param>
+    /// <param name="spec">The network the blocks are stored and read under.</param>
+    internal static BeaconChainStore SeedStore(string casePath, BeaconChainSpec spec)
+    {
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), spec);
+        foreach (VectorBlock block in VectorMeta.Load(casePath).Blocks)
+        {
+            if (block.Failed)
+                continue;
+
+            ForkedSignedBeaconBlock forked = SignedBeaconBlockCodec.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, block.Name + ".ssz_snappy")), spec);
+            store.PutForkedBlock(forked.ComputeMessageRoot(), forked);
+        }
+
+        return store;
+    }
+
     private static bool IsSynchronousVerdict(string topic, string reason, RouterVerdict verdict) =>
         SynchronousVerdicts.TryGetValue(topic, out (string Reason, RouterVerdict Verdict)[]? rows) && rows.Contains((reason, verdict));
 
@@ -355,8 +383,11 @@ public class GossipValidationTests
     /// <summary>One message of meta.yaml's <c>messages</c>, received at <see cref="TimeMs"/> after genesis.</summary>
     private sealed record VectorMessage(string Name, string Expected, string? Reason, long TimeMs);
 
-    /// <summary>The meta.yaml fields the synchronous checks read; the store-building <c>blocks</c> are not among them.</summary>
-    private sealed record VectorMeta(string Topic, ulong? FinalizedEpoch, List<VectorMessage> Messages)
+    /// <summary>One entry of meta.yaml's <c>blocks</c>; <see cref="Failed"/> marks a block that fails validation.</summary>
+    private sealed record VectorBlock(string Name, bool Failed);
+
+    /// <summary>The meta.yaml fields the synchronous checks read.</summary>
+    private sealed record VectorMeta(string Topic, ulong? FinalizedEpoch, List<VectorMessage> Messages, List<VectorBlock> Blocks)
     {
         public static VectorMeta Load(string casePath)
         {
@@ -386,7 +417,14 @@ public class GossipValidationTests
             if (messages.Count == 0)
                 throw new InvalidDataException("meta.yaml lists no messages");
 
-            return new VectorMeta(Scalar(root, "topic")!, finalizedEpoch, messages);
+            List<VectorBlock> blocks = [];
+            if (root.Children.TryGetValue(new YamlScalarNode("blocks"), out YamlNode? blockList))
+            {
+                foreach (YamlMappingNode block in ((YamlSequenceNode)blockList).Children.Cast<YamlMappingNode>())
+                    blocks.Add(new VectorBlock(Scalar(block, "block")!, Scalar(block, "failed") == "true"));
+            }
+
+            return new VectorMeta(Scalar(root, "topic")!, finalizedEpoch, messages, blocks);
         }
 
         private static string? Scalar(YamlMappingNode node, string key) =>

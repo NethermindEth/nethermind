@@ -100,10 +100,9 @@ public class GossipMessageValidatorTests
 
         yield return Case("execution payload envelope is consumed", Topic(GloasDigest, GossipTopics.ExecutionPayload), Encode(Envelope()), MessageValidity.Ignored, typeof(SignedExecutionPayloadEnvelope), null);
         yield return Case("envelope over an execution request limit", Topic(GloasDigest, GossipTopics.ExecutionPayload), Encode(Envelope(requests: RequestsOverLimit())), MessageValidity.Rejected, null, GossipDropReason.LimitExceeded);
-        yield return Case("envelope below the finalized slot", Topic(GloasDigest, GossipTopics.ExecutionPayload), Encode(Envelope(slot: FinalizedEpoch * Sepolia.SlotsPerEpoch - 1)), MessageValidity.Ignored, null, GossipDropReason.BeforeFinalized);
-        yield return Case("envelope at the finalized start slot is consumed", Topic(GloasDigest, GossipTopics.ExecutionPayload), Encode(Envelope(slot: FinalizedEpoch * Sepolia.SlotsPerEpoch)), MessageValidity.Ignored, typeof(SignedExecutionPayloadEnvelope), null);
-        yield return Case("envelope withdrawal count follows block checks, so only drops", Topic(GloasDigest, GossipTopics.ExecutionPayload),
-            Encode(Envelope(withdrawals: Presets.MaxWithdrawalsPerPayload + 1)), MessageValidity.Ignored, null, GossipDropReason.LimitExceeded);
+        yield return Case("envelope for a pre-Gloas slot only drops", Topic(GloasDigest, GossipTopics.ExecutionPayload), Encode(Envelope(slot: FuluSlot)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
+        yield return Case("envelope withdrawal count follows the block checks, so a block not held consumes it", Topic(GloasDigest, GossipTopics.ExecutionPayload),
+            Encode(Envelope(withdrawals: Presets.MaxWithdrawalsPerPayload + 1)), MessageValidity.Ignored, typeof(SignedExecutionPayloadEnvelope), null);
     }
 
     [TestCaseSource(nameof(Cases))]

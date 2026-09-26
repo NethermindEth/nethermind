@@ -16,7 +16,7 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 /// <summary>The Gloas <c>execution_payload_envelopes_by_root</c> v1 protocol.</summary>
 /// <remarks>
 /// The listen side serves whichever requested roots the local <see cref="ExecutionPayloadEnvelopePool"/>
-/// has. The dial side rejects an envelope whose beacon block root was not requested.
+/// has, which holds verified envelopes only. The dial side rejects an envelope whose beacon block root was not requested.
 /// </remarks>
 public sealed class ExecutionPayloadEnvelopesByRootProtocol(BeaconChainSpec spec, ExecutionPayloadEnvelopePool pool) : ExecutionPayloadEnvelopesProtocolBase(spec),
     ISessionProtocol<Hash256[], IReadOnlyList<SignedExecutionPayloadEnvelope>>
@@ -65,7 +65,7 @@ public sealed class ExecutionPayloadEnvelopesByRootProtocol(BeaconChainSpec spec
         CancellationTokenSource cts = timeout.Cts;
         try
         {
-            byte[] requestSsz = await ReqRespFraming.ReadRequestAsync(stream, MaxRequestLength, cts.Token);
+            byte[] requestSsz = await ReqRespFraming.ReadRequestAsync(stream, MaxRequestLength, cts.Token, allowEmpty: true);
             ExecutionPayloadEnvelopeRoots request;
             try
             {
