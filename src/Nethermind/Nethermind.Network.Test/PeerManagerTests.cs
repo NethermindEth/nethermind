@@ -509,8 +509,6 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
             Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
-            PacketSender packetSender = new(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
-            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
 
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
@@ -519,15 +517,7 @@ namespace Nethermind.Network.Test
                     ? (shouldLose ? TestItem.PublicKeyB : TestItem.PublicKeyC)
                     : (shouldLose ? TestItem.PublicKeyC : TestItem.PublicKeyB);
 
-            void EnsureSession(ISession? session)
-            {
-                if (session is null) return;
-                if (session.State < SessionState.HandshakeComplete) session.Handshake(session.Node.Id);
-                if (session.State < SessionState.Initialized) session.Init(5, context, packetSender);
-            }
-
             bool expectedOutSessionClosing = firstDirection == ConnectionDirection.In ? shouldLose : !shouldLose;
-            bool expectedInSessionClosing = !expectedOutSessionClosing;
 
             if (firstDirection == ConnectionDirection.In)
             {
@@ -550,6 +540,52 @@ namespace Nethermind.Network.Test
                 ctx.RlpxPeer.CreateIncoming(session1);
             }
 
+            AssertAgreedOnSessionToDisconnect(ctx, expectedOutSessionClosing);
+        }
+
+        [Test]
+        [NonParallelizable]
+        public async Task Will_agree_on_which_session_to_disconnect_when_incoming_arrives_while_dialing([Values] bool keepIn)
+        {
+            PublicKey remoteNodeId = keepIn ? TestItem.PublicKeyB : TestItem.PublicKeyC;
+            Session incoming = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
+            {
+                RemoteHost = "1.2.3.4",
+                RemotePort = 12345,
+                RemoteNodeId = remoteNodeId
+            };
+
+            await using Context ctx = new();
+            InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+            underlyingLogger.IsTrace.Returns(true);
+            // Traced after the dial activates the peer but before it marks the peer as awaiting the connection.
+            underlyingLogger
+                .When(static logger => logger.Trace(Arg.Is<string>(static text => text.StartsWith("CONNECTING TO"))))
+                .Do(_ => ctx.RlpxPeer.CreateIncoming(incoming));
+            ILogger logger = new(underlyingLogger);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            logManager.GetClassLogger<PeerManager>().Returns(logger);
+            ctx.CreatePeerManager(logManager);
+
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+            ctx.TestNodeSource.AddNode(new Node(remoteNodeId, incoming.RemoteHost, incoming.RemotePort));
+
+            AssertAgreedOnSessionToDisconnect(ctx, expectedOutSessionClosing: keepIn);
+        }
+
+        private void AssertAgreedOnSessionToDisconnect(Context ctx, bool expectedOutSessionClosing)
+        {
+            PacketSender packetSender = new(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
+            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+
+            void EnsureSession(ISession? session)
+            {
+                if (session is null) return;
+                if (session.State < SessionState.HandshakeComplete) session.Handshake(session.Node.Id);
+                if (session.State < SessionState.Initialized) session.Init(5, context, packetSender);
+            }
+
             Assert.That(() =>
             {
                 Peer? activePeer = ctx.PeerManager.ActivePeers.SingleOrDefault();
@@ -561,7 +597,7 @@ namespace Nethermind.Network.Test
                 return activePeer.OutSession is not null
                     && activePeer.InSession is not null
                     && activePeer.OutSession.IsClosing == expectedOutSessionClosing
-                    && activePeer.InSession.IsClosing == expectedInSessionClosing;
+                    && activePeer.InSession.IsClosing != expectedOutSessionClosing;
             }, Is.True.After(_delayLonger, 20));
 
             Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1).After(_delay, 10));
