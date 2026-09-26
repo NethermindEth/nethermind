@@ -120,11 +120,12 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             api.SyncPeerPool,
             api.MainProcessingContext);
 
+        api.DisposeStack.Push(jsonRpcRunner);
         try
         {
             await jsonRpcRunner.Start(cancellationToken);
         }
-        catch (Exception e) when (logger.IsError)
+        catch (Exception e) when (authentication is null && logger.IsError)
         {
             if (logger.IsError) logger.Error("Error during jsonRpc runner start", e);
         }
@@ -133,7 +134,6 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             api.LogManager, jsonRpcLocalStats, api.EthereumJsonSerializer, api.FileSystem);
         jsonIpcRunner.Start(cancellationToken);
 
-        api.DisposeStack.Push(jsonRpcRunner);
         api.DisposeStack.Push(jsonIpcRunner);
     }
 

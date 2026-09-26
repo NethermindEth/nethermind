@@ -105,7 +105,7 @@ public interface IInitConfig : IConfig
         HiddenFromDocs = true)]
     bool EvmWarmupEnabled { get; set; }
 
-    [ConfigItem(Description = "Whether to warm the block processing pipeline on startup, before RPC opens.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to warm the block processing pipeline before RPC and Engine API startup. Cancellation is requested after 30 seconds, then startup waits for cleanup. Skipped without the standard Merge plugin or with custom processing pipelines or database diagnostic modes.", DefaultValue = "true")]
     bool PipelineWarmupEnabled { get; set; }
 
     [ConfigItem(Description = "Whether to repair canonical-chain markers on startup after a canonical mismatch.", DefaultValue = "false", HiddenFromDocs = true)]

@@ -36,6 +36,7 @@ using Nethermind.Core.Authentication;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -169,8 +170,11 @@ public class EthereumRunnerTests
     [TestCase("foundation", false, true, WarmupSecretChange.Replaced)]
     [TestCase("amsterdam", false, false)]
     [TestCase("amsterdam", true, false)]
+    [TestCase("bogota", false, false)]
+    [TestCase("foundation", false, false, WarmupSecretChange.None, 10_000_000_000UL)]
+    [TestCase("foundation", false, true, WarmupSecretChange.None, 0UL, true)]
     public async Task Startup_pipeline_warmup_processes_payload(string chain, bool flatState, bool authenticated,
-        WarmupSecretChange secretChange = WarmupSecretChange.None)
+        WarmupSecretChange secretChange = WarmupSecretChange.None, ulong minGasPrice = 0, bool throughStartRpc = false)
     {
         ChainSpec spec = LoadWarmupChainSpec(chain);
         Block originalGenesis = spec.Genesis!;
@@ -193,7 +197,7 @@ public class EthereumRunnerTests
         using System.Net.Sockets.TcpListener livePorts = new(IPAddress.Loopback, 0);
         livePorts.Start();
         int livePort = ((IPEndPoint)livePorts.LocalEndpoint).Port;
-        ConfigProvider liveConfig = new(new InitConfig { BaseDbPath = dataDirectory.Path },
+        ConfigProvider liveConfig = new(new InitConfig { BaseDbPath = dataDirectory.Path }, new BlocksConfig { MinGasPrice = minGasPrice },
             new JsonRpcConfig
             {
                 Host = "127.0.0.1",
@@ -206,7 +210,55 @@ public class EthereumRunnerTests
             });
         ThreadPool.GetMinThreads(out int minWorkerThreads, out int minCompletionPortThreads);
 
-        await StartupPipelineWarmer.WarmupAsync(spec, liveConfig, flatState, cancellation.Token, authentication);
+        IRpcAuthentication? warmAuthentication = null;
+        bool nestedWarmupRan = false;
+        bool liveRpcInfoPreserved = false;
+        int outerPort = 0;
+        using NodeInfoScope? nodeInfo = throughStartRpc ? new NodeInfoScope() : null;
+        await StartupPipelineWarmer.WarmupAsync(spec, liveConfig, flatState, cancellation.Token, authentication,
+            configureContainer: builder =>
+            {
+                builder.RegisterBuildCallback(container =>
+                {
+                    warmAuthentication = container.Resolve<IRpcAuthentication>();
+                    outerPort = container.Resolve<IJsonRpcConfig>().Port;
+                });
+                if (throughStartRpc)
+                {
+                    builder.AddDecorator<IInitConfig>((_, config) =>
+                    {
+                        config.PipelineWarmupEnabled = true;
+                        return config;
+                    });
+                    OnWarmRpcStart(() =>
+                    {
+                        string outer = Directory.GetDirectories(Path.Combine(dataDirectory.Path, "startup-warmup"))[0];
+                        nestedWarmupRan = Directory.Exists(Path.Combine(outer, "startup-warmup"));
+                        liveRpcInfoPreserved = ThisNodeInfo.BuildNodeInfoScreen().Contains($"127.0.0.1:{outerPort}");
+                    })(builder);
+                }
+            });
+        if (authenticated)
+        {
+            JwtAuthentication warm = (JwtAuthentication)warmAuthentication!;
+            string warmToken = "Bearer " + WarmupToken(warm);
+            string liveToken = "Bearer " + WarmupToken((JwtAuthentication)authentication);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await warm.Authenticate(warmToken), Is.True);
+                Assert.That(await authentication.Authenticate(warmToken), Is.False, "warm credentials cannot authorize live requests");
+                Assert.That(await warm.Authenticate(liveToken), Is.False, "live credentials cannot authorize warm requests");
+                Assert.That(await warm.Authenticate(null), Is.False);
+            }
+        }
+        if (throughStartRpc)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nestedWarmupRan, Is.True, "the real StartRpc must invoke pipeline warmup before opening RPC");
+                Assert.That(liveRpcInfoPreserved, Is.True, "the warm RPC endpoint must not replace the live node information");
+            }
+        }
 
         ThreadPool.GetMinThreads(out int warmedWorkerThreads, out int warmedCompletionPortThreads);
         using (Assert.EnterMultipleScope())
@@ -222,6 +274,25 @@ public class EthereumRunnerTests
             else
                 Assert.That(File.ReadAllText(secretPath.Path), Is.EqualTo(expectedSecret));
             Assert.That(Directory.EnumerateDirectories(Path.Combine(dataDirectory.Path, "startup-warmup")), Is.Empty);
+        }
+    }
+
+    private static string WarmupToken(JwtAuthentication authentication) =>
+        (string)typeof(JwtAuthentication).GetMethod("CreateWarmupToken", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(authentication, null)!;
+
+    private sealed class NodeInfoScope : IDisposable
+    {
+        private const string Key = "JSON RPC     :";
+        private readonly ConcurrentDictionary<string, string> _items = (ConcurrentDictionary<string, string>)typeof(ThisNodeInfo)
+            .GetField("_nodeInfoItems", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+        private readonly string? _previous;
+
+        public NodeInfoScope() => _items.TryRemove(Key, out _previous);
+
+        public void Dispose()
+        {
+            _items.TryRemove(Key, out _);
+            if (_previous is not null) _items[Key] = _previous;
         }
     }
 
@@ -347,6 +418,91 @@ public class EthereumRunnerTests
         Assert.That(Directory.EnumerateDirectories(Path.Combine(dataDirectory.Path, "startup-warmup")), Is.Empty);
     }
 
+    [Test]
+    public void Startup_pipeline_warmup_propagates_rpc_bind_failure()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        System.Net.Sockets.TcpListener? occupied = null;
+        try
+        {
+            Assert.CatchAsync<System.IO.IOException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
+                WarmupConfig(directory.Path), false, cancellation.Token, configureContainer: builder =>
+                {
+                    IJsonRpcConfig? config = null;
+                    builder.RegisterBuildCallback(container => config = container.Resolve<IJsonRpcConfig>());
+                    OnWarmRpcStart(() =>
+                    {
+                        occupied = new System.Net.Sockets.TcpListener(IPAddress.Loopback, config!.Port);
+                        occupied.Start();
+                    })(builder);
+                }));
+            Assert.That(Directory.EnumerateDirectories(Path.Combine(directory.Path, "startup-warmup")), Is.Empty);
+        }
+        finally
+        {
+            occupied?.Stop();
+        }
+    }
+
+    [Test]
+    public async Task Startup_pipeline_warmup_drains_reports_before_container_disposal()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using CancellationTokenSource cancellation = new(RunnerTimeout);
+        using ManualResetEventSlim release = new();
+        TaskCompletionSource reporting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool disposed = false;
+        InterfaceLogger slowLogger = Substitute.For<InterfaceLogger>();
+        slowLogger.IsWarn.Returns(true);
+        slowLogger.When(logger => logger.Warn(Arg.Any<string>())).Do(_ =>
+        {
+            reporting.TrySetResult();
+            release.Wait();
+        });
+        ILogManager logs = Substitute.For<ILogManager>();
+        ILogger slowBlocks = new(slowLogger);
+        logs.GetLogger("SlowBlocks").Returns(slowBlocks);
+        logs.GetClassLogger<ProcessingStats>().Returns(LimboLogs.Instance.GetClassLogger<ProcessingStats>());
+        Task warmup = StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(directory.Path), false,
+            cancellation.Token, configureContainer: builder =>
+            {
+                builder.Register(_ => new object()).OnRelease(_ => disposed = true).AutoActivate();
+                builder.RegisterType<StartupPipelineWarmer.WarmProcessingStats>().As<IProcessingStats>()
+                    .WithParameter("logManager", logs)
+                    .WithParameter("blocksConfig", new BlocksConfig { SlowBlockThresholdMs = 0 })
+                    .InstancePerLifetimeScope();
+                builder.AddDecorator<IServiceStopper>((_, inner) => new ObservedServiceStopper(inner, stopped));
+            });
+        try
+        {
+            await reporting.Task.WaitAsync(RunnerTimeout);
+            await stopped.Task.WaitAsync(RunnerTimeout);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(warmup.IsCompleted, Is.False);
+                Assert.That(disposed, Is.False, "reports still own their storage dependencies");
+            }
+        }
+        finally
+        {
+            release.Set();
+            await warmup.WaitAsync(RunnerTimeout);
+        }
+        Assert.That(disposed, Is.True);
+    }
+
+    private sealed class ObservedServiceStopper(IServiceStopper inner, TaskCompletionSource stopped) : IServiceStopper
+    {
+        public void AddStoppable(IStoppableService service) => inner.AddStoppable(service);
+        public async Task StopAllServices()
+        {
+            await inner.StopAllServices();
+            stopped.TrySetResult();
+        }
+    }
+
     private static IConfigProvider WarmupConfig(string dataDirectory) => new ConfigProvider(new InitConfig { BaseDbPath = dataDirectory });
 
     private static Action<ContainerBuilder> CancelWhenRpcStarts(CancellationTokenSource cancellation, Action? beforeCancel = null) =>
@@ -365,11 +521,12 @@ public class EthereumRunnerTests
 
     private static ChainSpec LoadWarmupChainSpec(string chain = "foundation")
     {
-        if (chain == "amsterdam")
+        if (chain is "amsterdam" or "bogota")
         {
             using Stream source = typeof(IConfig).Assembly.GetManifestResourceStream("Nethermind.Config.chainspec.hoodi.json")!;
             JsonNode genesis = JsonNode.Parse(source)!;
             genesis["config"]!["amsterdamTime"] = 0;
+            if (chain == "bogota") genesis["config"]!["bogotaTime"] = 0;
             using MemoryStream modified = new(System.Text.Encoding.UTF8.GetBytes(genesis.ToJsonString()));
             return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), NullLogManager.Instance).Load(modified);
         }

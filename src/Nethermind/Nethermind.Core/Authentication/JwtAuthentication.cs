@@ -33,10 +33,11 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
     private static readonly Task<bool> True = Task.FromResult(true);
     private static readonly Task<bool> False = Task.FromResult(false);
 
-    // JwtAuthentication is created once from JsonRpc.JwtSecretFile during startup and registered as a singleton.
-    // The JWT secret is immutable for the process lifetime, so this thread-local HMAC is keyed by that process constant.
+    // Warmup and live RPC use distinct secrets on shared thread-pool threads.
     [ThreadStatic]
     private static HMACSHA256? _hmac;
+    [ThreadStatic]
+    private static byte[]? _hmacSecret;
 
     // Known HS256 JWT header Base64Url encodings used by consensus clients
     // {"alg":"HS256","typ":"JWT"}
@@ -249,7 +250,13 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             return false;
 
         Span<byte> computedHash = stackalloc byte[SHA256HashBytes];
-        if (!(_hmac ??= new HMACSHA256(_secretBytes)).TryComputeHash(signedBytes, computedHash, out _))
+        if (!ReferenceEquals(_hmacSecret, _secretBytes))
+        {
+            _hmac?.Dispose();
+            _hmac = new HMACSHA256(_secretBytes);
+            _hmacSecret = _secretBytes;
+        }
+        if (!_hmac!.TryComputeHash(signedBytes, computedHash, out _))
             return false;
 
         Span<byte> sigBytes = stackalloc byte[SHA256HashBytes];

@@ -9,6 +9,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -81,8 +82,11 @@ internal static class StartupPipelineWarmer
         WarmMetrics warmMetrics = new();
         try
         {
-            string? token = (authentication as JwtAuthentication)?.CreateWarmupToken();
-            await RunAsync(source, liveConfig, flatState, directory.FullName, token, authentication, keys, configureContainer, warmMetrics, cancellationToken);
+            IRpcAuthentication warmAuthentication = authentication is JwtAuthentication
+                ? JwtAuthentication.FromSecret(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)), Timestamper.Default, logger)
+                : NoAuthentication.Instance;
+            string? token = (warmAuthentication as JwtAuthentication)?.CreateWarmupToken();
+            await RunAsync(source, liveConfig, flatState, directory.FullName, token, warmAuthentication, keys, configureContainer, warmMetrics, cancellationToken);
         }
         finally
         {
@@ -101,7 +105,7 @@ internal static class StartupPipelineWarmer
         }
     }
 
-    private static async Task RunAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, string directory, string? token, IRpcAuthentication? authentication,
+    private static async Task RunAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, string directory, string? token, IRpcAuthentication authentication,
         PrivateKey[] keys, Action<ContainerBuilder>? configureContainer, WarmMetrics warmMetrics, CancellationToken cancellationToken)
     {
         ulong timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -139,7 +143,13 @@ internal static class StartupPipelineWarmer
                 [Eip2935Constants.BlockHashHistoryAddress] = new() { Code = Eip2935Constants.Code }
             }
         };
-        for (int i = 0; i < SenderCount; i++) chainSpec.Allocations[keys[i].Address] = new() { Balance = 1_000_000_000_000_000_000 };
+        UInt256 minGasPrice = liveConfig.GetConfig<IBlocksConfig>().MinGasPrice;
+        if (UInt256.AddOverflow(minGasPrice, (UInt256)2_000_000_000, out UInt256 feeBudget)
+            || UInt256.AddOverflow(feeBudget, genesisHeader.BaseFeePerGas, out feeBudget)
+            || UInt256.MultiplyOverflow(feeBudget, (UInt256)60_000_000, out UInt256 balance)
+            || UInt256.AddOverflow(balance, (UInt256)TransactionCount, out balance))
+            throw new InvalidOperationException("Startup warmup cannot fund the configured minimum gas price.");
+        for (int i = 0; i < SenderCount; i++) chainSpec.Allocations[keys[i].Address] = new() { Balance = balance };
         IJsonRpcConfig liveRpcConfig = liveConfig.GetConfig<IJsonRpcConfig>();
         int port = GetFreeLoopbackPort();
         IMergeConfig mergeConfig = liveConfig.GetConfig<IMergeConfig>();
@@ -205,8 +215,8 @@ internal static class StartupPipelineWarmer
             .AddSingleton<ISpecProvider>(new ChainSpecBasedSpecProvider(source))
             .AddSingleton(warmMetrics)
             .AddScoped<IProcessingStats, WarmProcessingStats>();
-        // Reuse the loaded authenticator so warmup never reads or recreates the live secret file.
-        if (authentication is not null) builder.AddSingleton(authentication);
+        // A disposable secret exercises production authentication without granting access to the live Engine API.
+        builder.AddSingleton(authentication);
         configureContainer?.Invoke(builder);
         try
         {
@@ -229,7 +239,7 @@ internal static class StartupPipelineWarmer
                 await PostAsync(client, serializer, address, "eth_chainId", [], cancellationToken);
                 // The pool validates against the head's fork, so move the head off the source genesis before submitting typed transactions.
                 Block head = await BuildBlockAsync(container, genesisHeader, timestamp - 1, 0, cancellationToken);
-                await SendPayloadAsync(client, serializer, address, head, cancellationToken);
+                await SendPayloadAsync(client, serializer, address, head, container.Resolve<ISpecProvider>().GetSpec(head.Header), cancellationToken);
                 SubmitTransactions(container, keys);
                 Block block = await BuildBlockAsync(container, head.Header, timestamp, TransactionCount, cancellationToken);
                 int processedTransactions = 0;
@@ -240,7 +250,7 @@ internal static class StartupPipelineWarmer
                     if (args.TxReceipt.StatusCode != (args.Transaction.To == RevertContract ? 0 : 1))
                         Interlocked.Increment(ref unexpectedReceipts);
                 };
-                await SendPayloadAsync(client, serializer, address, block, cancellationToken);
+                await SendPayloadAsync(client, serializer, address, block, container.Resolve<ISpecProvider>().GetSpec(block.Header), cancellationToken);
                 await main.BlockProcessingQueue.WaitUntilRemovedAsync(block.Hash!).AsTask().WaitAsync(cancellationToken);
                 if (processedTransactions != block.Transactions.Length)
                     throw new InvalidOperationException("Startup warmup did not execute every transaction through the payload pipeline.");
@@ -256,7 +266,15 @@ internal static class StartupPipelineWarmer
                 }
                 finally
                 {
-                    await container.Resolve<GCKeeper>().StopAsync();
+                    try
+                    {
+                        await container.Resolve<GCKeeper>().StopAsync();
+                    }
+                    finally
+                    {
+                        // Services have stopped queuing reports; storage must remain alive until their readers finish.
+                        await warmMetrics.DrainAsync();
+                    }
                     warmMetrics.BestKnownNumber = container.Resolve<IBlockTree>().BestKnownNumber;
                 }
             }
@@ -282,21 +300,20 @@ internal static class StartupPipelineWarmer
     /// <summary>The height gauges the warm node published, and its outstanding processing reports.</summary>
     internal sealed class WarmMetrics
     {
-        private const int ReportTimeoutMs = 5_000;
         public int PendingReports;
         public ulong? PublishedHeight;
         public ulong? BestKnownNumber;
 
+        /// <summary>Waits for queued reports before their storage dependencies can be disposed.</summary>
+        public async Task DrainAsync()
+        {
+            while (Volatile.Read(ref PendingReports) > 0) await Task.Delay(1);
+        }
+
         /// <summary>Waits for the warm node's queued reports, then gives its height gauges back to the live chain.</summary>
         public async Task RestoreLiveAsync(IBlockTree live)
         {
-            long deadline = Environment.TickCount64 + ReportTimeoutMs;
-            while (Volatile.Read(ref PendingReports) > 0)
-            {
-                // RPC startup waits for this cleanup; a stuck report leaves its gauge value until the next live block.
-                if (Environment.TickCount64 > deadline) return;
-                await Task.Delay(1);
-            }
+            await DrainAsync();
             if (PublishedHeight is { } height)
             {
                 Func<ulong> liveHeight = () => live.Head?.Number ?? height;
@@ -340,6 +357,12 @@ internal static class StartupPipelineWarmer
         IEthereumEcdsa ecdsa = container.Resolve<IEthereumEcdsa>();
         ITxPool txPool = container.Resolve<ITxPool>();
         PrivateKey authority = keys[SenderCount];
+        BlockHeader head = container.Resolve<IBlockTree>().Head!.Header;
+        UInt256 baseFee = spec.IsEip1559Enabled ? BaseFeeCalculator.Calculate(head, spec) : UInt256.Zero;
+        UInt256 minimum = container.Resolve<IBlocksConfig>().MinGasPrice;
+        UInt256 tip = minimum > 2_000_000_000 ? minimum : (UInt256)2_000_000_000;
+        if (UInt256.AddOverflow(tip, baseFee, out UInt256 price))
+            throw new InvalidOperationException("Startup warmup fee cap exceeds 256 bits.");
         for (int i = 0; i < TransactionCount; i++)
         {
             PrivateKey sender = keys[i % SenderCount];
@@ -359,8 +382,8 @@ internal static class StartupPipelineWarmer
                 Nonce = (ulong)(i / SenderCount),
                 // Under Amsterdam pricing the authorization plus two fresh slots exceeds 250k gas.
                 GasLimit = type == TxType.SetCode ? 1_000_000UL : 250_000UL,
-                GasPrice = 2_000_000_000,
-                DecodedMaxFeePerGas = 2_000_000_000,
+                GasPrice = type is TxType.Legacy or TxType.AccessList ? price : tip,
+                DecodedMaxFeePerGas = price,
                 To = i switch { 0 => Address.Zero, 1 => RevertContract, 3 => authority.Address, _ => StorageContract },
                 Value = 1,
                 Data = slot,
@@ -409,21 +432,25 @@ internal static class StartupPipelineWarmer
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
-    private static async Task SendPayloadAsync(HttpClient client, EthereumJsonSerializer serializer, string address, Block block, CancellationToken cancellationToken)
+    private static async Task SendPayloadAsync(HttpClient client, EthereumJsonSerializer serializer, string address, Block block, IReleaseSpec spec, CancellationToken cancellationToken)
     {
-        string method = block.Header.BlockAccessListHash is not null ? "engine_newPayloadV5"
-            : block.Header.RequestsHash is not null ? "engine_newPayloadV4"
-            : block.Header.BlobGasUsed is not null ? "engine_newPayloadV3"
-            : block.Withdrawals is not null ? "engine_newPayloadV2" : "engine_newPayloadV1";
-        ExecutionPayload payload = block.Header.BlockAccessListHash is not null
+        string method = spec.IsEip7805Enabled ? "engine_newPayloadV6"
+            : spec.IsEip7928Enabled ? "engine_newPayloadV5"
+            : spec.RequestsEnabled ? "engine_newPayloadV4"
+            : spec.IsEip4844Enabled ? "engine_newPayloadV3"
+            : spec.WithdrawalsEnabled ? "engine_newPayloadV2" : "engine_newPayloadV1";
+        ExecutionPayload payload = spec.IsEip7928Enabled
             ? ExecutionPayloadV4.Create(block) : ExecutionPayloadV3.Create(block);
-        object[] parameters = block.Header.RequestsHash is not null
+        object[] parameters = spec.IsEip7805Enabled
+            ? [payload, Array.Empty<Hash256>(), Keccak.Zero, Array.Empty<byte[]>(), Array.Empty<byte[]>()]
+            : spec.RequestsEnabled
             ? [payload, Array.Empty<Hash256>(), Keccak.Zero, Array.Empty<byte[]>()]
-            : block.Header.BlobGasUsed is not null ? [payload, Array.Empty<Hash256>(), Keccak.Zero] : [payload];
+            : spec.IsEip4844Enabled ? [payload, Array.Empty<Hash256>(), Keccak.Zero] : [payload];
         EnsureValid(await PostAsync(client, serializer, address, method, parameters, cancellationToken), method);
-        string forkchoiceUpdated = block.Header.SlotNumber is not null ? "engine_forkchoiceUpdatedV4"
-            : block.Header.BlobGasUsed is not null ? "engine_forkchoiceUpdatedV3"
-            : block.Withdrawals is not null ? "engine_forkchoiceUpdatedV2" : "engine_forkchoiceUpdatedV1";
+        string forkchoiceUpdated = spec.IsEip7805Enabled ? "engine_forkchoiceUpdatedV5"
+            : spec.IsEip7843Enabled ? "engine_forkchoiceUpdatedV4"
+            : spec.IsEip4844Enabled ? "engine_forkchoiceUpdatedV3"
+            : spec.WithdrawalsEnabled ? "engine_forkchoiceUpdatedV2" : "engine_forkchoiceUpdatedV1";
         object forkchoiceState = new { headBlockHash = block.Hash, safeBlockHash = block.Hash, finalizedBlockHash = block.Hash };
         EnsureValid((await PostAsync(client, serializer, address, forkchoiceUpdated, [forkchoiceState, null], cancellationToken)).GetProperty("payloadStatus"), forkchoiceUpdated);
     }
