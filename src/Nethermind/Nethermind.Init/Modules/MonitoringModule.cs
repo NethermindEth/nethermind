@@ -9,6 +9,7 @@ using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
@@ -27,7 +28,7 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
         {
             builder
                 .AddSingleton<IMonitoringService, MonitoringService>()
-                .AddSingleton<IMetricsController, IMetricsConfig, ISyncConfig, ISpecProvider>(
+                .AddSingleton<IMetricsController, IMetricsConfig, ISyncConfig, IFlatDbConfig, ISpecProvider>(
                     PrepareProductInfoMetrics)
 
                 .AddSingleton<AllocatorMetricsUpdater>()
@@ -58,7 +59,7 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
         }
     }
 
-    private IMetricsController PrepareProductInfoMetrics(IMetricsConfig metricsConfig, ISyncConfig syncConfig, ISpecProvider specProvider)
+    private IMetricsController PrepareProductInfoMetrics(IMetricsConfig metricsConfig, ISyncConfig syncConfig, IFlatDbConfig flatDbConfig, ISpecProvider specProvider)
     {
         // Need to be set here, or we cant start before blocktree, which is the one that set this normally.
         ProductInfo.Network = $"{(specProvider.ChainId == specProvider.NetworkId ? BlockchainIds.GetBlockchainName(specProvider.NetworkId) : specProvider.ChainId)}";
@@ -70,7 +71,8 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
            : "Full";
 
 
-        ProductInfo.PruningMode = "Flat";
+        // FlatDB history replaces Pruning.Mode=None, so the label still tells archive nodes apart.
+        ProductInfo.PruningMode = flatDbConfig.HistoryEnabled ? "FlatArchive" : "Flat";
         Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
 
         IMetricsController controller = new MetricsController(metricsConfig);

@@ -91,4 +91,7 @@ These metrics were only produced by the removed backends and are no longer expor
   nethermind_deep_pruning_time_ms, nethermind_last_persisted_block_number and nethermind_dirty_memory_used_by_cache
 - nethermind_state_reader_reads and nethermind_storage_reader_reads
 
+The PruningMode tag that every metric carries no longer reports the Pruning.Mode value. It is `FlatArchive` when
+FlatDb.HistoryEnabled is true and `Flat` otherwise.
+
 Configuration details are documented in the [FlatDB import guide](https://docs.nethermind.io/next/fundamentals/configuration/#flatdbimportfrompruningtriestate).
