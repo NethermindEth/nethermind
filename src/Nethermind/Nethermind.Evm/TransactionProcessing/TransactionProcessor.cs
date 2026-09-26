@@ -1674,7 +1674,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // left in gas_left (including refunded spill), so only the reservoir goes unspent here.
             ulong preRefundGas = tx.GasLimit - (ulong)stateReservoir;
             // The execution gas refund (e.g. EIP-7702 ACCOUNT_WRITE) survives a halt: the spec adds it to
-            // the refund counter pre-execution and applies min(before_refund / 5, counter) to tx_gas_used.
+            // the refund counter pre-execution and applies min(before_refund / 5, counter) (uncapped under EIP-3298).
             ulong executionRefund = CalculateClaimableRefund(preRefundGas, codeInsertExecutionRefund, spec);
             ulong spentGas = Math.Max(preRefundGas - executionRefund, floorGas);
             // Spilled state gas burns in gas_left as execution gas; the state dimension keeps
@@ -1884,6 +1884,13 @@ namespace Nethermind.Evm.TransactionProcessing
             long totalToRefund = (long)codeInsertExecutionRefund;
             if (!substate.IsError && !substate.ShouldRevert)
                 totalToRefund += substate.Refund + (substate.DestroyList?.Count ?? 0) * (long)spec.GasCosts.DestroyRefund;
+
+            // EIP-3298: no cap; the remaining refunds never exceed the same transaction's charges.
+            if (spec.IsEip3298Enabled)
+            {
+                Debug.Assert(totalToRefund <= (long)spentGas, $"EIP-3298 invariant violated: refund ({totalToRefund}) exceeds gas used ({spentGas}).");
+                return (spentGas, totalToRefund);
+            }
 
             long quotient = spec.IsEip3529Enabled ? (long)RefundHelper.MaxRefundQuotientEIP3529 : (long)RefundHelper.MaxRefundQuotient;
             return (spentGas, Math.Min((long)(spentGas / (ulong)quotient), totalToRefund));

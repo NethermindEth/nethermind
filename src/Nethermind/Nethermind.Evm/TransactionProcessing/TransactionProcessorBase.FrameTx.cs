@@ -486,7 +486,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction never set a payer");
         }
 
-        // EIP-3529 refunds are netted once at the transaction level, capped at a fifth of the gross gas;
+        // EIP-3529 refunds are netted once at the transaction level, capped at a fifth of the gross gas (uncapped under EIP-3298);
         // per-frame receipts stay gross of them, and the EIP-7623 floor bounds the net charge from below.
         long stateGasCorrection = 0;
         for (int f = 0; f < frameReceipts.Length; f++)
