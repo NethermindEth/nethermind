@@ -391,6 +391,36 @@ public class CarryForwardCachingPersistenceTests
         }
     }
 
+    [TestCaseSource(nameof(CacheKinds))]
+    public async Task BatchRead_RecordsAHitOrMissPerKey(CacheKind kind)
+    {
+        bool detailedMetricsEnabled = Db.Metrics.DetailedMetricsEnabled;
+        FakePersistence inner = new();
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
+        try
+        {
+            cache.Clear();
+            Db.Metrics.DetailedMetricsEnabled = true;
+            Read(kind, cache, 1);
+            long hitsBefore = GetHits(kind);
+            long missesBefore = GetMisses(kind);
+
+            ReadBatch(kind, cache, 1, 2);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetHits(kind) - hitsBefore, Is.EqualTo(1), "the key cached by the scalar read is a hit");
+                Assert.That(GetMisses(kind) - missesBefore, Is.EqualTo(1), "the uncached key is a miss");
+            }
+        }
+        finally
+        {
+            cache.Clear();
+            Db.Metrics.DetailedMetricsEnabled = detailedMetricsEnabled;
+        }
+    }
+
     private static IEnumerable<TestCaseData> SlotReadCases()
     {
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((_, _) => { }), 1)
@@ -505,6 +535,19 @@ public class CarryForwardCachingPersistenceTests
         UInt256 slot = new((ulong)key);
         UInt256 value = default;
         return reader.TryGetSlot(Address, slot, ref value);
+    }
+
+    private static void ReadBatch(CacheKind kind, IPersistence persistence, int firstKey, int secondKey)
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        if (kind == CacheKind.Account)
+        {
+            reader.GetAccounts([GetAddress(firstKey), GetAddress(secondKey)], new Account?[2]);
+            return;
+        }
+
+        StorageCell[] cells = [new(Address, new UInt256((ulong)firstKey)), new(Address, new UInt256((ulong)secondKey))];
+        reader.GetSlots(cells, new UInt256[2], new bool[2]);
     }
 
     private static void Invalidate(CacheKind kind, CarryForwardCachingPersistence cache, int key)

@@ -100,11 +100,13 @@ public sealed class ReadOnlySnapshotBundle(
             HashedKey<Address> key = new(address);
             bool found = false;
 
+            long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
             for (int snapshotIndex = snapshots.Count - 1; snapshotIndex >= 0; snapshotIndex--)
             {
                 if (!snapshots[snapshotIndex].TryGetAccount(key, out Account? account)) continue;
 
                 accounts[addressIndex] = account;
+                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountSnapshotLabel);
                 found = true;
                 break;
             }
@@ -125,10 +127,21 @@ public sealed class ReadOnlySnapshotBundle(
         if (missingCount == 0) return;
 
         using ArrayPoolListRef<Account?> missingAccounts = new(missingCount, missingCount);
+        long batchStart = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         persistenceReader.GetAccounts(missingAddresses.AsSpan(), missingAccounts.AsSpan());
+        double perKeyTime = recordDetailedMetrics ? PerKeyTime(batchStart, missingCount) : 0;
         for (int i = 0; i < missingCount; i++)
-            accounts[missingIndices[i]] = missingAccounts[i];
+        {
+            Account? account = missingAccounts[i];
+            accounts[missingIndices[i]] = account;
+            if (recordDetailedMetrics)
+                Metrics.ReadOnlySnapshotBundleTimes.Observe(perKeyTime, account is null ? _readAccountPersistenceNullLabel : _readAccountPersistenceLabel);
+        }
     }
+
+    // A batch has no per-key latency, so each of its keys is observed at the batch average, keeping the label counts
+    // and the summed time comparable with the scalar reads.
+    private static double PerKeyTime(long batchStart, int keyCount) => (double)(Stopwatch.GetTimestamp() - batchStart) / keyCount;
 
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
@@ -166,11 +179,13 @@ public sealed class ReadOnlySnapshotBundle(
             int selfDestructStateIdx = selfDestructStateIdxs[cellIndex];
             bool resolved = false;
 
+            long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
             for (int snapshotIndex = snapshots.Count - 1; snapshotIndex >= 0; snapshotIndex--)
             {
                 if (snapshots[snapshotIndex].TryGetStorage(key, out UInt256? slotValue))
                 {
                     slots[cellIndex] = slotValue;
+                    if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
                     resolved = true;
                     break;
                 }
@@ -185,7 +200,6 @@ public sealed class ReadOnlySnapshotBundle(
 
             if (resolved) continue;
 
-            long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
             if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(
                 cell.Address,
                 cell.Index,
@@ -206,9 +220,16 @@ public sealed class ReadOnlySnapshotBundle(
 
         using ArrayPoolListRef<UInt256> missingSlots = new(missingCount, missingCount);
         using ArrayPoolListRef<bool> missingFound = new(missingCount, missingCount);
+        long batchStart = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         persistenceReader.GetSlots(missingCells.AsSpan(), missingSlots.AsSpan(), missingFound.AsSpan());
+        double perKeyTime = recordDetailedMetrics ? PerKeyTime(batchStart, missingCount) : 0;
         for (int i = 0; i < missingCount; i++)
-            slots[missingIndices[i]] = missingFound[i] ? missingSlots[i] : null;
+        {
+            bool slotFound = missingFound[i];
+            slots[missingIndices[i]] = slotFound ? missingSlots[i] : null;
+            if (recordDetailedMetrics)
+                Metrics.ReadOnlySnapshotBundleTimes.Observe(perKeyTime, missingSlots[i].IsZero ? _readStoragePersistenceNullLabel : _readStoragePersistenceLabel);
+        }
     }
 
     public void GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, out UInt256? value)

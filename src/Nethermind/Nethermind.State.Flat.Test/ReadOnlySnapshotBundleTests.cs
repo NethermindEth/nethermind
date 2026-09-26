@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -196,6 +198,47 @@ public class ReadOnlySnapshotBundleTests
     }
 
     [Test]
+    public void BatchReads_ObserveOneDetailedMetricPerKey()
+    {
+        Address snapshotAddress = TestItem.AddressA;
+        Address persistedAddress = TestItem.AddressB;
+        StorageCell snapshotCell = new(TestItem.AddressA, (UInt256)1);
+        StorageCell persistenceCell = new(TestItem.AddressB, (UInt256)2);
+        IMetricObserver previousObserver = Metrics.ReadOnlySnapshotBundleTimes;
+        LabelRecordingObserver observer = new();
+        Metrics.ReadOnlySnapshotBundleTimes = observer;
+        try
+        {
+            using (ReadOnlySnapshotBundle bundle = Bundle(
+                FlatTestHelpers.SnapshotList(MakeSnapshot(c => c.Accounts[new HashedKey<Address>(snapshotAddress)] = TestItem.GenerateIndexedAccount(1))),
+                new TrackingPersistenceReader(persistedAddress, TestItem.GenerateIndexedAccount(2)),
+                recordDetailedMetrics: true))
+            {
+                bundle.GetAccounts([snapshotAddress, persistedAddress, TestItem.AddressC], new Account?[3]);
+            }
+
+            using (ReadOnlySnapshotBundle bundle = Bundle(
+                FlatTestHelpers.SnapshotList(MakeSnapshot(c =>
+                    c.Storages[new HashedKey<(Address, UInt256)>((snapshotCell.Address, snapshotCell.Index))] = UInt256.One)),
+                new TrackingStoragePersistenceReader(persistenceCell, UInt256.One),
+                recordDetailedMetrics: true))
+            {
+                bundle.GetSlots([snapshotCell, persistenceCell, new StorageCell(TestItem.AddressC, (UInt256)3)], [-1, -1, -1], new UInt256?[3]);
+            }
+        }
+        finally
+        {
+            Metrics.ReadOnlySnapshotBundleTimes = previousObserver;
+        }
+
+        Assert.That(observer.Labels, Is.EqualTo(new[]
+        {
+            "account_snapshot", "account_persistence", "account_persistence_null",
+            "storage_snapshot", "storage_persistence", "storage_persistence_null",
+        }));
+    }
+
+    [Test]
     public void TryFindStateNodes_ReturnsTrueWhenPresentInSnapshot()
     {
         TreePath path = TreePath.FromHexString("12");
@@ -332,5 +375,12 @@ public class ReadOnlySnapshotBundleTests
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
         public bool IsPreimageMode => false;
         public void Dispose() { }
+    }
+
+    private sealed class LabelRecordingObserver : IMetricObserver
+    {
+        public List<string> Labels { get; } = [];
+
+        public void Observe(double value, IMetricLabels? labels = null) => Labels.Add(labels!.Labels[0]);
     }
 }

@@ -243,6 +243,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 missingCount++;
             }
 
+            if (_recordDetailedMetrics)
+            {
+                Metrics.AddCarryForwardAccountHits(addresses.Length - missingCount);
+                Metrics.AddCarryForwardAccountMisses(missingCount);
+            }
+
             if (missingCount == 0)
             {
                 if (!parent.IsCurrent(generation))
@@ -312,6 +318,12 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 missingCells.Add(cell);
                 missingIndices.Add(i);
                 missingCount++;
+            }
+
+            if (_recordDetailedMetrics)
+            {
+                Metrics.AddCarryForwardSlotHits(storageCells.Length - missingCount);
+                Metrics.AddCarryForwardSlotMisses(missingCount);
             }
 
             if (missingCount == 0)
