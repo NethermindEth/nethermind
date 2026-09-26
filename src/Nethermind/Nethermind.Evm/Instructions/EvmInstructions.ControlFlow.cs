@@ -180,7 +180,8 @@ public static partial class EvmInstructions
         if (TSkipJumpDest.IsActive)
         {
             // Count before charging so an out-of-gas JUMPDEST matches the dispatch loop's ordering.
-            vm.OpCodeCount++;
+            if (DispatchFlags.CountOpcodes)
+                vm.OpCodeCount++;
             programCounter++;
             return TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas);
         }

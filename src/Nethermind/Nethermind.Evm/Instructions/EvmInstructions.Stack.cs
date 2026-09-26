@@ -145,12 +145,14 @@ public static partial class EvmInstructions
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
             if (nextInstruction == Instruction.JUMP)
             {
-                vm.OpCodeCount++;
+                if (DispatchFlags.CountOpcodes)
+                    vm.OpCodeCount++;
                 if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
             }
             else
             {
-                vm.OpCodeCount++;
+                if (DispatchFlags.CountOpcodes)
+                    vm.OpCodeCount++;
                 if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
                 if (!stack.EnsureDepth(1)) goto StackUnderflow;
                 if (EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
@@ -164,7 +166,8 @@ public static partial class EvmInstructions
             // Skip the JUMPDEST byte validated above, charging its gas and count here.
             programCounter = (nint)destination + 1;
             PrefetchCodeAtDestination(ref stack, programCounter);
-            vm.OpCodeCount++;
+            if (DispatchFlags.CountOpcodes)
+                vm.OpCodeCount++;
             if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
             goto Success;
