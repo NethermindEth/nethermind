@@ -8,11 +8,11 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Trie;
 
-public static class HexPrefix
+public static partial class HexPrefix
 {
     private static readonly byte[][] SingleNibblePaths = CreateSingleNibblePaths();
     private static readonly byte[][] DoubleNibblePaths = CreateDoubleNibblePaths();
-    private static readonly byte[][] TripleNibblePaths = CreateTripleNibblePaths();
+    private const int TripleNibblePathCount = 4096;
 
     public static int ByteLength(byte[] path) => path.Length / 2 + 1;
 
@@ -63,7 +63,7 @@ public static class HexPrefix
                 return (Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(DoubleNibblePaths), bytes[1]), isLeaf);
             case 3:
                 // !isEven, bytes.Length == 2
-                return (Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(TripleNibblePaths), ((bytes[0] & 0xF) << 8) | bytes[1]), isLeaf);
+                return (TripleNibblePath(((bytes[0] & 0xF) << 8) | bytes[1]), isLeaf);
         }
 
         // Longer paths - allocate
@@ -122,7 +122,7 @@ public static class HexPrefix
             uint v0 = path[0];
             if ((v0 | v1 | v2) < 16)
             {
-                return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(TripleNibblePaths), (int)((v0 << 8) | (v1 << 4) | v2));
+                return TripleNibblePath((int)((v0 << 8) | (v1 << 4) | v2));
             }
         }
         return path.ToArray();
@@ -161,7 +161,7 @@ public static class HexPrefix
                     uint v1 = array[0];
                     if ((prefix | v1 | v2) < 16)
                     {
-                        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(TripleNibblePaths), (prefix << 8) | (int)((v1 << 4) | v2));
+                        return TripleNibblePath((prefix << 8) | (int)((v1 << 4) | v2));
                     }
                     break;
                 }
@@ -222,7 +222,7 @@ public static class HexPrefix
                     };
                     if ((v1 | v2 | v3) < 16)
                     {
-                        return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(TripleNibblePaths), (int)((v1 << 8) | (v2 << 4) | v3));
+                        return TripleNibblePath((int)((v1 << 8) | (v2 << 4) | v3));
                     }
                     break;
                 }
@@ -272,13 +272,5 @@ public static class HexPrefix
         return paths;
     }
 
-    private static byte[][] CreateTripleNibblePaths()
-    {
-        byte[][] paths = new byte[4096][];
-        for (int i = 0; i < 4096; i++)
-        {
-            paths[i] = [(byte)(i >> 8), (byte)((i >> 4) & 0xF), (byte)(i & 0xF)];
-        }
-        return paths;
-    }
+    private static byte[] CreateTripleNibblePath(int index) => [(byte)(index >> 8), (byte)((index >> 4) & 0xF), (byte)(index & 0xF)];
 }
