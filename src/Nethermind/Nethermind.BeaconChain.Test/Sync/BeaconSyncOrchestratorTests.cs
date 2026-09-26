@@ -405,6 +405,14 @@ public partial class BeaconSyncOrchestratorTests
         /// <summary>Block roots for which <see cref="Import"/> answers <see cref="BlockImportResult.EngineUnavailable"/>.</summary>
         public HashSet<Hash256> EngineDown { get; } = [];
 
+        /// <summary>Parent roots whose payload is unverified, so a child <see cref="Import"/> answers <see cref="BlockImportResult.ParentPayloadUnverified"/> until <see cref="ImportEnvelope"/> records it.</summary>
+        public HashSet<Hash256> UnverifiedPayloads { get; } = [];
+
+        /// <summary>The verdict <see cref="ImportEnvelope"/> answers; a recording verdict removes the root from <see cref="UnverifiedPayloads"/>.</summary>
+        public ExecutionPayloadEnvelopeImportResult EnvelopeResult { get; set; } = ExecutionPayloadEnvelopeImportResult.Valid;
+
+        public List<Hash256> Envelopes { get; } = [];
+
         public List<object> GossipOperations { get; } = [];
 
         public List<(ulong Slot, Hash256 Root, bool VerifySignatures)> Imports { get; } = [];
@@ -418,18 +426,31 @@ public partial class BeaconSyncOrchestratorTests
 
         public bool IsKnown(Hash256 blockRoot) => Known.Contains(blockRoot);
 
-        public bool IsExpectedProposer(SignedBeaconBlock block) => ExpectedProposer;
+        public bool IsExpectedProposer(ForkedSignedBeaconBlock block) => ExpectedProposer;
 
-        public BlockImportResult Import(SignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
+        public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
         {
-            Imports.Add((block.Message!.Slot, blockRoot, verifySignatures));
+            Imports.Add((block.Slot, blockRoot, verifySignatures));
             if (Known.Contains(blockRoot)) return BlockImportResult.AlreadyKnown;
-            if (!Known.Contains(block.Message.ParentRoot!)) return BlockImportResult.UnknownParent;
+            if (!Known.Contains(block.ParentRoot)) return BlockImportResult.UnknownParent;
+            if (UnverifiedPayloads.Contains(block.ParentRoot)) return BlockImportResult.ParentPayloadUnverified;
             if (Unavailable.Contains(blockRoot)) return BlockImportResult.DataUnavailable;
             if (Forged.Contains(blockRoot)) return BlockImportResult.Invalid;
             if (EngineDown.Contains(blockRoot)) return BlockImportResult.EngineUnavailable;
             Known.Add(blockRoot);
             return BlockImportResult.Imported;
+        }
+
+        public ExecutionPayloadEnvelopeImportResult ImportEnvelope(SignedExecutionPayloadEnvelope envelope)
+        {
+            Hash256 blockRoot = envelope.Message!.BeaconBlockRoot!;
+            Envelopes.Add(blockRoot);
+            if (EnvelopeResult is ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic)
+            {
+                UnverifiedPayloads.Remove(blockRoot);
+            }
+
+            return EnvelopeResult;
         }
 
         public void OnSlotTick(ulong slot) => Ticks.Add(slot);

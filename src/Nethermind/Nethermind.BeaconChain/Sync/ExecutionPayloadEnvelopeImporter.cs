@@ -40,6 +40,9 @@ public enum ExecutionPayloadEnvelopeImportResult
 
     /// <summary>The execution layer could not be consulted; the envelope is unevaluated and must be retried.</summary>
     EngineUnavailable,
+
+    /// <summary>The payload of <c>envelope.beacon_block_root</c> is already verified; the envelope was not evaluated again.</summary>
+    AlreadyKnown,
 }
 
 /// <summary>
@@ -49,11 +52,11 @@ public enum ExecutionPayloadEnvelopeImportResult
 /// </summary>
 /// <remarks>
 /// <para>
-/// Nothing here mutates fork choice. The caller owns <c>store.payloads</c> and the execution status:
-/// on <see cref="ExecutionPayloadEnvelopeImportResult.Valid"/> and
+/// Nothing here mutates fork choice. The caller owns <c>store.payloads</c>: on
+/// <see cref="ExecutionPayloadEnvelopeImportResult.Valid"/> and
 /// <see cref="ExecutionPayloadEnvelopeImportResult.Optimistic"/> it records the payload for
-/// <c>envelope.beacon_block_root</c>; only on <see cref="ExecutionPayloadEnvelopeImportResult.Valid"/>
-/// does it upgrade that block's execution status to valid.
+/// <c>envelope.beacon_block_root</c>, and neither verdict changes that block's execution status
+/// (see <see cref="IBlockImporter.ImportEnvelope"/>).
 /// </para>
 /// <para>
 /// Every call gets its own execution-verdict recorder, because an envelope is verified on a call
