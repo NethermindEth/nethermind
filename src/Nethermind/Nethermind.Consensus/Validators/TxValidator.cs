@@ -129,8 +129,16 @@ public sealed class TxValidator : ITxValidator
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
 }
 
+/// <summary>Runs the validators in order and returns the first failure, or success when all of them pass.</summary>
+/// <remarks>The validators are bound at construction, so later changes to the passed array are not observed.</remarks>
 public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidator
 {
+    // Bound once, each delegate calls its implementation directly, whereas one interface call site shared by
+    // all the validator types resolves the target through a polymorphic dispatch cache on every call.
+    private readonly Func<Transaction, IReleaseSpec, ulong, TxValidationOptions, ValidationResult>[] _validators =
+        Array.ConvertAll(validators, static validator =>
+            (Func<Transaction, IReleaseSpec, ulong, TxValidationOptions, ValidationResult>)validator.IsWellFormed);
+
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
         => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
 
@@ -143,9 +151,9 @@ public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidat
         ulong blockGasLimit,
         TxValidationOptions options)
     {
-        foreach (ITxValidator validator in validators)
+        foreach (Func<Transaction, IReleaseSpec, ulong, TxValidationOptions, ValidationResult> validator in _validators)
         {
-            ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec, blockGasLimit, options);
+            ValidationResult isWellFormed = validator(transaction, releaseSpec, blockGasLimit, options);
             if (!isWellFormed)
             {
                 return isWellFormed;
