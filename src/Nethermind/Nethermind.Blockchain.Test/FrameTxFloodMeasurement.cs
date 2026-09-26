@@ -6,11 +6,10 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
-using System.Numerics;
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -24,17 +23,16 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.TxPool;
-using NSubstitute;
 using NUnit.Framework;
+
+using static Nethermind.Blockchain.Test.MeasurementEnvironment;
+using static Nethermind.Blockchain.Test.MeasurementStatistics;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -85,21 +83,23 @@ public class FrameTxFloodMeasurement
     /// <summary>Environment variable containing the externally generated Groth16 artifacts.</summary>
     private const string Groth16ArtifactRootVariable = "FRAME_GROTH16_ARTIFACTS";
 
-    private readonly record struct Groth16Sweep(string Directory, ulong Ceiling);
+    private readonly record struct Groth16Sweep(string Directory, ulong SweepCeiling, ulong FrameGasLimit);
 
     private static readonly Dictionary<string, Groth16Sweep> Groth16Sweeps = new()
     {
-        ["groth16-236k"] = new Groth16Sweep("sweep-236k", 236_285),
-        ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000),
-        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 500_000),
-        ["groth16-soispoke"] = new Groth16Sweep("sweep-soispoke", 300_000),
+        ["groth16-250k"] = new Groth16Sweep("sweep-250k", 250_000, 250_000),
+        ["groth16-300k"] = new Groth16Sweep("sweep-300k", 300_000, 300_000),
+        ["groth16-400k"] = new Groth16Sweep("sweep-400k", 400_000, 400_000),
+        ["groth16-500k"] = new Groth16Sweep("sweep-500k", 500_000, 500_000),
+        ["groth16-soispoke-v2"] = new Groth16Sweep("sweep-soispoke", 235_800, 225_000),
     };
 
     private static IEnumerable<TestCaseData> AdmissionShapes()
     {
         foreach (string shape in new string[]
                  {
-                     "keccak-wide", "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke",
+                     "keccak-wide", "groth16-250k", "groth16-300k", "groth16-400k", "groth16-500k",
+                     "groth16-soispoke-v2",
                      "signature-stuffed"
                  })
         {
@@ -129,7 +129,8 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> Groth16RateCases()
     {
-        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke" })
+        foreach (string shape in new string[]
+                 { "groth16-250k", "groth16-300k", "groth16-400k", "groth16-500k", "groth16-soispoke-v2" })
         {
             foreach (int rate in new int[] { 50, 100, 150, 200 })
             {
@@ -148,7 +149,8 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> Groth16Cases()
     {
-        foreach (string shape in new string[] { "groth16-236k", "groth16-300k", "groth16-500k", "groth16-soispoke" })
+        foreach (string shape in new string[]
+                 { "groth16-250k", "groth16-300k", "groth16-400k", "groth16-500k", "groth16-soispoke-v2" })
         {
             yield return new TestCaseData(shape);
         }
@@ -162,11 +164,6 @@ public class FrameTxFloodMeasurement
 
     private ulong _frameExecutionGasLimit;
 
-    private const ulong MinimalFrameGas = 400;
-
-    private static int StuffedSignatureCount(ulong ceiling) =>
-        (int)((ceiling - MinimalFrameGas) / Eip8141Constants.Secp256k1VerificationGasCost);
-
     private FloodTestBlockchain _chain = null!;
     private BlockHeader _parent = null!;
     private Block _workloadBlock = null!;
@@ -175,83 +172,47 @@ public class FrameTxFloodMeasurement
     /// <summary>Tracks fresh calldata salts so rejected hashes never bypass simulation through the known cache.</summary>
     private int _saltCursor;
 
-    /// <summary>Returns the OS-observed CPU set because in-process affinity is unreliable on Linux.</summary>
-    private static string ObservedCpuSet()
-    {
-        try
-        {
-            if (OperatingSystem.IsLinux())
-            {
-                foreach (string line in File.ReadLines("/proc/self/status"))
-                {
-                    if (line.StartsWith("Cpus_allowed_list:", StringComparison.Ordinal))
-                    {
-                        return line["Cpus_allowed_list:".Length..].Trim();
-                    }
-                }
-            }
-
-            if (!OperatingSystem.IsWindows()) return "unknown";
-
-            using Process current = Process.GetCurrentProcess();
-            return $"mask:{(ulong)(nint)current.ProcessorAffinity:x}";
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException
-                                       or PlatformNotSupportedException or Win32Exception or InvalidOperationException)
-        {
-            TestContext.Out.WriteLine($"DEBUG CPU affinity could not be read: {e.GetType().Name}: {e.Message}");
-            return "unknown";
-        }
-    }
-
-    private static bool IsSingleCore()
-    {
-        string set = ObservedCpuSet();
-
-        if (set.StartsWith("mask:", StringComparison.Ordinal))
-        {
-            return ulong.TryParse(set["mask:".Length..], NumberStyles.HexNumber, CultureInfo.InvariantCulture,
-                       out ulong mask)
-                   && BitOperations.PopCount(mask) == 1;
-        }
-
-        return set.Length > 0
-               && set != "unknown"
-               && !set.Contains(',', StringComparison.Ordinal)
-               && !set.Contains('-', StringComparison.Ordinal);
-    }
-
-    private static void SkipUnlessSingleCore()
-    {
-        if (IsSingleCore() || Environment.GetEnvironmentVariable("FRAME_FLOOD_ALLOW_MULTICORE") == "1") return;
-
-        Assert.Ignore($"this process may run on CPUs [{ObservedCpuSet()}], so the single-core contention this "
-                      + "harness measures does not hold and a flood would appear nearly free. Re-run under "
-                      + "`taskset -c 0`, or set FRAME_FLOOD_ALLOW_MULTICORE=1 to measure the uncontended case "
-                      + "deliberately.");
-    }
-
     /// <summary>Environment variable naming the target core count for the analytic core-normalized
     /// projection. Unset (the default) means the projected field is omitted entirely, not zero.</summary>
     private const string ProjectCoresVariable = "FRAME_FLOOD_PROJECT_CORES";
 
     /// <summary>The plain ceiling sweep shared by the keccak-wide budget-burning and signature-stuffed cases.</summary>
-    /// <remarks>322,800 is soispoke's declared privacy-pool budget (their activation_manifest.testbed.json:
-    /// verify_frame_gas 320,000 + signature_gas 2,800); 236,285 stays as a curve-shape interior point below
-    /// the stock MAX_VERIFY_GAS cap, same as before. 322,800 exceeds <see cref="Eip8141Constants.MaxVerifyGas"/>
-    /// (300,000), so of the methods this array feeds, only the signature-stuffed ones — refused before they
-    /// ever reach that cap — produce a row at that point; every keccak-wide/production/ramp arm is gated by
-    /// it and Assert.Ignores instead.</remarks>
-    private static readonly ulong[] SweptCeilings = [100_000ul, 236_285ul, 300_000ul, 322_800ul, 500_000ul];
+    /// <remarks>235,800 is the current soispoke v2 profile budget; its pool VERIFY frame declares 225,000,
+    /// with recent-root and signature costs accounting for the remaining 10,800. The v2 isolated-verifier
+    /// arm runs its frame at 225,000 while the measured profile point is 235,800. Values above
+    /// <see cref="Eip8141Constants.MaxVerifyGas"/> (300,000) self-ignore unless the workflow raises the
+    /// constant. Signature-stuffed transactions are refused before that cap, so they still exercise each
+    /// ceiling. <see cref="StuffedSignatureCount"/> floors and reserves frame gas, so a stuffed row may use
+    /// up to one fewer signature than the ceiling permits.</remarks>
+    private static readonly ulong[] SweptCeilings =
+        [100_000ul, 235_800ul, 250_000ul, 300_000ul, 400_000ul, 500_000ul];
 
-    /// <summary>Maximum drift between the idle baselines bracketing a flood run.</summary>
+    private static readonly int[] AdmissionRates = [50, 100, 150, 200, 250, 300, 350, 400];
+
+    /// <summary>The producer cliff falls inside one 50 tx/s step, so its ramp carries two extra points.</summary>
+    private static readonly int[] ProductionRates = [50, 75, 100, 125, 150, 200, 250, 300, 350, 400];
+
+    /// <summary>Maximum drift between the idle baselines bracketing a flood run, for the stable median.</summary>
     private const double MaxBaselineDriftPercent = 5.0;
+
+    /// <summary>Maximum drift for the noisy p99 tail, looser than <see cref="MaxBaselineDriftPercent"/> by
+    /// the same 4x margin the hard-fail bounds below use (100% vs 25%): p99 over a few hundred samples
+    /// wobbles more than the median before a run is actually unusable, so a tail-only wobble must not flip
+    /// valid= on its own.</summary>
+    private const double MaxBaselineTailDriftPercent = 20.0;
 
     private const double BrokenBaselineDriftPercent = 25.0;
 
     private const double BrokenBaselineTailDriftPercent = 100.0;
 
     private const double MaxSustainedLagPeriods = 5.0;
+
+    /// <summary>
+    /// A failed rate point gets one diagnostic retry because <see cref="FloodOutcome.MaxLagUs"/> is a
+    /// running maximum and can reflect a scheduling outlier. Only the first attempt determines capacity;
+    /// a passing retry cannot turn a failed point into an accepted rate.
+    /// </summary>
+    private const int MaxRatePointRetries = 1;
 
     private const double RateHeldFloor = 0.95;
 
@@ -292,7 +253,7 @@ public class FrameTxFloodMeasurement
     {
         bool isSignatureStuffed = shape == "signature-stuffed";
         ulong ceiling = isSignatureStuffed ? 500_000
-            : Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep) ? sweep.Ceiling
+            : Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep) ? sweep.SweepCeiling
             : Eip8141Constants.MaxVerifyGas;
         if (!isSignatureStuffed) Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain(shape, ceiling);
@@ -336,7 +297,7 @@ public class FrameTxFloodMeasurement
         Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain("keccak-wide", ceiling);
 
-        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, ceiling: ceiling);
+        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, [FrameTx(0, ceiling)], BlockGasLimit);
         FloodOutcome outcome = offeredRate > 0
             ? MeasureProductionUnderFlood(rig, offeredRate)
             : NoFloodProductionOutcome(rig);
@@ -497,7 +458,7 @@ public class FrameTxFloodMeasurement
 
     [TestCaseSource(nameof(Groth16RateCases))]
     public async Task Block_processing_delay_under_admission_flood_groth16(string shape, int offeredRate) =>
-        await MeasureFloodDelay(shape, Groth16Sweeps[shape].Ceiling, offeredRate);
+        await MeasureFloodDelay(shape, Groth16Sweeps[shape].SweepCeiling, offeredRate);
 
     [TestCaseSource(nameof(CeilingRateCases))]
     public async Task Block_processing_delay_under_admission_flood_signature_stuffed(ulong ceiling, int offeredRate) =>
@@ -510,7 +471,7 @@ public class FrameTxFloodMeasurement
 
     [TestCaseSource(nameof(Groth16RateCases))]
     public async Task Block_processing_delay_under_admission_flood_groth16_with_shedding(string shape, int offeredRate) =>
-        await MeasureFloodDelay(shape, Groth16Sweeps[shape].Ceiling, offeredRate, shedding: true);
+        await MeasureFloodDelay(shape, Groth16Sweeps[shape].SweepCeiling, offeredRate, shedding: true);
 
     /// <summary>Signature failures are refused before the simulator, so this arm must shed nothing.</summary>
     [TestCaseSource(nameof(CeilingRateCases))]
@@ -538,7 +499,10 @@ public class FrameTxFloodMeasurement
         double w0p99After = Percentile(baselineAfter, 0.99);
         double baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(w0After - w0) / w0 * 100;
         double baselineTailDriftPct = w0p99 <= 0 ? 0 : Math.Abs(w0p99After - w0p99) / w0p99 * 100;
-        double worstDriftPct = Math.Max(baselineDriftPct, baselineTailDriftPct);
+        // Median and tail get their own soft thresholds (below) rather than one applied via Math.Max to
+        // both: the hard-fail bounds already treat them asymmetrically (25% vs 100%), and a noisy p99 must
+        // not be able to flip valid=no on its own while the stable median is well inside its bound.
+        bool driftValid = baselineDriftPct < MaxBaselineDriftPercent && baselineTailDriftPct < MaxBaselineTailDriftPercent;
 
         // A generator that fell behind repays the deficit inside the sampled window, which can push the
         // achieved rate above the offered one. The rate floor alone cannot see that; the lag can.
@@ -556,7 +520,7 @@ public class FrameTxFloodMeasurement
         // run whose baseline was valid and that actually held its offered rate — a noisy or starved run's
         // achieved_rate isn't a throughput this shape could sustain.
         string coreNormalizedField = "";
-        if (shape == "signature-stuffed" && IsSingleCore() && worstDriftPct < MaxBaselineDriftPercent && !saturated
+        if (shape == "signature-stuffed" && IsSingleCore() && driftValid && !saturated
             && int.TryParse(Environment.GetEnvironmentVariable(ProjectCoresVariable), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out int targetCores)
             && targetCores > 0)
@@ -566,12 +530,12 @@ public class FrameTxFloodMeasurement
                                   + "achieved_rate_core_normalized_basis=analytic_projection_lower_bound ";
         }
 
-        Emit($"case=flood_delay shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
+        Emit($"case=flood_delay shape={shape} ceiling={ceiling} frame_gas_limit={_frameExecutionGasLimit} shedding={(_shedding ? "on" : "off")} "
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
              + coreNormalizedField
              + $"W0_after_p50_us={w0After:F1} W0_after_p99_us={w0p99After:F1} "
              + $"baseline_drift_pct={baselineDriftPct:F1} baseline_tail_drift_pct={baselineTailDriftPct:F1} "
-             + $"valid={(worstDriftPct < MaxBaselineDriftPercent ? "yes" : "no")} "
+             + $"valid={(driftValid ? "yes" : "no")} "
              + $"offered_rate={offeredRate} achieved_rate={flooded.AchievedRate:F1} "
              + $"submitted={flooded.Submitted} rejected={flooded.Rejected} shed={flooded.Shed} shed_pct={shedPct:F1} "
              + $"max_lag_us={flooded.MaxLagUs:F0} lag_budget_us={lagBudgetUs:F0} "
@@ -622,7 +586,7 @@ public class FrameTxFloodMeasurement
 
     [TestCaseSource(nameof(Groth16Cases))]
     public async Task Sustainable_rejection_rate_by_ramp_groth16(string shape) =>
-        await MeasureSustainableRate(shape, Groth16Sweeps[shape].Ceiling);
+        await MeasureSustainableRate(shape, Groth16Sweeps[shape].SweepCeiling);
 
     [TestCaseSource(nameof(CeilingCases))]
     public async Task Sustainable_rejection_rate_by_ramp_signature_stuffed(ulong ceiling) =>
@@ -636,10 +600,13 @@ public class FrameTxFloodMeasurement
 
         RunFor(WarmupWindow);
         List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
-        double w0 = Percentile(baseline, 0.50);
 
         Func<long>? rejectionCounter = RejectionCounterFor(shape);
-        RunRateRamp(ceiling, shape, "rate_ramp", "capacity", extraFields: "", w0,
+        string extraFields = Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep)
+            ? $"frame_gas_limit={sweep.FrameGasLimit} measurement_scope=single_verify_frame "
+            : "";
+        RunRateRamp(ceiling, shape, "rate_ramp", "capacity", extraFields, baseline,
+            () => MeasureBlockProcessing(MeasureWindow, TimeSpan.Zero),
             rate => MeasureUnderFlood(rate, rejectionCounter));
     }
 
@@ -649,74 +616,174 @@ public class FrameTxFloodMeasurement
             : null;
 
     [TestCaseSource(nameof(CeilingCases))]
-    public async Task Sustainable_rejection_rate_during_block_production(ulong ceiling)
+    public async Task Sustainable_rejection_rate_during_block_production(ulong ceiling) =>
+        await MeasureProductionSustainableRate("keccak-wide", ceiling);
+
+    [TestCaseSource(nameof(CeilingCases))]
+    public async Task Sustainable_rejection_rate_during_block_production_signature_stuffed(ulong ceiling) =>
+        await MeasureProductionSustainableRate("signature-stuffed", ceiling);
+
+    private async Task MeasureProductionSustainableRate(string shape, ulong ceiling)
     {
         SkipUnlessSingleCore();
-        Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
-        await BuildChain("keccak-wide", ceiling);
+        if (shape != "signature-stuffed") Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
+        await BuildChain(shape, ceiling);
 
-        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, ceiling: ceiling);
+        using ProducerRig rig = ProducerRig.Create(_chain, kRetry: 1, [FrameTx(0, ceiling, shape)], BlockGasLimit);
         rig.RunFor(WarmupWindow);
-        double w0 = Percentile(rig.Measure(MeasureWindow), 0.50);
+        List<double> baseline = rig.Measure(MeasureWindow);
 
-        RunRateRamp(ceiling, "keccak-wide", "production_rate_ramp", "production_capacity", extraFields: "", w0,
-            rate => MeasureProductionUnderFlood(rig, rate));
+        Assert.That(rig.FailingExecutions, Is.GreaterThan(0),
+            "the producer never re-executed the failing transaction, so this measures an ordinary block");
+
+        Func<long>? rejectionCounter = RejectionCounterFor(shape);
+        RunRateRamp(ceiling, shape, "production_rate_ramp", "production_capacity", extraFields: "", baseline,
+            () => rig.Measure(MeasureWindow),
+            rate => MeasureProductionUnderFlood(rig, rate, rejectionCounter), ProductionRates);
     }
 
     private void RunRateRamp(
-        ulong ceiling, string shape, string rateCase, string summaryCase, string extraFields, double w0,
-        Func<int, FloodOutcome> measureAtRate)
+        ulong ceiling, string shape, string rateCase, string summaryCase, string extraFields,
+        List<double> baseline, Func<List<double>> measureBaselineAfter,
+        Func<int, FloodOutcome> measureAtRate, int[]? rateGrid = null)
     {
-        int[] rates = [50, 100, 150, 200, 250, 300, 350, 400];
+        int[] rates = rateGrid ?? AdmissionRates;
 
         // The fixture warm-up exercises block processing only, so the first flood of a ramp pays the
         // generator's cold start and can miss the lag budget at a rate the node otherwise sustains.
         measureAtRate(rates[0]);
 
+        double w0 = Percentile(baseline, 0.50);
+        double w0p99 = Percentile(baseline, 0.99);
+
         double lastSustained = 0;
         bool sustainedEveryRate = true;
         double firstFailedRate = 0;
+        // Rows are held back rather than emitted inline: the drift guard below brackets the whole ramp
+        // with a single before/after baseline pair, the same way flood_delay brackets a single flood, so
+        // every row in the ramp needs the after-baseline that only exists once the ramp is over. Rows are
+        // still flushed below even if the ramp loop or the after-baseline re-measurement throws, and a
+        // throw from the latter can no longer erase a ramp failure already caught below (see `failure`).
+        // `sustained` describes each attempt; `accepted` records the first-attempt capacity decision.
+        List<(string Line, string Accepted)> rowLines = [];
+        int retriesUsed = 0;
+        bool retryRescuedPoint = false;
 
-        foreach (int rate in rates)
+        Exception? failure = null;
+        try
         {
-            FloodOutcome outcome = measureAtRate(rate);
-
-            double periodUs = 1_000_000.0 / rate;
-            bool rateHeld = outcome.AchievedRate >= rate * RateHeldFloor;
-            bool lagBounded = outcome.MaxLagUs <= periodUs * MaxSustainedLagPeriods;
-
-            bool pendingPoolStable = outcome.PendingPoolGrowth == 0;
-            bool sustained = rateHeld && lagBounded;
-            double w = Percentile(outcome.ProcessMicros, 0.50);
-
-            Emit($"case={rateCase} shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
-                 + $"{extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
-                 + $"achieved_rate={outcome.AchievedRate:F1} sustained={(sustained ? "yes" : "no")} "
-                 + $"max_lag_us={outcome.MaxLagUs:F0} lag_budget_us={periodUs * MaxSustainedLagPeriods:F0} "
-                 + $"rate_held={(rateHeld ? "yes" : "no")} lag_bounded={(lagBounded ? "yes" : "no")} "
-                 + $"pending_pool_stable={(pendingPoolStable ? "yes" : "no")} "
-                 + $"submitted={outcome.Submitted} rejected={outcome.Rejected} shed={outcome.Shed} "
-                 + $"shed_pct={ShedPct(outcome):F1} "
-                 + $"pending_pool_growth={outcome.PendingPoolGrowth} "
-                 + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}");
-
-            Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
-                $"at {rate} tx/s {outcome.Rejected} of {outcome.Submitted} submissions were simulated and "
-                + $"{outcome.Shed} were shed; the rest went missing, so this point measures an idle node for a "
-                + "reason this harness cannot name. A high shed_pct is the node's own admission bound, not a "
-                + "defect: read the capacity it produces as a bound on shedding, not on prefix work.");
-
-            if (sustained)
+            foreach (int rate in rates)
             {
-                lastSustained = outcome.AchievedRate;
+                FloodOutcome outcome = default;
+                bool sustained = false;
+                bool firstAttemptSustained = false;
+                double firstAttemptAchievedRate = 0;
+                int attemptsUsed = 0;
+                int firstRowOfRate = rowLines.Count;
+
+                for (int attempt = 1; attempt <= MaxRatePointRetries + 1; attempt++)
+                {
+                    attemptsUsed = attempt;
+                    if (attempt > 1) retriesUsed++;
+                    outcome = measureAtRate(rate);
+
+                    double periodUs = 1_000_000.0 / rate;
+                    bool rateHeld = outcome.AchievedRate >= rate * RateHeldFloor;
+                    bool lagBounded = outcome.MaxLagUs <= periodUs * MaxSustainedLagPeriods;
+
+                    bool pendingPoolStable = outcome.PendingPoolGrowth == 0;
+                    sustained = rateHeld && lagBounded;
+                    if (attempt == 1)
+                    {
+                        firstAttemptSustained = sustained;
+                        firstAttemptAchievedRate = outcome.AchievedRate;
+                    }
+                    // The plan's no-backlog condition, kept separate from `sustained` above because every
+                    // published capacity figure rests on `sustained`'s current meaning.
+                    bool sustainedNoBacklog = sustained && pendingPoolStable;
+                    double w = Percentile(outcome.ProcessMicros, 0.50);
+
+                    rowLines.Add(($"case={rateCase} shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
+                         + $"{extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
+                         + $"attempt={attempt} "
+                         + $"achieved_rate={outcome.AchievedRate:F1} sustained={(sustained ? "yes" : "no")} "
+                         + $"sustained_no_backlog={(sustainedNoBacklog ? "yes" : "no")} "
+                         + $"max_lag_us={outcome.MaxLagUs:F0} lag_budget_us={periodUs * MaxSustainedLagPeriods:F0} "
+                         + $"rate_held={(rateHeld ? "yes" : "no")} lag_bounded={(lagBounded ? "yes" : "no")} "
+                         + $"pending_pool_stable={(pendingPoolStable ? "yes" : "no")} "
+                         + $"submitted={outcome.Submitted} rejected={outcome.Rejected} shed={outcome.Shed} "
+                         + $"shed_pct={ShedPct(outcome):F1} "
+                         + $"pending_pool_growth={outcome.PendingPoolGrowth} "
+                         + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}", "unknown"));
+
+                    Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
+                        $"at {rate} tx/s {outcome.Rejected} of {outcome.Submitted} submissions were simulated and "
+                        + $"{outcome.Shed} were shed; the rest went missing, so this point measures an idle node for a "
+                        + "reason this harness cannot name. A high shed_pct is the node's own admission bound, not a "
+                        + "defect: read the capacity it produces as a bound on shedding, not on prefix work.");
+
+                    if (sustained) break;
+                }
+
+                retryRescuedPoint |= attemptsUsed > 1 && sustained && !firstAttemptSustained;
+                for (int i = firstRowOfRate; i < rowLines.Count; i++)
+                {
+                    rowLines[i] = (rowLines[i].Line, firstAttemptSustained ? "yes" : "no");
+                }
+
+                if (firstAttemptSustained)
+                {
+                    lastSustained = firstAttemptAchievedRate;
+                }
+                else
+                {
+                    sustainedEveryRate = false;
+                    firstFailedRate = rate;
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+
+        // Bracketing baseline drift guard, mirroring flood_delay's. Measured in its own try so a throw here
+        // cannot discard rowLines or replace a ramp failure already caught above.
+        string driftFields;
+        double baselineDriftPct = double.NaN;
+        double baselineTailDriftPct = double.NaN;
+        try
+        {
+            List<double> baselineAfter = measureBaselineAfter();
+            double w0After = Percentile(baselineAfter, 0.50);
+            double w0p99After = Percentile(baselineAfter, 0.99);
+            baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(w0After - w0) / w0 * 100;
+            baselineTailDriftPct = w0p99 <= 0 ? 0 : Math.Abs(w0p99After - w0p99) / w0p99 * 100;
+            bool driftValid = baselineDriftPct < MaxBaselineDriftPercent && baselineTailDriftPct < MaxBaselineTailDriftPercent;
+            driftFields = $"baseline_drift_pct={baselineDriftPct:F1} baseline_tail_drift_pct={baselineTailDriftPct:F1} "
+                          + $"valid={(driftValid ? "yes" : "no")}";
+        }
+        catch (Exception ex)
+        {
+            driftFields = "baseline_drift_pct=NaN baseline_tail_drift_pct=NaN valid=no";
+            if (failure is null)
+            {
+                failure = ex;
             }
             else
             {
-                sustainedEveryRate = false;
-                firstFailedRate = rate;
-                break;
+                // The ramp already failed; that diagnosis takes priority over this second, unrelated one,
+                // but the second failure must not vanish silently either.
+                TestContext.Out.WriteLine(
+                    "DEBUG the after-baseline re-measurement also failed while a ramp failure was already "
+                    + $"in flight: {ex.GetType().Name}: {ex.Message}");
             }
         }
+
+        foreach ((string line, string accepted) in rowLines) Emit($"{line} accepted={accepted} {driftFields}");
+
+        if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
 
         bool censored = sustainedEveryRate;
 
@@ -727,10 +794,21 @@ public class FrameTxFloodMeasurement
              + $"capacity_sustained_tx_per_s={lastSustained:F1} capacity_lower={lastSustained:F1} "
              + $"capacity_upper={(censored ? "unbounded" : capacityUpper.ToString("F1"))} "
              + $"censored={(censored ? "yes" : "no")} "
-             + $"basis=bounded_submission_lag note=B_not_fixed");
+             + $"basis=bounded_submission_lag retries_used={retriesUsed} "
+             + $"capacity_basis=first_attempt retry_rescued_point={(retryRescuedPoint ? "yes" : "no")} "
+             + $"max_rate_point_retries={MaxRatePointRetries} note=B_not_fixed {driftFields}");
 
-        Assert.That(lastSustained, Is.GreaterThan(0),
-            "the node sustained none of the offered rates, so the ramp's lowest point is already saturated");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baselineDriftPct, Is.LessThan(BrokenBaselineDriftPercent),
+                $"the two idle baselines' medians disagree by {baselineDriftPct:F1}%, so the ramp spans "
+                + "different machine states and its capacity is unusable");
+            Assert.That(baselineTailDriftPct, Is.LessThan(BrokenBaselineTailDriftPercent),
+                $"the two idle baselines' p99s disagree by {baselineTailDriftPct:F1}%, so the ramp spans "
+                + "different machine states and its capacity is unusable");
+            Assert.That(lastSustained, Is.GreaterThan(0),
+                "the node sustained none of the offered rates, so the ramp's lowest point is already saturated");
+        }
     }
 
     private List<double> MeasureBlockProcessing(TimeSpan window, TimeSpan warmup)
@@ -764,10 +842,12 @@ public class FrameTxFloodMeasurement
             measure: window => MeasureBlockProcessing(window, TimeSpan.Zero),
             rejectionCounter);
 
-    private FloodOutcome MeasureProductionUnderFlood(ProducerRig rig, int offeredRate) =>
+    private FloodOutcome MeasureProductionUnderFlood(
+        ProducerRig rig, int offeredRate, Func<long>? rejectionCounter = null) =>
         MeasureUnderFloodGeneric(offeredRate,
             warmup: () => { Thread.Sleep(FloodSettle); rig.RunFor(WarmupWindow); },
             measure: rig.Measure,
+            rejectionCounter: rejectionCounter,
             onWindowStart: rig.MarkWindowStart);
 
     /// <summary>
@@ -947,10 +1027,19 @@ public class FrameTxFloodMeasurement
         return tx;
     }
 
-    private static Transaction FrameTx(int salt, ulong ceiling)
+    private static Transaction FrameTx(int salt, ulong ceiling, string shape = "keccak-wide")
     {
         byte[] data = new byte[32];
         BinaryPrimitives.WriteInt32BigEndian(data.AsSpan(28), salt);
+
+        bool stuffed = shape == "signature-stuffed";
+
+        // Block production does not set ExecutionOptions.FrameSignaturesPreValidated, so every attempt
+        // re-runs the recoveries. Validation rejects before the frame loop, so the prefix never runs.
+        TxFrameSignature[] signatures = stuffed
+            ? FrameTxTestFrames.RecoveredSecp256k1Signatures(
+                new EthereumEcdsa(TestBlockchainIds.ChainId), FrameTxPrefixShapes.StuffedSignatureCount(ceiling))
+            : [];
 
         Transaction tx = new()
         {
@@ -958,8 +1047,8 @@ public class FrameTxFloodMeasurement
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = Attacker,
-            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: ceiling, UInt256.Zero, data)],
-            FrameSignatures = [],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: stuffed ? FrameTxPrefixShapes.MinimalFrameGas : ceiling, UInt256.Zero, data)],
+            FrameSignatures = signatures,
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 1.GWei,
@@ -967,25 +1056,6 @@ public class FrameTxFloodMeasurement
         tx.Hash = tx.CalculateHash();
         return tx;
     }
-
-    private static byte[] PrefixCode(string shape) => shape switch
-    {
-        "keccak-wide" => Prepare.EvmCode
-            .Op(Instruction.JUMPDEST)
-            .PushData(4096)
-            .PushData(0)
-            .Op(Instruction.KECCAK256)
-            .Op(Instruction.POP)
-            .PushData(0)
-            .Op(Instruction.JUMP)
-            .Done,
-        "banned-opcode" => Prepare.EvmCode
-            .Op(Instruction.TIMESTAMP)
-            .Op(Instruction.POP)
-            .Op(Instruction.STOP)
-            .Done,
-        _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "unknown prefix shape")
-    };
 
     /// <summary>Loads the selected synthetic, signature-stuffed, or Groth16 admission workload.</summary>
     private byte[] LoadAttackCode(string shape, ulong ceiling)
@@ -995,7 +1065,7 @@ public class FrameTxFloodMeasurement
             byte[] verifierCode = Groth16Artifact(sweep, "verifier.hex");
             _frameCalldataPrefix = Groth16Artifact(sweep, "calldata-invalid.hex");
             _frameSignatures = [];
-            _frameExecutionGasLimit = ceiling;
+            _frameExecutionGasLimit = sweep.FrameGasLimit;
             return verifierCode;
         }
 
@@ -1003,15 +1073,15 @@ public class FrameTxFloodMeasurement
         {
             _frameCalldataPrefix = [];
             _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(
-                new EthereumEcdsa(TestBlockchainIds.ChainId), StuffedSignatureCount(ceiling));
-            _frameExecutionGasLimit = MinimalFrameGas;
-            return PrefixCode("banned-opcode");
+                new EthereumEcdsa(TestBlockchainIds.ChainId), FrameTxPrefixShapes.StuffedSignatureCount(ceiling));
+            _frameExecutionGasLimit = FrameTxPrefixShapes.MinimalFrameGas;
+            return FrameTxPrefixShapes.Code("banned-opcode");
         }
 
         _frameCalldataPrefix = [];
         _frameSignatures = [];
         _frameExecutionGasLimit = ceiling;
-        return PrefixCode(shape);
+        return FrameTxPrefixShapes.Code(shape);
     }
 
     private static byte[] Groth16Artifact(Groth16Sweep sweep, string fileName)
@@ -1042,15 +1112,6 @@ public class FrameTxFloodMeasurement
         return root!;
     }
 
-    private static double Percentile(List<double> values, double quantile)
-    {
-        if (values.Count == 0) return double.NaN;
-        List<double> sorted = [.. values];
-        sorted.Sort();
-        int rank = (int)Math.Ceiling(quantile * sorted.Count);
-        return sorted[Math.Clamp(rank, 1, sorted.Count) - 1];
-    }
-
     /// <summary>Configures the pool's declared-gas precheck for the ceiling being measured.</summary>
     private sealed class FloodTestBlockchain : BasicTestBlockchain
     {
@@ -1076,152 +1137,13 @@ public class FrameTxFloodMeasurement
         ];
     }
 
-    /// <summary>Runs a never-approving frame transaction through the production transaction executor.</summary>
-    private sealed class ProducerRig : IDisposable
-    {
-        private readonly IReadOnlyTxProcessingScope _processingScope;
-        private readonly IReadOnlyTxProcessorSource _processorSource;
-        private readonly IReleaseSpec _spec;
-        private BlockProcessor.BlockProductionTransactionsExecutor _executor = null!;
-        private readonly int _kRetry;
-        private readonly BlockReceiptsTracer _receiptsTracer = new();
-        private readonly Block _block;
-        private int _attemptsOnCurrent;
-        private CountingAdapter _adapter = null!;
-
-        public int Evictions { get; private set; }
-
-        private int _evictionsAtWindowStart;
-        private int _executionsAtWindowStart;
-
-        public int EvictionsInWindow => Evictions - _evictionsAtWindowStart;
-
-        public int ExecutionsInWindow => FailingExecutions - _executionsAtWindowStart;
-
-        public void MarkWindowStart()
-        {
-            _evictionsAtWindowStart = Evictions;
-            _executionsAtWindowStart = FailingExecutions;
-        }
-
-        public int FailingExecutions => _adapter.Attempts;
-
-        private ProducerRig(
-            IReadOnlyTxProcessingScope processingScope, IReadOnlyTxProcessorSource processorSource,
-            IReleaseSpec spec, ulong ceiling, int kRetry)
-        {
-            _processingScope = processingScope;
-            _processorSource = processorSource;
-            _spec = spec;
-            _kRetry = kRetry;
-            _receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
-
-            _block = Build.A.Block
-                .WithNumber(1)
-                .WithBaseFeePerGas(UInt256.Zero)
-                .WithBeneficiary(TestItem.AddressE)
-                .WithGasLimit(BlockGasLimit)
-                .WithTransactions(FrameTx(0, ceiling))
-                .TestObject;
-        }
-
-        /// <summary>
-        /// Takes the processing stack from the chain's production wiring; only the executor under measurement,
-        /// its counting adapter, the eviction gate the rig drives and a disabled block access list manager are
-        /// built here.
-        /// </summary>
-        /// <remarks>The returned rig owns the processing scope and its source; nothing else does, so a throw
-        /// before the rig is returned has to close them.</remarks>
-        public static ProducerRig Create(FloodTestBlockchain chain, int kRetry, ulong ceiling)
-        {
-            ISpecProvider specProvider = chain.SpecProvider;
-            IReleaseSpec spec = specProvider.GenesisSpec;
-
-            IReadOnlyTxProcessorSource source = chain.ReadOnlyTxProcessingEnvFactory.Create();
-            IReadOnlyTxProcessingScope? scope = null;
-            try
-            {
-                scope = source.Build(chain.BlockTree.Head?.Header);
-                IWorldState state = scope.WorldState;
-
-                CountingAdapter adapter = new(
-                    new BuildUpTransactionProcessorAdapter(scope.TransactionProcessor), measureBurn: false);
-
-                ProducerRig rig = new(scope, source, spec, ceiling, kRetry);
-
-                IBlockAccessListManager balManager = Substitute.For<IBlockAccessListManager>();
-                balManager.Enabled.Returns(false);
-
-                ITxPool gate = Substitute.For<ITxPool>();
-                gate.EvictTransaction(Arg.Any<Transaction>()).Returns(_ => rig.OnEvictionRequested());
-
-                rig._adapter = adapter;
-                rig._executor = new BlockProcessor.BlockProductionTransactionsExecutor(
-                    adapter,
-                    state,
-                    new BlockProcessor.BlockProductionTransactionPicker(specProvider),
-                    LimboLogs.Instance,
-                    balManager,
-                    gate);
-
-                return rig;
-            }
-            catch
-            {
-                scope?.Dispose();
-                source.Dispose();
-                throw;
-            }
-        }
-
-        private bool OnEvictionRequested() => ++_attemptsOnCurrent >= _kRetry;
-
-        public void RunFor(TimeSpan window)
-        {
-            long end = Stopwatch.GetTimestamp() + (long)(window.TotalSeconds * Stopwatch.Frequency);
-            while (Stopwatch.GetTimestamp() < end) ProduceOnce();
-        }
-
-        public List<double> Measure(TimeSpan window)
-        {
-            List<double> micros = [];
-            long end = Stopwatch.GetTimestamp() + (long)(window.TotalSeconds * Stopwatch.Frequency);
-            while (Stopwatch.GetTimestamp() < end)
-            {
-                long start = Stopwatch.GetTimestamp();
-                ProduceOnce();
-                micros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
-            }
-            return micros;
-        }
-
-        // Resetting the series avoids charging replacement construction differently across K_retry values.
-        private void ProduceOnce()
-        {
-            _receiptsTracer.StartNewBlockTrace(_block);
-            _executor.SetBlockExecutionContext(new BlockExecutionContext(_block.Header, _spec));
-            _executor.ProcessTransactions(_block, ProcessingOptions.ProducingBlock, _receiptsTracer, CancellationToken.None);
-            _receiptsTracer.EndBlockTrace();
-
-            if (_attemptsOnCurrent >= _kRetry)
-            {
-                Evictions++;
-                _attemptsOnCurrent = 0;
-            }
-        }
-
-        public void Dispose()
-        {
-            _processingScope.Dispose();
-            _processorSource.Dispose();
-        }
-    }
-
     private static void Emit(string line)
     {
         string path = Environment.GetEnvironmentVariable("FRAME_FLOOD_OUT")
                       ?? Path.Combine(Path.GetTempPath(), "frame-tx-flood.txt");
-        string record = $"RESULT {line}";
+        // Recorded on every row so a reader of -results.txt alone, without PROVENANCE.txt, can tell whether
+        // the build ran against the stock MAX_VERIFY_GAS or one patched by raise_verify_gas_const.
+        string record = $"RESULT {line} max_verify_gas_const={Eip8141Constants.MaxVerifyGas}";
         TestContext.Out.WriteLine(record);
         File.AppendAllText(path, record + Environment.NewLine);
     }
