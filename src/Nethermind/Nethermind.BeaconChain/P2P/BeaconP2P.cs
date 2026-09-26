@@ -312,7 +312,6 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(ISession session, DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
     {
-        // An empty list encodes to a zero-length request payload, which ReqRespFraming.ReadRequestAsync refuses.
         if (identifiers.Length == 0) return [];
 
         using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(identifiers.Length));
@@ -332,7 +331,6 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(ISession session, DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
     {
-        // An empty list encodes to a zero-length request payload, which ReqRespFraming.ReadRequestAsync refuses.
         if (identifiers.Length == 0) return [];
 
         using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(identifiers.Length));
