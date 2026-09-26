@@ -59,6 +59,11 @@ on:
         type: string
         required: false
         default: ""
+      collect_metrics:
+        description: Collect sync-stage timings for the master-validation dashboard.
+        type: boolean
+        required: false
+        default: false
       nethermind_args:
         type: string
         required: false
@@ -163,6 +168,26 @@ jobs:
           prometheus_url: ${{ secrets.PROMETHEUS_URL }}
           prometheus_username: ${{ secrets.PROMETHEUS_USERNAME }}
           prometheus_password: ${{ secrets.PROMETHEUS_PASSWORD }}
+
+      - name: Collect sync metrics
+        if: success() && inputs.collect_metrics
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          NETWORK: ${{ inputs.network }}
+          SYNC_MODE: ${{ inputs.mode }}
+          DOCKER_IMAGE: ${{ inputs.docker_image }}
+        run: python3 scripts/sync-metrics/collect.py "sync-metrics-${NETWORK}-${SYNC_MODE}.json"
+
+      - name: Upload sync metrics
+        if: success() && inputs.collect_metrics
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: sync-metrics-${{ github.run_attempt }}-${{ inputs.network }}-${{ inputs.mode }}
+          path: sync-metrics-${{ inputs.network }}-${{ inputs.mode }}.json
+          if-no-files-found: ignore
+          retention-days: 7
 
   destroy_runner:
     needs: [create_runner, sync]
