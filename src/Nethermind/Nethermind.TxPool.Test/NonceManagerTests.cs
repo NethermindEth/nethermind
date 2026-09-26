@@ -228,6 +228,30 @@ public class NonceManagerTests
         }
     }
 
+    // A submission in progress holds its entry's lock, so the sweep must leave that entry alone even when every
+    // nonce it recorded is confirmed.
+    [Test]
+    public void TxWithNonceReceived_should_keep_a_sender_whose_submission_is_in_progress_through_a_sweep()
+    {
+        IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+        NonceManager nonceManager = new(accounts, minSweepThreshold: 4);
+        using NonceLocker inProgress = nonceManager.TxWithNonceReceived(TestItem.AddressA, 0);
+        inProgress.Accept();
+        for (int i = 1; i < 4; i++)
+        {
+            using NonceLocker locker = nonceManager.TxWithNonceReceived(TestItem.Addresses[i], 0);
+            locker.Accept();
+        }
+
+        accounts.GetNonce(Arg.Any<Address>()).Returns(1UL);
+        using (NonceLocker locker = nonceManager.TxWithNonceReceived(TestItem.Addresses[4], 0))
+        {
+            locker.Accept();
+        }
+
+        Assert.That(nonceManager.TrackedAddressCount, Is.EqualTo(2), "the busy sender must survive the sweep next to the new one");
+    }
+
     [Test]
     public void ReserveNonce_should_start_from_a_high_account_nonce_without_walking_up_to_it()
     {

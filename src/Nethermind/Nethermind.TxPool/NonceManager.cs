@@ -57,6 +57,10 @@ public class NonceManager(IAccountStateProvider accounts, int minSweepThreshold 
     /// Drops the addresses whose every recorded nonce is already below the account nonce: such an entry decides
     /// nothing a fresh one would not. Busy entries are skipped rather than waited for.
     /// </summary>
+    /// <remarks>
+    /// Runs on the submitting thread and reads one account nonce per tracked address. The threshold doubles after
+    /// each sweep, so the cost stays constant per submission on average, but a single submission can pay for a scan.
+    /// </remarks>
     private void SweepConfirmed()
     {
         if (Interlocked.CompareExchange(ref _sweeping, 1, 0) != 0) return;
@@ -67,7 +71,7 @@ public class NonceManager(IAccountStateProvider accounts, int minSweepThreshold 
             {
                 if (entry.Value.TryRetire(_accounts.GetNonce(entry.Key)))
                 {
-                    _addressNonceManagers.TryRemove(entry.Key, out _);
+                    _addressNonceManagers.TryRemove(entry);
                 }
             }
 
