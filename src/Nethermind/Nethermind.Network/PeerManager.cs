@@ -1115,8 +1115,10 @@ namespace Nethermind.Network
                 => _logger.Trace($"ADDING {session} {peer}");
         }
 
+        // An IN session attached while the dial was in flight still has to go through the conflict resolution,
+        // or both directions stay open.
         private bool CanAttachSessionDirectly(ISession session, Peer peer)
-            => !IsConnected(peer) || (peer.IsAwaitingConnection && session.Direction == ConnectionDirection.Out);
+            => !IsConnected(peer) || (peer.IsAwaitingConnection && session.Direction == ConnectionDirection.Out && !HasOpenSession(peer.InSession));
 
         private void AttachSession(Peer peer, ISession session, ConnectionDirection sessionDirection, bool disconnectOpposite)
         {
