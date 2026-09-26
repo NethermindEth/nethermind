@@ -26,10 +26,6 @@ public class CodeInfoRepository : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
-    /// <remarks>
-    /// Kept null on the production path so <see cref="LoadCodeInfoDefault"/> can be called directly and inlined instead of going through a no-op delegate.
-    /// </remarks>
-    private readonly Func<Address, ValueHash256, IReleaseSpec, CodeInfo>? _codeInfoLoader;
     /// <summary>Precompile <see cref="CodeInfo"/> indexed by precompile number, for the low numbers.</summary>
     /// <remarks>Replaces a <see cref="FrozenDictionary{TKey, TValue}"/> hash and probe on every precompile
     /// call with an array index. A number above <see cref="MaxIndexedNumber"/> — a plugin may register one
@@ -45,15 +41,9 @@ public class CodeInfoRepository : ICodeInfoRepository
     private const int MaxIndexedNumber = 0x100;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
-        : this(worldState, precompileProvider, codeInfoLoader: null)
-    {
-    }
-
-    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, Func<Address, ValueHash256, IReleaseSpec, CodeInfo>? codeInfoLoader)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
-        _codeInfoLoader = codeInfoLoader;
         _localPrecompileArray = BuildPrecompileArray(_localPrecompiles);
     }
 
@@ -86,14 +76,14 @@ public class CodeInfoRepository : ICodeInfoRepository
             return PrecompileCodeInfo(codeSource);
         }
 
-        CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);
+        CodeInfo codeInfo = InternalGetCodeInfo(codeSource);
 
         delegationAddress = codeInfo.DelegatedAddress;
         if (delegationAddress is not null)
         {
             if (followDelegation)
             {
-                codeInfo = InternalGetCodeInfo(delegationAddress, vmSpec);
+                codeInfo = InternalGetCodeInfo(delegationAddress);
             }
         }
 
@@ -116,17 +106,15 @@ public class CodeInfoRepository : ICodeInfoRepository
             : _localPrecompiles[codeSource];
     }
 
-    private CodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec)
+    private CodeInfo InternalGetCodeInfo(Address codeSource)
     {
         ValueHash256 codeHash = _worldState.GetCodeHash(codeSource);
-        Func<Address, ValueHash256, IReleaseSpec, CodeInfo>? codeInfoLoader = _codeInfoLoader;
-        return codeInfoLoader is not null
-            ? codeInfoLoader(codeSource, codeHash, vmSpec)
-            : LoadCodeInfoDefault(codeSource, in codeHash);
+        return LoadCodeInfo(codeSource, in codeHash);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private CodeInfo LoadCodeInfoDefault(Address address, in ValueHash256 codeHash) =>
+    /// <summary>Resolves the code stored under <paramref name="codeHash"/> for <paramref name="address"/>.</summary>
+    /// <remarks>Overridden by a repository that serves code from a cache instead of the world state.</remarks>
+    protected virtual CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash) =>
         codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(_worldState, address, in codeHash);
 
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
@@ -211,7 +199,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return false;
         }
 
-        delegatedAddress = InternalGetCodeInfo(address, spec).DelegatedAddress;
+        delegatedAddress = InternalGetCodeInfo(address).DelegatedAddress;
         return delegatedAddress is not null;
     }
 }
