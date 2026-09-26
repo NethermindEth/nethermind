@@ -148,7 +148,8 @@ public class StorageStridePrefetcherTests
                 prefetcher.OnRead(in index);
 
             Assert.That(engageAttempts, Is.EqualTo(1));
-            for (int i = 0; i < 6; i++, index++)
+            // A deferred detector needs a matching run twice as long before it asks again.
+            for (int i = 0; i < 14; i++, index++)
                 prefetcher.OnRead(in index);
 
             Assert.That(engageAttempts, Is.EqualTo(1));
@@ -169,6 +170,36 @@ public class StorageStridePrefetcherTests
         {
             cts.Cancel();
         }
+    }
+
+    [Test]
+    public void OnRead_DoublesTheRequiredRunAfterEachDeferral()
+    {
+        using CancellationTokenSource cts = new();
+        int reads = 0;
+        List<int> attemptReads = [];
+        using StorageStridePrefetcher prefetcher = new(
+            () => EmptyStorageTree.Instance,
+            new SeqlockCache<StorageCell, UInt256>(),
+            TestItem.AddressA,
+            cts.Token,
+            readerConcurrency: 1,
+            tryReserveEngagement: () =>
+            {
+                attemptReads.Add(reads);
+                return StorageStridePrefetcher.EngagementResult.RetryLater;
+            });
+
+        // Reader slots can stay held for the rest of the block, so a deferred detector must not re-probe
+        // the reservation (a scan over every detector) at a fixed interval for the whole scan.
+        UInt256 index = 1;
+        for (; reads < 1000; index++)
+        {
+            reads++;
+            prefetcher.OnRead(in index);
+        }
+
+        Assert.That(attemptReads, Is.EqualTo(new[] { 8, 23, 54, 117, 244, 499 }));
     }
 
     [Test]
@@ -386,7 +417,8 @@ public class StorageStridePrefetcherTests
                 ReadStride(lateTree, startIndex: 1, count: 8);
 
             BreakStride(initialTrees[0]);
-            ReadStride(lateTree, startIndex: attemptBeforeSlotFree ? 9 : 1, count: 12);
+            // Long enough for a detector deferred once, which needs a matching run twice as long to ask again.
+            ReadStride(lateTree, startIndex: attemptBeforeSlotFree ? 9 : 1, count: 16);
 
             Assert.That(controlledTrees.WaitForReaderTrees(initialTrees.Length + 1), Is.True,
                 "The detector created while all slots were occupied did not engage after a slot was freed.");

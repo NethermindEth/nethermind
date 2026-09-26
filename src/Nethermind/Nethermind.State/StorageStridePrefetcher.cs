@@ -47,12 +47,17 @@ internal sealed class StorageStridePrefetcher(
 {
     internal enum EngagementResult
     {
+        /// <summary>A reader slot and one engagement of the block's budget are reserved; the readers start.</summary>
         Granted,
+
+        /// <summary>Every reader slot is held; the detector defers and tries again after a longer matching run.</summary>
         RetryLater,
+
+        /// <summary>The block's engagement budget is spent; the detector disengages for the rest of the block.</summary>
         Exhausted,
     }
 
-    /// <summary>On-pattern reads required before readers start.</summary>
+    /// <summary>On-pattern reads required before the first engagement attempt; doubled after each deferral.</summary>
     private const int EngageRunLength = 8;
 
     /// <summary>Consecutive off-pattern reads before the pattern is declared broken. Tolerates
@@ -79,6 +84,7 @@ internal sealed class StorageStridePrefetcher(
     private UInt256 _lastIndex;
     private UInt256 _stride;
     private int _runLength;
+    private int _requiredRunLength = EngageRunLength;
     private int _missRunLength;
 
     private UInt256 _engageIndex;
@@ -108,7 +114,7 @@ internal sealed class StorageStridePrefetcher(
                 return;
             }
 
-            if (++_runLength >= EngageRunLength)
+            if (++_runLength >= _requiredRunLength)
             {
                 Engage(index);
             }
@@ -151,9 +157,12 @@ internal sealed class StorageStridePrefetcher(
                 _broken = true;
                 return;
             case EngagementResult.RetryLater:
-                // A full reader cap is transient. Require another complete matching run before polling
-                // again so a hot contract does not rescan the reservation on every read.
+                // A full reader cap is transient, but engaged readers keep their slots until they break or
+                // drain, so it can stay full for the rest of the block. Doubling the matching run required
+                // before the next attempt bounds a deferred contract to O(log n) reservation scans over n
+                // reads instead of one every EngageRunLength reads.
                 _runLength = 1;
+                if (_requiredRunLength <= int.MaxValue / 2) _requiredRunLength *= 2;
                 return;
         }
 
