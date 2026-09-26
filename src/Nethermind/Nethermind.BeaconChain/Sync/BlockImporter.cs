@@ -9,6 +9,7 @@ using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
@@ -37,6 +38,11 @@ namespace Nethermind.BeaconChain.Sync;
 /// the lineage partially mutated; trusted store replays are applied in place.
 /// </para>
 /// <para>
+/// Gloas blocks have no in-place lineage: each runs on a clone of its parent's post-state (a Fulu
+/// parent is carried across the fork boundary on that clone), and the frozen result is retained for
+/// fork choice and for verifying the block's execution payload envelope.
+/// </para>
+/// <para>
 /// Post-states around epoch boundaries (both the last block of an epoch and the first block of the
 /// next) are retained in <see cref="PostStateCache"/> so fork choice can resolve checkpoint states
 /// regardless of whether the epoch's first slot was skipped. Not thread-safe; all calls must come
@@ -55,6 +61,7 @@ public sealed class BlockImporter : IBlockImporter
     private readonly PubkeyCache _pubkeys;
     private readonly IEngineDriver _engine;
     private readonly IBeaconChainConfig _config;
+    private readonly SlotClock _clock;
     private readonly ILogger _logger;
 
     /// <summary>The <c>is_data_available</c> rule for blocks from the network; store replays use <see cref="ReplayedBlockAvailability"/>.</summary>
@@ -62,6 +69,7 @@ public sealed class BlockImporter : IBlockImporter
 
     private readonly PostStateCache _states;
     private readonly ForkChoiceRunner _runner;
+    private readonly ExecutionPayloadEnvelopeImporter _envelopes;
     private readonly ForkChoiceSnapshotHolder? _forkChoiceSnapshots;
 
     /// <summary>Imported-but-not-finalized block roots and their slots, for store pruning at finalization.</summary>
@@ -75,6 +83,13 @@ public sealed class BlockImporter : IBlockImporter
     private Hash256 _canonicalHead;
     private ulong _lastSnapshotEpoch;
 
+    /// <summary>The last Gloas block imported; only its children may reuse <see cref="_gloasLineageCache"/>, which refuses a memo built on another branch.</summary>
+    private Hash256? _gloasLineageRoot;
+
+    private EpochCache _gloasLineageCache = new();
+
+    /// <param name="isEnvelopeDataAvailable">The Gloas <c>is_data_available</c> an execution payload envelope is checked against; see <see cref="ExecutionPayloadEnvelopeImporter"/>.</param>
+    /// <param name="clock">The node's slot clock; a block after its current slot (within <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>) is refused.</param>
     /// <param name="forkChoiceSnapshots">Where <see cref="ComputeHead"/> publishes a copy of the fork-choice store for readers off the import thread; <c>null</c> publishes nothing.</param>
     public BlockImporter(
         BeaconChainSpec spec,
@@ -84,6 +99,8 @@ public sealed class BlockImporter : IBlockImporter
         IBeaconChainConfig config,
         ILogManager logManager,
         IDataAvailabilityRule availability,
+        Func<Hash256, ExecutionPayloadBid, bool> isEnvelopeDataAvailable,
+        SlotClock clock,
         BeaconStateFulu anchorState,
         SignedBeaconBlock anchorBlock,
         Hash256 anchorRoot,
@@ -94,12 +111,14 @@ public sealed class BlockImporter : IBlockImporter
         _pubkeys = pubkeys;
         _engine = engine;
         _config = config;
+        _clock = clock;
         _logger = logManager.GetClassLogger<BlockImporter>();
         _availability = availability;
         _forkChoiceSnapshots = forkChoiceSnapshots;
 
         _states = new PostStateCache(store, spec, anchorRoot, anchorState);
-        _runner = new ForkChoiceRunner(spec, anchorState, anchorBlock.Message!, _states, pubkeys);
+        _runner = new ForkChoiceRunner(spec, anchorState, anchorBlock.Message!, _states, pubkeys, _states);
+        _envelopes = new ExecutionPayloadEnvelopeImporter(_states, engine, pubkeys, isEnvelopeDataAvailable, logManager);
         _canonicalHead = anchorRoot;
         _lastSnapshotEpoch = anchorState.GetCurrentEpoch();
         store.SetCanonicalRoot(anchorBlock.Message!.Slot, anchorRoot);
@@ -109,34 +128,123 @@ public sealed class BlockImporter : IBlockImporter
     public bool IsKnown(Hash256 blockRoot) => _runner.ContainsBlock(blockRoot);
 
     /// <inheritdoc/>
-    public bool IsExpectedProposer(SignedBeaconBlock block)
+    public bool IsExpectedProposer(ForkedSignedBeaconBlock block)
     {
-        BeaconBlock message = block.Message!;
+        if (block is ForkedSignedBeaconBlock.OfGloas)
+        {
+            // The lookahead of the parent's frozen post-state; a Fulu or unretained parent defers to the transition.
+            return _states.GetGloasBlockState(block.ParentRoot) is not { } parentState
+                || IsInLookahead(parentState.GetCurrentEpoch(), parentState.ProposerLookahead!, block.Slot, block.ProposerIndex);
+        }
+
         BeaconStateFulu state = _states.LineageState;
-        ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(message.Slot);
+        ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(block.Slot);
         ulong stateEpoch = state.GetCurrentEpoch();
         if (epoch != stateEpoch && epoch != stateEpoch + 1)
         {
             return true;
         }
 
-        return state.GetBeaconProposerIndex(message.Slot) == message.ProposerIndex;
+        return state.GetBeaconProposerIndex(block.Slot) == block.ProposerIndex;
+    }
+
+    /// <summary>Whether an EIP-7917 lookahead taken at <paramref name="stateEpoch"/> names <paramref name="proposerIndex"/> for <paramref name="slot"/>; <c>true</c> outside its two-epoch window.</summary>
+    private static bool IsInLookahead(ulong stateEpoch, ulong[] lookahead, ulong slot, ulong proposerIndex)
+    {
+        ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(slot);
+        if (epoch != stateEpoch && epoch != stateEpoch + 1)
+        {
+            return true;
+        }
+
+        int offset = epoch == stateEpoch ? 0 : (int)Presets.SlotsPerEpoch;
+        return lookahead[offset + (int)(slot % Presets.SlotsPerEpoch)] == proposerIndex;
     }
 
     /// <inheritdoc/>
-    public BlockImportResult Import(SignedBeaconBlock signedBlock, Hash256 blockRoot, bool verifySignatures)
+    public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
     {
-        BeaconBlock block = signedBlock.Message!;
         if (_runner.ContainsBlock(blockRoot))
         {
             return BlockImportResult.AlreadyKnown;
         }
 
-        Hash256 parentRoot = block.ParentRoot!;
-        if (!_runner.ContainsBlock(parentRoot))
+        // Refused before any engine call or state copy: fork choice would refuse the shape only after the transition ran.
+        if (SignedBeaconBlockCodec.IsGloasSlot(block.Slot, _spec) != block is ForkedSignedBeaconBlock.OfGloas)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {block.Slot}: a {block.GetType().Name} block does not belong to the fork of its slot");
+            return BlockImportResult.Invalid;
+        }
+
+        if (!_runner.ContainsBlock(block.ParentRoot))
         {
             return BlockImportResult.UnknownParent;
         }
+
+        if (CheckBeforeTransition(block.Slot, block.ParentRoot) is { } refusal)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {block.Slot} before its state transition: {refusal}");
+            return BlockImportResult.Invalid;
+        }
+
+        return block switch
+        {
+            ForkedSignedBeaconBlock.OfFulu fulu => ImportFulu(fulu.Block, blockRoot, verifySignatures),
+            ForkedSignedBeaconBlock.OfGloas gloas => ImportGloas(gloas, blockRoot, verifySignatures),
+            _ => throw new NotSupportedException($"Unhandled block {block.GetType().Name}"),
+        };
+    }
+
+    /// <summary>
+    /// The <c>on_block</c> assertions that precede <c>state_transition</c> (specs/phase0/fork-choice.md), in spec
+    /// order, then the transition's own <c>block.slot &gt; parent slot</c>: a block that fails any of them costs no
+    /// <c>process_slots</c>, which is linear in the slot distance to the parent.
+    /// </summary>
+    /// <returns>Why the block is refused, or <c>null</c>.</returns>
+    /// <remarks>
+    /// The current slot is the node's clock, allowing <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c> as gossip does, never
+    /// fork-choice time: <see cref="OnSlotTick"/> advances that to the block's own slot before <c>OnBlock</c>.
+    /// </remarks>
+    private string? CheckBeforeTransition(ulong slot, Hash256 parentRoot)
+    {
+        ulong currentSlot = _clock.CurrentSlot;
+        ulong latestSlot = _clock.UnixMilliseconds + GossipRouter.MaximumGossipClockDisparityMs >= _clock.SlotStartMilliseconds(currentSlot + 1) ? currentSlot + 1 : currentSlot;
+        if (slot > latestSlot)
+        {
+            return $"the block is from the future (current slot {currentSlot})";
+        }
+
+        CheckpointRef finalized = _runner.FinalizedCheckpoint;
+        ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch);
+        if (slot <= finalizedSlot)
+        {
+            return $"the block is not after the finalized slot {finalizedSlot}";
+        }
+
+        // The spec's get_checkpoint_block(parent_root, finalized.epoch) == finalized.root.
+        Hash256? checkpointBlock = null;
+        foreach (ProtoNode node in _runner.EnumerateAncestors(parentRoot))
+        {
+            if (node.Slot <= finalizedSlot)
+            {
+                checkpointBlock = node.Root;
+                break;
+            }
+        }
+
+        if (checkpointBlock != finalized.Root)
+        {
+            return $"the block does not descend from the finalized checkpoint {finalized}";
+        }
+
+        ulong parentSlot = _runner.GetBlockSlot(parentRoot)!.Value;
+        return slot > parentSlot ? null : $"the block is not after its parent's slot {parentSlot}";
+    }
+
+    private BlockImportResult ImportFulu(SignedBeaconBlock signedBlock, Hash256 blockRoot, bool verifySignatures)
+    {
+        BeaconBlock block = signedBlock.Message!;
+        Hash256 parentRoot = block.ParentRoot!;
 
         // The spec's on_block asserts is_data_available before state_transition; checking it here,
         // ahead of the clone and the engine call, means a block trailing its columns costs nothing
@@ -260,6 +368,170 @@ public sealed class BlockImporter : IBlockImporter
         return BlockImportResult.Imported;
     }
 
+    /// <summary>The Gloas <c>on_block</c> with its state transition; every fallible step runs before anything is stored.</summary>
+    private BlockImportResult ImportGloas(ForkedSignedBeaconBlock.OfGloas forked, Hash256 blockRoot, bool verifySignatures)
+    {
+        SignedBeaconBlockGloas signedBlock = forked.Block;
+        BeaconBlockGloas block = signedBlock.Message!;
+        Hash256 parentRoot = block.ParentRoot!;
+
+        // specs/gloas/fork-choice.md on_block: if is_parent_node_full, assert is_payload_verified(parent_root), before state_transition.
+        bool parentPayloadUnverified = _runner.IsParentNodeFull(block) && !_runner.IsPayloadVerified(parentRoot);
+        if (parentPayloadUnverified && verifySignatures)
+        {
+            return DeferForParentPayload(signedBlock, blockRoot);
+        }
+
+        ulong parentSlot = _runner.GetBlockSlot(parentRoot)!.Value;
+        BeaconStateGloas? gloasParent = null;
+        ForkedBeaconState? parentState;
+        if (SignedBeaconBlockCodec.IsGloasSlot(parentSlot, _spec))
+        {
+            gloasParent = _states.GetGloasBlockState(parentRoot);
+            parentState = gloasParent is null ? null : new ForkedBeaconState.OfGloas(gloasParent.Clone());
+        }
+        else
+        {
+            parentState = _states.CopyBlockState(parentRoot) is { } fuluParent ? new ForkedBeaconState.OfFulu(fuluParent) : null;
+        }
+
+        if (parentState is null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot import block at slot {block.Slot}: the post-state of its parent {parentRoot} is no longer retained");
+            return BlockImportResult.UnknownParent;
+        }
+
+        EpochCache cache = parentRoot == _gloasLineageRoot ? _gloasLineageCache : new EpochCache();
+        BeaconStateGloas postState;
+        try
+        {
+            // On a copy: the transition mutates before its last check, and UpgradeToGloas aliases the Fulu parent's arrays.
+            postState = ((ForkedBeaconState.OfGloas)ForkedStateTransition.Apply(parentState, forked, cache, _pubkeys, new ImportVerdict(_engine), _spec, validateResult: true, verifySignatures)).State;
+        }
+        catch (BeaconStateException e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: {e.Message}");
+            return BlockImportResult.Invalid;
+        }
+
+        if (parentPayloadUnverified)
+        {
+            // Recorded before OnBlock, which needs it: a stored full child was persisted only after passing that gate, so the record holds even if OnBlock now refuses it.
+            _runner.OnExecutionPayloadVerified(parentRoot);
+        }
+
+        OnSlotTick(block.Slot);
+        try
+        {
+            _runner.OnBlock(signedBlock, postState);
+        }
+        catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {block.Slot} rejected by fork choice: {e.Message}");
+            return BlockImportResult.Invalid;
+        }
+
+        // Only after OnBlock: the Gloas tier must hold states of blocks fork choice accepted (the spec's store.block_states).
+        bool startsEpoch = block.Slot % _spec.SlotsPerEpoch == 0;
+        _states.RetainGloas(blockRoot, postState, checkpointCandidate: startsEpoch);
+        if (gloasParent is not null && !startsEpoch && _spec.GetEpoch(block.Slot) > _spec.GetEpoch(parentSlot))
+        {
+            // The parent is the checkpoint block of every epoch whose start slot this block skipped.
+            _states.RetainGloas(parentRoot, gloasParent, checkpointCandidate: true);
+        }
+
+        ApplyBodyOperations(block.Body!);
+
+        _store.PutForkedBlock(blockRoot, forked);
+        _unfinalized[blockRoot] = block.Slot;
+        _gloasLineageRoot = blockRoot;
+        _gloasLineageCache = cache;
+        return BlockImportResult.Imported;
+    }
+
+    /// <summary>
+    /// Answers <see cref="BlockImportResult.ParentPayloadUnverified"/> for a block whose full parent's payload is not
+    /// verified, once its proposer and proposer signature check out against the parent's post-state.
+    /// </summary>
+    /// <remarks>
+    /// A deferred block waits in a bounded retry set and is marked seen for its (slot, proposer), so an unsigned
+    /// one must be refused here or it could crowd out the real block. The proposer domain is the one the block's
+    /// own pre-state has: its fork version is fixed for every epoch from the parent's on. Past the parent's
+    /// lookahead window the proposer is read from a copy of the parent's post-state advanced by <c>process_slots</c>,
+    /// the pre-state the block's own transition starts from; the clock check has already bounded that distance.
+    /// </remarks>
+    private BlockImportResult DeferForParentPayload(SignedBeaconBlockGloas signedBlock, Hash256 blockRoot)
+    {
+        BeaconBlockGloas block = signedBlock.Message!;
+        // A full parent whose payload is unverified is a Gloas block: a known Fulu block counts as verified.
+        if (_states.GetGloasBlockState(block.ParentRoot!) is not { } parentState)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot import block at slot {block.Slot}: the post-state of its parent {block.ParentRoot} is no longer retained");
+            return BlockImportResult.UnknownParent;
+        }
+
+        string? refusal = null;
+        try
+        {
+            BeaconStateGloas proposerState = parentState;
+            if (BeaconStateAccessors.ComputeEpochAtSlot(block.Slot) > parentState.GetCurrentEpoch() + 1)
+            {
+                proposerState = parentState.Clone();
+                GloasSlotProcessing.ProcessSlots(proposerState, block.Slot);
+            }
+
+            if (!IsInLookahead(proposerState.GetCurrentEpoch(), proposerState.ProposerLookahead!, block.Slot, block.ProposerIndex))
+            {
+                refusal = $"proposer {block.ProposerIndex} is not the expected proposer";
+            }
+            else if (!GloasBlockProcessing.VerifyProposerSignature(proposerState, signedBlock, _pubkeys))
+            {
+                refusal = "invalid proposer signature";
+            }
+        }
+        catch (BeaconStateException e)
+        {
+            refusal = e.Message;
+        }
+
+        if (refusal is not null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: {refusal}");
+            return BlockImportResult.Invalid;
+        }
+
+        if (_logger.IsDebug) _logger.Debug($"Deferring block {blockRoot} at slot {block.Slot}: the payload of its full parent {block.ParentRoot} is not verified");
+        return BlockImportResult.ParentPayloadUnverified;
+    }
+
+    /// <inheritdoc/>
+    public ExecutionPayloadEnvelopeImportResult ImportEnvelope(SignedExecutionPayloadEnvelope envelope)
+    {
+        Hash256? blockRoot = envelope.Message!.BeaconBlockRoot;
+        if (blockRoot is not null)
+        {
+            if (_runner.GetBlockSlot(blockRoot) is not ulong slot)
+            {
+                // The Gloas tier can outlive a root fork choice pruned; the spec asserts the root is in store.block_states.
+                return ExecutionPayloadEnvelopeImportResult.UnknownBlock;
+            }
+
+            if (SignedBeaconBlockCodec.IsGloasSlot(slot, _spec) && _runner.IsPayloadVerified(blockRoot))
+            {
+                return ExecutionPayloadEnvelopeImportResult.AlreadyKnown;
+            }
+        }
+
+        ExecutionPayloadEnvelopeImportResult result = _envelopes.Import(envelope);
+        if (result is ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic)
+        {
+            // An optimistic payload is recorded as an optimistic block is imported; neither verdict promotes the execution status.
+            _runner.OnExecutionPayloadVerified(blockRoot!);
+        }
+
+        return result;
+    }
+
     /// <inheritdoc/>
     public void OnSlotTick(ulong slot)
     {
@@ -281,12 +553,15 @@ public sealed class BlockImporter : IBlockImporter
         return new HeadView(
             head,
             _runner.GetBlockSlot(head) ?? 0,
-            _runner.GetExecutionBlockHash(head),
-            _runner.GetExecutionBlockHash(_runner.JustifiedCheckpoint.Root),
-            _runner.GetExecutionBlockHash(_runner.FinalizedCheckpoint.Root),
+            _runner.GetParentBlockHash(head) is { } headParentHash && !_runner.IsPayloadVerified(head) ? headParentHash : _runner.GetExecutionBlockHash(head),
+            CheckpointExecutionHash(_runner.JustifiedCheckpoint.Root),
+            CheckpointExecutionHash(_runner.FinalizedCheckpoint.Root),
             _runner.JustifiedCheckpoint,
             _runner.FinalizedCheckpoint);
     }
+
+    /// <summary>specs/gloas/fork-choice.md <c>notify_forkchoice_updated</c>: a Gloas checkpoint block maps to its bid's <c>parent_block_hash</c>.</summary>
+    private Hash256? CheckpointExecutionHash(Hash256 root) => _runner.GetParentBlockHash(root) ?? _runner.GetExecutionBlockHash(root);
 
     /// <inheritdoc/>
     public void OnInvalidExecutionPayload(Hash256 blockRoot, Hash256? latestValidHash) =>
@@ -410,10 +685,42 @@ public sealed class BlockImporter : IBlockImporter
         }
     }
 
+    /// <summary>The Gloas body replay, under the Fulu replay's policy.</summary>
+    /// <remarks>Payload attestations are not fed: fork choice keeps no payload timeliness votes yet (the spec's <c>notify_ptc_messages</c>).</remarks>
+    private void ApplyBodyOperations(BeaconBlockBodyGloas body)
+    {
+        foreach (AttestationGloas attestation in body.Attestations!)
+        {
+            try
+            {
+                _runner.OnAttestation(attestation, isFromBlock: true, verifySignature: false);
+            }
+            catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+            {
+                Metrics.BeaconChainForkChoiceRejections.Increment(BodyAttestationRejected);
+                if (_logger.IsTrace) _logger.Trace($"Skipped body attestation: {e.Message}");
+            }
+        }
+
+        foreach (AttesterSlashingGloas slashing in body.AttesterSlashings!)
+        {
+            try
+            {
+                _runner.OnAttesterSlashing(slashing, verifySignatures: false);
+            }
+            catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
+            {
+                Metrics.BeaconChainForkChoiceRejections.Increment(BodyAttesterSlashingRejected);
+                if (_logger.IsTrace) _logger.Trace($"Skipped body attester slashing: {e.Message}");
+            }
+        }
+    }
+
     /// <summary>Moves the live lineage onto the new head after a reorg, with fresh per-lineage caches.</summary>
+    /// <remarks>A Gloas head has no Fulu lineage to adopt; the Fulu lineage stays on the last Fulu block it followed.</remarks>
     private void AdoptHeadLineage(Hash256 head)
     {
-        if (head == _states.LineageRoot)
+        if (head == _states.LineageRoot || _runner.GetBlockSlot(head) is ulong headSlot && SignedBeaconBlockCodec.IsGloasSlot(headSlot, _spec))
         {
             return;
         }
@@ -536,7 +843,8 @@ public sealed class BlockImporter : IBlockImporter
 
 /// <inheritdoc cref="IBlockImporterFactory"/>
 /// <remarks>
-/// Every importer created here applies <see cref="CustodySamplingAvailability"/>: the production
+/// Every importer created here applies <see cref="CustodySamplingAvailability"/> to Fulu blocks and
+/// <see cref="GloasCustodySamplingAvailability"/> to Gloas execution payload envelopes: the production
 /// <c>is_data_available</c>, fed from the gossip sidecar pool and this node's discovery identity. The
 /// supernode <see cref="FullColumnSetAvailability"/> is for the consensus-spec vectors only and is
 /// deliberately not reachable from this factory.
@@ -547,7 +855,7 @@ public sealed class BlockImporter : IBlockImporter
 /// some tests run) leaves the identity unknown, so no blob-carrying block is ever available.
 /// </param>
 /// <param name="clock">
-/// The wall clock the <see cref="DataAvailabilityBoundary"/> is measured against; <c>null</c> (tests
+/// The wall clock the <see cref="DataAvailabilityBoundary"/> and the future-slot bound are measured against; <c>null</c> (tests
 /// that construct the factory by hand) means the system clock, which is what the container supplies.
 /// </param>
 /// <param name="forkChoiceSnapshots">Where every importer publishes its fork-choice snapshots; <c>null</c> publishes nothing.</param>
@@ -565,18 +873,23 @@ public sealed class BlockImporterFactory(
 {
     private readonly SlotClock _clock = clock ?? new SlotClock(spec, Timestamper.Default);
 
-    public IBlockImporter Create(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot) =>
-        new BlockImporter(
+    public IBlockImporter Create(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot)
+    {
+        DiscoveryNodeCustodySource custody = new(discovery);
+        return new BlockImporter(
             spec,
             store,
             pubkeys,
             engine,
             config,
             logManager,
-            new CustodySamplingAvailability(new DiscoveryNodeCustodySource(discovery), new DataColumnPoolSource(pool), _clock),
+            new CustodySamplingAvailability(custody, new DataColumnPoolSource(pool), _clock),
+            new GloasCustodySamplingAvailability(custody, pool, _clock, spec).IsDataAvailable,
+            _clock,
             anchorState,
             anchorBlock,
             anchorRoot,
             forkChoiceSnapshots);
+    }
 
 }
