@@ -68,9 +68,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         JsonRpcProcessingOptions options,
         CancellationToken cancellationToken = default)
     {
-        CancellationTokenSource? timeoutSource = BeginRequest(context);
+        JsonRpcContext.Current.Value = context;
 
-        return ProcessMemoryCoreAsync(requestBody, context, sink, options, timeoutSource, timeoutSource?.Token ?? CancellationToken.None, cancellationToken);
+        return ProcessMemoryCoreAsync(requestBody, context, sink, options, cancellationToken);
     }
 
     /// <summary>Publishes the ambient context and takes a timeout budget for callers that are subject to one.</summary>
@@ -79,46 +79,37 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     {
         JsonRpcContext.Current.Value = context;
 
-        return context.IsAuthenticated ? null : _jsonRpcConfig.BuildTimeoutCancellationToken();
+        return RentTimeout(context);
     }
+
+    private CancellationTokenSource? RentTimeout(JsonRpcContext context) =>
+        context.IsAuthenticated ? null : _jsonRpcConfig.BuildTimeoutCancellationToken();
 
     private async ValueTask ProcessMemoryCoreAsync(
         ReadOnlyMemory<byte> requestBody,
         JsonRpcContext context,
         IJsonRpcResponseSink sink,
         JsonRpcProcessingOptions options,
-        CancellationTokenSource? timeoutSource,
-        CancellationToken timeoutToken,
         CancellationToken cancellationToken)
     {
-        try
+        if (ProcessExit.IsCancellationRequested)
         {
-            if (ProcessExit.IsCancellationRequested)
-            {
-                await WriteShutdownResponseAsync(sink, cancellationToken);
-                return;
-            }
-
-            if (options.InputMode != JsonRpcInputMode.SingleDocument)
-            {
-                PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>(requestBody));
-                // Hand the timeout budget over: ProcessCoreAsync returns it in its own finally, so this one must
-                // not return it a second time.
-                CancellationTokenSource? coreTimeoutSource = timeoutSource;
-                timeoutSource = null;
-                await ProcessCoreAsync(reader, context, sink, options, coreTimeoutSource, timeoutToken, cancellationToken);
-                return;
-            }
-
-            _diagnostics.RecordRequest(requestBody);
-
-            await ProcessSingleDocumentMemoryToSink(requestBody, context, sink, options, cancellationToken);
+            await WriteShutdownResponseAsync(sink, cancellationToken);
+            return;
         }
-        finally
+
+        if (options.InputMode != JsonRpcInputMode.SingleDocument)
         {
-            if (timeoutSource is not null)
-                JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeoutSource);
+            PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>(requestBody));
+            // Only the pipe path reads the timeout budget; ProcessCoreAsync returns it in its own finally.
+            CancellationTokenSource? timeoutSource = RentTimeout(context);
+            await ProcessCoreAsync(reader, context, sink, options, timeoutSource, timeoutSource?.Token ?? CancellationToken.None, cancellationToken);
+            return;
         }
+
+        _diagnostics.RecordRequest(requestBody);
+
+        await ProcessSingleDocumentMemoryToSink(requestBody, context, sink, options, cancellationToken);
     }
 
     private async ValueTask ProcessCoreAsync(
