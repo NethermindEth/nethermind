@@ -354,7 +354,7 @@ public partial class EthRpcModule(
 
     public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
     {
-        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
+        Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
         {
             return Task.FromResult(ResultWrapper<Hash256>.Fail(error, ErrorCodes.InvalidInput));
@@ -510,7 +510,7 @@ public partial class EthRpcModule(
 
         legacyTx.ChainId ??= chainId;
 
-        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
+        Result<Transaction> txResult = rpcTx.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec);
         if (!txResult.Success(out Transaction tx, out string error))
             return ResultWrapper<FillTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
 

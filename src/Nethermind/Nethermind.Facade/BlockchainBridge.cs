@@ -374,7 +374,7 @@ namespace Nethermind.Facade
                 accessTracer.Reset();
                 outputTracer.Reset();
                 tx.AccessList = previousAccessList;
-                result = TryCallAndRestore(nonceSource, txProcessor, header, tx, false, blobBaseFeeOverride, tracer);
+                result = TryCallAndRestore(nonceSource, txProcessor, header, tx, false, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap: true);
                 stop = !result.TransactionExecuted || HasConverged(previousAccessList, accessTracer.AccessList);
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
@@ -388,7 +388,7 @@ namespace Nethermind.Facade
                 CallOutputTracer emptyOutputTracer = new();
                 CancellationTxTracer emptyTracer = emptyOutputTracer.WithCancellation(cancellationToken);
                 tx.AccessList = null;
-                TransactionResult emptyResult = TryCallAndRestore(nonceSource, txProcessor, header, tx, false, blobBaseFeeOverride, emptyTracer);
+                TransactionResult emptyResult = TryCallAndRestore(nonceSource, txProcessor, header, tx, false, blobBaseFeeOverride, emptyTracer, rejectsTipAboveFeeCap: true);
                 if (emptyResult.TransactionExecuted
                     && emptyOutputTracer.StatusCode == outputTracer.StatusCode
                     && emptyOutputTracer.GasSpent < outputTracer.GasSpent)
