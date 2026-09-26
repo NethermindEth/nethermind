@@ -17,7 +17,7 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 
 /// <summary>The Fulu <c>data_column_sidecars_by_range</c> v1 protocol, dialable for Fulu or Gloas-shaped sidecars.</summary>
 /// <remarks>
-/// The listen side serves custodied columns from the local <see cref="DataColumnSidecarPool"/>,
+/// The listen side serves custodied columns of either fork from the local <see cref="DataColumnSidecarPool"/>,
 /// skipping slots or columns it does not hold. It serves only the block <see cref="BeaconChainStore"/>
 /// records as canonical at each slot, since fulu/p2p-interface.md requires the response to follow the
 /// responder's view of the current fork choice; a competing block's columns are never served.
@@ -154,6 +154,10 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
                     if (pool.TryGet(root, column, out DataColumnSidecar? sidecar))
                     {
                         await WriteSidecarChunkAsync(stream, sidecar!, cts);
+                    }
+                    else if (pool.TryGetGloas(root, column, out DataColumnSidecarGloas? gloasSidecar))
+                    {
+                        await WriteGloasSidecarChunkAsync(stream, gloasSidecar, cts);
                     }
                 }
             }
