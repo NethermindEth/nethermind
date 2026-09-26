@@ -64,11 +64,11 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         public override bool IsTracingInstructions => false;
     }
 
-    private sealed class CountingCancellationTracer(int cancelAtPoll = int.MaxValue) : TestAllTracerWithOutput, ITxTracer
+    private sealed class CountingCancellationTracer(int cancelAtPoll = int.MaxValue, bool traceInstructions = false) : TestAllTracerWithOutput, ITxTracer
     {
         public int PollCount { get; private set; }
 
-        public override bool IsTracingInstructions => false;
+        public override bool IsTracingInstructions => traceInstructions;
 
         bool ITxTracer.IsCancelable => true;
 
@@ -359,19 +359,21 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         "5b600161000057",   // JUMPDEST PUSH1 1 PUSH2 0 JUMPI
     ];
 
-    [TestCaseSource(nameof(EndlessLoops))]
-    public void Cancellation_is_polled_at_a_taken_jump_once_the_loop_passes_the_interval(string loop)
+    [Test]
+    public void Cancellation_is_polled_at_a_taken_jump_once_the_loop_passes_the_interval(
+        [ValueSource(nameof(EndlessLoops))] string loop, [Values] bool traceInstructions)
     {
-        CountingCancellationTracer tracer = new(cancelAtPoll: 2);
+        CountingCancellationTracer tracer = new(cancelAtPoll: 2, traceInstructions);
 
         Assert.Throws<OperationCanceledException>(() => Execute(tracer, Bytes.FromHexString(loop)), "an endless loop must reach a cancellation poll");
         Assert.That(tracer.PollCount, Is.EqualTo(2), "the first poll is at frame entry and the second at a taken jump");
     }
 
-    [TestCaseSource(nameof(EndlessLoops))]
-    public void Cancellation_is_polled_at_most_once_per_interval_in_an_uncancelled_loop(string loop)
+    [Test]
+    public void Cancellation_is_polled_at_most_once_per_interval_in_an_uncancelled_loop(
+        [ValueSource(nameof(EndlessLoops))] string loop, [Values] bool traceInstructions)
     {
-        CountingCancellationTracer tracer = new();
+        CountingCancellationTracer tracer = new(traceInstructions: traceInstructions);
 
         Execute(tracer, Bytes.FromHexString(loop));
 

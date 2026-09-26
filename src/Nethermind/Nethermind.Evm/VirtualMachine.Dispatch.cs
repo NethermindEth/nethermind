@@ -17,7 +17,10 @@ using static Nethermind.Evm.VirtualMachineStatics;
 public unsafe partial class VirtualMachine<TGasPolicy>
 {
     // Poll cancellation at the first taken jump once 1024 opcodes have run since the last poll. Code that
-    // takes no jump only moves forward, so it reaches the end of the code within its length.
+    // takes no jump only moves forward, so 1024 is not the bound between polls: one frame's straight-line
+    // code is, up to the code (or initcode) size limit in opcodes, each of which may be expensive (an inline
+    // precompile STATICCALL, a large KECCAK256 or MCOPY). Gas still bounds the total work; only the
+    // cancellation latency grows.
     private const int CancellationPollInterval = 1024;
 
     internal struct DispatchState
