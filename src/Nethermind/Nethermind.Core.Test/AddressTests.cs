@@ -271,6 +271,32 @@ public class AddressTests
         }
     }
 
+    [Test]
+    public void ValueAddress_copies_the_bytes_of_an_unaligned_slice([Values(0, 1, 3)] int offset)
+    {
+        byte[] buffer = new byte[offset + Address.Size];
+        for (int i = 0; i < buffer.Length; i++) buffer[i] = (byte)(i + 1);
+        ReadOnlySpan<byte> source = buffer.AsSpan(offset, Address.Size);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new ValueAddress(source).AsSpan.ToArray(), Is.EqualTo(source.ToArray()));
+            Assert.That(new Address(source).Bytes.ToArray(), Is.EqualTo(source.ToArray()));
+        }
+    }
+
+    [Test]
+    public void Span_constructors_reject_other_lengths([Values(0, 19, 21, 32)] int length)
+    {
+        byte[] bytes = new byte[length];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => new ValueAddress(bytes), Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("bytes"));
+            Assert.That(() => new Address(bytes), Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("bytes"));
+        }
+    }
+
     public static IEnumerable PointEvaluationPrecompileTestCases
     {
         get

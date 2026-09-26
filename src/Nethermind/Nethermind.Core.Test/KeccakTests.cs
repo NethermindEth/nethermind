@@ -172,6 +172,18 @@ namespace Nethermind.Core.Test
         public void CompareSameInstance() => Assert.That(Keccak.Zero.CompareTo(Keccak.Zero), Is.EqualTo(0));
 
         [Test]
+        public void Constructors_reject_other_lengths([Values(0, 20, 31, 33)] int length)
+        {
+            byte[] bytes = new byte[length];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => new Hash256(bytes), Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("bytes"));
+                Assert.That(() => new Hash256((ReadOnlySpan<byte>)bytes), Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("bytes"));
+            }
+        }
+
+        [Test]
         public void Computes_known_hash_for_span_and_array()
         {
             byte[] byteArray = new byte[1024];
