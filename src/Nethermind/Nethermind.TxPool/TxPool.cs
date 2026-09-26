@@ -41,7 +41,7 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public class TxPool : ITxPool, IAsyncDisposable, IRecyclableTxPool
+    public class TxPool : ITxPool, IFrameTxWidthLedger, IAsyncDisposable, IRecyclableTxPool
     {
         private const int RevalidationAbandonmentWarningThreshold = 3;
         private const int MarkerPublicationDeferralWarningThreshold = 3;
@@ -73,6 +73,7 @@ namespace Nethermind.TxPool
         private readonly DelegationCache _pendingDelegations;
         private readonly PayerExposureCache _payerExposure = new();
         private readonly PendingPaymasterCache _pendingPaymasters = new();
+        private readonly SenderWidthCache _senderWidth = new();
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
         // Consecutive heads each deferred transaction has been carried across. Written only under the head write
@@ -357,6 +358,12 @@ namespace Nethermind.TxPool
             // EIP-8141: must follow both resolvers — it prices whichever payer they recorded, and a
             // second registration would reserve every frame tx's cost twice.
             postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
+
+            if (txPoolConfig.FrameTxWidthEnabled)
+            {
+                postHashFilters.Add(new KeyedNonceDisjointnessFilter(_transactions, _blobTransactions));
+                postHashFilters.Add(new FrameTxWidthFilter(txPoolConfig, _transactions, _blobTransactions, _senderWidth, _logger));
+            }
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -1082,6 +1089,35 @@ namespace Nethermind.TxPool
             return removed;
         }
 
+        /// <summary>Credits each finalized EIP-8250 keyed-nonce frame transaction's sender with the width its gas earns.</summary>
+        /// <remarks>
+        /// MATCHA earns width only on finalization, so a block later reorged out grants none. The consensus layer
+        /// that observes finalization delivers the finalized blocks through <see cref="IFrameTxWidthLedger"/>, so
+        /// this pool keeps no reference to the block tree that raises the signal. The gas is read from the block's
+        /// receipts, not recomputed. Each finalized block arrives once, so a sender earns once per finalized
+        /// transaction.
+        /// </remarks>
+        public void EarnWidthOnFinalization(Block finalizedBlock, TxReceipt[] receipts)
+        {
+            if (!_txPoolConfig.FrameTxWidthEnabled) return;
+
+            Transaction[] blockTransactions = finalizedBlock.Transactions;
+            if (receipts.Length != blockTransactions.Length)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Skipped MATCHA width for finalized block {finalizedBlock.Number}: {receipts.Length} receipts for {blockTransactions.Length} transactions");
+                return;
+            }
+
+            for (int i = 0; i < blockTransactions.Length; i++)
+            {
+                Transaction blockTx = blockTransactions[i];
+                if (blockTx.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(blockTx))
+                {
+                    _senderWidth.Earn(blockTx.SenderAddress!, (UInt256)receipts[i].GasUsed, _txPoolConfig.FrameTxWidthCap);
+                }
+            }
+        }
+
         /// <summary>Drops pending EIP-8141 frame transactions whose expiry deadline has passed as of the new head.</summary>
         /// <remarks>The predeploy reverts only once <c>block.timestamp &gt; deadline</c>, so the comparison is strict here too.</remarks>
         // EIP8141-GAP: linear scan; a deadline-ordered index is deferred to the scalable eviction layer.
@@ -1277,6 +1313,8 @@ namespace Nethermind.TxPool
         /// prefix leaves the transaction pending. The fork gate reads the incoming block's spec, matching
         /// <see cref="RemoveExpiredFrameTransactions"/>. Nothing here re-prices or moves a reservation: the
         /// pooled record is left as admission wrote it, so removal releases exactly what admission took.
+        /// Transactions are rechecked in ascending nonce, then hash, order, so every node exempts the same
+        /// transaction from the width charge and sheds the same ones.
         /// </remarks>
         private void RevalidateFrameTransactions(Block block)
         {
@@ -1288,7 +1326,9 @@ namespace Nethermind.TxPool
             }
 
             IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
+            HashSet<AddressAsKey> baselineExempt = [];
 
+            using ArrayPoolList<Transaction> ordered = new(_frameTxsToRevalidate.Count);
             foreach (ValueHash256 hash in _frameTxsToRevalidate)
             {
                 // A type-6 frame tx may carry blobs (blob pool) or not (normal pool), so check both.
@@ -1298,10 +1338,20 @@ namespace Nethermind.TxPool
                     continue;
                 }
 
-                if (!tx.SupportsFrames || tx.Frames is null) continue;
+                if (tx.SupportsFrames && tx.Frames is not null) ordered.Add(tx);
+            }
+
+            ordered.AsSpan().Sort(static (x, y) =>
+            {
+                int byNonce = x.Nonce.CompareTo(y.Nonce);
+                return byNonce != 0 ? byNonce : x.Hash!.ValueHash256.CompareTo(y.Hash!.ValueHash256);
+            });
+
+            foreach (Transaction tx in ordered)
+            {
 
                 Interlocked.Increment(ref Metrics.FrameTxRevalidations);
-                if (!TryRevalidateFrameTransaction(tx, state))
+                if (!TryRevalidateFrameTransaction(tx, state, baselineExempt))
                 {
                     // The record is untouched, so the Removed handler releases exactly what admission took.
                     // The blob pool reconstitutes the full transaction above, so the events must carry the
@@ -1334,14 +1384,14 @@ namespace Nethermind.TxPool
         /// re-index is update-only: block production evicts without the head lock, so it can drop the
         /// transaction while the prefix simulates, and recreating the entry here would leak it.
         /// </remarks>
-        private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state)
+        private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state, HashSet<AddressAsKey> baselineExempt)
         {
-            bool stillValid = ResolveFrameTxAgainstHead(tx, state, out Address? resolvedPayer);
+            bool stillValid = ResolveFrameTxAgainstHead(tx, state, baselineExempt, out Address? resolvedPayer);
             if (stillValid) IndexFrameTxDependencies(tx, resolvedPayer, onlyIfTracked: true);
             return stillValid;
         }
 
-        private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, out Address? resolvedPayer)
+        private bool ResolveFrameTxAgainstHead(Transaction tx, IReadOnlyStateProvider state, HashSet<AddressAsKey> baselineExempt, out Address? resolvedPayer)
         {
             resolvedPayer = null;
 
@@ -1360,6 +1410,14 @@ namespace Nethermind.TxPool
                 default:
                     // Opaque: with no simulator wired the prefix stays unresolved, exactly as at admission.
                     if (_frameTxPrefixSimulator is null) return true;
+                    if (_txPoolConfig.FrameTxWidthEnabled
+                        && KeyedNonceManager.UsesKeyedNonce(tx)
+                        && !baselineExempt.Add(tx.SenderAddress!)
+                        && !_senderWidth.TrySpend(tx.SenderAddress!, FrameTxWidthCharge.For(tx, _txPoolConfig.FrameTxWidthSafetyFactorPermille)))
+                    {
+                        Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
+                        return false;
+                    }
                     // validate_signature reads no state, so admission's verdict still holds and re-verifying
                     // would only spend the per-head simulation budget this pool rations.
                     FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx, signaturesPreValidated: true, token: _cts.Token);
@@ -2758,6 +2816,7 @@ namespace Nethermind.TxPool
             _payerExposure.Clear();
             Interlocked.Add(ref Metrics.FrameTxEvictionRetryLedgerEntries, -_frameEvictionAttempts.Count);
             _frameEvictionAttempts.Clear();
+            _senderWidth.Clear();
 
             await _retryCache.DisposeAsync();
             await _headProcessing;

@@ -5813,6 +5813,30 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [TestCase(false, TestName = "overlapping nonce keys pend while MATCHA width is off")]
+        [TestCase(true, TestName = "overlapping nonce keys are rejected once MATCHA width is on")]
+        public void SubmitTx_KeyedNonceOverlap_IsRejectedOnlyWithWidthEnabled(bool widthEnabled)
+        {
+            _txPool = CreatePool(new TxPoolConfig { FrameTxWidthEnabled = widthEnabled }, KeyedNonceSpecProvider());
+            Address sender = TestItem.PrivateKeyA.Address;
+            EnsureSenderBalance(sender, 100.Ether);
+
+            Transaction single = BuildKeyedFrameTx(sender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
+            Transaction overlapping = BuildKeyedFrameTx(sender, nonceKey: 1, seq: 0, value: UInt256.Zero, maxFee: 1.GWei);
+            overlapping.NonceKeys = [(UInt256)1, (UInt256)2];
+            overlapping.Hash = overlapping.CalculateHash();
+
+            AcceptTxResult first = _txPool.SubmitTx(single, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult second = _txPool.SubmitTx(overlapping, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(second, Is.EqualTo(widthEnabled ? AcceptTxResult.KeyedNonceOverlap : AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(widthEnabled ? 1 : 2));
+            }
+        }
+
         static IEnumerable<(byte[], AcceptTxResult)> CodeCases()
         {
             yield return (new byte[16], AcceptTxResult.SenderIsContract);
