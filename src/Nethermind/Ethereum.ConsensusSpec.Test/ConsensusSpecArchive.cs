@@ -154,14 +154,15 @@ public static class ConsensusSpecArchive
     /// <summary>
     /// Recursively finds every directory under <paramref name="path"/> that directly contains a file
     /// named <paramref name="marker"/> (e.g. a leaf test case directory, marked by its own
-    /// <c>serialized.ssz_snappy</c> or <c>meta.yaml</c>).
+    /// <c>serialized.ssz_snappy</c> or <c>meta.yaml</c>), in ordinal path order.
     /// </summary>
+    /// <remarks>Directory enumeration order is filesystem-dependent, so it is sorted to give every platform the same order.</remarks>
     public static IEnumerable<string> LeafDirs(string? path, string marker)
     {
         if (path is null || !Directory.Exists(path))
             yield break;
 
-        foreach (string dir in Directory.EnumerateDirectories(path, "*", SearchOption.AllDirectories))
+        foreach (string dir in Directory.EnumerateDirectories(path, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
         {
             if (File.Exists(Path.Combine(dir, marker)))
                 yield return dir;

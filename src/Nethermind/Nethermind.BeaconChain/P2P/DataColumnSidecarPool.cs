@@ -39,13 +39,16 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
     // Pending sidecars are unverified and peer-supplied, so they get a smaller bound than the served maps.
     private readonly int _maxPendingGloas = Math.Min(capacity, MaxPendingGloasSidecars);
     private readonly Lock _pendingLock = new();
-    private readonly Dictionary<(Hash256 BlockRoot, ulong Column), List<PendingCandidate>> _pendingByKey = [];
-    private readonly Dictionary<string, LinkedList<PendingCandidate>> _pendingByPeer = [];
+    private readonly Dictionary<(Hash256 BlockRoot, ulong Column), List<DataColumnSidecarGloas>> _pendingByKey = [];
     private int _pendingCount;
-    private long _pendingSequence;
+    private ulong _pendingPrunedAtSlot;
 
-    /// <summary>The most unverified Gloas sidecars <see cref="AddPendingGloas"/> holds at once, across all peers.</summary>
+    /// <summary>The most unverified Gloas sidecars <see cref="AddPendingGloas"/> holds at once.</summary>
     public const int MaxPendingGloasSidecars = 1 << 10;
+
+    /// <summary>The most unverified Gloas sidecars <see cref="AddPendingGloas"/> holds for one (root, column).</summary>
+    /// <remarks>Availability runs a KZG batch per candidate, so this bounds that work per column; above one, so an earlier forgery cannot block the genuine sidecar alone.</remarks>
+    public const int MaxPendingGloasCandidatesPerKey = 4;
 
     /// <summary>The slot-to-root index's current entry count, bounded by <paramref name="capacity"/>; for tests and diagnostics.</summary>
     internal int SlotIndexCount => _rootBySlot.Count;
@@ -79,12 +82,9 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
 
         lock (_pendingLock)
         {
-            if (_pendingByKey.Remove((blockRoot, sidecar.Index), out List<PendingCandidate>? candidates))
+            if (_pendingByKey.Remove((blockRoot, sidecar.Index), out List<DataColumnSidecarGloas>? candidates))
             {
-                foreach (PendingCandidate candidate in candidates)
-                {
-                    UnlinkFromPeer(candidate);
-                }
+                _pendingCount -= candidates.Count;
             }
         }
     }
@@ -93,84 +93,54 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
         _gloasByRootAndColumn.TryGet((blockRoot, column), out sidecar);
 
     /// <summary>
-    /// Parks an unverified Gloas sidecar whose block is not yet known as <paramref name="peerId"/>'s candidate
-    /// for its own <c>beacon_block_root</c> and <c>index</c>, replacing that peer's earlier candidate for them.
+    /// Parks an unverified Gloas sidecar whose block is not yet known as a candidate for its own
+    /// <c>beacon_block_root</c> and <c>index</c>, unless that key or the pool is full.
     /// </summary>
     /// <param name="sidecar">The unverified sidecar.</param>
-    /// <param name="peerId">The peer the sidecar came from.</param>
+    /// <param name="currentSlot">The wall-clock slot, which sets the retention window.</param>
+    /// <returns>Whether the sidecar was parked.</returns>
     /// <remarks>
-    /// Candidates from different peers for one (root, column) are all kept, so a forgery can neither
-    /// replace a valid sidecar queued earlier nor block one queued later. When the pool is full, the
-    /// oldest candidate of the peer holding the most is evicted, so a peer that floods the pool evicts
-    /// its own candidates before any other peer's.
+    /// The source of an unverified sidecar is unknown, so no arrival can displace an earlier one: a key keeps
+    /// its first <see cref="MaxPendingGloasCandidatesPerKey"/> candidates, and a full pool refuses new ones.
+    /// A candidate is kept until the end of the slot after its own, so a flood holds space only while it lasts.
+    /// A flood can still deny parking at no cost to its sender, so a sampled column missing when its block arrives can be recovered only by a DataColumnSidecarsByRoot request.
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="sidecar"/> names no beacon block root.</exception>
-    public void AddPendingGloas(DataColumnSidecarGloas sidecar, string peerId)
+    public bool AddPendingGloas(DataColumnSidecarGloas sidecar, ulong currentSlot)
     {
-        ArgumentNullException.ThrowIfNull(peerId);
         (Hash256 BlockRoot, ulong Column) key = (BlockRootOf(sidecar), sidecar.Index);
 
         lock (_pendingLock)
         {
-            if (_pendingByKey.TryGetValue(key, out List<PendingCandidate>? candidates))
+            PruneStalePending(currentSlot);
+            if (IsStale(sidecar, currentSlot) || _pendingCount >= _maxPendingGloas)
             {
-                foreach (PendingCandidate candidate in candidates)
-                {
-                    if (candidate.PeerId == peerId)
-                    {
-                        candidate.Sidecar = sidecar;
-                        candidate.Sequence = _pendingSequence++;
-                        LinkedList<PendingCandidate> own = candidate.PeerNode.List!;
-                        own.Remove(candidate.PeerNode);
-                        own.AddLast(candidate.PeerNode);
-                        return;
-                    }
-                }
+                return false;
             }
 
-            if (_pendingCount >= _maxPendingGloas)
-            {
-                EvictFromLargestPeer(peerId);
-            }
-
-            // Eviction may have emptied and dropped this key's list.
-            if (!_pendingByKey.TryGetValue(key, out candidates))
+            if (!_pendingByKey.TryGetValue(key, out List<DataColumnSidecarGloas>? candidates))
             {
                 candidates = [];
                 _pendingByKey[key] = candidates;
             }
-
-            if (!_pendingByPeer.TryGetValue(peerId, out LinkedList<PendingCandidate>? byPeer))
+            else if (candidates.Count >= MaxPendingGloasCandidatesPerKey)
             {
-                byPeer = new LinkedList<PendingCandidate>();
-                _pendingByPeer[peerId] = byPeer;
+                return false;
             }
 
-            PendingCandidate added = new(key, peerId, sidecar, _pendingSequence++);
-            candidates.Add(added);
-            byPeer.AddLast(added.PeerNode);
+            candidates.Add(sidecar);
             _pendingCount++;
+            return true;
         }
     }
 
-    /// <summary>A snapshot of the parked, unverified Gloas candidates for a block root and column, at most one per source peer.</summary>
+    /// <summary>A snapshot of the parked, unverified Gloas candidates for a block root and column, in arrival order.</summary>
     /// <remarks>The caller must verify each against the block and match its <c>slot</c> to the block's before use.</remarks>
     public DataColumnSidecarGloas[] GetPendingGloas(Hash256 blockRoot, ulong column)
     {
         lock (_pendingLock)
         {
-            if (!_pendingByKey.TryGetValue((blockRoot, column), out List<PendingCandidate>? candidates))
-            {
-                return [];
-            }
-
-            DataColumnSidecarGloas[] snapshot = new DataColumnSidecarGloas[candidates.Count];
-            for (int i = 0; i < snapshot.Length; i++)
-            {
-                snapshot[i] = candidates[i].Sidecar;
-            }
-
-            return snapshot;
+            return _pendingByKey.TryGetValue((blockRoot, column), out List<DataColumnSidecarGloas>? candidates) ? [.. candidates] : [];
         }
     }
 
@@ -181,20 +151,26 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
 
         lock (_pendingLock)
         {
-            if (!_pendingByKey.TryGetValue((blockRoot, sidecar.Index), out List<PendingCandidate>? candidates)) return;
+            if (!_pendingByKey.TryGetValue((blockRoot, sidecar.Index), out List<DataColumnSidecarGloas>? candidates)) return;
 
             for (int i = 0; i < candidates.Count; i++)
             {
-                if (ReferenceEquals(candidates[i].Sidecar, sidecar))
+                if (ReferenceEquals(candidates[i], sidecar))
                 {
-                    RemoveCandidate(candidates[i], candidates, i);
+                    candidates.RemoveAt(i);
+                    _pendingCount--;
+                    if (candidates.Count == 0)
+                    {
+                        _pendingByKey.Remove((blockRoot, sidecar.Index));
+                    }
+
                     return;
                 }
             }
         }
     }
 
-    /// <summary>The pending candidates' current total across all peers, bounded by <see cref="MaxPendingGloasSidecars"/>; for tests and diagnostics.</summary>
+    /// <summary>The pending candidates' current total, bounded by <see cref="MaxPendingGloasSidecars"/>; for tests and diagnostics.</summary>
     internal int PendingGloasCount
     {
         get
@@ -206,68 +182,44 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
         }
     }
 
-    private void EvictFromLargestPeer(string addingPeerId)
+    private void PruneStalePending(ulong currentSlot)
     {
-        // The adding peer loses ties, so its flood never pushes out a peer holding as many candidates as it does.
-        // Other ties go to the oldest candidate, so fresh peer ids cannot push out a candidate that just arrived.
-        LinkedList<PendingCandidate>? adding = _pendingByPeer.GetValueOrDefault(addingPeerId);
-        LinkedList<PendingCandidate>? largest = adding;
-        foreach (LinkedList<PendingCandidate> byPeer in _pendingByPeer.Values)
+        if (currentSlot <= _pendingPrunedAtSlot)
         {
-            if (largest is null
-                || byPeer.Count > largest.Count
-                || (byPeer.Count == largest.Count && largest != adding && byPeer.First!.Value.Sequence < largest.First!.Value.Sequence))
+            return;
+        }
+
+        _pendingPrunedAtSlot = currentSlot;
+        List<(Hash256 BlockRoot, ulong Column)>? emptied = null;
+        foreach (KeyValuePair<(Hash256 BlockRoot, ulong Column), List<DataColumnSidecarGloas>> entry in _pendingByKey)
+        {
+            for (int i = entry.Value.Count - 1; i >= 0; i--)
             {
-                largest = byPeer;
+                if (IsStale(entry.Value[i], currentSlot))
+                {
+                    entry.Value.RemoveAt(i);
+                    _pendingCount--;
+                }
+            }
+
+            if (entry.Value.Count == 0)
+            {
+                (emptied ??= []).Add(entry.Key);
             }
         }
 
-        PendingCandidate oldest = largest!.First!.Value;
-        List<PendingCandidate> candidates = _pendingByKey[oldest.Key];
-        RemoveCandidate(oldest, candidates, candidates.IndexOf(oldest));
-    }
-
-    private void RemoveCandidate(PendingCandidate candidate, List<PendingCandidate> candidates, int index)
-    {
-        candidates.RemoveAt(index);
-        if (candidates.Count == 0)
+        if (emptied is not null)
         {
-            _pendingByKey.Remove(candidate.Key);
+            foreach ((Hash256 BlockRoot, ulong Column) key in emptied)
+            {
+                _pendingByKey.Remove(key);
+            }
         }
-
-        UnlinkFromPeer(candidate);
     }
 
-    private void UnlinkFromPeer(PendingCandidate candidate)
-    {
-        LinkedList<PendingCandidate> byPeer = candidate.PeerNode.List!;
-        byPeer.Remove(candidate.PeerNode);
-        if (byPeer.Count == 0)
-        {
-            _pendingByPeer.Remove(candidate.PeerId);
-        }
-
-        _pendingCount--;
-    }
+    // A candidate outlives its own slot by one, so a block that arrives late in the next slot still finds it.
+    private static bool IsStale(DataColumnSidecarGloas sidecar, ulong currentSlot) => sidecar.Slot < currentSlot && currentSlot - sidecar.Slot > 1;
 
     private static Hash256 BlockRootOf(DataColumnSidecarGloas sidecar) =>
         sidecar.BeaconBlockRoot ?? throw new ArgumentException("A Gloas data column sidecar must name its beacon block root", nameof(sidecar));
-
-    private sealed class PendingCandidate
-    {
-        public PendingCandidate((Hash256 BlockRoot, ulong Column) key, string peerId, DataColumnSidecarGloas sidecar, long sequence)
-        {
-            Key = key;
-            PeerId = peerId;
-            Sidecar = sidecar;
-            Sequence = sequence;
-            PeerNode = new LinkedListNode<PendingCandidate>(this);
-        }
-
-        public (Hash256 BlockRoot, ulong Column) Key { get; }
-        public string PeerId { get; }
-        public DataColumnSidecarGloas Sidecar { get; set; }
-        public long Sequence { get; set; }
-        public LinkedListNode<PendingCandidate> PeerNode { get; }
-    }
 }

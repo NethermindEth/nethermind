@@ -25,7 +25,6 @@ namespace Nethermind.BeaconChain.Test.DataAvailability;
 public class GloasCustodySamplingAvailabilityTests
 {
     private const ulong BlockSlot = 1;
-    private const string Peer = "peer";
     private static readonly Hash256 NodeId = new([.. Enumerable.Repeat((byte)0x37, 32)]);
     private static readonly NodeColumnCustody Custody = new(NodeId, Eip7594DasConstants.CustodyRequirement);
     private static BeaconChainSpec Spec => ImportableBlobBlock.FuluFromGenesis;
@@ -106,7 +105,7 @@ public class GloasCustodySamplingAvailabilityTests
         DataColumnSidecarPool pool = new();
         foreach (ulong column in Custody.SampledColumns)
         {
-            pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(column, BlockSlot), Peer);
+            pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(column, BlockSlot), BlockSlot);
         }
 
         Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, pool, ClockAtEpoch(0));
@@ -127,7 +126,7 @@ public class GloasCustodySamplingAvailabilityTests
         ulong column = Custody.SampledColumns[0];
         DataColumnSidecarGloas pending = DataColumnSidecarGloasTestFixture.BuildSidecar(column, BlockSlot);
         pending.KzgProofs = [pending.KzgProofs![1], pending.KzgProofs[0]];
-        pool.AddPendingGloas(pending, Peer);
+        pool.AddPendingGloas(pending, BlockSlot);
         Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, pool, ClockAtEpoch(0));
 
         bool available = isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid());
@@ -150,7 +149,7 @@ public class GloasCustodySamplingAvailabilityTests
         DataColumnSidecarPool pool = PoolHolding(Custody.SampledColumns.Skip(1));
         ulong column = Custody.SampledColumns[0];
         const ulong forgedSlot = BlockSlot + 1;
-        pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(column, forgedSlot), Peer);
+        pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(column, forgedSlot), BlockSlot);
         Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, pool, ClockAtEpoch(0));
 
         bool available = isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid());
@@ -175,9 +174,9 @@ public class GloasCustodySamplingAvailabilityTests
         DataColumnSidecarGloas valid = DataColumnSidecarGloasTestFixture.BuildSidecar(column, BlockSlot);
         DataColumnSidecarGloas forged = DataColumnSidecarGloasTestFixture.BuildSidecar(column, BlockSlot);
         forged.KzgProofs = [forged.KzgProofs![1], forged.KzgProofs[0]];
-        if (forgedFirst) pool.AddPendingGloas(forged, "forging peer");
-        pool.AddPendingGloas(valid, Peer);
-        if (!forgedFirst) pool.AddPendingGloas(forged, "forging peer");
+        if (forgedFirst) pool.AddPendingGloas(forged, BlockSlot);
+        pool.AddPendingGloas(valid, BlockSlot);
+        if (!forgedFirst) pool.AddPendingGloas(forged, BlockSlot);
         Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable = CreateRule(Custody, pool, ClockAtEpoch(0));
 
         bool available = isDataAvailable(DataColumnSidecarGloasTestFixture.BlockRoot, Bid());

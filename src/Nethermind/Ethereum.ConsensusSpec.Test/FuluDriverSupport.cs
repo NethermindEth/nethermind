@@ -81,6 +81,33 @@ public static class FuluDriverSupport
         }
     }
 
+    /// <summary>Fails unless every distinct key has a case that runs; a not-implemented case passes the check on to the key's next case.</summary>
+    /// <remarks>
+    /// For a suite whose keys mix runnable and not-implemented vectors by design, where no single case stands for its key.
+    /// Any other failure fails the check at once.
+    /// </remarks>
+    public static void AssertEveryKeyRunsSomeVector<TCase>(IReadOnlyCollection<TCase> cases, Func<TCase, string> keyOf, Action<TCase> run)
+    {
+        Assert.That(cases, Is.Not.Empty, "no vectors are enumerated");
+        foreach (IGrouping<string, TCase> byKey in cases.GroupBy(keyOf, StringComparer.Ordinal))
+        {
+            Assert.That(byKey.Any(testCase => RunsForReal(run, testCase)), $"'{byKey.Key}' reports every vector not implemented");
+        }
+    }
+
+    private static bool RunsForReal<TCase>(Action<TCase> run, TCase testCase)
+    {
+        try
+        {
+            run(testCase);
+            return true;
+        }
+        catch (NotImplementedInDriverException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Fails the vector unless the working state's root, taken in the fork's own shape, equals the
     /// expected post-state's; on mismatch names the diverging fields so the failure is debuggable.
