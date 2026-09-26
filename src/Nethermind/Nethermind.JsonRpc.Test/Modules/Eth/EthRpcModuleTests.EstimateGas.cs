@@ -557,19 +557,6 @@ public partial class EthRpcModuleTests
         }
     }
 
-    [TestCase("eth_call", TestName = "Call")]
-    [TestCase("eth_createAccessList", TestName = "Access list")]
-    public async Task Fee_cap_below_the_priority_fee_is_still_rejected_as_input_outside_estimation(string method)
-    {
-        using Context ctx = await Context.CreateWithLondonEnabled();
-        object? transaction = JsonSerializer.Deserialize<object>(
-            $$"""{"from":"{{TestItem.AddressA}}","to":"0xc200000000000000000000000000000000000000","type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""");
-
-        string serialized = await ctx.Test.TestEthRpc(method, transaction, "latest");
-
-        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("maxFeePerGas (10) < maxPriorityFeePerGas (1000000000)"), serialized);
-    }
-
     private static async Task<string> EstimateGasAgainstCode(string code, ulong? gas)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));

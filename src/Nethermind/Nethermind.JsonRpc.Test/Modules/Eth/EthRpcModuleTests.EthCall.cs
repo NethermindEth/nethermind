@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -80,6 +81,10 @@ public partial class EthRpcModuleTests
             .WithTo(stateOverride ? TestItem.AddressB : null)
             .WithData(stateOverride ? [] : code).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         LegacyTransactionForRpc transaction = new(tx, new(BlockchainIds.Mainnet));
+        // An access list request with a zero gas price after London is rejected before it runs.
+        if (method == "eth_createAccessList")
+            transaction.GasPrice = null;
+
         object[] parameters = stateOverride
             ? [transaction, "latest", new Dictionary<Address, AccountOverride> { [TestItem.AddressB] = new() { Code = code } }]
             : [transaction, "latest"];
@@ -1065,6 +1070,186 @@ public partial class EthRpcModuleTests
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"missing \\\"to\\\" in blob transaction\"},\"id\":67}"));
     }
 
+    private const string TipFeeSender = "0x7f554713be84160fdf0178cc8df86f5aabd33397";
+    private const string TipFeeTarget = "0xc200000000000000000000000000000000000000";
+    private const ulong TipFeeGas = 100_000;
+    private const string OneEtherBalance = "0xde0b6b3a7640000";
+
+    // PUSH1 1, PUSH1 0, SSTORE, STOP
+    private const string TipFeeTargetCode = "0x600160005500";
+
+    [TestCase("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}""", OneEtherBalance, "0", TestName = "Priority fee only")]
+    [TestCase("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}""", "0x0", "0", TestName = "Priority fee only, empty sender")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", OneEtherBalance, "10", TestName = "Fee cap below the priority fee")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", "0x0", "10", TestName = "Fee cap below the priority fee, empty sender")]
+    public async Task Eth_call_priority_fee_above_fee_cap_fails_before_execution(string feeFields, string balance, string maxFeePerGas)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", TipFeeRequest(feeFields), "latest", TipFeeState(balance));
+
+        string sender = new Address(TipFeeSender).ToString(withEip55Checksum: true);
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
+            Is.EqualTo($"err: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 1000000000, maxFeePerGas: {maxFeePerGas} (supplied gas {TipFeeGas})"),
+            serialized);
+    }
+
+    [Test]
+    public async Task Eth_call_legacy_gas_price_is_unaffected_by_the_fee_order_check()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", TipFeeRequest("""{"gasPrice":"0x3b9aca00"}"""), "latest", TipFeeState(OneEtherBalance));
+
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""{"jsonrpc":"2.0","result":"0x","id":67}""")).Using(JToken.EqualityComparer), serialized);
+    }
+
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", "maxFeePerGas (0xa) < maxPriorityFeePerGas (0x3b9aca00)", TestName = "Fee cap below the priority fee")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x3b9aca00"}""", "maxFeePerGas must be non-zero", TestName = "Zero fee cap below the priority fee")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0"}""", "maxFeePerGas must be non-zero", TestName = "Zero fee cap and zero priority fee")]
+    [TestCase("""{"gasPrice":"0x0"}""", "gasPrice must be non-zero after london fork", TestName = "Zero gas price")]
+    [TestCase("""{"type":"0x2","gasPrice":"0x1","maxFeePerGas":"0xa"}""", "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified", TestName = "Gas price next to a fee cap")]
+    public async Task Eth_createAccessList_rejects_malformed_fee_fields(string feeFields, string expected)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", TipFeeRequest(feeFields), "latest", TipFeeState(OneEtherBalance));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(expected), serialized);
+    }
+
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0x3b9aca00"}""", TestName = "Fee cap only")]
+    [TestCase("""{"gasPrice":"0x3b9aca00"}""", TestName = "Gas price")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0x3b9aca00","maxPriorityFeePerGas":"0x3b9aca00"}""", TestName = "Fee cap equal to the priority fee")]
+    public async Task Eth_createAccessList_well_formed_fee_fields_run(string feeFields)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList", TipFeeRequest(feeFields), "latest", TipFeeState(OneEtherBalance));
+
+        Assert.That(JToken.Parse(serialized)["result"]?["gasUsed"], Is.Not.Null, serialized);
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_fee_fields_before_london_are_rejected()
+    {
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}"""), "latest", TipFeeState(OneEtherBalance));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
+            Is.EqualTo("maxFeePerGas and maxPriorityFeePerGas are not valid before London is active"), serialized);
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_priority_fee_whose_filled_fee_cap_exceeds_256_bits_fails_on_the_low_bits()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        UInt256 baseFee = ctx.Test.BlockTree.Head!.BaseFeePerGas;
+        UInt256 priorityFee = UInt256.MaxValue;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest($$"""{"type":"0x2","maxPriorityFeePerGas":"{{priorityFee.ToHexString(skipLeadingZeros: true)}}"}"""), "latest", TipFeeState(OneEtherBalance));
+
+        string sender = new Address(TipFeeSender).ToString(withEip55Checksum: true);
+        UInt256 lowBits = baseFee * 2 - 1;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baseFee, Is.EqualTo((UInt256)765_625_000), "the hash below is for this base fee");
+            // The transaction is named with the 257-bit fee cap it was filled with: chain 1, nonce 0, 100000 gas,
+            // no value, data or access list.
+            Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
+                Is.EqualTo($"failed to apply transaction: 0xbfa8edae1a51ad390e4b8db674e2c44d4964c3c30973ff14db0f67fb82cd0e28 err: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: {priorityFee}, maxFeePerGas: {lowBits}"),
+                serialized);
+        }
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_priority_fee_only_fills_the_fee_cap_from_the_base_fee()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string priced = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}"""), "latest", TipFeeState(OneEtherBalance));
+        string unpriced = await ctx.Test.TestEthRpc("eth_createAccessList", TipFeeRequest("""{"type":"0x2"}"""), "latest", TipFeeState(OneEtherBalance));
+
+        Assert.That(JToken.Parse(priced)["result"]?["gasUsed"]?.Value<string>(), Is.EqualTo(JToken.Parse(unpriced)["result"]?["gasUsed"]?.Value<string>()).And.Not.Null,
+            $"a funded sender runs as an unpriced request: {priced}");
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_priority_fee_only_charges_the_filled_fee_cap()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        UInt256 baseFee = ctx.Test.BlockTree.Head!.BaseFeePerGas;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}"""), "latest", TipFeeState("0x0"));
+
+        string sender = new Address(TipFeeSender).ToString(withEip55Checksum: true);
+        UInt256 want = TipFeeGas * (1_000_000_000 + baseFee * 2);
+        string? message = JToken.Parse(serialized)["error"]?["message"]?.Value<string>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message, Does.StartWith("failed to apply transaction: 0x"), serialized);
+            Assert.That(message, Does.EndWith($" err: insufficient funds for gas * price + value: address {sender} have 0 want {want}"),
+                "the fee cap is the priority fee plus twice the base fee");
+        }
+    }
+
+    [TestCase(Instruction.GASPRICE, TestName = "GASPRICE")]
+    [TestCase(Instruction.BASEFEE, TestName = "BASEFEE")]
+    public async Task Eth_createAccessList_zero_priority_fee_only_runs_with_the_filled_fee_cap(Instruction opcode)
+    {
+        // The target reads the balance of the address its fee opcode returns, so that value lands in the access list.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        UInt256 baseFee = ctx.Test.BlockTree.Head!.BaseFeePerGas;
+        string code = Prepare.EvmCode.Op(opcode).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.STOP).Done.ToHexString(true);
+        string explicitFeeCap = (baseFee * 2).ToHexString(skipLeadingZeros: true);
+
+        string defaulted = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest("""{"type":"0x2","maxPriorityFeePerGas":"0x0"}"""), "latest", TipFeeState(OneEtherBalance, code));
+        string priced = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest($$"""{"type":"0x2","maxPriorityFeePerGas":"0x0","maxFeePerGas":"{{explicitFeeCap}}"}"""), "latest", TipFeeState(OneEtherBalance, code));
+
+        Address observed = new(baseFee.ToBigEndian()[12..]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baseFee.IsZero, Is.False, "precondition: the head block has a base fee");
+            Assert.That(JToken.Parse(defaulted)["result"], Is.EqualTo(JToken.Parse(priced)["result"]).Using(JToken.EqualityComparer),
+                $"a zero priority fee with a filled fee cap runs as the explicitly priced request: {defaulted}");
+            Assert.That(JToken.Parse(defaulted)["result"]?["accessList"]?[0]?["address"]?.Value<string>(), Is.EqualTo(observed.ToString()),
+                "the fee opcode sees the base fee");
+        }
+    }
+
+    [Test]
+    public async Task Eth_estimateGas_fee_cap_below_the_priority_fee_fails_before_any_gas_is_bought()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas",
+            TipFeeRequest("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}"""), "latest", TipFeeState(OneEtherBalance));
+
+        string sender = new Address(TipFeeSender).ToString(withEip55Checksum: true);
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
+            Is.EqualTo($"failed with {TipFeeGas} gas: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 1000000000, maxFeePerGas: 10"),
+            serialized);
+    }
+
+    private static object? TipFeeRequest(string feeFields)
+    {
+        JsonObject request = JsonNode.Parse(feeFields)!.AsObject();
+        request["from"] = TipFeeSender;
+        request["to"] = TipFeeTarget;
+        request["gas"] = TipFeeGas.ToHexString(true);
+        return JsonSerializer.Deserialize<object>(request.ToJsonString());
+    }
+
+    private static object? TipFeeState(string balance, string code = TipFeeTargetCode) =>
+        JsonSerializer.Deserialize<object>($$$"""{"{{{TipFeeSender}}}":{"balance":"{{{balance}}}"},"{{{TipFeeTarget}}}":{"code":"{{{code}}}"}}""");
+
     [Test]
     public async Task Eth_call_maxFeePerGas_smaller_then_maxPriorityFeePerGas()
     {
@@ -1083,8 +1268,8 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
-        Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"maxFeePerGas (1) < maxPriorityFeePerGas (2)\"},\"id\":67}"));
+        // Before London the fee fields do not price a call, so the pair is not checked.
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
     [TestCase(null, RpcTransactionErrors.InvalidBlobVersionedHashSize, TestName = "BlobVersionedHash null")]
