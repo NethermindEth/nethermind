@@ -1229,6 +1229,84 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Test_ManyWipedContracts_AllBypassTheStorageCache()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot, TestPreBlockCachesConfig.Small with { MaxStorageWipesBeforeClear = 64 });
+        // Enough to share home slots in the set, so a lookup or an insert that mishandles a collision misses a wipe.
+        Address[] contracts = TestItem.Addresses[..64];
+        const int wipedCount = 32;
+
+        Hash256 destroyedRoot;
+        using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
+        {
+            foreach (Address address in contracts)
+            {
+                consumer.CreateAccount(address, 1);
+                consumer.Set(new StorageCell(address, 1), (UInt256)7);
+            }
+
+            consumer.Commit(Cancun.Instance);
+            consumer.CommitTree(2);
+            Assert.That(caches.PrepareFor(consumer.StateRoot), Is.True);
+
+            for (int i = 0; i < wipedCount; i++)
+            {
+                consumer.GetBalance(contracts[i]);
+                consumer.MarkStorageDestroyed(contracts[i]);
+                consumer.DeleteAccount(contracts[i]);
+            }
+
+            consumer.Commit(Cancun.Instance);
+            consumer.CommitTree(3);
+            destroyedRoot = consumer.StateRoot;
+        }
+
+        Assert.That(caches.PrepareFor(destroyedRoot), Is.True);
+        using (consumer.BeginScope(HeaderAt(destroyedRoot, 3)))
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.StorageBypassCount, Is.EqualTo(wipedCount));
+            for (int i = 0; i < contracts.Length; i++)
+            {
+                bool wiped = i < wipedCount;
+                Assert.That(caches.BypassesStorageCache(contracts[i]), Is.EqualTo(wiped), $"{contracts[i]} bypasses only if wiped");
+                consumer.Get(new StorageCell(contracts[i], 1), out UInt256 value);
+                Assert.That(value, Is.EqualTo(wiped ? UInt256.Zero : (UInt256)7), $"{contracts[i]} matches the committed state");
+            }
+        }
+    }
+
+    [Test]
+    public void Test_WipedContract_ReadInTheNextBlockOfTheSameScope_IsReadFromTheState()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        Hash256 baseRoot = CommitBaseState(ctx);
+        (PreBlockCaches caches, WorldState consumer) = WarmConsumerCaches(ctx, baseRoot);
+
+        // The bypass is decided when a storage tree is created, so a tree that outlived the block that wiped its contract
+        // would keep serving the slot cached before the wipe.
+        using (consumer.BeginScope(HeaderAt(baseRoot, 1)))
+        {
+            consumer.Get(in SlotA1, out UInt256 before);
+            Assert.That(before, Is.EqualTo(new UInt256([10, 20], isBigEndian: true)), "precondition: A's storage tree exists before the wipe");
+            DestroyA(consumer);
+            consumer.Commit(Cancun.Instance);
+            consumer.CommitTree(2);
+            Assert.That(caches.PrepareFor(consumer.StateRoot), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(caches.BypassesStorageCache(TestItem.AddressA), Is.True, "precondition");
+                Assert.That(caches.StorageCache.TryGetValue(in SlotA1, out _), Is.True, "precondition: the stale slot is still cached");
+                consumer.Get(in SlotA1, out UInt256 after);
+                Assert.That(after, Is.EqualTo(UInt256.Zero));
+            }
+        }
+    }
+
+    [Test]
     public void Test_TwoBlocksInOneScope_CarryTheCachesThroughBothCommits()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
