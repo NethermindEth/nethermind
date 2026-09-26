@@ -150,6 +150,12 @@ public sealed partial class KeccakHash
     /// See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     private static partial void InitializeState(out KeccakState state, int inputLength, int roundSize);
 
+    /// <summary>Computes the Keccak-256 digest of <paramref name="input"/> in one shot.</summary>
+    /// <remarks>Split per target: the host goes through <see cref="ComputeHash"/>, while the guest, whose
+    /// permutation is a precompile, has a 256-bit-only absorb that leaves little but the lane XORs around
+    /// it. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    internal static partial ValueHash256 ComputeHash256(ReadOnlySpan<byte> input);
+
     /// <summary>Computes the Keccak digest of <paramref name="input"/> in one shot.</summary>
     /// <param name="output">Receives the digest; its length picks the Keccak width and must be from 1 to 66.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="output"/> is empty or wider than 66 bytes,
