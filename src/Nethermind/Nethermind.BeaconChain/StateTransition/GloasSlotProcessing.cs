@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -14,10 +15,8 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// <see cref="GloasEpochProcessing.ProcessEpoch"/> at every epoch boundary.
 /// </summary>
 /// <remarks>
-/// Hashes with the plain <see cref="SszRoots.HashTreeRoot{T}"/> rather than
-/// <see cref="EpochCache.Hasher"/>'s incremental cache: that cache is built around Fulu's field
-/// layout, and Gloas's progressive-container shape is a separate piece of work (state hashing
-/// correctness, not speed, is what is in scope here).
+/// The per-slot state root is computed through <see cref="EpochCache.Hasher"/>, so callers
+/// following a state lineage can make it incremental with a <see cref="CachedBeaconStateHasher"/>.
 /// </remarks>
 public static class GloasSlotProcessing
 {
@@ -30,7 +29,7 @@ public static class GloasSlotProcessing
 
         while (state.Slot < targetSlot)
         {
-            ProcessSlot(state);
+            ProcessSlot(state, cache.Hasher);
             if ((state.Slot + 1) % Presets.SlotsPerEpoch == 0)
                 GloasEpochProcessing.ProcessEpoch(state, cache);
             state.Slot++;
@@ -48,10 +47,10 @@ public static class GloasSlotProcessing
     /// Caches the state root, completes the latest block header, caches the block root for the
     /// current slot and, new in Gloas, marks the next slot's payload as not (yet) available.
     /// </summary>
-    public static void ProcessSlot(BeaconStateGloas state)
+    public static void ProcessSlot(BeaconStateGloas state, IBeaconStateHasher hasher)
     {
         int slotIndex = (int)(state.Slot % Presets.SlotsPerHistoricalRoot);
-        Hash256 previousStateRoot = SszRoots.HashTreeRoot(state);
+        Hash256 previousStateRoot = hasher.HashTreeRoot(state);
         state.StateRoots![slotIndex] = previousStateRoot;
 
         if (state.LatestBlockHeader!.StateRoot == Hash256.Zero)
