@@ -310,7 +310,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     public ResultWrapper<ParityTxTraceFromStore?> trace_get(Hash256 txHash, long[] traceAddress) =>
         TraceRpcModule.SelectTraceAddress(trace_transaction(txHash), traceAddress);
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Hash256 txHash, bool traceNonCanonical = false)
+    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> trace_transaction(Hash256 txHash, bool traceNonCanonical = false)
     {
         if (TryGetStoredTrace(txHash, ParityTraceTypes.Trace, out ParityLikeTxTrace? storedTrace) && storedTrace is not null)
         {
@@ -324,7 +324,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                     }
                     FlushPipe(writer, pipeWriter, ct);
                 },
-                runBuffered: () => ParityTxTraceFromStore.FromTxTrace(storedTrace));
+                runBuffered: () => ParityTxTraceFromStore.FromTxTrace(storedTrace))!;
         }
 
         return _traceModule.trace_transaction(txHash, traceNonCanonical);

@@ -54,7 +54,7 @@ public class TraceStoreRpcModuleTests
                 return [];
             }
         };
-        test.InnerModule.trace_transaction(TestItem.KeccakA).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(stream));
+        test.InnerModule.trace_transaction(TestItem.KeccakA).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Success(stream));
 
         if (fail) Assert.Throws<InvalidOperationException>(() => test.Module.trace_get(TestItem.KeccakA, [0]));
         else
@@ -70,8 +70,8 @@ public class TraceStoreRpcModuleTests
     public void trace_get_preserves_inner_error([Values(ErrorCodes.ResourceNotFound, ErrorCodes.ResourceUnavailable)] int errorCode)
     {
         TestContext test = new();
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> error =
-            ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail("Trace unavailable", errorCode, isTemporary: true);
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> error =
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Fail("Trace unavailable", errorCode, isTemporary: true);
         test.InnerModule.trace_transaction(TestItem.KeccakA).Returns(error);
 
         using ResultWrapper<ParityTxTraceFromStore?> result = test.Module.trace_get(TestItem.KeccakA, [0]);
@@ -80,6 +80,23 @@ public class TraceStoreRpcModuleTests
             Assert.That(result.Result.Error, Is.EqualTo("Trace unavailable"));
             Assert.That(result.ErrorCode, Is.EqualTo(errorCode));
             Assert.That(result.IsTemporary, Is.True);
+        }
+    }
+
+    [Test]
+    public void trace_transaction_and_get_return_null_for_missing_transaction()
+    {
+        TestContext test = new();
+        test.InnerModule.trace_transaction(TestItem.KeccakB).Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Success(null));
+
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> traces = test.Module.trace_transaction(TestItem.KeccakB);
+        using ResultWrapper<ParityTxTraceFromStore?> trace = test.Module.trace_get(TestItem.KeccakB, []);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(traces.Data, Is.Null);
+            Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(trace.Data, Is.Null);
         }
     }
 
@@ -383,7 +400,7 @@ public class TraceStoreRpcModuleTests
                 .Returns(nonDbFromStoreWrapper);
 
             InnerModule.trace_transaction(nonDbTransaction)
-                .Returns(nonDbFromStoreWrapper);
+                .Returns(ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Success(NonDbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
 
         }
     }
