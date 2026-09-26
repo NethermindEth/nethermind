@@ -56,9 +56,7 @@ public readonly ref struct TransactionSubstate
     public long Refund { get; }
     public int LogCount => _logs?.Count ?? 0;
 
-    /// <summary>The log journal of an executed frame, which the destroy-list finalization appends to.</summary>
-    /// <remarks>A substate created without a journal (a plain value transfer without logs) has no destroy list,
-    /// so nothing appends to it; asking for its journal is a bug and throws instead of handing out a shared list.</remarks>
+    /// <remarks>Throws for a substate created without a journal instead of handing out a shared list.</remarks>
     public JournalCollection<LogEntry> Logs => _logs ?? ThrowNoLogJournal();
     public JournalSet<Address>? DestroyList => _destroyList;
     internal bool ShouldRestoreRipemdTouch { get; init; }

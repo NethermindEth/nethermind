@@ -199,7 +199,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void Logs_WhenCreatedWithoutLogJournal_ReportsNoLogsAndRefusesAppends()
+        public void Logs_without_journal_report_none_and_refuse_appends()
         {
             TransactionSubstate substate = new(default, 0, null, null, false);
 
@@ -214,7 +214,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void Logs_WhenCreatedWithLogJournal_ReflectsAppendedEntries()
+        public void Logs_with_journal_reflect_appended_entries()
         {
             JournalCollection<LogEntry> journal = [];
             TransactionSubstate substate = new(default, 0, null, journal, false);
