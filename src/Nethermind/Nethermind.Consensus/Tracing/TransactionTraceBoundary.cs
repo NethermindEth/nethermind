@@ -62,9 +62,12 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     }
 
     internal static TransactionTraceBoundary? Get(IBlockTracer tracer, ProcessingOptions options) =>
+        IsUnpersistedReplay(options) ? tracer as TransactionTraceBoundary : null;
+
+    /// <summary>A read-only, unvalidated replay whose receipts are not stored: nothing reads what it finalizes.</summary>
+    internal static bool IsUnpersistedReplay(ProcessingOptions options) =>
         options.ContainsFlag(ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation)
-        && !options.ContainsFlag(ProcessingOptions.StoreReceipts)
-            ? tracer as TransactionTraceBoundary : null;
+        && !options.ContainsFlag(ProcessingOptions.StoreReceipts);
 
     public bool IsTracingRewards => _inner.IsTracingRewards;
 
