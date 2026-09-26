@@ -556,12 +556,17 @@ namespace Nethermind.Network.Test
             };
 
             await using Context ctx = new();
+            bool injected = false;
             InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
             underlyingLogger.IsTrace.Returns(true);
             // Traced after the dial activates the peer but before it marks the peer as awaiting the connection.
             underlyingLogger
                 .When(static logger => logger.Trace(Arg.Is<string>(static text => text.StartsWith("CONNECTING TO"))))
-                .Do(_ => ctx.RlpxPeer.CreateIncoming(incoming));
+                .Do(_ =>
+                {
+                    ctx.RlpxPeer.CreateIncoming(incoming);
+                    injected = true;
+                });
             ILogger logger = new(underlyingLogger);
             ILogManager logManager = Substitute.For<ILogManager>();
             logManager.GetClassLogger<PeerManager>().Returns(logger);
@@ -571,10 +576,32 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
             ctx.TestNodeSource.AddNode(new Node(remoteNodeId, incoming.RemoteHost, incoming.RemotePort));
 
-            AssertAgreedOnSessionToDisconnect(ctx, expectedOutSessionClosing: keepIn);
+            // The mock announces the dialed session, and the peer manager attaches it, before the connect is counted.
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(1, TimeSpan.FromMilliseconds(_delayLonger));
+            Assert.That(injected, Is.True, "the incoming session was not injected into the dial window");
+
+            Peer activePeer = ctx.PeerManager.ActivePeers.Single();
+            InitializeSessions(activePeer);
+            Assert.That(HasAgreedOnSessionToDisconnect(activePeer, expectedOutSessionClosing: keepIn), Is.True);
+            Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1));
         }
 
         private void AssertAgreedOnSessionToDisconnect(Context ctx, bool expectedOutSessionClosing)
+        {
+            Assert.That(() =>
+            {
+                Peer? activePeer = ctx.PeerManager.ActivePeers.SingleOrDefault();
+                if (activePeer is null) return false;
+
+                InitializeSessions(activePeer);
+                return HasAgreedOnSessionToDisconnect(activePeer, expectedOutSessionClosing);
+            }, Is.True.After(_delayLonger, 20));
+
+            Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1).After(_delay, 10));
+        }
+
+        /// <summary>Completes the handshake and P2P init, which is when a session's deferred disconnect takes effect.</summary>
+        private static void InitializeSessions(Peer peer)
         {
             PacketSender packetSender = new(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
@@ -586,22 +613,15 @@ namespace Nethermind.Network.Test
                 if (session.State < SessionState.Initialized) session.Init(5, context, packetSender);
             }
 
-            Assert.That(() =>
-            {
-                Peer? activePeer = ctx.PeerManager.ActivePeers.SingleOrDefault();
-                if (activePeer is null) return false;
-
-                EnsureSession(activePeer.OutSession);
-                EnsureSession(activePeer.InSession);
-
-                return activePeer.OutSession is not null
-                    && activePeer.InSession is not null
-                    && activePeer.OutSession.IsClosing == expectedOutSessionClosing
-                    && activePeer.InSession.IsClosing != expectedOutSessionClosing;
-            }, Is.True.After(_delayLonger, 20));
-
-            Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1).After(_delay, 10));
+            EnsureSession(peer.OutSession);
+            EnsureSession(peer.InSession);
         }
+
+        private static bool HasAgreedOnSessionToDisconnect(Peer peer, bool expectedOutSessionClosing) =>
+            peer.OutSession is not null
+            && peer.InSession is not null
+            && peer.OutSession.IsClosing == expectedOutSessionClosing
+            && peer.InSession.IsClosing != expectedOutSessionClosing;
 
         private void HandshakeOnCreate(object sender, SessionEventArgs e) => e.Session.Handshake(e.Session.RemoteNodeId);
 
