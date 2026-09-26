@@ -165,8 +165,9 @@ public partial class EthRpcModuleTests
             request.Frames[i] = new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = loop };
         if (lastFrameNeedsHeadroom) request.Frames[^1].Target = TestItem.AddressD;
         // A 512-iteration loop: an exact search on every frame needs more probes than the estimator allows. The
-        // headroom check reverts unless 100,000 gas remains, far above what it uses, so an unverified limit fails.
-        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{loop}}}":{"code":"0x6102005b600190038060035700"},"{{{TestItem.AddressD}}}":{"code":"0x5a620186a010600c575f5ffd5b00"}}""")!;
+        // headroom check reverts unless 50,000 gas remains: within an even split, so it is measured as succeeding, but
+        // far above what it uses, so an unverified limit fails.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{loop}}}":{"code":"0x6102005b600190038060035700"},"{{{TestItem.AddressD}}}":{"code":"0x5a6200c35010600c575f5ffd5b00"}}""")!;
 
         string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
 

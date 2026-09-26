@@ -93,11 +93,13 @@ public partial class GasEstimator
         // Later frames keep a margin over what they used on the even split, so their reservation absorbs usage that
         // shifts as earlier frames are minimised.
         FrameEstimateTracer split = Probe(realFees: false, out _);
-        for (int i = 0; split.Receipts is not null && i < frames.Length; i++)
+        bool[] outgrewSplit = new bool[frames.Length];
+        for (int i = 0; i < frames.Length; i++)
         {
-            if (split.Receipts[i].Status != TxFrameReceipt.StatusSuccess) continue;
-            if (fillExecution[i]) executionReserve[i] = Math.Min(executionReserve[i], split.Receipts[i].ExecutionGasUsed.SaturatingAdd(split.Receipts[i].ExecutionGasUsed));
-            if (fillState[i]) stateReserve[i] = Math.Min(stateReserve[i], split.Receipts[i].StateGasUsed.SaturatingAdd(split.Receipts[i].StateGasUsed));
+            outgrewSplit[i] = split.Receipts?[i].Status != TxFrameReceipt.StatusSuccess;
+            if (outgrewSplit[i]) continue;
+            if (fillExecution[i]) executionReserve[i] = Math.Min(executionReserve[i], split.Receipts![i].ExecutionGasUsed.SaturatingAdd(split.Receipts[i].ExecutionGasUsed));
+            if (fillState[i]) stateReserve[i] = Math.Min(stateReserve[i], split.Receipts![i].StateGasUsed.SaturatingAdd(split.Receipts[i].StateGasUsed));
         }
 
         for (int i = 0; i < frames.Length; i++)
@@ -192,12 +194,14 @@ public partial class GasEstimator
         // Seeded from the frame's measured use; without one, the first accepted probe supplies it.
         void Minimize(int index, bool execution, TxFrameReceipt? measured)
         {
+            // A receipt of the frame failing, which can be all there is once probes run out, bounds nothing it needs.
+            if (measured?.Status != TxFrameReceipt.StatusSuccess) measured = null;
             TxFrame frame = frames[index];
             ulong high = execution ? frame.ExecutionGasLimit : frame.StateGasLimit;
             ulong low = measured is null ? 0 : Math.Min(Used(measured, execution), high);
             ulong candidate = measured is null ? high / 2 : Optimistic(low, high, execution);
-            // Out of probes: take the optimistic limit unverified; the final probe checks the whole assignment.
-            if (probes >= MaxFrameProbes - 1) (high, probesExhausted) = (candidate, true);
+            // Out of probes: take a limit unverified; the final probe checks the whole assignment.
+            if (probes >= MaxFrameProbes - 1) (high, probesExhausted) = (measured is null ? Unmeasured(index, execution, high) : candidate, true);
             for (int attempt = 0; attempt < 8 && probes < MaxFrameProbes - 1; attempt++)
             {
                 frames[index] = WithGas(frame, execution ? candidate : frame.ExecutionGasLimit, execution ? frame.StateGasLimit : candidate);
@@ -217,6 +221,18 @@ public partial class GasEstimator
                 candidate = low + (high - low) / 2;
             }
             frames[index] = WithGas(frame, execution ? high : frame.ExecutionGasLimit, execution ? frame.StateGasLimit : high);
+        }
+
+        // Without a measurement, a frame keeps its reservation plus an even part of the slack among the frames still
+        // to come that outgrew the even split, since only those may need more than their reservation.
+        ulong Unmeasured(int index, bool execution, ulong high)
+        {
+            ulong reserve = Math.Min(execution ? executionReserve[index] : stateReserve[index], high);
+            if (!outgrewSplit[index]) return reserve;
+            ulong outgrown = 0;
+            for (int i = index; i < frames.Length; i++)
+                if (outgrewSplit[i] && (execution ? fillExecution[i] : fillState[i])) outgrown++;
+            return reserve + (high - reserve) / outgrown;
         }
     }
 
