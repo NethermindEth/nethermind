@@ -91,7 +91,7 @@ public class DataColumnSidecarsReqRespTests
         DataColumnSidecarsByRangeProtocol protocol = new(Spec, new DataColumnSidecarPool(), null!);
         DataColumnSidecarsByRangeRequest request = new() { StartSlot = 0, Count = 1, Columns = new ulong[columnCount] };
 
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, request));
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, new(request, Gloas: false)));
     }
 
     [Test]
@@ -179,35 +179,39 @@ public class DataColumnSidecarsReqRespTests
             request[i] = new DataColumnsByRootIdentifier { BlockRoot = Hash256.Zero, Columns = [0] };
         }
 
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, request));
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, new(request, Gloas: false)));
     }
 
     [Test]
-    public async Task Exactly_MaxRequestBlocks_identifiers_at_full_columns_hits_MaxRequestDataColumnSidecars_exactly_and_is_not_rejected_for_being_oversized()
+    public async Task Exactly_MaxRequestBlocks_identifiers_at_full_columns_hits_MaxRequestDataColumnSidecars_exactly_and_is_served([Values] bool gloas)
     {
         // MaxRequestBlocks (128) identifiers x NumberOfColumns (128) columns each = exactly
-        // MaxRequestDataColumnSidecars (16384): the per-identifier and per-request structural bounds
-        // make this the largest shape reachable at all, so the request-level total check can reject
-        // only a request that already violates one of those two bounds, never this one on its own.
-        ulong[] allColumns = new ulong[Eip7594DasConstants.NumberOfColumns];
-        for (int i = 0; i < allColumns.Length; i++)
-        {
-            allColumns[i] = (ulong)i;
-        }
-
-        DataColumnsByRootIdentifier[] request = new DataColumnsByRootIdentifier[BlocksProtocolBase.MaxRequestBlocks];
-        for (int i = 0; i < request.Length; i++)
-        {
-            request[i] = new DataColumnsByRootIdentifier { BlockRoot = Hash256.Zero, Columns = allColumns };
-        }
-
+        // MaxRequestDataColumnSidecars (16384): the largest ask both sides must accept, list offsets included.
+        ulong[] allColumns = [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static i => (ulong)i)];
+        DataColumnsByRootIdentifier[] request = [.. Enumerable.Range(0, (int)BlocksProtocolBase.MaxRequestBlocks)
+            .Select(i => new DataColumnsByRootIdentifier { BlockRoot = Keccak.Compute($"unknown block {i}"), Columns = allColumns })];
         Assert.That((ulong)request.Length * (ulong)allColumns.Length, Is.EqualTo(DataColumnSidecarsProtocolBase.MaxRequestDataColumnSidecars));
 
-        // Encoding this large a request must not throw on its own (the size validation happens first
-        // and accepts it); it fails later only because there is no real channel behind this test.
-        Assert.ThrowsAsync<NullReferenceException>(() =>
-            new DataColumnSidecarsByRootProtocol(Spec, new DataColumnSidecarPool()).DialAsync(null!, null!, request));
-        await Task.CompletedTask;
+        DataColumnSidecarsByRootProtocol protocol = new(Spec, new DataColumnSidecarPool());
+        ISessionContext context = Substitute.For<ISessionContext>();
+        context.State.Returns(new Nethermind.Libp2p.Core.State());
+        Channel channel = new();
+        Task listen = ListenThenCloseAsync(protocol, channel.Reverse, context);
+
+        ForkedDataColumnSidecars served = await protocol.DialAsync(channel, context, new(request, gloas));
+        await listen;
+
+        Assert.That(served.Fulu.Count + served.Gloas.Count, Is.Zero);
+    }
+
+    [Test]
+    public void The_root_dial_refuses_a_repeated_root_and_column_before_writing_to_the_wire([Values] bool splitOverTwoIdentifiers)
+    {
+        DataColumnsByRootIdentifier[] request = splitOverTwoIdentifiers
+            ? [new() { BlockRoot = Hash256.Zero, Columns = [3, 5] }, new() { BlockRoot = Hash256.Zero, Columns = [3] }]
+            : [new() { BlockRoot = Hash256.Zero, Columns = [3, 3] }];
+
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new DataColumnSidecarsByRootProtocol(Spec, new DataColumnSidecarPool()).DialAsync(null!, null!, new(request, Gloas: false)));
     }
 
     private static async Task<IReadOnlyList<DataColumnSidecar>> RequestRangeAsync(DataColumnSidecarPool pool, BeaconChainStore store, ulong startSlot, ulong count, ulong[] columns)
@@ -218,13 +222,13 @@ public class DataColumnSidecarsReqRespTests
 
         Channel channel = new();
         Task listen = ListenThenCloseAsync(protocol, channel.Reverse, context);
-        IReadOnlyList<DataColumnSidecar> served = await protocol.DialAsync(channel, context, new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns });
+        ForkedDataColumnSidecars served = await protocol.DialAsync(channel, context, new(new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }, Gloas: false));
         await listen;
-        return served;
+        return served.Fulu;
     }
 
     // The libp2p host closes the response stream once the handler returns; the dial side reads until then.
-    private static async Task ListenThenCloseAsync(DataColumnSidecarsByRangeProtocol protocol, IChannel channel, ISessionContext context)
+    private static async Task ListenThenCloseAsync(ISessionListenerProtocol protocol, IChannel channel, ISessionContext context)
     {
         await protocol.ListenAsync(channel, context);
         await channel.WriteEofAsync();
