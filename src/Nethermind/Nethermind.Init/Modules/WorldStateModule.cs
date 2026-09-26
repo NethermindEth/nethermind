@@ -5,12 +5,10 @@ using System;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 
@@ -28,17 +26,19 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
 
-            .AddSingleton<IFinalizedStateProvider, ReorgDepthFinalizedStateProvider>()
-
             // Admin RPC surface is common to all backends; each backend registers its implementation.
             .RegisterSingletonJsonRpcModule<IPruningTrieStateAdminRpcModule>()
 
             // Verify-trie admin RPC is backend-agnostic; a single implementation serves both backends.
             .RegisterSingletonJsonRpcModule<IVerifyTrieAdminRpcModule, VerifyTrieAdminRpcModule>()
+
+            // Registered unconditionally so `nethermind verify-trie` can always find it. Carrying
+            // [StepCommand] keeps it out of a normal node start; it runs only when selected below or by name.
+            // Backend-agnostic: VerifyTrie resolves to whichever backend is active.
+            .AddStep(typeof(RunVerifyTrie))
         ;
 
-        // Backend-agnostic diagnostic step; VerifyTrie resolves to whichever backend is active.
         if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
-            builder.AddStep(typeof(RunVerifyTrie));
+            builder.SelectStepTarget(typeof(RunVerifyTrie));
     }
 }

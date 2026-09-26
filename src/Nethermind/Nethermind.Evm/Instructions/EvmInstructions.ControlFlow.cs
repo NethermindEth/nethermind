@@ -219,7 +219,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
         }
 
-        vm.ReturnData = returnData.ToArray();
+        vm.StageReturnData(returnData.Span);
 
         return EvmExceptionType.Revert;
         // Jump forward to be unpredicted by the branch predictor.
@@ -296,10 +296,10 @@ public static partial class EvmInstructions
 
         if (outOfGas) goto OutOfGas;
 
-        // Create or update the inheritor account with the transferred balance.
+        // Transfer the self-destruct balance without creating an empty beneficiary.
         if (!inheritorAccountExists)
         {
-            state.CreateAccount(inheritor, result);
+            state.AddToBalanceAndCreateIfNotEmpty(inheritor, in result, spec);
         }
         else if (!inheritor.Equals(executingAccount))
         {
@@ -372,8 +372,7 @@ public static partial class EvmInstructions
     /// <inheritdoc cref="JumpDestination(ref byte, ref EvmStack)"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static nint JumpDestination(int jumpDestination, ref EvmStack stack) =>
-        (uint)jumpDestination < (uint)stack.CodeLength
-            && stack.IsJumpDestination(jumpDestination)
+        stack.IsJumpDestination(jumpDestination)
             ? jumpDestination
             : -1;
 

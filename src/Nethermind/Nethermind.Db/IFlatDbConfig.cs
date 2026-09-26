@@ -19,8 +19,8 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Whether a fresh state sync uses the flat-state DB backend, and whether ImportFromPruningTrieState is honored. A node that already has a patricia-trie state DB keeps using it regardless of this setting; set to false to sync a fresh node on the patricia-trie backend instead.", DefaultValue = "true")]
     bool Enabled { get; set; }
 
-    [ConfigItem(Description = "Enable recording of preimages (address/slot hash to original bytes)", DefaultValue = "false")]
-    bool EnablePreimageRecording { get; set; }
+    [ConfigItem(Description = "What happens after a RocksDB repair of the flat DB. Resync wipes flat columns (headers, bodies, and receipts are kept) and re-enters state sync. Ignore keeps the repaired DB (escape hatch; may diverge). Ignore acknowledges the repair on the first start, so switching to Resync afterwards has no effect; a resync then requires wiping the flat DB directory. Resync refills state only through snap/state sync (Sync.FastSync with peers that serve it); a node that cannot state-sync, e.g. an archive synced from genesis, is left without state for its head, so set Ignore there or plan a resync from scratch. The flatHistory DB is not wiped: with HistoryEnabled and a windowed HistoryRetention (Rolling or SinceBlock), the resync fails to finish when its pivot falls inside the already-captured history window, so wipe the flatHistory directory too.", DefaultValue = "Resync")]
+    FlatDbOnRepair OnRepair { get; set; }
 
     [ConfigItem(Description = "Capture finalized per-block account/storage changesets into the history columns for archival queries. Off by default; when off the persist path does no extra work.", DefaultValue = "false")]
     bool HistoryEnabled { get; set; }
@@ -52,6 +52,27 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "History rows one verification worker holds in memory for the subtree it is replaying. A subtree with more rows is split into its children and a single key with more rows is streamed, so any value works on any archive; larger values mean fewer, bigger subtrees. Sized so that one mainnet depth-2 account subtree fits without splitting; each worker holds about 400 bytes per row plus its replayed trie. 0 uses the built-in default of 5 million.", DefaultValue = "0")]
     long HistoryVerifyMaxRows { get; set; }
 
+    [ConfigItem(Description = "Index, per transaction, what each transaction of a block wrote, so that a trace of one transaction resolves the state before it instead of replaying the transactions ahead of it. Captured inline while syncing, when the node executes each block anyway, and re-executed in the background behind the history watermark at the tip and for the retrofit; never on the tip's processing path. Pre-Amsterdam only: BAL-enabled blocks are neither indexed nor seeded. Kept in its own column. Off by default; a node that leaves it off pays nothing.", DefaultValue = "false")]
+    bool HistoryTransactionIndexEnabled { get; set; }
+
+    [ConfigItem(Description = "Maximum active indexed block-tracing workers shared by debug and trace RPC. 0 uses the processor count capped at 16; 1 disables parallel block tracing. Explicit values are clamped to 1-16. Each namespace keeps its own environment pool and up to twice this many background workers.", DefaultValue = "0")]
+    int HistoryTransactionIndexTraceParallelism { get; set; }
+
+    [ConfigItem(Description = "Share of its wall clock the transaction index builder may spend working; it sleeps out the rest so that re-executing blocks stays invisible to the RPC the node is serving. 100 lets it run flat out.", DefaultValue = "25")]
+    int HistoryTransactionIndexDutyCyclePercent { get; set; }
+
+    [ConfigItem(Description = "Once the transaction index has caught up with the tip, also index backwards down to this block, so an archive that already exists gains coverage without a resync. 0 indexes forward from the moment the index is turned on and nothing older; 1 covers the whole chain, since genesis carries no transactions. Never goes below the flat-history floor.", DefaultValue = "0")]
+    ulong HistoryTransactionIndexRetrofitFromBlock { get; set; }
+
+    [ConfigItem(Description = "Threads re-executing blocks for the backwards retrofit of the transaction index, each on its own block range with its own processing environment. The tip is always followed by one thread regardless. 1 runs the retrofit on that same thread. Each worker holds the state its current 128-block chunk wrote, a few hundred thousand entries on mainnet, so the count is a memory knob as well as a throughput one.", DefaultValue = "1")]
+    int HistoryTransactionIndexWorkers { get; set; }
+
+    [ConfigItem(Description = "Experimental mainnet v2 archive retrofit using one isolated disk-backed replay state. Replaces retrofit workers, not tip following. Requires a nonzero HistoryTransactionIndexRetrofitFromBlock; coverage joins only after the ascending range completes.", DefaultValue = "false")]
+    bool HistoryTransactionIndexBulkFillEnabled { get; set; }
+
+    [ConfigItem(Description = "Maximum scratch database size in GiB for bulk transaction-index replay. Reaching the limit pauses replay without dropping its checkpoint.", DefaultValue = "1024")]
+    int HistoryTransactionIndexBulkFillMaxGiB { get; set; }
+
     [ConfigItem(Description = "Serve eth_getProof at heights below the flat state boundary from the archive commitment columns. Requires an unwindowed (v2) flat history whose commitments cover the height; off by default.", DefaultValue = "false")]
     bool ArchiveProofServeEnabled { get; set; }
 
@@ -79,8 +100,11 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Number of most recent commitment epochs to keep the per-block rows for. Older epochs keep only their checkpoint rows: proofs there are still served and still verified, rebuilt from the window rows, which costs about a second instead of a hundred milliseconds and is most of the column's size. 0 keeps the per-block rows for every epoch.", DefaultValue = "0")]
     int ArchiveProofFineEpochs { get; set; }
 
-    [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
+    [ConfigItem(Description = "Import from pruning trie state db. When enabled, the node runs the import and exits instead of starting, as with the `import-flat-db` command, and fails if there is nothing to import. Remove the setting once the import has finished.", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
+
+    [ConfigItem(Description = "Delete the patricia-trie state DB on start once the flat DB owns the state, reclaiming its disk space. The kept trie is what a switch back to the patricia backend restarts from, replaying from the conversion block, so this is irreversible: switching back afterwards requires a resync.", DefaultValue = "false")]
+    bool DropPruningTrieState { get; set; }
 
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
     bool InlineCompaction { get; set; }
@@ -108,6 +132,9 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
+
+    [ConfigItem(Description = "Cache flat account and slot reads across heads in the persistence layer, so a new head does not re-read the working set from the database. `false` reads every persistence miss from the database.", DefaultValue = "true")]
+    bool EnableCarryForwardCache { get; set; }
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }

@@ -78,13 +78,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
-    private readonly IFinalizedStateProvider _finalizedStateProvider;
+    private readonly IStateHeaderProvider _finalizedStateProvider;
 
     public TrieStore(
         INodeStorage nodeStorage,
         IPruningStrategy pruningStrategy,
         IPersistenceStrategy persistenceStrategy,
-        IFinalizedStateProvider finalizedStateProvider,
+        IStateHeaderProvider finalizedStateProvider,
         IPruningConfig pruningConfig,
         ILogManager logManager)
     {
@@ -807,7 +807,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             using ArrayPoolListRef<BlockCommitSet> commitSetsAtFinalizedBlock = _commitSetQueue.GetCommitSetsAtBlockNumber(effectiveFinalizedBlockNumber);
 
             BlockCommitSet? finalizedBlockCommitSet = null;
-            Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(effectiveFinalizedBlockNumber);
+            Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedHeader(effectiveFinalizedBlockNumber)?.StateRoot;
             if (finalizedStateRoot is not null)
             {
                 foreach (BlockCommitSet blockCommitSet in commitSetsAtFinalizedBlock)
@@ -933,7 +933,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         ParallelUnbalancedWork.For(
             0,
             _dirtyNodes.Length,
-            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+            RuntimeInformation.ParallelOptionsLogicalCores,
             (prunePersisted, forceRemovePersistedNodes, dirtyNodes: _dirtyNodes, persistedHashes: _persistedHashes, nodeStorage),
             static (index, state) =>
             {
@@ -977,7 +977,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             ParallelUnbalancedWork.For(
                 0,
                 shardCountToPrune,
-                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+                RuntimeInformation.ParallelOptionsLogicalCores,
                 (dirtyNodes: _dirtyNodes, shardedCount: _shardedDirtyNodeCount, startShardIdx),
                 static (i, state) =>
                 {

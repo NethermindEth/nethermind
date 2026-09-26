@@ -356,9 +356,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _hasMemory = true;
     }
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
-        if (!_streamVmTrace) { base.ReportStorageChange(key, value); return; }
+        if (!_streamVmTrace) { base.ReportOperationStorageChange(key, value); return; }
 
         EnsureBuffer(ref _storageKeyBuffer, key.Length);
         key.CopyTo(_storageKeyBuffer);
@@ -388,7 +388,24 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (!_streamVmTrace) { base.ReportGasUpdateForVmTrace(refund, gasAvailable); return; }
 
-        if (_hasPendingOp) _pendingUsed = gasAvailable;
+        if (!_hasPendingOp) return;
+
+        _pendingUsed = gasAvailable;
+        if (!_gasAlreadySetForCurrentOp)
+        {
+            _gasAlreadySetForCurrentOp = true;
+            _pushAssigned = true;
+            _treatGasParityStyle = false;
+        }
+    }
+
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, bool isPrecompileCall = false)
+    {
+        // Mirrors the base tracer, which adds the gas forwarded to a CREATE/CREATE2 frame to the operation's cost.
+        if (_streamVmTrace && _hasPendingOp && callType.IsAnyCreate()) _pendingCost += gas;
+
+        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
     }
 
     protected override void OnEnterVmFrame(ParityTraceAction action)
@@ -470,7 +487,10 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         {
             FinalizePendingOp(closeWithNullSub: true);
         }
-        return base.BuildResult();
+        ParityTraceAction? action = _trace.Action;
+        ParityLikeTxTrace result = base.BuildResult();
+        if (action is not null && result.Action is null) ReturnActionTree(action);
+        return result;
     }
 
     private void FinalizePendingOp(bool closeWithNullSub)
@@ -526,7 +546,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             for (int i = 0; i < _pushItems.Count; i++)
             {
                 (byte[] buf, int len) = _pushItems[i];
-                WriteHexBytes(buf.AsSpan(0, len));
+                ByteArrayConverter.Convert(_writer, buf.AsSpan(0, len), skipLeadingZeros: true);
             }
             _writer.WriteEndArray();
         }
@@ -540,9 +560,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         {
             _writer.WriteStartObject();
             _writer.WritePropertyName("key"u8);
-            WriteHexBytes(_storageKeyBuffer.AsSpan(0, _storageKeyByteCount));
+            ByteArrayConverter.Convert(_writer, _storageKeyBuffer.AsSpan(0, _storageKeyByteCount), skipLeadingZeros: true);
             _writer.WritePropertyName("val"u8);
-            WriteHexBytes(_storageValueBuffer.AsSpan(0, _storageValueByteCount));
+            ByteArrayConverter.Convert(_writer, _storageValueBuffer.AsSpan(0, _storageValueByteCount), skipLeadingZeros: true);
             _writer.WriteEndObject();
         }
         else
@@ -586,7 +606,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             for (int i = 0; i < _pushItems.Count; i++)
             {
                 (byte[] buf, int len) = _pushItems[i];
-                WriteHexBytes(buf.AsSpan(0, len));
+                ByteArrayConverter.Convert(_writer, buf.AsSpan(0, len), skipLeadingZeros: true);
             }
             _writer.WriteEndArray();
         }
@@ -600,9 +620,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         {
             _writer.WriteStartObject();
             _writer.WritePropertyName("key"u8);
-            WriteHexBytes(_storageKeyBuffer.AsSpan(0, _storageKeyByteCount));
+            ByteArrayConverter.Convert(_writer, _storageKeyBuffer.AsSpan(0, _storageKeyByteCount), skipLeadingZeros: true);
             _writer.WritePropertyName("val"u8);
-            WriteHexBytes(_storageValueBuffer.AsSpan(0, _storageValueByteCount));
+            ByteArrayConverter.Convert(_writer, _storageValueBuffer.AsSpan(0, _storageValueByteCount), skipLeadingZeros: true);
             _writer.WriteEndObject();
         }
         else

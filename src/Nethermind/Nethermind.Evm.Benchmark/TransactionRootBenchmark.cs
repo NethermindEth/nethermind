@@ -17,11 +17,14 @@ public class TransactionRootBenchmark
     private Transaction[] _cachedTransactions = null!;
     private byte[][] _encoded = null!;
 
-    [Params(1, 128, 200, 400, 4096)]
+    [Params(1, 16, 32, 64, 128, 200, 400, 4096)]
     public int Count { get; set; }
 
     [Params(0, 1024)]
     public int DataLength { get; set; }
+
+    [Params(false, true)]
+    public bool MixedLengths { get; set; }
 
     [GlobalSetup]
     public void Setup()
@@ -30,10 +33,16 @@ public class TransactionRootBenchmark
         _cachedTransactions = new Transaction[Count];
         _encoded = new byte[Count][];
         byte[] data = new byte[DataLength];
-        new System.Random(42).NextBytes(data);
+        System.Random random = new(42);
+        random.NextBytes(data);
         Signature signature = Build.A.Transaction.Signed().TestObject.Signature!;
         for (int i = 0; i < Count; i++)
         {
+            if (MixedLengths)
+            {
+                data = new byte[random.Next(DataLength, DataLength + 2049)];
+                random.NextBytes(data);
+            }
             Transaction transaction = Build.A.Transaction.WithNonce(i).WithType((TxType)(i % 3))
                 .WithData(data).WithSignature(signature).TestObject;
             _transactions[i] = transaction;

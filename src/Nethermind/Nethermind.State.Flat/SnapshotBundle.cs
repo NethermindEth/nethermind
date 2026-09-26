@@ -6,7 +6,6 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Trie;
 
@@ -29,11 +28,11 @@ public sealed class SnapshotBundle : IDisposable
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
-    private ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> _changedSlots = null!;
+    private ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> _changedSlots = null!;
     private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
     private AddressStorageNodeDictionary _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
-    private readonly ConcurrentDictionary<HashedKey<Address>, byte> _addressesWithChangedSlots = new();
+    private ConcurrentDictionary<HashedKey<Address>, byte>? _addressesWithChangedSlots;
 
     private bool _trieChanged = false;
 
@@ -122,21 +121,23 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.DetermineSelfDestructSnapshotIdx(address);
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
+    public void GetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out UInt256? value)
     {
         GuardDispose();
 
         HashedKey<(Address, UInt256)> key = new((address, index));
 
-        if (_changedSlots.TryGetValue(key, out SlotValue? slotValue))
+        if (_changedSlots.TryGetValue(key, out UInt256? slotValue))
         {
-            return slotValue?.ToEvmBytes();
+            value = slotValue;
+            return;
         }
 
         // Self-destructed at the point of the latest change
         if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
         {
-            return null;
+            value = null;
+            return;
         }
 
         int currentBundleSelfDestructIdx = selfDestructStateIdx - _readOnlySnapshotBundle.SnapshotCount;
@@ -144,17 +145,19 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStorage(key, out slotValue))
             {
-                return slotValue?.ToEvmBytes();
+                value = slotValue;
+                return;
             }
 
             if (i <= currentBundleSelfDestructIdx)
             {
                 // This is the snapshot with selfdestruct
-                return null;
+                value = null;
+                return;
             }
         }
 
-        return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
+        _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key, out value);
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
@@ -167,8 +170,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (_transientResource.TryGetStateNode(path, hash, out node)
-                 && (!node.IsWarmerOwned || node.IsWarmerResolved))
+        else if (_transientResource.TryGetStateNode(path, hash, out node) && node.NodeType != NodeType.Unknown)
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -299,7 +301,7 @@ public sealed class SnapshotBundle : IDisposable
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node)
-                 && (!node.IsWarmerOwned || node.IsWarmerResolved))
+                 && node.NodeType != NodeType.Unknown)
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -481,25 +483,33 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
+    public void SetChangedSlot(Address address, in UInt256 index, in UInt256 value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
         // lower down.
         HashedKey<(Address, UInt256)> key = new((address, index));
-        if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
+        if (value.IsZero)
         {
             _changedSlots[key] = null;
         }
         else
         {
-            _changedSlots[key] = SlotValue.FromSpanWithoutLeadingZero(value);
+            _changedSlots[key] = value;
         }
 
-        if (!_addressesWithChangedSlots.ContainsKey(address))
+        ConcurrentDictionary<HashedKey<Address>, byte> addressesWithChangedSlots =
+            Volatile.Read(ref _addressesWithChangedSlots) ?? CreateAddressesWithChangedSlots();
+        if (!addressesWithChangedSlots.ContainsKey(address))
         {
-            _addressesWithChangedSlots.TryAdd(address, 0);
+            addressesWithChangedSlots.TryAdd(address, 0);
         }
+    }
+
+    private ConcurrentDictionary<HashedKey<Address>, byte> CreateAddressesWithChangedSlots()
+    {
+        ConcurrentDictionary<HashedKey<Address>, byte> created = new();
+        return Interlocked.CompareExchange(ref _addressesWithChangedSlots, created, null) ?? created;
     }
 
     internal void ClearStorage(Address address, Hash256 addressHash)
@@ -513,13 +523,14 @@ public sealed class SnapshotBundle : IDisposable
 
         _changedStorageNodes.RemoveAddress(addressHash);
 
-        if (!_addressesWithChangedSlots.TryRemove(address, out _))
+        // No dictionary yet means no slot of any address was written.
+        if (Volatile.Read(ref _addressesWithChangedSlots)?.TryRemove(address, out _) != true)
         {
             return;
         }
 
         using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
-        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kvp in _changedSlots)
+        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kvp in _changedSlots)
         {
             if (kvp.Key.Key.Item1 == address)
             {
@@ -617,7 +628,7 @@ public sealed class SnapshotBundle : IDisposable
             // Make and apply new snapshot content.
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
-            _addressesWithChangedSlots.NoLockClear();
+            _addressesWithChangedSlots?.NoLockClear();
 
             return (snapshot, transientResource);
         }
@@ -631,7 +642,7 @@ public sealed class SnapshotBundle : IDisposable
 
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
-            _addressesWithChangedSlots.NoLockClear();
+            _addressesWithChangedSlots?.NoLockClear();
             _trieChanged = false;
 
             return (null, null);

@@ -586,16 +586,23 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             _logger.Debug(requestCount is null ? "JSON RPC batch request" : $"{requestCount} JSON RPC requests");
         }
 
-        await sink.BeginBatchAsync(cancellationToken);
         long startTime = Stopwatch.GetTimestamp();
         int requestIndex = 0;
         bool isStopped = false;
+        // Deferred so an empty batch can be answered as a single Invalid Request rather than an empty array.
+        bool batchStarted = false;
         BatchRequestJsonLifetime batchRequestJsonLifetime = new();
 
         try
         {
             while (source.TryGetNext(out JsonRpcRequest? request, out JsonDocument? ownedRequestDocument, out Exception? decodeException))
             {
+                if (!batchStarted)
+                {
+                    await sink.BeginBatchAsync(cancellationToken);
+                    batchStarted = true;
+                }
+
                 requestIndex++;
                 if (request is null)
                 {
@@ -624,13 +631,22 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 isStopped |= sink.StopRequested;
             }
 
+            // JSON-RPC 2.0: an empty batch is itself an Invalid Request, answered with one error object rather
+            // than an empty array. Detected by exhausting the source, so it costs no extra pass and also covers
+            // authenticated callers, whose batches are deliberately never counted up front.
+            if (!batchStarted)
+            {
+                await WriteInvalidRequestAsync(sink, startTime, cancellationToken);
+                return;
+            }
+
             if (_logger.IsTrace) _logger.Trace($"  {requestIndex} requests handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
         finally
         {
             try
             {
-                await sink.EndBatchAsync(cancellationToken);
+                if (batchStarted) await sink.EndBatchAsync(cancellationToken);
             }
             finally
             {
@@ -822,7 +838,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     /// canonical consensus-client/execution-client version-mismatch signal and -32602 means the CL sent a payload
     /// this node could not bind, both of which are the operator's problem and have to stay visible at default level.
     /// <para>
-    /// Server-side codes (-32603, -32000, timeouts, unsuppressed limits) keep WARN for every caller, and
+    /// Server-side codes (-32603, -32000, timeouts) keep WARN for every caller, and
     /// <see cref="Error.OperatorActionable"/> overrides the code: -32600 also carries "namespace X is disabled for
     /// this URL", which is a statement about this node's configuration.
     /// </para>

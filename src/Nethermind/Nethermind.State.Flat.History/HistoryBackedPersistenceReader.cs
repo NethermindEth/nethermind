@@ -39,7 +39,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
             bool available = restrictToSlices ? historyReader.IsCoveredAndRootMatches(block) : historyReader.IsAvailable(block);
             if (!available)
             {
-                throw StateUnavailable(new StateUnavailableException(
+                throw StateUnavailable(new StateNotRetainedException(
                     $"Historical state for block {block.BlockNumber} is unavailable" +
                     (!restrictToSlices && historyReader.IsPrunedBelowFloor(block.BlockNumber) ? " (below the flat history retention floor)." : ".")));
             }
@@ -68,12 +68,12 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         }
     }
 
-    public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+    public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
     {
         if (_sliceScopes is not null) RequireRetainedBySlice(address);
         try
         {
-            if (!_historyReader.TryGetStorage(_block.BlockNumber, address, slot, out SlotValue value, _clearsCache)) return false;
+            if (!_historyReader.TryGetStorage(_block.BlockNumber, address, slot, out UInt256 value, _clearsCache)) return false;
             outValue = value;
             return true;
         }
@@ -93,11 +93,11 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
             if (_block.BlockNumber >= scope.Floor && scope.Key.AsSpan().SequenceEqual(key)) return;
         }
 
-        throw StateUnavailable(new StateUnavailableException(
+        throw StateUnavailable(new StateNotRetainedException(
             $"Historical state for block {_block.BlockNumber} is unavailable for {address} - it is below the general retention floor and not covered by any retained slice."));
     }
 
-    /// <summary>The hash-based reader's contract: JSON-RPC maps this to resource-not-found.</summary>
+    /// <summary>The hash-based reader's contract; JSON-RPC answers resource-unavailable (-32002) for a <see cref="StateNotRetainedException"/> inner and resource-not-found otherwise.</summary>
     private MissingTrieNodeException StateUnavailable(StateUnavailableException inner) =>
         new($"Historical state for block {_block.BlockNumber} is unavailable", null, TreePath.Empty, _block.StateRoot.ToCommitment(), inner);
 
@@ -111,7 +111,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
 
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) => throw Unsupported();
 
-    public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => throw Unsupported();
+    public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => throw Unsupported();
 
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw Unsupported();
 

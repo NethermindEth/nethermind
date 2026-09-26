@@ -82,6 +82,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// - <see cref="ReportStackPush"/>
     /// - <see cref="ReportMemoryChange"/>
     /// - <see cref="ReportGasUpdateForVmTrace"/>
+    /// - <see cref="ReportOperationStorageChange"/>
     /// </remarks>
     bool IsTracingInstructions { get; }
 
@@ -266,7 +267,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="returnData">The current return-data buffer.</param>
     /// <remarks>Depends on <see cref="IsTracingReturnData"/></remarks>
-    void SetOperationReturnData(ReadOnlyMemory<byte> returnData);
+    void SetOperationReturnData(ReadOnlySpan<byte> returnData);
 
     /// <summary>
     ///
@@ -299,6 +300,12 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     void ReportMemoryChange(UInt256 offset, byte data) => ReportMemoryChange(offset, new[] { data });
 
     /// <summary>
+    /// Reports the slot key and new value written by SSTORE, for the vmTrace <c>store</c> entry.
+    /// </summary>
+    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
+    void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
+
+    /// <summary>
     ///
     /// </summary>
     /// <param name="address"></param>
@@ -313,8 +320,8 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="storageCellAddress"></param>
     /// <param name="storageIndex"></param>
-    /// <param name="newValue"></param>
-    /// <param name="currentValue"></param>
+    /// <param name="newValue">32-byte big-endian value, including zero.</param>
+    /// <param name="currentValue">The value held in the cell immediately before this write, encoded as one zero byte for zero or 32-byte big-endian otherwise.</param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
     void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
 
@@ -332,7 +339,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="storageCellAddress"></param>
     /// <param name="storageIndex"></param>
-    /// <param name="value"></param>
+    /// <param name="value">Big-endian value: one zero byte for zero, otherwise 32 bytes.</param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
     void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
 
@@ -382,6 +389,18 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     void ReportActionError(EvmExceptionType evmExceptionType);
 
     /// <summary>
+    /// Reports the remaining gas observed at an execution-segment boundary.
+    /// </summary>
+    /// <param name="gas">Gas remaining in the frame.</param>
+    /// <remarks>
+    /// Depends on <see cref="IsTracingActions"/>. Checkpoints are emitted when execution suspends,
+    /// resumes, completes or fails, before the corresponding action completion or error notification
+    /// where applicable. These are not per-opcode updates; early action failures can occur without
+    /// a new checkpoint, leaving the previous observation in effect. The default implementation drops it.
+    /// </remarks>
+    void ReportActionRemainingGas(ulong gas) { }
+
+    /// <summary>
     ///
     /// </summary>
     /// <param name="gas"></param>
@@ -405,11 +424,21 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     void ReportByteCode(ReadOnlyMemory<byte> byteCode);
 
     /// <summary>
-    /// Special case for VM trace in Parity but we consider removing support for it
+    /// Reports gas remaining for an instruction that is not currently open, so
+    /// <see cref="ReportOperationRemainingGas"/> would pair with no <see cref="StartOperation"/>.
     /// </summary>
-    /// <param name="refund"></param>
-    /// <param name="gasAvailable"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
+    /// <param name="refund">Gas credited back to the frame, or <c>0</c> when the update carries no refund.</param>
+    /// <param name="gasAvailable">Gas remaining once the update is applied.</param>
+    /// <remarks>
+    /// Raised when a call or create frame returns and the parent instruction resumes, when gas is credited back to a
+    /// call that could not proceed, and immediately before <see cref="ReportOperationError"/> when execution fails
+    /// with no instruction start open (the start was filtered out, CREATE already completed, or execution failed
+    /// outside any instruction, such as a precompile).
+    /// A tracer that follows gas checkpoints has to observe this alongside
+    /// <see cref="ReportOperationRemainingGas"/>; the parity <c>vmTrace</c> uses it to amend the operation's
+    /// recorded gas without recomputing its cost.
+    /// <para>Depends on <see cref="IsTracingInstructions"/>.</para>
+    /// </remarks>
     void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable);
 
     /// <summary>
