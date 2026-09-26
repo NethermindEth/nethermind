@@ -6,16 +6,19 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -29,6 +32,70 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public partial class EthRpcModuleTests
 {
+    private static FrameTransactionForRpc UnsignedFrameRequest() => new()
+    {
+        From = TestItem.AddressC,
+        To = TestItem.AddressC,
+        MaxFeePerGas = 0,
+        MaxPriorityFeePerGas = 0,
+        Frames =
+        [
+            new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGasLimit = 50_000 },
+            new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGasLimit = 50_000 },
+        ],
+        Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
+    };
+
+    [Test]
+    public async Task FrameRpc_UnsignedTransaction_Succeeds(
+        [Values("eth_call", "eth_estimateGas", "eth_fillTransaction", "eth_simulateV1")] string method)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc transaction = UnsignedFrameRequest();
+
+        object request = method == "eth_simulateV1"
+            ? new { blockStateCalls = new[] { new { calls = new[] { transaction } } }, validation = false }
+            : transaction;
+        string response = await ctx.Test.TestEthRpc(method, request);
+
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, response);
+        Assert.That(parsed["result"], Is.Not.Null);
+        if (method == "eth_call") Assert.That(parsed["result"]!.Value<string>(), Is.EqualTo("0x"));
+        if (method == "eth_simulateV1") Assert.That(parsed["result"]![0]!["calls"]![0]!["status"]!.Value<string>(), Is.EqualTo("0x1"));
+        if (method == "eth_fillTransaction")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((JArray)parsed["result"]!["tx"]!["frames"]!, Has.Count.EqualTo(2));
+                Assert.That((JArray)parsed["result"]!["tx"]!["signatures"]!, Has.Count.EqualTo(1));
+            }
+        }
+    }
+
+    [Test]
+    public async Task FrameRpc_EstimateGas_PlaceholderCoversSignedTransaction()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc signed = UnsignedFrameRequest();
+        signed.Nonce = ctx.Test.ReadOnlyState.GetNonce(TestItem.AddressC);
+        Transaction tx = signed.ToTransaction().Data!;
+        tx.ChainId = ctx.Test.Bridge.GetChainId();
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = new Ecdsa().Sign(TestItem.PrivateKeyC, in sigHash);
+        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        vrs[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(vrs.AsSpan(1));
+        signed.Signatures![0].Signature = vrs;
+
+        string placeholderEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", UnsignedFrameRequest());
+        string signedEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", signed);
+
+        Assert.That(JToken.Parse(signedEstimate)["error"], Is.Null, signedEstimate);
+        Assert.That(Convert.ToUInt64(JToken.Parse(placeholderEstimate)["result"]!.Value<string>(), 16),
+            Is.GreaterThanOrEqualTo(Convert.ToUInt64(JToken.Parse(signedEstimate)["result"]!.Value<string>(), 16)), placeholderEstimate);
+    }
+
     [Test]
     public async Task Eth_estimateGas_web3_should_return_insufficient_balance_error()
     {
