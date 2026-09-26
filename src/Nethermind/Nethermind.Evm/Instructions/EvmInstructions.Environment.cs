@@ -669,7 +669,8 @@ public static partial class EvmInstructions
         if (vmState.IsStatic) goto StaticCallViolation;
 
         IReleaseSpec spec = vm.Spec;
-        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.SetCodeFromBase)) goto OutOfGas;
+        // SETCODEFROM_SOURCE_GAS: the source account access plus a fixed source code validation charge.
+        if (!TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess)) goto OutOfGas;
 
         Address? source = stack.PopAddress(vm.AddressCache);
         if (source is null) goto StackUnderflow;
@@ -682,7 +683,16 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
-        vm.CodeInfoRepository.InsertCode(codeInfo.Code, vmState.Env.ExecutingAccount, spec);
+        // The current account access is charged before the hash comparison, ACCOUNT_WRITE before the write.
+        if (!TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess)) goto OutOfGas;
+        IWorldState state = vm.WorldState;
+        Address executingAccount = vmState.Env.ExecutingAccount;
+        if (state.GetCodeHash(executingAccount) != state.GetCodeHash(source))
+        {
+            if (!TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite)) goto OutOfGas;
+            vm.CodeInfoRepository.InsertCode(codeInfo.Code, executingAccount, spec);
+        }
+
         return stack.PushOne<TTracingInst>();
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:

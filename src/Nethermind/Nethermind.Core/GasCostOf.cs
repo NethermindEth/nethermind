@@ -87,8 +87,6 @@ namespace Nethermind.Core
         public const ulong PerEmptyAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const ulong BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
 
-        public const ulong SetCodeFromBase = 3_000; // eip-8298 (base cost; source account access charged on top per eip-2929)
-
         public const ulong TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
         public const ulong TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;
 

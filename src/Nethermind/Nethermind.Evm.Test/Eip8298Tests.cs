@@ -113,30 +113,29 @@ public class Eip8298Tests : VirtualMachineTestsBase
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
     }
 
-    private static ulong ColdGas => GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.SetCodeFromBase + Eip8038Constants.ColdAccountAccess;
+    public enum SourceKind { Missing, SameCode, OtherCode }
 
-    [Test]
-    public void ColdSource_ChargesBasePlusColdAccess()
+    // Expected values are the EIP-8298 execution-gas table under the EIP-8038 access costs.
+    [TestCase(SourceKind.Missing, false, 3100UL)]
+    [TestCase(SourceKind.Missing, true, 200UL)]
+    [TestCase(SourceKind.SameCode, false, 3200UL)]
+    [TestCase(SourceKind.SameCode, true, 300UL)]
+    [TestCase(SourceKind.OtherCode, false, 12200UL)]
+    [TestCase(SourceKind.OtherCode, true, 9300UL)]
+    public void Gas_MatchesSpecSchedule(SourceKind kind, bool warmSource, ulong expectedGas)
     {
-        DeploySource();
-        byte[] code = Prepare.EvmCode.SETCODEFROM(Source).STOP().Done;
+        Prepare prefix = warmSource ? Prepare.EvmCode.EXTCODEHASH(Source).POP() : Prepare.EvmCode;
+        // GAS; PUSH20 source; SETCODEFROM; POP; GAS; then return the difference between the two GAS readings.
+        byte[] code = prefix.GAS().SETCODEFROM(Source).POP().GAS().SWAPx(1).SUB().MSTORE(0).Return(32, 0).Done;
+        if (kind == SourceKind.SameCode) DeploySource(code);
+        else if (kind == SourceKind.OtherCode) DeploySource();
 
-        TestAllTracerWithOutput result = Execute(Activation, 100000, code);
+        TestAllTracerWithOutput result = Execute(code);
 
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, ColdGas);
-    }
-
-    [Test]
-    public void WarmSource_SecondAccessChargesWarm()
-    {
-        DeploySource();
-        byte[] code = Prepare.EvmCode.SETCODEFROM(Source).SETCODEFROM(Source).STOP().Done;
-
-        TestAllTracerWithOutput result = Execute(Activation, 100000, code);
-
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertGas(result, ColdGas + GasCostOf.VeryLow + GasCostOf.SetCodeFromBase + GasCostOf.WarmStateRead);
+        const ulong measurementOverhead = GasCostOf.VeryLow + GasCostOf.Base + GasCostOf.Base;
+        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)(expectedGas + measurementOverhead)));
+        AssertCodeHash(Recipient, Keccak.Compute(kind == SourceKind.OtherCode ? SourceCode : code));
     }
 
     public class Eip8298DisabledTests : VirtualMachineTestsBase
