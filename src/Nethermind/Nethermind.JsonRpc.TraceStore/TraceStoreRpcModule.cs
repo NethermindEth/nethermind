@@ -55,6 +55,22 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     private static IEnumerable<ParityTxTraceFromStore> FlattenStoreItems(List<ParityLikeTxTrace> traces) =>
         traces.SelectMany(ParityTxTraceFromStore.FromTxTrace);
 
+    private static IEnumerable<ParityTxTraceFromStore> FlattenTraceBlockItems(List<ParityLikeTxTrace> traces)
+    {
+        foreach (ParityLikeTxTrace trace in traces)
+        {
+            if (trace.Action?.Type == "reward")
+            {
+                continue;
+            }
+
+            foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
+            {
+                yield return item;
+            }
+        }
+    }
+
     private static void FlushPipe(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken ct)
     {
         if (pipeWriter is null) return;
@@ -293,6 +309,11 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                 {
                     foreach (ParityLikeTxTrace trace in traces)
                     {
+                        if (trace.Action?.Type == "reward")
+                        {
+                            continue;
+                        }
+
                         ct.ThrowIfCancellationRequested();
                         foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
                         {
@@ -301,7 +322,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                         FlushPipe(writer, pipeWriter, ct);
                     }
                 },
-                runBuffered: () => FlattenStoreItems(traces));
+                runBuffered: () => FlattenTraceBlockItems(traces));
         }
 
         return _traceModule.trace_block(blockParameter);

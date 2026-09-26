@@ -446,7 +446,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             BlockHeader parentHeader = parentSearch.Object!;
-            ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.Rewards;
+            ParityTraceTypes types = ParityTraceTypes.Trace;
 
             return BuildStreamingMultiResult<ParityTxTraceFromStore>(
                 runStreaming: (writer, pipeWriter, ct) =>
