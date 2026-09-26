@@ -455,6 +455,57 @@ public class JsonRpcSocketsClientTests
     private static void AssertMatchesIpcDisconnectFilter(Exception? exception) =>
         Assert.That(exception is IOException { InnerException: SocketException { SocketErrorCode: SocketError.ConnectionReset } }, Is.True);
 
+    [Test]
+    public async Task Socket_batch_item_failure_faults_before_disposal()
+    {
+        using SocketSinkFixture fixture = CreateSocketSink();
+        InvalidOperationException failure = new("item failed");
+        await fixture.Sink.BeginBatchAsync(CancellationToken.None);
+        using JsonRpcSuccessResponse failing = new() { Result = new FlushingStreamable(chunks: 0, failure) };
+
+        Assert.That(Assert.CatchAsync(async () => await fixture.Sink.WriteBatchItemAsync(failing, default, CancellationToken.None)), Is.SameAs(failure));
+        Exception? beforeDisposal = fixture.SendLock.Failure;
+        fixture.Sink.Dispose();
+        byte[] partial = fixture.Stream.ToArray();
+        using JsonRpcContext context = new(RpcEndpoint.Ws);
+        using SocketJsonRpcResponseSink<MemoryMessageStream> next = new(fixture.Stream, new NullJsonRpcLocalStats(), null, fixture.SendLock, context);
+        using JsonRpcSuccessResponse nextResponse = new() { Result = "next" };
+        IOException? rejected = Assert.ThrowsAsync<IOException>(async () => await next.WriteSingleAsync(nextResponse, default, CancellationToken.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(beforeDisposal, Is.SameAs(failure), "the item failure must fault the lock itself, not rely on disposal");
+            Assert.That(fixture.SendLock.Failure, Is.SameAs(failure), "disposal must not replace the item failure");
+            Assert.That(rejected!.InnerException, Is.SameAs(failure));
+            Assert.That(Encoding.UTF8.GetString(partial), Is.EqualTo("["));
+            Assert.That(fixture.Stream.ToArray(), Is.EqualTo(partial));
+        }
+    }
+
+    [Test]
+    public async Task Abandoned_socket_batch_faults_the_connection()
+    {
+        using SocketSinkFixture fixture = CreateSocketSink();
+        await fixture.Sink.BeginBatchAsync(CancellationToken.None);
+        using JsonRpcSuccessResponse item = new() { Id = 1, Result = "0x1" };
+        await fixture.Sink.WriteBatchItemAsync(item, default, CancellationToken.None);
+        byte[] partial = fixture.Stream.ToArray();
+
+        // The processor stops between items, for example when the request is cancelled, and never ends the batch.
+        fixture.Sink.Dispose();
+
+        using JsonRpcContext context = new(RpcEndpoint.Ws);
+        using SocketJsonRpcResponseSink<MemoryMessageStream> next = new(fixture.Stream, new NullJsonRpcLocalStats(), null, fixture.SendLock, context);
+        using JsonRpcSuccessResponse nextResponse = new() { Result = "next" };
+        Assert.ThrowsAsync<IOException>(async () => await next.WriteSingleAsync(nextResponse, default, CancellationToken.None));
+        Assert.ThrowsAsync<IOException>(async () => await next.BeginBatchAsync(CancellationToken.None));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Encoding.UTF8.GetString(partial), Does.StartWith("[{").And.Contain("\"0x1\""));
+            AssertIncompleteMessageNotExtended(fixture.Stream, partial);
+        }
+    }
+
     /// <summary>Writes <c>chunks</c> flushed 1 KiB chunks of a JSON string, then optionally fails before flushing more.</summary>
     private sealed class FlushingStreamable(int chunks, Exception? failure = null, Func<int, Task>? beforeChunk = null) : IStreamableResult
     {
