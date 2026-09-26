@@ -53,6 +53,36 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
 
     public ReadOnlyMemory<byte> Code { get; }
     public ReadOnlySpan<byte> CodeSpan => Code.Span;
+
+    /// <summary>The number of zero bytes that follow <see cref="ExecutionCodeSpan"/> in its backing array.</summary>
+    /// <remarks>
+    /// A PUSH32 in the last byte reads 32 immediate bytes, and the next opcode read then lands on the
+    /// last padding byte, which is STOP.
+    /// </remarks>
+    internal const int ExecutionPadding = 33;
+
+    private byte[]? _executionCode;
+
+    /// <summary>The code that dispatch runs, followed in memory by <see cref="ExecutionPadding"/> zero bytes.</summary>
+    /// <remarks>
+    /// Untraced dispatch reads into the padding instead of checking the program counter against the code
+    /// length. The copy is built on first execution, so <see cref="Code"/> stays the caller's memory. The
+    /// padding is never JUMPDEST, and jump destinations are bounded by the code length anyway.
+    /// </remarks>
+    internal ReadOnlySpan<byte> ExecutionCodeSpan
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => new(GetExecutionCode(), 0, Code.Length);
+    }
+
+    private byte[] CreatePaddedCode()
+    {
+        ReadOnlySpan<byte> code = CodeSpan;
+        byte[] padded = GC.AllocateUninitializedArray<byte>(code.Length + ExecutionPadding);
+        code.CopyTo(padded);
+        padded.AsSpan(code.Length).Clear();
+        return padded;
+    }
     private Address? _delegatedAddress;
     internal Address? DelegatedAddress
     {

@@ -1,13 +1,18 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
+
 namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo
 {
-    // Guest execution is single-threaded; bitmap writes and the resume cursor are not synchronized.
+    // Guest execution is single-threaded; bitmap writes, the resume cursor and the execution copy are not synchronized.
     private long[]? _incrementalJumpBitmap;
     private nint _analyzedUntil;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private byte[] GetExecutionCode() => _executionCode ??= CreatePaddedCode();
 
     /// <summary>The jump-destination bitmap of this code, populated only as far as the scan has reached.</summary>
     /// <remarks>
