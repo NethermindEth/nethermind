@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.Core.Crypto;
@@ -17,7 +18,6 @@ public class DataColumnSidecarPoolGloasTests
 {
     private const ulong Column = 3;
     private const ulong Slot = 7;
-    private const string Peer = "peer";
 
     [Test]
     public void A_gloas_sidecar_is_found_by_root_under_its_own_fields()
@@ -79,8 +79,8 @@ public class DataColumnSidecarPoolGloasTests
         DataColumnSidecarPool pool = new();
         DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(Column, Slot);
 
-        pool.AddPendingGloas(sidecar, Peer);
-        pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(Column, Slot), "other peer");
+        pool.AddPendingGloas(sidecar, Slot);
+        pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(Column, Slot), Slot);
         bool servedWhilePending = pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out _);
         bool heldAsPending = PendingFor(pool, DataColumnSidecarGloasTestFixture.BlockRoot).Contains(sidecar);
         pool.AddGloas(sidecar);
@@ -104,56 +104,42 @@ public class DataColumnSidecarPoolGloasTests
 
         Assert.That(() =>
         {
-            if (pending) pool.AddPendingGloas(sidecar, Peer);
+            if (pending) pool.AddPendingGloas(sidecar, Slot);
             else pool.AddGloas(sidecar);
         }, Throws.ArgumentException);
     }
 
+    /// <summary>Availability runs a KZG batch per candidate, and no arrival can tell a forgery from the genuine sidecar.</summary>
     [Test]
-    public void A_peer_replaces_only_its_own_candidate_for_a_root_and_column()
+    public void A_root_and_column_keeps_only_its_earliest_candidates()
     {
         DataColumnSidecarPool pool = new();
-        DataColumnSidecarGloas other = DataColumnSidecarGloasTestFixture.BuildSidecar(Column, Slot);
-        DataColumnSidecarGloas earlier = DataColumnSidecarGloasTestFixture.BuildSidecar(Column, Slot);
-        DataColumnSidecarGloas later = DataColumnSidecarGloasTestFixture.BuildSidecar(Column, Slot);
-
-        pool.AddPendingGloas(other, "other peer");
-        pool.AddPendingGloas(earlier, Peer);
-        pool.AddPendingGloas(later, Peer);
-
-        Assert.That(PendingFor(pool, DataColumnSidecarGloasTestFixture.BlockRoot), Is.EquivalentTo(new[] { other, later }));
-    }
-
-    [Test]
-    public void The_pending_total_is_bounded_and_evicts_the_oldest([Values] bool onePeer)
-    {
-        DataColumnSidecarPool pool = new();
-
-        for (ulong i = 0; i <= DataColumnSidecarPool.MaxPendingGloasSidecars; i++)
+        DataColumnSidecarGloas[] earliest = [.. Enumerable.Range(0, DataColumnSidecarPool.MaxPendingGloasCandidatesPerKey).Select(static _ => Forged(DataColumnSidecarGloasTestFixture.BlockRoot))];
+        foreach (DataColumnSidecarGloas candidate in earliest)
         {
-            pool.AddPendingGloas(new DataColumnSidecarGloas { Index = 0, Column = [], KzgProofs = [], Slot = i, BeaconBlockRoot = RootFor(i) }, onePeer ? Peer : $"peer {i}");
+            pool.AddPendingGloas(candidate, Slot);
         }
+
+        bool parkedPastTheCap = pool.AddPendingGloas(Forged(DataColumnSidecarGloasTestFixture.BlockRoot), Slot);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(pool.PendingGloasCount, Is.EqualTo(DataColumnSidecarPool.MaxPendingGloasSidecars));
-            Assert.That(pool.GetPendingGloas(RootFor(0), 0), Is.Empty, "the oldest unverified sidecar is evicted");
-            Assert.That(pool.GetPendingGloas(RootFor(DataColumnSidecarPool.MaxPendingGloasSidecars), 0), Has.Length.EqualTo(1));
+            Assert.That(parkedPastTheCap, Is.False);
+            Assert.That(PendingFor(pool, DataColumnSidecarGloasTestFixture.BlockRoot), Is.EqualTo(earliest));
         }
     }
 
-    /// <summary>A flood of forgeries, for this (root, column) or for others, must not cost another peer its candidate.</summary>
+    /// <summary>A flood of forgeries, for this (root, column) or for others, must not cost an earlier candidate its place.</summary>
     [Test]
-    public void A_flooding_peer_cannot_evict_another_peers_candidate([Values] bool sameRootAndColumn)
+    public void A_flood_cannot_evict_an_earlier_candidate([Values] bool sameRootAndColumn)
     {
         DataColumnSidecarPool pool = new();
         DataColumnSidecarGloas honest = DataColumnSidecarGloasTestFixture.BuildSidecar(Column, Slot);
-        pool.AddPendingGloas(honest, "honest peer");
+        pool.AddPendingGloas(honest, Slot);
 
         for (ulong i = 0; i < 2 * DataColumnSidecarPool.MaxPendingGloasSidecars; i++)
         {
-            Hash256 root = sameRootAndColumn ? DataColumnSidecarGloasTestFixture.BlockRoot : RootFor(i);
-            pool.AddPendingGloas(new DataColumnSidecarGloas { Index = Column, Column = [], KzgProofs = [], Slot = Slot, BeaconBlockRoot = root }, "flooding peer");
+            pool.AddPendingGloas(Forged(sameRootAndColumn ? DataColumnSidecarGloasTestFixture.BlockRoot : RootFor(i)), Slot);
         }
 
         using (Assert.EnterMultipleScope())
@@ -163,51 +149,36 @@ public class DataColumnSidecarPoolGloasTests
         }
     }
 
-    /// <summary>A peer at the bound that adds one more gives up its own candidate, not one of a peer holding as many.</summary>
-    [Test]
-    public void A_flooding_peer_loses_ties_with_a_peer_holding_as_many_candidates()
-    {
-        DataColumnSidecarPool pool = new();
-        const ulong half = DataColumnSidecarPool.MaxPendingGloasSidecars / 2;
-        for (ulong i = 0; i < half; i++)
-        {
-            pool.AddPendingGloas(Forged(RootFor(i)), "honest peer");
-        }
-
-        for (ulong i = half; i <= 2 * half; i++)
-        {
-            pool.AddPendingGloas(Forged(RootFor(i)), "flooding peer");
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(PendingFor(pool, RootFor(0)), Has.Length.EqualTo(1), "the honest peer's oldest candidate stays");
-            Assert.That(PendingFor(pool, RootFor(half)), Is.Empty, "the flooding peer pays for its own add");
-        }
-    }
-
-    /// <summary>Fresh peer ids, one candidate each, must not evict a candidate that arrived after theirs.</summary>
-    [Test]
-    public void Fresh_peer_ids_evict_the_oldest_candidate_not_the_newest()
+    /// <summary>A refusing full pool must free up once its candidates' blocks can no longer be imminent, or one flood would block parking for good.</summary>
+    [TestCase(Slot + 1, false, TestName = "A full pool keeps candidates through the slot after their own")]
+    [TestCase(Slot + 2, true, TestName = "A full pool drops candidates two slots past their own")]
+    public void A_full_pool_frees_space_only_once_its_candidates_are_stale(ulong currentSlot, bool parked)
     {
         DataColumnSidecarPool pool = new();
         for (ulong i = 0; i < DataColumnSidecarPool.MaxPendingGloasSidecars; i++)
         {
-            pool.AddPendingGloas(Forged(RootFor(i)), $"sybil {i}");
+            pool.AddPendingGloas(Forged(RootFor(i)), Slot);
         }
 
-        DataColumnSidecarGloas honest = DataColumnSidecarGloasTestFixture.BuildSidecar(Column, Slot);
-        pool.AddPendingGloas(honest, "honest peer");
-        for (ulong i = 0; i < 8; i++)
-        {
-            pool.AddPendingGloas(Forged(RootFor(DataColumnSidecarPool.MaxPendingGloasSidecars + i)), $"fresh sybil {i}");
-        }
+        DataColumnSidecarGloas later = DataColumnSidecarGloasTestFixture.BuildSidecar(Column, currentSlot);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(PendingFor(pool, DataColumnSidecarGloasTestFixture.BlockRoot), Does.Contain(honest));
-            Assert.That(PendingFor(pool, RootFor(0)), Is.Empty, "the oldest candidate is the one evicted");
-            Assert.That(pool.PendingGloasCount, Is.EqualTo(DataColumnSidecarPool.MaxPendingGloasSidecars));
+            Assert.That(pool.AddPendingGloas(later, currentSlot), Is.EqualTo(parked));
+            Assert.That(PendingFor(pool, RootFor(0)), Has.Length.EqualTo(parked ? 0 : 1));
+            Assert.That(pool.PendingGloasCount, Is.EqualTo(parked ? 1 : DataColumnSidecarPool.MaxPendingGloasSidecars));
+        }
+    }
+
+    [Test]
+    public void A_candidate_already_stale_is_not_parked()
+    {
+        DataColumnSidecarPool pool = new();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.AddPendingGloas(Forged(DataColumnSidecarGloasTestFixture.BlockRoot), Slot + 2), Is.False);
+            Assert.That(pool.PendingGloasCount, Is.Zero);
         }
     }
 
