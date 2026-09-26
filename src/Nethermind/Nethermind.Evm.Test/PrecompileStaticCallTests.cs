@@ -126,7 +126,7 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
     {
         // A 64 KiB ID call fills the retained (non-pooled) buffer exactly, so the inline ID fast path grows it to
         // that size. If the `precompile is IdentityPrecompile` branch were dropped, ID would resolve through the
-        // ordinary precompile path, RentPrecompileScratch would never run, and this would stay 0 — so the
+        // ordinary precompile path, CopyToPrecompileScratch would never run, and this would stay 0 — so the
         // assertion pins that the optimization is actually taken.
         byte[] code = BuildIdentityChain([VirtualMachineStatics.MaxRetainedPrecompileScratch], out byte[] expected);
         AssertOutput(code, expected, gasLimit: DefaultBlockGasLimit);

@@ -1095,7 +1095,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// rather than kept per VM — of which a node holds tens. The pool-grow path replaces the retained buffer via
     /// <see cref="ReleasePooledPrecompileScratch"/>, which clears <see cref="ReturnDataBuffer"/> as a side
     /// effect, so the caller must reassign it before any later read.</remarks>
-    internal Memory<byte> RentPrecompileScratch(int length)
+    private Memory<byte> RentPrecompileScratch(int length)
     {
         byte[] buffer = _precompileScratch;
         if (buffer.Length >= length) return buffer.AsMemory(0, length);
@@ -1115,6 +1115,14 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         return pooled.AsMemory(0, length);
+    }
+
+    /// <summary>Copies the ID precompile's input into the reusable scratch and returns it as the output.</summary>
+    internal Memory<byte> CopyToPrecompileScratch(ReadOnlySpan<byte> input)
+    {
+        Memory<byte> scratch = RentPrecompileScratch(input.Length);
+        input.CopyTo(scratch.Span);
+        return scratch;
     }
 
     /// <summary>Hands the pooled ID scratch back, if this instance is holding one.</summary>
@@ -1314,9 +1322,7 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         if (precompile is IdentityPrecompile && CanReturnIdentityOutputInScratch(state))
         {
-            Memory<byte> scratch = RentPrecompileScratch(callData.Length);
-            callData.Span.CopyTo(scratch.Span);
-            return new(scratch, precompileSuccess: true);
+            return new(CopyToPrecompileScratch(callData.Span), precompileSuccess: true);
         }
 
         try
