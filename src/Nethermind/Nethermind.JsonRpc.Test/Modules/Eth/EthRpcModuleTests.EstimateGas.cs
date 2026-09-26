@@ -63,6 +63,16 @@ public partial class EthRpcModuleTests
             Assert.That(frames[1]!["stateGasLimit"]!.Value<string>(), Is.EqualTo("0x2cd30"));
             Assert.That(request.Frames![0].ExecutionGasLimit, Is.Null, "RPC serialization must not mutate the caller's request");
         }
+
+        FrameTransactionForRpc filled = FrameGasRequest();
+        for (int i = 0; i < filled.Frames!.Length; i++)
+        {
+            filled.Frames[i].ExecutionGasLimit = Convert.ToUInt64(frames[i]!["executionGasLimit"]!.Value<string>(), 16);
+            filled.Frames[i].StateGasLimit = Convert.ToUInt64(frames[i]!["stateGasLimit"]!.Value<string>(), 16);
+        }
+        string estimated = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest");
+        string explicitEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", filled, "latest");
+        Assert.That(JToken.Parse(estimated)["result"]!.Value<string>(), Is.EqualTo(JToken.Parse(explicitEstimate)["result"]!.Value<string>()), estimated);
     }
 
     [Test]
@@ -145,6 +155,19 @@ public partial class EthRpcModuleTests
         string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
 
         Assert.That(JToken.Parse(response)["error"]!["message"]!.Value<string>(), Does.Contain("VERIFY frame reverted"));
+    }
+
+    [TestCase("0x5f5ffd", "Revert")]
+    [TestCase("0x5b5f56", "OutOfGas")]
+    public async Task FrameGas_EstimateGas_ReportsFrameThatFailsAtEveryBudget(string code, string error)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{request.Frames![1].Target}}}":{"code":"{{{code}}}"}}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
+
+        Assert.That(JToken.Parse(response)["error"]!["message"]!.Value<string>(), Does.Contain($"frame 1 failed: {error}"));
     }
 
     [Test]
