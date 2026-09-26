@@ -14,14 +14,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// </summary>
     /// <remarks>
     /// Runs in the entered frame, before its credit, so a revert or halt of the frame undoes the charges' state
-    /// effects together with the transfer. The caller's debit has already been applied by the parent.
+    /// effects together with the transfer. The caller's debit has already been applied by the parent or the processor.
     /// </remarks>
     /// <returns><see langword="false"/> when the frame cannot pay the charges.</returns>
     private bool TryChargeTransientCreateTransfer(VmState<TGasPolicy> frame)
     {
         ExecutionEnvironment env = frame.Env;
         ref readonly UInt256 value = ref env.Value;
-        if (value.IsZero || frame.ExecutionType is ExecutionType.TRANSACTION || !frame.ExecutionType.CreditsBalance())
+        // TRANSACTION frames count too: an EIP-8141 frame can fund a TCREATE account created by an earlier frame.
+        if (value.IsZero || !frame.ExecutionType.CreditsBalance())
             return true;
 
         Address from = env.Caller;

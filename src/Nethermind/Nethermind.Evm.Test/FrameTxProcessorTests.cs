@@ -280,6 +280,31 @@ public class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_LaterFrameFundsATcreateAccount_ChargesTheEip8360StateGas()
+    {
+        _spec.IsEip8360Enabled = true;
+        byte[] init = Prepare.EvmCode.ForInitOf([(byte)Instruction.PUSH0]).Done;
+        byte[] salt = new byte[32];
+        Address tcreated = ContractAddress.FromTransientCreate(Observer, salt, init);
+
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.TCreate(init, salt, 0).Op(Instruction.POP).Op(Instruction.STOP).Done);
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Sender, target: tcreated, value: 3)), tracer: tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.FrameReceipts![2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[2].StateGasUsed, Is.EqualTo((ulong)GasCostOf.NewAccountState), "the zero-original TCREATE account's first balance pays EIP-8360 state gas");
+            Assert.That(_stateProvider.GetBalance(tcreated), Is.EqualTo((UInt256)3));
+            Assert.That(_stateProvider.IsContract(tcreated), Is.False);
+        }
+    }
+
+    [Test]
     public void CallAndRestore_FrameSelfDestructsSameTxContract_DoesNotLeakTheDestroyMarkAcrossTheRestore()
     {
         byte[] childInitCode = Prepare.EvmCode.PushData(Recipient).Op(Instruction.SELFDESTRUCT).Done;
