@@ -94,12 +94,12 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         }
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null, bool validateFeeCapOrder = true)
     {
         if (validateUserInput && To is null && Input is null or { Length: 0 })
             return RpcTransactionErrors.ContractCreationWithoutData;
 
-        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec, validateFeeCapOrder);
         if (baseResult.IsError) return baseResult;
 
         Transaction tx = baseResult.Data;

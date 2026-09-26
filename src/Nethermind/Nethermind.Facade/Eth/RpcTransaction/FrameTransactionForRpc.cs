@@ -55,9 +55,9 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null, bool validateFeeCapOrder = true)
     {
-        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec, validateFeeCapOrder);
         if (baseResult.IsError) return baseResult;
 
         if (!FrameForRpc.TryToFrames(Frames, out TxFrame[]? frames))

@@ -35,10 +35,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected IReleaseSpec GetSpec(BlockHeader header) => specProvider.GetSpec(header);
 
+            /// <summary>Whether a fee cap below the priority fee is rejected as input rather than left to execution.</summary>
+            protected virtual bool ValidatesFeeCapOrder => true;
+
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
                 IReleaseSpec spec = GetSpec(header);
-                Result<Transaction> result = call.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
+                Result<Transaction> result = call.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec, validateFeeCapOrder: ValidatesFeeCapOrder);
                 if (result.IsError) return result;
 
                 Transaction tx = result.Data;
@@ -127,6 +130,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private class CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
             : TxExecutor<HexBytes>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
+            protected override bool ValidatesFeeCapOrder => false;
+
             protected override ResultWrapper<HexBytes> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, token);
@@ -190,6 +195,37 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, bool optimize)
             : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
+            private const string ZeroMaxFeePerGas = "maxFeePerGas must be non-zero";
+
+            protected override bool ValidatesFeeCapOrder => false;
+
+            /// <remarks>
+            /// Explicit fees are checked for order and a zero fee cap, and a missing fee cap next to a priority fee is
+            /// filled as the priority fee plus twice the block's base fee, as for a transaction about to be sent.
+            /// </remarks>
+            protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
+            {
+                if (call is EIP1559TransactionForRpc { GasPrice: null, MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
+                    && maxFeePerGas < maxPriorityFeePerGas)
+                {
+                    return maxFeePerGas.IsZero
+                        ? ZeroMaxFeePerGas
+                        : $"maxFeePerGas ({maxFeePerGas.ToHexString(skipLeadingZeros: true)}) < maxPriorityFeePerGas ({maxPriorityFeePerGas.ToHexString(skipLeadingZeros: true)})";
+                }
+
+                Result<Transaction> result = base.Prepare(call, header);
+                if (result.IsError
+                    || call is not EIP1559TransactionForRpc { GasPrice: null, MaxFeePerGas: null, MaxPriorityFeePerGas: { } priorityFee }
+                    || !GetSpec(header).IsEip1559Enabled)
+                {
+                    return result;
+                }
+
+                Transaction tx = result.Data;
+                tx.DecodedMaxFeePerGas = priorityFee + header.BaseFeePerGas * 2;
+                return tx;
+            }
+
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize, BlobBaseFeeOverride, token);
