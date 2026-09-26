@@ -193,9 +193,9 @@ public class NonceManagerTests
     // 1. Four senders have raw nonce 0 accepted while the head nonce is 0.
     // 2. Their nonce moves to 1 at the head, and at the reorg-safe block only when the case says so.
     // 3. A fifth sender triggers the sweep.
-    [TestCase(1UL, 1, TestName = "CoveredByReorgSafeNonce_DropsSenders")]
-    [TestCase(0UL, SweepThreshold + 1, TestName = "CoveredOnlyByHeadNonce_KeepsSenders")]
-    public void TxWithNonceReceived_AcceptedNonceBelowHeadNonce_DropsSenderOnlyOnceReorgSafe(ulong reorgSafeNonce, int expectedTracked)
+    [TestCase(1UL, 1, TestName = "TxWithNonceReceived_should_drop_senders_covered_by_the_reorg_safe_nonce")]
+    [TestCase(0UL, SweepThreshold + 1, TestName = "TxWithNonceReceived_should_keep_senders_covered_only_by_the_head_nonce")]
+    public void TxWithNonceReceived_should_drop_a_sender_only_once_its_accepted_nonces_are_reorg_safe(ulong reorgSafeNonce, int expectedTracked)
     {
         NonceManager nonceManager = CreateSweepingNonceManager();
         for (int i = 0; i < SweepThreshold; i++)
@@ -218,7 +218,7 @@ public class NonceManagerTests
     // 4. A reorg drops the block with the tx: the head nonce is back to 5.
     // 5. The next reservation must not hand out nonce 5 again.
     [Test]
-    public void ReserveNonce_AfterSweepAndReorgBelowAcceptedNonce_DoesNotReissueIt()
+    public void ReserveNonce_should_not_reissue_an_accepted_nonce_after_a_sweep_and_a_reorg()
     {
         NonceManager nonceManager = CreateSweepingNonceManager();
         _headState.GetNonce(TestItem.AddressA).Returns(5UL);
@@ -248,10 +248,10 @@ public class NonceManagerTests
 
     // Without state at the reorg-safe block, a sender that had a nonce accepted is kept and a sender whose every
     // submission was rejected is dropped: the latter handed out nothing a fresh entry could clash with.
-    [TestCase(ReorgSafeStateGap.HeaderMissing, TestName = "ReorgSafeHeaderMissing")]
-    [TestCase(ReorgSafeStateGap.StatePruned, TestName = "ReorgSafeStatePruned")]
-    [TestCase(ReorgSafeStateGap.NodeMissingOnRead, TestName = "ReorgSafeNodeMissingOnRead")]
-    public void TxWithNonceReceived_ReorgSafeStateUnavailable_DropsOnlyNeverAcceptedSenders(ReorgSafeStateGap gap)
+    [TestCase(ReorgSafeStateGap.HeaderMissing, TestName = "TxWithNonceReceived_should_drop_only_never_accepted_senders_without_a_reorg_safe_header")]
+    [TestCase(ReorgSafeStateGap.StatePruned, TestName = "TxWithNonceReceived_should_drop_only_never_accepted_senders_with_reorg_safe_state_pruned")]
+    [TestCase(ReorgSafeStateGap.NodeMissingOnRead, TestName = "TxWithNonceReceived_should_drop_only_never_accepted_senders_with_a_node_missing_on_read")]
+    public void TxWithNonceReceived_should_drop_only_never_accepted_senders_without_reorg_safe_state(ReorgSafeStateGap gap)
     {
         MakeReorgSafeStateUnavailable(gap);
         NonceManager nonceManager = CreateSweepingNonceManager();
@@ -266,9 +266,9 @@ public class NonceManagerTests
         Assert.That(nonceManager.TrackedAddressCount, Is.EqualTo(3), "the two accepted senders stay next to the new one, the two rejected ones go");
     }
 
-    [TestCase(true, TestName = "FinalizedBelowReorgDepth_ReadsAtFinalized")]
-    [TestCase(false, TestName = "FinalizedAboveReorgDepth_ReadsAtReorgDepth")]
-    public void TxWithNonceReceived_Sweep_ReadsStateAtLowerOfFinalizedAndReorgDepth(bool finalizedBelowReorgDepth)
+    [TestCase(true, TestName = "TxWithNonceReceived_should_read_state_at_finalized_when_it_is_below_reorg_depth")]
+    [TestCase(false, TestName = "TxWithNonceReceived_should_read_state_at_reorg_depth_when_finalized_is_above_it")]
+    public void TxWithNonceReceived_should_read_state_at_the_lower_of_finalized_and_reorg_depth(bool finalizedBelowReorgDepth)
     {
         ulong reorgDepthNumber = HeadNumber - Reorganization.MaxDepth;
         ulong finalizedNumber = finalizedBelowReorgDepth ? reorgDepthNumber - 10 : HeadNumber - 1;
@@ -338,6 +338,109 @@ public class NonceManagerTests
         TriggerSweep(nonceManager);
 
         Assert.That(nonceManager.TrackedAddressCount, Is.EqualTo(2), "the busy sender must survive the sweep next to the new one");
+    }
+
+    // 1. Three senders whose every raw tx was rejected fill the manager up to one below the threshold.
+    // 2. A reserves: its entry is added, and while its head nonce is read, before the entry's lock is taken, another
+    //    submission sweeps and retires A's entry, which has nothing accepted yet.
+    // 3. A accepts the reserved nonce 0. The next reservation must be 1, so the accept must not land on the retired entry.
+    [Test]
+    public void ReserveNonce_should_retry_on_an_entry_retired_before_its_lock_was_taken()
+    {
+        NonceManager nonceManager = CreateSweepingNonceManager();
+        for (int i = 1; i < SweepThreshold; i++)
+        {
+            RejectRawNonce(nonceManager, TestItem.Addresses[i], 0);
+        }
+
+        bool swept = false;
+        _headState.GetNonce(TestItem.AddressA).Returns(_ =>
+        {
+            if (!swept)
+            {
+                swept = true;
+                TriggerSweep(nonceManager);
+            }
+
+            return 0UL;
+        });
+
+        using (NonceLocker locker = nonceManager.ReserveNonce(TestItem.AddressA, out ulong first))
+        {
+            Assert.That(swept, Is.True, "precondition: the sweep ran between adding the entry and locking it");
+            Assert.That(first, Is.EqualTo(0UL), "the account nonce is free");
+            locker.Accept();
+        }
+
+        using (nonceManager.ReserveNonce(TestItem.AddressA, out ulong second))
+        {
+            Assert.That(second, Is.EqualTo(1UL), "nonce 0 was accepted on the live entry, so it must not be handed out again");
+        }
+    }
+
+    // 1. Four senders have raw nonce 0 accepted, not yet covered at the reorg-safe block.
+    // 2. A fifth sender triggers a sweep that keeps all four, so the threshold doubles to eight.
+    // 3. A sixth sender is added while five are tracked, which must not sweep again.
+    [Test]
+    public void TxWithNonceReceived_should_not_sweep_again_until_the_tracked_count_doubles()
+    {
+        NonceManager nonceManager = CreateSweepingNonceManager();
+        for (int i = 0; i < SweepThreshold; i++)
+        {
+            AcceptRawNonce(nonceManager, TestItem.Addresses[i], 0);
+        }
+
+        TriggerSweep(nonceManager);
+        Assert.That(nonceManager.TrackedAddressCount, Is.EqualTo(SweepThreshold + 1), "precondition: the sweep kept every accepted sender");
+
+        RejectRawNonce(nonceManager, TestItem.Addresses[SweepThreshold + 1], 0);
+
+        _stateHeaderProvider.Received(1).GetFinalizedHeader(Arg.Any<ulong>());
+    }
+
+    // 1. Four senders have raw nonce 0 accepted while the reorg-safe state read throws something other than a missing
+    //    trie node.
+    // 2. A fifth sender triggers the sweep, which propagates the failure and evicts nothing.
+    // 3. The next submission neither sweeps again nor fails.
+    [Test]
+    public void TxWithNonceReceived_should_raise_the_sweep_threshold_even_when_the_state_read_throws()
+    {
+        _stateReader.TryGetAccount(_reorgSafeHeader, Arg.Any<Address>(), out Arg.Any<AccountStruct>())
+            .Returns(_ => throw new InvalidOperationException("state read failed"));
+        NonceManager nonceManager = CreateSweepingNonceManager();
+        for (int i = 0; i < SweepThreshold; i++)
+        {
+            AcceptRawNonce(nonceManager, TestItem.Addresses[i], 0);
+        }
+
+        Assert.Throws<InvalidOperationException>(() => TriggerSweep(nonceManager), "precondition: the sweep hit the failing read");
+        Assert.That(nonceManager.TrackedAddressCount, Is.EqualTo(SweepThreshold), "a failed read must not evict an accepted sender");
+
+        Assert.DoesNotThrow(() => TriggerSweep(nonceManager), "the threshold moved, so the next submission must not sweep into the same failure");
+        _stateHeaderProvider.Received(1).GetFinalizedHeader(Arg.Any<ulong>());
+    }
+
+    // 1. A's raw tx with nonce 5 is accepted while its head nonce is 0.
+    // 2. Nonces 0 to 4 are mined: the head nonce moves to 5 and a reservation releases every used nonce below it, with
+    //    fewer used nonces than released ones, so the release filters the set.
+    // 3. A raw tx with nonce 7 is accepted, which steps the next free nonce past every used one from 5 up.
+    // 4. Nonce 5 is still pending, so the next reservation must be 6.
+    [Test]
+    public void ReserveNonce_should_keep_the_account_nonce_itself_used_when_releasing_nonces_below_it()
+    {
+        NonceManager nonceManager = CreateSweepingNonceManager();
+        _headState.GetNonce(TestItem.AddressA).Returns(0UL);
+        AcceptRawNonce(nonceManager, TestItem.AddressA, 5);
+
+        _headState.GetNonce(TestItem.AddressA).Returns(5UL);
+        using (nonceManager.ReserveNonce(TestItem.AddressA, out ulong _)) { }
+
+        AcceptRawNonce(nonceManager, TestItem.AddressA, 7);
+
+        using (nonceManager.ReserveNonce(TestItem.AddressA, out ulong next))
+        {
+            Assert.That(next, Is.EqualTo(6UL), "the raw tx still holds nonce 5, only nonces below the account nonce are released");
+        }
     }
 
     [Test]

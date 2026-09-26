@@ -70,9 +70,9 @@ public class NonceManager(
     /// rather than waited for.
     /// </summary>
     /// <remarks>
-    /// Runs on the submitting thread and reads one account nonce per tracked address that had a nonce accepted. The
-    /// threshold doubles after each sweep, so the cost stays constant per submission on average, but a single
-    /// submission can pay for a scan. Without state at the reorg-safe block only the never-accepted entries go.
+    /// Runs on the submitting thread. Worst case, one request pays one reorg-safe state read per tracked entry that had
+    /// a nonce accepted. The threshold doubles after each sweep, even one that throws, so that cost is amortized across
+    /// submissions. Without state at the reorg-safe block only the never-accepted entries go.
     /// </remarks>
     private void SweepConfirmed()
     {
@@ -91,11 +91,10 @@ public class NonceManager(
                     _addressNonceManagers.TryRemove(entry);
                 }
             }
-
-            Volatile.Write(ref _sweepThreshold, Math.Max(_minSweepThreshold, _addressNonceManagers.Count * 2));
         }
         finally
         {
+            Volatile.Write(ref _sweepThreshold, Math.Max(_minSweepThreshold, _addressNonceManagers.Count * 2));
             Volatile.Write(ref _sweeping, 0);
         }
     }
@@ -199,7 +198,8 @@ public class NonceManager(
                 if ((ulong)_usedNonces.Count < accountNonce - _previousAccountNonce)
                 {
                     ulong previousAccountNonce = _previousAccountNonce;
-                    _usedNonces.RemoveWhere(nonce => nonce >= previousAccountNonce && nonce < accountNonce);
+                    ulong releasedBelow = accountNonce;
+                    _usedNonces.RemoveWhere(nonce => nonce >= previousAccountNonce && nonce < releasedBelow);
                 }
                 else
                 {
