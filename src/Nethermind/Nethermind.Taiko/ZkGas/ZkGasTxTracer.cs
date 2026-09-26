@@ -23,6 +23,9 @@ namespace Nethermind.Taiko.ZkGas;
 /// resolves whether child work was dispatched.
 ///
 /// This mirrors alethia-reth's deferred_steps pattern in its ZkGasInspector.
+///
+/// A step that fails is charged what REVM had spent when it halted (see <see cref="RevmFailedStepGas"/>),
+/// so every step is held until the VM either reports an error for it or moves on.
 /// </summary>
 public sealed class ZkGasTxTracer : TxTracer
 {
@@ -32,10 +35,25 @@ public sealed class ZkGasTxTracer : TxTracer
     private byte _currentOpcode;
     private ulong _currentGasStart;
     private bool _stepActive;
+    private bool _stepJustEnded;
+
+    // Step state needed to rebuild REVM's charge when the step fails. The stack buffer belongs to the VM:
+    // it is read only by this step's ReportOperationError, before the next StartOperation, and a handler
+    // that pushes before failing (the CALL depth/balance short-circuit) returns before it is read.
+    private TraceStack _stack;
+    private ulong _memorySize;
+    private int _returnDataLength;
+
+    // Finished non-spawn step waiting for a possible error report
+    private bool _hasPendingStep;
+    private byte _pendingOpcode;
+    private ulong _pendingGasBefore;
+    private ulong _pendingGasDelta;
 
     // Deferred spawn opcode charging
     private bool _hasDeferredStep;
     private byte _deferredOpcode;
+    private ulong _deferredGasBefore;
     private ulong _deferredGasDelta;
     private bool _deferredSpawned;
     private bool _deferredErrored;
@@ -53,6 +71,9 @@ public sealed class ZkGasTxTracer : TxTracer
         _meter = meter;
         IsTracingInstructions = true;
         IsTracingActions = true;
+        IsTracingStack = true;
+        IsTracingMemory = true;
+        IsTracingReturnData = true;
     }
 
     /// <summary>
@@ -61,20 +82,34 @@ public sealed class ZkGasTxTracer : TxTracer
     /// </summary>
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
+        FlushPendingStep();
         FlushDeferredStep();
 
         _currentOpcode = (byte)opcode;
         _currentGasStart = gas;
         _stepActive = true;
+        _stepJustEnded = false;
+        _stack = default;
+        _memorySize = 0;
+        _returnDataLength = 0;
     }
+
+    public override void SetOperationStack(TraceStack stack) => _stack = stack;
+
+    public override void SetOperationMemorySize(ulong newSize) => _memorySize = newSize;
+
+    public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData) => _returnDataLength = returnData.Length;
 
     /// <summary>
     /// Computes the gas consumed by the current opcode. For spawn opcodes, defers
     /// charging until we learn whether child work was dispatched. For all other
-    /// opcodes, charges immediately.
+    /// opcodes, holds the charge until the next step, a frame end or an error report for this one.
     /// </summary>
     public override void ReportOperationRemainingGas(ulong gas)
     {
+        // A report outside a step (a call result pushed on resume, or a halt after the step already
+        // ended) must not let a following error be applied to the previous step.
+        _stepJustEnded = _stepActive;
         if (!_stepActive)
             return;
 
@@ -92,13 +127,17 @@ public sealed class ZkGasTxTracer : TxTracer
             //     → treated as spawned at flush time.
             _hasDeferredStep = true;
             _deferredOpcode = _currentOpcode;
+            _deferredGasBefore = _currentGasStart;
             _deferredGasDelta = rawGas;
             _deferredSpawned = false;
             _deferredErrored = false;
         }
         else
         {
-            _meter.ChargeOpcode(_currentOpcode, rawGas);
+            _hasPendingStep = true;
+            _pendingOpcode = _currentOpcode;
+            _pendingGasBefore = _currentGasStart;
+            _pendingGasDelta = rawGas;
         }
     }
 
@@ -108,6 +147,8 @@ public sealed class ZkGasTxTracer : TxTracer
     /// </summary>
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
+        FlushPendingStep();
+
         // Mark the deferred step as having actually spawned child work
         if (_hasDeferredStep)
         {
@@ -128,6 +169,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// </summary>
     public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
+        FlushPendingStep();
         FlushDeferredStep();
         ChargePrecompileIfPending(gas);
     }
@@ -138,6 +180,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// </summary>
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
+        FlushPendingStep();
         FlushDeferredStep();
         ChargePrecompileIfPending(gas);
     }
@@ -156,64 +199,57 @@ public sealed class ZkGasTxTracer : TxTracer
     /// </remarks>
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
+        FlushPendingStep();
         FlushDeferredStep();
         ChargePrecompileIfPending(gasRemaining: 0);
     }
 
     /// <summary>
-    /// Adjusts ZK gas for opcodes that fail the static-context check. REVM (used by alethia-reth)
-    /// charges the opcode's static gas cost in its main interpreter loop BEFORE dispatching to the
-    /// instruction handler — so a failed TSTORE/SSTORE/LOG/CREATE/SELFDESTRUCT in a static frame
-    /// has its constant gas cost burned. Nethermind's handlers check static first and return
-    /// without consuming the constant gas, so the measured gas delta in
-    /// <see cref="ReportOperationRemainingGas"/> is 0.
-    ///
-    /// For mainnet semantics this is invisible (the entire failed call frame's gas is consumed
-    /// regardless), but for Taiko ZK gas accounting the per-opcode gas delta drives the
-    /// consensus-relevant block.Header.Difficulty value, so we must match REVM's behaviour
-    /// exactly. Charge the missing constant gas here so the resulting zk gas equals what
-    /// alethia-reth produces.
+    /// Replaces the measured gas of a failed step with what REVM (alethia-reth) had spent when it halted.
     /// </summary>
+    /// <remarks>
+    /// Nethermind reports zero gas left on any out-of-gas failure and validates stack, static context and
+    /// operands in a different order, while REVM deducts the instruction table's static gas first and keeps
+    /// any gas it had not charged yet. Since Unzen the per-step charge feeds the consensus-relevant
+    /// <c>block.Header.Difficulty</c>, so it has to match exactly.
+    /// </remarks>
     public override void ReportOperationError(EvmExceptionType error)
     {
-        // Remember that the just-deferred spawn op errored (e.g. OOG between
-        // EndInstructionTrace and child-frame dispatch). At flush time this
-        // suppresses the post-trace-bail "treat as spawned" path for CREATE/CREATE2.
+        bool stepFailed = _stepJustEnded;
+        _stepJustEnded = false;
+
         if (_hasDeferredStep)
         {
+            // Depth and balance short-circuits push zero without failing the step; REVM runs its call hook
+            // before those checks, so the step counts as spawned.
+            if (error == EvmExceptionType.NotEnoughBalance)
+            {
+                _deferredSpawned = true;
+                return;
+            }
+
+            // Remember that the just-deferred spawn op errored (e.g. OOG between
+            // EndInstructionTrace and child-frame dispatch). At flush time this
+            // suppresses the post-trace-bail "treat as spawned" path for CREATE/CREATE2.
             _deferredErrored = true;
+            if (stepFailed)
+            {
+                _deferredGasDelta = _deferredGasBefore - RevmGasAfter(_deferredOpcode, error, _deferredGasBefore, _deferredGasBefore - _deferredGasDelta);
+            }
+
+            return;
         }
 
-        if (error == EvmExceptionType.StaticCallViolation)
+        if (_hasPendingStep && stepFailed)
         {
-            ulong staticGas = GetRevmStaticGasForOpcode(_currentOpcode);
-            if (staticGas > 0)
-            {
-                _meter.ChargeOpcode(_currentOpcode, staticGas);
-            }
+            _pendingGasDelta = _pendingGasBefore - RevmGasAfter(_pendingOpcode, error, _pendingGasBefore, _pendingGasBefore - _pendingGasDelta);
+            FlushPendingStep();
         }
     }
 
-    /// <summary>
-    /// REVM's per-opcode constant gas cost charged in the interpreter loop before dispatch.
-    /// Source: revm-interpreter <c>instructions.rs</c> instruction-table entries.
-    /// Only opcodes that can fail the static-context check are listed; other opcodes never
-    /// reach <see cref="EvmExceptionType.StaticCallViolation"/>.
-    /// </summary>
-    private static ulong GetRevmStaticGasForOpcode(byte opcode) => opcode switch
-    {
-        0x5d => 100,    // TSTORE — WarmStorageReadCostEIP2929 (EIP-1153)
-        0x55 => 0,      // SSTORE — entirely dynamic, no constant
-        0xa0 => 375,    // LOG0 — base only; topics/data dynamic
-        0xa1 => 375,    // LOG1
-        0xa2 => 375,    // LOG2
-        0xa3 => 375,    // LOG3
-        0xa4 => 375,    // LOG4
-        0xf0 => 0,      // CREATE — REVM dispatches with 0 static gas; revm-interpreter::contract::create handles internally
-        0xf5 => 0,      // CREATE2
-        0xff => 5000,   // SELFDESTRUCT — base before refund logic
-        _ => 0,
-    };
+    private ulong RevmGasAfter(byte opcode, EvmExceptionType error, ulong gasBefore, ulong reportedGasAfter) =>
+        Math.Min(gasBefore, RevmFailedStepGas.GasAfter((Instruction)opcode, error, gasBefore, reportedGasAfter,
+            _stack, _memorySize, _returnDataLength));
 
     /// <summary>
     /// Charges precompile ZK gas on revert.
@@ -221,8 +257,18 @@ public sealed class ZkGasTxTracer : TxTracer
     /// </summary>
     public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
+        FlushPendingStep();
         FlushDeferredStep();
         ChargePrecompileIfPending(gas);
+    }
+
+    private void FlushPendingStep()
+    {
+        if (!_hasPendingStep)
+            return;
+
+        _hasPendingStep = false;
+        _meter.ChargeOpcode(_pendingOpcode, _pendingGasDelta);
     }
 
     /// <summary>
