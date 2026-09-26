@@ -32,12 +32,70 @@ Docker/containerd filesystem and on the output filesystem, plus 1 GiB on `/`,
 and sweeps per-run directories that a killed job left on the scratch volume.
 
 Independently of the runner, **sweep mode** (the corpus presets and
-`jsonbench-sweep`) resolves every arm's set under the runner's Nethermind
-snapshot root: Nethermind's in `tool_config.state_layout` (`flat` unless set to
-`halfpath`), any geth/reth arm named in `tool_config.clients` at
-`<root>/<client>-<block>`. `run-rpc-sweep.sh` refuses a type whose set is absent
-before any node starts, which leaves geth/reth sweep arms to amd64: the arm64
-box keeps its other clients' sets under `/data/<client>/`, outside that root.
+`jsonbench-sweep`) resolves a snapshot set per client type under the runner's
+Nethermind snapshot root, at `<root>/<client>-<block>` (the Nethermind set
+follows the sweep's `state_layout`: `nethermind-flat-<block>` for `flat`, the
+default, and `nethermind-<block>` for `halfpath`), so `tool_config.clients` may
+name `geth` and `reth` entries alongside Nethermind ones. `run-rpc-sweep.sh`
+checks every requested type's set exists before it starts a node, so a type the
+selected box cannot serve is one clear error rather than a per-client warning
+and a partly-empty matrix reported as success. Scratch is wiped between arms, so
+the sweep also canonicalizes `scratch_root` and refuses one that equals,
+contains or sits inside any requested type's snapshot. As of 2026-08 the amd64
+box carries `nethermind-flat-25490000`, `nethermind-25490000`,
+`nethermind-flat-snapshot`, `geth-25490000` and `reth-25490000`. The arm64 box
+keeps its other clients' sets under `/data/<client>/`, outside that root, which
+leaves geth/reth sweep arms to amd64.
+
+Isolation is per client type too. reth's DB is a single large `mdbx.dat` whose
+first write forces overlayfs to copy the whole file up before the node opens, so
+reth runs `direct` (a read-write bind mount of its own set, which is not shared
+with expb); everything else stays on `overlay`. Across types the isolation
+therefore differs, so **never read a cross-type disk-read delta as a code
+difference** — within one type it is uniform, which is what a version comparison
+needs.
+
+Sweep arms run sequentially. This is safe for overlay-backed clients, but reth's
+direct isolation intentionally opens its snapshot read-write: each arm, round and
+later dispatch inherits the startup writes left by the previous one. Consequently
+reth multi-arm results — including arms that differ only in their per-arm options
+below — are order-dependent and are **not a clean A/B comparison**; the direct
+reth path does not refresh the cross-run fingerprint anchor. If an old anchor
+exists, it is diagnostic only: it cannot monitor the accumulated writes, restore
+isolation, or make those timings comparable. Use separate fresh reth
+snapshots/runs when a clean A/B is required.
+
+### Per-arm options
+
+`tool_config.clients` entries use `client[@image][#K=V[,K=V]][+flag[;flag]]`, in
+that order. Both suffixes reach only that arm's node and are folded into its
+label, so one dispatch can A/B a setting on the same image:
+
+- `#K=V,K=V` — environment variables, passed as `docker -e` on top of
+  `node_env_vars`. Commas separate the assignments, so a value cannot hold one.
+- `+flag;flag` — node command-line flags, appended after the harness's own. The
+  semicolon is the flag separator, so comma-valued flags remain intact. Use it
+  for geth/reth command-line flags and for any value that contains a comma.
+
+```json
+{"clients":"nethermind@nethermindeth/nethermind:master+--JsonRpc.EnabledModules=Eth,Debug;--Pruning.Mode=None nethermind@nethermindeth/nethermind:master+--JsonRpc.EnabledModules=Eth"}
+```
+
+Every entry is validated before any node starts: entries and a named image must
+be non-empty, and each flag must start with `--` and hold no whitespace, `;` or
+`#` — the last so an env suffix written after the flags is refused instead of
+being read as part of a flag value (for the same reason an env value cannot hold
+`+`). A flag list adds a readable prefix plus a hash of the whole list to the
+label, so two lists sharing their first characters never merge into `_rN`
+repeats of one arm. The PR comment derives labels from image refs alone, so arms
+carrying options are read from the step summary or the artifact.
+
+`{ARM_SCRATCH}` in a flag is replaced with a freshly recreated host directory for
+that arm (`<scratch_root>/arm/<label>`, wiped before the arm starts rather than
+inherited from an earlier arm, round or dispatch) and bind-mounted at the same
+absolute path inside the node container, so a flag can direct client-owned
+scratch state there without sharing a predecessor's files. It is expanded in
+flags only, not in the env suffix.
 
 ## Goals
 
@@ -146,11 +204,11 @@ no longer byte-identical — acceptable for read-only benchmarks (no transaction
 no `newPayload`), where the only writes are engine startup housekeeping.
 
 **`direct` caveats:** (1) the tamper tripwire records the diff and warns instead
-of failing (below); (2) never point two nodes at the same `direct` snapshot
-concurrently (DB lock conflict) — comparison runs are fine, each client uses its
-own snapshot; (3) if a snapshot is shared with another consumer (e.g. expb reuses
-the nethermind sets), don't put that client on `direct` — hence nethermind/geth
-stay on `overlay`.
+of failing (below); it is a diagnostic, not an isolation mechanism; (2) never
+point two nodes at the same `direct` snapshot concurrently (DB lock conflict) —
+comparison runs are fine only when each client uses its own fresh snapshot; (3) if
+a snapshot is shared with another consumer (e.g. expb reuses the nethermind sets),
+don't put that client on `direct` — hence nethermind/geth stay on `overlay`.
 
 ### Tamper tripwire (active verification of goal #2)
 
@@ -160,12 +218,13 @@ size, mtime, mode, owner, symlink target) plus a sha256 of the small RocksDB
 control files rewritten the instant a DB is opened read-write (`CURRENT`,
 `IDENTITY`, `MANIFEST-*`, `OPTIONS-*`). Any difference **fails the job** — except
 under `direct`, where changes are expected: it warns, logs the changed-line
-count, and does not update the cross-run anchor. Hashing only the control files
+count, and does not update the cross-run anchor. The direct reth path therefore
+does not refresh an old anchor; any anchor it finds is diagnostic only. Hashing only the control files
 keeps the check fast on a multi-TB DB; listing errors are fatal rather than
-producing a partial fingerprint. After a clean verify the fingerprint persists
-(`<scratch_root>/fingerprints/`) as a **cross-run anchor** — the next run warns
-if the snapshot changed in between (e.g. a hard-interrupted run whose verify
-never ran).
+producing a partial fingerprint. After a clean non-direct verify the fingerprint
+persists (`<scratch_root>/fingerprints/`) as a **cross-run anchor** — the next
+non-direct run warns if the snapshot changed in between (e.g. a hard-interrupted
+run whose verify never ran).
 
 Path safety is layered: `resolve` validates `db_source`/`scratch_root` shape, and
 every script canonicalizes them (`realpath`, symlink-proof), rejects shallow
@@ -178,10 +237,10 @@ the workflow's defensive-cleanup step).
 | Input | Meaning |
 |---|---|
 | `benchmark_tool` | `flood`, `ethcallchaos`, `jsonbench`, or `jsonbench-sweep`. |
-| `client` | `nethermind` — the only client with a snapshot set on this runner. |
-| `reference_client` | `none` — cross-client comparison needs a second client's snapshot, which this runner does not carry. Compare two Nethermind builds with a `jsonbench-sweep` instead. |
+| `client` | `nethermind`, `geth` or `reth` — whichever has a snapshot set on the selected runner (arm64 runs a non-Nethermind client single-node from `/data/<client>/<client>-<block>`). |
+| `reference_client` | Second client to compare against, or `none`. Needs that client's same-block set on the selected runner (amd64 only). For a perf A/B prefer two single-node runs or a `jsonbench-sweep`; a comparison run shares the box between both nodes, so it measures correctness rather than clean latency. |
 | `arch` | Benchmark runner: `amd64` (default, `/mnt/sda`) or `arm64` (`/data`). Drives every path. |
-| `snapshot_block` | Snapshot set tag (`<snapshot root>/nethermind-flat-<tag>`); empty = `25490000`. |
+| `snapshot_block` | Snapshot set tag (`<snapshot root>/<client>-<tag>`, or `<snapshot root>/nethermind-flat-<tag>` for Nethermind's flat set); empty = `25490000`. |
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |
 | `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
 | `state_layout` | `flat` — the only layout with a snapshot set on this runner. |
@@ -889,7 +948,7 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 | `prepare-eth-call-corpus.py` | Split a JSONL(.gz) corpus into per-selector-class JSON-array fixtures for json-bench. |
 | `../nettrace-report.cs` | Summarize a sidecar `.nettrace`: GC pauses per generation, contention percentiles, exceptions (`dotnet run scripts/nettrace-report.cs -- <file>`). |
 | `run-jsonbench.sh` | Clone/build json-bench's runner image, render the workload config for the node(s), run `benchmark` (summary.json metrics, no Prometheus) or `compare`, report. |
-| `run-rpc-sweep.sh` | One node per `clients` entry `ctype[@image][#K=V[,K=V]]` (times `rounds`, ABBA; the env suffix is passed as `docker -e` to that arm's node only and folded into its label, so one sweep can compare config values of one image), cells per rps, corpus warm-up/parity/timings, step summary. |
+| `run-rpc-sweep.sh` | One node per `clients` entry `ctype[@image][#K=V[,K=V]][+flag[;flag]]` (times `rounds`, ABBA; each type on its own snapshot set; the env suffix is passed as `docker -e` and the flags as node flags to that arm's node only, both folded into its label, so one sweep can compare config values or flags of one image — see [Per-arm options](#per-arm-options)), cells per rps, corpus warm-up/parity/timings, step summary. |
 | `cpu-stabilize.sh` | Turbo off, `performance` governor, optional `scaling_max_freq` cap for the job; restores the originals afterwards. |
 | `sample-resources.py` | Per-cell cgroup counters for the node container (CPU-ms/request, IO, PSI). |
 | `percat-matrix.py`, `deep-check-compare.py` | Sweep step-summary tables; cross-client response diff of deep-check captures. |

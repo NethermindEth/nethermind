@@ -59,6 +59,7 @@ RETH_HTTP_API="${RETH_HTTP_API:-eth,net,web3,debug,trace,txpool}"
 RPC_GAS_CAP="${RPC_GAS_CAP:-1000000000}"
 LAYOUT_FLAGS="${LAYOUT_FLAGS:-}"
 ADDITIONAL_FLAGS="${ADDITIONAL_FLAGS:-}"
+ARM_SCRATCH_DIR="${ARM_SCRATCH_DIR:-}"   # optional host directory, bind-mounted at this same absolute path
 NODE_ENV_VARS="${NODE_ENV_VARS:-}"
 NODE_CPUSET="${NODE_CPUSET:-}"
 NODE_MEMORY="${NODE_MEMORY:-}"
@@ -102,6 +103,13 @@ mkdir -p "$STATE_DIR"
   die "set node_config.db_source to a valid snapshot path"
 }
 guard_paths
+if [[ -n "$ARM_SCRATCH_DIR" ]]; then
+  ARM_SCRATCH_DIR="$(realpath -e -- "$ARM_SCRATCH_DIR")" || die "cannot canonicalize ARM_SCRATCH_DIR '$ARM_SCRATCH_DIR'"
+  assert_sane_dir "$ARM_SCRATCH_DIR" "ARM_SCRATCH_DIR"
+  [[ -d "$ARM_SCRATCH_DIR" ]] || die "ARM_SCRATCH_DIR '$ARM_SCRATCH_DIR' is not a directory"
+  [[ "$ARM_SCRATCH_DIR" != "$SCRATCH_ROOT" && "$ARM_SCRATCH_DIR/" == "$SCRATCH_ROOT/"* ]] \
+    || die "ARM_SCRATCH_DIR must be a child of SCRATCH_ROOT"
+fi
 
 log "=== RPC benchmark node startup ==="
 log "Client:     $CLIENT  (instance: $INSTANCE)"
@@ -125,6 +133,10 @@ log "  baseline: $(wc -l < "$BASELINE_FILE") lines, sha256=$(sha256sum "$BASELIN
 
 ANCHOR_FILE="$SCRATCH_ROOT/fingerprints/$(basename "$DB_SOURCE").txt"
 mkdir -p "$(dirname "$ANCHOR_FILE")"
+# stop-node.sh refreshes the anchor only after a clean non-direct verify, so under direct it is diagnostic only.
+if [[ "$DB_ISOLATION" == "direct" && -f "$ANCHOR_FILE" ]]; then
+  echo "::warning::direct mode does not refresh the fingerprint anchor; any existing anchor is diagnostic only."
+fi
 if [[ -f "$ANCHOR_FILE" ]] && [[ "$(head -n 1 "$ANCHOR_FILE")" == "$(head -n 1 "$BASELINE_FILE")" ]] \
     && ! diff -q "$ANCHOR_FILE" "$BASELINE_FILE" >/dev/null 2>&1; then
   log "::warning::Snapshot fingerprint differs from the last verified run's anchor ($ANCHOR_FILE) — an interrupted run may have modified it."
@@ -186,6 +198,7 @@ log "  datadir view: $DATA_DIR_SOURCE  (mounted $MOUNT_OPT at $DATA_MOUNT_TARGET
   echo "DB_ISOLATION=$DB_ISOLATION"
   echo "RUN_SCRATCH=$RUN_SCRATCH"
   echo "SCRATCH_ROOT=$SCRATCH_ROOT"
+  echo "ARM_SCRATCH_DIR=$ARM_SCRATCH_DIR"
   echo "DB_SOURCE=$DB_SOURCE"
   echo "DIAG_DIR=$DIAG_DIR"
   echo "DOTTRACE=$DOTTRACE"
@@ -242,8 +255,17 @@ case "$CLIENT" in
     )
     ;;
 esac
-# shellcheck disable=SC2206
-node_args+=($ADDITIONAL_FLAGS)
+if [[ -n "$ADDITIONAL_FLAGS" ]]; then
+  # Flags are whitespace-delimited by the caller; read into an array so values cannot undergo
+  # pathname expansion before Docker receives them.
+  additional_args=()
+  while IFS= read -r additional_flags_line || [[ -n "$additional_flags_line" ]]; do
+    line_args=()
+    read -r -a line_args <<< "$additional_flags_line"
+    additional_args+=("${line_args[@]}")
+  done <<< "$ADDITIONAL_FLAGS"
+  node_args+=("${additional_args[@]}")
+fi
 
 docker_args=(
   -d --name "$CONTAINER_NAME"
@@ -252,6 +274,10 @@ docker_args=(
   -p "127.0.0.1:${RPC_PORT}:8545"
   -v "$DATA_DIR_SOURCE:$DATA_MOUNT_TARGET:$MOUNT_OPT"
 )
+if [[ -n "$ARM_SCRATCH_DIR" ]]; then
+  # Identical host and container paths: a per-arm flag naming this path means the same place on both sides.
+  docker_args+=(--mount "type=bind,source=$ARM_SCRATCH_DIR,target=$ARM_SCRATCH_DIR")
+fi
 # shellcheck disable=SC2086
 for kv in $NODE_ENV_VARS; do docker_args+=(-e "$kv"); done
 perf_client_env=()
