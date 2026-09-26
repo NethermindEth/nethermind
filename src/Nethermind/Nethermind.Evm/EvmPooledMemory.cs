@@ -506,15 +506,13 @@ public struct EvmPooledMemory
         ulong sourceEnd = source.u0 + length;
         ulong destinationEnd = destination.u0 + length;
         ulong initializedSize = _initializedSize;
-        byte[]? memory = _memory;
-        if (memory is not null
-            && sourceEnd <= initializedSize
-            && destinationEnd <= (ulong)memory.Length
+        if (sourceEnd <= initializedSize
+            && destinationEnd <= GetBackingCapacity()
             && destination.u0 <= initializedSize)
         {
             int intLength = TruncateToInt32(length);
-            memory.AsSpan(TruncateToInt32(source.u0), intLength)
-                .CopyTo(memory.AsSpan(TruncateToInt32(destination.u0), intLength));
+            GetBackingSpan(TruncateToInt32(source.u0), intLength)
+                .CopyTo(GetBackingSpan(TruncateToInt32(destination.u0), intLength));
             if (destinationEnd > initializedSize)
             {
                 _initializedSize = destinationEnd;
