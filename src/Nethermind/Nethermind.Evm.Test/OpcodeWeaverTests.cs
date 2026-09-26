@@ -157,6 +157,41 @@ public class OpcodeWeaverTests
         Assert.That(dispatch.Methods, Has.Some.Matches<MethodDefinition>(method => method.Name == "OpBadInstruction"));
     }
 
+    /// <remarks>A build may install its own dispatch handlers over named ones, but only exact code, never a template.</remarks>
+    [Test]
+    public void Opcode_weaver_accepts_build_handlers_that_are_exact_code([Values("Plain", "ValueTypeGeneric", "Generic", "Template")] string entry)
+    {
+        using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
+        (_, MethodDefinition table) = SetUpOpcodeTable(module, ["BadInstructionOpcode"], nestedDispatch: true);
+        module.Types.Add(new TypeDefinition("Nethermind.Evm", "Instruction", TypeAttributes.Class, module.TypeSystem.Object));
+        TypeDefinition dispatch = module.GetType("Nethermind.Evm.VirtualMachine`1").NestedTypes[0];
+        MethodReference target = dispatch.Methods[0];
+        if (entry != "Template")
+        {
+            MethodDefinition handler = new("ExecuteBuildHandler", MethodAttributes.Static, module.TypeSystem.Void);
+            handler.Body.Instructions.Add(CilInstruction.Create(OpCodes.Ret));
+            dispatch.Methods.Add(handler);
+            target = handler;
+            if (entry != "Plain")
+            {
+                GenericParameter parameter = new("T", handler);
+                if (entry == "ValueTypeGeneric") parameter.Attributes = GenericParameterAttributes.NotNullableValueTypeConstraint;
+                handler.GenericParameters.Add(parameter);
+                GenericInstanceMethod instantiation = new(handler);
+                instantiation.GenericArguments.Add(module.TypeSystem.Int32);
+                target = instantiation;
+            }
+        }
+        table.Body.Instructions.Add(CilInstruction.Create(OpCodes.Ldftn, target));
+        table.Body.Instructions.Add(CilInstruction.Create(OpCodes.Pop));
+        ModuleWeaver weaver = new() { ModuleDefinition = module };
+
+        if (entry is "Plain" or "ValueTypeGeneric")
+            Assert.That(weaver.Execute, Throws.Nothing);
+        else
+            Assert.That(weaver.Execute, Throws.TypeOf<WeavingException>().With.Message.Contains("not a named opcode handler"));
+    }
+
     private static (MethodDefinition Factory, MethodDefinition Table) SetUpOpcodeTable(ModuleDefinition module, string[] opcodeNames, bool nestedDispatch = false)
     {
         MethodDefinition handler = CreateWeaverMethod(module, "ExecuteOpcode");
