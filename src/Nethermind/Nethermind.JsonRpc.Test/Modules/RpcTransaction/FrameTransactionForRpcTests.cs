@@ -41,6 +41,38 @@ public class FrameTransactionForRpcTests
 
     private static readonly EthereumJsonSerializer Serializer = new();
 
+    [Test]
+    public void ToTransaction_NonFrameCreationWithoutData_IsRejected(
+        [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.SetCode)] TxType type)
+    {
+        Transaction tx = new() { Type = type };
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+        if (rpc is EIP1559TransactionForRpc feeMarket) feeMarket.GasPrice = null;
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true);
+
+        Assert.That(result.Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
+    }
+
+    [Test]
+    public void ToTransaction_WithoutOuterRecipient_UsesFrameTargets()
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            From = TestItem.AddressA,
+            Frames = [new FrameForRpc { Target = TestItem.AddressB, ExecutionGasLimit = 50_000 }],
+        };
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true);
+
+        Assert.That(result.IsError, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.To, Is.Null);
+            Assert.That(result.Data!.Frames![0].Target, Is.EqualTo(TestItem.AddressB));
+        }
+    }
+
     private static JsonDocument SerializeToJson(TransactionForRpc rpc) => JsonDocument.Parse(Serializer.Serialize(rpc));
 
     [Test]

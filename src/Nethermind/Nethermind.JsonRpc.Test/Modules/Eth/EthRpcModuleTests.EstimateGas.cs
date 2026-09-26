@@ -907,6 +907,8 @@ public partial class EthRpcModuleTests
     /// </remarks>
     [TestCase("""{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","type":"0x6"}""")]
     [TestCase("""{"from":"0x0001020304050607080910111213141516171819","to":"0x0000000000000000000000000000000000000000","type":"0x6","frames":[]}""")]
+    [TestCase("""{"from":"0x0001020304050607080910111213141516171819","type":"0x6"}""")]
+    [TestCase("""{"from":"0x0001020304050607080910111213141516171819","type":"0x6","frames":[]}""")]
     public async Task Eth_estimateGas_frame_transaction_without_frames_returns_error(string txJson)
     {
         TestSpecProvider specProvider = new(Eip8141Prototype.Instance);
