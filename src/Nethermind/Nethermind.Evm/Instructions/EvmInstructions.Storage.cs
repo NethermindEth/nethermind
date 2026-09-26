@@ -684,10 +684,11 @@ public static partial class EvmInstructions
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack.</param>
     /// <param name="gas">The gas state, updated by the operation's cost.</param>
+    /// <param name="programCounter">Advanced past any consecutive SLOADs fused into this one.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the result of the operation.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType InstructionSLoad<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    internal static EvmExceptionType InstructionSLoad<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where Eip8038 : struct, IFlag
@@ -709,15 +710,106 @@ public static partial class EvmInstructions
         Address executingAccount = vm.VmState.Env.ExecutingAccount;
         StorageCell storageCell = new(executingAccount, in value);
 
+        bool isTracingAccess = vm.IsTracingAccess;
+
         // Charge additional gas based on whether the storage cell is hot or cold.
-        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
+        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, isTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
             goto OutOfGas;
 
+        // `value` aliases the popped stack slot: the load overwrites the key in place, and the
+        // slot is re-pushed below. The key itself is still needed to recognise a self-referential
+        // cell, so keep a copy before it is overwritten.
+        UInt256 key = value;
         vm.WorldState.Get(in storageCell, out value);
+
+        // Fused execution of consecutive SLOAD opcodes: each SLOAD in a run pops the value the
+        // previous one pushed, so the whole run can execute here without per-opcode dispatch or
+        // stack traffic; only the final value is pushed. Disabled under instruction, access, or
+        // storage tracing, which require per-opcode observability.
+        if (!TTracingInst.IsActive
+            && (nuint)programCounter < (nuint)stack.CodeLength
+            && Unsafe.Add(ref stack.Code, programCounter) == (byte)Instruction.SLOAD
+            && !isTracingAccess && !vm.IsTracingOpLevelStorage)
+        {
+            int extraOps = 0;
+            nint codeLength = stack.CodeLength;
+            bool fusedOutOfGas = false;
+
+            while ((nuint)programCounter < (nuint)codeLength
+                   && Unsafe.Add(ref stack.Code, programCounter) == (byte)Instruction.SLOAD)
+            {
+                // Count the op before charging gas so an OOG mid-run still records it, matching the
+                // unfused loop (which increments the SLOAD metric before consuming gas).
+                extraOps++;
+                if (!TGasPolicy.TryConsumeSLoadBaseGas<Eip2929>(ref gas, spec))
+                {
+                    fusedOutOfGas = true;
+                    break;
+                }
+
+                bool sameCell = value == key;
+                if (!sameCell)
+                {
+                    // Chained step onto a different cell: the loaded value is the next key.
+                    key = value;
+                    storageCell = new(executingAccount, in key);
+                }
+
+                // Measured rather than recomputed: the warm re-read cost follows the fork flags this
+                // instantiation was specialised for, so there is no second cost formula to keep in sync.
+                ulong before = TGasPolicy.GetRemainingGas(in gas);
+                if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, isTracingAccess: false, in storageCell, StorageAccessType.SLOAD, spec))
+                {
+                    fusedOutOfGas = true;
+                    break;
+                }
+                programCounter++;
+
+                if (!sameCell)
+                {
+                    vm.WorldState.Get(in storageCell, out value);
+                    continue;
+                }
+
+                // The loaded value equals the key it was loaded from, so every following SLOAD in
+                // the run re-reads the same warm cell and pushes the same word: consume the rest of
+                // the run in constant time, bounded by the gas still affordable.
+                ulong perOp = spec.GasCosts.SLoadCost + (before - TGasPolicy.GetRemainingGas(in gas));
+                nint runLength = 0;
+                while ((nuint)(programCounter + runLength) < (nuint)codeLength
+                       && Unsafe.Add(ref stack.Code, programCounter + runLength) == (byte)Instruction.SLOAD)
+                {
+                    runLength++;
+                }
+
+                ulong affordable = perOp > 0 ? TGasPolicy.GetRemainingGas(in gas) / perOp : (ulong)runLength;
+                nint fused = (nint)Math.Min((ulong)runLength, affordable);
+                if (fused > 0)
+                {
+                    TGasPolicy.TryConsume(ref gas, (ulong)fused * perOp);
+                    programCounter += fused;
+                    extraOps += (int)fused;
+                }
+
+                // Not enough gas for the whole run: the next dispatched SLOAD out-of-gases exactly
+                // where sequential execution would have.
+                break;
+            }
+
+            if (extraOps != 0)
+            {
+                vm.OpCodeCount += extraOps;
+                vm.MetricsCounters.AddSLoad(extraOps);
+            }
+
+            if (fusedOutOfGas) goto OutOfGas;
+        }
+
         stack.Head++;
         if (TTracingInst.IsActive) stack.ReportPushWord(ref Unsafe.As<UInt256, byte>(ref value));
 
-        // Log the storage load operation if tracing is enabled.
+        // Log the storage load operation if tracing is enabled (fusing is disabled in that case, so
+        // the reported key/value pair is always the single executed SLOAD).
         if (vm.IsTracingOpLevelStorage)
         {
             TraceStorageLoad(vm, in storageCell, in value, transient: false);

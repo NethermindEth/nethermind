@@ -1180,7 +1180,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip2929 : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSLoad<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref stack, ref gas, vm);
+            EvmInstructions.InstructionSLoad<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref stack, ref gas, vm, ref programCounter);
     }
 
     [SkipLocalsInit]
