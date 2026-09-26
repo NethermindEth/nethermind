@@ -531,6 +531,7 @@ public class FrameTxValidationTests
         Assert.That(measuredIntrinsic, Is.GreaterThan(unmeasuredIntrinsic),
             "the measured calldata must be priced, not served from the memo taken before it was set");
     }
+
     [TestCase(TxFrameSignature.SchemeSecp256k1, 65)]
     [TestCase(TxFrameSignature.SchemeP256, 128)]
     public void TryCalculateGasBudget_PlaceholderPricesSignatureBytesWithoutChangingConsensus(byte scheme, int length)
@@ -553,5 +554,4 @@ public class FrameTxValidationTests
             Assert.That(estimated, Is.GreaterThan(original));
         }
     }
-
 }
