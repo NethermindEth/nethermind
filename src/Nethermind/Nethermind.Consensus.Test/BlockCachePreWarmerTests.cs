@@ -2363,10 +2363,12 @@ public class BlockCachePreWarmerTests
         IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
         using (mainWorldState.BeginScope(parent))
         {
+            // Prewarm before hinting, as block processing does: PreWarmCaches may clear the caches the hint fills.
+            Task prewarmTask = StartPrewarming(preWarmer, block, parent, spec);
             Task? hintBalTask = block.BlockAccessList is not null && preWarmer.IsBalReadWarmingEnabled(spec)
                 ? mainWorldState.HintBal(block.BlockAccessList)
                 : null;
-            StartPrewarming(preWarmer, block, parent, spec).GetAwaiter().GetResult();
+            prewarmTask.GetAwaiter().GetResult();
             hintBalTask?.GetAwaiter().GetResult();
         }
         return Task.CompletedTask;
