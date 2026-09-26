@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -200,16 +202,26 @@ public static class EthereumEcdsaExtensions
     }
 
     /// <summary>Hashes a signed payload that is already encoded, behind the sequence header the signer used.</summary>
+    /// <remarks>The message is assembled in one buffer and hashed in one pass, which is cheaper than feeding an
+    /// incremental sponge write by write.</remarks>
+    [SkipLocalsInit]
     private static ValueHash256 SignedPayloadHash(
         IEthereumEcdsa ecdsa, Transaction tx, Signature signature, scoped ReadOnlySpan<byte> signedPayload, bool useSignatureChainId)
     {
         (bool applyEip155, ulong chainId) = SigningParameters(ecdsa, tx, signature, useSignatureChainId);
         bool typed = tx.Type != TxType.Legacy;
         int eip155Length = !typed && applyEip155 && chainId != 0 ? Rlp.LengthOf(chainId) + 2 : 0;
+        int contentLength = signedPayload.Length + eip155Length;
+        int length = (typed ? 1 : 0) + Rlp.LengthOfSequence(contentLength);
 
-        KeccakRlpWriter writer = new();
+        byte[]? rented = null;
+        Span<byte> message = length <= StackMessageLimit
+            ? stackalloc byte[StackMessageLimit]
+            : rented = ArrayPool<byte>.Shared.Rent(length);
+
+        RlpWriter writer = new(message);
         if (typed) WriteByte(ref writer, (byte)tx.Type);
-        writer.StartSequence(signedPayload.Length + eip155Length);
+        writer.StartSequence(contentLength);
         WriteRaw(ref writer, signedPayload);
 
         if (eip155Length > 0)
@@ -220,8 +232,14 @@ public static class EthereumEcdsaExtensions
             WriteByte(ref writer, Rlp.EmptyByteArrayByte);
         }
 
-        return writer.GetValueHash();
+        ValueHash256 hash = ValueKeccak.Compute(message[..length]);
+
+        if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
+
+        return hash;
     }
+
+    private const int StackMessageLimit = 1024;
 
     // The write primitives are explicit interface implementations, so they are reached through the constraint.
     private static void WriteByte<TWriter>(ref TWriter writer, byte value)
