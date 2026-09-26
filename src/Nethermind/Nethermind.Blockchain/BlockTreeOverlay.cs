@@ -87,6 +87,10 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     public void UpdateHeadBlock(Hash256 blockHash) =>
         _overlayTree.UpdateHeadBlock(blockHash);
 
+    /// <inheritdoc/>
+    public bool TryRewindHead(Hash256 blockHash) =>
+        _overlayTree.TryRewindHead(blockHash);
+
     public AddBlockResult SuggestBlock(Block block,
         BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
         _overlayTree.SuggestBlock(block, options);
@@ -195,6 +199,26 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
             {
                 _baseTree.BlockAddedToMain -= value;
                 _overlayTree.BlockAddedToMain -= value;
+            }
+        }
+    }
+
+    public event EventHandler<BlockHeaderEventArgs>? BlockRemovedFromMain
+    {
+        add
+        {
+            if (value is not null)
+            {
+                _baseTree.BlockRemovedFromMain += value;
+                _overlayTree.BlockRemovedFromMain += value;
+            }
+        }
+        remove
+        {
+            if (value is not null)
+            {
+                _baseTree.BlockRemovedFromMain -= value;
+                _overlayTree.BlockRemovedFromMain -= value;
             }
         }
     }

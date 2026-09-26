@@ -210,4 +210,38 @@ public class HintBasedCacheTests
         Assert.Throws<InvalidOperationException>(() => hintBasedCache.Hint(_guidA, 0, 1000000000));
     }
 
+    [Test]
+    public void Throws_on_hint_above_the_maximum_epoch()
+    {
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
+        ulong blockNumber = (ulong)uint.MaxValue * Ethash.EpochLength;
+
+        Assert.Throws<InvalidOperationException>(() => hintBasedCache.Hint(_guidA, blockNumber, blockNumber));
+    }
+
+    [Test]
+    public void Throws_on_hint_whose_epoch_only_fits_uint_when_truncated()
+    {
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
+        // Truncating this epoch to uint would wrap it to 5 and accept it as an ordinary early epoch.
+        ulong epoch = (1UL << 32) + 5;
+        ulong blockNumber = epoch * Ethash.EpochLength;
+
+        Assert.Throws<InvalidOperationException>(() => hintBasedCache.Hint(_guidA, blockNumber, blockNumber));
+    }
+
+    [Test]
+    public void Builds_a_single_epoch_at_the_maximum_supported_epoch()
+    {
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
+        ulong blockNumber = Ethash.MaxEpoch * Ethash.EpochLength;
+
+        hintBasedCache.Hint(_guidA, blockNumber, blockNumber);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hintBasedCache.CachedEpochsCount, Is.EqualTo(1));
+            Assert.That(hintBasedCache.Get(Ethash.MaxEpoch), Is.Not.Null);
+        }
+    }
 }

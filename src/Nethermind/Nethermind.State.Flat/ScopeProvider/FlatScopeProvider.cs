@@ -31,7 +31,7 @@ public class FlatScopeProvider(
         return new WarmReadPool(concurrency);
     });
 
-    public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
+    public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock), usage);
 
     // Trie verification makes every flat read also traverse the scope's storage trie, and
     // StorageTree/PatriciaTree traversal is not thread-safe, so background readers must not share a
