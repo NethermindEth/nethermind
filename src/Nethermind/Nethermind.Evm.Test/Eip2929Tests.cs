@@ -38,11 +38,7 @@ namespace Nethermind.Evm.Test
             AssertGas(result, GasCostOf.Transaction + expectedGasExcludingTx);
         }
 
-        /// <remarks>
-        /// 1. A delegate call runs out of gas on a cold SLOAD of the caller's slot 1 (or, as the baseline, slot 2).
-        /// 2. The caller then loads slot 1 itself.
-        /// The halted frame must leave slot 1 cold, so both runs pay the same gas.
-        /// </remarks>
+        /// <remarks>The halted frame must leave slot 1 cold, so both runs pay the same gas.</remarks>
         [Test]
         public void Cold_sload_out_of_gas_in_a_sub_call_leaves_the_slot_cold()
         {
