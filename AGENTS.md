@@ -41,7 +41,7 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 
 ## Codebase Rules
 
-Detailed rules live in [`.agents/rules/`](./.agents/rules/). **You MUST read the relevant files before answering any query, reasoning, writing, reviewing, planning, or debugging any code read load additional files as soon as the task touches their domain. Do NOT skip loading a file because you think you already know the rules — always read from disk.**
+Detailed rules live in [`.agents/rules/`](./.agents/rules/). Read the files relevant to a task before starting it, and load more as the task reaches their domain. The rules change often, so read them from disk rather than relying on what you remember; files already imported into your context count as read.
 
 - [coding-style.md](./.agents/rules/coding-style.md) — Almost always. Load for any task requiring C#-specific reasoning. Covers syntax, coding patterns, documentation, and code quality.
 - [di-patterns.md](./.agents/rules/di-patterns.md) — Core dependency injection patterns. Load when working with DI registration, service wiring, or component architecture. Covers Autofac modules, WorldState architecture, lifetimes, and the custom DSL.
