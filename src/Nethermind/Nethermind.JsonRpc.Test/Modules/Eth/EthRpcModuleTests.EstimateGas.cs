@@ -503,7 +503,9 @@ public partial class EthRpcModuleTests
     [TestCase("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}""", OneEther, "tip above the zero fee cap", TestName = "Priority fee only")]
     [TestCase("""{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}""", BelowBaseCostAtOneGwei, "tip above the zero fee cap", TestName = "Priority fee only, balance below the base cost at the priority fee")]
     [TestCase("""{"type":"0x2","maxFeePerGas":"0x3b9aca00"}""", OneEther, "unpriced", TestName = "Fee cap only")]
-    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", OneEther, "rejected as input", TestName = "Fee cap below the priority fee")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", OneEther, "tip above the 10 wei fee cap", TestName = "Fee cap below the priority fee")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", "0x3e8", "tip above the 10 wei fee cap at 100 gas", TestName = "Fee cap below the priority fee, balance funding 100 gas")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", "0x0", "insufficient funds for transfer", TestName = "Fee cap below the priority fee, empty sender")]
     [TestCase("""{"gasPrice":"0x3b9aca00"}""", OneEther, "unpriced", TestName = "Legacy gas price")]
     [TestCase("""{"gasPrice":"0x3b9aca00"}""", BelowBaseCostAtOneGwei, "allowance 20999", TestName = "Legacy gas price, balance below the base cost")]
     [TestCase("""{}""", OneEther, "unpriced", TestName = "No fee fields")]
@@ -535,15 +537,37 @@ public partial class EthRpcModuleTests
                 Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(tipAboveFeeCap + "0"),
                     $"no fee cap skips the balance cap, and the run is rejected for its priority fee: {serialized}");
                 break;
-            case "rejected as input":
-                Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("maxFeePerGas (10) < maxPriorityFeePerGas (1000000000)"),
-                    $"both fee fields are checked against each other before estimation: {serialized}");
+            case "tip above the 10 wei fee cap":
+                Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(tipAboveFeeCap + "10"),
+                    $"the balance funds far more than the block gas limit at 10 wei: {serialized}");
+                break;
+            case "tip above the 10 wei fee cap at 100 gas":
+                Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
+                    Is.EqualTo(tipAboveFeeCap.Replace($"failed with {blockGasLimit} gas", "failed with 100 gas") + "10"),
+                    $"1000 wei funds 100 gas at 10 wei, and the run there is rejected for its priority fee: {serialized}");
+                break;
+            case "insufficient funds for transfer":
+                Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("insufficient funds for transfer"),
+                    $"a priced request needs a balance above its value: {serialized}");
                 break;
             default:
                 Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("gas required exceeds allowance (20999)"),
                     $"20999 gwei funds 20999 gas at 1 gwei: {serialized}");
                 break;
         }
+    }
+
+    [TestCase("eth_call", TestName = "Call")]
+    [TestCase("eth_createAccessList", TestName = "Access list")]
+    public async Task Fee_cap_below_the_priority_fee_is_still_rejected_as_input_outside_estimation(string method)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"0xc200000000000000000000000000000000000000","type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""");
+
+        string serialized = await ctx.Test.TestEthRpc(method, transaction, "latest");
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("maxFeePerGas (10) < maxPriorityFeePerGas (1000000000)"), serialized);
     }
 
     private static async Task<string> EstimateGasAgainstCode(string code, ulong? gas)
