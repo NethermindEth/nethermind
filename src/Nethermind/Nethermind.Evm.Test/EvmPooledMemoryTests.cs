@@ -345,10 +345,15 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [TestCase(EvmPooledMemory.InlineCapacity + 1, 1280)]
+    [TestCase(2 * 1024, 2048)]
     [TestCase(2 * 1024 + 1, 2560)]
+    [TestCase(4 * 1024, 4096)]
     [TestCase(4 * 1024 + 1, 5120)]
+    [TestCase(8 * 1024, 8192)]
     [TestCase(8 * 1024 + 1, 10240)]
+    [TestCase(16 * 1024, 16384)]
     [TestCase(16 * 1024 + 1, 20480)]
+    [TestCase(24 * 1024 + 1, 28672)]
     public void Read_expansion_uses_size_scaled_zero_window_on_dirty_reused_buffer(int requestedEnd, int expectedInitializedSize)
     {
         using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
