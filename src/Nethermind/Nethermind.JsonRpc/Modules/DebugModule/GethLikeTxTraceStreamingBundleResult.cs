@@ -109,7 +109,7 @@ public sealed class GethLikeTxTraceStreamingBundleResult : JsonStreamingResultBa
 
     private void EmitTraceForTx(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, TransactionForRpc txForRpc)
     {
-        Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: _gasCap, spec: Spec);
+        Result<Transaction> txResult = txForRpc.ToValidatedTransaction(gasCap: _gasCap, spec: Spec);
         if (!txResult.Success(out Transaction? tx, out string? validationError))
         {
             StructLogEnvelopeWriter.EmitFailedTrace(writer, txForRpc.Gas ?? 0UL, validationError);
