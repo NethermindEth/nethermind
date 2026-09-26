@@ -358,11 +358,11 @@ namespace Nethermind.TxPool
             // second registration would reserve every frame tx's cost twice.
             postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
 
-            // EIP-8250: no two pending frame transactions of one sender may share a nonce key, whether or not MATCHA width is enabled.
-            postHashFilters.Add(new KeyedNonceDisjointnessFilter(_transactions, _blobTransactions));
-
-            // MATCHA width: last, so width is only spent on a transaction every other gate admits.
-            postHashFilters.Add(new FrameTxWidthFilter(txPoolConfig, _transactions, _blobTransactions, _senderWidth, _logger));
+            if (txPoolConfig.FrameTxWidthEnabled)
+            {
+                postHashFilters.Add(new KeyedNonceDisjointnessFilter(_transactions, _blobTransactions));
+                postHashFilters.Add(new FrameTxWidthFilter(txPoolConfig, _transactions, _blobTransactions, _senderWidth, _logger));
+            }
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -1101,7 +1101,11 @@ namespace Nethermind.TxPool
             if (!_txPoolConfig.FrameTxWidthEnabled) return;
 
             Transaction[] blockTransactions = finalizedBlock.Transactions;
-            if (receipts.Length != blockTransactions.Length) return;
+            if (receipts.Length != blockTransactions.Length)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Skipped MATCHA width for finalized block {finalizedBlock.Number}: {receipts.Length} receipts for {blockTransactions.Length} transactions");
+                return;
+            }
 
             for (int i = 0; i < blockTransactions.Length; i++)
             {
@@ -1392,7 +1396,6 @@ namespace Nethermind.TxPool
                 default:
                     // Opaque: with no simulator wired the prefix stays unresolved, exactly as at admission.
                     if (_frameTxPrefixSimulator is null) return true;
-                    // EIP-8141 MATCHA: an additional keyed-nonce prefix rerun spends its charge first (EIP8141-GAP: baseline by count, as at admission).
                     if (_txPoolConfig.FrameTxWidthEnabled
                         && KeyedNonceManager.UsesKeyedNonce(tx)
                         && !baselineExempt.Add(tx.SenderAddress!)
@@ -1828,9 +1831,8 @@ namespace Nethermind.TxPool
 
         /// <summary>
         /// Releases the pending exposure a resolved frame-tx payer reserved at admission
-        /// (<see cref="FrameTxPayerExposureFilter"/>), the slot its paymaster took
-        /// (<see cref="FrameTxPaymasterFilter"/>) and the width its sender spent
-        /// (<see cref="FrameTxWidthFilter"/>), once the transaction leaves the pool.
+        /// (<see cref="FrameTxPayerExposureFilter"/>) and the slot its paymaster took
+        /// (<see cref="FrameTxPaymasterFilter"/>), once the transaction leaves the pool.
         /// </summary>
         /// <remarks>
         /// Covers eviction, replacement, inclusion and reorg removal (all funnel through the pool

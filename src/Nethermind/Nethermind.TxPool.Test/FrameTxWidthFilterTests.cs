@@ -23,7 +23,6 @@ using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
 
-/// <summary>MATCHA sender-keyed width: keyed-nonce frame transactions beyond the sender's free baseline spend a charge that scales with their admission gas, drawn from width earned from finalized gas.</summary>
 public class FrameTxWidthFilterTests
 {
     private static readonly Address Sender = TestItem.AddressA;
@@ -31,8 +30,6 @@ public class FrameTxWidthFilterTests
     private const ulong Baseline = 1;
     private const ulong SafetyFactorPermille = 1000;
 
-    // A keyed-nonce transaction carrying one secp256k1 frame signature: admission_gas is that signature's verification
-    // cost, so with the default 1000-permille safety factor its charge equals it.
     private const ulong Cost = Eip8141Constants.Secp256k1VerificationGasCost;
 
     [TestCase(0, true, TestName = "the single baseline admission is free")]
@@ -114,8 +111,6 @@ public class FrameTxWidthFilterTests
         }
     }
 
-    // A bump displaces a pending entry rather than adding one, so it stays inside what the incumbent's
-    // admission already paid for; a new sequence joins the pending set and must pay.
     [TestCase(true, true, TestName = "fee bump of a pending keyed transaction")]
     [TestCase(false, false, TestName = "next sequence from the same sender")]
     public void Accept_ReplacementIsNotAnAdditionalAdmission(bool replaces, bool accepted)
@@ -269,7 +264,6 @@ public class FrameTxWidthFilterTests
         return Pool(pending);
     }
 
-    /// <summary>The real pool type, so the bucket count and the replacement walk run as wired.</summary>
     private static TxDistinctSortedPool Pool(params Transaction[] pending)
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();

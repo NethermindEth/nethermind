@@ -15,14 +15,20 @@ namespace Nethermind.TxPool;
 /// </summary>
 /// <remarks>
 /// Spent width is never returned: inclusion, invalidation, removal, expiry, or reorg do not credit it back,
-/// which is what bounds repeated mass invalidation (EIP-8141 MATCHA policy). A sender is present only while
-/// its width is positive, so an idle pool reads empty and the sender gauge is a leak detector, as in
-/// <see cref="PayerExposureCache"/>. Earned width is held at the caller's cap and otherwise saturates at
+/// which is what bounds repeated mass invalidation (EIP-8141 MATCHA policy). A sender leaves the ledger when
+/// its width drains to zero. Finalized senders that never spend would otherwise accumulate for the life of
+/// the process, so the ledger holds at most <c>maxSenders</c> and evicts an arbitrary sender to admit a new
+/// earner. Eviction only ever removes width, never grants it, so the bound fails safe: an evicted sender
+/// falls back to its free baseline. Earned width is held at the caller's cap and otherwise saturates at
 /// <see cref="UInt256.MaxValue"/> rather than wrapping.
 /// </remarks>
-internal sealed class SenderWidthCache
+internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.DefaultMaxSenders)
 {
+    public const int DefaultMaxSenders = 1 << 16;
+
     private readonly ConcurrentDictionary<AddressAsKey, UInt256> _width = new();
+
+    public int Count => _width.Count;
 
     public UInt256 GetWidth(AddressAsKey sender) => _width.TryGetValue(sender, out UInt256 width) ? width : UInt256.Zero;
 
@@ -91,11 +97,24 @@ internal sealed class SenderWidthCache
             else
             {
                 UInt256 seeded = capped && amount > widthCap ? widthCap : amount;
+                if (_width.Count >= maxSenders) EvictOne();
                 if (_width.TryAdd(sender, seeded))
                 {
                     Interlocked.Increment(ref Metrics.FrameTxSendersWithWidth);
                     return;
                 }
+            }
+        }
+    }
+
+    private void EvictOne()
+    {
+        foreach (KeyValuePair<AddressAsKey, UInt256> entry in _width)
+        {
+            if (_width.TryRemove(entry.Key, out _))
+            {
+                Interlocked.Decrement(ref Metrics.FrameTxSendersWithWidth);
+                return;
             }
         }
     }

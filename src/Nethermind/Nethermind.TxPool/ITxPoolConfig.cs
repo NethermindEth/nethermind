@@ -64,7 +64,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]
     int MaxPendingBlobTxsPerSender { get; set; }
 
-    [ConfigItem(DefaultValue = "false", Description = "Whether each pending EIP-8250 keyed-nonce frame transaction a sender admits beyond its first `MaxPendingTxsPerSender` must spend sender width, earned from the gas the sender's included keyed-nonce frame transactions paid. A `MaxPendingTxsPerSender` of `0` gives no free baseline here. Experimental.")]
+    [ConfigItem(DefaultValue = "false", Description = "Whether each pending EIP-8250 keyed-nonce frame transaction a sender admits beyond the single EIP-8141 baseline transaction must spend sender width, earned from the gas the sender's finalized keyed-nonce frame transactions paid. Also rejects a keyed-nonce frame transaction whose nonce keys overlap a pending one of the same sender. Experimental.")]
     bool FrameTxWidthEnabled { get; set; }
 
     [ConfigItem(DefaultValue = "1000", Description = "EIP-8141 MATCHA `safety_factor`, in permille of a keyed-nonce frame transaction's `admission_gas`, that fixes the width its admission and each revalidation spends: `charge = ceil(safety_factor * admission_gas)`. `1000` charges the measured admission gas; a higher value adds headroom for client work EVM gas does not measure. Spent width is never returned. Used only when `FrameTxWidthEnabled` is set.")]

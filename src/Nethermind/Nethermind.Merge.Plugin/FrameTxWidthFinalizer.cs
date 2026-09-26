@@ -19,7 +19,9 @@ namespace Nethermind.Merge.Plugin;
 /// Lives in the consensus layer, which legitimately observes both the block tree and the pool, so
 /// <c>Nethermind.TxPool</c> keeps no reference to <c>Nethermind.Blockchain</c>. Blocks between two finalized
 /// heights finalize together, so the gap is walked; the first finalization after start credits only its own
-/// block, not the history behind it. Inert unless the pool holds a width ledger and
+/// block, not the history behind it. The watermark advances per credited block, so a failure mid-gap resumes
+/// after the last block credited instead of crediting it twice. Senders come from the frame transaction's own
+/// <c>sender</c> field, so receipts are read without signature recovery. Inert unless the pool holds a width ledger and
 /// <see cref="ITxPoolConfig.FrameTxWidthEnabled"/> is set.
 /// </remarks>
 public class FrameTxWidthFinalizer : IDisposable
@@ -53,13 +55,14 @@ public class FrameTxWidthFinalizer : IDisposable
             for (ulong number = from; number <= finalized; number++)
             {
                 Block? block = _blockTree.FindBlock(number, BlockTreeLookupOptions.RequireCanonical);
-                if (block is null || block.Transactions.Length == 0) continue;
+                if (block is not null && block.Transactions.Length != 0)
+                {
+                    _ledger!.EarnWidthOnFinalization(block, _receiptFinder.Get(block, recoverSender: false));
+                }
 
-                _ledger!.EarnWidthOnFinalization(block, _receiptFinder.Get(block));
+                _lastFinalizedBlock = number;
+                _seenFinalization = true;
             }
-
-            _lastFinalizedBlock = finalized;
-            _seenFinalization = true;
         }
         catch (Exception exception)
         {
