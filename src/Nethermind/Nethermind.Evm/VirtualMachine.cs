@@ -234,7 +234,6 @@ public partial class VirtualMachine<TGasPolicy>(
     internal bool IsTracingAccess { get => DispatchFlags.Tracing(field); private set; }
     internal bool IsTracingOpLevelStorage { get => DispatchFlags.Tracing(field); private set; }
     private bool IsTracingImplicitStop { get => DispatchFlags.Tracing(field); set; }
-    // No tracer that can retain nested return output is attached, so StageReturnData may hand out the scratch.
     private bool _tracerAllowsReturnScratch;
 
     private BlockExecutionContext _blockExecutionContext;

@@ -387,7 +387,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, true, false, false, false, TestName = "Nested_return_scratch_WhenTracingInstructions_IsNotUsed")]
         [TestCase(false, false, true, false, false, TestName = "Nested_return_scratch_WhenTracingMemory_IsNotUsed")]
         [TestCase(false, false, false, true, false, TestName = "Nested_return_scratch_WhenTracingReturnData_IsNotUsed")]
-        public void Nested_return_scratch_WhenTracerCanRetainOutput_IsNotUsed(
+        public void Nested_return_scratch_follows_tracer_capabilities(
             bool actions, bool instructions, bool memory, bool returnData, bool expectScratch)
         {
             (Address largeTarget, _, byte[] largeOutput, _) = SetUpSiblingReturnTargets(false);
