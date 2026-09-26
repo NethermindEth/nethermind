@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.SszRest;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.BeaconChain.Sync;
@@ -34,14 +35,22 @@ namespace Nethermind.BeaconChain.Sync;
 /// </para>
 /// <para>
 /// A verified batch containing blob-carrying blocks additionally requests this node's sampled data
-/// column sidecars for the same slot window from the same peer before yielding, so the gossip-fed
-/// <see cref="DataAvailability.CustodySamplingAvailability"/> gate has something to check against for
-/// a range-synced block. A column-fetch failure penalizes the peer but does not fail the batch: a
-/// block whose columns are still missing simply fails the importer's availability gate and is
-/// retried next round, since the sync tip only advances past a successfully imported block.
+/// column sidecars from the same peer before yielding, so the gossip-fed availability gates
+/// (<see cref="DataAvailability.CustodySamplingAvailability"/> for a Fulu block,
+/// <see cref="DataAvailability.GloasCustodySamplingAvailability"/> for a Gloas envelope) have something
+/// to check against for a range-synced block. Fulu and Gloas blocks get one request each, over a window
+/// that spans only that fork's blocks, since the two sidecar shapes cannot share a response. A Gloas
+/// sidecar carries no commitments, so it is verified against the bid of the batch block it names. A
+/// column-fetch failure penalizes the peer but does not fail the batch: a block whose columns are still
+/// missing simply fails its availability gate and is retried next round, since the sync tip only
+/// advances past a successfully imported block.
+/// </para>
+/// <para>
+/// With a <see cref="SlotClock"/>, Gloas blocks before the <see cref="DataAvailabilityBoundary"/> get no
+/// column request (fulu/fork-choice.md <c>is_data_available</c> demands none); without one, no window applies.
 /// </para>
 /// </remarks>
-public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, DataColumnSidecarPool sidecarPool, BeaconChainSpec spec, BeaconDiscovery? discovery = null)
+public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, DataColumnSidecarPool sidecarPool, BeaconChainSpec spec, BeaconDiscovery? discovery = null, SlotClock? clock = null)
 {
     /// <summary>
     /// Half an epoch per request. Larger batches trip peers' response rate limits, time out, and
@@ -50,6 +59,9 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     public const ulong DefaultBatchSize = 16;
 
     private const int FailuresBeforeBatchShrink = 3;
+
+    /// <summary>How many peers <see cref="FetchGloasColumnsByRootAsync"/> asks before giving up for this call.</summary>
+    private const int MaxByRootColumnPeers = 3;
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(1);
 
     private readonly ILogger _logger = logManager.GetClassLogger<RangeSync>();
@@ -109,6 +121,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             consecutiveFailures = 0;
             batchSize = DefaultBatchSize;
             await FetchColumnsForBatchAsync(peer, batch.Value.Blocks, token);
+            await FetchGloasColumnsForBatchAsync(peer, batch.Value.Blocks, token);
             foreach (ForkedSignedBeaconBlock block in batch.Value.Blocks)
             {
                 yield return block;
@@ -241,4 +254,157 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             sidecarPool.Add(sidecarBlockRoot, header.Slot, sidecar);
         }
     }
+
+    /// <summary>
+    /// Fetches this node's missing sampled Gloas data column sidecars for the block at <paramref name="blockRoot"/>
+    /// by root, from up to <see cref="MaxByRootColumnPeers"/> peers, adding each verified sidecar to the pool.
+    /// </summary>
+    /// <param name="blockRoot">The root of the block that committed <paramref name="bid"/>.</param>
+    /// <param name="bid">The bid of that block; sidecars are verified against its commitments and slot.</param>
+    /// <param name="token">Cancels the fetch.</param>
+    /// <returns>
+    /// Whether every sampled column is now held, or no column is demanded: the bid commits no blobs or its
+    /// slot is before the data availability window. <c>false</c> while this node's custody identity is unknown.
+    /// </returns>
+    /// <remarks>
+    /// Each peer is asked only for the columns still missing after the previous one. A sidecar that fails
+    /// verification penalizes its peer; the other sidecars in that response still count, since each is
+    /// verified on its own against the bid.
+    /// </remarks>
+    public async Task<bool> FetchGloasColumnsByRootAsync(Hash256 blockRoot, ExecutionPayloadBid bid, CancellationToken token)
+    {
+        SszKzgCommitment[] commitments = bid.BlobKzgCommitments ?? [];
+        if (commitments.Length == 0 || !IsInDataAvailabilityWindow(bid.Slot, DataAvailabilityStartEpoch()))
+        {
+            return true;
+        }
+
+        if (_custodySource.Current is not { } custody)
+        {
+            return false;
+        }
+
+        IReadOnlyList<IBeaconSyncPeer> peers = peerPool.GetBestPeers(bid.Slot);
+        for (int i = 0; i < peers.Count && i < MaxByRootColumnPeers; i++)
+        {
+            ulong[] missing = MissingGloasColumns(blockRoot, custody);
+            if (missing.Length == 0)
+            {
+                return true;
+            }
+
+            IBeaconSyncPeer peer = peers[i];
+            IReadOnlyList<DataColumnSidecarGloas> sidecars;
+            try
+            {
+                sidecars = await peer.RequestGloasDataColumnSidecarsByRootAsync([new DataColumnsByRootIdentifier { BlockRoot = blockRoot, Columns = missing }], token);
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+                peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Data-column-sidecars-by-root for {blockRoot} failed: {e.Message}");
+                continue;
+            }
+
+            foreach (DataColumnSidecarGloas sidecar in sidecars)
+            {
+                if (sidecar.BeaconBlockRoot != blockRoot || !IsVerifiedGloasColumnOf(sidecar, bid.Slot, commitments, missing))
+                {
+                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Gloas data column sidecar at slot {sidecar.Slot} column {sidecar.Index} failed verification");
+                    continue;
+                }
+
+                sidecarPool.AddGloas(sidecar);
+            }
+        }
+
+        return MissingGloasColumns(blockRoot, custody).Length == 0;
+    }
+
+    /// <summary>
+    /// Requests and verifies this node's sampled Gloas data column sidecars for every blob-carrying Gloas block
+    /// in <paramref name="blocks"/> inside the data availability window, from <paramref name="peer"/>. Never
+    /// fails the batch, as <see cref="FetchColumnsForBatchAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// The request window spans only those blocks, so it lies wholly in Gloas epochs as the Gloas request requires.
+    /// A sidecar must name a Gloas block of this batch and that block's slot, and pass gloas/p2p-interface.md
+    /// <c>verify_data_column_sidecar</c> and <c>verify_data_column_sidecar_kzg_proofs</c> against the block's bid.
+    /// </remarks>
+    private async Task FetchGloasColumnsForBatchAsync(IBeaconSyncPeer peer, IReadOnlyList<ForkedSignedBeaconBlock> blocks, CancellationToken token)
+    {
+        ulong windowStartEpoch = DataAvailabilityStartEpoch();
+        Dictionary<Hash256, (ulong Slot, ExecutionPayloadBid Bid)> bidsByRoot = [];
+        ulong startSlot = ulong.MaxValue;
+        ulong endSlot = 0;
+        foreach (ForkedSignedBeaconBlock block in blocks)
+        {
+            if (block is not ForkedSignedBeaconBlock.OfGloas { Block.Message: { } message }
+                || message.Body?.SignedExecutionPayloadBid?.Message is not { BlobKzgCommitments.Length: > 0 } bid
+                || !IsInDataAvailabilityWindow(message.Slot, windowStartEpoch))
+            {
+                continue;
+            }
+
+            startSlot = Math.Min(startSlot, message.Slot);
+            endSlot = Math.Max(endSlot, message.Slot);
+            bidsByRoot[SszRoots.HashTreeRoot(message)] = (message.Slot, bid);
+        }
+
+        if (bidsByRoot.Count == 0 || _custodySource.Current is not { } custody)
+        {
+            return;
+        }
+
+        ulong[] sampledColumns = [.. custody.SampledColumns];
+        ulong count = endSlot - startSlot + 1;
+
+        IReadOnlyList<DataColumnSidecarGloas> sidecars;
+        try
+        {
+            sidecars = await peer.RequestGloasDataColumnSidecarsByRangeAsync(startSlot, count, sampledColumns, token);
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+        {
+            peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Gloas data-column-sidecars-by-range [{startSlot}, {startSlot + count}) failed: {e.Message}");
+            return;
+        }
+
+        foreach (DataColumnSidecarGloas sidecar in sidecars)
+        {
+            if (sidecar.BeaconBlockRoot is not { } root
+                || !bidsByRoot.TryGetValue(root, out (ulong Slot, ExecutionPayloadBid Bid) block)
+                || !IsVerifiedGloasColumnOf(sidecar, block.Slot, block.Bid.BlobKzgCommitments!, sampledColumns))
+            {
+                peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Gloas data column sidecar at slot {sidecar.Slot} column {sidecar.Index} failed verification");
+                continue;
+            }
+
+            sidecarPool.AddGloas(sidecar);
+        }
+    }
+
+    /// <remarks>KZG does not bind <c>sidecar.slot</c>, so a sidecar naming another slot would still verify against the right bid.</remarks>
+    private static bool IsVerifiedGloasColumnOf(DataColumnSidecarGloas sidecar, ulong blockSlot, SszKzgCommitment[] commitments, ulong[] requestedColumns) =>
+        sidecar.Slot == blockSlot
+        && Array.IndexOf(requestedColumns, sidecar.Index) >= 0
+        && DataColumnSidecarVerifier.VerifyKzgProofs(sidecar, commitments);
+
+    private ulong[] MissingGloasColumns(Hash256 blockRoot, NodeColumnCustody custody)
+    {
+        List<ulong> missing = [];
+        foreach (ulong column in custody.SampledColumns)
+        {
+            if (!sidecarPool.TryGetGloas(blockRoot, column, out _))
+            {
+                missing.Add(column);
+            }
+        }
+
+        return [.. missing];
+    }
+
+    /// <summary>The first epoch whose columns are demanded; 0 without a clock. The window moves every epoch, so callers recompute it per use.</summary>
+    private ulong DataAvailabilityStartEpoch() => clock is null ? 0 : DataAvailabilityBoundary.Compute(clock.CurrentEpoch, spec);
+
+    private bool IsInDataAvailabilityWindow(ulong slot, ulong windowStartEpoch) => spec.GetEpoch(slot) >= windowStartEpoch;
 }
