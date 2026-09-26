@@ -135,6 +135,26 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FrameGas_EstimateGas_FillsEveryFrameWhenProbeBudgetRunsOut()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        ctx.Test.RpcConfig.EstimateErrorMargin = 0;
+        FrameTransactionForRpc request = FrameGasRequest();
+        Address loop = request.Frames![1].Target!;
+        FrameForRpc verify = request.Frames[0];
+        request.Frames = new FrameForRpc[Eip8141Constants.MaxFrames];
+        request.Frames[0] = verify;
+        for (int i = 1; i < request.Frames.Length; i++)
+            request.Frames[i] = new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = loop };
+        // A 512-iteration loop: an exact search on every frame needs more probes than the estimator allows.
+        object overrides = JsonSerializer.Deserialize<object>($$$"""{"{{{loop}}}":{"code":"0x6102005b600190038060035700"}}""")!;
+
+        string response = await ctx.Test.TestEthRpc("eth_estimateGas", request, "latest", overrides);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
     public async Task FrameGas_EstimateGas_BlockNumberOverrideUsesBaseState([Values] bool useFlatDb)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance), useFlatDb: useFlatDb);

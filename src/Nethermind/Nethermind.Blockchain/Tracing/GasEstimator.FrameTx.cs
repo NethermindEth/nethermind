@@ -91,11 +91,12 @@ public partial class GasEstimator
 
         void Minimize(int index, bool execution, ulong used)
         {
-            if (probes >= MaxFrameProbes - 1) return;
             TxFrame frame = frames[index];
             ulong high = execution ? frame.ExecutionGasLimit : frame.StateGasLimit;
             ulong low = Math.Min(used, high);
             ulong candidate = Math.Min(high, execution ? (ulong)Math.Ceiling(low * OptimisticMultiplier) : low);
+            // Out of probes: take the optimistic limit unverified; the final probe checks the whole assignment.
+            if (probes >= MaxFrameProbes - 1) high = candidate;
             for (int attempt = 0; attempt < 8 && probes < MaxFrameProbes - 1; attempt++)
             {
                 frames[index] = WithGas(frame, execution ? candidate : frame.ExecutionGasLimit, execution ? frame.StateGasLimit : candidate);
