@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -13,7 +14,8 @@ namespace Nethermind.TxPool;
 /// <remarks>
 /// EIP-8141 MATCHA <c>charge(tx) = ceil(safety_factor * admission_gas(tx))</c>. The safety factor is carried in
 /// permille so no floating point enters admission; the MATCHA post leaves its calibrated value to clients, so a
-/// deployment sets it and the default leaves the charge at the measured admission gas. The single admission and
+/// deployment sets it and the default leaves the charge at the measured admission gas. A factor below one is raised to
+/// one, so no setting admits beyond the baseline for less than the measured work. The single admission and
 /// revalidation charge live here so both spend the same amount.
 /// </remarks>
 internal static class FrameTxWidthCharge
@@ -24,7 +26,7 @@ internal static class FrameTxWidthCharge
 
     public static UInt256 For(Transaction tx, ulong safetyFactorPermille)
     {
-        UInt256 scaled = (UInt256)FrameTxValidation.AdmissionGas(tx) * safetyFactorPermille;
+        UInt256 scaled = (UInt256)FrameTxValidation.AdmissionGas(tx) * Math.Max(safetyFactorPermille, Permille);
         return (scaled + (Permille - 1)) / Permille;
     }
 }

@@ -245,6 +245,37 @@ public class FrameTxWidthFilterTests
         Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)90_000), "a zero cap lifts the ceiling");
     }
 
+    [Test]
+    public void Accept_PendingNonKeyedTx_DoesNotTakeTheBaseline()
+    {
+        SenderWidthCache cache = new();
+
+        AcceptTxResult result = Accept(cache, KeyedTx(nonceSeq: 0), Pool(FrameTx(nonce: 0, nonceKeys: null)));
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+    }
+
+    [Test]
+    public void Accept_SafetyFactorBelowOne_ChargesTheAdmissionGas()
+    {
+        SenderWidthCache cache = new();
+        cache.Earn(Sender, Cost - 1);
+
+        AcceptTxResult result = Accept(cache, KeyedTx(nonceSeq: Baseline), PendingKeyedTxs((int)Baseline), permille: 0);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.WidthUnmet));
+    }
+
+    [Test]
+    public void SenderWidthCache_LoweredCapKeepsEarnedWidth()
+    {
+        SenderWidthCache cache = new();
+        cache.Earn(Sender, 90_000, widthCap: 0);
+        cache.Earn(Sender, 30_000, widthCap: 50_000);
+
+        Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)90_000));
+    }
+
     private static AcceptTxResult Accept(SenderWidthCache cache, Transaction tx, TxDistinctSortedPool pending, bool enabled = true, ulong permille = SafetyFactorPermille)
     {
         TxPoolConfig config = new() { FrameTxWidthEnabled = enabled, FrameTxWidthSafetyFactorPermille = permille, MaxPendingTxsPerSender = (int)Baseline };

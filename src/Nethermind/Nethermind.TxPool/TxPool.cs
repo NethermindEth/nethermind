@@ -1312,6 +1312,8 @@ namespace Nethermind.TxPool
         /// prefix leaves the transaction pending. The fork gate reads the incoming block's spec, matching
         /// <see cref="RemoveExpiredFrameTransactions"/>. Nothing here re-prices or moves a reservation: the
         /// pooled record is left as admission wrote it, so removal releases exactly what admission took.
+        /// Transactions are rechecked in ascending nonce, then hash, order, so every node exempts the same
+        /// transaction from the width charge and sheds the same ones.
         /// </remarks>
         private void RevalidateFrameTransactions(Block block)
         {
@@ -1325,6 +1327,7 @@ namespace Nethermind.TxPool
             IReadOnlyStateProvider state = _headInfo.ReadOnlyStateProvider;
             HashSet<AddressAsKey> baselineExempt = [];
 
+            using ArrayPoolList<Transaction> ordered = new(_frameTxsToRevalidate.Count);
             foreach (ValueHash256 hash in _frameTxsToRevalidate)
             {
                 // A type-6 frame tx may carry blobs (blob pool) or not (normal pool), so check both.
@@ -1334,7 +1337,17 @@ namespace Nethermind.TxPool
                     continue;
                 }
 
-                if (!tx.SupportsFrames || tx.Frames is null) continue;
+                if (tx.SupportsFrames && tx.Frames is not null) ordered.Add(tx);
+            }
+
+            ordered.AsSpan().Sort(static (x, y) =>
+            {
+                int byNonce = x.Nonce.CompareTo(y.Nonce);
+                return byNonce != 0 ? byNonce : x.Hash!.ValueHash256.CompareTo(y.Hash!.ValueHash256);
+            });
+
+            foreach (Transaction tx in ordered)
+            {
 
                 Interlocked.Increment(ref Metrics.FrameTxRevalidations);
                 if (!TryRevalidateFrameTransaction(tx, state, baselineExempt))

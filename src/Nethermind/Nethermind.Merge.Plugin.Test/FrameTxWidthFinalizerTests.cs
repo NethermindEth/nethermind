@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -87,6 +88,26 @@ public class FrameTxWidthFinalizerTests
 
         ledger.DidNotReceiveWithAnyArgs().EarnWidthOnFinalization(default!, default!);
         finalizer.Dispose();
+    }
+
+    [Test]
+    public void Base_merge_module_alone_earns_width_as_Optimism_and_Taiko_compose_it()
+    {
+        Block finalized = FrameBlock(number: 5);
+        (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger, ITxPool txPool) = Wire(finalized);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new BaseMergePluginModule())
+            .AddSingleton(blockTree)
+            .AddSingleton(receiptFinder)
+            .AddSingleton<ITxPool>(_ => txPool)
+            .AddSingleton(Enabled())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .Build();
+
+        container.Resolve<ITxPool>();
+        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(finalized.Header));
+
+        ledger.Received(1).EarnWidthOnFinalization(finalized, Arg.Any<TxReceipt[]>());
     }
 
     private static (IBlockTree, IReceiptFinder, IFrameTxWidthLedger, ITxPool) Wire(params Block[] canonical)

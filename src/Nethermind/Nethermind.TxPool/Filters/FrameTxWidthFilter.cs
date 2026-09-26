@@ -17,8 +17,12 @@ namespace Nethermind.TxPool.Filters;
 /// <remarks>
 /// Sender-keyed only: the sender pays whether or not a paymaster sponsors the transaction, and the charge scales
 /// with the transaction's admission gas. A replacement displaces a pending entry rather than adding one, so it is judged against the count
-/// without the incumbent. Spent width is never returned, which is what bounds repeated mass invalidation.
-/// Inert unless <see cref="ITxPoolConfig.FrameTxWidthEnabled"/>.
+/// without the incumbent. Spent width is never returned, which is what bounds repeated mass invalidation, so a fee
+/// bump beyond the baseline spends width like any admission: its rerun is real work. Only the sender's pending
+/// keyed-nonce frame transactions count toward the baseline, since other pending types add no revalidation work.
+/// Filters run under the head read lock, so two concurrent admissions from one sender can both see the baseline
+/// free; the bound moves by that one transaction, not per head. Inert unless
+/// <see cref="ITxPoolConfig.FrameTxWidthEnabled"/>.
 /// </remarks>
 internal sealed class FrameTxWidthFilter(
     ITxPoolConfig txPoolConfig,
@@ -35,8 +39,7 @@ internal sealed class FrameTxWidthFilter(
         }
 
         Address sender = tx.SenderAddress!;
-        int pending = standardPool.GetBucketCount(sender) + blobPool.GetBucketCount(sender);
-        if (PendingReplacement.Find(tx, standardPool, blobPool) is not null) pending--;
+        int pending = PendingKeyedFrameTxs(sender, PendingReplacement.Find(tx, standardPool, blobPool));
         if (pending < FrameTxWidthCharge.Eip8141PublicMempoolBaseline)
         {
             return AcceptTxResult.Accepted;
@@ -52,5 +55,29 @@ internal sealed class FrameTxWidthFilter(
         }
 
         return AcceptTxResult.Accepted;
+    }
+
+    private int PendingKeyedFrameTxs(Address sender, Transaction? replaced)
+    {
+        PendingCount count = new(replaced);
+        standardPool.VisitBucket(sender, ref count, CountKeyedFrameTx);
+        blobPool.VisitBucket(sender, ref count, CountKeyedFrameTx);
+        return count.Count;
+    }
+
+    private static bool CountKeyedFrameTx(Transaction pending, ref PendingCount state)
+    {
+        if (!ReferenceEquals(pending, state.Replaced) && pending.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(pending))
+        {
+            state.Count++;
+        }
+
+        return state.Count < FrameTxWidthCharge.Eip8141PublicMempoolBaseline;
+    }
+
+    private struct PendingCount(Transaction? replaced)
+    {
+        public readonly Transaction? Replaced = replaced;
+        public int Count;
     }
 }

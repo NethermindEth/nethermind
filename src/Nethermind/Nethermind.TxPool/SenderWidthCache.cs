@@ -19,8 +19,8 @@ namespace Nethermind.TxPool;
 /// its width drains to zero. Finalized senders that never spend would otherwise accumulate for the life of
 /// the process, so the ledger holds at most <c>maxSenders</c> and evicts an arbitrary sender to admit a new
 /// earner. Eviction only ever removes width, never grants it, so the bound fails safe: an evicted sender
-/// falls back to its free baseline. Earned width is held at the caller's cap and otherwise saturates at
-/// <see cref="UInt256.MaxValue"/> rather than wrapping.
+/// falls back to its free baseline. New earnings stop at the caller's cap and otherwise saturate at
+/// <see cref="UInt256.MaxValue"/> rather than wrapping; a cap lowered later never shrinks a balance already earned.
 /// </remarks>
 internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.DefaultMaxSenders)
 {
@@ -33,8 +33,8 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
     public UInt256 GetWidth(AddressAsKey sender) => _width.TryGetValue(sender, out UInt256 width) ? width : UInt256.Zero;
 
     /// <summary>
-    /// Credits <paramref name="sender"/> with the width that <paramref name="finalizedGas"/> earns, holding the
-    /// balance at <paramref name="widthCap"/>. A zero cap lifts the ceiling.
+    /// Credits <paramref name="sender"/> with the width that <paramref name="finalizedGas"/> earns, up to
+    /// <paramref name="widthCap"/>. A balance already at or above the cap is left as is. A zero cap lifts the ceiling.
     /// </summary>
     public void Earn(AddressAsKey sender, in UInt256 finalizedGas, in UInt256 widthCap = default) => Credit(sender, WidthFor(finalizedGas), widthCap);
 
@@ -89,9 +89,9 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
         {
             if (_width.TryGetValue(sender, out UInt256 existing))
             {
+                if (capped && existing >= widthCap) return;
                 if (UInt256.AddOverflow(existing, amount, out UInt256 updated)) updated = UInt256.MaxValue;
                 if (capped && updated > widthCap) updated = widthCap;
-                if (updated == existing) return;
                 if (_width.TryUpdate(sender, updated, existing)) return;
             }
             else
