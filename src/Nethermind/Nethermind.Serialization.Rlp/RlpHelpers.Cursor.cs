@@ -433,7 +433,7 @@ internal static partial class RlpHelpers
             ThrowNonCanonicalInteger(start);
         }
 
-        position = DecodeByteArraySpan(data, position, out byteSpan, RlpLimit.L32);
+        position = DecodeByteArraySpanUpTo32(data, position, out byteSpan);
         if (byteSpan.Length > UInt256Bytes)
         {
             ThrowUnexpectedIntegerLength(start, byteSpan.Length);
@@ -453,6 +453,41 @@ internal static partial class RlpHelpers
 
         return position;
     }
+
+    /// <summary>Decodes a byte string of at most 32 bytes, as <see cref="DecodeByteArraySpan"/> does under <see cref="RlpLimit.L32"/>.</summary>
+    /// <returns>The position past the byte string.</returns>
+    /// <remarks>
+    /// The forms that fit are read here, clear of the limit's plumbing, which inlined would give every caller a
+    /// large, zeroed frame; every other prefix, and so every failure, takes that decode out of line.
+    /// </remarks>
+    internal static int DecodeByteArraySpanUpTo32(ReadOnlySpan<byte> data, int position, out ReadOnlySpan<byte> value)
+    {
+        int prefix = data[position];
+        int length = prefix - ShortStringOffset;
+        if (prefix < ShortStringOffset)
+        {
+            value = SingleBytes.Slice(prefix, 1);
+            return position + 1;
+        }
+
+        if (length == 0)
+        {
+            value = default;
+            return position + 1;
+        }
+
+        if (length <= UInt256Bytes && length < data.Length - position && (length > 1 || data[position + 1] >= ShortStringOffset))
+        {
+            value = data.Slice(position + 1, length);
+            return position + 1 + length;
+        }
+
+        return DecodeLimitedByteArraySpan(data, position, out value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int DecodeLimitedByteArraySpan(ReadOnlySpan<byte> data, int position, out ReadOnlySpan<byte> value) =>
+        DecodeByteArraySpan(data, position, out value, RlpLimit.L32);
 
     private const int UInt256Bytes = sizeof(ulong) * 4;
 

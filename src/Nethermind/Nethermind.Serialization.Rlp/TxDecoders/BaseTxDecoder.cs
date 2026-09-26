@@ -153,8 +153,8 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         LiteRlpReader rlp = new(decoderContext.Data);
         int position = decoderContext.Position;
         rlp.DecodeULong(ref position, out ulong v);
-        rlp.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> rBytes, RlpLimit.L32);
-        rlp.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> sBytes, RlpLimit.L32);
+        position = RlpHelpers.DecodeByteArraySpanUpTo32(rlp.Data, position, out ReadOnlySpan<byte> rBytes);
+        position = RlpHelpers.DecodeByteArraySpanUpTo32(rlp.Data, position, out ReadOnlySpan<byte> sBytes);
         decoderContext.Position = position;
         return DecodeSignature(v, rBytes, sBytes, transaction.Signature, rlpBehaviors);
     }
