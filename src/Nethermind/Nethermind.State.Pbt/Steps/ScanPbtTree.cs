@@ -2,25 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Api.Steps;
-using Nethermind.Config;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Steps;
 
-/// <summary>A one-shot step that reports what the persisted PBT columns hold, then exits the process.</summary>
+/// <summary>A one-shot step that reports what the persisted PBT columns hold.</summary>
 /// <remarks>
 /// Runs before the blockchain is initialized so nothing writes to the columns while the sweep reads them.
 /// </remarks>
-[RunnerStepDependencies(
-    dependencies: [typeof(InitializeBlockTree)],
-    dependents: [typeof(InitializeBlockchain)]
-)]
+[StepCommand("scan-pbt", "Report what the persisted PBT columns hold.")]
+[RunnerStepDependencies(typeof(InitializeBlockTree))]
 public class ScanPbtTree(
     PbtScanner scanner,
     IPbtPersistence persistence,
-    IProcessExitSource exitSource,
     ILogManager logManager
 ) : IStep
 {
@@ -34,26 +30,13 @@ public class ScanPbtTree(
         if (state == StateId.PreGenesis)
         {
             if (_logger.IsInfo) _logger.Info("The PBT database holds no persisted state; nothing to scan.");
-            exitSource.Exit(0);
             return;
         }
 
         if (_logger.IsInfo) _logger.Info($"Scanning the PBT database at persisted state {state}");
 
-        PbtScanReport report;
-        try
-        {
-            report = await scanner.Scan(cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            if (_logger.IsInfo) _logger.Info("PBT scan cancelled.");
-            exitSource.Exit(1);
-            return;
-        }
+        PbtScanReport report = await scanner.Scan(cancellationToken);
 
         if (_logger.IsInfo) _logger.Info(report.Format());
-
-        exitSource.Exit(0);
     }
 }

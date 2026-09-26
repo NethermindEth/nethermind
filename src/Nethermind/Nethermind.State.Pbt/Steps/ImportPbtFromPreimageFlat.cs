@@ -15,6 +15,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Buffers;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Init.Steps;
 using Nethermind.Int256;
@@ -27,15 +28,13 @@ using FlatStateId = Nethermind.State.Flat.StateId;
 
 namespace Nethermind.State.Pbt.Steps;
 
-/// <summary>Rebuilds PBT state from a preimage-flat database, then exits.</summary>
+/// <summary>Rebuilds PBT state from a preimage-flat database.</summary>
 /// <remarks>
 /// Logical accounts, storage and whole code are staged before phase two derives and folds tree leaves.
 /// The phases cannot overlap because address partitions scatter across the entire stem space.
 /// </remarks>
-[RunnerStepDependencies(
-    dependencies: [typeof(InitializeBlockTree)],
-    dependents: [typeof(InitializeBlockchain)]
-)]
+[StepCommand("import-pbt", "Rebuild the PBT state from a preimage-flat database.")]
+[RunnerStepDependencies(typeof(InitializeBlockTree))]
 public class ImportPbtFromPreimageFlat(
     FlatPersistence flatSource,
     [KeyFilter(DbNames.Code)] IDb codeDb,
@@ -43,7 +42,6 @@ public class ImportPbtFromPreimageFlat(
     PbtRebuilder rebuilder,
     PbtRocksDbPersistence pbtPersistence,
     IPbtConfig config,
-    IProcessExitSource exitSource,
     ILogManager logManager
 ) : IStep
 {
@@ -95,11 +93,9 @@ public class ImportPbtFromPreimageFlat(
         using (FlatPersistence.IPersistenceReader reader = flatSource.CreateReader())
         {
             if (!reader.IsPreimageMode)
-            {
-                if (_logger.IsError) _logger.Error("Source flat database is not in preimage mode; addresses and slots cannot be recovered to build PBT. Aborting.");
-                exitSource.Exit(1);
-                return;
-            }
+                throw new InvalidConfigurationException(
+                    "Source flat database is not in preimage mode; addresses and slots cannot be recovered to build PBT.",
+                    ExitCodes.ForbiddenOptionValue);
 
             sourceState = reader.CurrentState;
         }
@@ -113,22 +109,11 @@ public class ImportPbtFromPreimageFlat(
         int workerCount = config.ImportStorageReadConcurrency > 0 ? config.ImportStorageReadConcurrency : Environment.ProcessorCount;
         if (_logger.IsInfo) _logger.Info($"Rebuilding PBT state from preimage-flat database at {sourceState} with {workerCount} source reader(s)");
 
-        try
-        {
-            ClearInterruptedAttempt();
-            await CopyFlatColumns(workerCount, cancellationToken);
+        ClearInterruptedAttempt();
+        await CopyFlatColumns(workerCount, cancellationToken);
 
-            // State is addressed by the source block header's root; the fold records its tree root beside it.
-            await DeriveAndFold(new StateId(sourceState.BlockNumber, sourceState.StateRoot), workerCount, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            if (_logger.IsInfo) _logger.Info("PBT import cancelled.");
-            exitSource.Exit(1);
-            return;
-        }
-
-        exitSource.Exit(0);
+        // State is addressed by the source block header's root; the fold records its tree root beside it.
+        await DeriveAndFold(new StateId(sourceState.BlockNumber, sourceState.StateRoot), workerCount, cancellationToken);
     }
 
     /// <remarks>

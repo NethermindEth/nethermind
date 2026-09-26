@@ -6,6 +6,7 @@ using Autofac;
 using Nethermind.Core.Test.Modules;
 using Nethermind.State.Pbt.Mirror;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Threading;
 using Nethermind.Config;
@@ -22,6 +23,8 @@ using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.Steps;
+using Nethermind.Api.Steps;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -44,6 +47,27 @@ public class PbtDbManagerTests
             Assert.That(config.AccountTrieNodeCacheSizeBudget, Is.EqualTo(134217728UL));
             Assert.That(config.CodeTrieNodeCacheSizeBudget, Is.EqualTo(33554432UL));
             Assert.That(config.StorageTrieNodeCacheSizeBudget, Is.EqualTo(234881024UL));
+        }
+    }
+
+    [Test]
+    public async Task Command_steps_are_registered_and_selected_by_config([Values] bool mirror, [Values] bool import, [Values] bool scan)
+    {
+        PbtConfig config = new() { Enabled = !mirror, MirrorFlat = mirror, ImportFromPreimageFlat = import, ScanTree = scan };
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddModule(mirror ? new PbtMirrorModule(config) : new PbtModule(config));
+        await using IContainer container = builder.Build();
+
+        List<Type> expectedTargets = [];
+        if (import) expectedTargets.Add(typeof(ImportPbtFromPreimageFlat));
+        if (scan && !mirror) expectedTargets.Add(typeof(ScanPbtTree));
+        IEnumerable<string?> commands = container.Resolve<IEnumerable<StepInfo>>().Select(static step => step.Command);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(commands, Does.Contain("import-pbt"));
+            Assert.That(commands.Contains("scan-pbt"), Is.EqualTo(!mirror));
+            Assert.That(container.Resolve<IEnumerable<StepTarget>>().Select(static target => target.StepBaseType), Is.EquivalentTo(expectedTargets));
         }
     }
 

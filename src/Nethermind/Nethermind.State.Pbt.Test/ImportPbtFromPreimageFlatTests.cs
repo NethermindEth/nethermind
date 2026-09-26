@@ -11,7 +11,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -41,7 +40,7 @@ public class ImportPbtFromPreimageFlatTests
 
     // Zero uses the built-in window; small values force multiple windows with the same root.
     [Test]
-    public async Task Imports_preimage_flat_state_into_pbt_and_exits([Values(0, 1, 3)] int windowSize, [Values(5, 8000)] int codeLength)
+    public async Task Imports_preimage_flat_state_into_pbt([Values(0, 1, 3)] int windowSize, [Values(5, 8000)] int codeLength)
     {
         PbtConfig config = new() { ImportWindowSize = windowSize };
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
@@ -88,13 +87,11 @@ public class ImportPbtFromPreimageFlatTests
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
-        RecordingExitSource exitSource = new();
         // Both phases need the same column database; otherwise phase two scans nothing.
-        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, exitSource, logs);
+        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, logs);
 
         await step.Execute(CancellationToken.None);
 
-        Assert.That(exitSource.ExitCode, Is.EqualTo(0));
 
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)), "the state is keyed by the source's header root");
@@ -174,10 +171,9 @@ public class ImportPbtFromPreimageFlatTests
             if (scannedColumn == column && start.Length > 2 && ++resumedPages == pages)
                 cancellation.Cancel();
         };
-        RecordingExitSource exit = new();
-        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, exit, logs) { EntryChunkSize = 1 };
+        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, logs) { EntryChunkSize = 1 };
 
-        await step.Execute(cancellation.Token).WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.That(async () => await step.Execute(cancellation.Token).WaitAsync(TimeSpan.FromSeconds(30)), Throws.InstanceOf<OperationCanceledException>());
 
         string zoneName = zone == 0 ? "accounts/code" : "storage";
         double scanned = (partition * 16 + pages * 4 + 3 / 256.0 + 0xFF / 65536.0) / 256;
@@ -185,7 +181,6 @@ public class ImportPbtFromPreimageFlatTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(resumedPages, Is.EqualTo(pages));
-            Assert.That(exit.ExitCode, Is.EqualTo(1));
             Assert.That(db.ActiveViews, Is.Zero);
             Assert.That(target.IsValid, Is.False);
             logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName}: 0.00 % ")));
@@ -231,7 +226,6 @@ public class ImportPbtFromPreimageFlatTests
         using RecordingColumnsDb db = new();
         PbtConfig config = new() { ImportStorageReadConcurrency = 1 };
         PbtRocksDbPersistence target = new(db, config);
-        RecordingExitSource exit = new();
         List<int> copyBatchWrites = [];
         db.AfterCopyBatch = copyBatchWrites.Add;
         db.AfterCopy = () =>
@@ -244,7 +238,7 @@ public class ImportPbtFromPreimageFlatTests
                 Assert.That(db.Tunes, Is.EqualTo(new[] { ITunableDb.TuneType.DisableCompaction }));
             }
         };
-        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, exit, LimboLogs.Instance) { CopyBatchSize = batchSize };
+        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, LimboLogs.Instance) { CopyBatchSize = batchSize };
 
         await step.Execute(CancellationToken.None);
 
@@ -253,7 +247,6 @@ public class ImportPbtFromPreimageFlatTests
         int expectedWrites = accountCount * ((slotsPerAccount + SlotRun.Width - 1) / SlotRun.Width + 1) + 1;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exit.ExitCode, Is.Zero);
             Assert.That(copyBatchWrites.Count, Is.EqualTo((expectedWrites + batchSize - 1) / batchSize));
             Assert.That(copyBatchWrites, Has.All.InRange(1, batchSize));
             Assert.That(db.Tunes, Is.EqualTo(new[] { ITunableDb.TuneType.DisableCompaction, ITunableDb.TuneType.Default }));
@@ -294,12 +287,10 @@ public class ImportPbtFromPreimageFlatTests
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
-        RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
-        Assert.That(exitSource.ExitCode, Is.EqualTo(0));
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
         Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
@@ -340,12 +331,10 @@ public class ImportPbtFromPreimageFlatTests
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
-        RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
-        Assert.That(exitSource.ExitCode, Is.EqualTo(0));
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
         Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
@@ -384,13 +373,11 @@ public class ImportPbtFromPreimageFlatTests
 
         async Task<ValueHash256> Import()
         {
-            RecordingExitSource exitSource = new();
-            ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance)
+            ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, LimboLogs.Instance)
             {
                 ClearKeyChunk = clearKeyChunk,
             };
             await step.Execute(CancellationToken.None);
-            Assert.That(exitSource.ExitCode, Is.EqualTo(0));
 
             using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
@@ -692,15 +679,11 @@ public class ImportPbtFromPreimageFlatTests
         db.RecordAllColumns = true;
         using CancellationTokenSource cancellation = new();
         if (outcome == "cancel") cancellation.Cancel();
-        RecordingExitSource exit = new();
-        ScanPbtTree step = new(new PbtScanner(db, config, LimboLogs.Instance), persistence, exit, LimboLogs.Instance);
+        ScanPbtTree step = new(new PbtScanner(db, config, LimboLogs.Instance), persistence, LimboLogs.Instance);
         if (malformed) Assert.That(async () => await step.Execute(cancellation.Token), Throws.InstanceOf<InvalidDataException>());
+        else if (outcome == "cancel") Assert.That(async () => await step.Execute(cancellation.Token), Throws.InstanceOf<OperationCanceledException>());
         else await step.Execute(cancellation.Token);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(exit.ExitCode, malformed ? Is.Null : Is.EqualTo(outcome == "cancel" ? 1 : 0));
-            Assert.That(db.ActiveViews, Is.Zero);
-        }
+        Assert.That(db.ActiveViews, Is.Zero);
     }
 
     [Test]
@@ -718,12 +701,10 @@ public class ImportPbtFromPreimageFlatTests
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
-        RecordingExitSource exitSource = new();
         // A flush interval of 1 exercises same-stem merging across windows.
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, new PbtConfig(), LimboLogs.Instance), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, new PbtConfig(), LimboLogs.Instance), pbtTarget, new PbtConfig(), LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
-        Assert.That(exitSource.ExitCode, Is.EqualTo(0));
 
         PbtScanReport report = await new PbtScanner(pbtDb, new PbtConfig(), LimboLogs.Instance).Scan(CancellationToken.None);
         using (Assert.EnterMultipleScope())
@@ -776,16 +757,14 @@ public class ImportPbtFromPreimageFlatTests
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
-        RecordingExitSource exitSource = new();
         PbtConfig config = new() { ImportStorageReadConcurrency = workers, ImportWindowSize = windowSize };
-        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance)
+        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, LimboLogs.Instance)
         {
             EntryChunkSize = entryChunkSize,
         };
 
         await step.Execute(CancellationToken.None);
 
-        Assert.That(exitSource.ExitCode, Is.EqualTo(0));
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "leaf chunks must fold to the same root");
         PbtScanReport report = await new PbtScanner(pbtDb, config, LimboLogs.Instance).Scan(CancellationToken.None);
@@ -808,7 +787,6 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence rawPersistence = new(pbtDb, config);
         IPbtPersistence cachedWrapper = NSubstitute.Substitute.For<IPbtPersistence>();
-        RecordingExitSource exitSource = new();
 
         ContainerBuilder builder = new();
         builder
@@ -819,7 +797,6 @@ public class ImportPbtFromPreimageFlatTests
             .AddSingleton<IPbtPersistence>(rawPersistence)
             .AddDecorator<IPbtPersistence>((_, _) => cachedWrapper)
             .AddSingleton<IPbtConfig>(config)
-            .AddSingleton<IProcessExitSource>(exitSource)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<PbtRebuilder>();
         builder.RegisterType<ImportPbtFromPreimageFlat>().WithAttributeFiltering();
@@ -830,7 +807,6 @@ public class ImportPbtFromPreimageFlatTests
 
         await step.Execute(CancellationToken.None);
 
-        Assert.That(exitSource.ExitCode, Is.EqualTo(0));
         using IPbtPersistence.IReader reader = rawPersistence.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
     }
@@ -852,12 +828,10 @@ public class ImportPbtFromPreimageFlatTests
         using (IPbtPersistence.IWriteBatch persisted = pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), default, WriteFlags.None))
             persisted.Commit();
 
-        RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, new PbtConfig(), LimboLogs.Instance), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, new PbtConfig(), LimboLogs.Instance), pbtTarget, new PbtConfig(), LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
-        Assert.That(exitSource.ExitCode, Is.Null, "an already-populated target is skipped without exiting");
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(1, existingRoot)), "the existing state is left untouched");
     }
@@ -928,8 +902,7 @@ public class ImportPbtFromPreimageFlatTests
             }
             staging.Commit();
         };
-        RecordingExitSource exit = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, exit, LimboLogs.Instance) { EntryChunkSize = 1 };
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, LimboLogs.Instance) { EntryChunkSize = 1 };
 
         await step.Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
 
@@ -942,7 +915,6 @@ public class ImportPbtFromPreimageFlatTests
         using IPbtPersistence.IReader reader = target.CreateReader();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exit.ExitCode, Is.Zero);
             Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
             Assert.That(actualRows, Is.EquivalentTo(expectedRows));
             Assert.That(pbtDb.ActiveViews, Is.Zero);
@@ -1000,8 +972,7 @@ public class ImportPbtFromPreimageFlatTests
             if (!releaseConsumer.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException("Consumer gate was not released.");
             if (failure == "persistence") throw new IOException("injected staging persistence failure");
         };
-        RecordingExitSource exit = new();
-        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, exit, LimboLogs.Instance) { EntryChunkSize = 1 };
+        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, LimboLogs.Instance) { EntryChunkSize = 1 };
         Task import = step.Execute(cancellation.Token);
         try
         {
@@ -1023,7 +994,7 @@ public class ImportPbtFromPreimageFlatTests
         {
             releaseConsumer.Set();
         }
-        if (failure == "cancellation") await import.WaitAsync(TimeSpan.FromSeconds(30));
+        if (failure == "cancellation") Assert.That(async () => await import.WaitAsync(TimeSpan.FromSeconds(30)), Throws.InstanceOf<OperationCanceledException>());
         else
         {
             Exception? error = Assert.CatchAsync(async () => await import.WaitAsync(TimeSpan.FromSeconds(30)));
@@ -1036,19 +1007,16 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("validState"u8), Is.Null);
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("currentState"u8), Is.Null);
             Assert.That(db.ActiveViews, Is.Zero);
-            Assert.That(exit.ExitCode, failure == "cancellation" ? Is.EqualTo(1) : Is.Null);
         }
         db.AfterCopy = null;
         db.AfterGroupCommit = null;
         db.ViewClosed = null;
         db.Recording = false;
-        RecordingExitSource retryExit = new();
-        ImportPbtFromPreimageFlat retry = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, retryExit, LimboLogs.Instance) { EntryChunkSize = 5, ClearKeyChunk = 1 };
+        ImportPbtFromPreimageFlat retry = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, LimboLogs.Instance) { EntryChunkSize = 5, ClearKeyChunk = 1 };
         await retry.Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
         using IPbtPersistence.IReader reader = target.CreateReader();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(retryExit.ExitCode, Is.Zero);
             Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
         }
@@ -1205,12 +1173,5 @@ public class ImportPbtFromPreimageFlatTests
                 owner.ViewClosed?.Invoke(column, _rows);
             }
         }
-    }
-
-    private sealed class RecordingExitSource : IProcessExitSource
-    {
-        public int? ExitCode { get; private set; }
-        public CancellationToken Token => CancellationToken.None;
-        public void Exit(int exitCode) => ExitCode ??= exitCode;
     }
 }

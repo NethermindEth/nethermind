@@ -69,24 +69,24 @@ public class PbtModule(IPbtConfig config) : Module
         else
             builder.AddSingleton<IPbtChildHeaderSource>(NullPbtChildHeaderSource.Instance);
 
-        // PBT does not load the flat database module.
+        // Registered unconditionally so `nethermind import-pbt` and `nethermind scan-pbt` can always find them.
+        // Carrying [StepCommand] keeps them out of a normal node start; they run only when selected below or by name.
+        builder
+            // PBT does not load the flat database module.
+            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
+            // Import requires a PreimageFlat source; persistence validates the recorded layout.
+            .AddSingleton<IPersistence, IColumnsDb<FlatDbColumns>, ILogManager>(
+                (flatDb, logManager) => new PreimageRocksdbPersistence(flatDb, logManager, FlatLayout.PreimageFlat))
+            .AddSingleton<PbtRebuilder>()
+            .AddStep(typeof(ImportPbtFromPreimageFlat))
+            .AddSingleton<PbtScanner>()
+            .AddStep(typeof(ScanPbtTree));
+
         if (config.ImportFromPreimageFlat)
-        {
-            builder
-                .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
-                // Import requires a PreimageFlat source; persistence validates the recorded layout.
-                .AddSingleton<IPersistence, IColumnsDb<FlatDbColumns>, ILogManager>(
-                    (flatDb, logManager) => new PreimageRocksdbPersistence(flatDb, logManager, FlatLayout.PreimageFlat))
-                .AddSingleton<PbtRebuilder>()
-                .AddStep(typeof(ImportPbtFromPreimageFlat));
-        }
+            builder.SelectStepTarget(typeof(ImportPbtFromPreimageFlat));
 
         if (config.ScanTree)
-        {
-            builder
-                .AddSingleton<PbtScanner>()
-                .AddStep(typeof(ScanPbtTree));
-        }
+            builder.SelectStepTarget(typeof(ScanPbtTree));
 
         builder.OnBuild(ctx =>
         {

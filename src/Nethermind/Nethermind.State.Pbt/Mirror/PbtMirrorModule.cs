@@ -47,11 +47,15 @@ public class PbtMirrorModule(IPbtConfig config) : Module
             .AddDecorator<IPersistence, PbtFlatDrivenPersistence>()
             .AddSingleton<IMainProcessingModule, PbtMirrorMainProcessingModule>();
 
+        // Registered unconditionally so `nethermind import-pbt` can always find it. Carrying [StepCommand] keeps it
+        // out of a normal node start; it runs only when selected below or by name.
+        builder
+            .AddSingleton<PbtRebuilder>()
+            .AddStep(typeof(ImportPbtFromPreimageFlat));
+
         if (config.ImportFromPreimageFlat)
         {
-            builder
-                .AddSingleton<PbtRebuilder>()
-                .AddStep(typeof(ImportPbtFromPreimageFlat));
+            builder.SelectStepTarget(typeof(ImportPbtFromPreimageFlat));
         }
         else
         {
