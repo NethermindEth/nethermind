@@ -57,6 +57,7 @@ jobs:
           - Nethermind.Api.Test
           - Nethermind.AuRa.Test
           - Nethermind.BalRecorder.Test
+          - Nethermind.BeaconChain.Test
           - Nethermind.Blockchain.Test
           - Nethermind.CensorshipDetector.Plugin.Test
           - Nethermind.Clique.Test
@@ -440,6 +441,77 @@ jobs:
       test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest,frameTest,frameBlockTest,frameTxTest
       setup_group: all
 
+  tests-consensus-spec:
+    name: Run ${{ matrix.project }}
+    needs: build
+    runs-on: ubuntu-latest
+    # The preset archives are streamed and extracted on every run rather than cached. A partially
+    # populated cache still carries its completion marker, and the suite then reports green over
+    # zero vectors - this repo's fixture downloader has already produced exactly that.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - Ethereum.ConsensusSpec.Test
+    env:
+      # The mainnet preset is ~900 MB compressed and several GB extracted, so pull requests run the
+      # minimal preset only and pushes cover both.
+      NETHERMIND_CONSENSUS_SPEC_MAINNET: ${{ github.event_name == 'push' && '1' || '' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download test binaries
+        uses: ./.github/actions/download-test-artifacts
+        with:
+          variant: release
+
+      - name: ${{ matrix.project }}
+        id: test
+        working-directory: src/Nethermind/${{ matrix.project }}
+        run: |
+          dotnet restore ${{ matrix.project }}.csproj  # binaries from the shared Linux artifact
+          # Same dump handling as the other test jobs. The hang timeout is longer than theirs on
+          # purpose: it counts inactivity, and this suite streams and extracts multi-gigabyte preset
+          # archives before the first test reports, which an 8m window would read as a hang.
+          test_args=(--no-build --no-restore
+            --hangdump --hangdump-timeout 25m --hangdump-type Mini
+            --crashdump --crashdump-type Mini --crash-report-if-supported)
+
+          set +e
+          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+          rc=$?
+          set -e
+          if [[ $rc -eq 0 ]]; then
+            exit 0
+          elif compgen -G "TestResults/*_hang.*" > /dev/null; then
+            echo "::error::Test host hung and was dumped; see the hang-dump artifact"
+            exit 1
+          elif [[ $rc -ne 7 ]]; then
+            # Only MTP exit code 7 (the test host exited non-gracefully, a crash) is worth a retry; 2 (a test failed) and the rest are real failures.
+            echo "::error::dotnet test failed with exit code $rc"
+            exit $rc
+          else
+            echo "::warning::Test process crashed (exit code $rc), retrying..."
+            echo "crashed=true" >> "$GITHUB_OUTPUT"  # keep the dump the crash just wrote, even if the retry passes
+            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+          fi
+
+      - name: Upload dumps
+        if: ${{ failure() || cancelled() || steps.test.outputs.crashed == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.project }}-dumps
+          path: |
+            src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
+            src/Nethermind/${{ matrix.project }}/TestResults/*_crash.*
+          if-no-files-found: ignore
+          retention-days: 3
+
   matrix-guard:
     name: Check test project matrix is exhaustive
     runs-on: ubuntu-latest
@@ -473,7 +545,7 @@ jobs:
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-spec, tests-chunked, nethtest, matrix-guard]
+    needs: [tests, tests-spec, tests-chunked, tests-consensus-spec, nethtest, matrix-guard]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -483,6 +555,7 @@ jobs:
             "${{ needs.tests.result }}" == "success" && \
             "${{ needs.tests-spec.result }}" == "success" && \
             "${{ needs.tests-chunked.result }}" == "success" && \
+            "${{ needs.tests-consensus-spec.result }}" == "success" && \
             "${{ needs.nethtest.result }}" == "success" && \
             "${{ needs.matrix-guard.result }}" == "success" \
           ]]

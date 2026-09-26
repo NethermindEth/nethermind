@@ -1,0 +1,279 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using Google.Protobuf;
+using Nethermind.BeaconChain.P2P.Gossip;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Libp2p.Protocols.Pubsub;
+using Nethermind.Logging;
+using NUnit.Framework;
+using Snappier;
+
+namespace Nethermind.BeaconChain.Test.P2P.Gossip;
+
+public partial class GossipRouterTests
+{
+    // A Fulu/BPO2-era mainnet slot so messages exercise the current digest configuration.
+    private const ulong CurrentSlot = 13_410_304;
+
+    private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
+
+    private static GossipRouter CreateRouter(double secondsIntoSlot = 6.0)
+    {
+        DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot).AddSeconds(secondsIntoSlot);
+        return new GossipRouter(Spec, new SlotClock(Spec, new ManualTimestamper(now)), LimboLogs.Instance);
+    }
+
+    private static byte[] BlockMessage(ulong slot) => Snappy.CompressToArray(SignedBeaconBlock.Encode(TestChain.CreateBlock(slot, Hash256.Zero)));
+
+    [Test]
+    public void Valid_messages_raise_typed_events_with_round_tripped_content()
+    {
+        GossipRouter router = CreateRouter();
+        List<byte[]> received = [];
+        router.BeaconBlockReceived += b => received.Add(SignedBeaconBlockCodec.Encode(b, Spec));
+        router.AggregateAndProofReceived += a => received.Add(SignedAggregateAndProof.Encode(a));
+        router.AttesterSlashingReceived += s => received.Add(AttesterSlashing.Encode(s));
+
+        byte[][] payloads =
+        [
+            SignedBeaconBlock.Encode(TestChain.CreateBlock(CurrentSlot, Hash256.Zero)),
+            SignedAggregateAndProof.Encode(CreateAggregate(CurrentSlot)),
+            AttesterSlashing.Encode(new AttesterSlashing { Attestation1 = CreateIndexedAttestation(1, 4), Attestation2 = CreateIndexedAttestation(2, 3) }),
+        ];
+
+        string[] names = GossipTopics.SubscribedTopicNames;
+        for (int i = 0; i < names.Length; i++)
+        {
+            router.HandlerFor(names[i])(Snappy.CompressToArray(payloads[i]));
+        }
+
+        Assert.That(received, Is.EqualTo(payloads), "every message decodes and round-trips through its typed event");
+    }
+
+    private static IEnumerable<TestCaseData> DroppedBlockMessageCases()
+    {
+        yield return new TestCaseData(Bytes.FromHexString("0x8080c0051068656c6c6f"), GossipDropReason.Oversized)
+            .SetName("declared uncompressed length of 11 MiB");
+        yield return new TestCaseData(Bytes.FromHexString("0xffffffff"), GossipDropReason.InvalidSnappy)
+            .SetName("corrupt snappy data");
+        yield return new TestCaseData(Snappy.CompressToArray([1, 2, 3]), GossipDropReason.InvalidSsz)
+            .SetName("payload that is not a valid SSZ block");
+        yield return new TestCaseData(BlockMessage(CurrentSlot + 2), GossipDropReason.FutureSlot)
+            .SetName("slot two ahead of the wall clock");
+        yield return new TestCaseData(BlockMessage(CurrentSlot - Spec.SlotsPerEpoch - 1), GossipDropReason.StaleSlot)
+            .SetName("block older than one epoch");
+    }
+
+    [TestCaseSource(nameof(DroppedBlockMessageCases))]
+    public void Invalid_block_messages_are_dropped_and_counted(byte[] message, GossipDropReason reason)
+    {
+        GossipRouter router = CreateRouter();
+        int received = 0;
+        router.BeaconBlockReceived += _ => received++;
+
+        router.HandleBeaconBlock(message);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received, Is.Zero, "no event for a dropped message");
+            Assert.That(router.GetDropCount(reason), Is.EqualTo(1), "the drop is counted under its reason");
+        }
+    }
+
+    [Test]
+    public void Slot_boundaries_of_the_basic_sanity_checks_are_inclusive()
+    {
+        // 11.7 s into the slot leaves 300 ms to the next slot, within MAXIMUM_GOSSIP_CLOCK_DISPARITY.
+        GossipRouter router = CreateRouter(secondsIntoSlot: 11.7);
+        int received = 0;
+        router.BeaconBlockReceived += _ => received++;
+
+        router.HandleBeaconBlock(BlockMessage(CurrentSlot + 1));
+        router.HandleBeaconBlock(BlockMessage(CurrentSlot - Spec.SlotsPerEpoch));
+
+        Assert.That(received, Is.EqualTo(2), "the next slot within disparity and an exactly one-epoch-old block are accepted");
+    }
+
+    [Test]
+    public void Duplicate_messages_are_dropped_and_counted()
+    {
+        GossipRouter router = CreateRouter();
+        int received = 0;
+        router.BeaconBlockReceived += _ => received++;
+        byte[] message = BlockMessage(CurrentSlot);
+
+        router.HandleBeaconBlock(message);
+        router.HandleBeaconBlock(message);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received, Is.EqualTo(1), "only the first copy raises the event");
+            Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Start_subscribes_all_topics_and_rotation_moves_them_to_the_new_digest()
+    {
+        byte[] bpo1Digest = ForkDigest.Compute(Spec, 412_672);
+        byte[] bpo2Digest = ForkDigest.Compute(Spec, 419_072);
+        Dictionary<string, FakeTopic> topics = [];
+        GossipRouter router = CreateRouter();
+        int blocks = 0;
+        router.BeaconBlockReceived += _ => blocks++;
+
+        Assert.That(() => router.RotateDigest(bpo2Digest), Throws.InvalidOperationException, "rotation requires Start");
+
+        router.Start(id => topics[id] = new FakeTopic(), bpo1Digest);
+
+        List<string> expectedTopics = [];
+        foreach (string name in GossipTopics.SubscribedTopicNames)
+        {
+            expectedTopics.Add(GossipTopics.Topic(bpo1Digest, name));
+        }
+
+        Assert.That(topics.Keys, Is.EquivalentTo(expectedTopics), "all gossip topics subscribed for the starting digest");
+
+        FakeTopic blockTopicBpo1 = topics[GossipTopics.Topic(bpo1Digest, GossipTopics.BeaconBlock)];
+        blockTopicBpo1.Deliver(BlockMessage(CurrentSlot));
+        Assert.That(blocks, Is.EqualTo(1), "messages on a subscribed topic reach the event");
+
+        router.RotateDigest(bpo2Digest);
+        FakeTopic blockTopicBpo2 = topics[GossipTopics.Topic(bpo2Digest, GossipTopics.BeaconBlock)];
+        blockTopicBpo1.Deliver(BlockMessage(CurrentSlot - 1));
+        blockTopicBpo2.Deliver(BlockMessage(CurrentSlot - 2));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTopicBpo1.IsSubscribed, Is.False, "old topics are unsubscribed on rotation");
+            Assert.That(blockTopicBpo1.HasHandlers, Is.False, "old handlers are detached on rotation");
+            Assert.That(blockTopicBpo2.IsSubscribed, "new topics are subscribed on rotation");
+            Assert.That(blocks, Is.EqualTo(2), "only the new digest topic delivers after rotation");
+        }
+    }
+
+    [Test]
+    public void ActivateGloasTopics_requires_start()
+    {
+        GossipRouter router = CreateRouter();
+        Assert.That(() => router.ActivateGloasTopics(), Throws.InvalidOperationException);
+    }
+
+    [Test]
+    public void Gloas_topics_are_not_subscribed_until_activated_and_survive_digest_rotation()
+    {
+        byte[] bpo1Digest = ForkDigest.Compute(Spec, 412_672);
+        byte[] bpo2Digest = ForkDigest.Compute(Spec, 419_072);
+        Dictionary<string, FakeTopic> topics = [];
+        GossipRouter router = CreateRouter();
+        int envelopes = 0;
+        router.ExecutionPayloadEnvelopeReceived += _ => envelopes++;
+
+        router.Start(id => topics[id] = new FakeTopic(), bpo1Digest);
+        Assert.That(topics.Keys, Has.None.Contain(GossipTopics.ExecutionPayload), "Gloas topics are not part of the fixed pre-Gloas set");
+
+        router.ActivateGloasTopics();
+        string envelopeTopicBpo1 = GossipTopics.Topic(bpo1Digest, GossipTopics.ExecutionPayload);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topics.Keys, Does.Contain(envelopeTopicBpo1));
+            Assert.That(topics.Keys, Has.None.Contain(GossipTopics.PayloadAttestationMessage), "PTC votes are not subscribed until fork choice consumes them");
+        }
+
+        topics[envelopeTopicBpo1].Deliver(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(CreateEnvelope())));
+        Assert.That(envelopes, Is.EqualTo(1), "activated Gloas topics deliver to their typed events");
+
+        // A second activation must not double-subscribe.
+        router.ActivateGloasTopics();
+        Assert.That(topics.Keys.Count(k => k == envelopeTopicBpo1), Is.EqualTo(1));
+
+        router.RotateDigest(bpo2Digest);
+        string envelopeTopicBpo2 = GossipTopics.Topic(bpo2Digest, GossipTopics.ExecutionPayload);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topics[envelopeTopicBpo1].IsSubscribed, Is.False, "old Gloas topics are unsubscribed on rotation");
+            Assert.That(topics.Keys, Does.Contain(envelopeTopicBpo2), "Gloas topics rotate to the new digest automatically, not fixed at ActivateGloasTopics time");
+        }
+
+        // A distinct builder index, so the message differs from the BPO1 delivery and is not
+        // suppressed as a duplicate of it (dedup keys on topic name + payload, not the digest).
+        topics[envelopeTopicBpo2].Deliver(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(CreateEnvelope(builderIndex: 4))));
+        Assert.That(envelopes, Is.EqualTo(2), "the rotated Gloas topic still delivers");
+    }
+
+    private static SignedExecutionPayloadEnvelope CreateEnvelope(ulong builderIndex = 3) => new()
+    {
+        Message = new ExecutionPayloadEnvelope
+        {
+            Payload = new ExecutionPayloadGloas { SlotNumber = CurrentSlot },
+            ExecutionRequests = new ExecutionRequestsGloas(),
+            BuilderIndex = builderIndex,
+            BeaconBlockRoot = Hash256.Zero,
+            ParentBeaconBlockRoot = Hash256.Zero,
+        },
+        Signature = new BlsSignature(new byte[BlsSignature.Length]),
+    };
+
+    private static SignedAggregateAndProof CreateAggregate(ulong slot) => new()
+    {
+        Message = new AggregateAndProof
+        {
+            AggregatorIndex = 7,
+            Aggregate = new Attestation
+            {
+                AggregationBits = new BitArray(8) { [0] = true },
+                Data = new AttestationData
+                {
+                    Slot = slot,
+                    Index = 0,
+                    BeaconBlockRoot = Hash256.Zero,
+                    Source = new Checkpoint { Epoch = 1, Root = Hash256.Zero },
+                    Target = new Checkpoint { Epoch = Spec.GetEpoch(slot), Root = Hash256.Zero },
+                },
+                CommitteeBits = new BitArray(64) { [0] = true },
+            },
+        },
+    };
+
+    private static IndexedAttestation CreateIndexedAttestation(ulong sourceEpoch, ulong targetEpoch) => new()
+    {
+        AttestingIndices = [1, 2, 3],
+        Data = new AttestationData
+        {
+            Slot = CurrentSlot,
+            Index = 0,
+            BeaconBlockRoot = Hash256.Zero,
+            Source = new Checkpoint { Epoch = sourceEpoch, Root = Hash256.Zero },
+            Target = new Checkpoint { Epoch = targetEpoch, Root = Hash256.Zero },
+        },
+    };
+
+    private sealed class FakeTopic : ITopic
+    {
+        public event Action<byte[]>? OnMessage;
+
+        public bool IsSubscribed { get; private set; }
+
+        public bool HasHandlers => OnMessage is not null;
+
+        public void Subscribe() => IsSubscribed = true;
+
+        public void Unsubscribe() => IsSubscribed = false;
+
+        public void Publish(byte[] value) { }
+
+        public void Publish(IMessage value) { }
+
+        public void Deliver(byte[] message) => OnMessage?.Invoke(message);
+    }
+}
