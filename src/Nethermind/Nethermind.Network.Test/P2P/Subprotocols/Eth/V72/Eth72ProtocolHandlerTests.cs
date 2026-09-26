@@ -1132,8 +1132,8 @@ public class Eth72ProtocolHandlerTests
         Transaction announced = BuildBlobTransaction(fullProvider: false);
         Transaction first = Build.A.Transaction.SignedAndResolved().TestObject;
         Transaction unprocessed = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
-        first.SetPreHashNoLock([1]);
-        unprocessed.SetPreHashNoLock([2]);
+        RecycledTransactionWitness firstWitness = new(first, 1);
+        RecycledTransactionWitness unprocessedWitness = new(unprocessed, 2);
 
         AnnounceBlobTransaction(announced.Hash!, announced.GetLength(shouldCountBlobs: false), TxType.Blob);
         long requestId = GetLastGetPooledTransactionsRequestId(announced.Hash!);
@@ -1150,10 +1150,8 @@ public class Eth72ProtocolHandlerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(first.Hash, Is.Null);
-            Assert.That(first.Signature, Is.Null);
-            Assert.That(unprocessed.Hash, Is.Null);
-            Assert.That(unprocessed.Signature, Is.Null);
+            Assert.That(firstWitness.WasRecycled, Is.True);
+            Assert.That(unprocessedWitness.WasRecycled, Is.True);
         }
     }
 
@@ -1165,10 +1163,8 @@ public class Eth72ProtocolHandlerTests
             Build.A.Transaction.SignedAndResolved().TestObject,
             Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject,
         ];
-        for (int i = 0; i < txs.Length; i++)
-        {
-            txs[i].SetPreHashNoLock([(byte)(i + 1)]);
-        }
+        txs[0].SetPreHashNoLock([1]);
+        RecycledTransactionWitness tailWitness = new(txs[1], 2);
 
         ArrayPoolList<Transaction> transactions = new(txs.Length, txs);
         using CancellationTokenSource cancellation = new();
@@ -1188,8 +1184,12 @@ public class Eth72ProtocolHandlerTests
 
         handler.HandleSlowPublic(transactions, cancellation.Token);
 
+        // Captured before the rescheduled run below, which consumes the pre-hash by hashing the tail.
+        bool tailWasRecycled = tailWitness.WasRecycled;
+
         if (rescheduleSucceeds)
         {
+            // The rescheduled task still owns the tail here, so reading it is safe.
             Assert.That(transactions[1].Signature, Is.Not.Null);
             handler.HandleSlowPublic(transactions, CancellationToken.None, startIndex: 1);
         }
@@ -1199,7 +1199,7 @@ public class Eth72ProtocolHandlerTests
             Assert.That(triedToReschedule, Is.True);
             Assert.That(txs[0].Hash, Is.Not.Null);
             Assert.That(txs[0].Signature, Is.Not.Null);
-            Assert.That(txs[1].Signature is not null, Is.EqualTo(rescheduleSucceeds));
+            Assert.That(tailWasRecycled, Is.EqualTo(!rescheduleSucceeds));
             Assert.That(() => _ = transactions[0], Throws.TypeOf<ObjectDisposedException>());
         }
         _transactionPool.Received(rescheduleSucceeds ? 2 : 1)
@@ -1212,6 +1212,7 @@ public class Eth72ProtocolHandlerTests
         Transaction submitted = Build.A.Transaction.SignedAndResolved().TestObject;
         Transaction unsubmitted = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
         Hash256 submittedHash = submitted.Hash!;
+        RecycledTransactionWitness unsubmittedWitness = new(unsubmitted, 2);
         ArrayPoolList<Transaction> transactions = new(2, [submitted, unsubmitted]);
         Transaction? retained = null;
         _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
@@ -1229,8 +1230,7 @@ public class Eth72ProtocolHandlerTests
             Assert.That(retained, Is.SameAs(submitted));
             Assert.That(submitted.Hash, Is.EqualTo(submittedHash));
             Assert.That(submitted.Signature, Is.Not.Null);
-            Assert.That(unsubmitted.Signature, Is.Null);
-            Assert.That(unsubmitted.Hash, Is.Null);
+            Assert.That(unsubmittedWitness.WasRecycled, Is.True);
             Assert.That(() => _ = transactions[0], Throws.TypeOf<ObjectDisposedException>());
         }
     }
@@ -1239,7 +1239,7 @@ public class Eth72ProtocolHandlerTests
     public void cancelled_pooled_processing_before_first_transaction_should_return_all_transactions()
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
-        tx.SetPreHashNoLock([1]);
+        RecycledTransactionWitness witness = new(tx, 1);
         ArrayPoolList<Transaction> transactions = new(1, [tx]);
         using CancellationTokenSource cancellation = new();
         cancellation.Cancel();
@@ -1250,9 +1250,7 @@ public class Eth72ProtocolHandlerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tx.Hash, Is.Null);
-            Assert.That(tx.Signature, Is.Null);
-            Assert.That(tx.GasLimit, Is.Zero);
+            Assert.That(witness.WasRecycled, Is.True);
             Assert.That(() => _ = transactions[0], Throws.TypeOf<ObjectDisposedException>());
         }
     }
