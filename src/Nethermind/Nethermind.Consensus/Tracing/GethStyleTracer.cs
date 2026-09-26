@@ -107,10 +107,9 @@ public class GethStyleTracer(
             scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, blockTracer.WithCancellation(cancellationToken), cancellationToken);
             return blockTracer.BuildResult().SingleOrDefault();
         }
-        catch
+        finally
         {
             blockTracer.TryDispose();
-            throw;
         }
     }
 
@@ -217,10 +216,9 @@ public class GethStyleTracer(
             scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, executionTracer, cancellationToken);
             return tracer.BuildResult().SingleOrDefault();
         }
-        catch
+        finally
         {
             tracer.TryDispose();
-            throw;
         }
     }
 
@@ -270,10 +268,9 @@ public class GethStyleTracer(
                 ? new GethLikeTxTraceCollection(tracer.BuildResult())
                 : Array.Empty<GethLikeTxTrace>();
         }
-        catch
+        finally
         {
             tracer.TryDispose();
-            throw;
         }
     }
 
