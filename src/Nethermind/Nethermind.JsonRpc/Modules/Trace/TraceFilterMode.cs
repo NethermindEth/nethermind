@@ -23,12 +23,15 @@ public enum TraceFilterMode
 }
 
 /// <summary>
-/// Reads only the exact <c>"intersection"</c> and <c>"union"</c> strings; any other value is invalid params.
+/// Reads the exact <c>"intersection"</c> and <c>"union"</c> strings, and an explicit null as the default, the same as an
+/// omitted mode (System.Text.Json passes null to a value-type converter). Any other value is invalid params.
 /// </summary>
 public sealed class TraceFilterModeConverter : JsonConverter<TraceFilterMode>
 {
     public override TraceFilterMode Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
+        if (reader.TokenType == JsonTokenType.Null) return TraceFilterMode.Intersection;
+
         if (reader.TokenType == JsonTokenType.String)
         {
             if (reader.ValueTextEquals("intersection"u8)) return TraceFilterMode.Intersection;

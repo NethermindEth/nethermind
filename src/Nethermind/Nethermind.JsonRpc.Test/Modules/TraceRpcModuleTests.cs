@@ -645,6 +645,7 @@ public class TraceRpcModuleTests
         string author = head.Beneficiary!.ToString();
         string sender = TestItem.AddressB.ToString();
         string other = TestItem.AddressE.ToString();
+        string recipient = Address.Zero.ToString();
 
         async Task<string[]> Filter(string fields)
         {
@@ -662,7 +663,7 @@ public class TraceRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rewards, Has.Length.EqualTo(3));
-            Assert.That(calls, Is.Not.Empty.And.All.Contains($"\"from\":\"{sender}\""));
+            Assert.That(calls, Is.Not.Empty.And.All.Contains($"\"from\":\"{sender}\"").And.All.Contains($"\"to\":\"{recipient}\""));
             // A call matches by sender and a reward by author; a reward has no sender side.
             Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{author}\"],\"mode\":\"union\""), Is.EqualTo(all));
             Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{other}\"],\"mode\":\"union\""), Is.EqualTo(calls));
@@ -671,12 +672,16 @@ public class TraceRpcModuleTests
             Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{author}\"],\"mode\":\"union\",\"after\":2,\"count\":3"), Is.EqualTo(all[2..5]));
             Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{author}\"],\"mode\":\"intersection\""), Is.Empty);
             Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{author}\"]"), Is.Empty);
+            // An explicit null mode is the same as omitting it, so it means intersection.
+            Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{author}\"],\"mode\":null"), Is.Empty);
+            Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{recipient}\"]"), Is.EqualTo(calls));
+            Assert.That(await Filter($",\"fromAddress\":[\"{sender}\"],\"toAddress\":[\"{recipient}\"],\"mode\":null"), Is.EqualTo(calls));
         }
     }
 
     [Test]
     public async Task Trace_filter_rejects_unknown_mode(
-        [Values("\"garbage\"", "\"Union\"", "\"INTERSECTION\"", "\"\"", "null", "0", "true", "[\"union\"]")] string mode)
+        [Values("\"garbage\"", "\"Union\"", "\"INTERSECTION\"", "\"\"", "0", "true", "[\"union\"]", "{}")] string mode)
     {
         Context context = new();
         await context.Build();

@@ -4,10 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace;
@@ -74,6 +76,17 @@ public class TxTraceFilterTests
         TxTraceFilter filter = new(from, to, 0, null, mode);
         bool[] actual = [.. new[] { AToB, BToC, AToC, BToB, RewardToC }.Select(filter.ShouldUseTxTrace)];
         Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Trace_filter_mode_round_trips_through_json([Values] TraceFilterMode mode)
+    {
+        string json = JsonSerializer.Serialize(mode, EthereumJsonSerializer.JsonOptions);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Is.EqualTo(mode == TraceFilterMode.Union ? "\"union\"" : "\"intersection\""));
+            Assert.That(JsonSerializer.Deserialize<TraceFilterMode>(json, EthereumJsonSerializer.JsonOptions), Is.EqualTo(mode));
+        }
     }
 
     [Test]

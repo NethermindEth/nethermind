@@ -267,7 +267,9 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
-    public async Task trace_filter_from_store_combines_address_lists_by_mode([Values] TraceFilterMode mode, [Values] bool streaming)
+    public async Task trace_filter_from_store_combines_address_lists_by_mode(
+        [Values(null, "null", "\"intersection\"", "\"union\"")] string? mode,
+        [Values] bool streaming)
     {
         TestContext test = new(streaming: streaming);
         Hash256 block = test.DbTrace.BlockHash!;
@@ -279,21 +281,22 @@ public class TraceStoreRpcModuleTests
         };
         ParityLikeTxTrace reward = new() { BlockHash = block, Action = new ParityTraceAction { Type = "reward", Author = TestItem.AddressC, RewardType = "block" } };
         test.Store.Set(block, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize(
-            new[] { Call(TestItem.AddressA, TestItem.AddressB), Call(TestItem.AddressB, TestItem.AddressB), reward }));
+            new[] { Call(TestItem.AddressA, TestItem.AddressB), Call(TestItem.AddressB, TestItem.AddressB), Call(TestItem.AddressA, TestItem.AddressC), reward }));
 
-        using JsonRpcResponse response = test.Module.trace_filter(new TraceFilterForRpc
-        {
-            FromBlock = BlockParameter.Latest,
-            ToBlock = BlockParameter.Latest,
-            FromAddress = [TestItem.AddressA],
-            ToAddress = [TestItem.AddressC],
-            Mode = mode
-        });
+        // Read as the RPC server reads it, so an omitted or null mode takes the default.
+        string modeField = mode is null ? "" : $",\"mode\":{mode}";
+        TraceFilterForRpc filter = JsonSerializer.Deserialize<TraceFilterForRpc>(
+            $"{{\"fromBlock\":\"latest\",\"toBlock\":\"latest\",\"fromAddress\":[\"{TestItem.AddressA}\"],\"toAddress\":[\"{TestItem.AddressC}\"]{modeField}}}",
+            EthereumJsonSerializer.JsonRpcRequestOptions)!;
+        using JsonRpcResponse response = test.Module.trace_filter(filter);
 
         // Written as the RPC server writes it, so the streaming case runs the streamed filter, not the buffered one.
         JToken result = JToken.Parse(Encoding.UTF8.GetString(await Serialize(response)))["result"]!;
-        string?[] matched = [.. result.Select(static trace => (string?)(trace["action"]!["from"] ?? trace["action"]!["author"]))];
-        string[] expected = mode == TraceFilterMode.Union ? [TestItem.AddressA.ToString(), TestItem.AddressC.ToString()] : [];
+        string[] matched = [.. result.Select(static trace => $"{trace["action"]!["from"] ?? "reward"} -> {trace["action"]!["to"] ?? trace["action"]!["author"]}")];
+        string aToB = $"{TestItem.AddressA} -> {TestItem.AddressB}";
+        string aToC = $"{TestItem.AddressA} -> {TestItem.AddressC}";
+        string rewardToC = $"reward -> {TestItem.AddressC}";
+        string[] expected = mode == "\"union\"" ? [aToB, aToC, rewardToC] : [aToC];
         Assert.That(matched, Is.EqualTo(expected));
     }
 
