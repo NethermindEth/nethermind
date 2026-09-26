@@ -45,6 +45,23 @@ public class LogEntryDecoderTests
     }
 
     [Test]
+    public void Length_matches_the_encoding([Values(0, 1, 4)] int topicCount)
+    {
+        Hash256[] topics = new Hash256[topicCount];
+        for (int i = 0; i < topics.Length; i++) topics[i] = Keccak.Compute([(byte)i]);
+        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, topics);
+
+        Rlp rlp = LogEntryDecoder.Instance.Encode(logEntry);
+        RlpReader ctx = new(rlp.Bytes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LogEntryDecoder.Instance.GetLength(logEntry), Is.EqualTo(rlp.Bytes.Length));
+            Assert.That(LogEntryDecoder.Instance.Decode(ref ctx), Is.EqualTo(logEntry).UsingPropertiesComparer());
+        }
+    }
+
+    [Test]
     public void Can_do_roundtrip_ref_struct()
     {
         LogEntry logEntry = CreateSampleLogEntry();
