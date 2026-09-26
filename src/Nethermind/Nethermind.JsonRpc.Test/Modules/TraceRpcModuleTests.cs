@@ -209,7 +209,7 @@ public class TraceRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(module, "trace_filter",
             new { fromBlock = $"0x{headNumber:x}", toBlock = $"0x{headNumber - 2:x}" });
         Assert.That(response, Is.EqualTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.InvalidInput},\"message\":\"From block number: {headNumber} is greater than to block number {headNumber - 2}\"}},\"id\":67}}"));
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.InvalidParams},\"message\":\"From block number: {headNumber} is greater than to block number {headNumber - 2}\"}},\"id\":67}}"));
     }
 
     [Test]
@@ -492,17 +492,19 @@ public class TraceRpcModuleTests
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"header not found\"},\"id\":67}"), serialized.Replace("\"", "\\\""));
     }
 
-    [Test]
-    public async Task Trace_filter_return_fail_from_block_higher_than_to_block()
+    // An omitted fromBlock is latest, so an older toBlock alone is a reversed range.
+    [TestCase("{\"fromBlock\":\"0x8\",\"toBlock\":\"0x6\"}", 8UL, 6UL)]
+    [TestCase("{\"toBlock\":\"0x2\"}", null, 2UL)]
+    public async Task Trace_filter_return_invalid_params_from_block_higher_than_to_block(string request, ulong? fromBlock, ulong toBlock)
     {
         Context context = new();
         await context.Build();
-        string request = "{\"fromBlock\":\"0x8\",\"toBlock\":\"0x6\"}";
+        ulong from = fromBlock ?? context.Blockchain.BlockTree.Head!.Number;
         string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_filter", request);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"From block number: 8 is greater than to block number 6\"},\"id\":67}"), serialized.Replace("\"", "\\\""));
+            serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32602,\"message\":\"From block number: {from} is greater than to block number {toBlock}\"}},\"id\":67}}"), serialized.Replace("\"", "\\\""));
     }
 
     [Test]
