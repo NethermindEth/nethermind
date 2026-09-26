@@ -109,39 +109,148 @@ public class InclusionListValidatorTests
         return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
-    // Judging a frame transaction by the Profile 1 rules would read the account nonce it does not use. The
-    // well-formedness assertion keeps the case honest: without it the entry could pass for being malformed.
-    [Test]
-    public void Omitted_frame_transaction_is_not_judged()
+    /// <summary>EIP-8369 Profile 2: an omitted frame transaction is judged when it is a candidate and excused
+    /// when it is not, so both sides of the boundary are pinned rather than only the excuse.</summary>
+    public static IEnumerable<TestCaseData> FrameCases
     {
-        Transaction frameTx = BuildFrameTx();
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithTransactions([])
-            .WithInclusionListTransactions([frameTx])
-            .TestObject;
-        IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
-
-        using (Assert.EnterMultipleScope())
+        get
         {
-            Assert.That((bool)_txValidator.IsWellFormed(frameTx, spec, block.GasLimit), Is.True);
-            Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
+            static TestCaseData Case(string name, Transaction[] il, bool satisfied, Transaction[]? blockTxs = null,
+                UInt256 payerBalance = default, UInt256 senderBalance = default, ulong gasUsed = 1_000_000,
+                UInt256 baseFee = default, ulong maxVerifyGasPerTx = Eip8369Constants.MaxVerifyGasPerTx,
+                bool wellFormed = true) =>
+                new(il, blockTxs ?? [], senderBalance.IsZero ? 10.Ether : senderBalance, payerBalance, gasUsed,
+                    baseFee, maxVerifyGasPerTx, wellFormed, satisfied)
+                { TestName = name };
+
+            // A Profile 2 candidate the payload could have appended is now an unjustified omission.
+            yield return Case("Omitted Profile 2 candidate is censoring", [BuildFrameTx()], false);
+
+            Transaction included = BuildFrameTx();
+            included.Hash = Keccak.Zero;
+            Transaction includedAgain = BuildFrameTx();
+            includedAgain.Hash = Keccak.Zero;
+            yield return Case("Included frame transaction repeated in the IL is satisfied",
+                [included, includedAgain], true, blockTxs: [included]);
+            Transaction omitted = BuildFrameTx(frames: [SelfVerify(110_000)]);
+            omitted.Hash = Keccak.EmptyTreeHash;
+            yield return Case("Included frame duplicates do not excuse a different omitted candidate",
+                [included, includedAgain, omitted], false, blockTxs: [included]);
+
+            // Outside both EIP-8369 profiles: blob gas has its own budget, over which the EIP defines no check.
+            yield return Case("Omitted blob-carrying frame transaction is excused", [BuildFrameTx(blobCount: 1)], true);
+            // Condition 2: a prefix matching none of the four admitted shapes.
+            yield return Case("Omitted frame transaction with an unrecognized prefix is excused",
+                [BuildFrameTx([Body(50_000)])], true);
+            // Condition 3: a VERIFY frame behind the validation prefix.
+            yield return Case("Omitted frame transaction with a VERIFY frame after its prefix is excused",
+                [BuildFrameTx([SelfVerify(), Body(50_000), Verify(50_000)])], true);
+            // Condition 4, and the knob that sets it: the same transaction is judged once the cap is lifted.
+            yield return Case("Omitted frame transaction over the VERIFY budget is excused",
+                [BuildFrameTx([SelfVerify(2_000_000)])], true);
+            yield return Case("Omitted frame transaction over the VERIFY budget is judged once the cap is lifted",
+                [BuildFrameTx([SelfVerify(2_000_000)])], false, maxVerifyGasPerTx: 0);
+            // Condition 1: a candidate shape is not enough, the transaction must also be statically valid.
+            yield return Case("Omitted malformed frame transaction is excused",
+                [BuildFrameTx([SelfVerify(value: UInt256.One)])], true, wellFormed: false);
+
+            // A sponsored transaction is judged against the payer its prefix nominates, not against its sender.
+            yield return Case("Sponsored frame transaction is judged against its payer, not its sender",
+                [BuildFrameTx(SponsoredFrames)], false, payerBalance: 10.Ether, senderBalance: UInt256.One);
+            yield return Case("Sponsored frame transaction whose payer cannot pay is excused",
+                [BuildFrameTx(SponsoredFrames)], true, payerBalance: UInt256.One);
+
+            // The determinate justifications EIP-8369 leaves to the attester's own reading of the payload.
+            // 1,105,000 gas remains: the frame limits alone fit, and only the EIP-8141 intrinsic cost on
+            // top of them — which Transaction.GasLimit leaves out — puts the reservation over.
+            yield return Case("Omitted frame transaction whose max_gas does not fit the remaining gas is excused",
+                [BuildFrameTx([SelfVerify(), Body(1_000_000)])], true, gasUsed: 28_895_000);
+            yield return Case("Omitted frame transaction priced below the base fee is excused",
+                [BuildFrameTx(maxFeePerGas: 1.GWei)], true, baseFee: 5.GWei);
         }
     }
 
-    private static Transaction BuildFrameTx() => new()
+    /// <summary>An excused entry excuses itself alone. Hoisting the excusal to the whole list would report
+    /// genuine censoring as satisfied, and no case below a single-entry list can catch that.</summary>
+    [TestCase(false, ExpectedResult = false, TestName = "Ordinary entry behind an excused frame transaction is still judged")]
+    // Keeps the case above from passing vacuously against a validator that fails any multi-entry list.
+    [TestCase(true, ExpectedResult = true, TestName = "Ordinary entry behind an excused frame transaction can satisfy the list")]
+    public bool Frame_transaction_skip_is_per_entry(bool ordinaryEntryIncluded)
     {
-        Type = TxType.FrameTx,
-        ChainId = TestBlockchainIds.ChainId,
-        SenderAddress = TestItem.AddressA,
-        Nonce = 0,
-        Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
-        FrameSignatures = [],
-        GasLimit = 100_000,
-        GasPrice = 1.GWei,
-        DecodedMaxFeePerGas = 10.GWei,
-    };
+        // A frame transaction whose prefix matches no admitted shape: outside Profile 2, so excused.
+        Transaction[] il = [BuildFrameTx([Body(50_000)]), _validTx];
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithTransactions(ordinaryEntryIncluded ? [_validTx] : [])
+            .WithInclusionListTransactions(il)
+            .TestObject;
+
+        return InclusionListValidator.IsSatisfied(
+            block, StateWith(TestItem.AddressA, 10.Ether, 0), _frameSpecProvider.GetSpec(block.Header), _txValidator);
+    }
+
+    [TestCaseSource(nameof(FrameCases))]
+    public void Frame_transaction_omission_follows_eip_8369_profile_2(
+        Transaction[] il, Transaction[] blockTxs, UInt256 senderBalance, UInt256 payerBalance,
+        ulong gasUsed, UInt256 baseFee, ulong maxVerifyGasPerTx, bool wellFormed, bool satisfied)
+    {
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(gasUsed)
+            .WithBaseFeePerGas(baseFee)
+            .WithTransactions(blockTxs)
+            .WithInclusionListTransactions(il)
+            .TestObject;
+        IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
+        IReadOnlyStateProvider state = StateWith((TestItem.AddressA, senderBalance, 0), (TestItem.AddressB, payerBalance, 0));
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Keeps every case honest: an entry could otherwise be excused for being malformed instead.
+            foreach (Transaction tx in il)
+                if (tx.SupportsFrames)
+                    Assert.That((bool)_txValidator.IsWellFormed(tx, spec, block.GasLimit), Is.EqualTo(wellFormed));
+
+            Assert.That(InclusionListValidator.IsSatisfied(block, state, spec, _txValidator, maxVerifyGasPerTx), Is.EqualTo(satisfied));
+        }
+    }
+
+    // A self-relay prefix: the sender approves its own execution and payment, so it pays for itself.
+    private static TxFrame SelfVerify(ulong gasLimit = 100_000, UInt256 value = default) =>
+        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit, value, default);
+
+    private static TxFrame Body(ulong gasLimit) =>
+        new(FrameMode.Default, FrameFlags.None, TestItem.AddressC, gasLimit, UInt256.Zero, default);
+
+    private static TxFrame Verify(ulong gasLimit) =>
+        new(FrameMode.Verify, FrameFlags.None, TestItem.AddressC, gasLimit, UInt256.Zero, default);
+
+    // An `only_verify | pay` prefix nominating AddressB as the payer.
+    private static TxFrame[] SponsoredFrames =>
+    [
+        new(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, 100_000, UInt256.Zero, default),
+        new(FrameMode.Verify, FrameFlags.ApprovePayment, TestItem.AddressB, 100_000, UInt256.Zero, default),
+    ];
+
+    private static Transaction BuildFrameTx(TxFrame[]? frames = null, int blobCount = 0, UInt256? maxFeePerGas = null)
+    {
+        frames ??= [SelfVerify()];
+        return new Transaction
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Nonce = 0,
+            Frames = frames,
+            FrameSignatures = [],
+            GasLimit = FrameTxValidation.TotalGasLimit(frames),
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = maxFeePerGas ?? 10.GWei,
+            MaxFeePerBlobGas = blobCount == 0 ? null : 1.GWei,
+            BlobVersionedHashes = blobCount == 0 ? null : Build.A.Transaction.WithBlobVersionedHashes(blobCount).TestObject.BlobVersionedHashes,
+        };
+    }
 
     [Test]
     public void When_il_disabled_by_spec_then_accept_even_if_excluded()
@@ -228,6 +337,21 @@ public class InclusionListValidatorTests
             .WithTo(TestItem.AddressB)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
+
+    private static IReadOnlyStateProvider StateWith(params (Address Address, UInt256 Balance, ulong Nonce)[] accounts)
+    {
+        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+        foreach ((Address address, UInt256 balance, ulong nonce) in accounts)
+        {
+            state.TryGetAccount(address, out Arg.Any<AccountStruct>()).Returns(call =>
+            {
+                call[1] = new AccountStruct(nonce, balance);
+                return true;
+            });
+        }
+
+        return state;
+    }
 
     private static IReadOnlyStateProvider StateWith(Address sender, UInt256 balance, ulong nonce)
     {

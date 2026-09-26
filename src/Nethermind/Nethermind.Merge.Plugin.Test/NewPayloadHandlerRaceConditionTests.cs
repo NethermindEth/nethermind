@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -686,6 +687,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
             Substitute.For<ISpecProvider>(),
             Substitute.For<ITxValidator>(),
+            new BlocksConfig(),
             LimboLogs.Instance);
     }
 }
