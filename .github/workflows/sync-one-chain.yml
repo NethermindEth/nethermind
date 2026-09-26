@@ -100,6 +100,7 @@ jobs:
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
 
       - name: Create a Runner
+        id: create
         uses: ./.github/actions/gcp-runner
         with:
           action: create
@@ -115,6 +116,22 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
           runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+      - name: Record the SPOT exhaustion
+        if: ${{ failure() && steps.create.outputs.spot_exhausted == 'true' }}
+        env:
+          RUNNER_LABEL: ${{ inputs.runner_label }}
+        run: printf '%s' "$RUNNER_LABEL" > spot-exhausted.txt
+
+      # Same shape as the preemption marker, so sync-master-validation treats a capacity miss
+      # as an infrastructure event rather than paging for it.
+      - name: Publish the SPOT exhaustion marker
+        if: ${{ failure() && steps.create.outputs.spot_exhausted == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: spot-exhausted-${{ github.run_attempt }}-${{ steps.create.outputs.spot_exhausted_at }}-${{ inputs.runner_label }}
+          path: spot-exhausted.txt
+          retention-days: 1
 
   sync:
     needs: [create_runner]

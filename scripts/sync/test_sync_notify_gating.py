@@ -62,6 +62,7 @@ class NotifyGatingTest(unittest.TestCase):
         attempt="1",
         marker_attempt=None,
         fail_endpoint="",
+        marker_kind="preempted",
     ):
         """Runs the shipped step and returns what it wrote to GITHUB_OUTPUT."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -81,7 +82,7 @@ class NotifyGatingTest(unittest.TestCase):
             markers = []
             for entry in preempted_labels:
                 label, at = entry if isinstance(entry, tuple) else (entry, RECLAIM_AT)
-                markers.append(f"preempted-{marker_attempt or attempt}-{at}-{label}\n")
+                markers.append(f"{marker_kind}-{marker_attempt or attempt}-{at}-{label}\n")
             (tmp / "artifacts").write_text("".join(markers))
             (tmp / "step.sh").write_text(self.body)
             output = tmp / "output"
@@ -117,6 +118,41 @@ class NotifyGatingTest(unittest.TestCase):
         out = self.collect(["Sync gnosis (Flat) / sync"], [])
         self.assertEqual(out["should_page"], "true")
         self.assertEqual(out["failed_jobs"], "Sync gnosis (Flat) / sync")
+
+    def test_a_spot_exhausted_create_does_not_page(self):
+        out = self.collect(
+            ["Sync gnosis (Flat) / create_runner"],
+            ["f-1-master-gnosis"],
+            marker_kind="spot-exhausted",
+        )
+        self.assertEqual(out["should_page"], "false")
+
+    def test_a_real_failure_beside_a_spot_exhaustion_still_pages_alone(self):
+        out = self.collect(
+            ["Sync gnosis (Flat) / create_runner", "Sync mainnet (Flat) / sync"],
+            ["f-1-master-gnosis"],
+            marker_kind="spot-exhausted",
+        )
+        self.assertEqual(out["should_page"], "true")
+        self.assertEqual(out["failed_jobs"], "Sync mainnet (Flat) / sync")
+
+    def test_a_spot_exhaustion_marker_from_an_earlier_attempt_does_not_silence_a_rerun(self):
+        out = self.collect(
+            ["Sync gnosis (Flat) / create_runner"],
+            ["f-1-master-gnosis"],
+            attempt="2",
+            marker_attempt="1",
+            marker_kind="spot-exhausted",
+        )
+        self.assertEqual(out["should_page"], "true")
+
+    def test_an_unknown_marker_kind_silences_nothing(self):
+        out = self.collect(
+            ["Sync gnosis (Flat) / create_runner"],
+            ["f-1-master-gnosis"],
+            marker_kind="quota-exhausted",
+        )
+        self.assertEqual(out["should_page"], "true")
 
     def test_a_preempted_cell_alone_does_not_page(self):
         out = self.collect(["Sync mainnet (Flat) / sync"], ["f-1-master-mainnet"])
