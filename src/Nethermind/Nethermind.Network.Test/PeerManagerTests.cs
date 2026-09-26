@@ -586,6 +586,59 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1));
         }
 
+        [Test]
+        [NonParallelizable]
+        public async Task Will_agree_on_which_session_to_disconnect_when_incoming_and_outgoing_attach_concurrently()
+        {
+            // No hook exists between the attach check and the attach, so the race is run many times over.
+            const int attempts = 100;
+            await using Context ctx = new(parallelism: 1, maxActivePeers: attempts);
+            Session? incoming = null;
+            Task incomingAdded = Task.CompletedTask;
+            using Barrier start = new(2);
+            InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+            underlyingLogger.IsTrace.Returns(true);
+            // Releases the incoming session together with the dial's own session.
+            underlyingLogger
+                .When(static logger => logger.Trace(Arg.Is<string>(static text => text.StartsWith("CONNECTING TO"))))
+                .Do(_ =>
+                {
+                    Session session = incoming!;
+                    Volatile.Write(ref incomingAdded, Task.Run(() =>
+                    {
+                        start.SignalAndWait();
+                        ctx.RlpxPeer.CreateIncoming(session);
+                    }));
+                    start.SignalAndWait();
+                });
+            ILogger logger = new(underlyingLogger);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            logManager.GetClassLogger<PeerManager>().Returns(logger);
+            ctx.CreatePeerManager(logManager);
+
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            for (int attempt = 0; attempt < attempts; attempt++)
+            {
+                PublicKey remoteNodeId = new PrivateKeyGenerator().Generate().PublicKey;
+                incoming = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
+                {
+                    RemoteHost = "1.2.3.4",
+                    RemotePort = 12345,
+                    RemoteNodeId = remoteNodeId
+                };
+                ctx.TestNodeSource.AddNode(new Node(remoteNodeId, incoming.RemoteHost, incoming.RemotePort));
+                await ctx.RlpxPeer.WaitForConnectCallsAsync(attempt + 1, TimeSpan.FromMilliseconds(_delayLonger));
+                await Volatile.Read(ref incomingAdded);
+
+                Peer peer = ctx.PeerManager.ActivePeers.Single(p => p.Node.Id == remoteNodeId);
+                InitializeSessions(peer);
+                Assert.That(peer.InSession is not null && peer.OutSession is not null && peer.InSession.IsClosing != peer.OutSession.IsClosing,
+                    Is.True, $"attempt {attempt}: exactly one direction must be disconnected");
+            }
+        }
+
         private void AssertAgreedOnSessionToDisconnect(Context ctx, bool expectedOutSessionClosing)
         {
             Assert.That(() =>
