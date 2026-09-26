@@ -7,6 +7,8 @@ using System.Runtime.InteropServices;
 using Nethermind.Int256;
 using Nethermind.Zkvm.Abstractions;
 
+[assembly: InternalsVisibleTo("Nethermind.Core.ZkEvm.Test")]
+
 namespace Nethermind.Serialization.Ssz.Merkleization;
 
 public static partial class Merkle
@@ -81,6 +83,9 @@ public static partial class Merkle
         _hashPairAccelerator = hashPair;
         return true;
     }
+
+    /// <summary>Returns pair hashing to the SHA-256 accelerator, so a test's registration does not outlive it.</summary>
+    internal static unsafe void ResetHashPairAccelerator() => _hashPairAccelerator = null;
 
     /// <summary>SHA-256 of <c>ZeroHash(1) || ZeroHash(2)</c>.</summary>
     private static ReadOnlySpan<byte> HashOfZeroHashes1And2 =>

@@ -32,6 +32,9 @@ public class GuestMerkleTests
         ClearsParentFirst,
     }
 
+    [TearDown]
+    public void RestoreHashPairAccelerator() => Merkle.ResetHashPairAccelerator();
+
     [Test]
     public unsafe void Merkleize_hashes_through_an_accelerator_that_passes_the_check()
     {

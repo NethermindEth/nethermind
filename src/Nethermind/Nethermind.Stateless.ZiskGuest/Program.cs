@@ -28,7 +28,12 @@ partial class Program
     /// Nethermind.Serialization.Ssz: the SP1 and OpenVM guests link that assembly too and have no such symbol.
     /// </remarks>
     [ModuleInitializer]
-    internal static unsafe void UseSha256F() => Merkle.TryRegisterHashPairAccelerator(&HashPair);
+    internal static unsafe void UseSha256F()
+    {
+        // The precompile is always there on ZisK, so a refusal means a broken binding, which a silent fallback would hide.
+        if (!Merkle.TryRegisterHashPairAccelerator(&HashPair))
+            throw new InvalidOperationException("ZisK's SHA-256 compression binding failed its known-answer check.");
+    }
 
     /// <summary>Hashes the 64-byte concatenation of two chunks with SHA-256 into <paramref name="parent"/>, which may alias either chunk.</summary>
     /// <remarks>
