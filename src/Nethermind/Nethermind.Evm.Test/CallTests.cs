@@ -361,6 +361,43 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void Top_level_create_deployed_code_survives_a_later_nested_return()
+        {
+            byte[] runtimeCode = Prepare.EvmCode
+                .PushData(0x2a).PushData(0).Op(Instruction.MSTORE8)
+                .PushData(1).PushData(0).Op(Instruction.RETURN)
+                .Done;
+            byte[] initCode = Prepare.EvmCode.StoreDataInMemory(0, runtimeCode)
+                .RETURN(0, (UInt256)runtimeCode.Length)
+                .Done;
+            (Block block, Transaction deployTx) = PrepareInitTx(Activation, 100_000, initCode);
+            Address deployed = ContractAddress.From(Sender, deployTx.Nonce);
+            TestAllTracerWithOutput deployTracer = CreateTracer();
+            _processor.Execute(deployTx, new BlockExecutionContext(block.Header, Spec), deployTracer);
+
+            Address filler = TestItem.AddressC;
+            byte[] fillerOutput = Enumerable.Repeat((byte)0x99, runtimeCode.Length).ToArray();
+            TestState.CreateAccount(filler, UInt256.Zero);
+            TestState.InsertCode(filler,
+                Prepare.EvmCode.StoreDataInMemory(0, fillerOutput).RETURN(0, (UInt256)fillerOutput.Length).Done,
+                SpecProvider.GenesisSpec);
+
+            Assert.That(TestState.GetCode(deployed), Is.EqualTo(runtimeCode), "precondition: the create stores the returned bytes");
+
+            ExecuteDirect(Prepare.EvmCode
+                .CALL(100_000, filler, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .RETURN(0, (UInt256)runtimeCode.Length)
+                .Done);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deployTracer.StatusCode, Is.EqualTo(StatusCode.Success), "the deployment succeeds");
+                Assert.That(deployTracer.ReturnValue, Is.EqualTo(runtimeCode), "the tracer sees the deployed bytes");
+                Assert.That(TestState.GetCode(deployed), Is.EqualTo(runtimeCode), "later return staging must not rewrite stored code");
+            }
+        }
+
+        [Test]
         public void Tracer_can_retain_nested_return_output_after_later_sibling_return()
         {
             (Address largeTarget, Address smallTarget, byte[] largeOutput, byte[] smallOutput) = SetUpSiblingReturnTargets(false);

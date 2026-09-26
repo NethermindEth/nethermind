@@ -1711,8 +1711,9 @@ namespace Nethermind.Evm.TransactionProcessing
             if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
                 return false;
 
-            // Copy the bytes so it's not live memory that will be used in another tx.
-            return TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, executionDepositCost, stateDepositCost, substate.Output.ToArray());
+            // Top-level and create outputs are never staged in reusable return scratch, so the backing array is
+            // exclusive to this output and can be stored as the code without another copy.
+            return TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, executionDepositCost, stateDepositCost, substate.Output.AsReadOnlyArray());
         }
 
         private bool TryChargeCodeDeposit(
