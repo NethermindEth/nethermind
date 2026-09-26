@@ -215,6 +215,21 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_invalid_use_of_an_opcode_the_spec_defines_keeps_its_text()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        // PUSH1 0, PUSH1 0, PUSH1 0, APPROVE: APPROVE outside a frame transaction is a bad instruction.
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"0xc200000000000000000000000000000000000000","data":"0x01"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x600060006000aa"}}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("invalid instruction"), serialized);
+    }
+
+    [Test]
     public async Task Eth_call_stack_overflow_is_reported_with_the_standard_text()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));

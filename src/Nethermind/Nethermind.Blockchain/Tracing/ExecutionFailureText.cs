@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
@@ -15,7 +16,8 @@ namespace Nethermind.Blockchain.Tracing;
 /// <remarks>
 /// A failure the EVM describes the same way is reported as is. An invalid opcode, a stack underflow and a stack
 /// overflow name the failing operation and the stack depth, which a rerun with an operation tracer recovers, so a
-/// transaction that succeeds pays nothing for them. Every other failure has no such text and keeps its own.
+/// transaction that succeeds pays nothing for them. Every other failure has no such text and keeps its own, as does
+/// an invalid opcode the active spec defines and a rerun cut short by cancellation.
 /// </remarks>
 public static class ExecutionFailureText
 {
@@ -248,6 +250,10 @@ public static class ExecutionFailureText
         {
             return false;
         }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
 
         if (result.EvmExceptionType != failure || tracer.Opcode is not { } opcode || HasOperandDependentFailure(opcode))
             return false;
@@ -255,6 +261,9 @@ public static class ExecutionFailureText
         Operation? operation = Operations[opcode];
         switch (failure)
         {
+            // An opcode the active spec defines fails for reasons of its own, which the text would misname.
+            case EvmExceptionType.BadInstruction when opcode != (byte)Instruction.INVALID && VirtualMachine<EthereumGasPolicy>.IsDefined((Instruction)opcode, blockContext.Spec):
+                return false;
             case EvmExceptionType.BadInstruction:
                 text = operation is null ? $"invalid opcode: opcode 0x{opcode:x} not defined" : $"invalid opcode: {operation.Value.Name}";
                 return true;

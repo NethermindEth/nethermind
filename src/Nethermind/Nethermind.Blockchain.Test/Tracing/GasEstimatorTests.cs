@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -322,6 +323,24 @@ public class GasEstimatorTests
         {
             Assert.That(estimation.Error, Is.EqualTo($"{GasEstimator.GasExceedsAllowanceMsgPrefix} (20000)"), "a request below the base cost falls back to the block gas limit, then the gas cap");
             Assert.That(processor.GasLimits, Is.EqualTo(new[] { 20_000ul }));
+        }
+    }
+
+    [Test]
+    public void Failure_text_rerun_cut_short_by_cancellation_keeps_the_processor_text()
+    {
+        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
+            .Returns(_ => throw new OperationCanceledException());
+        BlockExecutionContext blockContext = new(Build.A.BlockHeader.TestObject, London.Instance);
+        string error = EvmExceptionType.BadInstruction.GetEvmExceptionDescription()!;
+
+        bool described = ExecutionFailureText.TryDescribe(processor, CreateCall(), in blockContext, EvmExceptionType.BadInstruction, error, CancellationToken.None, out string text);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(described, Is.False, "a cancelled rerun names no operation");
+            Assert.That(text, Is.EqualTo(error), "the processor's text is kept");
         }
     }
 

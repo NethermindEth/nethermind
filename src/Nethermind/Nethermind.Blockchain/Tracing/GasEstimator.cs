@@ -50,6 +50,7 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
         in BlockExecutionContext blockContext,
         ulong errorMargin = DefaultErrorMargin,
         ulong gasCap = 0,
+        FundedRunContext? fundedRun = null,
         CancellationToken token = default)
     {
         if (errorMargin >= MaxErrorMargin)
@@ -114,7 +115,7 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
             case RunStatus.Failed when !probe.OutOfGas:
                 return execution.TryDescribeFailure(hi, in probe, out string failureText)
                     ? GasEstimation.Failure(failureText)
-                    : ReportFailure(execution, tx, spec, probe, hi);
+                    : ReportFailure(execution, tx, fundedRun ?? new FundedRunContext(spec, null), probe, hi);
             case RunStatus.Failed:
             case RunStatus.FailedBelowGasLimitBounds:
                 return GasEstimation.Failure($"{GasExceedsAllowanceMsgPrefix} ({hi})");
@@ -163,10 +164,12 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
     /// when that run is below the intrinsic cost, or passes, the failure at the highest limit is reported as the
     /// processor described it.
     /// </remarks>
-    private GasEstimation ReportFailure(Execution execution, Transaction tx, IReleaseSpec spec, in Run probe, ulong hi)
+    private GasEstimation ReportFailure(Execution execution, Transaction tx, FundedRunContext fundedRun, in Run probe, ulong hi)
     {
-        ulong fundedGasLimit = FundedGasLimit(tx, spec);
-        Run funded = fundedGasLimit == hi ? probe : execution.Run(fundedGasLimit);
+        ulong fundedGasLimit = FundedGasLimit(tx, fundedRun.Spec);
+        Run funded = fundedGasLimit == hi && fundedRun.MaxFeePerBlobGas is null
+            ? probe
+            : execution.Run(fundedGasLimit, fundedRun.MaxFeePerBlobGas);
         string processorError = probe.TracerError ?? TransactionExecutionFails;
 
         return funded switch
@@ -276,9 +279,11 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
             return txClone;
         }
 
-        public Run Run(ulong gasLimit)
+        public Run Run(ulong gasLimit, UInt256? maxFeePerBlobGas = null)
         {
             Transaction txClone = CloneWithGasLimit(gasLimit);
+            if (maxFeePerBlobGas is not null)
+                txClone.MaxFeePerBlobGas = maxFeePerBlobGas;
 
             _tracer.ResetRun();
             TransactionResult result;
@@ -368,6 +373,11 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
         }
     }
 }
+
+/// <summary>How a failure without standard text is reported.</summary>
+/// <param name="Spec">The spec the funded gas limit's blob fee is gated by.</param>
+/// <param name="MaxFeePerBlobGas">The blob fee cap the run at the funded gas limit uses in place of the request's, if any.</param>
+public readonly record struct FundedRunContext(IReleaseSpec Spec, UInt256? MaxFeePerBlobGas);
 
 /// <summary>The outcome of a gas estimation.</summary>
 /// <param name="Gas">The estimated gas limit; zero on failure.</param>

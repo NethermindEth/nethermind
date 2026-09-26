@@ -477,6 +477,22 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("gas required exceeds allowance (50000)"), serialized);
     }
 
+    [Test]
+    public async Task Estimate_gas_invalid_use_of_an_opcode_the_spec_defines_keeps_its_report()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        ulong blockGasLimit = ctx.Test.BlockTree.Head!.GasLimit;
+        // PUSH1 0, PUSH1 0, PUSH1 0, APPROVE: APPROVE outside a frame transaction is a bad instruction.
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"0xc200000000000000000000000000000000000000","data":"0x01"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xc200000000000000000000000000000000000000":{"code":"0x600060006000aa"}}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo($"failed with {blockGasLimit} gas: invalid instruction"), serialized);
+    }
+
     private static async Task<string> EstimateGasAgainstCode(string code, ulong? gas)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
@@ -983,6 +999,31 @@ public partial class EthRpcModuleTests
 
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""{"jsonrpc":"2.0","result":"0x5208","id":67}""")).Using(JToken.EqualityComparer),
             "no blob fee cap adds nothing to the cost and runs at a zero blob base fee");
+    }
+
+    [Test]
+    public async Task Eth_estimateGas_blob_transaction_without_blob_fee_cap_names_a_failure_without_standard_text_at_the_funded_gas()
+    {
+        ISpecProvider specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
+        Block[] blocks = [Build.A.Block.WithNumber(0).WithGasLimit(30_000_000).WithExcessBlobGas(1ul).TestObject];
+        BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
+        using TestRpcBlockchain test = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithBlockFinder(blockTree)
+            .Build(specProvider);
+
+        // APPROVE outside a frame transaction is a bad instruction without standard text; 100000 gwei funds
+        // exactly 100000 gas at 1 gwei.
+        object? transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0xa9Ac1233699BDae25abeBae4f9Fb54DbB1b44700","to":"0xc200000000000000000000000000000000000000","type":"0x3","maxFeePerGas":"0x3b9aca00","maxPriorityFeePerGas":"0x0","data":"0x01","blobVersionedHashes":["0x0122000000000000000000000000000000000000000000000000000000000000"]}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xa9ac1233699bdae25abebae4f9fb54dbb1b44700":{"balance":"0x5af3107a4000","nonce":"0x0"},"0xc200000000000000000000000000000000000000":{"code":"0x600060006000aa"}}""");
+
+        string serialized = await test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
+            Is.EqualTo("failed with 100000 gas: insufficient funds for gas * price + value: address 0xa9Ac1233699BDae25abeBae4f9Fb54DbB1b44700 have 100000000000000 want 100000000131072"),
+            $"the funded run fills the blob fee cap with the next block's blob base fee of 1: {serialized}");
     }
 
     [Test]
