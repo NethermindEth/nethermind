@@ -1227,14 +1227,17 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_estimateGas_fee_cap_below_the_priority_fee_is_still_rejected_as_input()
+    public async Task Eth_estimateGas_fee_cap_below_the_priority_fee_fails_before_any_gas_is_bought()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas",
             TipFeeRequest("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}"""), "latest", TipFeeState(OneEtherBalance));
 
-        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("maxFeePerGas (10) < maxPriorityFeePerGas (1000000000)"), serialized);
+        string sender = new Address(TipFeeSender).ToString(withEip55Checksum: true);
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(),
+            Is.EqualTo($"failed with {TipFeeGas} gas: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 1000000000, maxFeePerGas: 10"),
+            serialized);
     }
 
     private static readonly UInt256 SuggestedPriorityFee = 2_000_000_000;
