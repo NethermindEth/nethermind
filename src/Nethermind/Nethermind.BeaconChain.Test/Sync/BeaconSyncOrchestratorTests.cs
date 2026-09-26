@@ -415,6 +415,8 @@ public partial class BeaconSyncOrchestratorTests
 
         public List<object> GossipOperations { get; } = [];
 
+        private readonly HashSet<Hash256> _deferred = [];
+
         public List<(ulong Slot, Hash256 Root, bool VerifySignatures)> Imports { get; } = [];
         public List<ulong> Ticks { get; } = [];
         public List<(Hash256 Root, Hash256? LatestValidHash)> InvalidatedPayloads { get; } = [];
@@ -431,14 +433,23 @@ public partial class BeaconSyncOrchestratorTests
         public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
         {
             Imports.Add((block.Slot, blockRoot, verifySignatures));
+            _deferred.Remove(blockRoot);
             if (Known.Contains(blockRoot)) return BlockImportResult.AlreadyKnown;
-            if (!Known.Contains(block.ParentRoot)) return BlockImportResult.UnknownParent;
-            if (UnverifiedPayloads.Contains(block.ParentRoot)) return BlockImportResult.ParentPayloadUnverified;
+            if (!Known.Contains(block.ParentRoot)) return _deferred.Contains(block.ParentRoot) ? Defer(blockRoot) : BlockImportResult.UnknownParent;
+            if (UnverifiedPayloads.Contains(block.ParentRoot)) return Defer(blockRoot);
             if (Unavailable.Contains(blockRoot)) return BlockImportResult.DataUnavailable;
             if (Forged.Contains(blockRoot)) return BlockImportResult.Invalid;
             if (EngineDown.Contains(blockRoot)) return BlockImportResult.EngineUnavailable;
             Known.Add(blockRoot);
             return BlockImportResult.Imported;
+        }
+
+        /// <summary>As the real importer: a signed block is deferred, and a child of a deferred block is deferred too.</summary>
+        private BlockImportResult Defer(Hash256 blockRoot)
+        {
+            if (Forged.Contains(blockRoot)) return BlockImportResult.Invalid;
+            _deferred.Add(blockRoot);
+            return BlockImportResult.ParentPayloadUnverified;
         }
 
         public ExecutionPayloadEnvelopeImportResult ImportEnvelope(SignedExecutionPayloadEnvelope envelope)

@@ -37,8 +37,9 @@ public enum BlockImportResult
     /// <summary>
     /// The block builds on its parent's full payload, whose envelope is not yet verified
     /// (specs/gloas/fork-choice.md <c>on_block</c>: <c>is_parent_node_full</c> requires
-    /// <c>is_payload_verified</c>). The block is not invalid and nothing about it has been recorded;
-    /// retry it once that envelope imports. Its proposer and proposer signature are verified first.
+    /// <c>is_payload_verified</c>), or on a parent that is itself deferred for that reason. The block is
+    /// not invalid and fork choice has not recorded it; retry it once that envelope imports. Its proposer
+    /// and proposer signature are verified first.
     /// </summary>
     ParentPayloadUnverified,
 }

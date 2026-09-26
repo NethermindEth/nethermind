@@ -56,6 +56,9 @@ public sealed class BlockImporter : IBlockImporter
     private static readonly StringLabel GossipAggregateRejected = new("gossip_aggregate");
     private static readonly StringLabel GossipAttesterSlashingRejected = new("gossip_attester_slashing");
 
+    /// <summary>Covers the orchestrator's retry set and gossip hold queue, 128 blocks each.</summary>
+    private const int MaxDeferredBlocks = 256;
+
     private readonly BeaconChainSpec _spec;
     private readonly BeaconChainStore _store;
     private readonly PubkeyCache _pubkeys;
@@ -75,6 +78,12 @@ public sealed class BlockImporter : IBlockImporter
     /// <summary>Imported-but-not-finalized block roots and their slots, for store pruning at finalization.</summary>
     private readonly Dictionary<Hash256, ulong> _unfinalized = [];
 
+    /// <summary>
+    /// Blocks last answered <see cref="BlockImportResult.ParentPayloadUnverified"/>, keyed by root, with the nearest ancestor fork
+    /// choice holds, whose state checked their proposer; bounded by <see cref="MaxDeferredBlocks"/> and pruned at finalization.
+    /// </summary>
+    private readonly Dictionary<Hash256, DeferredBlock> _deferred = [];
+
     private EpochCache _lineageCache = new() { Hasher = new CachedBeaconStateHasher() };
 
     /// <summary>Whether the current lineage head block is the first block of its epoch (its post-state is then a checkpoint-root candidate).</summary>
@@ -87,6 +96,8 @@ public sealed class BlockImporter : IBlockImporter
     private Hash256? _gloasLineageRoot;
 
     private EpochCache _gloasLineageCache = new();
+
+    private readonly record struct DeferredBlock(Hash256 AncestorRoot, ulong Slot);
 
     /// <param name="isEnvelopeDataAvailable">The Gloas <c>is_data_available</c> an execution payload envelope is checked against; see <see cref="ExecutionPayloadEnvelopeImporter"/>.</param>
     /// <param name="clock">The node's slot clock; a block after its current slot (within <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>) is refused.</param>
@@ -164,10 +175,18 @@ public sealed class BlockImporter : IBlockImporter
     /// <inheritdoc/>
     public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
     {
+        // Recorded again only if this attempt defers it too.
+        if (_deferred.Count > 0)
+        {
+            _deferred.Remove(blockRoot);
+        }
+
         if (_runner.ContainsBlock(blockRoot))
         {
             return BlockImportResult.AlreadyKnown;
         }
+
+        long receivedMs = _clock.UnixMilliseconds;
 
         // Refused before any engine call or state copy: fork choice would refuse the shape only after the transition ran.
         if (SignedBeaconBlockCodec.IsGloasSlot(block.Slot, _spec) != block is ForkedSignedBeaconBlock.OfGloas)
@@ -178,7 +197,9 @@ public sealed class BlockImporter : IBlockImporter
 
         if (!_runner.ContainsBlock(block.ParentRoot))
         {
-            return BlockImportResult.UnknownParent;
+            return verifySignatures && block is ForkedSignedBeaconBlock.OfGloas gloasChild && _deferred.TryGetValue(block.ParentRoot, out DeferredBlock deferredParent)
+                ? DeferBehindDeferredParent(gloasChild.Block, blockRoot, deferredParent)
+                : BlockImportResult.UnknownParent;
         }
 
         if (CheckBeforeTransition(block.Slot, block.ParentRoot) is { } refusal)
@@ -189,8 +210,8 @@ public sealed class BlockImporter : IBlockImporter
 
         return block switch
         {
-            ForkedSignedBeaconBlock.OfFulu fulu => ImportFulu(fulu.Block, blockRoot, verifySignatures),
-            ForkedSignedBeaconBlock.OfGloas gloas => ImportGloas(gloas, blockRoot, verifySignatures),
+            ForkedSignedBeaconBlock.OfFulu fulu => ImportFulu(fulu.Block, blockRoot, verifySignatures, receivedMs),
+            ForkedSignedBeaconBlock.OfGloas gloas => ImportGloas(gloas, blockRoot, verifySignatures, receivedMs),
             _ => throw new NotSupportedException($"Unhandled block {block.GetType().Name}"),
         };
     }
@@ -203,7 +224,7 @@ public sealed class BlockImporter : IBlockImporter
     /// <returns>Why the block is refused, or <c>null</c>.</returns>
     /// <remarks>
     /// The current slot is the node's clock, allowing <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c> as gossip does, never
-    /// fork-choice time: <see cref="OnSlotTick"/> advances that to the block's own slot before <c>OnBlock</c>.
+    /// fork-choice time: <see cref="TickToClock"/> advances that to at least the block's own slot before <c>OnBlock</c>.
     /// </remarks>
     private string? CheckBeforeTransition(ulong slot, Hash256 parentRoot)
     {
@@ -241,7 +262,7 @@ public sealed class BlockImporter : IBlockImporter
         return slot > parentSlot ? null : $"the block is not after its parent's slot {parentSlot}";
     }
 
-    private BlockImportResult ImportFulu(SignedBeaconBlock signedBlock, Hash256 blockRoot, bool verifySignatures)
+    private BlockImportResult ImportFulu(SignedBeaconBlock signedBlock, Hash256 blockRoot, bool verifySignatures, long receivedMs)
     {
         BeaconBlock block = signedBlock.Message!;
         Hash256 parentRoot = block.ParentRoot!;
@@ -324,7 +345,7 @@ public sealed class BlockImporter : IBlockImporter
 
         // The transition hook already drove engine_newPayload; an INVALID verdict made Apply throw.
         ExecutionStatus executionStatus = verdict.Status;
-        OnSlotTick(block.Slot); // a timely gossip block can be marginally ahead of the last tick
+        TickToClock(block.Slot, receivedMs);
 
         // Already confirmed available above; this is a harmless backstop for a caller of OnBlock
         // that does not pre-check (the consensus-spec vector harness calls it directly).
@@ -369,7 +390,7 @@ public sealed class BlockImporter : IBlockImporter
     }
 
     /// <summary>The Gloas <c>on_block</c> with its state transition; every fallible step runs before anything is stored.</summary>
-    private BlockImportResult ImportGloas(ForkedSignedBeaconBlock.OfGloas forked, Hash256 blockRoot, bool verifySignatures)
+    private BlockImportResult ImportGloas(ForkedSignedBeaconBlock.OfGloas forked, Hash256 blockRoot, bool verifySignatures, long receivedMs)
     {
         SignedBeaconBlockGloas signedBlock = forked.Block;
         BeaconBlockGloas block = signedBlock.Message!;
@@ -379,7 +400,7 @@ public sealed class BlockImporter : IBlockImporter
         bool parentPayloadUnverified = _runner.IsParentNodeFull(block) && !_runner.IsPayloadVerified(parentRoot);
         if (parentPayloadUnverified && verifySignatures)
         {
-            return DeferForParentPayload(signedBlock, blockRoot);
+            return DeferForParentPayload(signedBlock, blockRoot, parentRoot, parentDeferred: false);
         }
 
         ulong parentSlot = _runner.GetBlockSlot(parentRoot)!.Value;
@@ -420,7 +441,7 @@ public sealed class BlockImporter : IBlockImporter
             _runner.OnExecutionPayloadVerified(parentRoot);
         }
 
-        OnSlotTick(block.Slot);
+        TickToClock(block.Slot, receivedMs);
         try
         {
             _runner.OnBlock(signedBlock, postState);
@@ -434,7 +455,7 @@ public sealed class BlockImporter : IBlockImporter
         // Only after OnBlock: the Gloas tier must hold states of blocks fork choice accepted (the spec's store.block_states).
         bool startsEpoch = block.Slot % _spec.SlotsPerEpoch == 0;
         _states.RetainGloas(blockRoot, postState, checkpointCandidate: startsEpoch);
-        if (gloasParent is not null && !startsEpoch && _spec.GetEpoch(block.Slot) > _spec.GetEpoch(parentSlot))
+        if (gloasParent is not null && _spec.GetEpoch(block.Slot) > _spec.GetEpoch(parentSlot) + (startsEpoch ? 1UL : 0UL))
         {
             // The parent is the checkpoint block of every epoch whose start slot this block skipped.
             _states.RetainGloas(parentRoot, gloasParent, checkpointCandidate: true);
@@ -451,43 +472,45 @@ public sealed class BlockImporter : IBlockImporter
 
     /// <summary>
     /// Answers <see cref="BlockImportResult.ParentPayloadUnverified"/> for a block whose full parent's payload is not
-    /// verified, once its proposer and proposer signature check out against the parent's post-state.
+    /// verified, or whose parent is itself deferred, once its proposer and proposer signature check out against the
+    /// post-state of <paramref name="ancestorRoot"/>, the nearest ancestor fork choice holds.
     /// </summary>
     /// <remarks>
-    /// A deferred block waits in a bounded retry set and is marked seen for its (slot, proposer), so an unsigned
+    /// A deferred block waits in a bounded queue and is marked seen for its (slot, proposer), so an unsigned
     /// one must be refused here or it could crowd out the real block. The proposer domain is the one the block's
-    /// own pre-state has: its fork version is fixed for every epoch from the parent's on. Past the parent's
-    /// lookahead window the proposer is read from a copy of the parent's post-state advanced by <c>process_slots</c>,
-    /// the pre-state the block's own transition starts from; the clock check has already bounded that distance.
+    /// own pre-state has: its fork version is fixed for every epoch from the ancestor's on. Past the ancestor's
+    /// lookahead window the proposer of a child of the ancestor is read from a copy of the ancestor's post-state advanced
+    /// by <c>process_slots</c>, the pre-state the block's own transition starts from; the clock check has already bounded
+    /// that distance. A block with deferred blocks in between is not deferred there: their RANDAO reveals feed the seed
+    /// of that lookahead, and their states are not held.
     /// </remarks>
-    private BlockImportResult DeferForParentPayload(SignedBeaconBlockGloas signedBlock, Hash256 blockRoot)
+    private BlockImportResult DeferForParentPayload(SignedBeaconBlockGloas signedBlock, Hash256 blockRoot, Hash256 ancestorRoot, bool parentDeferred)
     {
         BeaconBlockGloas block = signedBlock.Message!;
         // A full parent whose payload is unverified is a Gloas block: a known Fulu block counts as verified.
-        if (_states.GetGloasBlockState(block.ParentRoot!) is not { } parentState)
+        if (_states.GetGloasBlockState(ancestorRoot) is not { } ancestorState)
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot import block at slot {block.Slot}: the post-state of its parent {block.ParentRoot} is no longer retained");
+            if (_logger.IsWarn) _logger.Warn($"Cannot import block at slot {block.Slot}: the post-state of its ancestor {ancestorRoot} is no longer retained");
             return BlockImportResult.UnknownParent;
         }
 
-        string? refusal = null;
+        string? refusal;
         try
         {
-            BeaconStateGloas proposerState = parentState;
-            if (BeaconStateAccessors.ComputeEpochAtSlot(block.Slot) > parentState.GetCurrentEpoch() + 1)
+            BeaconStateGloas proposerState = ancestorState;
+            if (BeaconStateAccessors.ComputeEpochAtSlot(block.Slot) > ancestorState.GetCurrentEpoch() + 1)
             {
-                proposerState = parentState.Clone();
+                if (parentDeferred)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Not deferring block {blockRoot} at slot {block.Slot}: it is past the proposer lookahead of its ancestor {ancestorRoot}");
+                    return BlockImportResult.UnknownParent;
+                }
+
+                proposerState = ancestorState.Clone();
                 GloasSlotProcessing.ProcessSlots(proposerState, block.Slot);
             }
 
-            if (!IsInLookahead(proposerState.GetCurrentEpoch(), proposerState.ProposerLookahead!, block.Slot, block.ProposerIndex))
-            {
-                refusal = $"proposer {block.ProposerIndex} is not the expected proposer";
-            }
-            else if (!GloasBlockProcessing.VerifyProposerSignature(proposerState, signedBlock, _pubkeys))
-            {
-                refusal = "invalid proposer signature";
-            }
+            refusal = CheckProposal(signedBlock, proposerState);
         }
         catch (BeaconStateException e)
         {
@@ -500,8 +523,47 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.Invalid;
         }
 
-        if (_logger.IsDebug) _logger.Debug($"Deferring block {blockRoot} at slot {block.Slot}: the payload of its full parent {block.ParentRoot} is not verified");
+        if (_deferred.Count < MaxDeferredBlocks)
+        {
+            _deferred[blockRoot] = new DeferredBlock(ancestorRoot, block.Slot);
+        }
+
+        if (_logger.IsDebug) _logger.Debug($"Deferring block {blockRoot} at slot {block.Slot}: a payload it builds on is not verified");
         return BlockImportResult.ParentPayloadUnverified;
+    }
+
+    /// <summary>The deferral of a Gloas block whose parent is deferred too, after the <c>on_block</c> checks that precede its transition.</summary>
+    private BlockImportResult DeferBehindDeferredParent(SignedBeaconBlockGloas signedBlock, Hash256 blockRoot, DeferredBlock parent)
+    {
+        ulong slot = signedBlock.Message!.Slot;
+        string? refusal = CheckBeforeTransition(slot, parent.AncestorRoot) ?? (slot > parent.Slot ? null : $"the block is not after its parent's slot {parent.Slot}");
+        if (refusal is not null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {slot} before its state transition: {refusal}");
+            return BlockImportResult.Invalid;
+        }
+
+        return DeferForParentPayload(signedBlock, blockRoot, parent.AncestorRoot, parentDeferred: true);
+    }
+
+    /// <summary>Checks the block's proposer against the lookahead of <paramref name="state"/> and its proposer signature under that state's domain.</summary>
+    /// <returns>Why the proposal is refused, or <c>null</c>.</returns>
+    private string? CheckProposal(SignedBeaconBlockGloas signedBlock, BeaconStateGloas state)
+    {
+        BeaconBlockGloas block = signedBlock.Message!;
+        try
+        {
+            if (!IsInLookahead(state.GetCurrentEpoch(), state.ProposerLookahead!, block.Slot, block.ProposerIndex))
+            {
+                return $"proposer {block.ProposerIndex} is not the expected proposer";
+            }
+
+            return GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, _pubkeys) ? null : "invalid proposer signature";
+        }
+        catch (BeaconStateException e)
+        {
+            return e.Message;
+        }
     }
 
     /// <inheritdoc/>
@@ -530,6 +592,22 @@ public sealed class BlockImporter : IBlockImporter
         }
 
         return result;
+    }
+
+    /// <summary>Advances fork-choice time to the node's clock when the block reached the importer, before <c>on_block</c>, whose proposer boost and <c>record_block_timeliness</c> read <c>store.time</c>.</summary>
+    /// <remarks>
+    /// The spec's <c>on_block</c> runs at the <c>store.time</c> of the last tick before it, so the node's own state
+    /// transition and <c>engine_newPayload</c> latency do not count as block lateness. Never below
+    /// <paramref name="blockSlot"/>'s start: a block up to <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c> early must still pass the current-slot check.
+    /// </remarks>
+    private void TickToClock(ulong blockSlot, long receivedMs)
+    {
+        ulong now = _runner.GenesisTime + (ulong)Math.Max(0L, receivedMs - _clock.SlotStartMilliseconds(0)) / 1000;
+        ulong time = Math.Max(now, _runner.GenesisTime + blockSlot * _spec.SecondsPerSlot);
+        if (time > _runner.Time)
+        {
+            _runner.OnTick(time);
+        }
     }
 
     /// <inheritdoc/>
@@ -591,6 +669,13 @@ public sealed class BlockImporter : IBlockImporter
 
         _runner.Prune();
         PruneStore(finalizedSlot);
+        foreach ((Hash256 root, DeferredBlock deferred) in _deferred)
+        {
+            if (deferred.Slot <= finalizedSlot)
+            {
+                _deferred.Remove(root);
+            }
+        }
     }
 
     /// <inheritdoc/>

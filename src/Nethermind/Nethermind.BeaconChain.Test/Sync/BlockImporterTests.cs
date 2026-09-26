@@ -162,7 +162,7 @@ public class BlockImporterTests
     /// <summary>
     /// specs/phase0/fork-choice.md <c>on_block</c> asserts <c>get_current_slot(store) &gt;= block.slot</c> before
     /// <c>state_transition</c>, whose <c>process_slots</c> is linear in the slot distance. The current slot is the node's
-    /// clock with <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>; fork-choice time is ticked to the block's own slot on import, so
+    /// clock with <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>; fork-choice time is ticked to the clock, never below the block's own slot, on import, so
     /// only the clock can refuse a block from the future, and a block the clock has reached (any older block) still imports.
     /// </summary>
     [TestCase(1UL, GossipRouter.MaximumGossipClockDisparityMs + 1, BlockImportResult.Invalid)]
@@ -185,6 +185,38 @@ public class BlockImporterTests
         {
             Assert.That(result, Is.EqualTo(expected));
             Assert.That(warnings.Warnings.Any(w => w.Contains("before its state transition")), Is.EqualTo(expected == BlockImportResult.Invalid));
+        }
+    }
+
+    /// <summary>
+    /// specs/phase0/fork-choice.md <c>on_block</c> reads timeliness from <c>store.time</c>, which follows the node's clock: only a
+    /// block of the current slot that arrives before <c>get_attestation_due_ms</c> (<c>ATTESTATION_DUE_BPS</c>, 3999 ms into a
+    /// 12 s slot) is timely and takes the proposer boost. With no boost set before the import, a boost still unset after it
+    /// means the block was recorded not timely. The node's own <c>engine_newPayload</c> latency is not lateness of the block,
+    /// and <c>store.time</c> is whole seconds, so the fraction of a second past the last whole second never makes a block late.
+    /// </summary>
+    [TestCase(1UL, 1000L, 0UL, true)]
+    [TestCase(1UL, 3500L, 0UL, true)]
+    [TestCase(1UL, 3999L, 0UL, true)]
+    [TestCase(1UL, 4000L, 0UL, false)]
+    [TestCase(1UL, 5000L, 0UL, false)]
+    [TestCase(2UL, 1000L, 0UL, false)]
+    [TestCase(1UL, 1000L, 4UL, true)]
+    public void Proposer_boost_follows_the_clock_at_import(ulong clockSlot, long msIntoSlot, ulong newPayloadSeconds, bool boosted)
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        ForkChoiceSnapshotHolder snapshots = new();
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + clockSlot * chain.Spec.SecondsPerSlot).AddMilliseconds(msIntoSlot));
+        SlotClock clock = new(chain.Spec, timestamper);
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool(), engine: new SlowPayloadEngine(timestamper, TimeSpan.FromSeconds(newPayloadSeconds)), forkChoiceSnapshots: snapshots, importClock: clock);
+
+        BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+        importer.ComputeHead();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(snapshots.Current!.ProposerBoostRoot, Is.EqualTo(boosted ? chain.BlockRoot : Hash256.Zero));
         }
     }
 
@@ -601,6 +633,24 @@ public class BlockImporterTests
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
         {
             HasAnsweredNewPayload = true;
+            return ExecutionStatus.Valid;
+        }
+    }
+
+    /// <summary>Answers VALID after advancing the node's clock by <paramref name="latency"/>: an execution layer slow to verify the payload.</summary>
+    private sealed class SlowPayloadEngine(ManualTimestamper timestamper, TimeSpan latency) : IEngineDriver
+    {
+        public SignedBeaconBlock? CurrentBlock { get; set; }
+
+        public bool HasAnsweredNewPayload { get; private set; }
+
+        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
+            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
+
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
+        {
+            HasAnsweredNewPayload = true;
+            timestamper.Add(latency);
             return ExecutionStatus.Valid;
         }
     }
