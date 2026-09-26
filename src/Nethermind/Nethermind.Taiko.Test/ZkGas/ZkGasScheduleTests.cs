@@ -12,31 +12,18 @@ using NUnit.Framework;
 namespace Nethermind.Taiko.Test.ZkGas;
 
 /// <summary>
-/// Pins the Unzen ZK gas constants and covers <see cref="ZkGasSchedule.BuildOpcodeTable"/> and
+/// Pins the Unzen ZK gas defaults and covers <see cref="ZkGasSchedule.BuildOpcodeTable"/> and
 /// <see cref="ZkGasSchedule.BuildPrecompileTable"/>, the resolvers that turn sparse chainspec
-/// entries into runtime tables. The recalibrated default tables themselves no longer live in
-/// code — they ride on the chainspec (see <see cref="ZkGasTestSchedules"/> for the test-side
-/// mirror of the alethia values).
+/// entries into runtime multiplier tables. See <see cref="ZkGasTestSchedules"/> for the
+/// test-side mirror of the schedule values shipped in <c>Chains/taiko-alethia.json</c>.
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 public class ZkGasScheduleTests
 {
     [Test]
-    public void Chain_ids_are_pinned()
-    {
-        Assert.That(ZkGasSchedule.TaikoMainnetChainId, Is.EqualTo(167_000UL));
-        Assert.That(ZkGasSchedule.TaikoDevnetChainId, Is.EqualTo(167_001UL));
-        Assert.That(ZkGasSchedule.TaikoMasayaChainId, Is.EqualTo(167_011UL));
-        Assert.That(ZkGasSchedule.TaikoHoodiChainId, Is.EqualTo(167_013UL));
-    }
-
-    [Test]
-    public void Block_zk_gas_limits_are_pinned()
-    {
+    public void Block_zk_gas_limit_is_pinned() =>
         Assert.That(ZkGasSchedule.BlockZkGasLimit, Is.EqualTo(100_000_000UL));
-        Assert.That(ZkGasSchedule.MasayaBlockZkGasLimit, Is.EqualTo(1_000_000_000UL));
-    }
 
     [Test]
     public void Meter_default_ctor_uses_canonical_block_limit()
@@ -46,10 +33,11 @@ public class ZkGasScheduleTests
     }
 
     [Test]
-    public void Meter_honors_explicit_masaya_limit()
+    public void Meter_honors_explicit_block_limit()
     {
-        ZkGasMeter meter = new(ZkGasSchedule.MasayaBlockZkGasLimit);
-        Assert.That(meter.BlockZkGasLimit, Is.EqualTo(ZkGasSchedule.MasayaBlockZkGasLimit));
+        const ulong customLimit = 1_000_000_000UL;
+        ZkGasMeter meter = new(customLimit);
+        Assert.That(meter.BlockZkGasLimit, Is.EqualTo(customLimit));
     }
 
     // ── opcode table resolution ──────────────────────────────────────────────
@@ -129,18 +117,16 @@ public class ZkGasScheduleTests
         Assert.That(resolved[Address.FromNumber(0x10001)], Is.EqualTo((ushort)200));
     }
 
-    [TestCase("not-an-address")]
-    [TestCase("0xZZZZ")]
-    public void BuildPrecompileTable_rejects_malformed_address(string addressHex)
+    [Test]
+    public void BuildPrecompileTable_rejects_malformed_address([Values("not-an-address", "0xZZZZ")] string addressHex)
     {
         Dictionary<string, long> entries = new() { [addressHex] = 1 };
         Assert.That(() => ZkGasSchedule.BuildPrecompileTable(entries),
             Throws.TypeOf<InvalidConfigurationException>());
     }
 
-    [TestCase(-1L)]
-    [TestCase(65536L)]
-    public void BuildPrecompileTable_rejects_out_of_range_multiplier(long multiplier)
+    [Test]
+    public void BuildPrecompileTable_rejects_out_of_range_multiplier([Values(-1L, 65536L)] long multiplier)
     {
         Dictionary<string, long> entries =
             new() { ["0x0000000000000000000000000000000000000001"] = multiplier };

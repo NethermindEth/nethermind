@@ -16,8 +16,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         private readonly IBlockTree _blockTree;
         private readonly bool _includeTransactions;
-        private readonly ISpecProvider _specProvider;
-
+        private readonly NewHeadPayloadCache _payloads;
 
         [ConstructorWithSideEffect]
         public NewHeadSubscription(
@@ -25,13 +24,25 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             IBlockTree? blockTree,
             ILogManager? logManager,
             ISpecProvider specProvider,
+            IBlockForRpcFactory blockForRpcFactory,
             TransactionsOption? options = null)
-            : base(jsonRpcDuplexClient)
+            : this(jsonRpcDuplexClient, blockTree, logManager, new NewHeadPayloadCache(specProvider, blockForRpcFactory), options)
+        {
+        }
+
+        [ConstructorWithSideEffect]
+        internal NewHeadSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            IBlockTree? blockTree,
+            ILogManager? logManager,
+            NewHeadPayloadCache payloads,
+            TransactionsOption? options = null)
+            : base(jsonRpcDuplexClient, MaxQueuedBlocks)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<NewHeadSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _includeTransactions = options?.IncludeTransactions ?? false;
-            _specProvider = specProvider;
+            _payloads = payloads;
 
             _blockTree.BlockAddedToMain += OnBlockAddedToMain;
             if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track BlockAddedToMain");
@@ -39,7 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => ScheduleAction(async () =>
         {
-            using JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
+            using JsonRpcResult result = CreateSubscriptionMessage(_payloads.Get(e.Block, _includeTransactions));
             await JsonRpcDuplexClient.SendJsonRpcResult(result);
             if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
         });

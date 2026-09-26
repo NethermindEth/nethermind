@@ -25,7 +25,7 @@ public class Eip8298Tests : VirtualMachineTestsBase
     private static readonly Address Source = TestItem.AddressC;
     private static readonly byte[] SourceCode = Prepare.EvmCode.PushData(1).PushData(2).Op(Instruction.ADD).STOP().Done;
 
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
     protected override ISpecProvider SpecProvider => new TestSpecProvider(new Amsterdam { IsEip8298Enabled = true });
 
@@ -113,7 +113,7 @@ public class Eip8298Tests : VirtualMachineTestsBase
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
     }
 
-    private static long ColdGas => GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.SetCodeFromBase + GasCostOf.ColdAccountAccess;
+    private static ulong ColdGas => GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.SetCodeFromBase + Eip8038Constants.ColdAccountAccess;
 
     [Test]
     public void ColdSource_ChargesBasePlusColdAccess()
@@ -141,7 +141,7 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
     public class Eip8298DisabledTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+        protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
         protected override ISpecProvider SpecProvider => new TestSpecProvider(new Amsterdam { IsEip8298Enabled = false });
 

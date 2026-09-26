@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -20,21 +22,23 @@ public class BranchProcessor(
     IBlockProcessor blockProcessor,
     ISpecProvider specProvider,
     IWorldState stateProvider,
-    IBeaconBlockRootHandler beaconBlockRootHandler,
     IBlockhashProvider blockhashProvider,
+    IInclusionListSatisfactionChecker inclusionListSatisfactionChecker,
     ILogManager logManager,
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
-    private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
-    private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
+
+    public event EventHandler<BlockExecutedEventArgs>? BlockExecuted;
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
+
+    public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted;
 
     public event EventHandler<BlockEventArgs>? BlockProcessing;
 
@@ -44,11 +48,17 @@ public class BranchProcessor(
         stateProvider.CommitTree(block.Number);
     }
 
+    private IDisposable BeginTargetScope(Block targetBlock) => stateProvider.BeginScopeAtTarget(targetBlock.Header);
+
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
 
         Block suggestedBlock = suggestedBlocks[0];
+        // The scope is opened at the target's parent, but baseBlock still selects the prewarmed caches, so an
+        // inconsistent pair would warm one state and execute another without any other symptom.
+        Debug.Assert(suggestedBlock.IsGenesis ? baseBlock is null : baseBlock?.Hash == suggestedBlock.ParentHash,
+            "baseBlock must be the parent of the first suggested block");
 
         IDisposable? worldStateCloser = null;
         if (stateProvider.IsInScope)
@@ -67,11 +77,15 @@ public class BranchProcessor(
         }
         else
         {
-            worldStateCloser = stateProvider.BeginScope(baseBlock);
+            worldStateCloser = BeginTargetScope(suggestedBlock);
         }
 
         CancellationTokenSource? backgroundCancellation = new();
-        Task? preWarmTask = null;
+        IDisposable? prewarming = null;
+        BlocksProcessingEventArgs? blocksProcessingEventArgs = null;
+        int processedBlocksCount = 0;
+        Exception? processingException = null;
+        bool verdictGiven = false;
 
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
@@ -82,32 +96,32 @@ public class BranchProcessor(
         try
         {
             // Start prewarming as early as possible
-            WaitForCacheClear();
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
+            prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
-            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+            blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
+            BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
 
             BlockHeader? preBlockBaseBlock = baseBlock;
 
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+            // Production, tracing and eth_simulate never report inclusion-list compliance.
+            bool checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
 
             for (int i = 0; i < blocksCount; i++)
             {
-                WaitForCacheClear();
                 suggestedBlock = suggestedBlocks[i];
                 if (i > 0)
                 {
                     // Refresh spec
                     spec = specProvider.GetSpec(suggestedBlock.Header);
                 }
-                // If prewarmCancellation is not null it means we are in first iteration of loop
-                // and started prewarming at method entry, so don't start it again
+                // The first block prepared its caches at method entry, even if no warming was needed.
                 backgroundCancellation ??= new CancellationTokenSource();
-                preWarmTask ??= PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
+                if (i > 0) prewarming = PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
                 prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
@@ -120,26 +134,58 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
-                if (preWarmTask is null)
+                ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
+                    ? options
+                    : options | ProcessingOptions.ForceSequentialBlockAccessList;
+                Block processedBlock;
+                TxReceipt[] receipts;
+                try
                 {
-                    // Even though we skip prewarming we still need to ensure the caches are cleared
-                    CacheType result = preWarmer?.ClearCaches() ?? default;
-                    if (result != default)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
-                    }
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);
                 }
+                catch (BlockProcessor.BlockAccessListSequentialRetryException) when (
+                    worldStateCloser is not null &&
+                    !blockOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList))
+                {
+                    CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
+                    DrainAndClear(ref prewarming);
 
-                (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                    worldStateCloser.Dispose();
+                    worldStateCloser = BeginTargetScope(suggestedBlock);
+                    ProcessingOptions retryOptions = blockOptions | ProcessingOptions.ForceSequentialBlockAccessList;
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);
+                }
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
 
                 processedBlocks[i] = processedBlock;
 
+                // A signal, not a rejection: the block is still committed, and it reads post-execution
+                // state. Assigned even under NoValidation, to clear a stale false on a reused instance.
+                bool inclusionListSatisfied = !checkInclusionList
+                    || inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider);
+                processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
+                suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
+
+                // The verdict is final here: the roots matched and the inclusion list is judged. The prewarm join,
+                // the commit and the chain update below are what the block's readers need, not its validity, so
+                // whoever only waits for the verdict is told now rather than after them. Only the last block of the
+                // branch: an earlier one can still be discarded with the branch if a later one is invalid, and it
+                // is the last one the queue answers for. The suggested block is what the queue knows the branch by.
+                if (notReadOnly && i == blocksCount - 1)
+                {
+                    BlockExecutedEventArgs executed = new(suggestedBlock);
+                    BlockExecuted?.Invoke(this, executed);
+                    verdictGiven = executed.Answered;
+                }
+
+                // Hint producers touch the active snapshot bundle, which CommitTree rotates.
+                DrainAndClear(ref prewarming);
+
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
-                QueueClearCaches(preWarmTask);
+                processedBlocksCount = i + 1;
 
                 if (notReadOnly)
                 {
@@ -154,15 +200,12 @@ public class BranchProcessor(
                 if (isCommitPoint && notReadOnly)
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                    BlockHeader previousBranchStateRoot = suggestedBlock.Header;
 
                     worldStateCloser?.Dispose();
-                    worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);
+                    worldStateCloser = BeginTargetScope(suggestedBlocks[i + 1]);
                 }
 
                 preBlockBaseBlock = processedBlock.Header;
-                // Make sure the prewarm task is finished before we reset the state
-                WaitAndClear(ref preWarmTask);
                 prefetchBlockhash = null;
 
                 stateProvider.Reset();
@@ -170,62 +213,60 @@ public class BranchProcessor(
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
                 // Though we still want to release the memory even if syncing rather than processing live
-                TxHashCalculator.CalculateInBackground(suggestedBlock);
+                // Empty blocks have nothing to hash, so skip the ThreadPool dispatch entirely.
+                if (suggestedBlock.Transactions.Length > 0)
+                {
+                    TxHashCalculator.CalculateInBackground(suggestedBlock);
+                }
             }
 
             return processedBlocks;
         }
         catch (Exception ex) // try to restore at all cost
         {
+            processingException = ex;
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
-            QueueClearCaches(preWarmTask);
-            WaitAndClear(ref preWarmTask);
+            DrainAndClear(ref prewarming);
+
+            // A request was answered VALID already, so a failure from here on belongs to the commit, not to the block.
+            // Left as an invalid block it would be deleted from the tree and recorded on the invalid chain, and the
+            // forkchoice that follows that VALID would answer INVALID for it and for every child of it. A block nobody
+            // was answered for, sync's included, keeps the invalid-block handling it always had.
+            if (verdictGiven && ex is InvalidBlockException)
+                throw new InvalidOperationException($"Block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} failed after its verdict.", ex);
+
             throw;
         }
         finally
         {
-            blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
-            worldStateCloser?.Dispose();
-        }
-
-        static void WaitAndClear(ref Task? task)
-        {
-            task?.GetAwaiter().GetResult();
-            task = null;
+            try
+            {
+                blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
+                worldStateCloser?.Dispose();
+            }
+            finally
+            {
+                if (blocksProcessingEventArgs is not null)
+                {
+                    BranchProcessingCompleted?.Invoke(
+                        this,
+                        new BranchProcessingCompletedEventArgs(blocksProcessingEventArgs.Blocks, processedBlocksCount, processingException));
+                }
+            }
         }
     }
 
-    private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
-        ShouldSkipPreWarming(suggestedBlock, spec)
-            ? null
-            : preWarmer?.PreWarmCaches(suggestedBlock,
-                preBlockBaseBlock,
-                spec,
-                token,
-                beaconBlockRootHandler);
+    private IDisposable? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
+        preWarmer?.PreWarmCaches(suggestedBlock,
+            preBlockBaseBlock,
+            spec,
+            token);
 
-    // Tiny blocks normally don't justify prewarming overhead — except when the prewarmer
-    // would run in BAL read-warming mode, which is cheap and worthwhile regardless of tx count.
-    private bool ShouldSkipPreWarming(Block suggestedBlock, IReleaseSpec spec)
-        => suggestedBlock.Transactions.Length < 3 && !ShouldBalReadWarm(suggestedBlock, spec);
-
-    private bool ShouldBalReadWarm(Block suggestedBlock, IReleaseSpec spec)
-        => preWarmer is not null && preWarmer.IsBalReadWarmingEnabled(spec) && suggestedBlock.BlockAccessList is not null;
-
-    private void WaitForCacheClear() => _clearTask.GetAwaiter().GetResult();
-
-    private void QueueClearCaches(Task? preWarmTask)
+    private void DrainAndClear(ref IDisposable? prewarming)
     {
-        if (preWarmTask is not null)
-        {
-            // Can start clearing caches in background
-            _clearTask = preWarmTask.ContinueWith(_clearCaches, TaskContinuationOptions.RunContinuationsAsynchronously);
-        }
-        else if (preWarmer is not null)
-        {
-            _clearTask = Task.Run(preWarmer.ClearCaches);
-        }
+        DisposableExtensions.DisposeAndNull(ref prewarming);
+        preWarmer?.ClearCaches();
     }
 
     private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
@@ -237,7 +278,7 @@ public class BranchProcessor(
 
         void IThreadPoolWorkItem.Execute()
         {
-            // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
+            // Hashes will be required for PersistentReceiptStorage in TryUpdateMainChain ForkchoiceUpdatedHandler
             // Which occurs after the block has been processed; however the block is stored in cache and picked up
             // from there so we can calculate the hashes now for that later use.
             foreach (Transaction tx in suggestedBlock.Transactions)

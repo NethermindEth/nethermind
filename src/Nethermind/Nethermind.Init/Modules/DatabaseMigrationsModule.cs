@@ -11,7 +11,6 @@ namespace Nethermind.Init.Modules;
 public class DatabaseMigrationsModule : Autofac.Module
 {
     protected override void Load(ContainerBuilder builder) => builder
-        .AddSingleton<IDatabaseMigration, BloomMigration>()
         .AddSingleton<IDatabaseMigration, ReceiptMigration>()
         .Bind<IReceiptsMigration, ReceiptMigration>()
         .AddSingleton<IDatabaseMigration, ReceiptFixMigration>()

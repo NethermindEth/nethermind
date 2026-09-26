@@ -5,8 +5,11 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.State.Snap;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -36,9 +39,18 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         batch.CodesResponse = await handler.GetByteCodes(batch.CodesRequest, cancellationToken);
                     }
-                    else if (batch.AccountsToRefreshRequest is not null)
+                    else if (batch.AccountsToRefreshRequest is { Paths.Count: > 0 })
                     {
-                        batch.AccountsToRefreshResponse = await handler.GetTrieNodes(batch.AccountsToRefreshRequest, cancellationToken);
+                        // Refresh a single account via GetAccountRange so its storage root is verified against
+                        // the state root. Use limit = path + 1 to avoid start == limit, which some peers treat as
+                        // an empty range. (IncrementPath is a no-op only for the unreachable MaxValue path.)
+                        AccountsToRefreshRequest request = batch.AccountsToRefreshRequest;
+                        AccountWithStorageStartingHash account = request.Paths[0];
+                        PathWithAccount pathAndAccount = account.PathAndAccount
+                            ?? throw new InvalidOperationException("An account refresh request requires an account path.");
+                        ValueHash256 path = pathAndAccount.Path;
+                        AccountRange range = new(request.RootHash, path, path.IncrementPath());
+                        batch.AccountsToRefreshResponse = await handler.GetAccountRange(range, cancellationToken);
                     }
                 }
                 catch (OperationCanceledException)

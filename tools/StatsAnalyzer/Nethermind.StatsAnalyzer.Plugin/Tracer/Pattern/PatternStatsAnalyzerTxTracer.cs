@@ -28,7 +28,7 @@ public sealed class PatternStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Instruc
     }
 
 
-    public override PatternAnalyzerTxTrace BuildResult(long fromBlock = 0, long toBlock = 0)
+    public override PatternAnalyzerTxTrace BuildResult(ulong fromBlock = 0UL, ulong toBlock = 0UL)
     {
         Build();
         PatternAnalyzerTxTrace trace = new();
@@ -54,7 +54,7 @@ public sealed class PatternStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Instruc
     }
 
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         if (Skip) return;
         if (!_ignoreSet.Contains(opcode)) Queue?.Enqueue(opcode);

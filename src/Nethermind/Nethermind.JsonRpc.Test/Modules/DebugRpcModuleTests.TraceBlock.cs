@@ -8,6 +8,12 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Tracing;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+using Newtonsoft.Json.Linq;
+using NSubstitute;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -15,10 +21,11 @@ using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
-using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -28,6 +35,45 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task Debug_traceBlock_SuppliedBody_DoesNotUseIndexedHeaderState()
+    {
+        IParallelBlockTracer parallel = Substitute.For<IParallelBlockTracer>();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton(parallel));
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block original = await chain.AddBlock(transactions);
+        GethTraceOptions options = new() { Tracer = "prestateTracer" };
+        string baseline = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", original.Hash, options);
+        Assert.That(parallel.ReceivedCalls(), Is.Not.Empty, "the RPC tracer must be wired to the indexed path for verified blocks");
+        parallel.ClearReceivedCalls();
+        Transaction[] changed = (Transaction[])original.Transactions.Clone();
+        changed[0] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce)
+            .WithValue(100).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block supplied = new(original.Header.Clone(), changed, original.Uncles, original.Withdrawals);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlock", Rlp.Encode(supplied).ToString(), options);
+        JToken expected = JToken.Parse(baseline);
+        JToken actual = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["error"], Is.Null);
+            Assert.That(parallel.ReceivedCalls(), Is.Empty, "an unverified body must never open indexed prefixes");
+            Assert.That(supplied.Hash, Is.EqualTo(original.Hash));
+        }
+        string sender = TestItem.AddressB.ToString();
+        UInt256 before = Bytes.FromHexString(expected["result"]![1]!["result"]![sender]!["balance"]!.Value<string>()!).ToUInt256();
+        UInt256 after = Bytes.FromHexString(actual["result"]![1]!["result"]![sender]!["balance"]!.Value<string>()!).ToUInt256();
+        Assert.That(after, Is.EqualTo(before - 99), "the second transaction must see the modified first transfer, not the indexed prefix");
+    }
+
     [Test]
     public async Task Debug_traceBlock_with_invalid_rlp()
     {
@@ -65,7 +111,7 @@ public partial class DebugRpcModuleTests
 
         await context.Blockchain.AddBlock(factory(context.Blockchain));
 
-        long blockNumber = context.Blockchain.BlockTree.Head!.Number;
+        ulong blockNumber = context.Blockchain.BlockTree.Head!.Number;
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", blockNumber, options);
 
         Assert.That(JsonElement.DeepEquals(
@@ -124,19 +170,19 @@ public partial class DebugRpcModuleTests
                             "failed": false,
                             "returnValue": "0x",
                             "structLogs": [
-                                { "pc": 0, "op": "PUSH32", "gas": 46536,  "gasCost": 3, "depth": 1,  "error": null,  "stack": [], "storage": {} },
-                                { "pc": 33, "op": "PUSH1", "gas": 46533,  "gasCost": 3, "depth": 1,  "error": null, "stack": ["0x6000602055000000000000000000000000000000000000000000000000000000"], "storage": {} },
-                                { "pc": 35, "op": "MSTORE", "gas": 46530,  "gasCost": 6, "depth": 1,  "error": null, "stack": ["0x6000602055000000000000000000000000000000000000000000000000000000", "0x0"], "storage": {} },
-                                { "pc": 36, "op": "PUSH32", "gas": 46524,  "gasCost": 3, "depth": 1,  "error": null, "stack": [], "storage": {} },
-                                { "pc": 69, "op": "PUSH1", "gas": 46521,  "gasCost": 3, "depth": 1,  "error": null, "stack": ["0x0"], "storage": {} },
-                                { "pc": 71, "op": "PUSH1", "gas": 46518,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x6"], "storage": {} },
-                                { "pc": 73, "op": "PUSH1", "gas": 46515,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x6", "0x0"], "storage": {} },
-                                { "pc": 75, "op": "CREATE2", "gas": 46512,  "gasCost": 32006, "depth": 1,  "error": null,  "stack": ["0x0", "0x6", "0x0", "0x0"], "storage": {} },
-                                { "pc": 0, "op": "PUSH1", "gas": 14280,  "gasCost": 3, "depth": 2,  "error": null,  "stack": [], "storage": {} },
-                                { "pc": 2, "op": "PUSH1", "gas": 14277,  "gasCost": 3, "depth": 2,  "error": null,  "stack": ["0x0"], "storage": {} },
-                                { "pc": 4, "op": "SSTORE", "gas": 14274,  "gasCost": 2200, "depth": 2,  "error": null,  "stack": ["0x0", "0x20"], "storage": {} },
-                                { "pc": 5, "op": "STOP", "gas": 12074,  "gasCost": 0, "depth": 2,  "error": null,  "stack": [], "storage": {} },
-                                { "pc": 76, "op": "STOP", "gas": 12300,  "gasCost": 0, "depth": 1,  "error": null,  "stack": ["0x28156f6fdeeffd5667d51bb8d7d5069a920e0837"], "storage": {} }
+                                { "pc": 0, "op": "PUSH32", "gas": 46536, "gasCost": 3, "depth": 1, "stack": [] },
+                                { "pc": 33, "op": "PUSH1", "gas": 46533, "gasCost": 3, "depth": 1, "stack": ["0x6000602055000000000000000000000000000000000000000000000000000000"] },
+                                { "pc": 35, "op": "MSTORE", "gas": 46530, "gasCost": 6, "depth": 1, "stack": ["0x6000602055000000000000000000000000000000000000000000000000000000", "0x0"] },
+                                { "pc": 36, "op": "PUSH32", "gas": 46524, "gasCost": 3, "depth": 1, "stack": [] },
+                                { "pc": 69, "op": "PUSH1", "gas": 46521, "gasCost": 3, "depth": 1, "stack": ["0x0"] },
+                                { "pc": 71, "op": "PUSH1", "gas": 46518, "gasCost": 3, "depth": 1, "stack": ["0x0", "0x6"] },
+                                { "pc": 73, "op": "PUSH1", "gas": 46515, "gasCost": 3, "depth": 1, "stack": ["0x0", "0x6", "0x0"] },
+                                { "pc": 75, "op": "CREATE2", "gas": 46512, "gasCost": 32006, "depth": 1, "stack": ["0x0", "0x6", "0x0", "0x0"] },
+                                { "pc": 0, "op": "PUSH1", "gas": 14280, "gasCost": 3, "depth": 2, "stack": [] },
+                                { "pc": 2, "op": "PUSH1", "gas": 14277, "gasCost": 3, "depth": 2, "stack": ["0x0"] },
+                                { "pc": 4, "op": "SSTORE", "gas": 14274, "gasCost": 2200, "depth": 2, "stack": ["0x0", "0x20"], "storage": { "0x0000000000000000000000000000000000000000000000000000000000000020": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                                { "pc": 5, "op": "STOP", "gas": 12074, "gasCost": 0, "depth": 2, "stack": [] },
+                                { "pc": 76, "op": "STOP", "gas": 12300, "gasCost": 0, "depth": 1, "stack": ["0x28156f6fdeeffd5667d51bb8d7d5069a920e0837"] }
                             ]
                         },
                         "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
@@ -147,15 +193,15 @@ public partial class DebugRpcModuleTests
                             "failed": false,
                             "returnValue": "0x",
                             "structLogs": [
-                                { "pc": 0, "op": "PUSH1", "gas": 46480,  "gasCost": 3, "depth": 1,  "error": null,  "stack": [], "storage": {} },
-                                { "pc": 2, "op": "PUSH1", "gas": 46477,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0"], "storage": {} },
-                                { "pc": 4, "op": "PUSH1", "gas": 46474,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x0"], "storage": {} },
-                                { "pc": 6, "op": "PUSH1", "gas": 46471,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x0", "0x0"], "storage": {} },
-                                { "pc": 8, "op": "PUSH1", "gas": 46468,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x0", "0x0", "0x0"], "storage": {} },
-                                { "pc": 10, "op": "PUSH20", "gas": 46465,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x0", "0x0", "0x0", "0x0"], "storage": {} },
-                                { "pc": 31, "op": "PUSH3", "gas": 46462,  "gasCost": 3, "depth": 1,  "error": null,  "stack": ["0x0", "0x0", "0x0", "0x0", "0x0", "0x28156f6fdeeffd5667d51bb8d7d5069a920e0837"], "storage": {} },
-                                { "pc": 35, "op": "CALL", "gas": 46459,  "gasCost": 45774, "depth": 1,  "error": null,  "stack": ["0x0", "0x0", "0x0", "0x0", "0x0", "0x28156f6fdeeffd5667d51bb8d7d5069a920e0837", "0x186a0"], "storage": {} },
-                                { "pc": 36, "op": "STOP", "gas": 43859,  "gasCost": 0, "depth": 1,  "error": null,  "stack": ["0x1"], "storage": {} }
+                                { "pc": 0, "op": "PUSH1", "gas": 46480, "gasCost": 3, "depth": 1, "stack": [] },
+                                { "pc": 2, "op": "PUSH1", "gas": 46477, "gasCost": 3, "depth": 1, "stack": ["0x0"] },
+                                { "pc": 4, "op": "PUSH1", "gas": 46474, "gasCost": 3, "depth": 1, "stack": ["0x0", "0x0"] },
+                                { "pc": 6, "op": "PUSH1", "gas": 46471, "gasCost": 3, "depth": 1, "stack": ["0x0", "0x0", "0x0"] },
+                                { "pc": 8, "op": "PUSH1", "gas": 46468, "gasCost": 3, "depth": 1, "stack": ["0x0", "0x0", "0x0", "0x0"] },
+                                { "pc": 10, "op": "PUSH20", "gas": 46465, "gasCost": 3, "depth": 1, "stack": ["0x0", "0x0", "0x0", "0x0", "0x0"] },
+                                { "pc": 31, "op": "PUSH3", "gas": 46462, "gasCost": 3, "depth": 1, "stack": ["0x0", "0x0", "0x0", "0x0", "0x0", "0x28156f6fdeeffd5667d51bb8d7d5069a920e0837"] },
+                                { "pc": 35, "op": "CALL", "gas": 46459, "gasCost": 45774, "depth": 1, "stack": ["0x0", "0x0", "0x0", "0x0", "0x0", "0x28156f6fdeeffd5667d51bb8d7d5069a920e0837", "0x186a0"] },
+                                { "pc": 36, "op": "STOP", "gas": 43859, "gasCost": 0, "depth": 1, "stack": ["0x1"] }
                             ]
                         },
                         "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
@@ -214,6 +260,28 @@ public partial class DebugRpcModuleTests
             """
         )
         { TestName = "Contract with " + Native4ByteTracer.FourByteTracer };
+
+        yield return new TestCaseData(
+            transactions,
+            new GethTraceOptions { Tracer = NativeNoopTracer.NoopTracer },
+            """
+            {
+                "jsonrpc": "2.0",
+                "result": [
+                    {
+                        "result": {},
+                        "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
+                    },
+                    {
+                        "result": {},
+                        "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
+                    }
+                ],
+                "id": 67
+            }
+            """
+        )
+        { TestName = "Contract with " + NativeNoopTracer.NoopTracer };
 
         yield return new TestCaseData(
             transactions,
@@ -334,7 +402,7 @@ public partial class DebugRpcModuleTests
 
     private static Transaction[] CreateTraceBlockTransactions(TestRpcBlockchain blockchain)
     {
-        UInt256 nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
         byte[] contract = Prepare.EvmCode
             .PushData(0)
             .PushData(32)
@@ -374,10 +442,8 @@ public partial class DebugRpcModuleTests
         ];
     }
 
-    [TestCase(1)]
-    [TestCase(100)]
-    [TestCase(1000)]
-    public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer(int traceCount)
+    [Test]
+    public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer([Values(1, 100, 1000)] int traceCount)
     {
         List<GethLikeTxTrace> traces = new(traceCount);
         for (int i = 0; i < traceCount; i++)
@@ -407,10 +473,29 @@ public partial class DebugRpcModuleTests
             $"Streamed JSON differs from serializer output for {traceCount} traces");
     }
 
-    [TestCase("debug_traceBlock")]
-    [TestCase("debug_traceBlockByNumber")]
-    [TestCase("debug_traceBlockByHash")]
-    public async Task Debug_traceBlock_json_rpc_request_returns_valid_json(string method)
+    [Test]
+    public async Task Debug_traceBlock_returns_error_for_genesis([Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method)
+    {
+        using Context context = await Context.Create();
+
+        object? arg = method switch
+        {
+            "debug_traceBlockByNumber" => context.Blockchain.BlockTree.Genesis!.Number,
+            _ => context.Blockchain.BlockTree.Genesis!.Hash
+        };
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, arg, new GethTraceOptions());
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+        JsonElement root = doc.RootElement;
+
+        Assert.That(root.TryGetProperty("error", out JsonElement error), Is.True, "Missing 'error' field");
+        Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("genesis is not traceable"));
+        Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32000));
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_json_rpc_request_returns_valid_json([Values("debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash")] string method)
     {
         using Context context = await Context.Create();
         await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));

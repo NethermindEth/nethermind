@@ -57,17 +57,17 @@ public class OptimismHeaderValidatorTests(Fork fork)
 
     private static IEnumerable<(string data, Valid isValid)> EIP1559ParametersExtraData => new (string data, Valid isValid)[]
     {
-        new("0x0100000001000000000000000000000000", Valid.Since(Spec.JovianTimeStamp)),
+        new("0x0100000001000000000000000000000000", Valid.Never), // zero elasticity
         new("0x0100000001000001bc0000000000000001", Valid.Since(Spec.JovianTimeStamp)),
         new("0x0100000001ffffffff00000000000000ff", Valid.Since(Spec.JovianTimeStamp)),
-        new("0x01ffffffff0000000000000000000001ff", Valid.Since(Spec.JovianTimeStamp)),
+        new("0x01ffffffff0000000000000000000001ff", Valid.Never), // zero elasticity
         new("0x01ffffffff000001bc01000000000000ff", Valid.Since(Spec.JovianTimeStamp)),
         new("0x01ffffffffffffffffffffffffffffffff", Valid.Since(Spec.JovianTimeStamp)),
 
-        new("0x000000000100000000", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
+        new("0x000000000100000000", Valid.Never), // zero elasticity
         new("0x0000000001000001bc", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
         new("0x0000000001ffffffff", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
-        new("0x00ffffffff00000000", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
+        new("0x00ffffffff00000000", Valid.Never), // zero elasticity
         new("0x00ffffffff000001bc", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
         new("0x00ffffffffffffffff", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
 
@@ -121,23 +121,23 @@ public class OptimismHeaderValidatorTests(Fork fork)
 
     private static IEnumerable<TestCaseData> GasLimitTestCases()
     {
-        yield return new(1_000, 500, 0, Valid.Always);
-        yield return new(1_000, 1_000, 0, Valid.Always);
-        yield return new(1_000, 1_000, 500, Valid.Always);
-        yield return new(1_000, 1_000, 1_000, Valid.Always);
+        yield return new(1_000UL, 500UL, 0, Valid.Always);
+        yield return new(1_000UL, 1_000UL, 0, Valid.Always);
+        yield return new(1_000UL, 1_000UL, 500, Valid.Always);
+        yield return new(1_000UL, 1_000UL, 1_000, Valid.Always);
 
-        yield return new TestCaseData(1_000, 500, null, Valid.Never).SetName("blobGasUsed missing");
-        yield return new TestCaseData(1_000, 1_000, null, Valid.Never).SetName("blobGasUsed missing, gasUsed = gasLimit");
+        yield return new TestCaseData(1_000UL, 500UL, null, Valid.Never).SetName("blobGasUsed missing");
+        yield return new TestCaseData(1_000UL, 1_000UL, null, Valid.Never).SetName("blobGasUsed missing, gasUsed = gasLimit");
 
-        yield return new TestCaseData(1_000, 1_000 + 1, 500, Valid.Never).SetName("gasUsed > gasLimit");
-        yield return new TestCaseData(1_000, 1_000 + 1, 1_000, Valid.Never).SetName("gasUsed > gasLimit, blobGasUsed = gasLimit");
-        yield return new TestCaseData(1_000, 1_000 + 1, 1_000 + 1, Valid.Never).SetName("blobGasUsed & gasUsed > gasLimit");
+        yield return new TestCaseData(1_000UL, 1_000UL + 1UL, 500, Valid.Never).SetName("gasUsed > gasLimit");
+        yield return new TestCaseData(1_000UL, 1_000UL + 1UL, 1_000, Valid.Never).SetName("gasUsed > gasLimit, blobGasUsed = gasLimit");
+        yield return new TestCaseData(1_000UL, 1_000UL + 1UL, 1_000 + 1, Valid.Never).SetName("blobGasUsed & gasUsed > gasLimit");
 
-        yield return new TestCaseData(1_000, 1_000, 1_000 + 1, Valid.Before(Spec.JovianTimeStamp)).SetName("blobGasUsed > gasLimit post Jovian");
+        yield return new TestCaseData(1_000UL, 1_000UL, 1_000 + 1, Valid.Before(Spec.JovianTimeStamp)).SetName("blobGasUsed > gasLimit post Jovian");
     }
 
     [TestCaseSource(nameof(GasLimitTestCases))]
-    public void ValidateGasLimit(int gasLimit, int gasUsed, int? blobGasUsed, Valid isValid)
+    public void ValidateGasLimit(ulong gasLimit, ulong gasUsed, int? blobGasUsed, Valid isValid)
     {
         (BlockHeader genesis, BlockHeader header) = BuildHeaders(b => b
             .WithGasLimit(gasLimit)

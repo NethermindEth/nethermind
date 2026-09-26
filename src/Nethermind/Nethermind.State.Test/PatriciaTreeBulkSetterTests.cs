@@ -242,7 +242,7 @@ public class PatriciaTreeBulkSetterTests
         return randData;
     }
 
-    private static List<(Hash256 key, byte[] value)> GenRandomOfLength(int itemCount, int seed = 0)
+    internal static List<(Hash256 key, byte[] value)> GenRandomOfLength(int itemCount, int seed = 0)
     {
         Random rng = new(seed);
         List<(Hash256 key, byte[] value)> items = [];
@@ -691,20 +691,20 @@ public class PatriciaTreeBulkSetterTests
         Span<int> result = stackalloc int[TrieNode.BranchesCount];
         using ArrayPoolList<PatriciaTree.BulkSetEntry> buffer = new(paths.Count, paths.Count);
 
-        int resultMask = PatriciaTree.BucketSort16Small(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
-        Assert.That(buffer.Select((it) => it.Path), Is.EquivalentTo(expectedPaths));
-        Assert.That(result.ToArray(), Is.EquivalentTo(expectedResult));
-        Assert.That(resultMask, Is.EqualTo(expectedMask));
+        AssertBucketSort(PatriciaTree.BucketSort16Small(items.AsSpan(), buffer.AsSpan(), nibIndex, result), buffer, result, expectedPaths, expectedResult, expectedMask);
+        AssertBucketSort(PatriciaTree.BucketSort16Large(items.AsSpan(), buffer.AsSpan(), nibIndex, result), buffer, result, expectedPaths, expectedResult, expectedMask);
+        AssertBucketSort(PatriciaTree.BucketSort16(items.AsSpan(), buffer.AsSpan(), nibIndex, result), buffer, result, expectedPaths, expectedResult, expectedMask);
+    }
 
-        resultMask = PatriciaTree.BucketSort16Large(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
-        Assert.That(buffer.Select((it) => it.Path), Is.EquivalentTo(expectedPaths));
-        Assert.That(result.ToArray(), Is.EquivalentTo(expectedResult));
-        Assert.That(resultMask, Is.EqualTo(expectedMask));
-
-        resultMask = PatriciaTree.BucketSort16(items.AsSpan(), buffer.AsSpan(), nibIndex, result);
-        Assert.That(buffer.Select((it) => it.Path), Is.EquivalentTo(expectedPaths));
-        Assert.That(result.ToArray(), Is.EquivalentTo(expectedResult));
-        Assert.That(resultMask, Is.EqualTo(expectedMask));
+    private static void AssertBucketSort(int resultMask, ArrayPoolList<PatriciaTree.BulkSetEntry> buffer, Span<int> result, List<ValueHash256> expectedPaths, int[] expectedResult, ushort expectedMask)
+    {
+        int[] resultCopy = result.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(buffer.Select((it) => it.Path), Is.EquivalentTo(expectedPaths));
+            Assert.That(resultCopy, Is.EquivalentTo(expectedResult));
+            Assert.That(resultMask, Is.EqualTo(expectedMask));
+        }
     }
 
     [TestCaseSource(nameof(BucketSortTestCase))]
@@ -718,18 +718,19 @@ public class PatriciaTreeBulkSetterTests
         items.AsSpan().Sort((a, b) => a.GetPathNibble(nibIndex).CompareTo(b.GetPathNibble(nibIndex)));
 
         Span<int> result = stackalloc int[TrieNode.BranchesCount];
-        int resultMask = PatriciaTree.HexarySearchAlreadySortedSmall(items.AsSpan(), nibIndex, result);
-        Assert.That(resultMask, Is.EqualTo(expectedMask));
-        Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
+        AssertHexarySearch(PatriciaTree.HexarySearchAlreadySortedSmall(items.AsSpan(), nibIndex, result), result, expectedResult, expectedMask);
+        AssertHexarySearch(PatriciaTree.HexarySearchAlreadySortedLarge(items.AsSpan(), nibIndex, result), result, expectedResult, expectedMask);
+        AssertHexarySearch(PatriciaTree.HexarySearchAlreadySorted(items.AsSpan(), nibIndex, result), result, expectedResult, expectedMask);
+    }
 
-        resultMask = PatriciaTree.HexarySearchAlreadySortedLarge(items.AsSpan(), nibIndex, result);
-        Assert.That(resultMask, Is.EqualTo(expectedMask));
-        Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
-
-        resultMask = PatriciaTree.HexarySearchAlreadySorted(items.AsSpan(), nibIndex, result);
-        Assert.That(resultMask, Is.EqualTo(expectedMask));
-        Assert.That(result.ToArray(), Is.EqualTo(expectedResult));
-
+    private static void AssertHexarySearch(int resultMask, Span<int> result, int[] expectedResult, ushort expectedMask)
+    {
+        int[] resultCopy = result.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resultMask, Is.EqualTo(expectedMask));
+            Assert.That(resultCopy, Is.EqualTo(expectedResult));
+        }
     }
 
     public class StrictRawScopedTrieStore(IScopedTrieStore baseTrieStore) : IScopedTrieStore

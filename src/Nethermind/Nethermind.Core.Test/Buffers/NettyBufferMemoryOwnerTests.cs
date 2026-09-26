@@ -32,8 +32,11 @@ public class NettyBufferMemoryOwnerTests
         Assert.That(buffer.ReferenceCount, Is.EqualTo(1));
 
         NettyBufferMemoryOwner memoryOwner = new(buffer);
-        Assert.That(memoryOwner.Memory.Length, Is.EqualTo(10));
-        Assert.That(buffer.ReferenceCount, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memoryOwner.Memory.Length, Is.EqualTo(10));
+            Assert.That(buffer.ReferenceCount, Is.EqualTo(2));
+        }
 
         memoryOwner.Dispose();
         Assert.That(buffer.ReferenceCount, Is.EqualTo(1));

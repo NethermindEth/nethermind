@@ -56,7 +56,7 @@ namespace Nethermind.Db.Test.LogIndex
         private readonly List<ILogIndexStorage> _createdStorages = [];
 
         private ILogIndexStorage CreateLogIndexStorage(
-            int compactionDistance = 262_144, int compressionParallelism = 16, int maxReorgDepth = 64, IDbFactory? dbFactory = null,
+            int compactionDistance = 262_144, int compressionParallelism = 16, ulong maxReorgDepth = 64, IDbFactory? dbFactory = null,
             string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null, bool failOnMerge = false
         )
         {
@@ -154,6 +154,20 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData);
         }
 
+        [Test]
+        public async Task ABackwardBatchOfOneBlock_ExtendsTheIndexDownwards()
+        {
+            await using ILogIndexStorage logIndexStorage = CreateLogIndexStorage();
+
+            BlockReceipts[] blocks = testData.Batches.SelectMany(static batch => batch).ToArray();
+            await logIndexStorage.AddReceiptsAsync(blocks[1..], isBackwardSync: false);
+
+            await logIndexStorage.AddReceiptsAsync([blocks[0]], isBackwardSync: true);
+
+            Assert.That(logIndexStorage.MinBlockNumber, Is.EqualTo(blocks[0].BlockNumber),
+                "a batch of one block has the same first and last number, so the direction cannot be read back from them");
+        }
+
         [Combinatorial]
         public async Task SetIntersecting_Get_Test(
             [Values(100, 200, int.MaxValue)] int compactionDistance,
@@ -237,8 +251,8 @@ namespace Nethermind.Db.Test.LogIndex
             }
 
             // Create new storage to force-load everything from DB
-            await using (ILogIndexStorage testStorage = CreateLogIndexStorage(compactionDistance))
-                VerifyReceipts(testStorage, testData);
+            await using ILogIndexStorage testStorage = CreateLogIndexStorage(compactionDistance);
+            VerifyReceipts(testStorage, testData);
         }
 
         [Combinatorial]
@@ -376,11 +390,11 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData, excludedBlocks: reorgBlocks, validateMinMax: false);
         }
 
-        [TestCase(1, 1)]
-        [TestCase(32, 64)]
-        [TestCase(64, 64)]
-        [TestCase(65, 64, Explicit = true)]
-        public async Task Set_Compact_ReorgLast_Get_Test(int reorgDepth, int maxReorgDepth)
+        [TestCase(1, 1UL)]
+        [TestCase(32, 64UL)]
+        [TestCase(64, 64UL)]
+        [TestCase(65, 64UL, Explicit = true)]
+        public async Task Set_Compact_ReorgLast_Get_Test(int reorgDepth, ulong maxReorgDepth)
         {
             await using ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth);
 

@@ -31,20 +31,23 @@ namespace Nethermind.Merge.Plugin;
 
 public class TestingRpcModule(
     IBlockProducerEnvFactory blockProducerEnvFactory,
+    IMainStateBlockProducerEnvFactory mainStateBlockProducerEnvFactory,
     IGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
     IBlockTree blockTree,
     IProcessExitSource processExitSource,
+    IBlockProcessingQueue processingQueue,
     ILogManager logManager)
     : ITestingRpcModule, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
     private readonly SemaphoreSlim _commitLock = new(1, 1);
 
-    // Persistent producer env is safe across calls because BranchProcessor.Process opens
-    // a fresh world-state scope on entry, so no mutable state leaks between commits.
-    private readonly IBlockProducerEnv _env = blockProducerEnvFactory.CreatePersistent();
+    // The commit pass updates the head without re-processing, so it must run on the main
+    // world state to persist the produced post-state. Reuse across calls is safe because
+    // BranchProcessor.Process opens a fresh world-state scope on entry.
+    private readonly IBlockProducerEnv _commitEnv = mainStateBlockProducerEnvFactory.CreatePersistent();
 
     public void Dispose() => _commitLock.Dispose();
 
@@ -53,6 +56,9 @@ public class TestingRpcModule(
         Block? parentBlock = blockFinder.FindBlock(parentBlockHash);
         if (parentBlock is null)
             return ResultWrapper<object>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
+
+        // A parent answered VALID a moment ago may still be committing; production needs its state.
+        await processingQueue.WaitForExecutedCopyAsync(parentBlockHash, TimeSpan.FromSeconds(1));
 
         FeesTracer feesTracer = new();
         await using ScopedBlockProducerEnv env = blockProducerEnvFactory.CreateTransient();
@@ -85,9 +91,8 @@ public class TestingRpcModule(
             if (blockTree.Head?.Header is not BlockHeader chainHead)
                 return ResultWrapper<Hash256>.Fail("chain head not found", ErrorCodes.InternalError);
 
-            // Must NOT set ReadOnlyChain — empirically, the producer pass under FlatDb
-            // only appends a snapshot bundle when the chain is not read-only; without
-            // it the next commit's BeginScope(parent) fails with "Unable to gather snapshots".
+            // ForceProcessing: the produced block is not yet better than the current head.
+            // Persistence is decided by the env's (main) world state, not by these options.
             const ProcessingOptions ProducerOptions =
                 ProcessingOptions.NoValidation
                 | ProcessingOptions.ForceProcessing
@@ -95,7 +100,7 @@ public class TestingRpcModule(
                 | ProcessingOptions.StoreReceipts;
 
             ResultWrapper<ProducedBlock> produced = ProduceBlock(
-                _env, chainHead, payloadAttributes, txRlps, extraData,
+                _commitEnv, chainHead, payloadAttributes, txRlps, extraData,
                 nameof(testing_commitBlockV1), exitToken,
                 NullBlockTracer.Instance, ProducerOptions);
             if (produced.Result.ResultType == ResultType.Failure)
@@ -129,7 +134,7 @@ public class TestingRpcModule(
         try
         {
             IEnumerable<Transaction> txs = txRlps is null
-                ? env.TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true)
+                ? env.TxSource.GetTransactions(parent, header, header.GasLimit, payloadAttributes, filterSource: true)
                 : DecodeTransactions(txRlps);
 
             transactions = txs.ToArray();
@@ -161,7 +166,7 @@ public class TestingRpcModule(
 
     /// <summary>
     /// Advance the canonical head to an already-processed block via
-    /// <see cref="IBlockTree.UpdateMainChain"/>, bypassing the main BlockchainProcessor.
+    /// <see cref="IBlockTree.TryUpdateMainChain"/>, bypassing the main BlockchainProcessor.
     /// </summary>
     private ResultWrapper<Hash256> CommitAsMainChain(Block processedBlock)
     {
@@ -169,16 +174,17 @@ public class TestingRpcModule(
             return ResultWrapper<Hash256>.Fail("processed block has no hash", ErrorCodes.InternalError);
 
         AddBlockResult addBlockResult = blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceDontSetAsMain);
-        if (addBlockResult != AddBlockResult.Added)
+        if (addBlockResult is not (AddBlockResult.Added or AddBlockResult.AlreadyKnown))
         {
             if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
             return ResultWrapper<Hash256>.Fail($"failed to commit block: {addBlockResult}", ErrorCodes.InternalError);
         }
 
-        // forceHeadBlock: true is required for post-merge chains where TotalDifficulty=0
+        // forceUpdateHeadBlock: true is required for post-merge chains where TotalDifficulty=0
         // and TTD != 0; without it MoveToMain skips UpdateHeadBlock and the next commit
         // reads a stale head.
-        blockTree.UpdateMainChain([processedBlock], wereProcessed: true, forceHeadBlock: true);
+        if (!blockTree.TryUpdateMainChain(processedBlock.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [processedBlock]))
+            return ResultWrapper<Hash256>.Fail("canonical chain update was refused", ErrorCodes.ResourceUnavailable);
 
         if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {processedBlock.Hash}");
         return ResultWrapper<Hash256>.Success(processedBlock.Hash);
@@ -193,7 +199,7 @@ public class TestingRpcModule(
             blockAuthor,
             UInt256.Zero,
             parent.Number + 1,
-            payloadAttributes.GetGasLimit() ?? gasLimitCalculator.GetGasLimit(parent),
+            payloadAttributes.GetGasLimit(parent, gasLimitCalculator),
             payloadAttributes.Timestamp,
             extraData ?? [])
         {
@@ -218,9 +224,9 @@ public class TestingRpcModule(
 
         if (spec.WithdrawalsEnabled)
         {
-            header.WithdrawalsRoot = payloadAttributes.Withdrawals is null || payloadAttributes.Withdrawals.Length == 0
+            header.WithdrawalsRoot = payloadAttributes.Withdrawals is null
                 ? Keccak.EmptyTreeHash
-                : new WithdrawalTrie(payloadAttributes.Withdrawals).RootHash;
+                : WithdrawalTrie.CalculateRoot(payloadAttributes.Withdrawals);
         }
 
         return header;
@@ -229,7 +235,8 @@ public class TestingRpcModule(
     private static IEnumerable<Transaction> DecodeTransactions(IEnumerable<byte[]> txRlps)
     {
         foreach (byte[] txRlp in txRlps)
-            yield return Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping);
+            yield return Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping)
+                ?? throw new RlpException("Transaction decoding returned null.");
     }
 
     private static object CreateGetPayloadResult(Block processedBlock, UInt256 blockFees, IReleaseSpec spec)

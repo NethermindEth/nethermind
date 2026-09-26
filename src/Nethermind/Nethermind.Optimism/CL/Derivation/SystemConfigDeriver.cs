@@ -7,7 +7,6 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Optimism.CL.Derivation;
@@ -51,11 +50,9 @@ public class SystemConfigDeriver(
 
         foreach (ReceiptForRpc receipt in receipts)
         {
-            if (receipt.Status != StatusCode.Success) continue;
-
-            foreach (LogEntryForRpc log in receipt.Logs ?? [])
+            foreach (LogEntryForRpc log in CommittedLogs.Of(receipt))
             {
-                if (log.Address == systemConfigProxy && log.Topics.Length > 0 && log.Topics[0] == SystemConfigUpdate.EventABIHash)
+                if (log.Address == systemConfigProxy && log.Topics is { Length: > 0 } topics && topics[0] == SystemConfigUpdate.EventABIHash)
                 {
                     config = UpdateSystemConfigFromLogEvent(config, log);
                 }

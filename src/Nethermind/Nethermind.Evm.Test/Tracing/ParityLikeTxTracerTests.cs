@@ -2,22 +2,88 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Specs;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
 
 public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Output_only_receipts_do_not_allocate_actions(
+        [Values(ParityTraceTypes.None, ParityTraceTypes.StateDiff)] ParityTraceTypes types, [Values] bool failed)
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[1024]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        OutputOnlyTracer tracer = new(block, tx, types);
+        byte[] output = [42];
+        if (failed) tracer.MarkAsFailed(TestItem.AddressA, default, output, "Reverted");
+        else tracer.MarkAsSuccess(TestItem.AddressA, default, output, []);
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Output, Is.EqualTo(output));
+            Assert.That(trace.Action, Is.Null);
+        }
+    }
+
+    private sealed class OutputOnlyTracer(Block block, Transaction tx, ParityTraceTypes types)
+        : ParityLikeTxTracer(block, tx, types)
+    {
+        protected override ParityTraceAction RentAction() => throw new AssertionException("Output capture must not allocate an action");
+    }
+
+    [Test]
+    public void Streaming_vm_only_trace_returns_discarded_action_input()
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[1024]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink);
+        InputReturningTracer tracer = new(block, tx, writer);
+        try
+        {
+            tracer.MarkAsSuccess(TestItem.AddressA, default, [], []);
+            tracer.BuildResult();
+            Assert.That(tracer.ReturnedInputs, Is.EqualTo(1));
+            tracer.ResetForNextTx(block, tx);
+            tracer.ReleaseResources();
+            Assert.That(tracer.ReturnedInputs, Is.EqualTo(1));
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
+    private sealed class InputReturningTracer(Block block, Transaction tx, Utf8JsonWriter writer)
+        : StreamingParityLikeTxTracer(block, tx, ParityTraceTypes.VmTrace, writer, null, CancellationToken.None, fillVmTraceSlot: false)
+    {
+        public int ReturnedInputs { get; private set; }
+        protected override void ReturnInputBytes(in CappedArray<byte> input)
+        {
+            if (input.Length > 0) ReturnedInputs++;
+            base.ReturnInputBytes(input);
+        }
+    }
+
     [Test]
     public void On_failure_result_is_null()
     {
@@ -37,16 +103,19 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
 
         (ParityLikeTxTrace trace, Block block, Transaction tx) = ExecuteAndTraceParityCall(code);
-        Assert.That(trace.Action.From, Is.EqualTo(tx.SenderAddress), "from");
-        Assert.That(trace.Action.To, Is.EqualTo(tx.To), "to");
-        Assert.That(trace.BlockHash, Is.EqualTo(block.Hash), "hash");
-        Assert.That(trace.BlockNumber, Is.EqualTo(block.Number), "number");
-        Assert.That(trace.TransactionPosition, Is.EqualTo(0), "tx index");
-        Assert.That(trace.TransactionHash, Is.EqualTo(tx.Hash), "tx hash");
-        Assert.That(trace.Action.Gas, Is.EqualTo((long)tx.GasLimit - 21000), "gas");
-        Assert.That(trace.Action.Value, Is.EqualTo(tx.Value), "value");
-        Assert.That(trace.Action.Input.ToArray(), Is.EqualTo(tx.Data.AsArray()), "input");
-        Assert.That(trace.Action.TraceAddress.ToArray(), Is.EqualTo(Array.Empty<int>()), "trace address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.From, Is.EqualTo(tx.SenderAddress), "from");
+            Assert.That(trace.Action.To, Is.EqualTo(tx.To), "to");
+            Assert.That(trace.BlockHash, Is.EqualTo(block.Hash), "hash");
+            Assert.That(trace.BlockNumber, Is.EqualTo(block.Number), "number");
+            Assert.That(trace.TransactionPosition, Is.EqualTo(0), "tx index");
+            Assert.That(trace.TransactionHash, Is.EqualTo(tx.Hash), "tx hash");
+            Assert.That(trace.Action.Gas, Is.EqualTo(tx.GasLimit - 21000), "gas");
+            Assert.That(trace.Action.Value, Is.EqualTo(tx.Value), "value");
+            Assert.That(trace.Action.Input.ToArray(), Is.EqualTo(tx.Data.AsArray()), "input");
+            Assert.That(trace.Action.TraceAddress.ToArray(), Is.EqualTo(Array.Empty<int>()), "trace address");
+        }
     }
 
     [Test]
@@ -232,11 +301,14 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             1, // STOP
         };
 
-        Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "root subtraces");
-        Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0 }), "[0] address");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "root subtraces");
+            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
+            Assert.That(trace.Action.Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0 }), "[0] address");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
+        }
     }
 
     [Test]
@@ -358,9 +430,96 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(0), "subtraces count");
-        Assert.That(trace.VmTrace.Operations.Last().Cost, Is.EqualTo(59700));
-        Assert.That(trace.VmTrace.Operations.Last().Used, Is.EqualTo(71579));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(0), "subtraces count");
+            Assert.That(trace.VmTrace.Operations.Last().Cost, Is.EqualTo(59700));
+            Assert.That(trace.VmTrace.Operations.Last().Used, Is.EqualTo(71579));
+        }
+    }
+
+    /// <summary>
+    /// Leaving a call/create frame latches the parity-style gas flag for the resume-time update of the parent
+    /// operation. If the resume does not consume it, the flag suppresses the cost subtraction of the next
+    /// operation, which then reports the gas remaining at its start instead of what it spent.
+    /// </summary>
+    [Test]
+    public void Operation_after_frame_return_reports_its_own_cost([Values] bool isCreate, [Values] bool streaming)
+    {
+        byte[] initCode = Prepare.EvmCode
+            .ForInitOf(new byte[3])
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+
+        byte[] code = (isCreate
+                ? Prepare.EvmCode.Create(initCode, 0)
+                : Prepare.EvmCode.Call(TestItem.AddressC, 40000))
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> operations =
+            streaming ? StreamVmTraceOperations(code) : CollectVmTraceOperations(code);
+
+        int frameIndex = 0;
+        while (frameIndex < operations.Count && !operations[frameIndex].HasSubtrace)
+        {
+            frameIndex++;
+        }
+
+        Assert.That(frameIndex, Is.InRange(0, operations.Count - 3), "index of the call/create operation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(operations[frameIndex].Pushes, Is.EqualTo(1), "call/create result push");
+            Assert.That(operations[frameIndex + 1].Cost, Is.EqualTo(GasCostOf.Base), "POP cost");
+            Assert.That(operations[frameIndex + 2].Cost, Is.EqualTo(GasCostOf.Free), "STOP cost");
+        }
+    }
+
+    private IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> CollectVmTraceOperations(byte[] code)
+    {
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+        List<(ulong, bool, int)> operations = [];
+        foreach (ParityVmOperationTrace operation in trace.VmTrace.Operations)
+        {
+            operations.Add((operation.Cost, operation.Sub is not null, operation.Push?.Length ?? 0));
+        }
+
+        return operations;
+    }
+
+    private IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> StreamVmTraceOperations(byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
+        StreamingParityLikeTxTracer tracer = new(
+            block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace,
+            writer, pipeWriter: null, CancellationToken.None, fillVmTraceSlot: true);
+        try
+        {
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+            tracer.BuildResult();
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+
+        writer.Flush();
+        using JsonDocument document = JsonDocument.Parse(sink.WrittenMemory);
+        List<(ulong, bool, int)> operations = [];
+        foreach (JsonElement operation in document.RootElement.GetProperty("ops").EnumerateArray())
+        {
+            JsonElement push = operation.GetProperty("ex").GetProperty("push");
+            operations.Add((operation.GetProperty("cost").GetUInt64(),
+                operation.GetProperty("sub").ValueKind is not JsonValueKind.Null,
+                push.ValueKind is JsonValueKind.Array ? push.GetArrayLength() : 0));
+        }
+
+        return operations;
     }
 
     [Test]
@@ -378,8 +537,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         ParityMemoryChangeTrace memory = trace.VmTrace.Operations[2].Memory;
-        Assert.That(memory.Data.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(dataHex));
-        Assert.That(memory.Offset, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.Data.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(dataHex));
+            Assert.That(memory.Offset, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -407,26 +569,151 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         byte[][] push1 = trace.VmTrace.Operations[0].Push;
         byte[][] push2 = trace.VmTrace.Operations[1].Push;
-        Assert.That(push1[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
-        Assert.That(push2[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(push1[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+            Assert.That(push2[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+        }
     }
 
-    [Test]
-    public void Can_trace_dup_push_in_vm_trace()
+    // Run with DOTNET_EnableAVX=0 and DOTNET_EnableHWIntrinsic=0 to exercise the Vector128 and scalar handlers.
+    private static IEnumerable<TestCaseData> SuccessfulWordOperationCases()
     {
-        string push1Hex = "0x01";
-        string push2Hex = "0x0102";
+        const string zero = "0x0";
+        const string one = "0x1";
+        const string allA = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string allF = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
+        yield return WordOperationCase(Instruction.ISZERO, ["0x00"], one);
+        yield return WordOperationCase(Instruction.ISZERO, ["0x01"], zero);
+        yield return WordOperationCase(Instruction.NOT, ["0x00"], allF);
+        yield return WordOperationCase(Instruction.EQ, ["0x012345", "0x012345"], one);
+        yield return WordOperationCase(Instruction.EQ, ["0x012345", "0x012346"], zero);
+        yield return WordOperationCase(Instruction.AND, [allA, "0x0f"], "0xa");
+        yield return WordOperationCase(Instruction.OR, [allA, "0x0f"], $"{allA[..^2]}af");
+        yield return WordOperationCase(Instruction.XOR, [allA, "0x0f"], $"{allA[..^2]}a5");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x00"],
+            "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff80");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x800000000000000000", "0x08"],
+            "0xffffffffffffffffffffffffffffffffffffffffffffff800000000000000000");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x8000000000000000000000000000000000", "0x10"],
+            "0xffffffffffffffffffffffffffffff8000000000000000000000000000000000");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x20"], "0x80");
+        yield return WordOperationCase(Instruction.CLZ, ["0x00"], "0x100");
+        yield return WordOperationCase(Instruction.CLZ, ["0x01"], "0xff");
+    }
+
+    private static TestCaseData WordOperationCase(Instruction opcode, string[] operands, string expected) =>
+        new TestCaseData(opcode, operands, expected).SetName($"Vm_trace_reports_{opcode}_{expected}");
+
+    [TestCaseSource(nameof(SuccessfulWordOperationCases))]
+    public void Vm_trace_reports_successful_word_operation_push(Instruction opcode, string[] operands, string expected)
+    {
+        byte[] code = BuildWordOperationCode(opcode, operands);
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.OsakaActivation, code);
+        using JsonDocument document = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+        JsonElement pushes = document.RootElement.GetProperty("vmTrace").GetProperty("ops")[operands.Length]
+            .GetProperty("ex").GetProperty("push");
+
+        Assert.That(pushes.GetArrayLength(), Is.EqualTo(1), opcode.ToString());
+        Assert.That(pushes[0].GetString(), Is.EqualTo(expected), opcode.ToString());
+    }
+
+    private static IEnumerable<TestCaseData> FailedWordOperationCases()
+    {
+        (Instruction Opcode, int Inputs, ulong GasCost)[] operations =
+        [
+            (Instruction.ISZERO, 1, GasCostOf.VeryLow),
+            (Instruction.NOT, 1, GasCostOf.VeryLow),
+            (Instruction.EQ, 2, GasCostOf.VeryLow),
+            (Instruction.AND, 2, GasCostOf.VeryLow),
+            (Instruction.OR, 2, GasCostOf.VeryLow),
+            (Instruction.XOR, 2, GasCostOf.VeryLow),
+            (Instruction.SIGNEXTEND, 2, GasCostOf.Low),
+            (Instruction.CLZ, 1, GasCostOf.Low),
+        ];
+
+        foreach ((Instruction opcode, int inputs, ulong gasCost) in operations)
+        {
+            yield return new TestCaseData(opcode, 0, 100_000UL, "Stack underflow")
+                .SetName($"Vm_trace_does_not_push_for_{opcode}_empty_underflow");
+            if (inputs > 1)
+            {
+                yield return new TestCaseData(opcode, inputs - 1, 100_000UL, "Stack underflow")
+                    .SetName($"Vm_trace_does_not_push_for_{opcode}_partial_underflow");
+            }
+
+            ulong oneShortGas = GasCostOf.Transaction + (ulong)inputs * GasCostOf.VeryLow + gasCost - 1;
+            yield return new TestCaseData(opcode, inputs, oneShortGas, "Out of gas")
+                .SetName($"Vm_trace_does_not_push_for_{opcode}_one_short_out_of_gas");
+        }
+    }
+
+    [TestCaseSource(nameof(FailedWordOperationCases))]
+    public void Vm_trace_does_not_report_push_for_failed_word_operation(
+        Instruction opcode, int suppliedOperands, ulong gasLimit, string expectedError)
+    {
+        string[] operands = new string[suppliedOperands];
+        Array.Fill(operands, "0x01");
+        byte[] code = BuildWordOperationCode(opcode, operands);
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.OsakaActivation, gasLimit, code);
+        int reportedPushes = 0;
+        foreach (ParityVmOperationTrace operation in trace.VmTrace.Operations)
+            reportedPushes += operation.Push?.Length ?? 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Result, Is.Null, opcode.ToString());
+            Assert.That(trace.Action.Error, Is.EqualTo(expectedError), opcode.ToString());
+            Assert.That(trace.VmTrace.Operations, Has.Count.EqualTo(suppliedOperands), opcode.ToString());
+            Assert.That(reportedPushes, Is.EqualTo(suppliedOperands), opcode.ToString());
+        }
+    }
+
+    private static byte[] BuildWordOperationCode(Instruction opcode, string[] operands)
+    {
+        Prepare code = Prepare.EvmCode;
+        foreach (string operand in operands)
+            code.PushData(operand);
+        return code.Op(opcode).Done;
+    }
+
+    [TestCase(Instruction.SHL, "0x01", 0)]
+    [TestCase(Instruction.SHR, "0x8000000000000000000000000000000000000000000000000000000000000000", 0)]
+    [TestCase(Instruction.SAR, "0x01", 0)]
+    [TestCase(Instruction.SAR, "0x8000000000000000000000000000000000000000000000000000000000000000", 255)]
+    public void Shift_above_255_traces_a_full_word(Instruction instruction, string value, byte expectedByte)
+    {
         byte[] code = Prepare.EvmCode
-            .PushData(push1Hex)
-            .PushData(push2Hex)
-            .Op(Instruction.DUP2)
+            .PushData(value)
+            .PushData("0x0100")
+            .Op(instruction)
+            .Done;
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(
+            (MainnetSpecProvider.ConstantinopleFixBlockNumber, Timestamp), code);
+        byte[] pushed = trace.VmTrace.Operations[2].Push.Single();
+
+        Assert.That(pushed, Is.EqualTo(Enumerable.Repeat(expectedByte, EvmStack.WordSize)));
+    }
+
+    [TestCase(Instruction.DUP1, new[] { "0x0102", "0x0102" })]
+    [TestCase(Instruction.DUP2, new[] { "0x01", "0x0102", "0x01" })]
+    public void Can_trace_dup_push_in_vm_trace(Instruction dup, string[] expected)
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData("0x01")
+            .PushData("0x0102")
+            .Op(dup)
             .Done;
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
-        byte[][] dup = trace.VmTrace.Operations[2].Push;
-        Assert.That(dup[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
-        Assert.That(dup[1].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+        string[] pushed = trace.VmTrace.Operations[2].Push
+            .Select(static item => item.WithoutLeadingZeros().ToArray().ToHexString(true))
+            .ToArray();
+        Assert.That(pushed, Is.EqualTo(expected));
     }
 
     [Test]
@@ -443,8 +730,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         byte[][] swap = trace.VmTrace.Operations[2].Push;
-        Assert.That(swap[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
-        Assert.That(swap[1].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(swap[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+            Assert.That(swap[1].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+        }
     }
 
     [Test]
@@ -461,8 +751,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
         ParityStorageChangeTrace sstore = trace.VmTrace.Operations[2].Store;
-        Assert.That(sstore.Key.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
-        Assert.That(sstore.Value.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sstore.Key.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
+            Assert.That(sstore.Value.WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
+        }
     }
 
     [Test]
@@ -510,8 +803,11 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         UInt256 value = 2.Ether;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code, value);
-        Assert.That(trace.VmTrace, Is.Null);
-        Assert.That(trace.Action.Value, Is.EqualTo(value));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.VmTrace, Is.Null);
+            Assert.That(trace.Action.Value, Is.EqualTo(value));
+        }
     }
 
     [Test]
@@ -586,18 +882,21 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        // call to AddressC and should ignore precompile
-        Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "[] subtraces");
-        Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
+        using (Assert.EnterMultipleScope())
+        {
+            // call to AddressC and should ignore precompile
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "[] subtraces");
+            Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
 
-        // AddressC call - only one call
-        Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
-        Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[1] type");
+            // AddressC call - only one call
+            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
+            Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[1] type");
 
-        // Check the 2nd subtrace - a precompile call with value - must be included
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 1] subtraces");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].CallType, Is.EqualTo("call"), "[1, 1] type");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].IncludeInTrace, Is.EqualTo(true), "[1, 1] type");
+            // Check the 2nd subtrace - a precompile call with value - must be included
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 1] subtraces");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].CallType, Is.EqualTo("call"), "[1, 1] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].IncludeInTrace, Is.EqualTo(true), "[1, 1] type");
+        }
     }
 
     [Test]
@@ -634,24 +933,27 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             1, // STOP
         };
 
-        Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(2), "[] subtraces");
-        Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(2), "[] subtraces");
+            Assert.That(trace.Action.CallType, Is.EqualTo("call"), "[] type");
 
-        Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
-        Assert.That(trace.Action.Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0 }), "[0] address");
-        Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces.Count, Is.EqualTo(1), "[0] subtraces");
+            Assert.That(trace.Action.Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0 }), "[0] address");
+            Assert.That(trace.Action.Subtraces[0].CallType, Is.EqualTo("call"), "[0] type");
 
-        Assert.That(trace.Action.Subtraces[1].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
-        Assert.That(trace.Action.Subtraces[1].TraceAddress.ToArray(), Is.EqualTo(new[] { 1 }), "[1] address");
-        Assert.That(trace.Action.Subtraces[1].CallType, Is.EqualTo("call"), "[1] type");
+            Assert.That(trace.Action.Subtraces[1].Subtraces.Count, Is.EqualTo(1), "[1] subtraces");
+            Assert.That(trace.Action.Subtraces[1].TraceAddress.ToArray(), Is.EqualTo(new[] { 1 }), "[1] address");
+            Assert.That(trace.Action.Subtraces[1].CallType, Is.EqualTo("call"), "[1] type");
 
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
-        Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[0, 0] type");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 0, 0 }), "[0, 0] address");
+            Assert.That(trace.Action.Subtraces[0].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[0, 0] subtraces");
+            Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[0, 0] type");
 
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 1, 0 }), "[1, 0] address");
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 0] subtraces");
-        Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[1, 0] type");
+            Assert.That(trace.Action.Subtraces[1].Subtraces[0].TraceAddress.ToArray(), Is.EqualTo(new[] { 1, 0 }), "[1, 0] address");
+            Assert.That(trace.Action.Subtraces[1].Subtraces[0].Subtraces.Count, Is.EqualTo(0), "[1, 0] subtraces");
+            Assert.That(trace.Action.Subtraces[1].Subtraces[0].CallType, Is.EqualTo("create"), "[1, 0] type");
+        }
     }
 
     [Test]
@@ -681,15 +983,18 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.StateChanges.Count, Is.EqualTo(5), "state changes count");
-        Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
-        Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
-        Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "address c");
-        Assert.That(trace.StateChanges[Recipient].Storage.Count, Is.EqualTo(2), "recipient storage count");
-        Assert.That(trace.StateChanges[Recipient].Storage[2].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[2]");
-        Assert.That(trace.StateChanges[Recipient].Storage[2].After, Is.EqualTo(Bytes.FromHexString(SampleHexData1)), "recipient storage[2] after");
-        Assert.That(trace.StateChanges[Recipient].Storage[3].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[3]");
-        Assert.That(trace.StateChanges[Recipient].Storage[3].After, Is.EqualTo(Bytes.FromHexString(SampleHexData2)), "recipient storage[3] after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.StateChanges.Count, Is.EqualTo(5), "state changes count");
+            Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
+            Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
+            Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "address c");
+            Assert.That(trace.StateChanges[Recipient].Storage.Count, Is.EqualTo(2), "recipient storage count");
+            Assert.That(trace.StateChanges[Recipient].Storage[2].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[2]");
+            Assert.That(trace.StateChanges[Recipient].Storage[2].After, Is.EqualTo(Bytes.FromHexString(SampleHexData1)), "recipient storage[2] after");
+            Assert.That(trace.StateChanges[Recipient].Storage[3].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[3]");
+            Assert.That(trace.StateChanges[Recipient].Storage[3].After, Is.EqualTo(Bytes.FromHexString(SampleHexData2)), "recipient storage[3] after");
+        }
     }
 
     [Test]
@@ -719,13 +1024,16 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.StateChanges.Count, Is.EqualTo(5), "state changes count");
-        Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "call target");
-        Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
-        Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
-        Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
-        Assert.That(trace.StateChanges[Contract].Code.Before, Is.EqualTo(null), "code before");
-        Assert.That(trace.StateChanges[Contract].Code.After, Is.EqualTo(deployedCode), "code after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.StateChanges.Count, Is.EqualTo(5), "state changes count");
+            Assert.That(trace.StateChanges.ContainsKey(TestItem.AddressC), Is.True, "call target");
+            Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
+            Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
+            Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
+            Assert.That(trace.StateChanges[Contract].Code.Before, Is.EqualTo(null), "code before");
+            Assert.That(trace.StateChanges[Contract].Code.After, Is.EqualTo(deployedCode), "code after");
+        }
     }
 
     [Test]
@@ -736,16 +1044,19 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
-        Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
-        Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
-        Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
-        Assert.That(trace.StateChanges[Sender].Balance.Before, Is.EqualTo(100.Ether), "sender before");
-        Assert.That(trace.StateChanges[Sender].Balance.After, Is.EqualTo(100.Ether - 21001), "sender after");
-        Assert.That(trace.StateChanges[Recipient].Balance.Before, Is.EqualTo(100.Ether), "recipient before");
-        Assert.That(trace.StateChanges[Recipient].Balance.After, Is.EqualTo(100.Ether + 1), "recipient after");
-        Assert.That(trace.StateChanges[Miner].Balance.Before, Is.EqualTo(null), "miner before");
-        Assert.That(trace.StateChanges[Miner].Balance.After, Is.EqualTo((UInt256)21000), "miner after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
+            Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
+            Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
+            Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
+            Assert.That(trace.StateChanges[Sender].Balance.Before, Is.EqualTo(100.Ether), "sender before");
+            Assert.That(trace.StateChanges[Sender].Balance.After, Is.EqualTo(100.Ether - 21001), "sender after");
+            Assert.That(trace.StateChanges[Recipient].Balance.Before, Is.EqualTo(100.Ether), "recipient before");
+            Assert.That(trace.StateChanges[Recipient].Balance.After, Is.EqualTo(100.Ether + 1), "recipient after");
+            Assert.That(trace.StateChanges[Miner].Balance.Before, Is.EqualTo(null), "miner before");
+            Assert.That(trace.StateChanges[Miner].Balance.After, Is.EqualTo((UInt256)21000), "miner after");
+        }
     }
 
     [Test]
@@ -757,12 +1068,15 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
 
-        Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
-        Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
-        Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
-        Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
-        Assert.That(trace.StateChanges[Sender].Nonce.Before, Is.EqualTo(UInt256.Zero), "sender before");
-        Assert.That(trace.StateChanges[Sender].Nonce.After, Is.EqualTo(UInt256.One), "sender after");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.StateChanges.Count, Is.EqualTo(3), "state changes count");
+            Assert.That(trace.StateChanges.ContainsKey(Sender), Is.True, "sender");
+            Assert.That(trace.StateChanges.ContainsKey(Recipient), Is.True, "recipient");
+            Assert.That(trace.StateChanges.ContainsKey(Miner), Is.True, "miner");
+            Assert.That(trace.StateChanges[Sender].Nonce.Before, Is.EqualTo(UInt256.Zero), "sender before");
+            Assert.That(trace.StateChanges[Sender].Nonce.After, Is.EqualTo(UInt256.One), "sender after");
+        }
     }
 
     [Test]
@@ -779,6 +1093,28 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
         tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.CALL, false);
         Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, [], []));
+    }
+
+    [Test]
+    public void Mark_as_success_without_report_action_creates_synthetic_root_action()
+    {
+        Block block = Build.A.Block.TestObject;
+        Transaction tx = Build.A.Transaction.TestObject;
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace);
+        byte[] output = [1, 2, 3];
+
+        Assert.DoesNotThrow(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, output, []));
+
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action, Is.Not.Null);
+            Assert.That(trace.Action!.From, Is.EqualTo(tx.SenderAddress));
+            Assert.That(trace.Action.To, Is.EqualTo(tx.To));
+            Assert.That(trace.Action.Value, Is.EqualTo(tx.Value));
+            Assert.That(trace.Action.Result!.Output, Is.EqualTo(output));
+            Assert.That(trace.Output, Is.EqualTo(output));
+        }
     }
 
     [Test]
@@ -804,6 +1140,17 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        return (tracer.BuildResult(), block, transaction);
+    }
+
+    private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ForkActivation activation, params byte[] code) =>
+        ExecuteAndTraceParityCall(activation, 100000, code);
+
+    private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ForkActivation activation, ulong gasLimit, params byte[] code)
+    {
+        (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return (tracer.BuildResult(), block, transaction);
     }
 

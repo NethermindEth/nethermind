@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -33,7 +34,7 @@ namespace Nethermind.Xdc.Test;
 
 internal class SpecialTransactionsTests
 {
-    private bool IsTimeForOnchainSignature(IXdcReleaseSpec spec, long blockNumber) =>
+    private bool IsTimeForOnchainSignature(IXdcReleaseSpec spec, ulong blockNumber) =>
         blockNumber % spec.MergeSignRange == 0;
 
     private Task ProposeBatchTransferTxFrom(PrivateKey source, PrivateKey destination, UInt256 amount, int count, XdcTestBlockchain chain) =>
@@ -50,13 +51,14 @@ internal class SpecialTransactionsTests
 
     private Transaction CreateTransferTxFrom(PrivateKey source, PrivateKey destination, UInt256 amount, XdcTestBlockchain chain)
     {
-        UInt256 nonce = chain.TxPool.GetLatestPendingNonce(source.Address);
+        ulong nonce = chain.TxPool.GetLatestPendingNonce(source.Address);
 
         Transaction tx = Build.A.Transaction
             .WithSenderAddress(source.Address)
             .WithTo(destination.Address)
             .WithValue(amount)
             .WithType(TxType.Legacy)
+            .WithGasPrice(XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier)
             .WithNonce(nonce)
             .TestObject;
 
@@ -79,13 +81,12 @@ internal class SpecialTransactionsTests
     }
 
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task SignTx_Is_Dispatched_On_MergeSignRange_Block(bool enableEip1559)
+    [Test]
+    public async Task SignTx_Is_Dispatched_On_MergeSignRange_Block([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(1, true);
 
-        int mergeSignBlockRange = 5;
+        ulong mergeSignBlockRange = 5;
 
         blockChain.ChangeReleaseSpec((spec) =>
         {
@@ -117,18 +118,17 @@ internal class SpecialTransactionsTests
 
         Transaction specialTx = signTxs.First();
 
-        long blockTarget = (long)(new UInt256(specialTx.Data.Span.Slice(4, 32), true));
+        ulong blockTarget = (ulong)(new UInt256(specialTx.Data.Span.Slice(4, 32), true));
 
         Assert.That(blockTarget, Is.EqualTo(mergeSignBlockRange));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task SignTx_Is_Not_Dispatched_Outside_MergeSignRange_Block(bool enableEip1559)
+    [Test]
+    public async Task SignTx_Is_Not_Dispatched_Outside_MergeSignRange_Block([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(1, true);
 
-        int mergeSignBlockRange = 5;
+        ulong mergeSignBlockRange = 5;
 
         blockChain.ChangeReleaseSpec((spec) =>
         {
@@ -153,13 +153,12 @@ internal class SpecialTransactionsTests
                        || r.To == spec.RandomizeSMCBinary), Is.False);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Special_Tx_Is_Executed_Before_Normal_Txs(bool enableEip1559)
+    [Test]
+    public async Task Special_Tx_Is_Executed_Before_Normal_Txs([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(1, true);
 
-        int mergeSignBlockRange = 5;
+        ulong mergeSignBlockRange = 5;
 
         blockChain.ChangeReleaseSpec((spec) =>
         {
@@ -176,7 +175,7 @@ internal class SpecialTransactionsTests
 
         PrivateKey[] accounts = FilledAccounts(blockChain);
 
-        for (int i = 1; i < spec.MergeSignRange + 2; i++)
+        for (ulong i = 1; i < spec.MergeSignRange + 2; i++)
         {
             if (head!.Number == mergeSignBlockRange + 1)
             {
@@ -213,15 +212,10 @@ internal class SpecialTransactionsTests
                 onlyEncounteredSpecialTx = false;
             }
         }
-
-        Assert.Pass();
     }
 
-    [TestCase(false, false)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(true, true)]
-    public async Task Tx_With_With_BlackListed_Sender_Fails_Validation(bool blackListingActivated, bool enableEip1559)
+    [Test]
+    public async Task Tx_With_With_BlackListed_Sender_Fails_Validation([Values] bool blackListingActivated, [Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -270,11 +264,8 @@ internal class SpecialTransactionsTests
     }
 
 
-    [TestCase(false, false)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(true, true)]
-    public async Task Tx_With_With_BlackListed_Receiver_Fails_Validation(bool blackListingActivated, bool enableEip1559)
+    [Test]
+    public async Task Tx_With_With_BlackListed_Receiver_Fails_Validation([Values] bool blackListingActivated, [Values] bool enableEip1559)
     {
 
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
@@ -304,7 +295,7 @@ internal class SpecialTransactionsTests
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head, spec));
 
-        UInt256 nonce = blockChain.ReadOnlyState.GetNonce(blockChain.Signer.Address);
+        ulong nonce = blockChain.ReadOnlyState.GetNonce(blockChain.Signer.Address);
 
         Transaction tx = Build.A.Transaction
             .WithNonce(nonce)
@@ -333,9 +324,8 @@ internal class SpecialTransactionsTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Malformed_WrongLength_SpecialTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_WrongLength_SpecialTx_Fails_Validation([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -366,9 +356,8 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Malformed_SenderNonceLesserThanTxNonce_SignTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_SenderNonceLesserThanTxNonce_SignTx_Fails_Validation([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -398,7 +387,7 @@ internal class SpecialTransactionsTests
 
 
         blockChain.MainWorldState.IncrementNonce(blockChain.Signer.Address);
-        UInt256 nonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
+        ulong nonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
 
         Transaction txWithSmallerNonce = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, nonce - 1, spec.BlockSignerContract, blockChain.Signer.Address);
@@ -423,9 +412,8 @@ internal class SpecialTransactionsTests
         Assert.That(result.Value.Error, Is.EqualTo(XdcTransactionResult.NonceTooLowError));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Malformed_SenderNonceBiggerLesserThanTxNonce_SignTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_SenderNonceBiggerLesserThanTxNonce_SignTx_Fails_Validation([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -455,7 +443,7 @@ internal class SpecialTransactionsTests
 
 
         blockChain.MainWorldState.IncrementNonce(blockChain.Signer.Address);
-        UInt256 nonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
+        ulong nonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
 
         Transaction txWithBiggerNonce = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, nonce + 1, spec.BlockSignerContract, blockChain.Signer.Address);
@@ -481,9 +469,8 @@ internal class SpecialTransactionsTests
     }
 
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Malformed_SenderNonceEqualLesserThanTxNonce_SignTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_SenderNonceEqualLesserThanTxNonce_SignTx_Fails_Validation([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -513,7 +500,7 @@ internal class SpecialTransactionsTests
 
 
         blockChain.MainWorldState.IncrementNonce(blockChain.Signer.Address);
-        UInt256 nonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
+        ulong nonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
 
         Transaction validNonceTx = SignTransactionManager.CreateTxSign((UInt256)head.Number, head.Hash!, nonce, spec.BlockSignerContract, blockChain.Signer.Address);
 
@@ -534,15 +521,17 @@ internal class SpecialTransactionsTests
             result = TransactionResult.Ok;
         }
 
-        Assert.That(result.Value.Error, Is.Not.EqualTo(XdcTransactionResult.NonceTooHighError));
-        Assert.That(result.Value.Error, Is.Not.EqualTo(XdcTransactionResult.NonceTooLowError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Value.Error, Is.Not.EqualTo(XdcTransactionResult.NonceTooHighError));
+            Assert.That(result.Value.Error, Is.Not.EqualTo(XdcTransactionResult.NonceTooLowError));
+        }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Malformed_WrongBlockNumber_BlockTooHigh_SignTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_WrongBlockNumber_BlockTooHigh_SignTx_Fails_Validation([Values] bool enableEip1559)
     {
-        int epochLength = 10;
+        ulong epochLength = 10;
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
@@ -571,11 +560,10 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Malformed_WrongBlockNumber_BlockTooLow_SignTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_WrongBlockNumber_BlockTooLow_SignTx_Fails_Validation([Values] bool enableEip1559)
     {
-        int epochLength = 10;
+        ulong epochLength = 10;
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
@@ -588,8 +576,8 @@ internal class SpecialTransactionsTests
 
         blockChain.MainWorldState.BeginScope(head);
 
-        long lowerBound = head.Number - (spec.EpochLength * 2);
-        UInt256 tooLowBlockNumber = (UInt256)lowerBound;
+        ulong lowerBound = head.Number.SaturatingSub(spec.EpochLength * 2);
+        UInt256 tooLowBlockNumber = lowerBound;
         Transaction txTooLow = SignTransactionManager.CreateTxSign(
             tooLowBlockNumber,
             head.Hash!,
@@ -605,11 +593,10 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Malformed_WrongBlockNumber_BlockWithinRange_SignTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_WrongBlockNumber_BlockWithinRange_SignTx_Fails_Validation([Values] bool enableEip1559)
     {
-        int epochLength = 10;
+        ulong epochLength = 10;
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
@@ -625,9 +612,9 @@ internal class SpecialTransactionsTests
         //   blkNumber > header.Number - (EpochLength * 2)
         //
         // Pick something comfortably in the middle of that interval.
-        long upper = head.Number - 1;
-        long lower = head.Number - (spec.EpochLength * 2) + 1;
-        long validBlockNumber = lower + (upper - lower) / 2;
+        ulong upper = head.Number - 1;
+        ulong lower = head.Number.SaturatingSub(spec.EpochLength * 2) + 1;
+        ulong validBlockNumber = lower + (upper - lower) / 2;
 
         Transaction tx =
             SignTransactionManager.CreateTxSign(
@@ -645,11 +632,10 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task SignTx_From_NonEpochCandidate_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task SignTx_From_NonEpochCandidate_Fails_Validation([Values] bool enableEip1559)
     {
-        int epochLength = 10;
+        ulong epochLength = 10;
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
         blockChain.ChangeReleaseSpec((spec) =>
         {
@@ -686,9 +672,8 @@ internal class SpecialTransactionsTests
         Assert.That(result.ToString(), Does.Contain("Special transaction sender is not an epoch candidate"));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task SignTx_Increments_Nonce_And_Emits_Log_And_Consume_NoGas(bool enableEip1559)
+    [Test]
+    public async Task SignTx_Increments_Nonce_And_Emits_Log_And_Consume_NoGas([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -716,7 +701,7 @@ internal class SpecialTransactionsTests
 
         moqVm.SetBlockExecutionContext(new BlockExecutionContext(head.Header, spec));
 
-        UInt256 initialNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
+        ulong initialNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
         UInt256 initialBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
 
         Transaction? tx = SignTransactionManager.CreateTxSign((UInt256)head.Number - 1, head.ParentHash!, initialNonce, spec.BlockSignerContract, blockChain.Signer.Address);
@@ -739,26 +724,23 @@ internal class SpecialTransactionsTests
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
 
-        UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
+        ulong finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
         UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
-
-        Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
-        Assert.That(finalBalance, Is.EqualTo(initialBalance));
-
         int finalCountOfReceipts = receiptsTracer.TxReceipts.Length;
-
-        Assert.That(finalCountOfReceipts, Is.EqualTo(initialCountOfReceipts + 1));
-
         TxReceipt? finalReceipt = receiptsTracer.TxReceipts[^1];
 
-        Assert.That(finalReceipt?.Logs?.Length, Is.EqualTo(1));
-
-        Assert.That(finalReceipt?.Logs?[0].Address, Is.EqualTo(spec.BlockSignerContract));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
+            Assert.That(finalBalance, Is.EqualTo(initialBalance));
+            Assert.That(finalCountOfReceipts, Is.EqualTo(initialCountOfReceipts + 1));
+            Assert.That(finalReceipt?.Logs?.Length, Is.EqualTo(1));
+            Assert.That(finalReceipt?.Logs?[0].Address, Is.EqualTo(spec.BlockSignerContract));
+        }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Valid_SpecialTx_NotSign_Call_EmptyTx_Handler(bool enableEip1559)
+    [Test]
+    public async Task Valid_SpecialTx_NotSign_Call_EmptyTx_Handler([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -766,7 +748,7 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = enableEip1559;
             spec.IsTipTrc21FeeEnabled = false;
 
-            spec.IsTIPXDCXMiner = true;
+            spec.IsTIPXDCXReceiver = true;
 
             spec.TradingStateAddressBinary = new Address("0x00000000000000000000000000000000b000091");
             spec.XDCXAddressBinary = new Address("0x00000000000000000000000000000000b000092");
@@ -827,29 +809,25 @@ internal class SpecialTransactionsTests
 
             UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
             UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
-
-            Assert.That(finalNonce, Is.EqualTo(initialNonce), $"specialTx to {address} does not increment nonce, initialNonce: {initialNonce}, finalNonce: {finalNonce}");
-
-            Assert.That(initialBalance, Is.EqualTo(finalBalance), $"specialTx to {address} does not increment nonce, initialBalance: {initialNonce}, finalBalance: {finalNonce}");
-
             int finalCountOfReceipts = receiptsTracer.TxReceipts.Length;
-
-            Assert.That(finalCountOfReceipts, Is.EqualTo(initialCountOfReceipts + 1));
-
             TxReceipt? finalReceipt = receiptsTracer.TxReceipts[^1];
 
-            Assert.That(finalReceipt?.Logs?.Length, Is.EqualTo(1));
-
-            Assert.That(finalReceipt?.Logs?[0].Address, Is.EqualTo(address));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(finalNonce, Is.EqualTo(initialNonce), $"specialTx to {address} does not increment nonce, initialNonce: {initialNonce}, finalNonce: {finalNonce}");
+                Assert.That(initialBalance, Is.EqualTo(finalBalance), $"specialTx to {address} does not increment nonce, initialBalance: {initialNonce}, finalBalance: {finalNonce}");
+                Assert.That(finalCountOfReceipts, Is.EqualTo(initialCountOfReceipts + 1));
+                Assert.That(finalReceipt?.Logs?.Length, Is.EqualTo(1));
+                Assert.That(finalReceipt?.Logs?[0].Address, Is.EqualTo(address));
+            }
         }
         receiptsTracer.EndBlockTrace();
 
         Assert.That(receiptsTracer.TxReceipts.Length, Is.EqualTo(addresses.Length));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task SignTx_With_ZeroBalance_CanBeIncludedInBlock_And_ReceiptIsEmitted(bool enableEip1559)
+    [Test]
+    public async Task SignTx_With_ZeroBalance_CanBeIncludedInBlock_And_ReceiptIsEmitted([Values] bool enableEip1559)
     {
         XdcTestBlockchain chain = await XdcTestBlockchain.Create();
 
@@ -860,7 +838,7 @@ internal class SpecialTransactionsTests
 
         XdcBlockHeader head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
         IXdcReleaseSpec spec = chain.SpecProvider.GetXdcSpec(head, chain.XdcContext.CurrentRound);
-        int epochLength = spec.EpochLength;
+        ulong epochLength = spec.EpochLength;
 
         // Add blocks up to epochLength (E) + 15 and create a signing tx that will be inserted in the next block
         await chain.AddBlocks(epochLength + 15 - 3);
@@ -886,14 +864,15 @@ internal class SpecialTransactionsTests
         // Get receipts of the block after (i.e., the block that included the SignTx)
         TxReceipt[] receipts = chain.ReceiptStorage.Get(block.Hash!);
         Assert.That(receipts, Is.Not.Null);
-        Assert.That(receipts, Is.Not.Empty);
-
-        Assert.That(receipts.Any(r => r.Recipient == spec.BlockSignerContract), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts, Is.Not.Empty);
+            Assert.That(receipts.Any(r => r.Recipient == spec.BlockSignerContract), Is.True);
+        }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task RandomizeTx_IncrementNonce_And_Is_Treated_As_Free(bool enableEip1559)
+    [Test]
+    public async Task RandomizeTx_IncrementNonce_And_Is_Treated_As_Free([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -945,23 +924,23 @@ internal class SpecialTransactionsTests
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
 
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.None));
-
         UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
         UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
-
-        Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
-        Assert.That(finalBalance, Is.EqualTo(initialBalance)); // zero gas price => no balance change
-
-        Assert.That(receiptsTracer.TxReceipts.Length, Is.Not.EqualTo(0));
         TxReceipt receipt = receiptsTracer.TxReceipts[^1];
-        Assert.That(receipt.GasUsed, Is.GreaterThan(0));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.None));
+            Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
+            Assert.That(finalBalance, Is.EqualTo(initialBalance)); // zero gas price => no balance change
+            Assert.That(receiptsTracer.TxReceipts.Length, Is.Not.EqualTo(0));
+            Assert.That(receipt.GasUsed, Is.GreaterThan(0));
+        }
     }
 
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task RandomizeTx_From_ZeroBalance_Account(bool enableEip1559)
+    [Test]
+    public async Task RandomizeTx_From_ZeroBalance_Account([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -1016,16 +995,17 @@ internal class SpecialTransactionsTests
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
 
-        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.None));
-
         UInt256 finalNonce = blockChain.MainWorldState.GetNonce(blockChain.Signer.Address);
         UInt256 finalBalance = blockChain.MainWorldState.GetBalance(blockChain.Signer.Address);
-
-        Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
-        Assert.That(finalBalance, Is.EqualTo(initialBalance)); // zero gas price => no balance change
-
-        Assert.That(receiptsTracer.TxReceipts.Length, Is.Not.EqualTo(0));
         TxReceipt receipt = receiptsTracer.TxReceipts[^1];
-        Assert.That(receipt.GasUsed, Is.GreaterThan(0));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.None));
+            Assert.That(finalNonce, Is.EqualTo(initialNonce + 1));
+            Assert.That(finalBalance, Is.EqualTo(initialBalance)); // zero gas price => no balance change
+            Assert.That(receiptsTracer.TxReceipts.Length, Is.Not.EqualTo(0));
+            Assert.That(receipt.GasUsed, Is.GreaterThan(0));
+        }
     }
 }

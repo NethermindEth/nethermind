@@ -64,7 +64,11 @@ public static class T8nExecutor
         compositeBlockTracer.Add(storageTxTracer);
         if (test.IsTraceEnabled)
         {
-            compositeBlockTracer.Add(new GethLikeBlockFileTracer(block, test.GethTraceOptions, new RealFileSystem()));
+            compositeBlockTracer.Add(new GethLikeBlockFileTracer(
+                block,
+                test.GethTraceOptions,
+                new RealFileSystem(),
+                test.Spec));
         }
 
         BlockReceiptsTracer blockReceiptsTracer = new();
@@ -134,7 +138,7 @@ public static class T8nExecutor
     }
 
     private static IBlockhashProvider ConstructBlockHashProvider(T8nTest test) =>
-        new T8nBlockHashProvider(test.BlockHashes.ToDictionary(kvp => long.Parse(kvp.Key), kvp => kvp.Value));
+        new T8nBlockHashProvider(test.BlockHashes.ToDictionary(kvp => ulong.Parse(kvp.Key), kvp => kvp.Value));
 
     private static void ApplyRewards(Block block, IWorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
     {

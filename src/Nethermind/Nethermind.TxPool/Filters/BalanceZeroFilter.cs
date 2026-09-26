@@ -17,6 +17,13 @@ namespace Nethermind.TxPool.Filters
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
+            // EIP-8141: the payer is not resolved yet, so a frame transaction's fee cannot be charged to any
+            // account here; FrameTxPayerExposureFilter gates it once it is.
+            if (tx.SupportsFrames)
+            {
+                return AcceptTxResult.Accepted;
+            }
+
             AccountStruct account = state.SenderAccount;
             UInt256 balance = account.Balance;
 

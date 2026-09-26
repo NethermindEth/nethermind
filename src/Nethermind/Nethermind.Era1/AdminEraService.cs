@@ -20,7 +20,7 @@ public class AdminEraService(
     private int _canEnterImport = 1;
     private int _canEnterExport = 1;
 
-    public string ExportHistory(string destination, long from, long to)
+    public string ExportHistory(string destination, ulong from, ulong to)
     {
         if (Interlocked.Exchange(ref _canEnterExport, 0) != 1)
             throw new InvalidOperationException("An export job is already running.");
@@ -38,7 +38,7 @@ public class AdminEraService(
         return "Started export task";
     }
 
-    public string ImportHistory(string source, long from, long to, string? accumulatorFile)
+    public string ImportHistory(string source, ulong from, ulong to, string? accumulatorFile)
     {
         if (Interlocked.Exchange(ref _canEnterImport, 0) != 1)
             throw new InvalidOperationException("An import job is already running.");
@@ -57,7 +57,7 @@ public class AdminEraService(
 
     }
 
-    private async Task StartExportTask(string destination, long from, long to)
+    private async Task StartExportTask(string destination, ulong from, ulong to)
     {
         // Creating the task is outside the try block so that argument exceptions can be caught
         Task task = _eraExporter.Export(
@@ -90,7 +90,7 @@ public class AdminEraService(
         }
     }
 
-    private async Task StartImportTask(string source, string? accumulatorFile, long from, long to)
+    private async Task StartImportTask(string source, string? accumulatorFile, ulong from, ulong to)
     {
         Task task = _eraImporter.Import(
             source,

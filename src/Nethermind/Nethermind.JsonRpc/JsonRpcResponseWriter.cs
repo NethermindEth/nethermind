@@ -8,6 +8,7 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -151,6 +152,57 @@ public static class JsonRpcResponseWriter
         writer.Write(IdSeparator);
         WriteIdRaw(writer, in id);
         writer.Write(EnvelopeEnd);
+    }
+
+    /// <summary>
+    /// Resolves the contract to serialize <paramref name="value"/> with, or null when the declared
+    /// <typeparamref name="TValue"/> contract already describes it.
+    /// </summary>
+    /// <remarks>
+    /// Serializing a derived payload at its declared type silently omits the properties the derived type
+    /// adds — the engine-specific seal fields consensus plugins put on <c>BlockForRpc</c>, for instance —
+    /// because the payload types carry no <c>JsonDerivedType</c> attributes.
+    /// </remarks>
+    internal static JsonTypeInfo? GetRuntimePayloadTypeInfo<TValue>(JsonSerializerOptions options, TValue value)
+    {
+        if (!RpcPayloadTypeShape<TValue>.CanHaveDerivedRuntimeType)
+        {
+            return null;
+        }
+
+        Type runtimeType = value!.GetType();
+        return runtimeType == typeof(TValue) ? null : RpcPayloadTypeInfo.Get(options, runtimeType);
+    }
+
+    /// <summary>Writes a response payload the way every response writes its result.</summary>
+    internal static void WritePayload<T>(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
+    {
+        if (TryWriteSimpleValue(writer, value))
+        {
+            return;
+        }
+
+        JsonTypeInfo? runtimeTypeInfo = GetRuntimePayloadTypeInfo(options, value);
+        if (runtimeTypeInfo is not null)
+        {
+            JsonSerializer.Serialize(writer, (object)value!, runtimeTypeInfo);
+        }
+        else
+        {
+            JsonSerializer.Serialize(writer, value, RpcPayloadTypeInfo<T>.Get(options));
+        }
+    }
+
+    /// <summary>Serializes a payload once, byte for byte as <see cref="WritePayload{T}"/> writes it in a response.</summary>
+    internal static byte[] SerializePayload<T>(T value, JsonSerializerOptions options)
+    {
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer, CreateWriterOptions(options)))
+        {
+            WritePayload(writer, value, options);
+        }
+
+        return buffer.WrittenSpan.ToArray();
     }
 
     internal static bool TryWriteSimpleValue<T>(Utf8JsonWriter writer, T value)

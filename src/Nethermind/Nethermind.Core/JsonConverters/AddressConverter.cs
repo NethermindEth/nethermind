@@ -29,7 +29,7 @@ public class AddressConverter(bool strictHexFormat = false) : JsonConverter<Addr
             return new Address(bytes);
         }
 
-        byte[]? addressBytes = ByteArrayConverter.Convert(ref reader, strictHexFormat);
+        byte[]? addressBytes = ByteArrayConverter.ConvertData(ref reader, strictHexFormat);
         return addressBytes is null ? null : new Address(addressBytes);
     }
 
@@ -55,7 +55,7 @@ public class AddressConverter(bool strictHexFormat = false) : JsonConverter<Addr
             return new Address(bytes);
         }
 
-        return new Address(ByteArrayConverter.Convert(ref reader, strictHexFormat) ?? throw new JsonException("Invalid address property name"));
+        return new Address(ByteArrayConverter.ConvertData(ref reader, strictHexFormat) ?? throw new JsonException("Invalid address property name"));
     }
 
     [SkipLocalsInit]

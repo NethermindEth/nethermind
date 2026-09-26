@@ -5,6 +5,6 @@ namespace Nethermind.Synchronization
 {
     public static class Sync
     {
-        public static long MaxReorgLength = 512;
+        public static ulong MaxReorgLength = 512;
     }
 }

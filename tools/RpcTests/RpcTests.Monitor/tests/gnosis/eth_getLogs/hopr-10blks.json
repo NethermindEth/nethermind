@@ -1,0 +1,53 @@
+[
+  {
+    "run": "EveryBlocks(3)",
+    "test": {
+      "description": "HOPR scan request, 10 blocks range"
+    },
+    "request": {
+      "jsonrpc":"2.0",
+      "method":"eth_getLogs",
+      "params":[{
+        "fromBlock":"{{Hex(Recent.Number - 9)}}",
+        "toBlock":"{{Hex(Recent.Number)}}",
+        "address":
+        [
+          "0x619eabe23fd0e2291b50a507719aa633fe6069b8",
+          "0x693bac5ce61c720ddc68533991ceb41199d8f8ae",
+          "0x7eb8d762fe794a108e568ad2097562cc5d3a1359",
+          "0x582b4b586168621daf83beb2aeadb5fb20f8d50d",
+          "0xca5656fe6f2d847aca32cf5f38e51d2054ca1273",
+          "0xe15c24a0910311c83ac78b5930d771089e93077b"
+        ],
+        "topics":
+        [
+          [
+            "0xc4df5ba16814838ab2618829d68f8623bb897302f24dbdba2279dbe45adb3d14",
+            "0xbf49ccd41a4118c7e1e72143bad844e5f6ed12bf60caa642d88d19ca10244c36",
+            "0xa4de30a528becadf82649d1395c0e30dd18ae35b5a96ce71e9295bb14bc9f3bc",
+            "0x159a8ae948fcc6e7f8b5495c0d73e91598440af8a62817246c09edc2c28dba8a",
+            "0x8bc85f25e3e933978f099408b3bb3eb7630b76f7455f2e205bcbc0a780e17e72",
+            "0xe837f339639296bec9f4bc986154f5ff76bbbefc3149a512920e1311414e3da1",
+            "0x8ac4b2eb7749f75c5b99b898e547fd615dd7a424e68356ea196b7dae742d6c32",
+            "0xceeab2eef998c17fe96f30f83fbf3c55fc5047f6e40c55a0cf72d236e9d2ba72",
+            "0xa43fad83920fd09445855e854e73c9c532e17402c9ceb09993a2392843a5bdb9",
+            "0xe2994f8d6f600ad473dba82c0a890ab7affacb860d3365f474baa3dc04a2e557",
+            "0x04e1eaa4da18f7e742a4edbbe9ede36cdf75f793bb03ab2158c0877f1caf2b93",
+            "0x0a31ee9d46a828884b81003c8498156ea6aa15b9b54bdd0ef0b533d9eba57e55",
+            "0x07b5c950597fc3bed92e2ad37fa84f701655acb372982e486f5fad3607f04a5c",
+            "0xdd90f938230335e59dc925c57ecb0e27a28c2d87356e31f00cd5554abd6c1b2d",
+            "0x771f5240ae5fd8a7640d3fb82fa70aab2fb1dbf35f2ef464f8509946717664c5",
+            "0x22e2a422a8860656a3a33cfa1daf771e76798ce5649747957235025de12e0b24",
+            "0x91760a1001f531ec2bee8602be55ad2b1159465edff5bbcd41d20703742a4d42",
+            "0x5fa17246d3a5d68d42baa94cde33042180b783a399c02bf63ac2076e0f708738",
+            "0x7165e2ebc7ce35cc98cb7666f9945b3617f3f36326b76d18937ba5fecf18739a",
+            "0xd4c5e06b1ae097ba02372652a7adaa6e4a8e00be527497a3ad0ebc3f761ef3fb",
+            "0x02728c4a80373f4765559dc3a046edea88186424827238bb46245668315d3800",
+            "0x776da40cbf2c223552661bd48502ceb72409b3362bb0c66d8989bd7e20e4497d"
+          ]
+        ]
+      }],
+      "id": "{{Request.Number}}"
+    }
+  }
+]

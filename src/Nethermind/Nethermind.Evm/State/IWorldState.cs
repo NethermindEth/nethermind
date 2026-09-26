@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -24,7 +26,19 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     // For scope to create genesis.
     const BlockHeader? PreGenesis = null;
 
-    IDisposable BeginScope(BlockHeader? baseBlock);
+    /// <summary>Attempts to open the state committed at <paramref name="baseBlock"/> (pre-genesis when <c>null</c>).</summary>
+    /// <param name="scopeCloser">The disposable scope closer when acquisition succeeds.</param>
+    /// <returns><c>true</c> when the state was acquired; <c>false</c> when it is unavailable.</returns>
+    bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser);
+
+    /// <summary>
+    /// Attempts to open the state required to execute <paramref name="targetBlock"/>.
+    /// </summary>
+    /// <param name="targetBlock">The target block; its parent state is opened.</param>
+    /// <param name="scopeCloser">The disposable scope closer when acquisition succeeds.</param>
+    /// <returns><c>true</c> when the parent state was acquired; otherwise <c>false</c>.</returns>
+    bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser);
+
     Task HintBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
@@ -32,41 +46,42 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     new ref readonly ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);
 
-    /// <summary>
-    /// Return the original persistent storage value from the storage cell.
-    /// Span is valid until the next call on this <see cref="IWorldState"/> instance.
-    /// </summary>
-    /// <param name="storageCell"></param>
-    /// <returns></returns>
-    ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell);
+    /// <summary>Checks whether the parent state required to execute <paramref name="targetBlock"/> is available.</summary>
+    /// <remarks>This check is advisory and does not reserve or pin state.</remarks>
+    bool HasStateForTargetBlock(BlockHeader targetBlock);
 
     /// <summary>
-    /// Get the persistent storage value at the specified storage cell
+    /// Return the original persistent storage value from the storage cell.
     /// </summary>
-    /// <param name="storageCell">Storage location</param>
-    /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> Get(in StorageCell storageCell);
+    /// <param name="storageCell">Storage location.</param>
+    /// <param name="value">Original value at the cell.</param>
+    void GetOriginal(in StorageCell storageCell, out UInt256 value);
 
     /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void Set(in StorageCell storageCell, byte[] newValue);
+    void Set(in StorageCell storageCell, in UInt256 newValue);
+
+    /// <summary>Sets a storage value using the caller's current value for change recording.</summary>
+    /// <remarks>The cell must not have changed since the caller read <paramref name="currentValue"/>.</remarks>
+    void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+        => Set(in storageCell, in newValue);
 
     /// <summary>
     /// Get the transient storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
-    /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell);
+    /// <param name="value">Value at cell</param>
+    void GetTransientState(in StorageCell storageCell, out UInt256 value);
 
     /// <summary>
     /// Set the provided value to transient storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void SetTransientState(in StorageCell storageCell, byte[] newValue);
+    void SetTransientState(in StorageCell storageCell, in UInt256 newValue);
 
     /// <summary>
     /// Reset all storage
@@ -86,9 +101,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
 
-    void WarmUp(AccessList? accessList);
+    void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default);
 
     void WarmUp(Address address);
+
+    /// <summary>Applies prefix account changes to block-start caches. False leaves state unchanged and requires ordinary replay.</summary>
+    bool TryApplyAccountOverlay(IStateReadOverlay overlay) => false;
 
     /// <summary>
     /// Clear all storage at specified address
@@ -96,12 +114,16 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="address">Contract address</param>
     void ClearStorage(Address address);
 
+    /// <summary>Only valid where no revert can follow AND the round is committed before any further
+    /// writes (validation mode); build-up/revertible clearing must use <see cref="ClearStorage"/>.</summary>
+    void MarkStorageDestroyed(Address address) => ClearStorage(address);
+
     void RecalculateStateRoot();
 
     void DeleteAccount(Address address);
 
-    void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
-    void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
+    void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default);
+    void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default);
     // used by Arbitrum
     void CreateEmptyAccountIfDeleted(Address address);
 
@@ -120,17 +142,19 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
+    /// <summary>Credits the account balance, creating the account if it does not physically exist.</summary>
+    /// <returns>True if this operation created the account; false if it already existed, even when empty.</returns>
     bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
-    void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce);
+    void IncrementNonce(Address address, ulong delta, out ulong oldNonce);
 
-    void DecrementNonce(Address address, UInt256 delta);
+    void DecrementNonce(Address address, ulong delta);
 
-    void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
+    void DecrementNonce(Address address) => DecrementNonce(address, 1);
 
-    void SetNonce(Address address, in UInt256 nonce);
+    void SetNonce(Address address, in ulong nonce);
 
     /* snapshots */
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
@@ -139,7 +163,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// Persist the underlying changes to the storage at the specified block number. This also recalculate state root.
     /// </summary>
     /// <param name="blockNumber"></param>
-    void CommitTree(long blockNumber);
+    void CommitTree(ulong blockNumber);
+
+    void CommitTree(int blockNumber) => CommitTree((ulong)blockNumber);
 
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
@@ -147,13 +173,17 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     public void AddAccountRead(Address address) { }
 
+    public void RecordAccountAccess(Address address) { }
+
+    public void RecordBytecodeAccess(Address address) { }
+
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 
-    // See https://eips.ethereum.org/EIPS/eip-7610
+    // EIP-684: a creation collision occurs when the destination has code or a non-zero nonce.
     bool IsNonZeroAccount(Address address, out bool accountExists)
     {
         accountExists = AccountExists(address);
         return accountExists
-            && (IsContract(address) || !GetNonce(address).IsZero || !IsStorageEmpty(address));
+            && (IsContract(address) || GetNonce(address) != 0);
     }
 }

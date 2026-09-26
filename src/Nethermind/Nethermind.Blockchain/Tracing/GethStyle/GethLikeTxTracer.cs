@@ -7,18 +7,25 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
-public abstract class GethLikeTxTracer : TxTracer
+public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
 {
-    protected GethLikeTxTracer(GethTraceOptions options)
+    private readonly RefundTracker? _refundTracker;
+
+    protected GethLikeTxTracer(GethTraceOptions options, long? destroyRefund = null)
     {
         ArgumentNullException.ThrowIfNull(options);
+
+        if (destroyRefund.HasValue)
+            _refundTracker = new(destroyRefund.Value);
 
         IsTracingOpLevelStorage = !options.DisableStorage;
         IsTracingStack = !options.DisableStack;
         IsTracingFullMemory = options.EnableMemory;
+        IsTracingReturnData = options.EnableReturnData;
         IsTracing = IsTracing || IsTracingFullMemory;
     }
 
@@ -28,11 +35,13 @@ public abstract class GethLikeTxTracer : TxTracer
 
     protected void ResetTrace() => _trace = null;
     public override bool IsTracingReceipt => true;
+    public override bool IsCollectingLogs => false;
     public sealed override bool IsTracingOpLevelStorage { get; protected set; }
     public sealed override bool IsTracingMemory { get; protected set; }
     public override bool IsTracingInstructions => true;
     public sealed override bool IsTracingStack { get; protected set; }
     protected bool IsTracingFullMemory { get; }
+    protected long CurrentRefund => _refundTracker?.Refund ?? 0;
 
     public override void MarkAsSuccess(
         Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) =>
@@ -57,16 +66,53 @@ public abstract class GethLikeTxTracer : TxTracer
         _ => "Error"
     };
 
+    public override void ReportRefund(long refund) => _refundTracker?.Add(refund);
+
+    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
+        _refundTracker?.CreditSelfDestruct(address);
+
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    {
+        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        _refundTracker?.TakeSnapshot();
+    }
+
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionEnd(gas, output);
+        _refundTracker?.CommitSnapshot();
+    }
+
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    {
+        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
+        _refundTracker?.CommitSnapshot();
+    }
+
+    public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionRevert(gasLeft, output);
+        _refundTracker?.RestoreSnapshot();
+    }
+
+    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    {
+        base.ReportActionError(evmExceptionType);
+        _refundTracker?.RestoreSnapshot();
+    }
+
+    protected void ResetRefund() => _refundTracker?.Reset();
+
     public virtual GethLikeTxTrace BuildResult() => Trace;
 }
 
-public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options) : GethLikeTxTracer(options) where TEntry : GethTxTraceEntry, new()
+public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? destroyRefund = null) : GethLikeTxTracer(options, destroyRefund) where TEntry : GethTxTraceEntry, new()
 {
     protected TEntry? CurrentTraceEntry { get; set; }
 
     private bool _gasCostAlreadySetForCurrentOp;
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         if (CurrentTraceEntry is not null)
         {
@@ -76,8 +122,9 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options) : GethL
         CurrentTraceEntry = CreateTraceEntry(opcode);
         CurrentTraceEntry.Depth = env.GetGethTraceDepth();
         CurrentTraceEntry.Gas = gas;
-        CurrentTraceEntry.Opcode = Enum.GetName(opcode);
+        CurrentTraceEntry.Opcode = OpcodeJsonNames.GetName(opcode);
         CurrentTraceEntry.ProgramCounter = pc;
+        CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
         _gasCostAlreadySetForCurrentOp = false;
     }
 
@@ -87,11 +134,13 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options) : GethL
             CurrentTraceEntry.Error = GetErrorDescription(error);
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
         if (!_gasCostAlreadySetForCurrentOp && CurrentTraceEntry is not null)
         {
             CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
+            // Geth samples after dynamic gas calculation, including this opcode's refund changes.
+            CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
             _gasCostAlreadySetForCurrentOp = true;
         }
     }
@@ -101,13 +150,13 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options) : GethL
     public override void SetOperationStack(TraceStack stack)
     {
         if (CurrentTraceEntry is not null)
-            CurrentTraceEntry.Stack = stack.ToHexWordList();
+            CurrentTraceEntry.Stack = stack.ToRawBytes();
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
     {
         if (IsTracingFullMemory && CurrentTraceEntry is not null)
-            CurrentTraceEntry.Memory = memoryTrace.ToHexWordList();
+            CurrentTraceEntry.Memory = memoryTrace.ToRawWordBytes();
     }
 
     public override GethLikeTxTrace BuildResult()

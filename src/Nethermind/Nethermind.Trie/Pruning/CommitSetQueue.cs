@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
@@ -23,19 +24,21 @@ public class CommitSetQueue
     }
 
     public bool IsEmpty => Count == 0;
-    public long? MinBlockNumber
-    {
-        get
-        {
-            lock (_queue) return _queue.Min?.BlockNumber;
-        }
-    }
 
-    public long? MaxBlockNumber
+    internal bool TryGetBounds(out ulong minBlockNumber, out ulong maxBlockNumber)
     {
-        get
+        lock (_queue)
         {
-            lock (_queue) return _queue.Max?.BlockNumber;
+            if (_queue.Min is not { } min || _queue.Max is not { } max)
+            {
+                minBlockNumber = default;
+                maxBlockNumber = default;
+                return false;
+            }
+
+            minBlockNumber = min.BlockNumber;
+            maxBlockNumber = max.BlockNumber;
+            return true;
         }
     }
 
@@ -44,38 +47,36 @@ public class CommitSetQueue
         lock (_queue) _queue.Add(set);
     }
 
-    public bool TryPeek(out BlockCommitSet? blockCommitSet)
+    public bool TryPeek([NotNullWhen(true)] out BlockCommitSet? blockCommitSet)
     {
         lock (_queue)
         {
-            if (_queue.Count == 0)
+            blockCommitSet = _queue.Min;
+            if (blockCommitSet is null)
             {
-                blockCommitSet = null;
                 return false;
             }
 
-            blockCommitSet = _queue.Min;
             return true;
         }
     }
 
-    public bool TryDequeue(out BlockCommitSet? blockCommitSet)
+    public bool TryDequeue([NotNullWhen(true)] out BlockCommitSet? blockCommitSet)
     {
         lock (_queue)
         {
-            if (_queue.Count == 0)
+            blockCommitSet = _queue.Min;
+            if (blockCommitSet is null)
             {
-                blockCommitSet = null;
                 return false;
             }
 
-            blockCommitSet = _queue.Min;
             _queue.Remove(blockCommitSet);
             return true;
         }
     }
 
-    public ArrayPoolListRef<BlockCommitSet> GetCommitSetsAtBlockNumber(long blockNumber)
+    public ArrayPoolListRef<BlockCommitSet> GetCommitSetsAtBlockNumber(ulong blockNumber)
     {
         lock (_queue)
         {
@@ -90,14 +91,13 @@ public class CommitSetQueue
         }
     }
 
-    public ArrayPoolListRef<BlockCommitSet> GetAndDequeueCommitSetsBeforeOrAt(long blockNumber)
+    public ArrayPoolListRef<BlockCommitSet> GetAndDequeueCommitSetsBeforeOrAt(ulong blockNumber)
     {
         lock (_queue)
         {
             ArrayPoolListRef<BlockCommitSet> result = new();
-            while (_queue.Count > 0)
+            while (_queue.Min is { } min)
             {
-                BlockCommitSet min = _queue.Min;
                 if (min.BlockNumber > blockNumber) break;
                 result.Add(min);
                 _queue.Remove(min);

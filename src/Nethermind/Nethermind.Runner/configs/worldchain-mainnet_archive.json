@@ -31,5 +31,8 @@
   },
   "Optimism": {
     "SequencerUrl": "https://worldchain-mainnet-sequencer.g.alchemy.com"
+  },
+  "FlatDb": {
+    "PersistenceWriteBufferFloor": 67108864
   }
 }

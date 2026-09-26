@@ -20,14 +20,17 @@ public class CustomSpecProviderTests
     public void When_only_one_release_is_specified_then_returns_that_release()
     {
         CustomSpecProvider specProvider = new(((ForkActivation)0, Byzantium.Instance));
-        Assert.That(specProvider.GetSpec((ForkActivation)0), Is.InstanceOf<Byzantium>(), "0");
-        Assert.That(specProvider.GetSpec((ForkActivation)1), Is.InstanceOf<Byzantium>(), "1");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specProvider.GetSpec((ForkActivation)0), Is.InstanceOf<Byzantium>(), "0");
+            Assert.That(specProvider.GetSpec((ForkActivation)1), Is.InstanceOf<Byzantium>(), "1");
+        }
     }
 
     [Test]
     public void Can_find_dao_block_number()
     {
-        long daoBlockNumber = 100;
+        ulong daoBlockNumber = 100;
         CustomSpecProvider specProvider = new(
             ((ForkActivation)0L, Frontier.Instance),
             ((ForkActivation)daoBlockNumber, Dao.Instance));
@@ -51,15 +54,21 @@ public class CustomSpecProviderTests
         CustomSpecProvider specProvider = new(
             ((ForkActivation)0, Frontier.Instance),
             ((ForkActivation)1, Homestead.Instance));
-        Assert.That(specProvider.GetSpec((ForkActivation)0), Is.InstanceOf<Frontier>(), "2 releases, block 0");
-        Assert.That(specProvider.GetSpec((ForkActivation)1), Is.InstanceOf<Homestead>(), "2 releases, block 1");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specProvider.GetSpec((ForkActivation)0), Is.InstanceOf<Frontier>(), "2 releases, block 0");
+            Assert.That(specProvider.GetSpec((ForkActivation)1), Is.InstanceOf<Homestead>(), "2 releases, block 1");
+        }
 
         specProvider = new CustomSpecProvider(
             ((ForkActivation)0, Frontier.Instance),
             ((ForkActivation)1, Homestead.Instance),
             ((ForkActivation)10, Byzantium.Instance));
-        Assert.That(specProvider.GetSpec((ForkActivation)0), Is.InstanceOf<Frontier>(), "3 releases, block 0");
-        Assert.That(specProvider.GetSpec((ForkActivation)1), Is.InstanceOf<Homestead>(), "3 releases, block 1");
-        Assert.That(specProvider.GetSpec((ForkActivation)100), Is.InstanceOf<Byzantium>(), "3 releases, block 10");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specProvider.GetSpec((ForkActivation)0), Is.InstanceOf<Frontier>(), "3 releases, block 0");
+            Assert.That(specProvider.GetSpec((ForkActivation)1), Is.InstanceOf<Homestead>(), "3 releases, block 1");
+            Assert.That(specProvider.GetSpec((ForkActivation)100), Is.InstanceOf<Byzantium>(), "3 releases, block 10");
+        }
     }
 }

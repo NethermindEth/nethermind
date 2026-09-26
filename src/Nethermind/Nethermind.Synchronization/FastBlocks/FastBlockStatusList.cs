@@ -15,52 +15,47 @@ namespace Nethermind.Synchronization.FastBlocks;
 internal class FastBlockStatusList
 {
     private readonly int[] _statuses;
-    private readonly long _length;
+    private readonly ulong _length;
 
-    public FastBlockStatusList(long length)
+    public FastBlockStatusList(ulong length)
     {
         // Can fit 16 statuses per int, however need to round up the division
-        long size = length / 16;
-        if (size * 16 < length)
-        {
-            size++;
-        }
-
-        _statuses = new int[size];
+        ulong size = (length + 15) / 16;
+        _statuses = new int[checked((long)size)];
         _length = length;
     }
 
-    internal FastBlockStatusList(IList<FastBlockStatus> statuses, bool parallel) : this(statuses.Count)
+    internal FastBlockStatusList(IList<FastBlockStatus> statuses, bool parallel) : this((ulong)statuses.Count)
     {
         if (parallel)
         {
             Parallel.For(0, statuses.Count, i =>
             {
-                this[i] = statuses[i];
+                this[(ulong)i] = statuses[i];
             });
         }
         else
         {
             for (int i = 0; i < statuses.Count; i++)
             {
-                this[i] = statuses[i];
+                this[(ulong)i] = statuses[i];
             }
         }
     }
 
-    public FastBlockStatus this[long index]
+    public FastBlockStatus this[ulong index]
     {
         get
         {
             GuardLength(index);
-            (long position, int shift) = GetValuePosition(index);
+            (ulong position, int shift) = GetValuePosition(index);
             int status = Volatile.Read(ref _statuses[position]);
             return DecodeValue(status, shift);
         }
         private set
         {
             GuardLength(index);
-            (long position, int shift) = GetValuePosition(index);
+            (ulong position, int shift) = GetValuePosition(index);
             ref int status = ref _statuses[position];
             int oldValue = Volatile.Read(ref status);
             do
@@ -78,24 +73,24 @@ internal class FastBlockStatusList
         }
     }
 
-    private void GuardLength(long index)
+    private void GuardLength(ulong index)
     {
-        if ((ulong)index >= (ulong)_length)
+        if (index >= _length)
         {
             ThrowIndexOutOfRange();
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static (long position, int shift) GetValuePosition(long index)
+    private static (ulong position, int shift) GetValuePosition(ulong index)
     {
-        (long position, long shift) = Math.DivRem(index, 16);
+        (ulong position, ulong shift) = Math.DivRem(index, 16UL);
         return (position, (int)shift * 2); // 2 bits per status
     }
 
-    public bool TrySet(long index, FastBlockStatus newState) => TrySet(index, newState, out _);
+    public bool TrySet(ulong index, FastBlockStatus newState) => TrySet(index, newState, out _);
 
-    public bool TrySet(long index, FastBlockStatus newState, out FastBlockStatus previousValue)
+    public bool TrySet(ulong index, FastBlockStatus newState, out FastBlockStatus previousValue)
     {
         GuardLength(index);
 
@@ -107,7 +102,7 @@ internal class FastBlockStatusList
             _ => throw new ArgumentOutOfRangeException(nameof(newState), newState, null)
         };
 
-        (long position, int shift) = GetValuePosition(index);
+        (ulong position, int shift) = GetValuePosition(index);
         ref int status = ref _statuses[position];
         int oldValue = Volatile.Read(ref status);
         do

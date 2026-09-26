@@ -5,7 +5,6 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -27,10 +26,10 @@ public partial class PatriciaTree
         DoNotParallelize = 2
     }
 
-    public readonly struct BulkSetEntry(in ValueHash256 path, byte[] value) : IComparable<BulkSetEntry>
+    public readonly struct BulkSetEntry(in ValueHash256 path, byte[]? value) : IComparable<BulkSetEntry>
     {
         public readonly ValueHash256 Path = path;
-        public readonly byte[] Value = value;
+        public readonly byte[]? Value = value;
 
         public int CompareTo(BulkSetEntry entry) => Path.CompareTo(entry.Path);
 
@@ -199,7 +198,7 @@ public partial class PatriciaTree
         bool hasRemove = false;
         int nonNullChildCount = 0;
 
-        if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
+        if (!Core.Cpu.RuntimeInformation.IsSingleProcessor && entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
         {
             using ArrayPoolList<(
                 int startIdx,
@@ -230,9 +229,9 @@ public partial class PatriciaTree
                 jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
-            Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
+            ParallelUnbalancedWork.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
                 GetTraverseStack,
-                (i, _, workerTraverseStack) =>
+                (i, workerTraverseStack) =>
                 {
                     (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
 
@@ -296,7 +295,7 @@ public partial class PatriciaTree
                 else
                     endRange = entries.Length;
 
-                TrieNode newChild = (endRange - startRange == 1)
+                TrieNode? newChild = (endRange - startRange == 1)
                     ? BulkSetOne(traverseStack, entries[startRange], ref path, child)
                     : BulkSet(in ctx,
                         traverseStack,
@@ -341,15 +340,16 @@ public partial class PatriciaTree
         Nibbles.BytesToNibbleBytes(entry.Path.BytesAsSpan, nibble);
         Span<byte> remainingKey = nibble[path.Length..];
 
-        byte[] value = entry.Value;
+        byte[]? value = entry.Value;
         return SetNew(traverseStack, remainingKey, value, ref path, node);
     }
 
-    private TrieNode? MakeFakeBranch(ref TreePath currentPath, TrieNode? existingNode)
+    private TrieNode MakeFakeBranch(ref TreePath currentPath, TrieNode existingNode)
     {
-        ReadOnlySpan<byte> shortenedKey = existingNode.Key.AsSpan(1, existingNode.Key.Length - 1);
+        byte[] existingKey = existingNode.Key!;
+        ReadOnlySpan<byte> shortenedKey = existingKey.AsSpan(1, existingKey.Length - 1);
 
-        int branchIdx = existingNode.Key[0];
+        int branchIdx = existingKey[0];
 
         TrieNode newChild;
 
@@ -359,9 +359,10 @@ public partial class PatriciaTree
         }
         else
         {
-            TrieNode child = existingNode.GetChild(TrieStore, ref currentPath, 0);
+            TrieNode child = existingNode.GetChild(TrieStore, ref currentPath, 0)
+                ?? throw new InvalidOperationException("An extension node cannot be converted to a branch without a child.");
 
-            if (existingNode.Key.Length == 1)
+            if (existingKey.Length == 1)
             {
                 newChild = child;
             }

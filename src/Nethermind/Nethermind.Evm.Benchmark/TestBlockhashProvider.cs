@@ -11,7 +11,7 @@ namespace Nethermind.Evm.Benchmark
 {
     public class TestBlockhashProvider() : IBlockhashProvider
     {
-        public Hash256 GetBlockhash(BlockHeader currentBlock, long number, IReleaseSpec spec) => Keccak.Compute(spec.IsBlockHashInStateAvailable
+        public Hash256 GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec) => Keccak.Compute(spec.IsBlockHashInStateAvailable
                 ? (Eip2935Constants.RingBufferSize + number).ToString()
                 : (number).ToString());
 

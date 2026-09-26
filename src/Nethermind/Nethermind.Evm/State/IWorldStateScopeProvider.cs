@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -16,14 +17,54 @@ namespace Nethermind.Evm.State;
 /// </summary>
 public interface IWorldStateScopeProvider
 {
+    /// <summary>Checks root availability, respecting processing usage where the backend distinguishes it.</summary>
+    /// <remarks>Does not verify the integrity or availability of every descendant trie node.</remarks>
     bool HasRoot(BlockHeader? baseBlock);
-    IScope BeginScope(BlockHeader? baseBlock);
+
+    /// <summary>
+    /// Attempts to open the state required to execute <paramref name="targetBlock"/>.
+    /// </summary>
+    /// <remarks>
+    /// The scope is anchored at the target block's parent, while the target header is retained by the provider for
+    /// backend-specific decisions. Returns <c>false</c> when the parent header or its state is unavailable. This is
+    /// best-effort for backends that cannot pin state; subsequent reads may still report a missing node.
+    /// </remarks>
+    /// <param name="targetBlock">The block that will be executed.</param>
+    /// <param name="scope">The acquired scope, or <c>null</c> when acquisition fails.</param>
+    /// <returns><c>true</c> when a scope was acquired; otherwise <c>false</c>.</returns>
+    bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IScope? scope);
+
+    /// <summary>
+    /// Checks whether the parent state required to execute <paramref name="targetBlock"/> is available.
+    /// </summary>
+    /// <remarks>This check is advisory and does not reserve or pin the state.</remarks>
+    bool HasStateForTargetBlock(BlockHeader targetBlock);
+
+    /// <summary>Attempts to open the state committed at <paramref name="baseBlock"/> (pre-genesis when <c>null</c>).</summary>
+    /// <param name="metrics">
+    /// Per-scope accumulator the world state folds into the global counters at commit/scope end. Scopes
+    /// that record state/storage access metrics (e.g. the prewarmer) increment it; others ignore it.
+    /// </param>
+    /// <param name="scope">The acquired scope, or <c>null</c> when the state is unavailable.</param>
+    /// <returns><c>true</c> when a scope was acquired; otherwise <c>false</c>.</returns>
+    bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IScope? scope);
 
     public interface IScope : IDisposable
     {
         Hash256 RootHash { get; }
 
+        bool StorageRootsAreAuthoritative => true;
+
         void UpdateRootHash();
+
+        /// <summary>
+        /// Advisory trie warm-up hints pushed concurrently by speculative (prewarm) execution so the
+        /// commit-path trie nodes load ahead of the final commit. No-op for backends without trie warm-up.
+        /// </summary>
+        void HintWarmAccount(in ValueAddress address) { }
+
+        /// <inheritdoc cref="HintWarmAccount"/>
+        void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
 
         /// <summary>
         /// Get the account information for the following address.
@@ -67,7 +108,20 @@ public interface IWorldStateScopeProvider
         /// That said, <see cref="WorldState"/> will always call <see cref="IStateTree.UpdateRootHash"/>
         /// first.
         /// </summary>
-        void Commit(long blockNumber);
+        void Commit(ulong blockNumber);
+
+        /// <summary>
+        /// Called by the world state right after <see cref="Commit"/>. A scope that caches the state it reads takes a
+        /// snapshot of the block's final values, brings its cache forward to the committed state with it, and disposes
+        /// it; a scope without such a cache takes none, so the snapshot costs nothing.
+        /// </summary>
+        /// <remarks>
+        /// The snapshot must be taken before this call returns: the world state drops its storage record as soon as it
+        /// does, and its account record when the block ends. Once taken it stands on its own, so the caller may apply
+        /// it on another thread.
+        /// </remarks>
+        /// <param name="takeSnapshot">Takes the snapshot; the caller owns and must dispose what it returns.</param>
+        void WriteBackCommittedState(Func<IBlockChangeSnapshot> takeSnapshot) { }
 
         /// <summary>
         /// Hint that the given Block Access List will be accessed during block execution.
@@ -102,7 +156,7 @@ public interface IWorldStateScopeProvider
         /// </summary>
         /// <param name="storageCell">The storage cell (address + slot index).</param>
         /// <param name="value">The storage value bytes.</param>
-        void OnStorageRead(in StorageCell storageCell, byte[] value);
+        void OnStorageRead(in StorageCell storageCell, in UInt256 value);
 
         /// <summary>
         /// Returns whether the BAL reader should still fetch the given account.
@@ -153,25 +207,42 @@ public interface IWorldStateScopeProvider
     {
         Hash256 RootHash { get; }
 
-        byte[] Get(in UInt256 index);
+        void Get(in UInt256 index, out UInt256 value);
 
         /// <summary>
         /// Hint that a slot is being written. Backends may use this to start asynchronous
         /// trie warm-up for the slot path.
         /// </summary>
-        void HintSet(in UInt256 index, byte[]? value);
+        void HintSet(in UInt256 index);
+    }
 
-        /// <summary>
-        /// Used by JS tracer. May not work on some database layout.
-        /// </summary>
-        /// <param name="hash"></param>
-        /// <returns></returns>
-        byte[] Get(in ValueHash256 hash);
+    /// <summary>
+    /// The final value of every account and storage slot a committed block touched, detached from the world state that
+    /// produced it so it stays readable after the block's own record is gone.
+    /// </summary>
+    /// <remarks>
+    /// Holds the world state's block collections until disposed, so dispose it as soon as it has been written. The
+    /// scope that produced it may be disposed first, so nothing the snapshot reads may reach back into it.
+    /// </remarks>
+    public interface IBlockChangeSnapshot : IDisposable
+    {
+        /// <summary>Writes the snapshot into <paramref name="writeBatch"/>.</summary>
+        /// <remarks>
+        /// Every storage clear precedes every slot write, so a clear can never drop a slot the same write put there.
+        /// </remarks>
+        void WriteTo(IWorldStateWriteBatch writeBatch);
     }
 
     public interface IWorldStateWriteBatch : IDisposable
     {
         public event EventHandler<AccountUpdated> OnAccountUpdated;
+
+        /// <summary>Whether storage writes still reach the batch.</summary>
+        /// <remarks>
+        /// A batch that has dropped what it held reports <see langword="false"/>, so a caller with slot writes left to
+        /// produce can stop rather than produce writes the batch would ignore. Account writes are unaffected.
+        /// </remarks>
+        bool AcceptsStorageWrites => true;
 
         // Note: Null account imply removal and clearing of storage.
         void Set(Address key, Account? account);
@@ -193,7 +264,8 @@ public interface IWorldStateScopeProvider
 
     public interface IStorageWriteBatch : IDisposable
     {
-        void Set(in UInt256 index, byte[] value);
+        /// <summary>Writes the slot value.</summary>
+        void Set(in UInt256 index, in UInt256 value);
 
         /// <summary>
         /// Self-destruct. Maybe costly. Must be called first.

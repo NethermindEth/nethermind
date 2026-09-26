@@ -91,7 +91,7 @@ internal static class WireConversionExtensions
     private static byte[][] BuildExecutionRequests(SszTransaction[] reqs)
     {
         byte[][] result = new byte[reqs.Length][];
-        for (int i = 0; i < reqs.Length; i++) result[i] = reqs[i].Bytes ?? [];
+        for (int i = 0; i < reqs.Length; i++) result[i] = reqs[i].Bytes.ToByteArray();
         return result;
     }
 
@@ -129,9 +129,7 @@ internal static class WireConversionExtensions
         {
             Transactions = body.Transactions.ToTxsWire(),
             Withdrawals = body.Withdrawals.ToWire(),
-            BlockAccessList = body.BlockAccessList is not null
-                ? [new SszTransaction { Bytes = body.BlockAccessList }]
-                : []
+            BlockAccessList = body.BlockAccessList ?? []
         };
 
     private static SszBlob[] ToBlobsWire(byte[][] blobs)

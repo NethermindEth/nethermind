@@ -3,63 +3,160 @@
 
 using System;
 using System.Linq;
-using Nethermind.Core.Crypto;
-using Nethermind.Logging;
-using Nethermind.Network.Discovery.Kademlia;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Kademlia;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Kademlia;
 
 public class KBucketTreeTests
 {
-    private static readonly ValueHash256 SelfHash = new("0x0000000000000000000000000000000000000000000000000000000000000000");
+    private const int SelfHash = 0;
 
-    private static KBucketTree<ValueHash256> CreateTree(int k = 4, int beta = 0) => new(
-        new KademliaConfig<ValueHash256> { CurrentNodeId = SelfHash, KSize = k, Beta = beta },
-        IdentityNodeHashProvider.Instance,
-        LimboLogs.Instance);
+    private static KBucketTree<int, int> CreateTree(
+        int k = 4,
+        int beta = 0,
+        Func<int, int, int>? mergeOnRefresh = null) => new(
+        new KademliaConfig<int>
+        {
+            CurrentNodeId = SelfHash,
+            KSize = k,
+            Beta = beta,
+            MergeOnRefresh = mergeOnRefresh
+        },
+        IntNodeHashProvider.Instance,
+        Int32KademliaDistance.Instance);
 
-    private static void Add(KBucketTree<ValueHash256> tree, ValueHash256 hash) =>
+    private static void Add(KBucketTree<int, int> tree, int hash) =>
         tree.TryAddOrRefresh(hash, hash, out _);
-
-    private static ValueHash256 HashAtDistance(int distance, byte tag) =>
-        Hash256XorUtils.GetRandomHashAtDistance(SelfHash, distance, new Random(tag));
 
     [Test]
     public void Split_should_preserve_lru_order_in_child_buckets()
     {
-        KBucketTree<ValueHash256> tree = CreateTree(k: 2, beta: 0);
+        KBucketTree<int, int> tree = CreateTree(k: 2, beta: 0);
 
-        ValueHash256 left0 = HashAtDistance(255, 0x10);
-        ValueHash256 left1 = HashAtDistance(255, 0x11);
-        ValueHash256 right0 = HashAtDistance(254, 0x20);
-        ValueHash256 right1 = HashAtDistance(254, 0x21);
+        int left0 = KeyAtDistance(31, 0x10);
+        int left1 = KeyAtDistance(31, 0x11);
+        int right0 = KeyAtDistance(30, 0x20);
+        int right1 = KeyAtDistance(30, 0x21);
 
         Add(tree, left0);
         Add(tree, right0);
         Add(tree, left1);
         Add(tree, right1);
 
-        Assert.That(tree.GetAllAtDistance(255), Is.EqualTo(new[] { left1, left0 }));
-        Assert.That(tree.GetAllAtDistance(254), Is.EqualTo(new[] { right1, right0 }));
+        Assert.That(tree.GetAllAtDistance(31), Is.EqualTo(new[] { left1, left0 }));
+        Assert.That(tree.GetAllAtDistance(30), Is.EqualTo(new[] { right1, right0 }));
     }
 
     [Test]
     public void GetAllAtDistance_should_include_nodes_in_deeper_split_buckets()
     {
-        KBucketTree<ValueHash256> tree = CreateTree(k: 2, beta: 4);
+        KBucketTree<int, int> tree = CreateTree(k: 2, beta: 4);
 
-        ValueHash256 deep1 = HashAtDistance(252, 0x40);
-        ValueHash256 deep2 = HashAtDistance(252, 0x41);
-        ValueHash256 deep3 = HashAtDistance(252, 0x42);
+        int deep1 = KeyAtDistance(28, 0x40);
+        int deep2 = KeyAtDistance(28, 0x41);
+        int deep3 = KeyAtDistance(28, 0x42);
 
         Add(tree, deep1);
         Add(tree, deep2);
         Add(tree, deep3);
 
-        ValueHash256[] expectedCandidates = [deep1, deep2, deep3];
-        ValueHash256[] result = tree.GetAllAtDistance(252);
+        int[] expectedCandidates = [deep1, deep2, deep3];
+        int[] result = tree.GetAllAtDistance(28);
         Assert.That(result, Is.SupersetOf(new[] { deep1, deep2 }));
         Assert.That(result.All(expectedCandidates.Contains), Is.True);
     }
+
+    [Test]
+    public void GetOccupancy_should_track_node_count_and_capacity_across_splits()
+    {
+        KBucketTree<int, int> tree = CreateTree(k: 2, beta: 0);
+        Assert.That(tree.GetOccupancy(), Is.EqualTo(new RoutingTableOccupancy(0, 2)));
+
+        Add(tree, KeyAtDistance(31, 0x10));
+        Add(tree, KeyAtDistance(31, 0x11));
+        Assert.That(tree.GetOccupancy(), Is.EqualTo(new RoutingTableOccupancy(2, 2)));
+
+        // The bucket is full, so admitting a node at another distance splits it and grows the reported capacity.
+        Add(tree, KeyAtDistance(30, 0x20));
+        Assert.That(tree.GetOccupancy(), Is.EqualTo(new RoutingTableOccupancy(3, 6)));
+    }
+
+    [Test]
+    public async Task TryAddOrRefresh_should_atomically_merge_concurrent_same_hash_values()
+    {
+        KBucketTree<int, int> tree = CreateTree(
+            k: 1,
+            mergeOnRefresh: static (incoming, existing) => Math.Max(incoming, existing));
+        using Barrier start = new(3);
+        using ManualResetEventSlim higherValueAdded = new();
+
+        Task higherValueAdmission = Task.Run(() =>
+        {
+            start.SignalAndWait();
+            tree.TryAddOrRefresh(1, 2, out _);
+            higherValueAdded.Set();
+        });
+        Task lowerValueAdmission = Task.Run(() =>
+        {
+            start.SignalAndWait();
+            higherValueAdded.Wait();
+            tree.TryAddOrRefresh(1, 1, out _);
+        });
+
+        start.SignalAndWait();
+        await Task.WhenAll(higherValueAdmission, lowerValueAdmission);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.TryGet(1, out int stored), Is.True);
+            Assert.That(stored, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void TryAddOrRefresh_should_merge_same_hash_values_in_replacement_cache()
+    {
+        KBucketTree<int, int> tree = CreateTree(
+            k: 1,
+            mergeOnRefresh: static (incoming, existing) => Math.Max(incoming, existing));
+        int activeHash = int.MinValue;
+        int replacementHash = int.MinValue + 1;
+        tree.TryAddOrRefresh(activeHash, 0, out _);
+        tree.TryAddOrRefresh(replacementHash, 2, out _);
+        tree.TryAddOrRefresh(replacementHash, 1, out _);
+
+        Assert.That(tree.TryGet(replacementHash, out int replacement), Is.True);
+        Assert.That(replacement, Is.EqualTo(2));
+
+        tree.Remove(activeHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.GetKNearestNeighbour(replacementHash), Is.EqualTo(new[] { 2 }));
+            Assert.That(tree.TryGet(activeHash, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void TryAddOrRefresh_should_reject_mutating_reentry_from_merge()
+    {
+        KBucketTree<int, int>? tree = null;
+        tree = CreateTree(mergeOnRefresh: (incoming, _) =>
+        {
+            tree!.TryAddOrRefresh(2, 2, out _);
+            return incoming;
+        });
+        tree.TryAddOrRefresh(1, 1, out _);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => tree.TryAddOrRefresh(1, 2, out _))!;
+
+        Assert.That(exception.Message, Does.Contain("must not mutate"));
+    }
+
+    private static int KeyAtDistance(int distance, int suffix)
+        => Int32KademliaDistance.Instance.SetBit(suffix, Int32KademliaDistance.Instance.MaxDistance - distance);
 }

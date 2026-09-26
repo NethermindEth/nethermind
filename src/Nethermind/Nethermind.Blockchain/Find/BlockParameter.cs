@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Find
         public static BlockParameter Safe = new(BlockParameterType.Safe);
 
         public BlockParameterType Type { get; }
-        public long? BlockNumber { get; }
+        public ulong? BlockNumber { get; }
 
         public Hash256? BlockHash { get; }
 
@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Find
 
         public BlockParameter(BlockParameterType type) => Type = type;
 
-        public BlockParameter(long number)
+        public BlockParameter(ulong number)
         {
             RequireCanonical = true;
             Type = BlockParameterType.BlockNumber;
@@ -98,6 +98,32 @@ namespace Nethermind.JsonRpc.Data
 
     public class BlockParameterConverter : JsonConverter<BlockParameter>
     {
+        private readonly bool? _strictQuantity;
+
+        /// <summary>
+        /// Used by the <see cref="System.Text.Json.Serialization.JsonConverterAttribute"/> on
+        /// <see cref="BlockParameter"/>, which System.Text.Json instantiates itself and cannot pass arguments to.
+        /// Strictness is then read from <see cref="EthereumJsonSerializer.StrictHexFormat"/> at parse time.
+        /// </summary>
+        public BlockParameterConverter()
+        {
+        }
+
+        /// <summary>
+        /// Pins strictness for this converter instead of consulting the process-global
+        /// <see cref="EthereumJsonSerializer.StrictHexFormat"/>.
+        /// </summary>
+        /// <remarks>
+        /// The global is written once at startup from <c>IJsonRpcConfig.StrictHexFormat</c>, which is correct for a
+        /// running node but makes parsing depend on process-wide state: anything else that writes it changes how an
+        /// unrelated, concurrent parse behaves. Registering an instance in
+        /// <see cref="JsonSerializerOptions.Converters"/> - which takes precedence over the type attribute - gives a
+        /// caller a strictness no other thread can change.
+        /// </remarks>
+        public BlockParameterConverter(bool strictQuantity) => _strictQuantity = strictQuantity;
+
+        private bool StrictQuantity => _strictQuantity ?? EthereumJsonSerializer.StrictHexFormat;
+
         public override bool HandleNull => true;
 
         public override void Write(Utf8JsonWriter writer, BlockParameter value, JsonSerializerOptions options)
@@ -151,7 +177,10 @@ namespace Nethermind.JsonRpc.Data
                                             ReadStringFormatValueSequence(ref reader, options),
                 JsonTokenType.StartObject => ReadObjectFormat(ref reader, typeToConvert, options),
                 JsonTokenType.Null => BlockParameter.Latest,
-                JsonTokenType.Number when !EthereumJsonSerializer.StrictHexFormat => new BlockParameter(reader.GetInt64()),
+                JsonTokenType.Number when !StrictQuantity =>
+                    reader.TryGetUInt64(out ulong parsed)
+                        ? new BlockParameter(parsed)
+                        : throw new JsonException("block number must be a non-negative integer"),
                 _ => throw new FormatException("unknown block parameter type")
             };
 
@@ -196,7 +225,7 @@ namespace Nethermind.JsonRpc.Data
             };
         }
 
-        private static BlockParameter ReadStringFormat(ReadOnlySpan<byte> span)
+        private BlockParameter ReadStringFormat(ReadOnlySpan<byte> span)
         {
             int length = span.Length;
             // Creates a jmp table based on length
@@ -232,7 +261,7 @@ namespace Nethermind.JsonRpc.Data
         }
 
         [SkipLocalsInit]
-        private static BlockParameter ReadStringFormatValueSequence(ref Utf8JsonReader reader, JsonSerializerOptions options)
+        private BlockParameter ReadStringFormatValueSequence(ref Utf8JsonReader reader, JsonSerializerOptions options)
         {
             if (reader.ValueSequence.Length > 66)
             {
@@ -250,7 +279,7 @@ namespace Nethermind.JsonRpc.Data
         private static BlockParameter ReadStringComplex(ref Utf8JsonReader reader, JsonSerializerOptions options)
             => JsonSerializer.Deserialize<BlockParameter>(reader.GetString()!, options)!;
 
-        private static BlockParameter ReadStringFormatOther(ReadOnlySpan<byte> span)
+        private BlockParameter ReadStringFormatOther(ReadOnlySpan<byte> span)
         {
             // Try hex format
             if (span.Length >= 2 && span.StartsWith("0x"u8))
@@ -264,7 +293,7 @@ namespace Nethermind.JsonRpc.Data
                     return new BlockParameter(new Hash256(bytes));
                 }
 
-                if (EthereumJsonSerializer.StrictHexFormat)
+                if (StrictQuantity)
                 {
                     // EIP-1474 quantity: the empty "0x" is not a valid block number.
                     if (span.Length == 0)
@@ -279,12 +308,12 @@ namespace Nethermind.JsonRpc.Data
                 }
 
                 // Parse as block number
-                long value = ParseHexNumber(span);
+                ulong value = ParseHexNumber(span);
                 return new BlockParameter(value);
             }
 
             // Try decimal format (if not strict)
-            if (!EthereumJsonSerializer.StrictHexFormat && Utf8Parser.TryParse(span, out long decimalValue, out _))
+            if (!StrictQuantity && Utf8Parser.TryParse(span, out ulong decimalValue, out _))
             {
                 return new BlockParameter(decimalValue);
             }
@@ -294,20 +323,16 @@ namespace Nethermind.JsonRpc.Data
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static long ParseHexNumber(ReadOnlySpan<byte> span)
+        private static ulong ParseHexNumber(ReadOnlySpan<byte> span)
         {
             int oddMod = span.Length % 2;
             int length = (span.Length >> 1) + oddMod;
-            long value = 0;
+            ulong value = 0;
 
             Span<byte> output = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref value, 1));
-            Bytes.FromUtf8HexString(span, output[(sizeof(long) - length)..]);
+            Bytes.FromUtf8HexString(span, output[(sizeof(ulong) - length)..]);
 
-            return BitConverter.IsLittleEndian switch
-            {
-                true => BinaryPrimitives.ReverseEndianness(value),
-                _ => value
-            };
+            return BinaryPrimitives.ReverseEndianness(value);
         }
 
         [DoesNotReturn, StackTraceHidden]
@@ -324,7 +349,7 @@ namespace Nethermind.JsonRpc.Data
             not null when value.Equals("finalized", StringComparison.OrdinalIgnoreCase) => BlockParameter.Finalized,
             not null when value.Equals("safe", StringComparison.OrdinalIgnoreCase) => BlockParameter.Safe,
             { Length: 66 } when value.StartsWith("0x") => new BlockParameter(new Hash256(value)),
-            _ => new BlockParameter(LongConverter.FromString(value))
+            _ => new BlockParameter(ULongConverter.FromString(value))
         };
     }
 }

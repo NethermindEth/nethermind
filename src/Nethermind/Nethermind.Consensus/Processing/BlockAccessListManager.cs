@@ -3,8 +3,10 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -27,40 +29,50 @@ namespace Nethermind.Consensus.Processing;
 ///   * BlockAccessListManager.cs                       — lifecycle, per-tx hot path, fields
 ///   * BlockAccessListManager.Validation.cs            — incremental + per-tx 2D inclusion check
 ///   * BlockAccessListManager.StateChanges.cs          — ApplyStateChanges, SetBlockAccessList
-///   * BlockAccessListManager.SystemContracts.cs       — beacon root, blockhash, AuRa, withdrawals, requests
+///   * BlockAccessListManager.SystemContracts.cs       — beacon root, blockhash, withdrawals, requests
 ///   * BlockAccessListManager.TxProcessorPool.cs       — nested pool / processor / world-state types
 /// </summary>
 /// <remarks>
 /// Parent-state fallbacks (for slots the suggested BAL doesn't cover) flow through a pooled
-/// <see cref="IReadOnlyTxProcessingEnvFactory"/>: each parallel worker rents a snapshot scoped
-/// to the state root captured in <see cref="PrepareForProcessing"/>. Passing <c>null</c>
+/// <see cref="IReadOnlyTxProcessingEnvFactory"/>: each parallel worker rents a snapshot at the
+/// parent of the block being processed. Passing <c>null</c>
 /// disables this and thus parallel execution.
 /// </remarks>
 public partial class BlockAccessListManager(
     IWorldState stateProvider,
-    ISpecProvider specProvider,
-    IBlockhashProvider blockHashProvider,
     ILogManager logManager,
     IBlocksConfig blocksConfig,
     IWithdrawalProcessorFactory withdrawalProcessorFactory,
+    BalTxProcessorFactory txProcessorFactory,
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
-    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
+    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
+    IExecutionRequestsProcessorFactory? executionRequestsProcessorFactory = null)
     : IBlockAccessListManager, IDisposable
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
-    private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory));
+    private Task? _balWarmupTask;
+    private BalReadStoragePlan? _readPlan;
+    // Null in a build that folds parallel execution out, so nothing behind the pool is compiled.
+    private readonly Lazy<ParallelTxProcessorWithWorldStateManager>? _parallelTxProcessorWithWorldStateManager = ExecutionFlags.ParallelExecution
+        ? new Lazy<ParallelTxProcessorWithWorldStateManager>(() => new(stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, txProcessorFactory))
+        : null;
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
+        new(() => new(stateProvider, logManager, txProcessorFactory));
     private const int GasValidationChunkSize = 8;
-    private long? _gasRemaining;
+    private ulong? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
 
-    // Snapshot point for parallel workers' parent-reader scopes. Set only when
-    // ParallelExecutionEnabled; null on the sequential path so a stray scope opens fail fast.
+    // Parallel execution requires this pool (mirrors CreateParentReaderEnvPool); witness/stateless supply none.
+    private readonly bool _hasParentReaderPool =
+        (prewarmerEnvFactory is not null && preBlockCaches is not null)
+        || readOnlyTxProcessingEnvFactory is not null;
+
+    // Pre-state root of the block being processed, captured before any consensus-specific pre-processing
+    // touches the state; the parallel workers' parent readers are checked against it.
     private Hash256? _parentStateRoot;
 
     // Column-oriented validation index used by the fast path in ValidateBlockAccessList. The
@@ -74,8 +86,11 @@ public partial class BlockAccessListManager(
     // generated is incremented as each per-tx slice merges in. ValidateBlockAccessList's
     // fast path checks (suggestedReads - generatedReads) * Eip7928Constants.ItemCost against
     // _gasRemaining instead of re-walking the whole BAL.
-    private int _suggestedChargeableStorageReads;
-    private int _generatedChargeableStorageReads;
+    private ulong _suggestedChargeableStorageReads;
+    private ulong _generatedChargeableStorageReads;
+    // EIP-7928: post-execution system calls read storage without spending block gas, so the
+    // surplus-reads budget must leave room for what their own execution grant can read.
+    private ulong _postExecutionReadAllowance;
     private bool _hasGeneratedValidationIndexUpdates;
     // for tests
     internal bool HasGeneratedValidationIndexUpdates => _hasGeneratedValidationIndexUpdates;
@@ -114,17 +129,19 @@ public partial class BlockAccessListManager(
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
+        DisposableExtensions.DisposeAndNull(ref _readPlan);
         _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
-        // Parallel execution needs the decoded BAL body (RLP fixtures only carry the hash)
-        // and an active state scope (so we can capture the parent state root for workers).
-        ParallelExecutionEnabled = Enabled
+        ParallelExecutionEnabled = ExecutionFlags.ParallelExecution
+            && Enabled
             && blocksConfig.ParallelExecution
+            && !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList)
             && !_isBuilding
             && suggestedBlock.BlockAccessList is not null
-            && stateProvider.IsInScope;
+            && stateProvider.IsInScope
+            && _hasParentReaderPool;
 
         // BAL-driven read warming: mirrors BlockCachePreWarmer.IsBalReadWarmingEnabled so
         // HintBal honours the same opt-in config as the prewarmer path.
@@ -133,6 +150,9 @@ public partial class BlockAccessListManager(
         if (Enabled)
         {
             Reset();
+            _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
+            if (VerifyOnly && suggestedBlock.BlockAccessList is { TotalStorageReads: > 0 } bal)
+                _readPlan = new BalReadStoragePlan(bal);
             // Build the column-oriented validation index once per block; per-tx ChangesEqual
             // then collapses to row-aligned span compares. Tally suggested chargeable storage
             // reads here so the per-tx surplus-reads gas check avoids re-walking the BAL.
@@ -142,17 +162,60 @@ public partial class BlockAccessListManager(
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
                 _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
-                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents);
-                int suggestedReads = 0;
+                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads: _readPlan is null);
+                ulong suggestedReads = 0;
                 foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
                 {
-                    if (!IsSystemContract(ac.Address)) suggestedReads += ac.StorageReads.Length;
+                    if (!IsSystemContract(ac.Address)) suggestedReads += (ulong)ac.StorageReads.Length;
                 }
                 _suggestedChargeableStorageReads = suggestedReads;
             }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
-            _currentGeneratedBlockAccessList = (ParallelExecutionEnabled && !ForceConstructGeneratedBlockAccessList) ? null : GeneratedBlockAccessList;
+        }
+
+        _balWarmupTask = StartBalReadWarmup(suggestedBlock);
+    }
+
+    // Only the parallel executor drains the hint; sequential execution contends with the warming reads.
+    private Task? StartBalReadWarmup(Block suggestedBlock)
+    {
+        if (!ExecutionFlags.ParallelExecution || !BatchReadEnabled || !ParallelExecutionEnabled || suggestedBlock.BlockAccessList is null)
+            return null;
+
+        try
+        {
+            return stateProvider.HintBal(suggestedBlock.BlockAccessList);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsDebug) _logger.Debug($"BAL read warming hint failed to start: {ex}");
+            return null;
+        }
+    }
+
+    public void WaitForBalWarmup()
+    {
+        // Only the parallel path starts warming, so a build without it has nothing to wait for.
+        if (!ExecutionFlags.ParallelExecution) return;
+
+        Task? task = _balWarmupTask;
+        if (task is null) return;
+        _balWarmupTask = null;
+
+        try
+        {
+            task.GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when warming was already cancelled, e.g. by an earlier write batch.
+        }
+        catch (Exception ex)
+        {
+            // Warming is best-effort: a faulted task only means fewer pre-block cache hits and
+            // must never fail the block. Log so a slow block can be correlated with the failure.
+            if (_logger.IsDebug) _logger.Debug($"BAL read warming faulted: {ex}");
         }
     }
 
@@ -160,16 +223,21 @@ public partial class BlockAccessListManager(
     {
         if (Enabled)
         {
-            _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager.Value : _sequentialTxProcessorWithWorldStateManager.Value;
+            _txProcessorWithWorldStateManager = ExecutionFlags.ParallelExecution && ParallelExecutionEnabled
+                ? _parallelTxProcessorWithWorldStateManager!.Value
+                : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot);
+            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot, _readPlan);
+            _postExecutionReadAllowance = _suggestedChargeableStorageReads > 0ul
+                ? PostExecutionReadAllowance(_blockExecutionContext.Value.Spec)
+                : 0ul;
         }
     }
 
-    public void SpendGas(long gas)
+    public void SpendGas(ulong gas)
     {
         CheckInitialized();
-        _gasRemaining -= gas;
+        _gasRemaining = _gasRemaining.Value.SaturatingSub(gas);
     }
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -202,19 +270,20 @@ public partial class BlockAccessListManager(
 
     public void ReturnTxProcessor(uint balIndex)
     {
-        if (Enabled && ParallelExecutionEnabled)
+        if (ExecutionFlags.ParallelExecution && Enabled && ParallelExecutionEnabled)
         {
             // Eagerly detach the worker's generated BAL into a per-tx slot and recycle the
             // pool slot. Workers therefore never block on the validator — but the validator
             // still merges per-tx slots into the target in order, preserving incremental
             // validation semantics.
-            _parallelTxProcessorWithWorldStateManager.Value.Return(balIndex);
+            _parallelTxProcessorWithWorldStateManager!.Value.Return(balIndex);
         }
     }
 
     public void Dispose()
     {
-        if (_parallelTxProcessorWithWorldStateManager.IsValueCreated)
+        DisposableExtensions.DisposeAndNull(ref _readPlan);
+        if (ExecutionFlags.ParallelExecution && _parallelTxProcessorWithWorldStateManager!.IsValueCreated)
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
         }
@@ -255,8 +324,9 @@ public partial class BlockAccessListManager(
         GeneratedBlockAccessList.Reset();
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
-        _suggestedChargeableStorageReads = 0;
-        _generatedChargeableStorageReads = 0;
+        _suggestedChargeableStorageReads = 0ul;
+        _generatedChargeableStorageReads = 0ul;
+        _postExecutionReadAllowance = 0ul;
         _hasGeneratedValidationIndexUpdates = false;
         _hasGeneratedRequiredReadAccountMismatch = false;
         _currentGeneratedBlockAccessList = null;

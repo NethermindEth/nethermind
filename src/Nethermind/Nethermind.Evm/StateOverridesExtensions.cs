@@ -33,7 +33,10 @@ public static class StateOverridesExtensions
 
                 if (!state.TryGetAccount(address, out AccountStruct account))
                 {
-                    state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? UInt256.Zero);
+                    if (accountOverride.HasStateChanges)
+                    {
+                        state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? 0);
+                    }
                 }
                 else
                 {
@@ -52,10 +55,10 @@ public static class StateOverridesExtensions
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec,
-        long blockNumber)
+        ulong blockNumber)
     {
+        spec = spec.WithoutEip158();
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
-
         state.Commit(spec, commitRoots: true);
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
@@ -67,7 +70,7 @@ public static class StateOverridesExtensions
         {
             foreach ((UInt256 index, Hash256 value) in diff)
             {
-                stateProvider.Set(new StorageCell(address, index), value.Bytes.WithoutLeadingZeros().ToArray());
+                stateProvider.Set(new StorageCell(address, index), value.ToUInt256());
             }
         }
 
@@ -104,12 +107,13 @@ public static class StateOverridesExtensions
 
         if (accountOverride.Code is not null)
         {
-            stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
+            OverrideCodeCache.Resolve(accountOverride.Code, out ValueHash256 codeHash, out CodeInfo codeInfo);
+            stateProvider.InsertCode(address, codeHash, accountOverride.Code, currentSpec);
 
             overridableCodeInfoRepository.SetCodeOverride(
                 currentSpec,
                 address,
-                new CodeInfo(accountOverride.Code));
+                codeInfo);
         }
     }
 
@@ -121,8 +125,8 @@ public static class StateOverridesExtensions
     {
         if (accountOverride.Nonce is not null)
         {
-            UInt256 nonce = account.Nonce;
-            UInt256 newNonce = accountOverride.Nonce.Value;
+            ulong nonce = account.Nonce;
+            ulong newNonce = accountOverride.Nonce.Value;
             if (nonce > newNonce)
             {
                 stateProvider.DecrementNonce(address, nonce - newNonce);

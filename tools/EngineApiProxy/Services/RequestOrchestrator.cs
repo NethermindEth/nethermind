@@ -373,6 +373,11 @@ public class RequestOrchestrator(
             // Extract the executionPayload from the response
             JsonNode executionPayload = (payload["executionPayload"] ?? payload).DeepClone();
 
+            // EIP-7685 executionRequests (getPayloadV4+). The block's requestsHash is
+            // derived from this list, so replaying the payload without it makes the EL
+            // recompute a different block hash and reject the block as invalid.
+            JsonNode executionRequests = payload["executionRequests"]?.DeepClone() ?? new JsonArray();
+
             // Use provided blobVersionedHashes or empty array
             blobVersionedHashes ??= [];
             _logger.Debug($"CreateNewPayloadRequest: Including {blobVersionedHashes.Count} blobVersionedHashes in synthetic newPayload");
@@ -426,10 +431,10 @@ public class RequestOrchestrator(
                 executionPayload,          // First parameter: executionPayload
                 blobVersionedHashes,       // Second parameter: blobVersionedHashes
                 parentBeaconBlockRoot,     // Third parameter: parentBeaconBlockRoot
-                new JsonArray()            // Fourth parameter: execution_payload_preparation_info
+                executionRequests          // Fourth parameter: executionRequests (EIP-7685)
             ];
 
-            _logger.Debug($"Created {_config.NewPayloadMethod} request with {blobVersionedHashes.Count} blobVersionedHashes, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
+            _logger.Debug($"Created {_config.NewPayloadMethod} request with {blobVersionedHashes.Count} blobVersionedHashes, {(executionRequests as JsonArray)?.Count ?? 0} executionRequests, parentBeaconBlockRoot: {parentBeaconBlockRoot}");
 
             return new JsonRpcRequest(
                 _config.NewPayloadMethod,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
@@ -27,20 +28,37 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2
         Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
 
         int n = request.BlobVersionedHashes.Length;
-        byte[]?[] blobs = new byte[n][];
-        ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[n];
-        int count = txPool.TryGetBlobsAndProofsV1(request.BlobVersionedHashes, blobs, proofs);
-
-        Metrics.GetBlobsRequestsInBlobpoolTotal += count;
-
-        // quick fail if we don't have some blob (unless partial return is allowed)
-        if (!request.AllowPartialReturn && count != n)
+        if (n == 0)
         {
-            return ReturnEmptyArray();
+            Metrics.GetBlobsRequestsSuccessTotal++;
+            return ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(Array.Empty<BlobAndProofV2?>());
         }
 
-        Metrics.GetBlobsRequestsSuccessTotal++;
-        return ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new BlobsV2DirectResponse(blobs, proofs, n));
+        ArrayPoolList<byte[]?> blobs = new(n, n);
+        ArrayPoolList<ReadOnlyMemory<byte[]>> proofs = new(n, n);
+        try
+        {
+            int count = txPool.TryGetBlobsAndProofsV1(request.BlobVersionedHashes, blobs.AsSpan(), proofs.AsSpan());
+
+            Metrics.GetBlobsRequestsInBlobpoolTotal += count;
+
+            // quick fail if we don't have some blob (unless partial return is allowed)
+            if (!request.AllowPartialReturn && count != n)
+            {
+                blobs.Dispose();
+                proofs.Dispose();
+                return ReturnEmptyArray();
+            }
+
+            Metrics.GetBlobsRequestsSuccessTotal++;
+            return ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new BlobsV2DirectResponse(blobs, proofs, n));
+        }
+        catch
+        {
+            blobs.Dispose();
+            proofs.Dispose();
+            throw;
+        }
     }
 
     private Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> ReturnEmptyArray()

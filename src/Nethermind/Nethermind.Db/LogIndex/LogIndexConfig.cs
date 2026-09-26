@@ -13,7 +13,7 @@ public class LogIndexConfig : ILogIndexConfig
     public bool Reset { get; set; } = false;
 
     // set from PruningConfig via decorator
-    public int? MaxReorgDepth { get; set; }
+    public ulong? MaxReorgDepth { get; set; }
 
     public int MaxBatchSize { get; set; } = 256;
     public int MaxAggregationQueueSize { get; set; } = 16;
@@ -29,5 +29,4 @@ public class LogIndexConfig : ILogIndexConfig
     public string? CompressionAlgorithm { get; set; } = LogIndexStorage.CompressionAlgorithm.Best.Key;
 
     public bool DetailedLogs { get; set; } = false;
-    public bool VerifyRpcResponse { get; set; } = false;
 }

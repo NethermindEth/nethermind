@@ -28,7 +28,7 @@ public class ChainLevelHelper(
     private readonly ILogger _logger = logManager.GetClassLogger<ChainLevelHelper>();
     private readonly IBeaconPivot _beaconPivot = beaconPivot;
 
-    private void OnMissingBeaconHeader(long blockNumber)
+    private void OnMissingBeaconHeader(ulong blockNumber)
     {
         if (_beaconPivot.ProcessDestination?.Number > blockNumber)
         {
@@ -37,8 +37,8 @@ public class ChainLevelHelper(
             // A gap is expected when forward sync hasn't reached `blockNumber` yet (best beacon header
             // still below it) or when backward beacon sync hasn't reached it yet (lowest beacon header
             // still above it). Trigger a new beacon sync to close the gap.
-            bool aboveBeaconCoverage = (_blockTree.BestSuggestedBeaconHeader?.Number ?? -1) < blockNumber;
-            bool belowBeaconCoverage = (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) > blockNumber;
+            bool aboveBeaconCoverage = (_blockTree.BestSuggestedBeaconHeader?.Number ?? 0UL) < blockNumber;
+            bool belowBeaconCoverage = (_blockTree.LowestInsertedBeaconHeader?.Number ?? ulong.MaxValue) > blockNumber;
             bool expectedDuringSync = aboveBeaconCoverage || belowBeaconCoverage;
 
             if (!expectedDuringSync)
@@ -56,7 +56,7 @@ public class ChainLevelHelper(
 
     public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int skipLastBlockCount = 0)
     {
-        (long? startingPoint, Hash256? startingPointBlockHash) = GetStartingPoint();
+        (ulong? startingPoint, Hash256? startingPointBlockHash) = GetStartingPoint();
         if (startingPoint is null)
         {
             if (_logger.IsTrace)
@@ -161,10 +161,9 @@ public class ChainLevelHelper(
     /// Returns a number BEFORE the lowest beacon info where the forward beacon sync should start, or the latest
     /// block that was processed where we should continue processing.
     /// </summary>
-    /// <returns></returns>
-    private (long?, Hash256?) GetStartingPoint()
+    private (ulong?, Hash256?) GetStartingPoint()
     {
-        long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
+        ulong startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? ulong.MaxValue);
         bool shouldContinue;
 
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}. Best known number: {_blockTree.BestKnownNumber}, Process destination: {_beaconPivot.ProcessDestination?.Number}");
@@ -180,6 +179,12 @@ public class ChainLevelHelper(
         {
             return (startingPoint, beaconMainChainBlock.BlockHash);
         }
+
+        if (TryAnchorAtForwardFront(startingPoint, out ulong anchorNumber, out Hash256? anchorHash))
+        {
+            return (anchorNumber, anchorHash);
+        }
+
         BlockInfo? parentBlockInfo = null;
         Hash256 currentHash = beaconMainChainBlock.BlockHash;
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
@@ -218,7 +223,50 @@ public class ChainLevelHelper(
         return (startingPoint, parentBlockInfo.BlockHash);
     }
 
-    private BlockInfo? GetBeaconMainChainBlockInfo(long startingPoint)
+    private bool TryAnchorAtForwardFront(ulong startingPoint, out ulong anchorNumber, out Hash256? anchorHash)
+    {
+        anchorNumber = 0;
+        anchorHash = null;
+
+        Block? head = _blockTree.Head;
+        Block? bestSuggested = _blockTree.BestSuggestedBody;
+        Block? front = (bestSuggested?.Number ?? 0) >= (head?.Number ?? 0) ? bestSuggested : head;
+        if (front?.Hash is null || front.Number + 1 >= startingPoint)
+        {
+            return false;
+        }
+
+        // Parity with the walk's pivot clamp: never anchor below the fast-sync pivot.
+        if (_syncConfig.FastSync && front.Number < _beaconPivot.PivotDestinationNumber)
+        {
+            return false;
+        }
+
+        BlockInfo? frontInfo = _blockTree.GetInfo(front.Number, front.Hash).Info;
+        if (frontInfo is null || frontInfo.IsBeaconInfo)
+        {
+            return false;
+        }
+
+        BlockInfo? successor = _blockTree.FindLevel(front.Number + 1)?.BeaconMainChainBlock;
+        if (successor is null || !successor.IsBeaconInfo)
+        {
+            return false;
+        }
+
+        BlockHeader? successorHeader = _blockTree.FindHeader(successor.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        if (successorHeader is null || successorHeader.ParentHash != front.Hash)
+        {
+            return false;
+        }
+
+        if (_logger.IsDebug) _logger.Debug($"Anchoring forward sync at front {front.Number} instead of walking down from {startingPoint}");
+        anchorNumber = front.Number;
+        anchorHash = front.Hash;
+        return true;
+    }
+
+    private BlockInfo? GetBeaconMainChainBlockInfo(ulong startingPoint)
     {
         ChainLevelInfo? startingLevel = _blockTree.FindLevel(startingPoint);
         BlockInfo? beaconMainChainBlock = startingLevel?.BeaconMainChainBlock;

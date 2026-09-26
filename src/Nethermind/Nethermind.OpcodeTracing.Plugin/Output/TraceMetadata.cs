@@ -14,13 +14,13 @@ public sealed class TraceMetadata
     /// Gets or sets the first block number traced (inclusive).
     /// </summary>
     [JsonPropertyName("startBlock")]
-    public required long StartBlock { get; init; }
+    public required ulong StartBlock { get; init; }
 
     /// <summary>
     /// Gets or sets the last block number traced (inclusive).
     /// </summary>
     [JsonPropertyName("endBlock")]
-    public required long EndBlock { get; init; }
+    public required ulong EndBlock { get; init; }
 
     /// <summary>
     /// Gets or sets the tracing mode used (RealTime or Retrospective).
@@ -63,5 +63,5 @@ public sealed class TraceMetadata
     /// </summary>
     [JsonPropertyName("skippedBlocks")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long[]? SkippedBlocks { get; init; }
+    public ulong[]? SkippedBlocks { get; init; }
 }

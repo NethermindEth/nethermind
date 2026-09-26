@@ -3,14 +3,15 @@
 
 using System;
 using System.Buffers;
-using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
@@ -29,6 +30,7 @@ using Nethermind.Config;
 using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Simulate;
 using Nethermind.Consensus.Stateless;
 
@@ -41,23 +43,32 @@ public class DebugRpcModule(
     ISpecProvider specProvider,
     IBlockchainBridge blockchainBridge,
     IBlocksConfig blocksConfig,
-    IBlockFinder blockFinder)
+    IBlockFinder blockFinder,
+    IBlockForRpcFactory blockForRpcFactory)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;
-    private readonly BlockDecoder _blockDecoder = new();
+    // Registry-resolved so AuRa chains encode/decode the block seal (step + signature) correctly.
+    private readonly IRlpDecoder<Block> _blockDecoder = Rlp.GetDecoderOrThrow<Block>();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
     {
-        ChainLevelInfo? levelInfo = debugBridge.GetLevelInfo(number);
+        if (number < 0)
+        {
+            return ResultWrapper<ChainLevelForRpc>.Fail($"Chain level must be non-negative (got {number})", ErrorCodes.InvalidParams);
+        }
+        ChainLevelInfo? levelInfo = debugBridge.GetLevelInfo((ulong)number);
         return levelInfo is null
             ? ResultWrapper<ChainLevelForRpc>.Fail($"Chain level {number} does not exist", ErrorCodes.ResourceNotFound)
             : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
     }
 
-    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) => ResultWrapper<int>.Success(debugBridge.DeleteChainSlice(startNumber, force));
+    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) =>
+        startNumber <= 0
+            ? ResultWrapper<int>.Fail($"startNumber must be positive (got {startNumber})", ErrorCodes.InvalidParams)
+            : debugBridge.DeleteChainSlice((ulong)startNumber, force);
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
@@ -109,9 +120,13 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
         }
 
+        GethTraceOptions effective = (options ?? GethTraceOptions.Default) with
+        {
+            NoBaseFee = !call.ShouldSetBaseFee()
+        };
+
         if (CanStreamStructLogs(options))
         {
-            GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetTransactionTrace(tx, blockParameter, token, effective, writer, pipeWriter)));
@@ -123,7 +138,7 @@ public class DebugRpcModule(
         GethLikeTxTrace? transactionTrace;
         try
         {
-            transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
+            transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, effective);
         }
         catch (InsufficientBalanceException ex)
         {
@@ -177,65 +192,47 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
-        TryGetHeaderAndCheckState(blockhash, out ResultWrapper<GethLikeTxTrace>? headerError);
-        if (headerError is not null)
+        BlockHeader? header = TryGetHeader(blockhash, out ResultWrapper<GethLikeTxTrace>? error);
+        if (error is not null)
         {
-            return headerError;
+            return error;
         }
 
-        if (CanStreamStructLogs(options))
-        {
-            GethTraceOptions effective = options ?? GethTraceOptions.Default;
-            return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
-                (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTrace(blockhash, index, token, effective, writer, pipeWriter)));
-        }
-
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockhash, index, cancellationToken, options);
-        if (transactionTrace is null)
-        {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockhash}", ErrorCodes.ResourceNotFound);
-        }
-
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransactionByBlockhashAndIndex)} request {blockhash}, result: trace");
-        return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+        error = CheckTraceBaseState<GethLikeTxTrace>(header!);
+        return error ?? TraceTransactionAtIndex(blockhash, index, options, nameof(debug_traceTransactionByBlockhashAndIndex));
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
     {
-        TryGetHeaderAndCheckState(blockParameter, out ResultWrapper<GethLikeTxTrace>? headerError);
-        if (headerError is not null)
+        BlockHeader? header = TryGetHeader(blockParameter, out ResultWrapper<GethLikeTxTrace>? error);
+        if (error is not null)
         {
-            return headerError;
+            return error;
         }
 
-        long? blockNo = blockParameter.BlockNumber;
-        if (!blockNo.HasValue)
-        {
-            throw new InvalidDataException("Block number value incorrect");
-        }
+        error = CheckTraceBaseState<GethLikeTxTrace>(header!);
+        // Trace the block that was resolved, not the canonical one at its height: a block hash parameter need not be canonical
+        return error ?? TraceTransactionAtIndex(header!.Hash!, index, options, nameof(debug_traceTransactionByBlockAndIndex));
+    }
 
+    private ResultWrapper<GethLikeTxTrace> TraceTransactionAtIndex(Hash256 blockHash, int index, GethTraceOptions? options, string method)
+    {
         if (CanStreamStructLogs(options))
         {
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
-            long resolvedBlockNo = blockNo.Value;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTrace(resolvedBlockNo, index, token, effective, writer, pipeWriter)));
+                    debugBridge.GetTransactionTrace(blockHash, index, token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
-
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockNo.Value, index, cancellationToken, options);
+        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, timeout.Token, options);
         if (transactionTrace is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockHash}", ErrorCodes.ResourceNotFound);
         }
 
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockNo}, result: trace");
+        if (_logger.IsTrace) _logger.Trace($"{method} request {blockHash}, result: trace");
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
@@ -291,7 +288,12 @@ public class DebugRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
         IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
-        GethLikeTxTrace? transactionTrace = blockTrace?.ElementAtOrDefault(txIndex);
+
+        // Not disposing blockTrace: GethLikeTxTraceCollection.Dispose() disposes every item,
+        // including the one we return. The collection holds no pooled or unmanaged resource of
+        // its own, so abandoning it leaks nothing.
+        GethLikeTxTrace? transactionTrace = blockTrace is null ? null : SelectTraceDisposingTheRest(blockTrace, txIndex);
+
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transaction index {txIndex}", ErrorCodes.ResourceNotFound);
@@ -300,11 +302,55 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    public async Task<ResultWrapper<bool>> debug_migrateReceipts(long from, long to) =>
+    private static GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
+    {
+        GethLikeTxTrace? selected = null;
+        int index = 0;
+        foreach (GethLikeTxTrace trace in blockTrace)
+        {
+            if (index++ == txIndex)
+            {
+                selected = trace;
+                continue;
+            }
+
+            trace.Dispose();
+        }
+
+        return selected;
+    }
+
+    public async Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to) =>
         ResultWrapper<bool>.Success(await debugBridge.MigrateReceipts(from, to));
 
     public Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc)
     {
+        // EIP-8141: a frame transaction always executes at least one frame and always settles on a payer,
+        // so a receipt missing either is malformed. The codec refuses both; rejecting them here answers
+        // invalid params rather than an internal error.
+        for (int i = 0; i < receiptForRpc.Length; i++)
+        {
+            ReceiptForRpc receipt = receiptForRpc[i];
+            if (receipt is null)
+            {
+                return Task.FromResult(ResultWrapper<bool>.Fail($"Receipt at index {i} is null", ErrorCodes.InvalidParams));
+            }
+
+            if (receipt.Type == TxType.FrameTx && receipt.FrameReceipts is not { Length: > 0 })
+            {
+                return Task.FromResult(ResultWrapper<bool>.Fail(
+                    $"Receipt at index {i} is a frame transaction receipt carrying no frame receipts",
+                    ErrorCodes.InvalidParams));
+            }
+
+            if (receipt.Type == TxType.FrameTx && receipt.Payer is null)
+            {
+                return Task.FromResult(ResultWrapper<bool>.Fail(
+                    $"Receipt at index {i} is a frame transaction receipt carrying no payer",
+                    ErrorCodes.InvalidParams));
+            }
+        }
+
         debugBridge.InsertReceipts(blockParameter, receiptForRpc.Select(static r => r.ToReceipt()).ToArray());
         return Task.FromResult(ResultWrapper<bool>.Success(true));
     }
@@ -350,10 +396,15 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
     {
-        TryGetHeaderAndCheckState(blockNumber, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
+        BlockHeader? header = TryGetHeaderAndCheckState(blockNumber, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
         if (headerError is not null)
         {
             return headerError;
+        }
+
+        if (header.Number == 0)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
 
         if (CanStreamStructLogs(options))
@@ -392,10 +443,15 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
-        TryGetHeaderAndCheckState<IReadOnlyCollection<GethLikeTxTrace>>(blockHash, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
+        BlockHeader? header = TryGetHeaderAndCheckState(blockHash, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
         if (headerError is not null)
         {
             return headerError;
+        }
+
+        if (header.Number == 0)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
 
         if (CanStreamStructLogs(options))
@@ -464,7 +520,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<GcStats> debug_gcStats() => throw new NotImplementedException();
 
-    public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber) =>
+    public ResultWrapper<byte[]> debug_getBlockRlp(ulong blockNumber) =>
         GetBlockRlpOrFail(new BlockParameter(blockNumber));
 
     public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash) =>
@@ -474,7 +530,8 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter) => throw new NotImplementedException();
 
-    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) => throw new NotImplementedException();
+    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) =>
+        ResultWrapper<bool>.Success(debugBridge.UpdateHeadBlock(blockParameter));
 
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
     {
@@ -488,47 +545,75 @@ public class DebugRpcModule(
         return ResultWrapper<object>.Success(configValue);
     }
 
-    public ResultWrapper<bool> debug_resetHead(Hash256 blockHash)
-    {
-        debugBridge.UpdateHeadBlock(blockHash);
-        return ResultWrapper<bool>.Success(true);
-    }
+    public ResultWrapper<bool> debug_resetHead(Hash256 blockHash) =>
+        ResultWrapper<bool>.Success(debugBridge.UpdateHeadBlock(blockHash));
 
-    public ResultWrapper<string?> debug_getRawTransaction(Hash256 transactionHash)
+    public ResultWrapper<ArrayPoolList<byte>> debug_getRawTransaction(Hash256 transactionHash)
     {
         Transaction? transaction = debugBridge.GetTransactionFromHash(transactionHash);
         if (transaction is null)
         {
-            return ResultWrapper<string?>.Fail($"Transaction {transactionHash} was not found", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<ArrayPoolList<byte>>.Success(null);
         }
 
         RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
-
-        using NettyRlpStream stream = TxRlpDecoder.EncodeToNewNettyStream(transaction, encodingSettings);
-        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
+        return ResultWrapper<ArrayPoolList<byte>>.Success(TxRlpDecoder.EncodeToArrayPoolList(transaction, encodingSettings));
     }
 
-    public ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter)
+    public ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter)
     {
-        TxReceipt[] receipts = debugBridge.GetReceiptsForBlock(blockParameter);
+        TxReceipt[]? receipts = debugBridge.GetReceiptsForBlock(blockParameter);
         if (receipts is null)
         {
-            return ResultWrapper<byte[][]>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<RawReceiptsResult>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
 
         if (receipts.Length == 0)
         {
-            return ResultWrapper<byte[][]>.Success([]);
+            return ResultWrapper<RawReceiptsResult>.Success(new RawReceiptsResult(ArrayPoolList<ArrayPoolList<byte>>.Empty()));
         }
+
         RlpBehaviors behavior =
             (specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ?
                 RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        IEnumerable<byte[]>? rlp = receipts.Select(tx => Rlp.Encode(tx, behavior).Bytes);
-        return ResultWrapper<byte[][]>.Success(rlp.ToArray());
+        IRlpDecoder<TxReceipt> receiptDecoder = Rlp.GetDecoderOrThrow<TxReceipt>();
+
+        ArrayPoolList<ArrayPoolList<byte>> encoded = new(receipts.Length);
+        try
+        {
+            foreach (TxReceipt receipt in receipts)
+            {
+                ArrayPoolList<byte> receiptRlp = receiptDecoder.EncodeToArrayPoolList(receipt, behavior);
+                try
+                {
+                    encoded.Add(receiptRlp);
+                }
+                catch
+                {
+                    receiptRlp.Dispose();
+                    throw;
+                }
+            }
+            return ResultWrapper<RawReceiptsResult>.Success(new RawReceiptsResult(encoded));
+        }
+        catch
+        {
+            foreach (ArrayPoolList<byte> buffer in encoded)
+            {
+                buffer.Dispose();
+            }
+            encoded.Dispose();
+            throw;
+        }
     }
 
-    public ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter) =>
-        GetBlockRlpOrFail(blockParameter);
+    public ResultWrapper<ArrayPoolList<byte>> debug_getRawBlock(BlockParameter blockParameter)
+    {
+        Block? block = debugBridge.GetBlock(blockParameter);
+        return block is null
+            ? ResultWrapper<ArrayPoolList<byte>>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound)
+            : ResultWrapper<ArrayPoolList<byte>>.Success(_blockDecoder.EncodeToArrayPoolList(block));
+    }
 
     public ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter)
     {
@@ -541,19 +626,16 @@ public class DebugRpcModule(
         MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Number, block.Hash);
 
         return balRlp is null
-            ? ResultWrapper<OwnedByteMemory>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)
+            ? ResultWrapper<OwnedByteMemory>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)
             : ResultWrapper<OwnedByteMemory>.Success(new OwnedByteMemory(balRlp));
     }
 
-    public ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter)
+    public ResultWrapper<ArrayPoolList<byte>> debug_getRawHeader(BlockParameter blockParameter)
     {
         Block? block = debugBridge.GetBlock(blockParameter);
-        if (block is null)
-        {
-            return ResultWrapper<byte[]>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound);
-        }
-        Rlp rlp = Rlp.Encode(block.Header);
-        return ResultWrapper<byte[]>.Success(rlp.Bytes);
+        return block is null
+            ? ResultWrapper<ArrayPoolList<byte>>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound)
+            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoderOrThrow<BlockHeader>().EncodeToArrayPoolList(block.Header));
     }
 
     public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage() => ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());
@@ -596,7 +678,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks()
     {
-        IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder));
+        IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory));
         return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
     }
 
@@ -638,7 +720,7 @@ public class DebugRpcModule(
     {
         if (CanStreamStructLogs(options))
         {
-            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(BuildStreamingBundleResult(bundles, blockParameter, options));
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(BuildStreamingBundleResult(bundles, blockParameter, options, header));
         }
 
         CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
@@ -665,7 +747,8 @@ public class DebugRpcModule(
     private GethLikeTxTraceStreamingBundleResult BuildStreamingBundleResult(
         TransactionBundle[] bundles,
         BlockParameter blockParameter,
-        GethTraceOptions? options)
+        GethTraceOptions? options,
+        BlockHeader header)
     {
         CancellationTokenSource timeoutCts = BuildTimeoutCancellationTokenSource();
         try
@@ -678,7 +761,10 @@ public class DebugRpcModule(
                 jsonRpcConfig.GasCap,
                 effective,
                 timeoutCts,
-                _logger);
+                _logger)
+            {
+                Spec = specProvider.GetSpec(header)
+            };
         }
         catch
         {
@@ -706,21 +792,6 @@ public class DebugRpcModule(
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
-        // debug_traceCallMany defaults missing gas to gasCap (not block gas limit). The simulate engine
-        // decides "explicit vs default" from the request's Gas field, so we set it here to opt out of the
-        // engine's BlockGasLeft fallback. eth_simulateV1 deliberately does not do this.
-        // When gasCap is unset/0 ("no cap"), we leave Gas null so the engine's normal fallback applies.
-        if (jsonRpcConfig.GasCap is not null and not 0)
-        {
-            foreach (TransactionBundle bundle in bundles)
-            {
-                foreach (TransactionForRpc call in bundle.Transactions)
-                {
-                    call.Gas ??= jsonRpcConfig.GasCap;
-                }
-            }
-        }
-
         SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>
@@ -732,15 +803,21 @@ public class DebugRpcModule(
         };
 
         // SimulateTxExecutor inserts filler blocks between bundles when BlockOverride.Number has gaps.
-        // Pre-compute the block number each bundle targets so we can drop fillers from the result and
-        // keep a 1:1 mapping to the input bundles.
-        HashSet<long> bundleBlockNumbers = new(bundles.Length);
-        long lastBlockNumber = header.Number;
+        // Pre-compute the block each bundle targets so we can drop fillers from the result, keeping a 1:1
+        // mapping to the input bundles, and cap its default gas by that block's spec.
+        HashSet<ulong> bundleBlockNumbers = new(bundles.Length);
+        ulong lastBlockNumber = header.Number;
+        ulong lastBlockTime = header.Timestamp;
         foreach (TransactionBundle bundle in bundles)
         {
-            long number = (long)bundle.BlockOverride.GetBlockNumber(lastBlockNumber);
+            ulong number = bundle.BlockOverride.GetBlockNumber(lastBlockNumber);
+            // SimulateTxExecutor's clock: each filler and the bundle's own block advance one slot. Out-of-order
+            // numbers make this meaningless, but SimulateTxExecutor rejects those before anything runs.
+            ulong time = bundle.BlockOverride?.Time ?? lastBlockTime + (number - lastBlockNumber) * _secondsPerSlot;
             bundleBlockNumbers.Add(number);
+            FillOmittedGas(bundle, specProvider.GetSpec(number, time));
             lastBlockNumber = number;
+            lastBlockTime = time;
         }
 
         BlockParameter concreteBlockParameter = new(header.Number);
@@ -759,16 +836,36 @@ public class DebugRpcModule(
 
         if (simulationResult.ErrorCode != 0)
         {
-            string errorMessage = simulationResult.Result ? $"Simulation failed with error code {simulationResult.ErrorCode}." : simulationResult.Result.ToString();
+            string errorMessage = simulationResult.Result.Error ?? $"Simulation failed with error code {simulationResult.ErrorCode}.";
             if (_logger.IsWarn) _logger.Warn($"debug_traceCallMany simulation failed: Code={simulationResult.ErrorCode}, Details={errorMessage}");
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(errorMessage, simulationResult.ErrorCode);
         }
 
         IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = simulationResult.Data
-            .Where(blockResult => blockResult.Number is long n && bundleBlockNumbers.Contains(n))
+            .Where(blockResult => blockResult.Number is ulong n && bundleBlockNumbers.Contains(n))
             .Select(blockResult => blockResult.Traces);
 
         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
+    }
+
+    /// <summary>Defaults each omitted or zero gas in <paramref name="bundle"/> to the RPC gas cap.</summary>
+    /// <remarks>
+    /// The fill-in makes the gas look caller-supplied to <see cref="SimulateTxExecutor{TTrace}"/>, which then skips
+    /// both gas-less clamps, so cap it here as the gas-less arm of <c>ToTransaction</c> does, by the spec of the
+    /// block the bundle actually runs in rather than its parent's.
+    /// </remarks>
+    private void FillOmittedGas(TransactionBundle bundle, IReleaseSpec spec)
+    {
+        ulong? defaultGas = jsonRpcConfig.GasCap.IsGasCapped()
+            ? Math.Min(jsonRpcConfig.GasCap!.Value, spec.GetProcessorEnforcedTxGasLimitCap())
+            : null;
+        foreach (TransactionForRpc call in bundle.Transactions)
+        {
+            if (!call.Gas.IsGasCapped())
+            {
+                call.Gas = defaultGas;
+            }
+        }
     }
 
     private ResultWrapper<byte[]> GetBlockRlpOrFail(BlockParameter blockParameter)
@@ -789,27 +886,29 @@ public class DebugRpcModule(
     private static ResultWrapper<TResult> GetRlpDecodingFailureResult<TResult>(Rlp blockRlp) =>
         ResultWrapper<TResult>.Fail($"Error decoding block RLP: {blockRlp.Bytes.ToHexString()}", ErrorCodes.InvalidInput);
 
-    private BlockHeader? TryGetHeaderAndCheckState<TResult>(BlockParameter blockParameter, out ResultWrapper<TResult>? error)
+    /// <summary>
+    /// Resolves the header for <paramref name="blockParameter"/>, without checking state availability.
+    /// </summary>
+    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private BlockHeader? TryGetHeader<TResult>(BlockParameter blockParameter, out ResultWrapper<TResult>? error)
     {
         SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
-        BlockHeader? header = searchResult.Object;
 
         if (searchResult.IsError)
         {
             error = GetFailureResult<TResult, BlockHeader>(searchResult, debugBridge.HaveNotSyncedHeadersYet());
             return null;
         }
-        if (!blockchainBridge.HasStateForBlock(header))
-        {
-            error = GetStateFailureResult<TResult>(header);
-            return null;
-        }
 
         error = null;
-        return header;
+        return searchResult.Object;
     }
 
-    private BlockHeader? TryGetHeaderAndCheckState<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error)
+    /// <summary>
+    /// Resolves the header for <paramref name="blockHash"/>, without checking state availability.
+    /// </summary>
+    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private BlockHeader? TryGetHeader<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error)
     {
         BlockHeader? header = blockFinder.FindHeader(blockHash);
 
@@ -820,14 +919,80 @@ public class DebugRpcModule(
                 debugBridge.HaveNotSyncedHeadersYet());
             return null;
         }
+
+        error = null;
+        return header;
+    }
+
+    /// <summary>
+    /// Resolves the header for <paramref name="blockParameter"/> and checks that its own state is available.
+    /// </summary>
+    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private BlockHeader? TryGetHeaderAndCheckState<TResult>(BlockParameter blockParameter, out ResultWrapper<TResult>? error)
+    {
+        BlockHeader? header = TryGetHeader<TResult>(blockParameter, out error);
+        if (header is null)
+        {
+            return null;
+        }
+
         if (!blockchainBridge.HasStateForBlock(header))
         {
             error = GetStateFailureResult<TResult>(header);
             return null;
         }
 
-        error = null;
         return header;
+    }
+
+    /// <summary>
+    /// Resolves the header for <paramref name="blockHash"/> and checks that its own state is available.
+    /// </summary>
+    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private BlockHeader? TryGetHeaderAndCheckState<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error)
+    {
+        BlockHeader? header = TryGetHeader<TResult>(blockHash, out error);
+        if (header is null)
+        {
+            return null;
+        }
+
+        if (!blockchainBridge.HasStateForBlock(header))
+        {
+            error = GetStateFailureResult<TResult>(header);
+            return null;
+        }
+
+        return header;
+    }
+
+    /// <summary>
+    /// Checks that the state a whole-block replay of <paramref name="header"/> starts from is available.
+    /// </summary>
+    /// <returns>The failure to return to the caller, or <see langword="null"/> when the state is available.</returns>
+    /// <remarks>
+    /// Replaying a block re-executes it on top of its parent, so the state that has to be available is the
+    /// parent's and not the block's own: <see cref="GethStyleTracer"/> seeds the processing scope with the
+    /// parent header. Genesis has no parent, so it is replayed from the pre-genesis empty state
+    /// (<see cref="Nethermind.Evm.State.IWorldState.PreGenesis"/>) and needs no committed state at all.
+    /// </remarks>
+    private ResultWrapper<TResult>? CheckTraceBaseState<TResult>(BlockHeader header)
+    {
+        if (header.IsGenesis)
+        {
+            return null;
+        }
+
+        BlockHeader? parent = blockFinder.FindParentHeader(header, BlockTreeLookupOptions.None);
+
+        if (parent is null)
+        {
+            return ResultWrapper<TResult>.Fail(
+                $"Cannot find parent header for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceUnavailable);
+        }
+
+        return blockchainBridge.HasStateForBlock(parent) ? null : GetStateFailureResult<TResult>(parent);
     }
 
     private Block? TryGetBlockAndCheckState<TResult>(Rlp blockRlp, out ResultWrapper<TResult>? error)
@@ -836,7 +1001,7 @@ public class DebugRpcModule(
 
         try
         {
-            Rlp.ValueDecoderContext context = blockRlp.Bytes.AsRlpValueContext();
+            RlpReader context = new(blockRlp.Bytes);
             block = _blockDecoder.Decode(ref context);
             if (block is null)
             {
@@ -885,40 +1050,5 @@ public class DebugRpcModule(
             return ResultWrapper<Witness>.Fail($"Unable to find parent for block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
         return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(parent, block));
-    }
-
-    public ResultWrapper<Witness> debug_executionWitnessCall(TransactionForRpc callRequest, BlockParameter? blockParameter = null)
-    {
-        blockParameter ??= BlockParameter.Latest;
-
-        BlockHeader? header = blockFinder.FindHeader(blockParameter);
-        if (header is null)
-        {
-            return ResultWrapper<Witness>.Fail($"Unable to find block {blockParameter}", ErrorCodes.ResourceNotFound);
-        }
-
-        if (header.Number == 0)
-        {
-            return ResultWrapper<Witness>.Fail("Cannot generate witness for genesis block", ErrorCodes.InvalidInput);
-        }
-
-        callRequest.Gas ??= header.GasLimit;
-
-        Result<Transaction> txResult = callRequest.ToTransaction(validateUserInput: false);
-        if (!txResult.Success(out Transaction? tx, out string? error))
-        {
-            return ResultWrapper<Witness>.Fail(error, ErrorCodes.InvalidInput);
-        }
-
-        tx.SenderAddress ??= Address.Zero;
-
-        // Clone header (avoid mutating caller's) and zero GasUsed so the budget check
-        // (block.GasUsed + tx.GasLimit <= block.GasLimit) doesn't reject default-gas calls.
-        BlockHeader callHeader = header.Clone();
-        callHeader.GasUsed = 0;
-
-        if (_logger.IsDebug) _logger.Debug($"debug_executionWitnessCall: target={tx.To}, block={header.Number}, data_len={tx.Data.Length}");
-
-        return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(callHeader, tx));
     }
 }

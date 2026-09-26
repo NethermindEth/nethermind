@@ -4,13 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -77,23 +77,22 @@ public class HeaderValidatorTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(0, false, TestName = "When_gas_limit_too_high")]
-    [TestCase(-1, true, TestName = "When_gas_limit_just_correct_high")]
-    public void When_gas_limit_above_parent(int adjustment, bool expectedResult)
+    [TestCase(1, false, TestName = "When_gas_limit_too_high")]
+    [TestCase(0, true, TestName = "When_gas_limit_just_correct_high")]
+    [TestCase(-1, true, TestName = "When_gas_limit_just_correct_low")]
+    [TestCase(-2, false, TestName = "When_gas_limit_is_just_too_low")]
+    public void When_gas_limit_is_adjusted_around_parent(int boundaryIndex, bool expectedResult)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + adjustment;
-        _block.Header.Hash = _block.CalculateHash();
+        ulong delta = _parentBlock.Header.GasLimit / 1024ul;
 
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.EqualTo(expectedResult));
-    }
-
-    [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(1, true, TestName = "When_gas_limit_just_correct_low")]
-    [TestCase(0, false, TestName = "When_gas_limit_is_just_too_low")]
-    public void When_gas_limit_below_parent(int adjustment, bool expectedResult)
-    {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + adjustment;
+        _block.Header.GasLimit = boundaryIndex switch
+        {
+            1 => _parentBlock.Header.GasLimit + delta,
+            0 => _parentBlock.Header.GasLimit + delta - 1ul,
+            -1 => _parentBlock.Header.GasLimit - delta + 1ul,
+            -2 => _parentBlock.Header.GasLimit - delta,
+            _ => throw new ArgumentOutOfRangeException(nameof(boundaryIndex))
+        };
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -122,7 +121,7 @@ public class HeaderValidatorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_slot_number_same_as_parent()
+    public void When_slot_number_not_greater_than_parent_is_still_valid()
     {
         // Arrange: Same setup as above
         TestSpecProvider specProvider = new(Amsterdam.Instance);
@@ -142,10 +141,12 @@ public class HeaderValidatorTests
             .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
             .TestObject;
 
+        // Slot number lower than the parent's: EIP-7843 imposes no ordering on the EL,
+        // so the block must still be accepted.
         _block = Build.A.Block
             .WithParent(_parentBlock)
             .WithNumber(_parentBlock.Number + 1)
-            .WithSlotNumber(10)
+            .WithSlotNumber(7)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithEmptyRequestsHash()
@@ -162,8 +163,53 @@ public class HeaderValidatorTests
         using (Assert.EnterMultipleScope())
         {
             // Assert
+            Assert.That(result, Is.True);
+            Assert.That(error, Is.Null);
+        }
+    }
+
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(3ul, true, null)]
+    [TestCase(null, false, BlockErrorMessages.MissingSlotNumber)]
+    public void When_orphaned_amsterdam_header_slot_presence_matches_fork(ulong? slotNumber, bool expectedResult, string? expectedError)
+    {
+        TestSpecProvider specProvider = new(Amsterdam.Instance);
+        _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider,
+            new OneLoggerLogManager(new(_testLogger)));
+
+        _block = Build.A.Block
+            .WithNumber(6)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithEmptyRequestsHash()
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .TestObject;
+        _block.Header.SlotNumber = slotNumber;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_orphaned_pre_fork_header_has_slot_number()
+    {
+        // Same presence rule as RequestsHash and BlockAccessListHash: a field from a
+        // fork that is not active must be rejected even without a parent to compare to.
+        _block.Header.SlotNumber = 7;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
             Assert.That(result, Is.False);
-            Assert.That(error, Is.EqualTo("InvalidSlotNumber: Slot number in header must exceed parent."));
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.SlotNumberNotEnabled));
         }
     }
 
@@ -189,21 +235,21 @@ public class HeaderValidatorTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(10000000, 4, 20000000, true)]
-    [TestCase(10000000, 4, 20019530, true)]
-    [TestCase(10000000, 4, 20019531, false)]
-    [TestCase(10000000, 4, 19980470, true)]
-    [TestCase(10000000, 4, 19980469, false)]
-    [TestCase(20000000, 5, 20000000, true)]
-    [TestCase(20000000, 5, 20019530, true)]
-    [TestCase(20000000, 5, 20019531, false)]
-    [TestCase(20000000, 5, 19980470, true)]
-    [TestCase(20000000, 5, 19980469, false)]
-    [TestCase(40000000, 5, 40039061, true)]
-    [TestCase(40000000, 5, 40039062, false)]
-    [TestCase(40000000, 5, 39960939, true)]
-    [TestCase(40000000, 5, 39960938, false)]
-    public void When_gaslimit_is_on_london_fork(long parentGasLimit, long blockNumber, long gasLimit, bool expectedResult)
+    [TestCase(10000000ul, 4ul, 20000000ul, true)]
+    [TestCase(10000000ul, 4ul, 20019530ul, true)]
+    [TestCase(10000000ul, 4ul, 20019531ul, false)]
+    [TestCase(10000000ul, 4ul, 19980470ul, true)]
+    [TestCase(10000000ul, 4ul, 19980469ul, false)]
+    [TestCase(20000000ul, 5ul, 20000000ul, true)]
+    [TestCase(20000000ul, 5ul, 20019530ul, true)]
+    [TestCase(20000000ul, 5ul, 20019531ul, false)]
+    [TestCase(20000000ul, 5ul, 19980470ul, true)]
+    [TestCase(20000000ul, 5ul, 19980469ul, false)]
+    [TestCase(40000000ul, 5ul, 40039061ul, true)]
+    [TestCase(40000000ul, 5ul, 40039062ul, false)]
+    [TestCase(40000000ul, 5ul, 39960939ul, true)]
+    [TestCase(40000000ul, 5ul, 39960938ul, false)]
+    public void When_gaslimit_is_on_london_fork(ulong parentGasLimit, ulong blockNumber, ulong gasLimit, bool expectedResult)
     {
         OverridableReleaseSpec spec = new(London.Instance)
         {
@@ -228,8 +274,11 @@ public class HeaderValidatorTests
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_is_long_max_value()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(0x7FFFFFFFFFFFFFFFUL, true, TestName = "When_gas_limit_at_protocol_cap")]
+    [TestCase(0x8000000000000000UL, false, TestName = "When_gas_limit_just_above_protocol_cap")]
+    [TestCase(ulong.MaxValue, false, TestName = "When_gas_limit_is_ulong_max")]
+    public void When_gas_limit_around_protocol_cap(ulong gasLimit, bool expectedResult)
     {
         _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         _parentBlock = Build.A.Block.WithDifficulty(1)
@@ -239,36 +288,20 @@ public class HeaderValidatorTests
         _block = Build.A.Block.WithParent(_parentBlock)
             .WithDifficulty(131072)
             .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
-            .WithGasLimit(long.MaxValue)
+            .WithGasLimit(gasLimit)
             .WithNumber(_parentBlock.Number + 1)
             .WithNonce(0).TestObject;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header, false, out string? error);
 
-        Assert.That(result, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(error, expectedResult ? Is.Null : Is.EqualTo(BlockErrorMessages.InvalidGasLimit));
+        }
     }
 
-    private static IEnumerable<TestCaseData> NegativeFieldCases()
-    {
-        yield return new TestCaseData(new Action<Block>(b => b.Header.Number = -1))
-            .SetName("When_block_number_is_negative");
-        yield return new TestCaseData(new Action<Block>(b => b.Header.GasUsed = -1))
-            .SetName("When_gas_used_is_negative");
-        yield return new TestCaseData(new Action<Block>(b => b.Header.GasLimit = -1))
-            .SetName("When_gas_limit_is_negative");
-    }
-
-    [MaxTime(Timeout.MaxTestTime)]
-    [TestCaseSource(nameof(NegativeFieldCases))]
-    public void When_header_field_is_negative(Action<Block> corrupt)
-    {
-        corrupt(_block);
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_total_difficulty_null_we_should_skip_total_difficulty_validation()
@@ -324,6 +357,17 @@ public class HeaderValidatorTests
     }
 
     [Test]
+    public void Validate_WhenHashValidationSkipped_MismatchedHashIsAccepted()
+    {
+        // Always.Valid rather than the fixture's ethash seal validator, which rejects the zeroed hash on its own.
+        HeaderValidator sut = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
+        _block.Header.Hash = Keccak.Zero;
+
+        Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out _), Is.False);
+        Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out string? error, validateHash: false), Is.True, error);
+    }
+
+    [Test]
     public void When_given_parent_is_wrong()
     {
         _block.Header.Hash = _block.CalculateHash();
@@ -332,6 +376,19 @@ public class HeaderValidatorTests
 
         Assert.That(result, Is.False);
         Assert.That(error, Does.StartWith("Mismatched parent"));
+    }
+
+    [Test]
+    public void Validate_does_not_mutate_parent_header_on_mismatch()
+    {
+        _block.Header.Hash = _block.CalculateHash();
+        BlockHeader parentHeader = Build.A.BlockHeader.WithNonce(999).TestObject;
+        parentHeader.SlotNumber = null;
+
+        bool result = _validator.Validate(_block.Header, parentHeader, false, out string? error);
+
+        Assert.That(result, Is.False);
+        Assert.That(parentHeader.SlotNumber, Is.Null);
     }
 
     [Test]

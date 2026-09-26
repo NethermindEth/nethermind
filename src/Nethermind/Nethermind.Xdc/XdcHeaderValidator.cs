@@ -21,7 +21,7 @@ public class XdcHeaderValidator(
     ISpecProvider specProvider,
     ILogManager? logManager = null) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader parent, bool isUncle, out string? error, bool validateHash)
     {
         ArgumentNullException.ThrowIfNull(parent);
         if (header is not XdcBlockHeader xdcHeader)
@@ -65,7 +65,7 @@ public class XdcHeaderValidator(
             return false;
         }
 
-        if (!base.Validate<TOrphaned>(header, parent, isUncle, out error))
+        if (!base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash))
         {
             return false;
         }
@@ -124,7 +124,7 @@ public class XdcHeaderValidator(
         IXdcReleaseSpec xdcSpec = _specProvider.GetXdcSpec((XdcBlockHeader)header); // will throw if no spec found
 
         //TODO check if V2 header
-        if (parent.Timestamp + (ulong)xdcSpec.MinePeriod > header.Timestamp)
+        if (parent.Timestamp + xdcSpec.MinePeriod > header.Timestamp)
         {
             error = "Timestamp in header cannot be lower than ancestor plus slot time.";
             return false;

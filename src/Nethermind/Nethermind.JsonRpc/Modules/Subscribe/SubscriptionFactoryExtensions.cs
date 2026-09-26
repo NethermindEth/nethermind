@@ -19,12 +19,14 @@ public static class SubscriptionFactoryExtensions
         this ISubscriptionFactory subscriptionFactory,
         IBlockTree? blockTree,
         ILogManager? logManager,
-        ISpecProvider specProvider
-        ) => subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
+        ISpecProvider specProvider,
+        IBlockForRpcFactory blockForRpcFactory)
+    {
+        NewHeadPayloadCache payloads = new(specProvider, blockForRpcFactory);
+        subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
             SubscriptionType.EthSubscription.NewHeads,
-            (jsonRpcDuplexClient, args) =>
-            new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, specProvider, args)
-            );
+            (jsonRpcDuplexClient, args) => new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, payloads, args));
+    }
 
     public static void RegisterLogsSubscription(
         this ISubscriptionFactory subscriptionFactory,
@@ -102,10 +104,11 @@ public static class SubscriptionFactoryExtensions
         ITxPool? txPool,
         IEthSyncingInfo ethSyncingInfo,
         IPeerPool? peerPool,
-        IRlpxHost? rlpxHost
+        IRlpxHost? rlpxHost,
+        IBlockForRpcFactory blockForRpcFactory
         )
     {
-        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider);
+        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider, blockForRpcFactory);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
         subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
@@ -122,10 +125,11 @@ public static class SubscriptionFactoryExtensions
         IReceiptMonitor receiptMonitor,
         FilterStore? filterStore,
         ITxPool? txPool,
-        IEthSyncingInfo ethSyncingInfo
+        IEthSyncingInfo ethSyncingInfo,
+        IBlockForRpcFactory blockForRpcFactory
         )
     {
-        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider);
+        subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider, blockForRpcFactory);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
         subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);

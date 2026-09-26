@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -172,6 +173,23 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         FlushPipe();
     }
 
+    /// <summary>Writes traces produced elsewhere, in the order given, exactly as they would have been streamed while
+    /// being produced here. Called once per transaction as the parallel tracer finishes it, so the response leaves
+    /// while the rest of the block is still being traced.</summary>
+    public void WriteTraces(IReadOnlyCollection<ParityLikeTxTrace> traces)
+    {
+        foreach (ParityLikeTxTrace trace in traces)
+        {
+            _cancellationToken.ThrowIfCancellationRequested();
+            if (_mode == ParityTraceStreamMode.Replay)
+                ParityReplayEnvelopeWriter.WriteFromTrace(_writer, trace, _includeTxHash, _jsonOptions);
+            else
+                EmitStoreItems(trace);
+        }
+
+        FlushPipe();
+    }
+
     public override void EndBlockTrace()
     {
         _reusableTxTracer?.ReleaseResources();
@@ -218,6 +236,6 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     {
         if (_pipeWriter is null) return;
         _writer.Flush();
-        _pipeWriter.FlushAsync(_cancellationToken).GetAwaiter().GetResult();
+        _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
     }
 }

@@ -27,10 +27,11 @@ public class BlockOverride
             {
                 throw new OverflowException($"GasLimit value is too large, max value {long.MaxValue}");
             }
-            result.GasLimit = (long)GasLimit.Value;
+            result.GasLimit = GasLimit.Value;
         }
 
-        if (Number is not null) result.Number = (long)Number.Value;
+        if (Number is not null)
+            result.Number = Number.Value;
         if (FeeRecipient is not null)
         {
             // Set Author as well because GasBeneficiary = Author ?? Beneficiary.
@@ -42,5 +43,12 @@ public class BlockOverride
         // BlobBaseFee is not a direct header field — it is derived from ExcessBlobGas via the
         // EIP-4844 formula. The override is applied via BlobBaseFeeOverrideCalculatorDecorator
         // (and for simulate via IBlobBaseFeeOverrideProvider) instead.
+    }
+
+    public BlockOverride WithBaseFee(UInt256 baseFee)
+    {
+        BlockOverride copy = (BlockOverride)MemberwiseClone();
+        copy.BaseFeePerGas = baseFee;
+        return copy;
     }
 }

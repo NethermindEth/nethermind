@@ -24,7 +24,6 @@ using Nethermind.Blockchain;
 using Nethermind.Crypto;
 using System.Threading;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core.Test;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism.Test;
@@ -54,10 +53,10 @@ public class OptimismPayloadPreparationServiceTests
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
 
-        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
+        IOptimismReleaseSpec releaseSpec = OptimismReleaseSpecSubstitute.Create();
         releaseSpec.IsOpHoloceneEnabled.Returns(true);
         releaseSpec.BaseFeeMaxChangeDenominator.Returns((UInt256)250);
-        releaseSpec.ElasticityMultiplier.Returns(6);
+        releaseSpec.ElasticityMultiplier.Returns(6UL);
         ISpecProvider? specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(parent).Returns(releaseSpec);
 
@@ -97,7 +96,7 @@ public class OptimismPayloadPreparationServiceTests
         testCase.Attributes.PrevRandao = Hash256.Zero;
         testCase.Attributes.SuggestedFeeRecipient = TestItem.AddressA;
 
-        string payloadId = service.StartPreparingPayload(parent, testCase.Attributes);
+        string payloadId = service.StartPreparingPayload(parent, testCase.Attributes)!;
         IBlockProductionContext context = (await service.GetPayload(payloadId))!;
         Block currentBestBlock = context.CurrentBestBlock!;
 

@@ -269,6 +269,66 @@ public class SeqlockCacheHitRateBenchmarks
     }
 }
 
+/// <summary>
+/// Measures the configurable set count: per-op cost across sizes, working-set sweeps above capacity.
+/// </summary>
+[MemoryDiagnoser]
+public class SeqlockCacheSizeBenchmarks
+{
+    private SeqlockCache<StorageCell, byte[]> _cache = null!;
+    private StorageCell[] _keys = null!;
+    private byte[] _value = null!;
+
+    [Params(SeqlockCache<StorageCell, byte[]>.DefaultSetsBits, 17)]
+    public int SetsBits { get; set; }
+
+    // 1K = below capacity; 48K/140K = distinct-slot working sets of 100M/300M-gas cold-SLOAD blocks.
+    [Params(1_000, 48_000, 140_000)]
+    public int KeyCount { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        _cache = new SeqlockCache<StorageCell, byte[]>(SetsBits);
+        _keys = new StorageCell[KeyCount];
+        _value = new byte[32];
+
+        Random random = new(42);
+        for (int i = 0; i < KeyCount; i++)
+        {
+            byte[] addressBytes = new byte[20];
+            random.NextBytes(addressBytes);
+            _keys[i] = new StorageCell(new Address(addressBytes), new UInt256((ulong)i));
+            _cache.Set(in _keys[i], _value);
+        }
+    }
+
+    [Benchmark]
+    public bool TryGetValue_Hot() => _cache.TryGetValue(in _keys[KeyCount / 2], out _);
+
+    /// <summary>Reads every key once; misses come from capacity evictions at the given size.</summary>
+    [Benchmark]
+    public int SweepAll()
+    {
+        int hits = 0;
+        for (int i = 0; i < KeyCount; i++)
+        {
+            if (_cache.TryGetValue(in _keys[i], out _)) hits++;
+        }
+        return hits;
+    }
+
+    /// <summary>Writes the whole working set, as a block-long prewarm population does.</summary>
+    [Benchmark]
+    public void PopulateAll()
+    {
+        for (int i = 0; i < KeyCount; i++)
+        {
+            _cache.Set(in _keys[i], _value);
+        }
+    }
+}
+
 [MemoryDiagnoser]
 public class SeqlockCacheCallSiteBenchmarks
 {

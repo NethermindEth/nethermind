@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
@@ -14,43 +13,61 @@ namespace Nethermind.State.Flat;
 /// A pool of objects used to manage different sized pool objects for different category.
 /// </summary>
 /// <param name="flatConfig"></param>
-public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
+public class ResourcePool : IResourcePool
 {
-    private readonly Dictionary<Usage, ResourcePoolCategory> _categories = new()
+    private readonly Dictionary<Usage, ResourcePoolCategory> _categories;
+
+    public ResourcePool(IFlatDbConfig flatConfig)
     {
-        // For main BlockProcessing once a compacted snapshot is persisted, all `flatConfig.CompactSize` snapshot content will be returned.
-        { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, flatConfig.CompactSize + 8, 2) },
+        flatConfig.ValidateCompactSize();
 
-        // PostMainBlockProcessing is a special usage right after the commit of `MainBlockProcessing` which only commit once and never modified.
-        { Usage.PostMainBlockProcessing, new ResourcePoolCategory(Usage.PostMainBlockProcessing, 1, 1) },
+        _categories = new()
+        {
+            // For main BlockProcessing once a compacted snapshot is persisted, all `flatConfig.CompactSize` snapshot content will be returned.
+            { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, (int)flatConfig.CompactSize + 8, 2) },
 
-        // Note: prewarmer use readonly processing env
-        // Note: readonly here means it's never committed to the flat repo, but within the worldscope itself it may be committed.
-        { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4) },
+            // PostMainBlockProcessing is a special usage right after the commit of `MainBlockProcessing` which only commit once and never modified.
+            { Usage.PostMainBlockProcessing, new ResourcePoolCategory(Usage.PostMainBlockProcessing, 1, 1) },
 
-        // Per-power-of-2 compact pools. Each level only has ~1 active snapshot at a time.
-        { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 2, 1) },
-        { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 2, 1) },
-        { Usage.Compact8, new ResourcePoolCategory(Usage.Compact8, 2, 1) },
-        { Usage.Compact16, new ResourcePoolCategory(Usage.Compact16, 2, 1) },
-        { Usage.Compact32, new ResourcePoolCategory(Usage.Compact32, 2, 1) },
-        { Usage.Compact64, new ResourcePoolCategory(Usage.Compact64, 2, 1) },
-        { Usage.Compact128, new ResourcePoolCategory(Usage.Compact128, 2, 1) },
-        { Usage.Compact256, new ResourcePoolCategory(Usage.Compact256, 2, 1) },
-        { Usage.Compact512, new ResourcePoolCategory(Usage.Compact512, 2, 1) },
-        { Usage.Compact1024, new ResourcePoolCategory(Usage.Compact1024, 2, 1) },
-        { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2, 1) },
-    };
+            // Note: prewarmer use readonly processing env
+            // Note: readonly here means it's never committed to the flat repo, but within the worldscope itself it may be committed.
+            { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4) },
+
+            // Per-power-of-2 compact pools. Each level only has ~1 active snapshot at a time.
+            { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 2, 1) },
+            { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 2, 1) },
+            { Usage.Compact8, new ResourcePoolCategory(Usage.Compact8, 2, 1) },
+            { Usage.Compact16, new ResourcePoolCategory(Usage.Compact16, 2, 1) },
+            { Usage.Compact32, new ResourcePoolCategory(Usage.Compact32, 2, 1) },
+            { Usage.Compact64, new ResourcePoolCategory(Usage.Compact64, 2, 1) },
+            { Usage.Compact128, new ResourcePoolCategory(Usage.Compact128, 2, 1) },
+            { Usage.Compact256, new ResourcePoolCategory(Usage.Compact256, 2, 1) },
+            { Usage.Compact512, new ResourcePoolCategory(Usage.Compact512, 2, 1) },
+            { Usage.Compact1024, new ResourcePoolCategory(Usage.Compact1024, 2, 1) },
+            { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2, 1) },
+        };
+    }
 
     public SnapshotContent GetSnapshotContent(Usage usage) => _categories[usage].GetSnapshotContent();
 
     public void ReturnSnapshotContent(Usage usage, SnapshotContent snapshotContent) => _categories[usage].ReturnSnapshotContent(snapshotContent);
 
-    public TransientResource GetCachedResource(Usage usage) => _categories[usage].GetCachedResource();
+    public SortedSnapshotContent GetSortedSnapshotContent(Usage usage) => _categories[usage].GetSortedSnapshotContent();
+
+    public void ReturnSortedSnapshotContent(Usage usage, SortedSnapshotContent sortedContent) => _categories[usage].ReturnSortedSnapshotContent(sortedContent);
+
+    public TransientResource GetCachedResource(Usage usage)
+    {
+        TransientResource transientResource = _categories[usage].GetCachedResource();
+        // Arm the owner lease and register the return owner at the checkout itself, so no caller can
+        // obtain a resource whose final ReleaseLease has nowhere to return it.
+        transientResource.OnRented(this, usage);
+        return transientResource;
+    }
 
     public void ReturnCachedResource(Usage usage, TransientResource transientResource) => _categories[usage].ReturnCachedResource(transientResource);
 
-    public static Usage CompactUsage(int compactSize) => compactSize switch
+    public static Usage CompactUsage(ulong compactSize) => compactSize switch
     {
         <= 2 => Usage.Compact2,
         4 => Usage.Compact4,
@@ -93,33 +110,56 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
     }
 
     // Using stack for better cpu cache effectiveness
-    private class ConcurrentStackPool<T>(int maxCapacity = 16) where T : notnull, IDisposable, IResettable
+    private sealed class ConcurrentStackPool<T>(int maxCapacity = 16) where T : class, IDisposable, IResettable
     {
-        private readonly ConcurrentStack<T> _queue = new();
-        public double PooledItemCount => _queue.Count;
+        private readonly T?[] _items = new T?[maxCapacity];
+        private readonly Lock _lock = new();
+        private int _count;
 
-        public bool TryGet([NotNullWhen(true)] out T? item) => _queue.TryPop(out item);
+        public double PooledItemCount => Volatile.Read(ref _count);
+
+        public bool TryGet([NotNullWhen(true)] out T? item)
+        {
+            lock (_lock)
+            {
+                if (_count == 0)
+                {
+                    item = null;
+                    return false;
+                }
+
+                int top = --_count;
+                item = _items[top]!;
+                _items[top] = null;
+                return true;
+            }
+        }
 
         public bool Return(T item)
         {
             item.Reset();
-            if (_queue.Count >= maxCapacity)
+            lock (_lock)
             {
-                item.Dispose();
-                return false;
+                if (_count < _items.Length)
+                {
+                    _items[_count++] = item;
+                    return true;
+                }
             }
-            _queue.Push(item);
-            return true;
-        }
 
+            item.Dispose();
+            return false;
+        }
     }
 
     private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int cachedResourcePoolSize)
     {
         private readonly ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
+        private readonly ConcurrentStackPool<SortedSnapshotContent> _sortedPool = new(snapshotContentPoolSize);
         private readonly ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
         private TransientResource.Size _lastCachedResourceSize = new(1024, 1024);
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), "SnapshotContent");
+        private readonly PooledResourceLabel _sortedLabel = new(usage.ToString(), "SortedSnapshotContent");
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), "CachedResource");
 
         public SnapshotContent GetSnapshotContent()
@@ -143,6 +183,26 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
             }
 
             Metrics.CachedPooledResource[_snapshotLabel] = (long)_snapshotPool.PooledItemCount;
+        }
+
+        public SortedSnapshotContent GetSortedSnapshotContent()
+        {
+            Metrics.ActivePooledResource.AddBy(_sortedLabel, 1);
+            if (_sortedPool.TryGet(out SortedSnapshotContent? sortedContent))
+            {
+                Metrics.CachedPooledResource[_sortedLabel] = (long)_sortedPool.PooledItemCount;
+                return sortedContent;
+            }
+
+            Metrics.CreatedPooledResource.AddBy(_sortedLabel, 1);
+            return new SortedSnapshotContent();
+        }
+
+        public void ReturnSortedSnapshotContent(SortedSnapshotContent sortedContent)
+        {
+            Metrics.ActivePooledResource.AddBy(_sortedLabel, -1);
+            _sortedPool.Return(sortedContent);
+            Metrics.CachedPooledResource[_sortedLabel] = (long)_sortedPool.PooledItemCount;
         }
 
         public TransientResource GetCachedResource()

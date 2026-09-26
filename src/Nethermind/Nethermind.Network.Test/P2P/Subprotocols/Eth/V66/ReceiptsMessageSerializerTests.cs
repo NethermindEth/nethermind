@@ -24,23 +24,26 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             ReceiptsMessage deserializedMessage = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(deserializedMessage);
 
-            Assert.That(serialized, Is.EqualTo(bytes));
             using Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage ethMessage = deserializedMessage.EthMessage;
 
             TxReceipt txReceipt = ethMessage.TxReceipts[0][0];
 
-            Assert.That(txReceipt.StatusCode, Is.EqualTo(0));
-            Assert.That(txReceipt.GasUsedTotal, Is.EqualTo(1));
-            Assert.That(txReceipt.Bloom, Is.EqualTo(Bloom.Empty));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo(bytes));
+                Assert.That(txReceipt.StatusCode, Is.EqualTo(0));
+                Assert.That(txReceipt.GasUsedTotal, Is.EqualTo(1));
+                Assert.That(txReceipt.Bloom, Is.EqualTo(Bloom.Empty));
 
-            Assert.That(txReceipt.Logs[0].Address, Is.EqualTo(new Address("0x0000000000000000000000000000000000000011")));
-            Assert.That(txReceipt.Logs[0].Topics[0], Is.EqualTo(new Hash256("0x000000000000000000000000000000000000000000000000000000000000dead")));
-            Assert.That(txReceipt.Logs[0].Topics[1], Is.EqualTo(new Hash256("0x000000000000000000000000000000000000000000000000000000000000beef")));
-            Assert.That(txReceipt.Logs[0].Data, Is.EqualTo(Bytes.FromHexString("0x0100ff")));
-            Assert.That(txReceipt.BlockNumber, Is.EqualTo(0x0));
-            Assert.That(txReceipt.TxHash, Is.Null);
-            Assert.That(txReceipt.BlockHash, Is.Null);
-            Assert.That(txReceipt.Index, Is.EqualTo(0x0));
+                Assert.That(txReceipt.Logs[0].Address, Is.EqualTo(new Address("0x0000000000000000000000000000000000000011")));
+                Assert.That(txReceipt.Logs[0].Topics[0], Is.EqualTo(new Hash256("0x000000000000000000000000000000000000000000000000000000000000dead")));
+                Assert.That(txReceipt.Logs[0].Topics[1], Is.EqualTo(new Hash256("0x000000000000000000000000000000000000000000000000000000000000beef")));
+                Assert.That(txReceipt.Logs[0].Data, Is.EqualTo(Bytes.FromHexString("0x0100ff")));
+                Assert.That(txReceipt.BlockNumber, Is.EqualTo(0x0));
+                Assert.That(txReceipt.TxHash, Is.Null);
+                Assert.That(txReceipt.BlockHash, Is.Null);
+                Assert.That(txReceipt.Index, Is.EqualTo(0x0));
+            }
 
             using ReceiptsMessage message = new(1111, ethMessage);
 

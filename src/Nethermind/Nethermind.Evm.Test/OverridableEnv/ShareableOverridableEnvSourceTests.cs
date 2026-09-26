@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
@@ -31,9 +32,8 @@ public class ShareableOverridableEnvSourceTests
         foreach (Scope<Marker> scope in rented) scope.Dispose();
     }
 
-    [TestCase(ReleasePath.Healthy)]
-    [TestCase(ReleasePath.Poisoned)]
-    public void Rent_AfterRelease_RestoresCapSlot(ReleasePath path)
+    [Test]
+    public void Rent_AfterRelease_RestoresCapSlot([Values(ReleasePath.Healthy, ReleasePath.Poisoned)] ReleasePath path)
     {
         FakeEnvFactory factory = new(throwOnBuild: path == ReleasePath.Poisoned);
         using ShareableOverridableEnvSource<Marker> source = new(factory.Create, maxConcurrent: 1);
@@ -53,9 +53,8 @@ public class ShareableOverridableEnvSourceTests
         Assert.That(retry, Throws.Nothing);
     }
 
-    [TestCase(ShutdownState.IdleOnly)]
-    [TestCase(ShutdownState.StillRented)]
-    public void Dispose_DisposesAllTrackedEnvs(ShutdownState state)
+    [Test]
+    public void Dispose_DisposesAllTrackedEnvs([Values(ShutdownState.IdleOnly, ShutdownState.StillRented)] ShutdownState state)
     {
         FakeEnvFactory factory = new();
         ShareableOverridableEnvSource<Marker> source = new(factory.Create, maxConcurrent: 2);
@@ -117,11 +116,15 @@ public class ShareableOverridableEnvSourceTests
     {
         public bool IsDisposed { get; private set; }
 
-        public Scope<Marker> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null)
+        public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, BlockOverride? blockOverride, [NotNullWhen(true)] out Scope<Marker>? scope)
         {
             if (throwOnBuild) throw new InvalidOperationException("simulated build failure");
-            return new Scope<Marker>(new Marker(), new NoopDisposable());
+            scope = new Scope<Marker>(new Marker(), new NoopDisposable());
+            return true;
         }
+
+        public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out Scope<Marker>? scope) =>
+            TryBuildAndOverride(targetBlock, stateOverride, specOverride, null, out scope);
 
         public void Dispose() => IsDisposed = true;
     }

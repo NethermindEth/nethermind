@@ -18,9 +18,12 @@ public class ArrayPoolListTests
     public void Empty_list()
     {
         using ArrayPoolList<int> list = new(1024);
-        Assert.That(list, Is.EqualTo(Array.Empty<int>()));
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.Capacity, Is.EqualTo(1024));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EqualTo(Array.Empty<int>()));
+            Assert.That(list.Count, Is.EqualTo(0));
+            Assert.That(list.Capacity, Is.EqualTo(1024));
+        }
     }
 
     [Test]
@@ -49,9 +52,12 @@ public class ArrayPoolListTests
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
-        Assert.That(list, Is.EqualTo(Enumerable.Range(0, 50)));
-        Assert.That(list.Count, Is.EqualTo(50));
-        Assert.That(list.Capacity, Is.EqualTo(64));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EqualTo(Enumerable.Range(0, 50)));
+            Assert.That(list.Count, Is.EqualTo(50));
+            Assert.That(list.Capacity, Is.EqualTo(64));
+        }
     }
 
     [Test]
@@ -60,9 +66,12 @@ public class ArrayPoolListTests
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
         list.Clear();
-        Assert.That(list, Is.EqualTo(Array.Empty<int>()));
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.Capacity, Is.EqualTo(64));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EqualTo(Array.Empty<int>()));
+            Assert.That(list.Count, Is.EqualTo(0));
+            Assert.That(list.Capacity, Is.EqualTo(64));
+        }
     }
 
     [TestCase(0, ExpectedResult = true)]
@@ -95,9 +104,8 @@ public class ArrayPoolListTests
         Assert.That(list, Is.EqualTo(expected));
     }
 
-    [TestCase(10)]
-    [TestCase(-1)]
-    public void Insert_should_throw(int index)
+    [Test]
+    public void Insert_should_throw([Values(10, -1)] int index)
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -168,9 +176,8 @@ public class ArrayPoolListTests
         return list[item];
     }
 
-    [TestCase(8)]
-    [TestCase(-1)]
-    public void Get_should_throw(int item)
+    [Test]
+    public void Get_should_throw([Values(8, -1)] int item)
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -188,9 +195,8 @@ public class ArrayPoolListTests
         return list[item];
     }
 
-    [TestCase(8)]
-    [TestCase(-1)]
-    public void Set_should_throw(int item)
+    [Test]
+    public void Set_should_throw([Values(8, -1)] int item)
     {
         using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
@@ -209,6 +215,19 @@ public class ArrayPoolListTests
         list.AddRange(Enumerable.Range(2, items));
         Assert.That(list, Is.EqualTo(Enumerable.Range(0, items + 2)));
         Assert.That(list.Capacity, Is.EqualTo(expectedCapacity));
+    }
+
+    [Test]
+    public void Construct_from_ICollection_copies_all_items()
+    {
+        // HashSet is an ICollection<T> but neither an array nor a list, so it exercises the bulk CopyTo path.
+        HashSet<int> source = Enumerable.Range(0, 50).ToHashSet();
+        using ArrayPoolList<int> list = new(source.Count, source);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list, Is.EquivalentTo(source));
+            Assert.That(list.Count, Is.EqualTo(50));
+        }
     }
 
     [Test]
@@ -277,19 +296,21 @@ public class ArrayPoolListTests
         Assert.That(action, Throws.TypeOf<InvalidCastException>());
     }
 
-    [TestCase("null")]
-    [TestCase(null)]
-    public void Should_not_throw_on_invalid_type_lookup(object? value)
+    [Test]
+    public void Should_not_throw_on_invalid_type_lookup([Values("null", null)] object? value)
     {
         using ArrayPoolList<int> arrayPoolList = new(1024);
         IList list = (IList)arrayPoolList;
         list.Add(1);
 
-        Assert.That(list.Contains(value), Is.False);
-        Assert.That(list.IndexOf(value), Is.EqualTo(-1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(list.Contains(value), Is.False);
+            Assert.That(list.IndexOf(value), Is.EqualTo(-1));
 
-        Action action = () => list.Remove(value);
-        Assert.That(action, Throws.Nothing);
+            Action action = () => list.Remove(value);
+            Assert.That(action, Throws.Nothing);
+        }
     }
 
     [Test]
@@ -297,11 +318,14 @@ public class ArrayPoolListTests
     {
         using ArrayPoolList<int> list = new(1024);
 
-        Assert.That(((ICollection<int>)list).IsReadOnly, Is.False);
-        Assert.That(((IList)list).IsReadOnly, Is.False);
-        Assert.That(((IList)list).IsFixedSize, Is.False);
-        Assert.That(((IList)list).IsSynchronized, Is.False);
-        Assert.That(((IList)list).SyncRoot, Is.EqualTo(list));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((ICollection<int>)list).IsReadOnly, Is.False);
+            Assert.That(((IList)list).IsReadOnly, Is.False);
+            Assert.That(((IList)list).IsFixedSize, Is.False);
+            Assert.That(((IList)list).IsSynchronized, Is.False);
+            Assert.That(((IList)list).SyncRoot, Is.EqualTo(list));
+        }
     }
 
     [Test]
@@ -362,6 +386,40 @@ public class ArrayPoolListTests
         }
     }
 
+    [Test]
+    public void Uninitialized_exposes_requested_count_and_capacity()
+    {
+        using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 10, 10, clearFirst: false);
+
+        Assert.That(list.Count, Is.EqualTo(10));
+        Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(10));
+        Assert.That(list.AsSpan().Length, Is.EqualTo(10));
+        Assert.That(list.AsMemory().Length, Is.EqualTo(10));
+    }
+
+    [Test]
+    public void Uninitialized_is_fully_writable_through_span()
+    {
+        using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 8, 8, clearFirst: false);
+
+        Span<int> span = list.AsSpan();
+        for (int i = 0; i < span.Length; i++)
+        {
+            span[i] = i * 7;
+        }
+
+        Assert.That(list, Is.EqualTo(Enumerable.Range(0, 8).Select(i => i * 7)));
+    }
+
+    [Test]
+    public void Uninitialized_with_zero_count_is_empty()
+    {
+        using ArrayPoolList<int> list = new(SafeArrayPool<int>.Shared, 0, 0, clearFirst: false);
+
+        Assert.That(list.Count, Is.EqualTo(0));
+        Assert.That(list.AsSpan().Length, Is.EqualTo(0));
+    }
+
 #if DEBUG
     [Test]
     [Explicit("Crashes the test runner")]
@@ -381,4 +439,27 @@ public class ArrayPoolListTests
         Assert.That(exception, Is.True);
     }
 #endif
+}
+
+public class ArrayPoolUtilitiesTests
+{
+    private static object[][] CapacityCases() =>
+    [
+        [1, 1],
+        [3, 4],
+        [(1 << 28) + 1, 1 << 29],
+        [(1 << 30) + 1, (1 << 30) + 1],
+        [Array.MaxLength, Array.MaxLength],
+        [int.MaxValue, int.MaxValue],
+    ];
+
+    [TestCaseSource(nameof(CapacityCases))]
+    public void Get_power_of_two_capacity_returns_safe_capacity(int minimumLength, int expectedCapacity)
+        => Assert.That(ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength), Is.EqualTo(expectedCapacity));
+
+    [Test]
+    public void Get_power_of_two_capacity_requires_positive_length([Values(0, -1)] int minimumLength)
+        => Assert.That(
+            () => ArrayPoolUtilities.GetPowerOfTwoCapacity(minimumLength),
+            Throws.TypeOf<ArgumentOutOfRangeException>());
 }

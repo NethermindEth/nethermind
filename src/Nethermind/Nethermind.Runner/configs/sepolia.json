@@ -17,8 +17,8 @@
     "FastSync": true,
     "SnapSync": true,
     "UseGethLimitsInFastBlocks": true,
-    "PivotNumber": 10907000,
-    "PivotHash": "0xab66391d7f516ea44c5ac16b12ec74a88b8b6c5b793250af3b5efb28fb01ae06",
+    "PivotNumber": 11740000,
+    "PivotHash": "0x21f1c3ee84a216bdc93c8b9fa8737f190e98dc8617d504d5e101d72fbb5e08f7",
     "PivotTotalDifficulty": "17000018015853232",
     "FastSyncCatchUpHeightDelta": 10000000000,
     "AncientReceiptsBarrier": 1450409,
@@ -38,5 +38,8 @@
   },
   "Merge": {
     "Enabled": true
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V5"
   }
 }

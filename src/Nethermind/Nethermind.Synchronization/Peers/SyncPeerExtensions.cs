@@ -44,9 +44,9 @@ namespace Nethermind.Synchronization.Peers
 
         public static Version? GetOpenEthereumVersion(this ISyncPeer peer, out int releaseCandidate)
         {
-            if (peer.ClientType == NodeClientType.OpenEthereum)
+            if (peer.ClientType == NodeClientType.OpenEthereum && peer.ClientId is { } clientId)
             {
-                Match match = _openEthereumVersionRegex.Match(peer.ClientId);
+                Match match = _openEthereumVersionRegex.Match(clientId);
 
                 if (match.Success && Version.TryParse(match.Groups["mainVersion"].Value, out Version version))
                 {

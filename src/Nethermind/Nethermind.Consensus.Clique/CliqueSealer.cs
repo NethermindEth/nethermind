@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.Clique
             BlockHeader header = block.Header;
 
             // Sealing the genesis block is not supported
-            long number = header.Number;
+            ulong number = header.Number;
             if (number == 0) throw new InvalidOperationException("Can't sign genesis block");
 
             // For 0-period chains, refuse to seal empty blocks (no reward but would spin sealing)
@@ -93,7 +93,7 @@ namespace Nethermind.Consensus.Clique
             return block;
         }
 
-        public bool CanSeal(long blockNumber, Hash256 parentHash)
+        public bool CanSeal(ulong blockNumber, Hash256 parentHash)
         {
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(blockNumber - 1, parentHash);
             if (!_signer.CanSign)

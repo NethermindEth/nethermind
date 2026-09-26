@@ -31,15 +31,15 @@ public class ArrayPoolSpanTests
         using ArrayPoolSpan<int> span = new(4);
         span[0] = 10;
         span[3] = 40;
-        Assert.That(span[0], Is.EqualTo(10));
-        Assert.That(span[3], Is.EqualTo(40));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(span[0], Is.EqualTo(10));
+            Assert.That(span[3], Is.EqualTo(40));
+        }
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(16)]
-    public void Length_should_return_requested_size(int length)
+    [Test]
+    public void Length_should_return_requested_size([Values(0, 1, 7, 16)] int length)
     {
         using ArrayPoolSpan<int> span = new(length);
         Assert.That(span.Length, Is.EqualTo(length));
@@ -52,9 +52,12 @@ public class ArrayPoolSpanTests
         for (int i = 0; i < 4; i++) span[i] = i;
 
         Span<int> s = span;
-        Assert.That(s.Length, Is.EqualTo(4));
-        Assert.That(s[0], Is.EqualTo(0));
-        Assert.That(s[3], Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(s.Length, Is.EqualTo(4));
+            Assert.That(s[0], Is.EqualTo(0));
+            Assert.That(s[3], Is.EqualTo(3));
+        }
     }
 
     [Test]
@@ -64,9 +67,12 @@ public class ArrayPoolSpanTests
         for (int i = 0; i < 4; i++) span[i] = i;
 
         ReadOnlySpan<int> s = span;
-        Assert.That(s.Length, Is.EqualTo(4));
-        Assert.That(s[0], Is.EqualTo(0));
-        Assert.That(s[3], Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(s.Length, Is.EqualTo(4));
+            Assert.That(s[0], Is.EqualTo(0));
+            Assert.That(s[3], Is.EqualTo(3));
+        }
     }
 
     [Test]
@@ -91,9 +97,12 @@ public class ArrayPoolSpanTests
         for (int i = 0; i < 5; i++) span[i] = i;
 
         Span<int> slice = span.Slice(1, 3);
-        Assert.That(slice.Length, Is.EqualTo(3));
-        Assert.That(slice[0], Is.EqualTo(1));
-        Assert.That(slice[2], Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slice.Length, Is.EqualTo(3));
+            Assert.That(slice[0], Is.EqualTo(1));
+            Assert.That(slice[2], Is.EqualTo(3));
+        }
     }
 
     [Test]

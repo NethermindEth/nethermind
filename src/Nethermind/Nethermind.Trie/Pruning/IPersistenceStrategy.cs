@@ -5,6 +5,6 @@ namespace Nethermind.Trie.Pruning
 {
     public interface IPersistenceStrategy
     {
-        bool ShouldPersist(long blockNumber);
+        bool ShouldPersist(ulong blockNumber);
     }
 }

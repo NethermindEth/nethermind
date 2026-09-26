@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Shutter.Config;
 using Nethermind.Logging;
@@ -138,7 +139,19 @@ public class ShutterKeyValidator(
 
         foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
+            if (signerIndex >= (ulong)eonInfo.Addresses.Length)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: signer index {signerIndex} out of range ({eonInfo.Addresses.Length} keyper addresses).");
+                return false;
+            }
+
             Address keyperAddress = eonInfo.Addresses[signerIndex];
+
+            if (signature.Length != Signature.Size)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid Shutter decryption keys received: signature length {signature.Length} (expected {Signature.Size}).");
+                return false;
+            }
 
             if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(_instanceId, eonInfo.Eon, decryptionKeys.Gnosis.Slot, decryptionKeys.Gnosis.TxPointer, identityPreimages, signature.Span, keyperAddress))
             {

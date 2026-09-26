@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.AuRa
         ISpecProvider specProvider,
         IGasPriceOracle gasPriceOracle,
         ReportingContractBasedValidator.Cache reportingValidatorCache,
-        long posdaoTransition, bool forSealing = false) : IAuRaValidatorFactory
+        ulong posdaoTransition, bool forSealing = false) : IAuRaValidatorFactory
     {
         private readonly IWorldState _stateProvider = stateProvider;
         private readonly IAbiEncoder _abiEncoder = abiEncoder;
@@ -52,16 +52,16 @@ namespace Nethermind.Consensus.AuRa
         private readonly ISpecProvider _specProvider = specProvider;
         private readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle;
         private readonly ReportingContractBasedValidator.Cache _reportingValidatorCache = reportingValidatorCache;
-        private readonly long _posdaoTransition = posdaoTransition;
+        private readonly ulong _posdaoTransition = posdaoTransition;
         private readonly bool _forSealing = forSealing;
 
-        public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
+        public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, ulong? startBlock = null)
         {
             IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyTxProcessorSource, _signer);
             IReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_abiEncoder, validator.GetContractAddress(), _signer);
 
             ValidSealerStrategy validSealerStrategy = new();
-            long startBlockNumber = startBlock ?? AuRaValidatorBase.DefaultStartBlockNumber;
+            ulong startBlockNumber = startBlock ?? AuRaValidatorBase.DefaultStartBlockNumber;
 
             ContractBasedValidator GetContractBasedValidator() =>
                 new(

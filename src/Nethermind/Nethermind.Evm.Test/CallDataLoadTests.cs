@@ -12,18 +12,20 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 [Parallelizable(ParallelScope.Self)]
-public class CallDataLoadTests : VirtualMachineTestsBase
+[TestFixture(false)]
+[TestFixture(true)]
+public class CallDataLoadTests(bool tracing) : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
-    // Forces the OffFlag specialization of InstructionCallDataLoad; the default tracer
-    // has IsTracingInstructions = true which picks the OnFlag path.
-    protected override TestAllTracerWithOutput CreateTracer() => new NoInstructionTracer();
+    protected override TestAllTracerWithOutput CreateTracer() => new StackPushTracer(tracing);
 
-    private sealed class NoInstructionTracer : TestAllTracerWithOutput
+    private sealed class StackPushTracer(bool tracing) : TestAllTracerWithOutput
     {
-        public override bool IsTracingInstructions => false;
+        public override bool IsTracingInstructions => tracing;
+        public List<byte[]> Pushes { get; } = [];
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => Pushes.Add(stackItem.ToArray());
     }
 
     private static readonly byte[] ThirtyTwoSequential = BuildSequential(32);
@@ -66,12 +68,25 @@ public class CallDataLoadTests : VirtualMachineTestsBase
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(Activation)), tracer);
 
         AssertStorage((UInt256)0, (ReadOnlySpan<byte>)expected);
+        if (tracing)
+        {
+            byte[] expectedPush = offset >= (UInt256)calldata.Length ? [0] : expected;
+            Assert.That(((StackPushTracer)tracer).Pushes[1], Is.EqualTo(expectedPush));
+        }
     }
 
     public static IEnumerable<TestCaseData> CallDataLoadCases()
     {
+        for (int available = 1; available < 32; available++)
+            yield return new TestCaseData(ThirtyTwoSequential, (UInt256)(32 - available),
+                RightPadded(ThirtyTwoSequential.AsSpan(32 - available))).SetName($"partial_{available}_bytes");
+        yield return new TestCaseData(ThirtyTwoSequential, UInt256.MaxValue, new byte[32]);
+        yield return new TestCaseData(ThirtyTwoSequential, new UInt256(0UL, 0UL, 1UL, 0UL), new byte[32]);
+        yield return new TestCaseData(ThirtyTwoSequential, new UInt256(0UL, 0UL, 0UL, 1UL), new byte[32]);
         yield return new TestCaseData(ThirtyTwoSequential, (UInt256)0, ThirtyTwoSequential)
             .SetName("offset_zero_full_32_bytes");
+        yield return new TestCaseData(new byte[32], UInt256.Zero, new byte[32])
+            .SetName("in_range_zero_word_preserves_full_trace_width");
 
         yield return new TestCaseData(TwoBytes, (UInt256)5, new byte[32])
             .SetName("offset_past_end_returns_zero");
@@ -94,7 +109,7 @@ public class CallDataLoadTests : VirtualMachineTestsBase
 
         // 0x_1_0000_0009: low 32 bits = 9, true value > 4 billion. A buggy truncate-to-uint
         // implementation would read bytes[9..32]||zeros instead of the spec-correct zero word.
-        yield return new TestCaseData(ThirtyTwoSequential, (UInt256)((ulong)uint.MaxValue + 10UL), new byte[32])
+        yield return new TestCaseData(ThirtyTwoSequential, (UInt256)(uint.MaxValue + 10UL), new byte[32])
             .SetName("offset_above_uint32_returns_zero");
     }
 

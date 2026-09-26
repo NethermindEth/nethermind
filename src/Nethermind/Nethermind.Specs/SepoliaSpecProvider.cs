@@ -10,7 +10,7 @@ namespace Nethermind.Specs;
 
 public class SepoliaSpecProvider : ForkScheduleSpecProvider
 {
-    public const long MergeForkIdBlockNumber = 1735371;
+    public const ulong MergeForkIdBlockNumber = 1735371;
     public const ulong BeaconChainGenesisTimestampConst = 0x62b07d60;
     public const ulong ShanghaiTimestamp = 0x63fd7d60;
     public const ulong CancunTimestamp = 0x65B97D60;
@@ -18,6 +18,7 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
     public const ulong OsakaTimestamp = 0x68edfd60;
     public const ulong BPO1Timestamp = 0x68f6fd60;
     public const ulong BPO2Timestamp = 0x68fffd60;
+    public const ulong AmsterdamTimestamp = 0x6ac4fd60;
 
     private static IReleaseSpec? _prague;
 
@@ -33,6 +34,7 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
         [OsakaTimestamp] = Osaka.Instance,
         [BPO1Timestamp] = BPO1.Instance,
         [BPO2Timestamp] = BPO2.Instance,
+        [AmsterdamTimestamp] = Amsterdam.Instance,
     })
     { }
 

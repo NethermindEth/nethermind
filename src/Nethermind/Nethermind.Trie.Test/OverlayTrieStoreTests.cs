@@ -52,10 +52,13 @@ public class OverlayTrieStoreTests
         // It can read the modified db
         overlaidTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
         overlaidTree.RootHash = newRoot;
-        Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[0].BytesToArray()));
-        Assert.That(overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[1].BytesToArray()));
-        Assert.That(overlaidTree.Get(TestItem.Keccaks[2].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[2].BytesToArray()));
-        Assert.That(overlaidTree.Get(TestItem.Keccaks[3].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[3].BytesToArray()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[0].BytesToArray()));
+            Assert.That(overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[1].BytesToArray()));
+            Assert.That(overlaidTree.Get(TestItem.Keccaks[2].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[2].BytesToArray()));
+            Assert.That(overlaidTree.Get(TestItem.Keccaks[3].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[3].BytesToArray()));
+        }
 
         // Now we clear it
         readOnlyDbProvider.ClearTempChanges();

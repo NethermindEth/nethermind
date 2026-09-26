@@ -12,7 +12,7 @@ public interface ITraceStoreConfig : IConfig
     public bool Enabled { get; set; }
 
     [ConfigItem(Description = "The number of blocks to store, counting from the head. If `0`, all traces of the processed blocks are stored.", DefaultValue = "10000")]
-    public int BlocksToKeep { get; set; }
+    public ulong BlocksToKeep { get; set; }
 
     [ConfigItem(Description = "The type of traces to store.", DefaultValue = "Trace, Rewards")]
     public ParityTraceTypes TraceTypes { get; set; }

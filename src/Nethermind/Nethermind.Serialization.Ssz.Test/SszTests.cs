@@ -140,9 +140,8 @@ namespace Nethermind.Serialization.Ssz.Test
             Assert.Throws<InvalidDataException>(() => Ssz.DecodeBitvector(twoBytes, 5));
         }
 
-        [TestCase(0)]
-        [TestCase(-1)]
-        public void DecodeBitvector_rejects_non_positive_vector_length(int vectorLength) =>
+        [Test]
+        public void DecodeBitvector_rejects_non_positive_vector_length([Values(0, -1)] int vectorLength) =>
             Assert.Throws<ArgumentOutOfRangeException>(() => Ssz.DecodeBitvector(ReadOnlySpan<byte>.Empty, vectorLength));
 
         [Test]
@@ -191,10 +190,13 @@ namespace Nethermind.Serialization.Ssz.Test
             // so we have 0x0D = 0000_1101
             byte[] data = [0x0D];
             BitArray result = Ssz.DecodeBitlist(data);
-            Assert.That(result.Length, Is.EqualTo(3));
-            Assert.That(result[0], Is.True);
-            Assert.That(result[1], Is.False);
-            Assert.That(result[2], Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Length, Is.EqualTo(3));
+                Assert.That(result[0], Is.True);
+                Assert.That(result[1], Is.False);
+                Assert.That(result[2], Is.True);
+            }
         }
 
         [Test]

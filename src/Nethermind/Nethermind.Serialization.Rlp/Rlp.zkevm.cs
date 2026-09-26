@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -23,7 +22,7 @@ public partial class Rlp
     {
         get
         {
-            Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
+            Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = Volatile.Read(ref _decodersSnapshot);
             return snapshot ?? CreateDecodersSnapshot();
         }
     }
@@ -31,7 +30,14 @@ public partial class Rlp
     private static Dictionary<RlpDecoderKey, IRlpDecoder> CreateDecodersSnapshot()
     {
         using Lock.Scope _ = _decoderLock.EnterScope();
-        return _decodersSnapshot ??= new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
+        Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
+        if (snapshot is null)
+        {
+            snapshot = new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
+            Volatile.Write(ref _decodersSnapshot, snapshot);
+        }
+
+        return snapshot;
     }
 
     public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)
@@ -68,5 +74,6 @@ public partial class Rlp
 
 public readonly partial struct RlpDecoderKey
 {
-    public override int GetHashCode() => (int)BitOperations.Crc32C((uint)_type.GetHashCode(), (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
+    public override int GetHashCode() =>
+        SpanExtensions.CombineHash((uint)_type.GetHashCode(), (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
 }

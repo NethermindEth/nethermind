@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Test.Consensus
 
             ValueHash256 hash = Keccak.Zero;
             Assert.That(sut.TrySign(in hash, out Signature result), Is.True);
-            Assert.That(new Signature(returnValue).Bytes.SequenceEqual(result.Bytes));
+            Assert.That(new Signature(returnValue).Bytes.SequenceEqual(result.Bytes), Is.True);
         }
 
         [Test]

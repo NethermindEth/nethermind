@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -21,7 +22,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P.Subprotocols.Snap;
+using Nethermind.Network.P2P.Subprotocols.Snap.V1;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
@@ -43,6 +44,7 @@ public abstract class StateSyncFeedTestsBase(
     int defaultPeerMaxRandomLatency = 0)
 {
     public const int TimeoutLength = 60000;
+    private const int DrainTimeoutLength = 10000;
 
     // Chain length used for test block trees, use a constant to avoid shared state
     private const int TestChainLength = 100;
@@ -110,10 +112,12 @@ public abstract class StateSyncFeedTestsBase(
     protected ContainerBuilder BuildTestContainerBuilder(RemoteDbContext remote, int syncDispatcherAllocateTimeoutMs = 10)
     {
         ContainerBuilder containerBuilder = new ContainerBuilder()
+            // These tests exercise the patricia state-sync feed (trie-node download) directly and verify via
+            // PatriciaSnapTrieFactory/LocalDbContext, so they pin the patricia backend.
             .AddModule(new TestNethermindModule(new ConfigProvider(new SyncConfig()
             {
                 FastSync = true
-            })))
+            }, new FlatDbConfig { Enabled = false })))
             .AddDecorator<ISyncConfig>((_, syncConfig) => // Need to be a decorator because `TestEnvironmentModule` override `SyncDispatcherAllocateTimeoutMs` for other tests, but we need specific value.
             {
                 syncConfig.SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs; // there is a test for requested nodes which get affected if allocate timeout
@@ -153,14 +157,14 @@ public abstract class StateSyncFeedTestsBase(
             .AddSingleton<ISyncProgressResolver>(static _ =>
             {
                 ISyncProgressResolver resolver = Substitute.For<ISyncProgressResolver>();
-                resolver.FindBestHeader().Returns(0L);
-                resolver.FindBestFullState().Returns(0L);
+                resolver.FindBestHeader().Returns(0UL);
+                resolver.FindBestFullState().Returns(0UL);
                 return resolver;
             })
             .AddSingleton<IBeaconSyncStrategy>(static _ =>
             {
                 IBeaconSyncStrategy strategy = Substitute.For<IBeaconSyncStrategy>();
-                strategy.GetTargetBlockHeight().Returns((long?)0L);
+                strategy.GetTargetBlockHeight().Returns((ulong?)0UL);
                 return strategy;
             });
 
@@ -174,13 +178,33 @@ public abstract class StateSyncFeedTestsBase(
 
     protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength, bool failOnTimeout = true)
     {
-        Task feedTask = safeContext.RunFeed(safeContext.CancellationToken);
+        using CancellationTokenSource roundCancellation = CancellationTokenSource.CreateLinkedTokenSource(safeContext.CancellationToken);
+        Task feedTask = safeContext.RunFeed(roundCancellation.Token);
 
         Task completed = await Task.WhenAny(
             feedTask,
             Task.Delay(timeout));
 
-        if (failOnTimeout && completed != feedTask)
+        if (completed == feedTask) return;
+
+        // TreeSync may only be reset outside dispatcher.Run, so a timed-out round has to drain before the caller
+        // resets the feed or starts another round on it. Drain before failing too: disposing the linked source
+        // detaches it from the context token, so a round left running would outlive the test's teardown.
+        await roundCancellation.CancelAsync();
+        try
+        {
+            await feedTask.WaitAsync(TimeSpan.FromMilliseconds(DrainTimeoutLength));
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected: the round was cancelled above.
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail($"State sync did not complete within {timeout}ms and did not drain within {DrainTimeoutLength}ms of cancellation.");
+        }
+
+        if (failOnTimeout)
         {
             Assert.Fail($"State sync did not complete within {timeout}ms.");
         }
@@ -215,7 +239,7 @@ public abstract class StateSyncFeedTestsBase(
                 .TestObject;
 
             Assert.That((await blockTree.SuggestBlockAsync(newBlock)), Is.EqualTo(AddBlockResult.Added));
-            blockTree.UpdateMainChain([newBlock], false, true);
+            blockTree.TryUpdateMainChain(newBlock.Header, false, true, preloadedBlocks: new[] { newBlock });
         }
 
         public void ResetFeed()
@@ -269,9 +293,10 @@ public abstract class StateSyncFeedTestsBase(
                 Persist.EveryBlock, testFinalizedStateProvider, pruningConfig, LimboLogs.Instance);
             _stateDb = trieStore.TrieNodeRlpStore;
             _snapServer = new SnapServer(
-                trieStore.AsReadOnly(),
+                new SnapStateServer(trieStore.AsReadOnly(), LimboLogs.Instance),
                 codeDb,
-                LimboLogs.Instance);
+                Substitute.For<IBlockTree>(),
+                Substitute.For<IBlockAccessListStore>());
         }
 
         public int MaxResponseLength { get; set; } = int.MaxValue;
@@ -333,11 +358,14 @@ public abstract class StateSyncFeedTestsBase(
             GetTrieNodes(new GetTrieNodesRequest()
             {
                 RootHash = request.RootHash,
-                AccountAndStoragePaths = SnapProtocolHandler.GetPathGroups(request),
+                AccountAndStoragePaths = Snap1ProtocolHandler.GetPathGroups(request),
             }, token);
 
         public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token) =>
-            Task.FromResult(_snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token)!);
+            Task.FromResult(_snapServer.GetTrieNodes(
+                request.AccountAndStoragePaths,
+                request.RootHash,
+                token) ?? EmptyByteArrayList.Instance);
     }
 }
 

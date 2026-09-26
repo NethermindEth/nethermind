@@ -11,9 +11,11 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
@@ -50,11 +52,11 @@ public class SyncPeerPoolTests
         public string Name => "SimpleMock";
 
         public Hash256 HeadHash { get; set; } = null!;
-        public byte ProtocolVersion { get; } = default;
+        public byte ProtocolVersion { get; set; }
         public string ProtocolCode { get; } = null!;
         public Node Node { get; } = new Node(publicKey, "127.0.0.1", 30303);
         public string ClientId { get; } = description;
-        public long HeadNumber { get; set; }
+        public ulong HeadNumber { get; set; }
         public UInt256? TotalDifficulty { get; set; } = 1;
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
@@ -67,11 +69,30 @@ public class SyncPeerPoolTests
         public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
             Task.FromResult(new OwnedBlockBodies([]));
 
-        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token) =>
+        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token) =>
             Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token) =>
-            Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
+            Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(
+                AnswersWithNullHeader ? new ArrayPoolList<BlockHeader>([null!])
+                    : HeaderToReturn is null ? ArrayPoolList<BlockHeader>.Empty()
+                        : new ArrayPoolList<BlockHeader>([HeaderToReturn]));
+
+        /// <summary>
+        /// Header this peer answers header requests with, whatever hash was asked for. When unset, head-header
+        /// requests are answered with an arbitrary header and by-hash requests with an empty list.
+        /// </summary>
+        public BlockHeader? HeaderToReturn { get; set; }
+
+        /// <summary>
+        /// Makes the peer answer head-header requests with nothing, as a peer that does not have the block does.
+        /// </summary>
+        public bool HeadHeaderUnavailable { get; set; }
+
+        /// <summary>
+        /// Makes the peer answer with a single null header, which is how an empty list item decodes off the wire.
+        /// </summary>
+        public bool AnswersWithNullHeader { get; set; }
 
         public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
@@ -91,7 +112,7 @@ public class SyncPeerPoolTests
             }
 
             IsInitialized = true;
-            return await Task.FromResult(Build.A.BlockHeader.TestObject);
+            return await Task.FromResult(HeadHeaderUnavailable ? null : HeaderToReturn ?? Build.A.BlockHeader.TestObject);
         }
 
         public void NotifyOfNewBlock(Block block, SendBlockMode mode)
@@ -134,6 +155,40 @@ public class SyncPeerPoolTests
             throw new NotImplementedException();
     }
 
+    // Peer wake-up from shallow sleep is time-based and does not signal waiting allocations,
+    // so the retry delay must stay bounded or a long-peerless node reacts arbitrarily late.
+    [TestCase(1, 10)]
+    [TestCase(50, 500)]
+    [TestCase(100, 1000)]
+    [TestCase(10_000, 1000)]
+    [TestCase(int.MaxValue, 1000)]
+    public void Allocate_retry_backoff_is_capped(int tryCount, int expectedWaitTime) =>
+        Assert.That(SyncPeerPool.GetAllocationWaitTime(tryCount), Is.EqualTo(expectedWaitTime));
+
+    [Test]
+    public async Task Can_remove_peer_whose_refresh_token_is_already_disposed()
+    {
+        await using Context ctx = new();
+        ctx.Pool.Start();
+        SimpleSyncPeerMock peer = new(TestItem.PublicKeyA);
+        peer.SetHeaderResponseTime(5000);
+        ctx.Pool.AddPeer(peer);
+
+        // The refresh continuation disposes the source concurrently with RemovePeer's cancel;
+        // model the lost race by planting an already-disposed source. The slow header response
+        // parks the real refresh so nothing removes the planted entry.
+        CancellationTokenSource disposedSource = new();
+        disposedSource.Dispose();
+        Assert.That(
+            () => ctx.Pool.TryReplaceRefreshCancellation(peer.Node.Id, disposedSource),
+            Is.True.After(10_000, 10),
+            "guard: the refresh must register its cancellation source first");
+        Assert.That(ctx.Pool.RefreshCancellationIs(peer.Node.Id, disposedSource), Is.True,
+            "guard: the planted source must still be registered when RemovePeer runs, or the cancel path is never exercised");
+
+        Assert.That(() => ctx.Pool.RemovePeer(peer), Throws.Nothing);
+    }
+
     [Test]
     public async Task Cannot_add_when_not_started()
     {
@@ -168,10 +223,8 @@ public class SyncPeerPoolTests
         Assert.That(peer.DisconnectRequested, Is.EqualTo(isDisconnectRequested));
     }
 
-    [TestCase(0)]
-    [TestCase(10)]
-    [TestCase(24)]
-    public async Task Will_not_disconnect_any_priority_peer_if_their_amount_is_lower_than_max(byte number)
+    [Test]
+    public async Task Will_not_disconnect_any_priority_peer_if_their_amount_is_lower_than_max([Values(0, 10, 24)] byte number)
     {
         const int peersMaxCount = 25;
         const int priorityPeersMaxCount = 25;
@@ -208,6 +261,30 @@ public class SyncPeerPoolTests
         await WaitForPeersInitialization(ctx);
         ctx.Pool.DropUselessPeers(true);
         Assert.That(peers.Any(static p => p.DisconnectRequested), Is.True);
+    }
+
+    // Neither static nor trusted peers are dropped by worst-peer eviction; only plain peers are.
+    [Test]
+    public async Task Will_not_disconnect_static_or_trusted_peer([Values((byte)0, (byte)24)] byte number)
+    {
+        const int peersMaxCount = 25;
+        await using Context ctx = new();
+        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, peersMaxCount, 0, 50);
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, peersMaxCount);
+
+        // Every peer is static or trusted except peers[number], the only droppable (plain) one.
+        for (int i = 0; i < peersMaxCount; i++)
+        {
+            if (i == number) continue;
+            if (i % 2 == 0) peers[i].Node.IsStatic = true;
+            else peers[i].Node.IsTrusted = true;
+        }
+
+        await WaitForPeersInitialization(ctx);
+        ctx.Pool.DropUselessPeers(true);
+
+        Assert.That(peers[number].DisconnectRequested, Is.True, "the only plain peer is droppable");
+        Assert.That(peers.Where((p, i) => i != number).Any(static p => p.DisconnectRequested), Is.False, "static and trusted peers are never dropped");
     }
 
     [Test]
@@ -371,7 +448,7 @@ public class SyncPeerPoolTests
         await using Context ctx = new();
         SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
 
-        SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
         Assert.That(allocation.Current?.SyncPeer, Is.SameAs(peers[0]));
     }
@@ -382,13 +459,19 @@ public class SyncPeerPoolTests
         await using Context ctx = new();
         SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
 
-        SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        ctx.Pool.Free(allocation);
-        allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        ctx.Pool.Free(allocation);
-        allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using (SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true)))
+        {
+            Assert.That(allocation.Current?.SyncPeer, Is.SameAs(peers[0]));
+        }
 
-        Assert.That(allocation.Current?.SyncPeer, Is.SameAs(peers[0]));
+        using (SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true)))
+        {
+            allocation.Dispose();
+            allocation.Dispose();
+        }
+
+        using SyncPeerAllocation reallocated = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        Assert.That(reallocated.Current?.SyncPeer, Is.SameAs(peers[0]));
     }
 
     [Test]
@@ -397,19 +480,16 @@ public class SyncPeerPoolTests
         await using Context ctx = new();
         await SetupPeers(ctx, 2);
 
-        SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        Assert.That(allocation2.Current, Is.Not.SameAs(allocation1.Current), "first");
-        Assert.That(allocation1.Current, Is.Not.Null, "first A");
-        Assert.That(allocation2.Current, Is.Not.Null, "first B");
+        using (SyncPeerAllocation firstAllocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true)))
+        using (SyncPeerAllocation secondAllocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true)))
+        {
+            Assert.That(secondAllocation.Current, Is.Not.SameAs(firstAllocation.Current), "first");
+            Assert.That(firstAllocation.Current, Is.Not.Null, "first A");
+            Assert.That(secondAllocation.Current, Is.Not.Null, "first B");
+        }
 
-        ctx.Pool.Free(allocation1);
-        ctx.Pool.Free(allocation2);
-        Assert.That(allocation1.Current, Is.Null, "null A");
-        Assert.That(allocation2.Current, Is.Null, "null B");
-
-        allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         Assert.That(allocation2.Current, Is.Not.SameAs(allocation1.Current));
         Assert.That(allocation1.Current, Is.Not.Null, "second A");
         Assert.That(allocation2.Current, Is.Not.Null, "second B");
@@ -425,9 +505,9 @@ public class SyncPeerPoolTests
             ctx.Pool.ReportNoSyncProgress(ctx.Pool.InitializedPeers.First(), AllocationContexts.All);
         }
 
-        SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        SyncPeerAllocation allocation3 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using SyncPeerAllocation allocation3 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
         Assert.That(allocation1.HasPeer, Is.True);
         Assert.That(allocation2.HasPeer, Is.True);
@@ -444,9 +524,9 @@ public class SyncPeerPoolTests
 
         ctx.Pool.WakeUpAll();
 
-        SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        SyncPeerAllocation allocation3 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using SyncPeerAllocation allocation3 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
 
         Assert.That(allocation1.HasPeer, Is.True);
         Assert.That(allocation2.HasPeer, Is.True);
@@ -472,14 +552,16 @@ public class SyncPeerPoolTests
         Assert.That(((SimpleSyncPeerMock)peerInfo.SyncPeer).DisconnectRequested, Is.True);
     }
 
-    [Test]
-    public async Task Will_not_allocate_same_peer_to_two_allocations()
+    [TestCase(AllocationContexts.All)]
+    [TestCase(AllocationContexts.BlockAccessLists)]
+    public async Task Will_not_allocate_same_peer_to_two_allocations(AllocationContexts contexts)
     {
         await using Context ctx = new();
         SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+        peers[0].ProtocolVersion = EthVersions.Eth71;
 
-        SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), contexts);
+        using SyncPeerAllocation allocation2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), contexts);
 
         Assert.That(allocation1.Current?.SyncPeer, Is.SameAs(peers[0]));
         Assert.That(allocation2.Current, Is.Null);
@@ -494,7 +576,7 @@ public class SyncPeerPoolTests
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
 
-        await WaitFor(() => peer.DisconnectRequested);
+        await Wait.ForCondition(() => peer.DisconnectRequested, TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(50));
         Assert.That(peer.DisconnectRequested, Is.True);
     }
 
@@ -506,23 +588,15 @@ public class SyncPeerPoolTests
         peer.SetHeaderFailure(true);
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
-        await WaitForPeersInitialization(ctx);
+        // GetHeadBlockHeader throws, so refresh routes through ReportRefreshFailed -> Disconnect.
+        bool refreshAttempted = await Wait.ForCondition(() => peer.DisconnectRequested, TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(50));
+        Assert.That(refreshAttempted, Is.True, "refresh loop did not attempt the failing peer in time");
 
-        SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        using SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
         ctx.Pool.RemovePeer(peer);
 
         Assert.That(allocation.Current, Is.EqualTo(null));
         Assert.That(ctx.Pool.PeerCount, Is.EqualTo(0));
-    }
-
-    [Test]
-    public async Task Can_return()
-    {
-        await using Context ctx = new();
-        await SetupPeers(ctx, 1);
-
-        SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        ctx.Pool.Free(allocation);
     }
 
     [Test]
@@ -531,8 +605,8 @@ public class SyncPeerPoolTests
         await using Context ctx = new();
         await SetupPeers(ctx, 1);
 
-        SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
-        allocation.Cancel();
+        using SyncPeerAllocation allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
+        allocation.Dispose();
 
         ctx.BlockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.WithTotalDifficulty(1L).TestObject));
     }
@@ -559,8 +633,7 @@ public class SyncPeerPoolTests
 
         foreach (SyncPeerAllocation allocation in successfulAllocations)
         {
-            // free allocated peers
-            ctx.Pool.Free(allocation);
+            allocation.Dispose();
         }
 
         foreach (SyncPeerAllocation allocation in allocations)
@@ -607,16 +680,16 @@ public class SyncPeerPoolTests
         await SetupPeers(ctx, 1);
 
         // Allocate the only peer
-        SyncPeerAllocation first = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 1000);
+        using SyncPeerAllocation first = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 1000);
         Assert.That(first.HasPeer, Is.True);
 
         // Start a second allocation that must wait (only 1 peer, already allocated)
         Task<SyncPeerAllocation> secondTask = ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 2000);
 
-        // Free the first — this signals peers changed and wakes the waiter
-        ctx.Pool.Free(first);
+        // Dispose the first — this signals peers changed and wakes the waiter
+        first.Dispose();
 
-        SyncPeerAllocation second = await secondTask;
+        using SyncPeerAllocation second = await secondTask;
         Assert.That(second.HasPeer, Is.True);
     }
 
@@ -630,7 +703,7 @@ public class SyncPeerPoolTests
         using CancellationTokenSource cts = new();
         cts.CancelAfter(100);
 
-        SyncPeerAllocation result = await ctx.Pool.Allocate(
+        using SyncPeerAllocation result = await ctx.Pool.Allocate(
             new BySpeedStrategy(TransferSpeedType.Headers, true),
             AllocationContexts.All,
             5000,
@@ -655,7 +728,7 @@ public class SyncPeerPoolTests
         await ctx.DisposeAsync();
 
         // Must complete (not hang) and return failed
-        SyncPeerAllocation result = await allocTask.WaitAsync(TimeSpan.FromSeconds(2));
+        using SyncPeerAllocation result = await allocTask.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.That(result.HasPeer, Is.False);
     }
 
@@ -675,15 +748,20 @@ public class SyncPeerPoolTests
                 100);
         }
 
-        await Task.WhenAll(tasks);
+        SyncPeerAllocation[] allocations = await Task.WhenAll(tasks);
 
         int successful = 0;
-        for (int i = 0; i < tasks.Length; i++)
+        foreach (SyncPeerAllocation allocation in allocations)
         {
-            if (tasks[i].Result.HasPeer) successful++;
+            if (allocation.HasPeer) successful++;
         }
 
         Assert.That(successful, Is.EqualTo(3));
+
+        foreach (SyncPeerAllocation allocation in allocations)
+        {
+            allocation.Dispose();
+        }
     }
 
     [Test]
@@ -693,8 +771,8 @@ public class SyncPeerPoolTests
         await SetupPeers(ctx, 2);
 
         // Allocate both peers — pool exhausted
-        SyncPeerAllocation a1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 1000);
-        SyncPeerAllocation a2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 1000);
+        using SyncPeerAllocation a1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 1000);
+        using SyncPeerAllocation a2 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 1000);
         Assert.That(a1.HasPeer, Is.True);
         Assert.That(a2.HasPeer, Is.True);
 
@@ -702,14 +780,110 @@ public class SyncPeerPoolTests
         Task<SyncPeerAllocation> w1 = ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 3000);
         Task<SyncPeerAllocation> w2 = ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.All, 3000);
 
-        // Free both peers — both waiters must wake
-        ctx.Pool.Free(a1);
-        ctx.Pool.Free(a2);
+        // Dispose both peers — both waiters must wake
+        a1.Dispose();
+        a2.Dispose();
 
-        SyncPeerAllocation r1 = await w1;
-        SyncPeerAllocation r2 = await w2;
+        using SyncPeerAllocation r1 = await w1;
+        using SyncPeerAllocation r2 = await w2;
         Assert.That(r1.HasPeer, Is.True);
         Assert.That(r2.HasPeer, Is.True);
+    }
+
+    /// <summary>
+    /// Every peer answers with a header, but only <paramref name="peerWithRequestedBlock"/> answers with the one
+    /// that was asked for (-1 when no peer has it). The rest stand in for peers serving some other block.
+    /// </summary>
+    [TestCase(0, 0, true, TestName = "Fetch_header_accepts_the_requested_block")]
+    [TestCase(-1, 0, false, TestName = "Fetch_header_rejects_a_different_block")]
+    [TestCase(1, 100, true, TestName = "Fetch_header_waits_past_a_peer_answering_with_a_different_block")]
+    public async Task Fetch_header_only_accepts_the_requested_block(int peerWithRequestedBlock, int responseDelay, bool shouldFind)
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        for (int i = 0; i < peers.Length; i++)
+        {
+            peers[i].HeaderToReturn = Build.A.BlockHeader.WithNumber(20 + i).TestObject;
+        }
+
+        if (peerWithRequestedBlock >= 0)
+        {
+            peers[peerWithRequestedBlock].HeaderToReturn = requested;
+            peers[peerWithRequestedBlock].SetHeaderResponseTime(responseDelay);
+        }
+
+        BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
+
+        Assert.That(result, Is.SameAs(shouldFind ? requested : null));
+    }
+
+    public enum PeerAnswer { RequestedBlock, DifferentBlock, Nothing }
+
+    /// <summary>
+    /// Substituting another block is a protocol breach and costs the peer its connection, but not having the
+    /// block is the normal answer while a head is unknown and must leave the peer alone.
+    /// </summary>
+    [TestCase(PeerAnswer.RequestedBlock, false)]
+    [TestCase(PeerAnswer.DifferentBlock, true)]
+    [TestCase(PeerAnswer.Nothing, false)]
+    public async Task Fetch_header_only_reports_a_peer_answering_with_a_different_block(PeerAnswer answer, bool shouldReport)
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        switch (answer)
+        {
+            case PeerAnswer.RequestedBlock:
+                peers[0].HeaderToReturn = requested;
+                break;
+            case PeerAnswer.DifferentBlock:
+                peers[0].HeaderToReturn = Build.A.BlockHeader.WithNumber(20).TestObject;
+                break;
+            case PeerAnswer.Nothing:
+                peers[0].HeadHeaderUnavailable = true;
+                break;
+        }
+
+        await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
+
+        Assert.That(peers[0].DisconnectRequested, Is.EqualTo(shouldReport));
+    }
+
+    [Test]
+    public async Task Fetch_header_treats_a_null_header_answer_as_the_block_being_absent()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        peers[0].HeadHeaderUnavailable = true;
+        peers[0].AnswersWithNullHeader = true;
+
+        BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
+
+        Assert.That(result, Is.Null);
+        Assert.That(peers[0].DisconnectRequested, Is.False);
+    }
+
+    [Test]
+    public async Task Fetch_header_falls_back_to_an_allocated_peer_when_no_head_header_is_returned()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        foreach (SimpleSyncPeerMock peer in peers)
+        {
+            peer.HeaderToReturn = requested;
+            peer.HeadHeaderUnavailable = true;
+        }
+
+        BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
+
+        Assert.That(result, Is.SameAs(requested));
     }
 
     private async Task<SimpleSyncPeerMock[]> SetupPeers(Context ctx, int count)
@@ -731,20 +905,12 @@ public class SyncPeerPoolTests
         return peers;
     }
 
-    private async Task WaitForPeersInitialization(Context ctx) =>
-        await WaitFor(() => ctx.Pool.AllPeers.All(p => p.IsInitialized));
-
-    private async Task WaitFor(Func<bool> isConditionMet)
+    private async Task WaitForPeersInitialization(Context ctx)
     {
-        const int waitInterval = 50;
-        for (int i = 0; i < 20; i++)
-        {
-            if (isConditionMet())
-            {
-                return;
-            }
-
-            await Task.Delay(waitInterval);
-        }
+        bool initialized = await Wait.ForCondition(
+            () => ctx.Pool.AllPeers.All(p => p.IsInitialized),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromMilliseconds(50));
+        Assert.That(initialized, Is.True, "peers did not initialize in time");
     }
 }

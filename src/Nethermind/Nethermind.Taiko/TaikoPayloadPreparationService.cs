@@ -47,7 +47,7 @@ public class TaikoPayloadPreparationService(
             {
                 Block block = BuildBlock(parentHeader, attrs);
                 if (parentHeader.StateRoot is null) throw new InvalidOperationException("Parent state root is null");
-                block = ProcessBlock(block, parentHeader);
+                block = ProcessBlock(block);
 
                 // L1Origin **MUST NOT** be null, it's a required field in PayloadAttributes.
                 L1Origin l1Origin = attrs.L1Origin ?? throw new InvalidOperationException("L1Origin is required");
@@ -71,7 +71,7 @@ public class TaikoPayloadPreparationService(
                 }
 
                 // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
-                return new NoBlockProductionContext(block, UInt256.Zero);
+                return new BlockProductionSnapshot(block, UInt256.Zero);
             },
             (payloadId, existing) =>
             {
@@ -97,13 +97,13 @@ public class TaikoPayloadPreparationService(
         return payloadId;
     }
 
-    private Block ProcessBlock(Block block, BlockHeader? parent, CancellationToken token = default)
+    private Block ProcessBlock(Block block, CancellationToken token = default)
     {
         if (_worldStateLock.Wait(_emptyBlockProcessingTimeout))
         {
             try
             {
-                if (worldState.HasStateForBlock(parent))
+                if (worldState.HasStateForTargetBlock(block.Header))
                 {
                     return processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, token)
                         ?? throw new InvalidOperationException("Block processing failed");
@@ -159,7 +159,7 @@ public class TaikoPayloadPreparationService(
 
     private Transaction[] BuildTransactions(TaikoPayloadAttributes payloadAttributes)
     {
-        Rlp.ValueDecoderContext ctx = new(payloadAttributes.BlockMetadata!.TxList!);
+        RlpReader ctx = new(payloadAttributes.BlockMetadata!.TxList!);
 
         int transactionsSequenceLength = ctx.ReadSequenceLength();
         int transactionsCheck = ctx.Position + transactionsSequenceLength;

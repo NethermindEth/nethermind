@@ -50,6 +50,6 @@ public class CLChainSpecEngineParameters : IChainSpecEngineParameters
     public ulong? L1GenesisNumber { get; init; }
     public Hash256? L1GenesisHash { get; init; }
     public OptimismSystemConfig? GenesisSystemConfig { get; init; }
-    public string? EngineName => "OptimismCL";
+    public string EngineName => "OptimismCL";
     public string? SealEngineType => null;
 }

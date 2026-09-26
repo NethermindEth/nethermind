@@ -17,14 +17,16 @@
     <Project Path="../../src/Nethermind/Nethermind.Db/Nethermind.Db.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Era1/Nethermind.Era1.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.EraE/Nethermind.EraE.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Evm.Fody/Nethermind.Evm.Fody.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />
-    <Project Path="../../src/Nethermind/Nethermind.Grpc/Nethermind.Grpc.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.History/Nethermind.History.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Init/Nethermind.Init.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Kademlia/Nethermind.Kademlia.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Logging.Microsoft/Nethermind.Logging.Microsoft.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Logging.NLog/Nethermind.Logging.NLog.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Logging/Nethermind.Logging.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Merge.Plugin/Nethermind.Merge.Plugin.csproj" />
@@ -42,6 +44,7 @@
     <Project Path="../../src/Nethermind/Nethermind.Sockets/Nethermind.Sockets.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Specs.Test/Nethermind.Specs.Test.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Specs/Nethermind.Specs.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.State.Flat.History/Nethermind.State.Flat.History.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.State.Flat/Nethermind.State.Flat.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.State/Nethermind.State.csproj" />
     <Project Path="../../src/Nethermind/Nethermind.Synchronization/Nethermind.Synchronization.csproj" />

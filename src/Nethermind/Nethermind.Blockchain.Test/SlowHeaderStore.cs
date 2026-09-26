@@ -12,9 +12,9 @@ namespace Nethermind.Blockchain.Test;
 
 public class SlowHeaderStore(IHeaderStore headerStore) : IHeaderStore
 {
-    public long SlowBlockNumber { get; set; } = 100;
+    public ulong SlowBlockNumber { get; set; } = 100;
 
-    public BlockHeader? Get(Hash256 blockHash, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, ulong? blockNumber = null)
     {
         if (blockNumber < SlowBlockNumber) Thread.Sleep(10);
         return headerStore.Get(blockHash, blockNumber);
@@ -22,11 +22,11 @@ public class SlowHeaderStore(IHeaderStore headerStore) : IHeaderStore
 
     public void Insert(BlockHeader header) => headerStore.Insert(header);
     public void BulkInsert(IReadOnlyList<BlockHeader> headers) => headerStore.BulkInsert(headers);
-    public BlockHeader? Get(Hash256 blockHash, bool shouldCache, long? blockNumber = null) => headerStore.Get(blockHash, shouldCache, blockNumber);
+    public BlockHeader? Get(Hash256 blockHash, bool shouldCache, ulong? blockNumber = null) => headerStore.Get(blockHash, shouldCache, blockNumber);
     public void Cache(BlockHeader header) => headerStore.Cache(header);
     public void Delete(Hash256 blockHash) => headerStore.Delete(blockHash);
-    public void InsertBlockNumber(Hash256 blockHash, long blockNumber) => headerStore.InsertBlockNumber(blockHash, blockNumber);
-    public long? GetBlockNumber(Hash256 blockHash) => headerStore.GetBlockNumber(blockHash);
-    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count) =>
+    public void InsertBlockNumber(Hash256 blockHash, ulong blockNumber) => headerStore.InsertBlockNumber(blockHash, blockNumber);
+    public ulong? GetBlockNumber(Hash256 blockHash) => headerStore.GetBlockNumber(blockHash);
+    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(ulong endBlockNumber, Hash256 endBlockHash, int count) =>
         headerStore.FindReversedHeaders(endBlockNumber, endBlockHash, count);
 }

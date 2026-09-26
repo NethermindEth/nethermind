@@ -144,4 +144,46 @@ public class HeaderStoreTests
         Assert.That(withFork, Does.Not.Contain(fork));
     }
 
+    [Test]
+    public void TestPrefetchByNumberRangeReadsOnlyTheRequestedRange()
+    {
+        HeaderStore store = new(new TestMemDb(), new MemDb());
+
+        BlockHeader below = Build.A.BlockHeader.WithNumber(99).TestObject;
+        BlockHeader first = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockHeader last = Build.A.BlockHeader.WithNumber(101).TestObject;
+        BlockHeader above = Build.A.BlockHeader.WithNumber(102).TestObject;
+
+        store.Insert(below);
+        store.Insert(first);
+        store.Insert(last);
+        store.Insert(above);
+
+        Assert.That(
+            store.PrefetchByNumberRange(100, 102).Keys,
+            Is.EquivalentTo(new[] { first.Hash!.ValueHash256, last.Hash!.ValueHash256 }));
+    }
+
+    [Test]
+    public void TestPrefetchByNumberRangeReturnsNothingWhenTheStoreCannotScan()
+    {
+        HeaderStore store = new(new MemDb(), new MemDb());
+        store.Insert(Build.A.BlockHeader.WithNumber(100).TestObject);
+
+        Assert.That(store.PrefetchByNumberRange(100, 101), Is.Empty);
+    }
+
+    [Test]
+    public void TestPrefetchByNumberRangeSkipsAHeaderHeldUnderALegacyHashOnlyKey()
+    {
+        IDb headerDb = new TestMemDb();
+        HeaderStore store = new(headerDb, new MemDb());
+
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        headerDb.Set(header.Hash!, new HeaderDecoder().Encode(header).Bytes);
+
+        Assert.That(store.PrefetchByNumberRange(100, 101), Is.Empty);
+        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+    }
+
 }

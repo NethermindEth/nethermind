@@ -8,11 +8,11 @@ namespace Nethermind.Serialization.Ssz.Merkleization;
 
 public ref struct Merkleizer
 {
-    private readonly bool IsKthBitSet(int k) => (_filled & ((ulong)1 << k)) != 0;
+    private readonly bool IsKthBitSet(int k) => (_filled & (1UL << k)) != 0;
 
-    private void SetKthBit(int k) => _filled |= (ulong)1 << k;
+    private void SetKthBit(int k) => _filled |= 1UL << k;
 
-    private void UnsetKthBit(int k) => _filled &= ~((ulong)1 << k);
+    private void UnsetKthBit(int k) => _filled &= ~(1UL << k);
 
     private readonly Span<UInt256> _chunks;
     private ulong _filled;
@@ -20,12 +20,6 @@ public ref struct Merkleizer
     public Merkleizer(Span<UInt256> chunks)
     {
         _chunks = chunks;
-        _filled = 0;
-    }
-
-    public Merkleizer(int depth)
-    {
-        _chunks = new UInt256[depth + 1];
         _filled = 0;
     }
 
@@ -68,7 +62,7 @@ public ref struct Merkleizer
                 break;
             }
 
-            UInt256 chunk = Merkle.ZeroHashes[lowestSet];
+            UInt256 chunk = Merkle.ZeroHash(lowestSet);
             FeedAtLevel(chunk, lowestSet);
         }
 

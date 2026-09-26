@@ -18,13 +18,13 @@ internal class ExtraConsensusDataDecoderTests
     public void Decode_XdcExtraDataRlp_IsEquivalentAfterReencoding(string extraDataRlp)
     {
         ExtraConsensusDataDecoder decoder = new();
-        Rlp.ValueDecoderContext context = new(Bytes.FromHexString(extraDataRlp));
-        ExtraFieldsV2 decodedExtraData = decoder.Decode(ref context);
+        RlpReader context = new(Bytes.FromHexString(extraDataRlp));
+        ExtraFieldsV2 decodedExtraData = decoder.DecodeGuardNotNull(ref context);
 
         Rlp encodedExtraData = decoder.Encode(decodedExtraData);
 
-        Rlp.ValueDecoderContext encodedContext = encodedExtraData.Bytes.AsRlpValueContext();
-        ExtraFieldsV2 unencoded = decoder.Decode(ref encodedContext);
+        RlpReader encodedContext = new(encodedExtraData.Bytes);
+        ExtraFieldsV2 unencoded = decoder.DecodeGuardNotNull(ref encodedContext);
 
         Assert.That(unencoded, Is.EqualTo(decodedExtraData).UsingXdcComparer());
     }
@@ -34,11 +34,12 @@ internal class ExtraConsensusDataDecoderTests
     {
         ExtraFieldsV2 extraFields = new(1, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
         ExtraConsensusDataDecoder decoder = new();
-        RlpStream stream = new(decoder.GetLength(extraFields));
-        decoder.Encode(stream, extraFields);
+        byte[] bytes = new byte[decoder.GetLength(extraFields, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, extraFields);
 
-        Rlp.ValueDecoderContext context = new(stream.Data);
-        ExtraFieldsV2 decodedExtraData = decoder.Decode(ref context);
+        RlpReader context = new(bytes);
+        ExtraFieldsV2 decodedExtraData = decoder.DecodeGuardNotNull(ref context);
 
         Assert.That(decodedExtraData, Is.EqualTo(extraFields).UsingXdcComparer());
     }
@@ -51,8 +52,8 @@ internal class ExtraConsensusDataDecoderTests
 
         Rlp encodedExtraData = decoder.Encode(extraFieldsV2);
 
-        Rlp.ValueDecoderContext context = encodedExtraData.Bytes.AsRlpValueContext();
-        ExtraFieldsV2 unencoded = decoder.Decode(ref context);
+        RlpReader context = new(encodedExtraData.Bytes);
+        ExtraFieldsV2 unencoded = decoder.DecodeGuardNotNull(ref context);
 
         Assert.That(unencoded, Is.EqualTo(extraFieldsV2).UsingXdcComparer());
     }

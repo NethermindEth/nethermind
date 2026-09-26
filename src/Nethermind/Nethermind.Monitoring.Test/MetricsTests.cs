@@ -11,11 +11,17 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
+using Nethermind.Core.Specs;
+using Nethermind.Db;
+using Nethermind.Init.Modules;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Monitoring.Test;
@@ -107,37 +113,43 @@ public class MetricsTests
         string keyHistogram = $"{nameof(TestMetrics)}.{nameof(TestMetrics.HistogramObservation)}";
         string keyExplicitHistogram = $"{nameof(TestMetrics)}.{nameof(TestMetrics.ExplicitHistogramObservation)}";
 
-        Assert.That(updater.Keys, Has.Member(keyDefault));
-        Assert.That(updater.Keys, Has.Member(keySpecial));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updater.Keys, Has.Member(keyDefault));
+            Assert.That(updater.Keys, Has.Member(keySpecial));
 
-        Assert.That((updater[keyDefault] as MetricsController.GaugeMetricUpdater).Gauge.Name, Is.EqualTo("nethermind_one_two_three"));
-        Assert.That((updater[keySpecial] as MetricsController.GaugeMetricUpdater).Gauge.Name, Is.EqualTo("one_two_three"));
-        Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.Name, Is.EqualTo("nethermind_with_labelled_dictionary"));
-        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary0].Name, Is.EqualTo("nethermind_metrics0"));
-        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary1].Name, Is.EqualTo("nethermind_metrics1"));
-        Assert.That(updater[keySummary], Is.TypeOf<MetricsController.SummaryMetricUpdater>());
-        Assert.That(updater[keyHistogram], Is.TypeOf<MetricsController.HistogramMetricUpdater>());
-        Assert.That(updater[keyExplicitHistogram], Is.TypeOf<MetricsController.HistogramMetricUpdater>());
-        Assert.That(TestMetrics.SomeObservation, Is.TypeOf<MetricsController.SummaryMetricUpdater>());
-        Assert.That(TestMetrics.HistogramObservation, Is.TypeOf<MetricsController.HistogramMetricUpdater>());
-        Assert.That(TestMetrics.ExplicitHistogramObservation, Is.TypeOf<MetricsController.HistogramMetricUpdater>());
+            Assert.That((updater[keyDefault] as MetricsController.GaugeMetricUpdater).Gauge.Name, Is.EqualTo("nethermind_one_two_three"));
+            Assert.That((updater[keySpecial] as MetricsController.GaugeMetricUpdater).Gauge.Name, Is.EqualTo("one_two_three"));
+            Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.Name, Is.EqualTo("nethermind_with_labelled_dictionary"));
+            Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary0].Name, Is.EqualTo("nethermind_metrics0"));
+            Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary1].Name, Is.EqualTo("nethermind_metrics1"));
+            Assert.That(updater[keySummary], Is.TypeOf<MetricsController.SummaryMetricUpdater>());
+            Assert.That(updater[keyHistogram], Is.TypeOf<MetricsController.HistogramMetricUpdater>());
+            Assert.That(updater[keyExplicitHistogram], Is.TypeOf<MetricsController.HistogramMetricUpdater>());
+            Assert.That(TestMetrics.SomeObservation, Is.TypeOf<MetricsController.SummaryMetricUpdater>());
+            Assert.That(TestMetrics.HistogramObservation, Is.TypeOf<MetricsController.HistogramMetricUpdater>());
+            Assert.That(TestMetrics.ExplicitHistogramObservation, Is.TypeOf<MetricsController.HistogramMetricUpdater>());
 
-        Assert.That((updater[keyDefault] as MetricsController.GaugeMetricUpdater).Gauge.Value, Is.EqualTo(123));
-        Assert.That((updater[keySpecial] as MetricsController.GaugeMetricUpdater).Gauge.Value, Is.EqualTo(1234));
-        Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels(SomeEnum.Option1.ToString()).Value, Is.EqualTo(2));
-        Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels(SomeEnum.Option2.ToString()).Value, Is.EqualTo(3));
-        Assert.That((updater[keyDictionary2] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels("1", "11", "111").Value, Is.EqualTo(1111));
-        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary0].Value, Is.EqualTo(4));
-        Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary1].Value, Is.EqualTo(5));
+            Assert.That((updater[keyDefault] as MetricsController.GaugeMetricUpdater).Gauge.Value, Is.EqualTo(123));
+            Assert.That((updater[keySpecial] as MetricsController.GaugeMetricUpdater).Gauge.Value, Is.EqualTo(1234));
+            Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels(SomeEnum.Option1.ToString()).Value, Is.EqualTo(2));
+            Assert.That((updater[keyDictionary] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels(SomeEnum.Option2.ToString()).Value, Is.EqualTo(3));
+            Assert.That((updater[keyDictionary2] as MetricsController.KeyIsLabelGaugeMetricUpdater).Gauge.WithLabels("1", "11", "111").Value, Is.EqualTo(1111));
+            Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary0].Value, Is.EqualTo(4));
+            Assert.That((updater[keyOldDictionary] as MetricsController.GaugePerKeyMetricUpdater).Gauges[keyOldDictionary1].Value, Is.EqualTo(5));
+        }
 
         TestMetrics.ExplicitHistogramObservation.Observe(2);
         using MemoryStream stream = new();
         await Prometheus.Metrics.DefaultRegistry.CollectAndExportAsTextAsync(stream);
         string scrape = Encoding.UTF8.GetString(stream.ToArray());
-        Assert.That(scrape, Does.Contain("nethermind_explicit_histogram_observation_bucket"));
-        Assert.That(scrape, Does.Contain("nethermind_explicit_histogram_observation_sum"));
-        Assert.That(scrape, Does.Contain("nethermind_explicit_histogram_observation_count"));
-        Assert.That(scrape, Does.Not.Contain("nethermind_explicit_histogram_observation{quantile="));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scrape, Does.Contain("nethermind_explicit_histogram_observation_bucket"));
+            Assert.That(scrape, Does.Contain("nethermind_explicit_histogram_observation_sum"));
+            Assert.That(scrape, Does.Contain("nethermind_explicit_histogram_observation_count"));
+            Assert.That(scrape, Does.Not.Contain("nethermind_explicit_histogram_observation{quantile="));
+        }
     }
 
     [Test]
@@ -155,15 +167,17 @@ public class MetricsTests
         using MemoryStream stream = new();
         await Prometheus.Metrics.DefaultRegistry.CollectAndExportAsTextAsync(stream);
         string scrape = Encoding.UTF8.GetString(stream.ToArray());
-        Assert.That(scrape, Does.Contain("nethermind_json_rpc_call_duration_micros_bucket"));
-        Assert.That(scrape, Does.Contain("nethermind_json_rpc_call_duration_micros_sum"));
-        Assert.That(scrape, Does.Contain("nethermind_json_rpc_call_duration_micros_count"));
-        Assert.That(scrape, Does.Not.Contain("nethermind_json_rpc_call_latency_micros"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scrape, Does.Contain("nethermind_json_rpc_call_duration_micros_bucket"));
+            Assert.That(scrape, Does.Contain("nethermind_json_rpc_call_duration_micros_sum"));
+            Assert.That(scrape, Does.Contain("nethermind_json_rpc_call_duration_micros_count"));
+            Assert.That(scrape, Does.Not.Contain("nethermind_json_rpc_call_latency_micros"));
+        }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Load_DetailedMetric(bool enableDetailedMetric)
+    [Test]
+    public void Load_DetailedMetric([Values] bool enableDetailedMetric)
     {
         MetricsConfig metricsConfig = new()
         {
@@ -176,8 +190,54 @@ public class MetricsTests
 
         Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
         string metricName = "TestMetrics.DetailedMetric";
-        Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
-        Assert.That(TestMetrics.DetailedMetricsEnabled, Is.EqualTo(enableDetailedMetric));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updater.ContainsKey(metricName), Is.EqualTo(enableDetailedMetric));
+            Assert.That(TestMetrics.DetailedMetricsEnabled, Is.EqualTo(enableDetailedMetric));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Load_CarryForwardDetailedMetrics()
+    {
+        bool detailedMetricsEnabled = Db.Metrics.DetailedMetricsEnabled;
+        try
+        {
+            MetricsConfig metricsConfig = new()
+            {
+                Enabled = true,
+                EnableDetailedMetric = true
+            };
+            await using IContainer container = new ContainerBuilder()
+                .AddModule(new MonitoringModule(metricsConfig))
+                .AddSingleton<IMetricsConfig>(metricsConfig)
+                .AddSingleton<ISyncConfig>(new SyncConfig())
+                .AddSingleton<IPruningConfig>(new PruningConfig())
+                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                .Build();
+            MetricsController metricsController = (MetricsController)container.Resolve<IMetricsController>();
+            metricsController.UpdateAllMetrics();
+
+            Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
+            string typeName = nameof(Nethermind.State.Flat.Metrics);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Db.Metrics.DetailedMetricsEnabled, Is.True);
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountHits)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountMisses)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotHits)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotMisses)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountWipes)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotWipes)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountCount)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotCount)}"));
+            }
+        }
+        finally
+        {
+            Db.Metrics.DetailedMetricsEnabled = detailedMetricsEnabled;
+        }
     }
 
     [Test]

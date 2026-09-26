@@ -59,8 +59,11 @@ namespace Nethermind.Core.Test.Collections
         {
             // Slice from index 1 for 4 elements: expected slice is {1, 2, 3, 4}.
             IReadOnlyList<int> slice = _original.AsReadOnly().Slice(1, 4);
-            Assert.That(slice[0], Is.EqualTo(1));
-            Assert.That(slice[3], Is.EqualTo(4));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(slice[0], Is.EqualTo(1));
+                Assert.That(slice[3], Is.EqualTo(4));
+            }
 
             // Attempting to access an out-of-range index should throw an exception.
             Action actOutOfRange = () => { int _ = slice[4]; };

@@ -8,6 +8,8 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -32,12 +34,20 @@ public class ValidateSubmissionHandler(
     ILogManager logManager,
     ISpecProvider specProvider,
     IFlashbotsConfig flashbotsConfig,
-    IEthereumEcdsa ethereumEcdsa)
+    IEthereumEcdsa ethereumEcdsa,
+    IBlockProcessingQueue processingQueue)
 {
-    private ProcessingOptions ValidateSubmissionProcessingOptions = ProcessingOptions.ReadOnlyChain
+    /// <summary>How long a bid waits for its parent's commit when the parent was answered VALID a moment ago.</summary>
+    private static readonly TimeSpan ParentCommitWait = TimeSpan.FromSeconds(1);
+
+    // NoValidation on purpose: the shared block validator is the merge plugin's InvalidBlockInterceptor, which
+    // records into the process-wide InvalidChainTracker, so a node-local divergence on this RPC path could make
+    // the Engine API reject the block. The header is compared with the execution outcome here instead.
+    private const ProcessingOptions ValidateSubmissionProcessingOptions = ProcessingOptions.ReadOnlyChain
          | ProcessingOptions.IgnoreParentNotOnMainChain
          | ProcessingOptions.ForceProcessing
-         | ProcessingOptions.StoreReceipts;
+         | ProcessingOptions.StoreReceipts
+         | ProcessingOptions.NoValidation;
 
     private readonly IBlockTree _blockTree = blockTree;
     private readonly IHeaderValidator _headerValidator = headerValidator;
@@ -48,7 +58,7 @@ public class ValidateSubmissionHandler(
     private readonly IEthereumEcdsa _ethereumEcdsa = ethereumEcdsa;
     private readonly IOverridableEnv<ProcessingEnv> _blockProcessorEnv = blockProcessorEnv;
 
-    public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
+    public async Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
     {
         ExecutionPayloadV3 payload = request.ExecutionPayload.ToExecutionPayloadV3();
 
@@ -74,6 +84,10 @@ public class ValidateSubmissionHandler(
         }
         Block block = decodingResult.Data;
 
+        // A bid on a block answered VALID a moment ago can arrive while that block is still committing, and the
+        // validation below replays on its state; a parent that is not committing returns at once.
+        await processingQueue.WaitForExecutedCopyAsync(block.ParentHash!, ParentCommitWait);
+
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
 
         if (!ValidateBlock(block, request.Message, request.RegisteredGasLimit, releaseSpec, out string? error))
@@ -91,7 +105,7 @@ public class ValidateSubmissionHandler(
         return FlashbotsResult.Valid();
     }
 
-    private bool ValidateBlock(Block block, BidTrace message, long registeredGasLimit, IReleaseSpec releaseSpec, out string? error)
+    private bool ValidateBlock(Block block, BidTrace message, ulong registeredGasLimit, IReleaseSpec releaseSpec, out string? error)
     {
         error = null;
 
@@ -178,7 +192,7 @@ public class ValidateSubmissionHandler(
         return true;
     }
 
-    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, long registerGasLimit, bool useBalanceDiffProfit, bool excludeWithdrawals, IReleaseSpec releaseSpec, out string? error)
+    private bool ValidatePayload(Block block, Address feeRecipient, UInt256 expectedProfit, ulong registerGasLimit, bool useBalanceDiffProfit, bool excludeWithdrawals, IReleaseSpec releaseSpec, out string? error)
     {
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
 
@@ -193,27 +207,38 @@ public class ValidateSubmissionHandler(
             return false;
         }
 
-        using Scope<ProcessingEnv> scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
+        if (!_blockProcessorEnv.TryBuildAndOverrideAtTarget(block.Header, stateOverride: null, specOverride: null, out Scope<ProcessingEnv>? scope))
+        {
+            error = $"No state available for parent of block {block.Header.ToString(BlockHeader.Format.FullHashAndNumber)}";
+            return false;
+        }
+
+        using IDisposable processingScope = scope;
         IWorldState worldState = scope.Component.WorldState;
         IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
 
-        RecoverSenderAddress(block, releaseSpec);
-        UInt256 feeRecipientBalanceBefore = worldState.HasStateForBlock(parentHeader) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
+        if (!RecoverSenderAddress(block, releaseSpec, out error))
+        {
+            return false;
+        }
+
+        UInt256 feeRecipientBalanceBefore = worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero;
 
         BlockReceiptsTracer blockReceiptsTracer = new();
 
+        Block processedBlock;
         try
         {
-            if (!_flashbotsConfig.EnableValidation)
-            {
-                ValidateSubmissionProcessingOptions |= ProcessingOptions.NoValidation;
-            }
-
-            _ = blockProcessor.ProcessOne(block, ValidateSubmissionProcessingOptions, blockReceiptsTracer, releaseSpec, CancellationToken.None);
+            (processedBlock, _) = blockProcessor.ProcessOne(block, ValidateSubmissionProcessingOptions, blockReceiptsTracer, releaseSpec, CancellationToken.None);
         }
         catch (Exception e)
         {
             error = $"Block processing failed: {e.Message}";
+            return false;
+        }
+
+        if (_flashbotsConfig.EnableValidation && !ExecutionMatchesHeader(block, processedBlock, out error))
+        {
             return false;
         }
 
@@ -248,15 +273,51 @@ public class ValidateSubmissionHandler(
         return true;
     }
 
-    private void RecoverSenderAddress(Block block, IReleaseSpec spec)
+    /// <summary>
+    /// Checks the submitted header against the execution outcome, the way the block validator does for a processed
+    /// block, without going through the shared validator.
+    /// </summary>
+    private static bool ExecutionMatchesHeader(Block submitted, Block processed, out string? error)
+    {
+        BlockHeader expected = submitted.Header;
+        BlockHeader actual = processed.Header;
+        if (actual.Hash == expected.Hash)
+        {
+            error = null;
+            return true;
+        }
+
+        error = expected.GasUsed != actual.GasUsed ? BlockErrorMessages.HeaderGasUsedMismatch(expected.GasUsed, actual.GasUsed)
+            : expected.Bloom != actual.Bloom ? BlockErrorMessages.InvalidLogsBloom(expected.Bloom!, actual.Bloom!)
+            : expected.ReceiptsRoot != actual.ReceiptsRoot ? BlockErrorMessages.InvalidReceiptsRoot(expected.ReceiptsRoot!, actual.ReceiptsRoot!)
+            : expected.StateRoot != actual.StateRoot ? BlockErrorMessages.InvalidStateRoot(expected.StateRoot!, actual.StateRoot!)
+            : $"Processed block hash {actual.Hash} does not match the submitted {expected.Hash}";
+        return false;
+    }
+
+    private bool RecoverSenderAddress(Block block, IReleaseSpec spec, out string? error)
     {
         foreach (Transaction tx in block.Transactions)
         {
-            tx.SenderAddress ??= _ethereumEcdsa.RecoverAddress(tx, !spec.ValidateChainId);
+            if (tx.SenderAddress is not null)
+            {
+                continue;
+            }
+
+            if (!_ethereumEcdsa.TryRecoverAddress(tx, out Address? senderAddress, !spec.ValidateChainId))
+            {
+                error = $"Transaction {tx.Hash} sender address is not recoverable";
+                return false;
+            }
+
+            tx.SenderAddress = senderAddress;
         }
+
+        error = null;
+        return true;
     }
 
-    private bool ValidateBlockMetadata(Block block, long registerGasLimit, BlockHeader parentHeader, IReleaseSpec releaseSpec, out string? error)
+    private bool ValidateBlockMetadata(Block block, ulong registerGasLimit, BlockHeader parentHeader, IReleaseSpec releaseSpec, out string? error)
     {
         if (!_headerValidator.Validate(block.Header, parentHeader, false, out error))
         {
@@ -275,7 +336,7 @@ public class ValidateSubmissionHandler(
             return false;
         }
 
-        long calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit, releaseSpec);
+        ulong calculatedGasLimit = GetGasLimit(parentHeader, registerGasLimit, releaseSpec);
 
         if (calculatedGasLimit != block.Header.GasLimit)
         {
@@ -286,20 +347,22 @@ public class ValidateSubmissionHandler(
         return true;
     }
 
-    private long GetGasLimit(BlockHeader parentHeader, long desiredGasLimit, IReleaseSpec releaseSpec)
+    private ulong GetGasLimit(BlockHeader parentHeader, ulong desiredGasLimit, IReleaseSpec releaseSpec)
     {
-        long parentGasLimit = parentHeader.GasLimit;
-        long gasLimit = parentGasLimit;
+        ulong parentGasLimit = parentHeader.GasLimit;
+        ulong gasLimit = parentGasLimit;
+        ulong newBlockNumber = parentHeader.Number + 1;
 
-        long? targetGasLimit = desiredGasLimit;
-        long newBlockNumber = parentHeader.Number + 1;
+        ulong maxGasLimitDifference = (parentGasLimit / releaseSpec.GasLimitBoundDivisor).SaturatingSub(1);
 
-        if (targetGasLimit is not null)
+        if (desiredGasLimit > parentGasLimit)
         {
-            long maxGasLimitDifference = Math.Max(0, parentGasLimit / releaseSpec.GasLimitBoundDivisor - 1);
-            gasLimit = targetGasLimit.Value > parentGasLimit
-                ? parentGasLimit + Math.Min(targetGasLimit.Value - parentGasLimit, maxGasLimitDifference)
-                : parentGasLimit - Math.Min(parentGasLimit - targetGasLimit.Value, maxGasLimitDifference);
+            gasLimit = parentGasLimit + Math.Min(desiredGasLimit - parentGasLimit, maxGasLimitDifference);
+        }
+        else if (desiredGasLimit < parentGasLimit)
+        {
+            // Non-trivial: parentGasLimit - desiredGasLimit is safe (parentGasLimit > desiredGasLimit here).
+            gasLimit = parentGasLimit - Math.Min(parentGasLimit - desiredGasLimit, maxGasLimitDifference);
         }
 
         gasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(releaseSpec, gasLimit, newBlockNumber);
@@ -382,7 +445,6 @@ public class ValidateSubmissionHandler(
             error = "Malformed proposer payment, max priority fee per gas not equal to block max priority fee per gas";
             return false;
         }
-
 
         error = null;
         return true;

@@ -50,7 +50,7 @@ public class TraceStorePrunerTests
             tree.SuggestBlock(headPlus2);
             tree.SuggestBlock(headPlus3);
             Block[] blocks = { headPlus1, headPlus2, headPlus3 };
-            tree.UpdateMainChain(blocks, true);
+            tree.TryUpdateMainChain(blocks[^1].Header, true, preloadedBlocks: blocks);
         }
 
         MemDb memDb = new();

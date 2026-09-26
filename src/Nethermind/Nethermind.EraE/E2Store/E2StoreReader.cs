@@ -6,6 +6,7 @@ using System.IO.Compression;
 using CommunityToolkit.HighPerformance;
 using Microsoft.IO;
 using Microsoft.Win32.SafeHandles;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
@@ -25,13 +26,13 @@ public sealed class E2StoreReader : IDisposable
     private const int MinComponentCount = 3; // post-merge: header, body, receipts
     private const int MaxComponentCount = 5; // future: transition with both TD and proof
     private const int ComponentsWithTotalDifficulty = 4; // pre-merge or transition epoch
-    private const int ValueSizeLimit = 1024 * 1024 * 50;
+    private const int ValueSizeLimit = 50 * MemorySizes.MiB;
 
     private readonly SafeFileHandle _file;
     private readonly long _fileLength;
 
-    private long _startBlock;
-    private long _blockCount;
+    private ulong _startBlock;
+    private ulong _blockCount;
     private int _componentCount; // 3 (post-merge) or 4 (pre-merge/transition)
     private bool _indexLoaded;
     private long _componentIndexTlvStart; // absolute position of ComponentIndex entry header
@@ -42,7 +43,7 @@ public sealed class E2StoreReader : IDisposable
         _fileLength = RandomAccess.GetLength(_file);
     }
 
-    public long First
+    public ulong First
     {
         get
         {
@@ -51,9 +52,9 @@ public sealed class E2StoreReader : IDisposable
         }
     }
 
-    public long LastBlock => First + _blockCount - 1;
+    public ulong LastBlock => First + _blockCount - 1;
 
-    public long BlockCount
+    public ulong BlockCount
     {
         get
         {
@@ -71,13 +72,13 @@ public sealed class E2StoreReader : IDisposable
         }
     }
 
-    public long HeaderOffset(long blockNumber) => ComponentOffset(blockNumber, 0);
+    public long HeaderOffset(ulong blockNumber) => ComponentOffset(blockNumber, 0);
 
-    public long BodyOffset(long blockNumber) => ComponentOffset(blockNumber, 1);
+    public long BodyOffset(ulong blockNumber) => ComponentOffset(blockNumber, 1);
 
-    public long SlimReceiptsOffset(long blockNumber) => ComponentOffset(blockNumber, 2);
+    public long SlimReceiptsOffset(ulong blockNumber) => ComponentOffset(blockNumber, 2);
 
-    public long TotalDifficultyOffset(long blockNumber)
+    public long TotalDifficultyOffset(ulong blockNumber)
     {
         EnsureIndexLoaded();
         if (_componentCount < ComponentsWithTotalDifficulty)
@@ -157,8 +158,8 @@ public sealed class E2StoreReader : IDisposable
             throw new EraFormatException($"File too small ({_fileLength} bytes) to contain a valid ComponentIndex.");
 
         // Read block_count from the last 8 bytes of file
-        _blockCount = ReadInt64(_fileLength - IndexFieldSize);
-        if (_blockCount <= 0 || _blockCount > EraWriter.MaxEraSize)
+        _blockCount = ReadUInt64(_fileLength - IndexFieldSize);
+        if (_blockCount == 0 || _blockCount > EraWriter.MaxEraSize)
             throw new EraFormatException($"Invalid block count {_blockCount} in EraE ComponentIndex.");
 
         // Read component_count from the 8 bytes before block_count
@@ -170,7 +171,7 @@ public sealed class E2StoreReader : IDisposable
             throw new EraFormatException($"Invalid component count {_componentCount} in EraE ComponentIndex.");
 
         // Total data length = starting_number + offsets + component_count + block_count
-        long indexDataLength = IndexFieldSize + _blockCount * _componentCount * IndexFieldSize + IndexFieldSize + IndexFieldSize;
+        long indexDataLength = IndexFieldSize + (long)_blockCount * _componentCount * IndexFieldSize + IndexFieldSize + IndexFieldSize;
 
         // Verify entry type
         long indexEntryStart = _fileLength - EntryHeaderSize - indexDataLength;
@@ -178,13 +179,18 @@ public sealed class E2StoreReader : IDisposable
 
         _componentIndexTlvStart = indexEntryStart;
 
-        // Read starting block number (first field of index data)
-        _startBlock = ReadInt64(indexEntryStart + EntryHeaderSize);
+        // starting_number is int64 on disk; validate >= 0 so a malformed file fails parsing with
+        // EraFormatException instead of reinterpreting the high bit as a huge ulong and only
+        // surfacing later as a misleading ArgumentOutOfRangeException in ComponentOffset.
+        long startBlock = ReadInt64(indexEntryStart + EntryHeaderSize);
+        if (startBlock < 0)
+            throw new EraFormatException($"Invalid starting block number {startBlock} in EraE ComponentIndex.");
+        _startBlock = (ulong)startBlock;
 
         _indexLoaded = true;
     }
 
-    private long ComponentOffset(long blockNumber, int componentIdx)
+    private long ComponentOffset(ulong blockNumber, int componentIdx)
     {
         EnsureIndexLoaded();
 
@@ -192,7 +198,7 @@ public sealed class E2StoreReader : IDisposable
             throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside range [{_startBlock}, {_startBlock + _blockCount - 1}].");
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(componentIdx, _componentCount);
 
-        long blockIdx = blockNumber - _startBlock;
+        long blockIdx = (long)(blockNumber - _startBlock);
         // Offset table starts at: indexEntryStart + EntryHeaderSize + IndexFieldSize (starting_number)
         long offsetFieldPos = _componentIndexTlvStart + EntryHeaderSize + IndexFieldSize
             + blockIdx * _componentCount * IndexFieldSize
@@ -238,5 +244,12 @@ public sealed class E2StoreReader : IDisposable
         Span<byte> buff = stackalloc byte[8];
         RandomAccess.Read(_file, buff, position);
         return BinaryPrimitives.ReadInt64LittleEndian(buff);
+    }
+
+    private ulong ReadUInt64(long position)
+    {
+        Span<byte> buff = stackalloc byte[8];
+        RandomAccess.Read(_file, buff, position);
+        return BinaryPrimitives.ReadUInt64LittleEndian(buff);
     }
 }

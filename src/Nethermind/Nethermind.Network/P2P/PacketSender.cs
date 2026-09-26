@@ -51,11 +51,7 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
             if (_sendLatency != TimeSpan.Zero)
             {
                 Task delayTask = Task.Delay(_sendLatency, _cts.Token);
-                if (delayTask.IsCompletedSuccessfully)
-                {
-                    StartWrite(buffer);
-                }
-                else
+                if (!delayTask.IsCompletedSuccessfully)
                 {
                     _ = delayTask.ContinueWith(
                         DelayThenWriteAction,
@@ -63,29 +59,32 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
                         CancellationToken.None,
                         TaskContinuationOptions.ExecuteSynchronously,
                         TaskScheduler.Default);
+                    return;
                 }
-
-                return;
             }
-
-            StartWrite(buffer);
         }
         catch (Exception exception)
         {
+            buffer.Release();
             HandleSendFailure(exception);
+            return;
         }
+
+        StartWrite(buffer);
     }
 
     private void DelayThenWrite(Task delayTask, object? state)
     {
         if (delayTask.IsFaulted)
         {
+            ((IByteBuffer)state!).Release();
             HandleSendFailure(delayTask.Exception?.GetBaseException() ?? delayTask.Exception!);
             return;
         }
 
         if (delayTask.IsCanceled)
         {
+            ((IByteBuffer)state!).Release();
             HandleSendFailure(new TaskCanceledException(delayTask));
             return;
         }

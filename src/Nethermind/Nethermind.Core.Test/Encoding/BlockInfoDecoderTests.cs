@@ -11,9 +11,8 @@ namespace Nethermind.Core.Test.Encoding;
 
 public class BlockInfoDecoderTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Can_do_roundtrip(bool valueDecode) => Roundtrip(valueDecode);
+    [Test]
+    public void Can_do_roundtrip([Values] bool valueDecode) => Roundtrip(valueDecode);
 
     [TestCase(true, true, true)]
     [TestCase(true, true, false)]
@@ -31,7 +30,7 @@ public class BlockInfoDecoderTests
         Rlp rlp = Rlp.Encode((BlockInfo)null!);
         Assert.That(rlp.Length, Is.EqualTo(1));
 
-        BlockInfo decoded = Rlp.Decode<BlockInfo>(rlp);
+        BlockInfo? decoded = Rlp.Decode<BlockInfo>(rlp);
         Assert.That(decoded, Is.Null);
     }
 
@@ -43,13 +42,16 @@ public class BlockInfoDecoderTests
         blockInfo.Metadata |= BlockMetadata.Invalid;
 
         Rlp rlp = Rlp.Encode(blockInfo);
-        BlockInfo decoded = valueDecode ? Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp);
+        BlockInfo decoded = (valueDecode ? Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp))!;
 
-        Assert.That(decoded.WasProcessed, Is.True, "0 processed");
-        Assert.That((decoded.Metadata & BlockMetadata.Finalized) == BlockMetadata.Finalized, Is.True, "metadata finalized");
-        Assert.That((decoded.Metadata & BlockMetadata.Invalid) == BlockMetadata.Invalid, Is.True, "metadata invalid");
-        Assert.That(decoded.BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
-        Assert.That(decoded.TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.WasProcessed, Is.True, "0 processed");
+            Assert.That((decoded.Metadata & BlockMetadata.Finalized) == BlockMetadata.Finalized, Is.True, "metadata finalized");
+            Assert.That((decoded.Metadata & BlockMetadata.Invalid) == BlockMetadata.Invalid, Is.True, "metadata invalid");
+            Assert.That(decoded.BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
+            Assert.That(decoded.TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+        }
     }
 
     private static void RoundtripBackwardsCompatible(bool valueDecode, bool chainWithFinalization, bool isFinalized)
@@ -59,12 +61,15 @@ public class BlockInfoDecoderTests
         blockInfo.IsFinalized = isFinalized;
 
         Rlp rlp = BlockInfoEncodeDeprecated(blockInfo, chainWithFinalization);
-        BlockInfo decoded = valueDecode ? Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp);
+        BlockInfo decoded = (valueDecode ? Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp))!;
 
-        Assert.That(decoded.WasProcessed, Is.True, "0 processed");
-        Assert.That(decoded.IsFinalized, Is.EqualTo(chainWithFinalization && isFinalized), "finalized");
-        Assert.That(decoded.BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
-        Assert.That(decoded.TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.WasProcessed, Is.True, "0 processed");
+            Assert.That(decoded.IsFinalized, Is.EqualTo(chainWithFinalization && isFinalized), "finalized");
+            Assert.That(decoded.BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
+            Assert.That(decoded.TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
+        }
     }
 
     public static Rlp BlockInfoEncodeDeprecated(BlockInfo? item, bool chainWithFinalization)
@@ -83,17 +88,18 @@ public class BlockInfoDecoderTests
             contentLength += Rlp.LengthOf(item.IsFinalized);
         }
 
-        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        stream.StartSequence(contentLength);
-        stream.Encode(item.BlockHash);
-        stream.Encode(item.WasProcessed);
-        stream.Encode(item.TotalDifficulty);
+        byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(contentLength);
+        writer.Encode(item.BlockHash);
+        writer.Encode(item.WasProcessed);
+        writer.Encode(item.TotalDifficulty);
 
         if (chainWithFinalization)
         {
-            stream.Encode(item.IsFinalized);
+            writer.Encode(item.IsFinalized);
         }
 
-        return new Rlp(stream.Data.ToArray()!);
+        return new Rlp(bytes);
     }
 }

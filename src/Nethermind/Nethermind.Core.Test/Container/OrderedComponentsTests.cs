@@ -20,9 +20,12 @@ public class OrderedComponentsTests
             .AddLast(_ => new Item("4"))
             .Build();
 
-        Assert.That(ctx.Resolve<Item[]>().Select(item => item.Name), Is.EqualTo(["1", "2", "3", "4"]));
-        Assert.That(ctx.Resolve<IEnumerable<Item>>().Select(item => item.Name), Is.EqualTo(["1", "2", "3", "4"]));
-        Assert.That(ctx.Resolve<IReadOnlyList<Item>>().Select(item => item.Name), Is.EqualTo(["1", "2", "3", "4"]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Resolve<Item[]>().Select(item => item.Name), Is.EqualTo(["1", "2", "3", "4"]));
+            Assert.That(ctx.Resolve<IEnumerable<Item>>().Select(item => item.Name), Is.EqualTo(["1", "2", "3", "4"]));
+            Assert.That(ctx.Resolve<IReadOnlyList<Item>>().Select(item => item.Name), Is.EqualTo(["1", "2", "3", "4"]));
+        }
     }
 
     [Test]
@@ -35,6 +38,20 @@ public class OrderedComponentsTests
             .Build();
 
         Assert.That(ctx.Resolve<Item[]>().Select(item => item.Name), Is.EqualTo(["1", "2", "3"]));
+    }
+
+    [Test]
+    public void TestRemove()
+    {
+        // RemoveOrderedComponents drops every component of the given concrete type, keeping the rest in order
+        using IContainer ctx = new ContainerBuilder()
+            .AddLast<IItem>(_ => new Item("1"))
+            .AddLast<IItem>(_ => new OtherItem("2"))
+            .AddLast<IItem>(_ => new Item("3"))
+            .RemoveOrderedComponents<IItem, Item>()
+            .Build();
+
+        Assert.That(ctx.Resolve<IItem[]>().Select(item => item.Name), Is.EqualTo(["2"]));
     }
 
     [Test]
@@ -59,8 +76,11 @@ public class OrderedComponentsTests
             .Build();
 
         IItem resolved = ctx.Resolve<IItem>();
-        Assert.That(resolved, Is.TypeOf<CompositeItem>());
-        Assert.That(((CompositeItem)resolved).Items.Select(i => i.Name), Is.EqualTo(["1", "2"]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved, Is.TypeOf<CompositeItem>());
+            Assert.That(((CompositeItem)resolved).Items.Select(i => i.Name), Is.EqualTo(["1", "2"]));
+        }
     }
 
     [Test]
@@ -74,8 +94,11 @@ public class OrderedComponentsTests
             .Build();
 
         IItem resolved = ctx.Resolve<IItem>();
-        Assert.That(resolved, Is.TypeOf<CompositeItem>());
-        Assert.That(((CompositeItem)resolved).Items.Select(i => i.Name), Is.EqualTo(["1", "2"]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved, Is.TypeOf<CompositeItem>());
+            Assert.That(((CompositeItem)resolved).Items.Select(i => i.Name), Is.EqualTo(["1", "2"]));
+        }
     }
 
     private class ModuleA : Module
@@ -103,6 +126,7 @@ public class OrderedComponentsTests
     }
     private interface IItem { string Name { get; } }
     private record Item(string Name) : IItem;
+    private record OtherItem(string Name) : IItem;
     private class CompositeItem(IItem[] items) : IItem
     {
         public IItem[] Items { get; } = items;

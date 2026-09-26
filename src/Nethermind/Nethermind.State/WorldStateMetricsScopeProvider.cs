@@ -3,11 +3,13 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 
 namespace Nethermind.State;
 
@@ -18,10 +20,39 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
     private double _stateMerkleizationTime;
 
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new MetricsScope(_baseProvider.BeginScope(baseBlock), this);
+
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => _baseProvider.HasStateForTargetBlock(targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!_baseProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = new MetricsScope(baseScope, this);
+        return true;
+    }
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!_baseProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = new MetricsScope(baseScope, this);
+        return true;
+    }
 
     private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
     {
+        public void HintWarmAccount(in ValueAddress address) => baseScope.HintWarmAccount(in address);
+
+        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => baseScope.HintWarmSlot(in address, in index);
+
         public void Dispose()
         {
             baseScope.Dispose();
@@ -29,6 +60,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         }
 
         public Hash256 RootHash => baseScope.RootHash;
+        public bool StorageRootsAreAuthoritative => baseScope.StorageRootsAreAuthoritative;
 
         public void UpdateRootHash() => baseScope.UpdateRootHash();
 
@@ -42,13 +74,15 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => baseScope.StartWriteBatch(estimatedAccountNum);
 
-        public void Commit(long blockNumber)
+        public void Commit(ulong blockNumber)
         {
             long start = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);
             parent._stateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             parent._updateMetrics(parent._stateMerkleizationTime);
         }
+
+        public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => baseScope.WriteBackCommittedState(takeSnapshot);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => baseScope.HintBal(bal, sink);

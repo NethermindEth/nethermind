@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
+using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
 
 // Blockchain tests - directory derived from class name by convention (strip "BlockchainTests", lowercase)
 public class FrontierBlockchainTests : PyspecBlockchainTestFixture<FrontierBlockchainTests>;
 public class HomesteadBlockchainTests : PyspecBlockchainTestFixture<HomesteadBlockchainTests>;
+public class TangerineWhistleBlockchainTests : PyspecBlockchainTestFixture<TangerineWhistleBlockchainTests>;
+public class SpuriousDragonBlockchainTests : PyspecBlockchainTestFixture<SpuriousDragonBlockchainTests>;
 public class ByzantiumBlockchainTests : PyspecBlockchainTestFixture<ByzantiumBlockchainTests>;
 public class IstanbulBlockchainTests : PyspecBlockchainTestFixture<IstanbulBlockchainTests>;
 public class BerlinBlockchainTests : PyspecBlockchainTestFixture<BerlinBlockchainTests>;
@@ -26,6 +29,8 @@ public class PragueToOsakaAtTime15kBlockchainTests : PyspecBlockchainTestFixture
 public class OsakaToBpo1AtTime15kBlockchainTests : PyspecBlockchainTestFixture<OsakaToBpo1AtTime15kBlockchainTests>;
 public class Bpo1ToBpo2AtTime15kBlockchainTests : PyspecBlockchainTestFixture<Bpo1ToBpo2AtTime15kBlockchainTests>;
 public class Bpo2ToAmsterdamAtTime15kBlockchainTests : PyspecBlockchainTestFixture<Bpo2ToAmsterdamAtTime15kBlockchainTests>;
+public class Bpo2ToBpo3AtTime15kBlockchainTests : PyspecBlockchainTestFixture<Bpo2ToBpo3AtTime15kBlockchainTests>;
+public class Bpo3ToBpo4AtTime15kBlockchainTests : PyspecBlockchainTestFixture<Bpo3ToBpo4AtTime15kBlockchainTests>;
 
 // Engine blockchain tests - post-merge forks with Engine API-specific coverage.
 public class ParisEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ParisEngineBlockchainTests>;
@@ -41,6 +46,11 @@ public class PragueToOsakaAtTime15kEngineBlockchainTests : PyspecEngineBlockchai
 public class OsakaToBpo1AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<OsakaToBpo1AtTime15kEngineBlockchainTests>;
 public class Bpo1ToBpo2AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo1ToBpo2AtTime15kEngineBlockchainTests>;
 public class Bpo2ToAmsterdamAtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo2ToAmsterdamAtTime15kEngineBlockchainTests>;
+public class Bpo2ToBpo3AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo2ToBpo3AtTime15kEngineBlockchainTests>;
+public class Bpo3ToBpo4AtTime15kEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Bpo3ToBpo4AtTime15kEngineBlockchainTests>;
+
+// Loads `for_bogota` from the EIP-7805 fixture release.
+public class BogotaEngineBlockchainTests : PyspecBogotaEngineBlockchainTestFixture;
 
 // Sync blockchain tests - exercise sync-mode payload validation alongside the standard engine flow.
 public class AmsterdamSyncBlockchainTests : PyspecSyncBlockchainTestFixture<AmsterdamSyncBlockchainTests>;
@@ -59,6 +69,8 @@ public class AmsterdamParallelFullEngineBlockchainTests() : PyspecAmsterdamEngin
 // State tests - directory derived from class name by convention (strip "StateTests", lowercase)
 public class FrontierStateTests : PyspecStateTestFixture<FrontierStateTests>;
 public class HomesteadStateTests : PyspecStateTestFixture<HomesteadStateTests>;
+public class TangerineWhistleStateTests : PyspecStateTestFixture<TangerineWhistleStateTests>;
+public class SpuriousDragonStateTests : PyspecStateTestFixture<SpuriousDragonStateTests>;
 public class ByzantiumStateTests : PyspecStateTestFixture<ByzantiumStateTests>;
 public class IstanbulStateTests : PyspecStateTestFixture<IstanbulStateTests>;
 public class BerlinStateTests : PyspecStateTestFixture<BerlinStateTests>;

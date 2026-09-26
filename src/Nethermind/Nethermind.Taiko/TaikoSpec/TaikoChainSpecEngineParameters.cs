@@ -11,19 +11,18 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
 {
     public string EngineName => SealEngineType;
     public string SealEngineType => Core.SealEngineType.Taiko;
-    public long? OntakeTransition { get; set; }
-    public long? PacayaTransition { get; set; }
+    public ulong? OntakeTransition { get; set; }
+    public ulong? PacayaTransition { get; set; }
     public ulong? ShastaTimestamp { get; set; }
     public ulong? UnzenTimestamp { get; set; }
     public ulong? UnzenBlockZkGasLimit { get; set; }
     public ulong? UnzenTxIntrinsicZkGas { get; set; }
 
     /// <summary>
-    /// Ordered list of Unzen ZK gas multiplier schedules, each pinned to its activation timestamp.
-    /// The chainspec is the only source of truth for these tables — no defaults live in code. The
-    /// schedule with the largest <see cref="TaikoUnzenZkGasSchedule.Timestamp"/> not exceeding the
-    /// active block timestamp is the one in effect, with the earliest-timestamp entry acting as a
-    /// floor so a meter always has a table.
+    /// Ordered list of Unzen ZK gas multiplier schedules, each pinned to an activation timestamp.
+    /// The schedule with the largest <see cref="TaikoUnzenZkGasSchedule.Timestamp"/> not exceeding
+    /// the active block timestamp is in effect; if every entry activates in the future, the
+    /// earliest acts as a floor so the meter always has a table.
     /// </summary>
     public List<TaikoUnzenZkGasSchedule>? UnzenZkGasSchedules { get; set; }
 
@@ -33,14 +32,12 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
 
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
 
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+    public void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps)
     {
-        // Filter activations at or before genesis. Taiko chainspecs always have genesis
-        // timestamp 0 (see taiko-alethia.json, taiko-hoodi.json, gavin's nmc-devnet.json),
-        // so the EIP-2124 "skip activations <= genesis" rule simplifies to ">0". Without this
-        // filter, Shasta=0 / Unzen=0 entries get folded into the CRC32 fork-id walk
-        // unconditionally, producing a hash chain that diverges from taiko-geth/alethia-reth
-        // peers (observed 0xbf99ee8f vs expected 0x7fec7e13 → InvalidForkId disconnect).
+        // Skip activations at timestamp 0: Taiko chainspecs use 0 to mean "active at genesis", and
+        // EIP-2124 excludes pre-genesis activations from the fork-id walk. Folding a 0-timestamp
+        // transition into the CRC32 walk produces a fork-id that diverges from taiko-geth /
+        // alethia-reth peers and trips InvalidForkId disconnects.
         if (OntakeTransition is { } o && o > 0)
         {
             blockNumbers.Add(o);

@@ -14,6 +14,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -45,7 +46,11 @@ public class DataFeed
     private readonly ILogger _logger;
     private readonly CancellationToken _lifetime;
 
-    private long _subscribers;
+    // Per event type, so a subscriber that only wants processing statistics does not make the node
+    // build the forkChoice payload - the whole head block with every transaction, receipt and log.
+    private readonly long[] _subscribersByType = new long[Enum.GetValues<EntryType>().Length];
+    private static readonly EntryType[] StreamedEntryTypes =
+        [EntryType.processed, EntryType.log, EntryType.forkChoice, EntryType.txLinks, EntryType.system, EntryType.peers];
 
     public DataFeed(
         ITxPool txPool,
@@ -62,7 +67,7 @@ public class DataFeed
         ArgumentNullException.ThrowIfNull(receiptFinder);
         ArgumentNullException.ThrowIfNull(blockTree);
         ArgumentNullException.ThrowIfNull(syncPeerPool);
-        ArgumentNullException.ThrowIfNull(mainProcessingContext?.BlockchainProcessor);
+        ArgumentNullException.ThrowIfNull(mainProcessingContext?.BlockProcessingQueue);
 
         _lifetime = lifetime;
         _txPool = txPool;
@@ -72,7 +77,7 @@ public class DataFeed
 
         _logger = logManager.GetClassLogger<DataFeed>();
 
-        mainProcessingContext.BlockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
+        mainProcessingContext.BlockProcessingQueue.NewProcessingStatistics += OnNewProcessingStatistics;
         blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;
         ConsoleHelpers.LineWritten += OnConsoleLineWritten;
         _ = StartTxFlowRefresh();
@@ -82,10 +87,11 @@ public class DataFeed
 
     public async Task ProcessingFeedAsync(HttpContext ctx, CancellationToken ct)
     {
-        Interlocked.Increment(ref _subscribers);
+        EntryType[] requested = ParseRequestedEvents(ctx.Request.Query["events"]);
+        foreach (EntryType type in requested) Interlocked.Increment(ref _subscribersByType[(int)type]);
         try
         {
-            await ProcessingFeeds(ctx, ct);
+            await ProcessingFeeds(ctx, requested, ct);
         }
         catch (OperationCanceledException)
         {
@@ -97,11 +103,31 @@ public class DataFeed
         }
         finally
         {
-            Interlocked.Decrement(ref _subscribers);
+            foreach (EntryType type in requested) Interlocked.Decrement(ref _subscribersByType[(int)type]);
         }
     }
 
-    private async Task ProcessingFeeds(HttpContext ctx, CancellationToken ct)
+    /// <summary>Resolves the <c>events</c> query parameter (comma-separated <see cref="EntryType"/> names) to the streamed event types; absent, empty, or containing no recognized streamed event names means all of them.</summary>
+    internal static EntryType[] ParseRequestedEvents(string? events)
+    {
+        if (string.IsNullOrWhiteSpace(events)) return StreamedEntryTypes;
+
+        ReadOnlySpan<char> names = events;
+        using ArrayPoolList<EntryType> requested = new(StreamedEntryTypes.Length);
+        foreach (Range range in names.Split(','))
+        {
+            if (Enum.TryParse(names[range].Trim(), ignoreCase: true, out EntryType type)
+                && Array.IndexOf(StreamedEntryTypes, type) >= 0
+                && !requested.Contains(type))
+            {
+                requested.Add(type);
+            }
+        }
+
+        return requested.Count == 0 ? StreamedEntryTypes : requested.AsSpan().ToArray();
+    }
+
+    private async Task ProcessingFeeds(HttpContext ctx, EntryType[] requested, CancellationToken ct)
     {
         ctx.Response.ContentType = "text/event-stream";
         ctx.Response.Headers["X-Accel-Buffering"] = "no";
@@ -120,7 +146,7 @@ public class DataFeed
 
         Channel<ChannelEntry> channel = Channel.CreateUnbounded<ChannelEntry>();
 
-        InitializeChannelSubscriptions(channel, ct);
+        InitializeChannelSubscriptions(channel, requested, ct);
 
         await foreach (ChannelEntry entry in channel.Reader.ReadAllAsync(ct))
         {
@@ -135,7 +161,7 @@ public class DataFeed
         }
     }
 
-    private enum EntryType
+    internal enum EntryType
     {
         nodeData,
         txNodes,
@@ -147,31 +173,46 @@ public class DataFeed
         peers
     }
 
-    private class ChannelEntry
+    internal class ChannelEntry
     {
         public EntryType Type { get; set; }
         public byte[] Data { get; set; }
     }
-    private static async Task ChannelSubscribe(EntryType type, Func<Task<byte[]>> nextTask, Channel<ChannelEntry> channel, CancellationToken ct)
+    internal static async Task ChannelSubscribe(EntryType type, Func<Task<byte[]>> nextTask, Channel<ChannelEntry> channel, CancellationToken ct)
     {
         Task<byte[]> task = nextTask();
 
-        while (!ct.IsCancellationRequested)
+        try
         {
-            byte[] data = await task;
-            task = nextTask();
-            await channel.Writer.WriteAsync(new ChannelEntry { Type = type, Data = data }, ct);
+            while (!ct.IsCancellationRequested)
+            {
+                byte[] data = await task.WaitAsync(ct);
+                task = nextTask();
+                await channel.Writer.WriteAsync(new ChannelEntry { Type = type, Data = data }, ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Normal feed cancellation
         }
     }
 
-    private void InitializeChannelSubscriptions(Channel<ChannelEntry> channel, CancellationToken ct)
+    private void InitializeChannelSubscriptions(Channel<ChannelEntry> channel, EntryType[] requested, CancellationToken ct)
     {
-        _ = ChannelSubscribe(EntryType.processed, () => _processing.Task, channel, ct);
-        _ = ChannelSubscribe(EntryType.log, () => _log.Task, channel, ct);
-        _ = ChannelSubscribe(EntryType.forkChoice, () => _forkChoice.Task, channel, ct);
-        _ = ChannelSubscribe(EntryType.txLinks, () => _txFlow.Task, channel, ct);
-        _ = ChannelSubscribe(EntryType.system, () => _systemStats.Task, channel, ct);
-        _ = ChannelSubscribe(EntryType.peers, () => _peers.Task, channel, ct);
+        foreach (EntryType type in requested)
+        {
+            Func<Task<byte[]>> nextTask = type switch
+            {
+                EntryType.processed => () => _processing.Task,
+                EntryType.log => () => _log.Task,
+                EntryType.forkChoice => () => _forkChoice.Task,
+                EntryType.txLinks => () => _txFlow.Task,
+                EntryType.system => () => _systemStats.Task,
+                EntryType.peers => () => _peers.Task,
+                _ => throw new ArgumentOutOfRangeException(nameof(requested), type, "Not a streamed event type")
+            };
+            _ = ChannelSubscribe(type, nextTask, channel, ct);
+        }
     }
 
     private static byte[] GetNodeData()
@@ -186,7 +227,7 @@ public class DataFeed
         {
             await TaskExtensions.DelaySafe(millisecondsDelay: 1000, _lifetime);
             // No subscribers, no need to prepare event data
-            if (!HaveSubscribers) continue;
+            if (!HaveSubscribers(EntryType.txLinks)) continue;
 
             byte[] data = GetTxFlowTask();
 
@@ -205,19 +246,28 @@ public class DataFeed
         _lastTimeStamp = Stopwatch.GetTimestamp();
         while (!_lifetime.IsCancellationRequested)
         {
-            byte[] data = await GetStatsTask(delayMs: 1000);
+            byte[]? data = await GetStatsTask(delayMs: 1000);
+            if (data is null) continue;
+
             DataCompletion systemStats = _systemStats;
             _systemStats = new(TaskCreationOptions.RunContinuationsAsynchronously);
             systemStats.TrySetResult(data);
         }
     }
 
-    private async Task<byte[]> GetStatsTask(int delayMs)
+    internal async Task<byte[]?> GetStatsTask(int delayMs)
     {
         await TaskExtensions.DelaySafe(delayMs, _lifetime);
 
         Environment.ProcessCpuUsage cpuUsage = Environment.CpuUsage;
         long timeStamp = Stopwatch.GetTimestamp();
+
+        if (!HaveSubscribers(EntryType.system))
+        {
+            _lastCpuUsage = cpuUsage;
+            _lastTimeStamp = timeStamp;
+            return null;
+        }
 
         TimeSpan elapsed = Stopwatch.GetElapsedTime(_lastTimeStamp, timeStamp);
 
@@ -243,7 +293,7 @@ public class DataFeed
         {
             await TaskExtensions.DelaySafe(millisecondsDelay: 1000, _lifetime);
             // No subscribers, no need to prepare event data
-            if (!HaveSubscribers) continue;
+            if (!HaveSubscribers(EntryType.peers)) continue;
 
             byte[] data = GetPeersTask();
             DataCompletion peers = _peers;
@@ -302,7 +352,7 @@ public class DataFeed
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
     {
         // No subscribers, no need to prepare event data
-        if (!HaveSubscribers) return;
+        if (!HaveSubscribers(EntryType.processed)) return;
 
         DataCompletion processing = _processing;
         _processing = new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -313,104 +363,117 @@ public class DataFeed
     private void OnForkChoiceUpdated(object? sender, IBlockTree.ForkChoiceUpdateEventArgs choice)
     {
         // No subscribers, no need to prepare event data
-        if (!HaveSubscribers) return;
+        if (!HaveSubscribers(EntryType.forkChoice)) return;
 
+        // Swapped at raise time so subscribers see updates in raise order even when a slower preparation finishes later.
+        DataCompletion next = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, next);
         Task.Run(() =>
         {
             try
             {
-                OnForkChoiceUpdated(choice);
+                OnForkChoiceUpdated(forkChoice, choice);
             }
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error("UI Forkchoice data preparation failed", e);
+                // Subscribers awaiting this update get the next one that succeeds instead of waiting forever.
+                _ = next.Task.ContinueWith(
+                    static (completed, state) => ((DataCompletion)state!).TrySetResult(completed.Result),
+                    forkChoice,
+                    TaskContinuationOptions.OnlyOnRanToCompletion);
             }
         });
     }
 
     private DataCompletion _forkChoice = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private void OnForkChoiceUpdated(IBlockTree.ForkChoiceUpdateEventArgs choice)
+    private void OnForkChoiceUpdated(DataCompletion forkChoice, IBlockTree.ForkChoiceUpdateEventArgs choice)
     {
-        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously));
-
         Block head = choice.Head;
         Transaction[] txs = head.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(head.Header);
         ReceiptForRpc[] receipts = _receiptFinder.Get(head)
             .Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header)))
             .ToArray();
-        forkChoice.TrySetResult(
-            JsonSerializer.SerializeToUtf8Bytes(
-                new ForkData
-                {
-                    Head = new BlockForWeb
+        try
+        {
+            forkChoice.TrySetResult(
+                JsonSerializer.SerializeToUtf8Bytes(
+                    new ForkData
                     {
-                        ExtraData = head.ExtraData ?? [],
-                        GasLimit = head.GasLimit,
-                        GasUsed = head.GasUsed,
-                        Hash = head.Hash ?? Hash256.Zero,
-                        Beneficiary = head.Beneficiary ?? Address.Zero,
-                        Number = head.Number,
-                        Size = _blockDecoder.GetLength(head, RlpBehaviors.None),
-                        Timestamp = head.Timestamp,
-                        BaseFeePerGas = head.BaseFeePerGas,
-                        BlobGasUsed = head.BlobGasUsed ?? 0,
-                        ExcessBlobGas = head.ExcessBlobGas ?? 0,
-                        Tx = [.. head.Transactions.Select(t => new TransactionForWeb
+                        Head = new BlockForWeb
                         {
-                            Hash = t.Hash,
-                            From = t.SenderAddress,
-                            To = t.To,
-                            TxType = (int)t.Type,
-                            MaxPriorityFeePerGas = t.MaxPriorityFeePerGas,
-                            MaxFeePerGas = t.MaxFeePerGas,
-                            GasPrice = t.GasPrice,
-                            GasLimit = t.GasLimit,
-                            Nonce = t.Nonce,
-                            Value = t.Value,
-                            DataLength = t.DataLength,
-                            Blobs = t.BlobVersionedHashes?.Length ?? 0,
-                            Method = t.DataLength >= 4 ? [.. t.Data.Span[..4]] : []
-                        })],
-                        Receipts = [.. receipts.Select(r => new ReceiptForWeb
-                        {
-                            GasUsed = r.GasUsed,
-                            EffectiveGasPrice = r.EffectiveGasPrice ?? UInt256.Zero,
-                            ContractAddress = r.ContractAddress,
-                            Logs = [.. r.Logs.Select(l => new LogEntryForWeb
+                            ExtraData = head.ExtraData ?? [],
+                            GasLimit = head.GasLimit,
+                            GasUsed = head.GasUsed,
+                            Hash = head.Hash ?? Hash256.Zero,
+                            Beneficiary = head.Beneficiary ?? Address.Zero,
+                            Number = head.Number,
+                            Size = _blockDecoder.GetLength(head, RlpBehaviors.None),
+                            Timestamp = head.Timestamp,
+                            BaseFeePerGas = head.BaseFeePerGas,
+                            BlobGasUsed = head.BlobGasUsed ?? 0,
+                            ExcessBlobGas = head.ExcessBlobGas ?? 0,
+                            Tx = [.. head.Transactions.Select(t => new TransactionForWeb
                             {
-                                Address = l.Address,
-                                Data = l.Data,
-                                Topics = l.Topics
+                                Hash = t.Hash,
+                                From = t.SenderAddress,
+                                To = t.To,
+                                TxType = (int)t.Type,
+                                MaxPriorityFeePerGas = t.MaxPriorityFeePerGas,
+                                MaxFeePerGas = t.MaxFeePerGas,
+                                GasPrice = t.GasPrice,
+                                GasLimit = t.GasLimit,
+                                Nonce = t.Nonce,
+                                Value = t.Value,
+                                DataLength = t.DataLength,
+                                Blobs = t.BlobVersionedHashes?.Length ?? 0,
+                                Method = t.DataLength >= 4 ? [.. t.Data.Span[..4]] : []
                             })],
-                            Status = r.Status,
-                            BlobGasPrice = r.BlobGasPrice ?? UInt256.Zero,
-                            BlobGasUsed = r.BlobGasUsed ?? 0,
-                        })]
+                            Receipts = [.. receipts.Select(r => new ReceiptForWeb
+                            {
+                                GasUsed = r.GasUsed,
+                                EffectiveGasPrice = r.EffectiveGasPrice ?? UInt256.Zero,
+                                ContractAddress = r.ContractAddress,
+                                Logs = [.. r.Logs.Select(l => new LogEntryForWeb
+                                {
+                                    Address = l.Address,
+                                    Data = l.Data,
+                                    Topics = l.Topics
+                                })],
+                                Status = r.Status,
+                                BlobGasPrice = r.BlobGasPrice ?? UInt256.Zero,
+                                BlobGasUsed = r.BlobGasUsed ?? 0,
+                            })]
+                        },
+                        Safe = choice.Safe,
+                        Finalized = choice.Finalized
                     },
-                    Safe = choice.Safe,
-                    Finalized = choice.Finalized
-                },
-                EthereumJsonSerializer.JsonOptions
-             )
-        );
+                    EthereumJsonSerializer.JsonOptions
+                 )
+            );
+        }
+        finally
+        {
+            receipts.DisposeItems();
+        }
     }
 
     private class ForkData
     {
         public BlockForWeb Head { get; set; }
-        public long Safe { get; set; }
-        public long Finalized { get; set; }
+        public ulong Safe { get; set; }
+        public ulong Finalized { get; set; }
     }
 
     private class BlockForWeb
     {
         public byte[] ExtraData { get; set; }
-        public long GasLimit { get; set; }
-        public long GasUsed { get; set; }
+        public ulong GasLimit { get; set; }
+        public ulong GasUsed { get; set; }
         public Hash256 Hash { get; set; }
         public Address Beneficiary { get; set; }
-        public long Number { get; set; }
+        public ulong Number { get; set; }
         public int Size { get; set; }
         public ulong Timestamp { get; set; }
         public UInt256 BaseFeePerGas { get; set; }
@@ -422,7 +485,7 @@ public class DataFeed
     }
     private class ReceiptForWeb
     {
-        public long GasUsed { get; set; }
+        public ulong GasUsed { get; set; }
         public UInt256 EffectiveGasPrice { get; set; }
         public Address? ContractAddress { get; set; }
         public LogEntryForWeb[] Logs { get; set; }
@@ -445,7 +508,7 @@ public class DataFeed
         public UInt256 MaxPriorityFeePerGas { get; set; }
         public UInt256 MaxFeePerGas { get; set; }
         public UInt256 GasPrice { get; set; }
-        public long GasLimit { get; set; }
+        public ulong GasLimit { get; set; }
         public UInt256 Nonce { get; set; }
         public UInt256 Value { get; set; }
         public int DataLength { get; set; }
@@ -461,14 +524,14 @@ public class DataFeed
         public AllocationContexts Contexts { get; set; }
         public NodeClientType ClientType { get; set; }
         public int Version { get; set; }
-        public long Head { get; set; }
+        public ulong Head { get; set; }
     }
 
     private DataCompletion _log = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private void OnConsoleLineWritten(object? sender, string logLine)
     {
         // No subscribers, no need to prepare event data
-        if (!HaveSubscribers) return;
+        if (!HaveSubscribers(EntryType.log)) return;
 
         DataCompletion log = _log;
         _log = new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -476,7 +539,7 @@ public class DataFeed
         log.TrySetResult(JsonSerializer.SerializeToUtf8Bytes(new[] { logLine }, JsonSerializerOptions.Web));
     }
 
-    private bool HaveSubscribers => Volatile.Read(ref _subscribers) > 0;
+    private bool HaveSubscribers(EntryType type) => Volatile.Read(ref _subscribersByType[(int)type]) > 0;
 }
 
 internal class SystemStats

@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public bool ShouldUseTxTrace(ParityTraceAction? tx)
         {
-            if (tx is not null && !(_count <= 0) && MatchAddresses(tx.From, tx.To))
+            if (tx is not null && !(_count <= 0) && MatchAddresses(tx.From, tx.Type == "reward" ? tx.Author : tx.To))
             {
                 if (_after > 0)
                 {

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Evm;
 
@@ -15,5 +16,17 @@ namespace Nethermind.State.OverridableEnv;
 /// </summary>
 public interface IShareableOverridableEnvSource<T> : IDisposable
 {
-    Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null);
+    /// <remarks>
+    /// When <paramref name="blockOverride"/> is supplied it is applied to <paramref name="header"/> <b>in place</b>;
+    /// see <see cref="IOverridableEnv.TryBuildAndOverride"/>. Callers must pass a header they own (e.g. a clone).
+    /// Unlike <see cref="IOverridableEnv.TryBuildAndOverride"/>, an implementation may leave
+    /// <paramref name="stateOverride"/> unmerkleized when its consumers only read through the scope's world
+    /// state, in which case <paramref name="header"/> receives no post-state-override root and state must not
+    /// be resolved through one.
+    /// </remarks>
+    /// <returns><c>false</c> when the state at <paramref name="header"/> is unavailable.</returns>
+    bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, [NotNullWhen(true)] out Scope<T>? scope);
+
+    /// <inheritdoc cref="IOverridableEnv.TryBuildAndOverrideAtTarget"/>
+    bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, [NotNullWhen(true)] out Scope<T>? scope);
 }

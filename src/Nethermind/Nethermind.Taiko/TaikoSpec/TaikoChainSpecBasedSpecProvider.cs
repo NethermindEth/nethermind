@@ -20,12 +20,12 @@ public class TaikoChainSpecBasedSpecProvider(ChainSpec chainSpec,
         TaikoL2Address = Address.Zero
     };
 
-    protected override ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
+    protected override ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, ulong releaseStartBlock, ulong? releaseStartTimestamp = null)
     {
         TaikoReleaseSpec releaseSpec = (TaikoReleaseSpec)base.CreateReleaseSpec(chainSpec, releaseStartBlock, releaseStartTimestamp);
 
-        releaseSpec.IsOntakeEnabled = (chainSpecEngineParameters.OntakeTransition ?? long.MaxValue) <= releaseStartBlock;
-        releaseSpec.IsPacayaEnabled = (chainSpecEngineParameters.PacayaTransition ?? long.MaxValue) <= releaseStartBlock;
+        releaseSpec.IsOntakeEnabled = (chainSpecEngineParameters.OntakeTransition ?? ulong.MaxValue) <= releaseStartBlock;
+        releaseSpec.IsPacayaEnabled = (chainSpecEngineParameters.PacayaTransition ?? ulong.MaxValue) <= releaseStartBlock;
         releaseSpec.IsShastaEnabled = (chainSpecEngineParameters.ShastaTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
         releaseSpec.IsUnzenEnabled = (chainSpecEngineParameters.UnzenTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
         releaseSpec.UnzenBlockZkGasLimit = chainSpecEngineParameters.UnzenBlockZkGasLimit ?? ZkGasSchedule.BlockZkGasLimit;

@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
+using Nethermind.Core.Test;
+
 namespace Ethereum.Test.Base;
 
 /// <summary>
@@ -118,7 +120,7 @@ public abstract class TestLoadStrategy(string testsRootPath, TestType testType) 
             return [];
         }
 
-        if (TestChunkFilter.IsEnabled)
+        if (TestChunkFilter.TryGetChunkConfig() is not null)
         {
             return LoadTestFilesSequentially(testFiles, loadFile);
         }

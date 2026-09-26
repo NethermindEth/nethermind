@@ -26,7 +26,7 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
         _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<HttpRemoteEraClient>();
     }
 
-    public async Task<IReadOnlyDictionary<int, RemoteEraEntry>> FetchManifestAsync(CancellationToken cancellation = default)
+    public async Task<IReadOnlyDictionary<uint, RemoteEraEntry>> FetchManifestAsync(CancellationToken cancellation = default)
     {
         Uri manifestUri = new(_baseUrl, _manifestFilename);
 
@@ -40,7 +40,7 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
         await using Stream stream = await response.Content.ReadAsStreamAsync(cancellation).ConfigureAwait(false);
         using StreamReader reader = new(stream);
 
-        Dictionary<int, RemoteEraEntry> manifest = [];
+        Dictionary<uint, RemoteEraEntry> manifest = [];
 
         while (await reader.ReadLineAsync(cancellation).ConfigureAwait(false) is { } line)
         {
@@ -54,7 +54,7 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
             string filename = line[(separatorIdx + 2)..].Trim();
 
             if (!IsPlainFilename(filename)) continue;
-            if (!TryParseEpoch(filename, out int epoch)) continue;
+            if (!TryParseEpoch(filename, out uint epoch)) continue;
             if (!TryParseHex(hashHex, out byte[] sha256)) continue;
 
             manifest[epoch] = new RemoteEraEntry(filename, sha256);
@@ -105,17 +105,17 @@ public sealed class HttpRemoteEraClient : IRemoteEraClient, IDisposable
     private static bool IsPlainFilename(string filename) =>
         filename == Path.GetFileName(filename) && !Path.IsPathRooted(filename);
 
-    private static bool TryParseEpoch(string filename, out int epoch)
+    private static bool TryParseEpoch(string filename, out uint epoch)
     {
         epoch = 0;
-        // Expected: {network}-{epoch:05d}-{hash}.erae
+        // Expected: {network}-{epoch:05d}-{hash}[-{profile}].ere (or legacy .erae)
         ReadOnlySpan<char> name = Path.GetFileNameWithoutExtension(filename.AsSpan());
         int first = name.IndexOf('-');
         if (first < 0) return false;
         int second = name[(first + 1)..].IndexOf('-');
         if (second < 0) return false;
         ReadOnlySpan<char> epochPart = name[(first + 1)..(first + 1 + second)];
-        return int.TryParse(epochPart, out epoch) && epoch >= 0;
+        return uint.TryParse(epochPart, out epoch);
     }
 
     private static bool TryParseHex(string hex, out byte[] bytes)

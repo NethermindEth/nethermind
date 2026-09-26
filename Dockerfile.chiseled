@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.300-resolute@sha256:8b3c86c1a43c4d084c20be348dfa8821508003cf5caf02146d30de76256d1dab AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.401-resolute@sha256:d818bb3014d94172e93820d985130135870bd1760f02588a61263a85c966860e AS build
 
 ARG BUILD_CONFIG=release
 ARG CI=true
@@ -29,7 +29,25 @@ RUN cd /publish && \
   mkdir logs && \
   mkdir nethermind_db
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.8-resolute-chiseled@sha256:deca9bb91992932c95d051081c5fb8638f226f36d8cce64637530f4da9648fca
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.12-resolute-chiseled@sha256:99a0fe6f3e933a3d170aa38d8be4237125b72c644a9229889ee842628cbaf845
+
+ARG COMMIT_HASH=unknown
+ARG VERSION=unknown
+ARG BUILD_TIMESTAMP=1970-01-01T00:00:00Z
+
+# An ARG is out of scope after a FROM, so the three above must be redeclared in this stage.
+# Without that, the values below silently resolve to an empty string. The defaults keep a plain
+# `docker build` with no build args self-describing rather than blank.
+LABEL org.opencontainers.image.title="Nethermind" \
+  org.opencontainers.image.description="A robust execution client for Ethereum node operators." \
+  org.opencontainers.image.vendor="Demerzel Solutions Limited" \
+  org.opencontainers.image.licenses="LGPL-3.0-only" \
+  org.opencontainers.image.url="https://nethermind.io/nethermind-client" \
+  org.opencontainers.image.documentation="https://docs.nethermind.io" \
+  org.opencontainers.image.source="https://github.com/NethermindEth/nethermind" \
+  org.opencontainers.image.version="$VERSION" \
+  org.opencontainers.image.revision="$COMMIT_HASH" \
+  org.opencontainers.image.created="$BUILD_TIMESTAMP"
 
 WORKDIR /nethermind
 

@@ -67,6 +67,22 @@ public class InvalidBlockInterceptorTest
         }
     }
 
+    /// <summary>
+    /// The interceptor is the decorator registered for <see cref="IBlockValidator"/>, so a missing overload here
+    /// would route every opt-out to the interface default and silently validate fully.
+    /// </summary>
+    [Test]
+    public void TestValidateHeaderForwardsValidateHash([Values] bool validateHash)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _baseValidator.Validate(header, parent, false, out Arg.Any<string?>(), validateHash).Returns(true);
+
+        Assert.That(_invalidBlockInterceptor.Validate(header, parent, false, out _, validateHash), Is.True);
+
+        _baseValidator.Received().Validate(header, parent, false, out Arg.Any<string?>(), validateHash);
+    }
+
     [TestCase(true, false)]
     [TestCase(false, true)]
     public void TestValidateProcessedBlock(bool baseReturnValue, bool isInvalidBlockReported)

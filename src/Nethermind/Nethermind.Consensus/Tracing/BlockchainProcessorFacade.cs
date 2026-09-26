@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -18,16 +20,26 @@ namespace Nethermind.Consensus.Tracing;
 public sealed class BlockchainProcessorFacade(
     IBlockProcessor blockProcessor,
     ISpecProvider specProvider,
-    CompositeBlockPreprocessorStep preprocessorStep
+    IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps
 )
 {
     public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
-        preprocessorStep.RecoverData(block);
+        for (int i = 0; i < preprocessorSteps.Count; i++)
+        {
+            preprocessorSteps[i].RecoverData(block);
+        }
 
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
-        (Block? processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(block, options, tracer, spec, token);
+        // Mirror BranchProcessor: a traced block runs the sequential EIP-7928 BAL path. This facade bypasses
+        // BranchProcessor, so it also bypasses its parallel BlockAccessListSequentialRetryException handler —
+        // forcing sequential here keeps traced processing off the unhandled parallel path.
+        ProcessingOptions blockOptions = tracer == NullBlockTracer.Instance
+            ? options
+            : options | ProcessingOptions.ForceSequentialBlockAccessList;
+
+        (Block? processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(block, blockOptions, tracer, spec, token);
         return processedBlock;
     }
 }

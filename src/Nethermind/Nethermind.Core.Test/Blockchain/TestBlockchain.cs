@@ -47,6 +47,7 @@ namespace Nethermind.Core.Test.Blockchain;
 public class TestBlockchain : IDisposable
 {
     public const int DefaultTimeout = 30000;
+    public const int HeadNumber = 3;
     protected long TestTimeout { get; init; } = DefaultTimeout;
     public IStateReader StateReader => _fromContainer.StateReader;
     public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
@@ -64,7 +65,7 @@ public class TestBlockchain : IDisposable
     public IBlockProcessor BlockProcessor => _fromContainer.MainProcessingContext.BlockProcessor;
     public IBlockchainProcessor BlockchainProcessor => _fromContainer.MainProcessingContext.BlockchainProcessor;
     public IBlockProcessingQueue BlockProcessingQueue => _fromContainer.MainProcessingContext.BlockProcessingQueue;
-    public IBlockPreprocessorStep BlockPreprocessorStep => _fromContainer.BlockPreprocessorStep;
+    public IReadOnlyList<IBlockPreprocessorStep> BlockPreprocessorSteps => _fromContainer.BlockPreprocessorSteps;
 
     public IBlockTree BlockTree => _fromContainer.BlockTree;
 
@@ -132,7 +133,7 @@ public class TestBlockchain : IDisposable
         Lazy<IReceiptStorage> receiptStorage,
         Lazy<ITxPool> txPool,
         Lazy<IWorldStateManager> worldStateManager,
-        Lazy<IBlockPreprocessorStep> blockPreprocessorStep,
+        Lazy<IReadOnlyList<IBlockPreprocessorStep>> blockPreprocessorSteps,
         Lazy<IBlockTree> blockTree,
         Lazy<IBlockFinder> blockFinder,
         Lazy<ILogFinder> logFinder,
@@ -162,7 +163,7 @@ public class TestBlockchain : IDisposable
         public IReceiptStorage ReceiptStorage => receiptStorage.Value;
         public ITxPool TxPool => txPool.Value;
         public IWorldStateManager WorldStateManager => worldStateManager.Value;
-        public IBlockPreprocessorStep BlockPreprocessorStep => blockPreprocessorStep.Value;
+        public IReadOnlyList<IBlockPreprocessorStep> BlockPreprocessorSteps => blockPreprocessorSteps.Value;
         public IBlockTree BlockTree => blockTree.Value;
         public IBlockFinder BlockFinder => blockFinder.Value;
         public ILogFinder LogFinder => logFinder.Value;
@@ -192,6 +193,7 @@ public class TestBlockchain : IDisposable
         public bool AddBlockOnStart = true;
         public UInt256 AccountInitialValue = InitialValue;
         public long SlotTime = 1;
+        public string? SealEngineType;
     }
 
     // Please don't add any new parameter to this method. Pass any customization via autofac's configuration
@@ -201,18 +203,26 @@ public class TestBlockchain : IDisposable
     {
         JsonSerializer = new EthereumJsonSerializer();
 
-        IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
+        IConfig[] configs = [.. CreateConfigs()];
+        IConfigProvider configProvider = new ConfigProvider(configs);
+        // A fixture that returns its own IFlatDbConfig from CreateConfigs has pinned the backend (and often
+        // HistoryEnabled with it), so UseFlatDb must not be stamped over it.
+        if (!TestStateBackend.PinsBackend(configs))
+        {
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
+        }
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         ConfigureContainer(builder, configProvider);
         configurer?.Invoke(builder);
+        builder.ConfigureTestConfiguration(conf => conf.SealEngineType = SealEngineType);
 
         Container = builder.Build();
         _fromContainer = Container.Resolve<FromContainer>();
 
         Configuration testConfiguration = _fromContainer.Configuration;
 
-        BlockchainProcessor.Start();
+        BlockProcessingQueue.Start();
 
         BlockProducer = CreateTestBlockProducer();
         BlockProducerRunner ??= CreateBlockProducerRunner();
@@ -232,6 +242,20 @@ public class TestBlockchain : IDisposable
 
         return this;
     }
+
+    /// <summary>
+    /// Whether this test chain uses the flat state backend. Defaults to the suite-wide selection
+    /// (<see cref="TestStateBackend.UseFlatDb"/>, i.e. flat unless <c>TEST_USE_TRIE=1</c>); set this to
+    /// <c>true</c>/<c>false</c> per fixture to pin a backend.
+    /// </summary>
+    /// <remarks>
+    /// Backend-agnostic tests can leave this at the default. Pin to <c>false</c> for tests that assert
+    /// patricia-specific behaviour (trie structure, state root consistency across reorgs, full pruning, trie
+    /// healing, missing-trie-node errors); pin to <c>true</c> to assert a flat-only fix. A fixture that
+    /// returns its own <see cref="IFlatDbConfig"/> from <see cref="CreateConfigs"/> pins the backend that way
+    /// instead, and this property is not applied over it.
+    /// </remarks>
+    public bool UseFlatDb { get; set; } = TestStateBackend.UseFlatDb;
 
     protected virtual ChainSpec CreateChainSpec() => new();
 
@@ -331,7 +355,7 @@ public class TestBlockchain : IDisposable
 
             byte[] code = Bytes.FromHexString("0xabcd");
             state.InsertCode(TestItem.AddressA, code, specProvider.GenesisSpec);
-            state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+            state.Set(new StorageCell(TestItem.AddressA, UInt256.One), (UInt256)0xabcdef);
 
             IReleaseSpec? finalSpec = specProvider.GetFinalSpec();
 
@@ -347,12 +371,16 @@ public class TestBlockchain : IDisposable
                 state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec);
             }
 
-            BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
-
-            if (specProvider.SealEngine == Core.SealEngineType.AuRa)
+            if (finalSpec?.BuilderRequestsEnabled is true)
             {
-                genesisBlockBuilder.WithAura(0, new byte[65]);
+                state.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
+                state.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, specProvider.GenesisSpec);
+
+                state.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
+                state.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, specProvider.GenesisSpec);
             }
+
+            BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
 
             if (specProvider.GenesisSpec.IsEip4844Enabled)
             {
@@ -407,7 +435,7 @@ public class TestBlockchain : IDisposable
         while (true)
         {
             cts.Token.ThrowIfCancellationRequested();
-            if (BlockTree.Head?.Number == 3) return;
+            if (BlockTree.Head?.Number == HeadNumber) return;
             await Task.Delay(1, cts.Token);
         }
     }
@@ -488,7 +516,7 @@ public class TestBlockchain : IDisposable
 
     private Transaction GetFundsTransaction(Address address, UInt256 ether, uint index = 0)
     {
-        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
+        ulong nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)
@@ -500,7 +528,7 @@ public class TestBlockchain : IDisposable
 
     private Transaction GetFunds1559Transaction(Address address, UInt256 ether, uint index = 0)
     {
-        UInt256 nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
+        ulong nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
             .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)

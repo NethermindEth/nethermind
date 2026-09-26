@@ -26,16 +26,28 @@ namespace Nethermind.Blockchain
             if (Logger.IsInfo) Logger.Info($"Canonical chain heal complete: {repairedAbove + repairedBelow} level(s) repaired ({repairedAbove} stale above head cleared, {repairedBelow} incorrect markers fixed).");
         }
 
-        private long ClearStaleMarkersAbove(long fromExclusive, BatchWrite batch)
+        private long ClearStaleMarkersAbove(ulong fromExclusive, BatchWrite batch, (ulong Start, ulong End)? deletedRange = null, ulong? scanThrough = null)
         {
             // Cap at the highest level we could have written — a corrupted DB must not drive an unbounded scan.
-            long upperBound = Math.Max(BestKnownNumber, BestKnownBeaconNumber);
+            ulong upperBound = Math.Max(BestKnownNumber, BestKnownBeaconNumber);
             long cleared = 0L;
             int writesSinceFlush = 0;
-            for (long levelNumber = fromExclusive + 1; levelNumber <= upperBound; levelNumber++)
+            for (ulong levelNumber = fromExclusive + 1; levelNumber <= upperBound; levelNumber++)
             {
+                // Jump over deleted levels: they need no marker writes and may already contain gaps.
+                if (deletedRange is { } range && levelNumber >= range.Start && levelNumber <= range.End)
+                {
+                    if (range.End >= upperBound) break;
+                    levelNumber = range.End;
+                    continue;
+                }
                 ChainLevelInfo? level = LoadLevel(levelNumber);
-                if (level is null) break;
+                if (level is null)
+                {
+                    // Recovery must reach the old head even when earlier levels are missing.
+                    if (levelNumber < scanThrough) continue;
+                    break;
+                }
                 if (level.HasBlockOnMainChain)
                 {
                     level.HasBlockOnMainChain = false;

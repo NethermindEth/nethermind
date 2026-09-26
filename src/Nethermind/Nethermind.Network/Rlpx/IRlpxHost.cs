@@ -3,8 +3,8 @@
 
 using System;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats.Model;
@@ -22,9 +22,8 @@ namespace Nethermind.Network.Rlpx
     public interface IRlpxHost
     {
         Task Init();
-        Task<bool> ConnectAsync(Node node);
+        Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default);
         Task Shutdown();
-        PublicKey LocalNodeId { get; }
         int LocalPort { get; }
 
         /// <summary>

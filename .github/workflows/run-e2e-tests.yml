@@ -1,0 +1,70 @@
+name: Integration tests (E2E)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - master
+      - feat/integration-framework
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: NUnit parallel worker count (each spawns a Docker container; >4 may OOM ubuntu-latest)
+        type: string
+        default: '4'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  e2e-tests:
+    name: Run E2E (workers=${{ inputs.workers || '4' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Build Nethermind Docker image
+        run: docker build -t nethermind:integration-tests -f Dockerfile .
+
+      - name: Build EngineApiProxy Docker image
+        run: docker build -t engine-api-proxy:integration-tests -f tools/EngineApiProxy/Dockerfile .
+
+      - name: Build integration tests
+        run: dotnet build src/Nethermind/Nethermind.IntegrationTests/Nethermind.IntegrationTests.csproj -c Release
+
+      - name: Run E2E tests
+        env:
+          NETHERMIND_IMAGE: nethermind:integration-tests
+          ENGINE_API_PROXY_IMAGE: engine-api-proxy:integration-tests
+          WORKERS: ${{ inputs.workers || '4' }}
+        run: |
+          cat > /tmp/nunit.runsettings <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <RunSettings>
+            <NUnit>
+              <NumberOfTestWorkers>${WORKERS}</NumberOfTestWorkers>
+            </NUnit>
+          </RunSettings>
+          EOF
+          dotnet test --project src/Nethermind/Nethermind.IntegrationTests/Nethermind.IntegrationTests.csproj \
+            -c Release --no-build -- \
+            --settings /tmp/nunit.runsettings

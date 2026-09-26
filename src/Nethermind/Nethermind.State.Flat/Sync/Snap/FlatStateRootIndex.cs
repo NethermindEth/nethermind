@@ -16,12 +16,12 @@ namespace Nethermind.State.Flat.Sync.Snap;
 public class FlatStateRootIndex : IFlatStateRootIndex, IDisposable
 {
     private readonly IBlockTree _blockTree;
-    private readonly int _lastN;
+    private readonly ulong _lastN;
     private Hash256? _lastQueuedStateRoot;
     private Queue<Hash256> _stateRootQueue = new();
     private NonBlocking.ConcurrentDictionary<Hash256AsKey, StateId> _availableStateRoots = new();
 
-    public FlatStateRootIndex(IBlockTree blockTree, int lastN)
+    public FlatStateRootIndex(IBlockTree blockTree, ulong lastN)
     {
         _blockTree = blockTree;
         _lastN = lastN;
@@ -44,7 +44,7 @@ public class FlatStateRootIndex : IFlatStateRootIndex, IDisposable
         {
             // Queue is intact - just add the new state root
             _availableStateRoots[newHead.StateRoot] = new StateId(newHead);
-            while (_stateRootQueue.Count >= _lastN && _stateRootQueue.TryDequeue(out Hash256? oldStateRoot))
+            while ((ulong)_stateRootQueue.Count >= _lastN && _stateRootQueue.TryDequeue(out Hash256? oldStateRoot))
             {
                 if (oldStateRoot is not null)
                     _availableStateRoots.TryRemove(oldStateRoot, out _);
@@ -61,7 +61,7 @@ public class FlatStateRootIndex : IFlatStateRootIndex, IDisposable
         stateRoots.Add((newHead.StateRoot, new StateId(newHead)));
 
         BlockHeader? current = parent;
-        while (current?.StateRoot is not null && stateRoots.Count < _lastN)
+        while (current?.StateRoot is not null && (ulong)stateRoots.Count < _lastN)
         {
             StateId stateId = new(current);
             newStateRootSet[current.StateRoot] = stateId;

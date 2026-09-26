@@ -1,0 +1,276 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+#nullable enable
+
+using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
+using BenchmarkDotNet.Attributes;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+
+namespace Nethermind.Benchmarks.Evm;
+
+/// <summary>
+/// The two lookups every CALL pays: "is this a precompile" against <see cref="FrozenSet{T}"/>, and, when
+/// it is, fetching it from a <see cref="FrozenDictionary{TKey, TValue}"/> — against deriving the
+/// precompile's number from the address and using it as an index.
+/// </summary>
+/// <remarks>
+/// Precompile addresses are the first sixteen bytes zero and a small number in the last four, so the
+/// number is two loads and a byte swap, and both lookups become an array index. The membership test is
+/// the one that matters: it runs on every CALL, not only the ones that land on a precompile, which is
+/// why the mix below is mostly ordinary addresses.
+/// </remarks>
+public class PrecompileLookupBenchmark
+{
+    private FrozenSet<AddressAsKey> _set = null!;
+    private FrozenDictionary<AddressAsKey, object> _dictionary = null!;
+    private ulong _mask;
+    private object?[] _byIndex = null!;
+    private Address[] _addresses = null!;
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        Dictionary<AddressAsKey, object> entries = [];
+        _byIndex = new object[0x101];
+        for (int i = 1; i <= 0x11; i++)
+        {
+            Address address = Address.FromNumber((UInt256)(ulong)i);
+            object value = new();
+            entries[address] = value;
+            _mask |= 1UL << i;
+            _byIndex[i] = value;
+        }
+
+        // RIP-7212, the one precompile that sits outside the low run.
+        Address p256 = Address.FromNumber((UInt256)0x100UL);
+        object p256Value = new();
+        entries[p256] = p256Value;
+        _byIndex[0x100] = p256Value;
+
+        _dictionary = entries.ToFrozenDictionary();
+        _set = _dictionary.Keys.ToFrozenSet();
+        _realSpec = Nethermind.Specs.Forks.Prague.Instance;
+        _setSpec = new SetSpec(_set);
+        _maskSpec = new MaskSpec(_set, _mask);
+
+        // A realistic CALL mix: mostly ordinary contracts, which is what the membership test rejects.
+        _addresses = new Address[16];
+        for (int i = 0; i < _addresses.Length; i++)
+        {
+            _addresses[i] = i switch
+            {
+                3 => Address.FromNumber(UInt256.One),
+                7 => Address.FromNumber((UInt256)2UL),
+                11 => Address.FromNumber((UInt256)0x100UL),
+                _ => OrdinaryAddress(i),
+            };
+        }
+    }
+
+    /// <summary>An address no precompile could occupy: its leading bytes are set.</summary>
+    private static Address OrdinaryAddress(int seed)
+    {
+        byte[] bytes = new byte[Address.Size];
+        for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(seed * 31 + i * 7 + 1);
+        return new Address(bytes);
+    }
+
+    [Benchmark(Baseline = true)]
+    public int Membership_FrozenSet()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (_set.Contains(address)) found++;
+        }
+
+        return found;
+    }
+
+    [Benchmark]
+    public int Membership_IndexAndMask()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            int index = address.PrecompileIndexOrNegative();
+            if ((uint)index < 64 ? (_mask & (1UL << index)) != 0 : index == 0x100) found++;
+        }
+
+        return found;
+    }
+
+    /// <summary>Reject on address shape first, and only then consult the set.</summary>
+    /// <remarks>Needs no per-spec state and no bound on the precompile number, so it works for a chain
+    /// whose plugin registers one far above the low run.</remarks>
+    [Benchmark]
+    public int Membership_ShapeGuardThenFrozenSet()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (address.CouldBePrecompile() && _set.Contains(address)) found++;
+        }
+
+        return found;
+    }
+
+    // A per-thread memo of the mask built for one precompile set. Thread-static rather than a plain
+    // static because the host processes blocks concurrently and specs differ between them, so a shared
+    // slot would be a race; per-thread, the reference compare below is the whole synchronisation.
+    [ThreadStatic] private static FrozenSet<AddressAsKey>? t_source;
+    [ThreadStatic] private static ulong t_mask;
+
+    /// <summary>The mask, but paid for the way the host would have to pay for it.</summary>
+    /// <remarks>Measures what <c>Membership_IndexAndMask</c> leaves out: the spec's set has to be fetched
+    /// and compared against what the memo was built from, because a mask is only valid for one fork.</remarks>
+    [Benchmark]
+    public int Membership_ThreadStaticMemoThenMask()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            FrozenSet<AddressAsKey> precompiles = _set;
+            if (!ReferenceEquals(t_source, precompiles))
+            {
+                t_mask = _mask;
+                t_source = precompiles;
+            }
+
+            int index = address.PrecompileIndexOrNegative();
+            bool isPrecompile = (uint)index < 64
+                ? (t_mask & (1UL << index)) != 0
+                : index >= 0 && precompiles.Contains(address);
+            if (isPrecompile) found++;
+        }
+
+        return found;
+    }
+
+    /// <summary>Stands in for <c>IReleaseSpec</c>: the membership test reached by interface dispatch.</summary>
+    private interface ISpecLike
+    {
+        bool IsPrecompile(Address address);
+    }
+
+    /// <summary>What the host does today, but through the dispatch the real call site pays.</summary>
+    private sealed class SetSpec(FrozenSet<AddressAsKey> precompiles) : ISpecLike
+    {
+        public bool IsPrecompile(Address address) => address.CouldBePrecompile() && precompiles.Contains(address);
+    }
+
+    /// <summary>The mask held by the spec itself, so no caller has to check which fork it belongs to.</summary>
+    /// <remarks>A spec is immutable and fork-fixed, so the mask can be built once beside its precompile
+    /// set and simply read - no memo, no reference compare, and nothing shared between threads.</remarks>
+    private sealed class MaskSpec(FrozenSet<AddressAsKey> precompiles, ulong mask) : ISpecLike
+    {
+        public bool IsPrecompile(Address address)
+        {
+            if (!address.CouldBePrecompile()) return false;
+
+            int index = address.PrecompileIndexOrNegative();
+            return (uint)index < 64
+                ? (mask & (1UL << index)) != 0
+                : precompiles.Contains(address);
+        }
+    }
+
+    private ISpecLike _setSpec = null!;
+    private ISpecLike _maskSpec = null!;
+
+    [Benchmark]
+    public int Membership_ViaSpec_FrozenSet()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (_setSpec.IsPrecompile(address)) found++;
+        }
+
+        return found;
+    }
+
+    [Benchmark]
+    public int Membership_ViaSpec_CachedMask()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (_maskSpec.IsPrecompile(address)) found++;
+        }
+
+        return found;
+    }
+
+    private IReleaseSpec _realSpec = null!;
+
+    /// <summary>What master does: probe the fork's set, hashing the whole address.</summary>
+    [Benchmark]
+    public int RealSpec_PrecompilesContains()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (_realSpec.Precompiles.Contains(address)) found++;
+        }
+
+        return found;
+    }
+
+    /// <summary>The shape guard in front of the fork's real set, without the mask.</summary>
+    [Benchmark]
+    public int RealSpec_ShapeGuardThenContains()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (address.CouldBePrecompile() && _realSpec.Precompiles.Contains(address)) found++;
+        }
+
+        return found;
+    }
+
+    /// <summary>The spec-held mask through the real interface dispatch — the shipped path, so this arm
+    /// cannot drift from it.</summary>
+    [Benchmark]
+    public int RealSpec_IsPrecompile()
+    {
+        int found = 0;
+        foreach (Address address in _addresses)
+        {
+            if (_realSpec.IsPrecompile(address)) found++;
+        }
+
+        return found;
+    }
+
+    [Benchmark]
+    public int Lookup_FrozenDictionary()
+    {
+        int hit = 0;
+        foreach (Address address in _addresses)
+        {
+            if (_set.Contains(address) && _dictionary[address] is not null) hit++;
+        }
+
+        return hit;
+    }
+
+    [Benchmark]
+    public int Lookup_IndexAndArray()
+    {
+        int hit = 0;
+        foreach (Address address in _addresses)
+        {
+            int index = address.PrecompileIndexOrNegative();
+            if ((uint)index < (uint)_byIndex.Length && _byIndex[index] is not null) hit++;
+        }
+
+        return hit;
+    }
+}

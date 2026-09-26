@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.SnapSync
         public IByteArrayList? CodesResponse { get; set; }
 
         public AccountsToRefreshRequest? AccountsToRefreshRequest { get; set; }
-        public IByteArrayList? AccountsToRefreshResponse { get; set; }
+        public AccountsAndProofs? AccountsToRefreshResponse { get; set; }
 
         public override string ToString()
         {

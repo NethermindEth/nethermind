@@ -19,7 +19,7 @@ namespace Nethermind.Evm.Test;
 [Parallelizable(ParallelScope.Self)]
 public class Push2JumpFusionTests : VirtualMachineTestsBase
 {
-    protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
+    protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
     // The fusion path is gated on `!TTracingInst.IsActive`; using the default

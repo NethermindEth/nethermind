@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,11 +28,11 @@ public class ReadOnlySnapshotBundleTests
         FlatTestHelpers.MakeSnapshot(_pool, populate);
 
     private static ReadOnlySnapshotBundle Bundle(SnapshotPooledList snapshots, IPersistence.IPersistenceReader? reader = null, bool recordDetailedMetrics = false) =>
-        new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics);
+        new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics,
+            PersistedSnapshotStack.Empty(recordDetailedMetrics));
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetAccount_FoundInSnapshot_ReturnsIt(bool detailedMetrics)
+    [Test]
+    public void GetAccount_FoundInSnapshot_ReturnsIt([Values] bool detailedMetrics)
     {
         Address address = TestItem.AddressA;
         Account account = TestItem.GenerateIndexedAccount(1);
@@ -45,9 +46,8 @@ public class ReadOnlySnapshotBundleTests
         reader.DidNotReceive().GetAccount(Arg.Any<Address>());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetAccount_FallsBackToPersistence(bool detailedMetrics)
+    [Test]
+    public void GetAccount_FallsBackToPersistence([Values] bool detailedMetrics)
     {
         Address address = TestItem.AddressA;
         Account account = TestItem.GenerateIndexedAccount(1);
@@ -59,9 +59,8 @@ public class ReadOnlySnapshotBundleTests
         Assert.That(bundle.GetAccount(address), Is.EqualTo(account));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetAccount_PersistenceMiss_ReturnsNull_AndRecordsMetric(bool detailedMetrics)
+    [Test]
+    public void GetAccount_PersistenceMiss_ReturnsNull_AndRecordsMetric([Values] bool detailedMetrics)
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.GetAccount(Arg.Any<Address>()).Returns((Account?)null);
@@ -90,13 +89,33 @@ public class ReadOnlySnapshotBundleTests
     {
         Address address = TestItem.AddressA;
         UInt256 index = 42;
-        SlotValue stored = SlotValue.FromSpanWithoutLeadingZero([0x12, 0x34]);
+        UInt256 stored = BaseFlatPersistence.DecodeSlotValue([0x12, 0x34]);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             MakeSnapshot(c => c.Storages[new HashedKey<(Address, UInt256)>((address, index))] = stored)),
             recordDetailedMetrics: true);
 
-        Assert.That(bundle.GetSlot(address, index, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0x12, 0x34 }));
+        bundle.GetSlot(address, index, selfDestructStateIdx: -1, out UInt256? value);
+        Assert.That(value, Is.EqualTo(stored));
+    }
+
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void GetSlot_OverlayPresenceControlsFallback(bool hasEntry, bool explicitZero)
+    {
+        Address address = TestItem.AddressA;
+        UInt256 index = 42;
+        UInt256? overlayValue = explicitZero ? UInt256.Zero : null;
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
+            MakeSnapshot(c => c.Storages[(address, index)] = new UInt256(7)),
+            MakeSnapshot(c =>
+            {
+                if (hasEntry) c.Storages[(address, index)] = overlayValue;
+            })));
+
+        bundle.GetSlot(address, in index, selfDestructStateIdx: -1, out UInt256? value);
+        Assert.That(value, Is.EqualTo(hasEntry ? overlayValue : new UInt256(7)));
     }
 
     [Test]
@@ -107,22 +126,21 @@ public class ReadOnlySnapshotBundleTests
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot(), MakeSnapshot()), reader);
 
-        Assert.That(bundle.GetSlot(TestItem.AddressA, (UInt256)42, selfDestructStateIdx: 1), Is.Null);
-        reader.DidNotReceive().TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>());
+        bundle.GetSlot(TestItem.AddressA, (UInt256)42, selfDestructStateIdx: 1, out UInt256? value);
+        Assert.That(value, Is.Null);
+        reader.DidNotReceive().TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<UInt256>());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetSlot_FallsBackToPersistence_WithMetricBranches(bool detailedMetrics)
+    [Test]
+    public void GetSlot_FallsBackToPersistence_PreservesPresence([Values] bool detailedMetrics, [Values] bool found)
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        // Returning false leaves the SlotValue at default (zero) -> exercises the "value is zero" metric branch.
-        reader.TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<SlotValue>()).Returns(false);
+        reader.TryGetSlot(Arg.Any<Address>(), Arg.Any<UInt256>(), ref Arg.Any<UInt256>()).Returns(found);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
-        // Default SlotValue.ToEvmBytes() is the canonical zero (single 0x00 byte).
-        Assert.That(bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1), Is.EqualTo(new byte[] { 0 }));
+        bundle.GetSlot(TestItem.AddressA, (UInt256)1, selfDestructStateIdx: -1, out UInt256? value);
+        Assert.That(value, Is.EqualTo(found ? UInt256.Zero : (UInt256?)null));
     }
 
     [Test]
@@ -163,9 +181,8 @@ public class ReadOnlySnapshotBundleTests
         Assert.That(found, Is.SameAs(node));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TryLoadStateRlp_DelegatesToReader(bool detailedMetrics)
+    [Test]
+    public void TryLoadStateRlp_DelegatesToReader([Values] bool detailedMetrics)
     {
         TreePath path = TreePath.FromHexString("12");
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -176,9 +193,8 @@ public class ReadOnlySnapshotBundleTests
         Assert.That(bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None), Is.EqualTo(new byte[] { 0xc1, 0xff }));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TryLoadStorageRlp_DelegatesToReader(bool detailedMetrics)
+    [Test]
+    public void TryLoadStorageRlp_DelegatesToReader([Values] bool detailedMetrics)
     {
         TreePath path = TreePath.FromHexString("ab");
         Hash256 address = TestItem.KeccakA;

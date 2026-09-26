@@ -1,0 +1,1888 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
+"""Regression coverage for folded perf profiles and their reporting contract."""
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+PERF_FOLD = ROOT / "scripts" / "perf-fold.awk"
+PERF_REPORT = ROOT / "scripts" / "perf-report.sh"
+FOLDED_PROFILE_VALIDATOR = ROOT / "scripts" / "validate-folded-profile.sh"
+EXPB_WORKFLOW = ROOT / ".github" / "workflows" / "run-expb-reproducible-benchmarks.yml"
+RPC_WORKFLOW = ROOT / ".github" / "workflows" / "run-rpc-benchmarks.yml"
+RPC_LIB = ROOT / "scripts" / "rpc-bench" / "lib.sh"
+START_NODE = ROOT / "scripts" / "rpc-bench" / "start-node.sh"
+STOP_NODE = ROOT / "scripts" / "rpc-bench" / "stop-node.sh"
+START_PROFILERS = ROOT / "scripts" / "rpc-bench" / "start-profilers.sh"
+RUN_JSONBENCH = ROOT / "scripts" / "rpc-bench" / "run-jsonbench.sh"
+SEQUENTIAL_DRIVER = ROOT / "scripts" / "expb" / "sequential_driver.py"
+PROFILE_ARTIFACT_GATE = "always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')"
+
+WORKFLOW_JOB_PATTERN = re.compile(
+    r"(?ms)^  (?P<name>[A-Za-z0-9_-]+):[^\r\n]*\r?\n"
+    r"(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:[^\r\n]*(?:\r?\n|\Z)|\Z)"
+)
+WORKFLOW_NAMED_STEP_PATTERN = re.compile(
+    r"(?ms)^      - name: (?P<name>[^\r\n]+)\r?\n(?P<body>.*?)(?=^      - |\Z)"
+)
+WORKFLOW_STEP_IF_PATTERN = re.compile(r"(?m)^        if: (?P<condition>[^\r\n]*)\r?$")
+
+
+def workflow_job_body(workflow: str, job_name: str) -> str:
+    jobs = [match for match in WORKFLOW_JOB_PATTERN.finditer(workflow) if match["name"] == job_name]
+    if len(jobs) != 1:
+        raise AssertionError(f"expected exactly one {job_name!r} job, found {len(jobs)}")
+    return jobs[0]["body"]
+
+
+def workflow_named_step_body(workflow: str, job_name: str, step_name: str) -> str:
+    steps = [
+        match
+        for match in WORKFLOW_NAMED_STEP_PATTERN.finditer(workflow_job_body(workflow, job_name))
+        if match["name"] == step_name
+    ]
+    if len(steps) != 1:
+        raise AssertionError(f"expected exactly one {job_name}/{step_name} step, found {len(steps)}")
+    return steps[0]["body"]
+
+
+def workflow_named_step_if(workflow: str, job_name: str, step_name: str) -> str:
+    conditions = WORKFLOW_STEP_IF_PATTERN.findall(workflow_named_step_body(workflow, job_name, step_name))
+    if len(conditions) != 1:
+        raise AssertionError(f"expected exactly one condition for {job_name}/{step_name}, found {len(conditions)}")
+    return conditions[0]
+
+
+def workflow_step_script(workflow: str, job_name: str, step_name: str) -> str:
+    """Extract a named multi-line Bash step with the workflow indentation removed."""
+    body = workflow_named_step_body(workflow, job_name, step_name)
+    marker = "        run: |\n"
+    start = body.index(marker) + len(marker)
+    lines = []
+    for line in body[start:].splitlines():
+        if line.strip() and not line.startswith(" " * 10):
+            break
+        lines.append(line[10:])
+    return "\n".join(lines)
+
+
+RESOLVE_RUN_MARKER = "        run: |\n"
+
+
+def resolve_script(workflow: str) -> str:
+    """The resolve step's shell body, dedented so it can be run under bash on its own."""
+    marker = workflow.index(RESOLVE_RUN_MARKER, workflow.index("      - name: Resolve configuration\n"))
+    lines = []
+    for line in workflow[marker + len(RESOLVE_RUN_MARKER) :].split("\n"):
+        if line.strip() and not line.startswith(" " * 10):
+            break
+        lines.append(line[10:])
+    body = "\n".join(lines)
+    if "${{" in body or "warmup_seconds=" not in body:
+        raise AssertionError("could not extract a runnable resolve body")
+    return body
+
+
+def find_bash() -> str | None:
+    if os.name == "nt":
+        git_bash = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "bin" / "bash.exe"
+        if git_bash.is_file():
+            return str(git_bash)
+    return shutil.which("bash")
+
+
+BASH = find_bash()
+
+
+@unittest.skipUnless(BASH, "bash is required for perf script tests")
+class PerfReportingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.directory = Path(self.temporary_directory.name)
+
+    def tearDown(self) -> None:
+        self.temporary_directory.cleanup()
+
+    def write_folded(self, name: str, contents: str) -> Path:
+        path = self.directory / name
+        path.write_text(contents, encoding="utf-8")
+        return path
+
+    def write_executable(self, name: str, contents: str) -> Path:
+        path = self.directory / name
+        path.write_text(contents, encoding="utf-8")
+        path.chmod(path.stat().st_mode | 0o111)
+        return path
+
+    def run_report(self, *args: str, locale: str | None = None) -> subprocess.CompletedProcess[str]:
+        environment = os.environ.copy()
+        if locale is not None:
+            environment["LC_ALL"] = locale
+        return subprocess.run(
+            [BASH, str(PERF_REPORT), *args],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+            env=environment,
+        )
+
+    def run_fold(self, perf_script: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [BASH, "-c", 'awk -f "$1"', "bash", str(PERF_FOLD)],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            input=perf_script,
+            capture_output=True,
+        )
+
+    def run_folded_profile_validator(self, profile: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [BASH, str(FOLDED_PROFILE_VALIDATOR), str(profile)],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+
+    def run_rpc_library(self, script: str, environment: dict[str, str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [BASH, "-c", f'source "$1"; {script}', "bash", str(RPC_LIB)],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+            env=environment,
+        )
+
+    @staticmethod
+    def data_rows(output: str) -> list[str]:
+        return [
+            line for line in output.splitlines()
+            if re.search(r"\s\d+\.\d+%\s+\d+\.\d+%\s+[+-]\d+\.\d+$", line)
+        ]
+
+    def test_folding_preserves_unknown_dsos_and_generic_managed_frames(self) -> None:
+        perf_script = (
+            ".NET 100/100  1.000000: cycles:\n"
+            "\t0000000000000000 [unknown] (/usr/lib/libmystery.so)\n\n"
+            ".NET 101/101  2.000000: cycles:\n"
+            "\t0000000000000000 instance void [Nethermind.Trie] "
+            "Nethermind.Trie.TrieStore`1<class System.Object>::Commit(int64)+0x1 "
+            "(/tmp/perf-101.map)\n\n"
+            # Same frame with trailing whitespace: it must fold into the sample above, not into a
+            # second "[unknown] (libmystery.so))" frame carrying half of the library's samples.
+            ".NET 100/100  3.000000: cycles:\n"
+            "\t0000000000000000 [unknown] (/usr/lib/libmystery.so)  \n\n"
+        )
+
+        result = self.run_fold(perf_script)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(".NET;[unknown] (libmystery.so) 2", result.stdout)
+        self.assertNotIn("libmystery.so))", result.stdout)
+        self.assertIn(
+            ".NET;instance void [Nethermind.Trie] Nethermind.Trie.TrieStore`1<class System.Object>::Commit(int64) 1",
+            result.stdout,
+        )
+
+    def test_native_view_excludes_generic_managed_frames(self) -> None:
+        generic = "instance void [Nethermind.Trie] Nethermind.Trie.TrieStore`1<class System.Object>::Commit(int64)"
+        native = "rocksdb::DBImpl::BackgroundCall"
+        unknown = "[unknown] (librocksdb.so)"
+        profile = self.write_folded(
+            "profile.folded",
+            f".NET;{generic} 7\n.NET;{native} 5\n.NET;{unknown} 3\n",
+        )
+
+        result = self.run_report("native", str(profile), "10")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(generic, result.stdout)
+        self.assertIn(native, result.stdout)
+        self.assertIn(unknown, result.stdout)
+
+    def test_total_label_and_truncation_keep_the_method_tail(self) -> None:
+        long_frame = (
+            "instance void [Nethermind.Really.Long.Assembly.Name] "
+            "Nethermind.Really.Long.Namespace.With.Many.Shared.Prefixes.Type::MethodNameTailForDiscrimination(int32)"
+        )
+        profile = self.write_folded("long.folded", f".NET;{long_frame} 5\n")
+
+        top = self.run_report("top", str(profile), "1")
+        total = self.run_report("total", str(profile), "1")
+
+        self.assertEqual(top.returncode, 0, top.stderr)
+        self.assertIn("Self %", top.stdout)
+        self.assertIn("MethodNameTailForDiscrimination", top.stdout)
+        self.assertEqual(total.returncode, 0, total.stderr)
+        self.assertIn("Total %", total.stdout)
+        self.assertNotIn("Self %", total.stdout)
+
+    def test_compare_honors_odd_and_single_row_limits(self) -> None:
+        before = self.write_folded(
+            "before.folded",
+            "root;Negative 50\nroot;Middle 10\nroot;Positive 10\nroot;Other 20\nroot;Small 10\n",
+        )
+        after = self.write_folded(
+            "after.folded",
+            "root;Negative 5\nroot;Middle 10\nroot;Positive 55\nroot;Other 20\nroot;Small 10\n",
+        )
+
+        one = self.run_report("compare", str(before), str(after), "1")
+        odd = self.run_report("compare", str(before), str(after), "3")
+
+        self.assertEqual(one.returncode, 0, one.stderr)
+        # `+` is the whole answer here, so the table has to name the direction it points in.
+        self.assertIn("before.folded -> after.folded", one.stdout)
+        self.assertEqual(len(self.data_rows(one.stdout)), 2)
+        self.assertIn("Negative", one.stdout)
+        self.assertIn("Positive", one.stdout)
+        self.assertIn("...", one.stdout)
+        self.assertEqual(odd.returncode, 0, odd.stderr)
+        self.assertEqual(len(self.data_rows(odd.stdout)), 4)
+        self.assertIn("...", odd.stdout)
+
+    def test_compare_is_bytewise_under_an_ambient_utf8_locale(self) -> None:
+        colon = "instance void [Nethermind.Evm] Namespace.Type::Method(int32)"
+        spaced = "instance void [Nethermind.Evm] Namespace Type Method(int32)"
+        before = self.write_folded("locale-before.folded", f"root;{colon} 50\nroot;{spaced} 50\n")
+        after = self.write_folded("locale-after.folded", f"root;{colon} 25\nroot;{spaced} 75\n")
+
+        result = self.run_report("compare", str(before), str(after), "2", locale="en_US.utf8")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.data_rows(result.stdout)), 2)
+        self.assertIn(colon, result.stdout)
+        self.assertIn(spaced, result.stdout)
+
+    def test_positive_folded_profile_validator_rejects_empty_whitespace_and_zero_counts(self) -> None:
+        empty = self.write_folded("empty.folded", "")
+        whitespace = self.write_folded("whitespace.folded", " \t\n\n")
+        zero = self.write_folded("zero.folded", ".NET;Frame 0\n")
+        valid = self.write_folded(
+            "valid.folded",
+            ".NET;instance void [Nethermind.Trie] Nethermind.Trie.TrieStore::Commit() 1\n",
+        )
+
+        result = self.run_report("top", str(empty))
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing or empty", result.stderr)
+        # Every view divides by the profile's total sample count, so none may reach awk with a zero
+        # total - including compare, whose process substitution would swallow the failure.
+        for arguments in (
+            ("top", str(zero)),
+            ("total", str(zero)),
+            ("native", str(zero)),
+            ("compare", str(zero), str(valid)),
+            ("compare", str(valid), str(zero)),
+        ):
+            with self.subTest(view=arguments[0]):
+                report = self.run_report(*arguments)
+                self.assertNotEqual(report.returncode, 0, report.stdout)
+                self.assertIn("no positive sample counts", report.stderr)
+                self.assertNotIn("division by zero", report.stderr)
+        for profile in (empty, whitespace, zero):
+            with self.subTest(profile=profile.name):
+                validation = self.run_folded_profile_validator(profile)
+                self.assertNotEqual(validation.returncode, 0)
+                self.assertIn("no positive-sample stack", validation.stderr)
+        validation = self.run_folded_profile_validator(valid)
+        self.assertEqual(validation.returncode, 0, validation.stderr)
+        self.assertIn("managed=1 (100.00%)", validation.stdout)
+
+    def test_folded_profile_validator_requires_managed_samples_and_reports_leaf_split(self) -> None:
+        managed = "instance void [Nethermind.Trie] Nethermind.Trie.TrieStore::Commit()"
+        cases = (
+            ("unknown", ".NET;[unknown] (libcoreclr.so) 7\n", False, "unknown=7 (100.00%)"),
+            ("native", ".NET;rocksdb::DBImpl::BackgroundCall 5\n", False, "native=5 (100.00%)"),
+            (
+                "mixed",
+                f".NET;{managed} 5\n.NET;rocksdb::DBImpl::BackgroundCall 3\n.NET;[unknown] (libcoreclr.so) 2\n",
+                True,
+                "managed=5 (50.00%), native=3 (30.00%), unknown=2 (20.00%)",
+            ),
+        )
+
+        for name, contents, succeeds, split in cases:
+            with self.subTest(profile=name):
+                validation = self.run_folded_profile_validator(self.write_folded(f"{name}.folded", contents))
+                self.assertEqual(validation.returncode == 0, succeeds, f"{validation.stdout}\n{validation.stderr}")
+                self.assertIn(split, validation.stdout)
+                if not succeeds:
+                    self.assertIn("no managed leaf samples", validation.stderr)
+
+    def test_managed_frame_pattern_is_identical_in_the_reporter_and_the_validator(self) -> None:
+        """The classifier regex is duplicated; a fix landing in only one file is silent.
+
+        In perf-report.sh it decides what `native` lists, in validate-folded-profile.sh whether a
+        profile is rejected outright - and each file has its own test, so both keep passing.
+        """
+        def managed_frame_patterns(path: Path) -> list[str]:
+            # Awk regexes, so no literal whitespace; ':: ' is what makes one a managed frame.
+            return [p for p in re.findall(r"~ /(\S+)/", path.read_text(encoding="utf-8")) if p.endswith("::")]
+
+        reporter = managed_frame_patterns(PERF_REPORT)
+        validator = managed_frame_patterns(FOLDED_PROFILE_VALIDATOR)
+
+        self.assertEqual(len(reporter), 1, reporter)
+        self.assertEqual(len(validator), 1, validator)
+        self.assertEqual(reporter, validator, "the managed-frame regex must stay identical in both files")
+
+    def test_perf_preflight_and_recorder_use_the_direct_perf_process(self) -> None:
+        fake_bin = self.directory / "bin"
+        fake_bin.mkdir()
+        self.write_executable(
+            "bin/perf",
+            "#!/bin/bash\n"
+            "set -euo pipefail\n"
+            "printf '%s\\n' \"$*\" >> \"$PERF_COMMAND_LOG\"\n"
+            "case \"${1:-}\" in\n"
+            "  stat) exit 0 ;;\n"
+            "  record) exit 0 ;;\n"
+            "  *) exit 64 ;;\n"
+            "esac\n",
+        )
+        command_log = self.directory / "perf-commands.log"
+        output = self.directory / "perf.data"
+        record_log = self.directory / "perf-record.log"
+        environment = os.environ.copy()
+        environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+        environment["PERF_COMMAND_LOG"] = str(command_log)
+        environment["PERF_OUTPUT"] = str(output)
+        environment["PERF_RECORD_LOG"] = str(record_log)
+
+        result = self.run_rpc_library(
+            """
+            set -euo pipefail
+            id() {
+              if [[ "${1:-}" == "-u" ]]; then printf '0\\n'; else command id "$@"; fi
+            }
+            require_perf_access
+            start_perf_recorder 99 4321 "$PERF_OUTPUT" "$PERF_RECORD_LOG"
+            wait "$PERF_RECORDER_PID"
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        commands = command_log.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(commands[0], "stat --event cycles:u -- true")
+        self.assertIn("record --event cycles:u --freq 99 --call-graph fp --pid 4321", commands[1])
+        # The invariant is that perf is launched directly: any wrapper would make $! the wrapper's
+        # PID and break the identity tracking teardown depends on. Assert that rather than the
+        # source text, so reflowing the command does not red the job.
+        recorder = re.search(r"(?ms)^start_perf_recorder\(\) \{.*?^\}", RPC_LIB.read_text(encoding="utf-8"))
+        self.assertIsNotNone(recorder, "start_perf_recorder must be defined in lib.sh")
+        self.assertRegex(recorder[0], r"(?m)^\s*perf record\b")
+        self.assertNotRegex(recorder[0], r"\b(sudo|as_root)\b")
+        self.assertIn("PERF_RECORDER_PID=$!", recorder[0])
+
+    def test_perf_preflight_falls_back_to_cpu_clock_when_cycles_are_unavailable(self) -> None:
+        fake_bin = self.directory / "bin"
+        fake_bin.mkdir()
+        self.write_executable(
+            "bin/perf",
+            "#!/bin/bash\n"
+            "printf '%s\\n' \"$*\" >> \"$PERF_COMMAND_LOG\"\n"
+            "case \"${1:-} ${3:-}\" in\n"
+            "  'stat cycles:u') exit 1 ;;\n"
+            "  'stat cpu-clock:u') exit 0 ;;\n"
+            "  record*) exit 0 ;;\n"
+            "  *) exit 64 ;;\n"
+            "esac\n",
+        )
+        command_log = self.directory / "perf-commands.log"
+        environment = os.environ.copy()
+        environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+        environment["PERF_COMMAND_LOG"] = str(command_log)
+
+        result = self.run_rpc_library(
+            """
+            set -euo pipefail
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_perf_recorder 99 4321 ignored.data ignored.log
+            wait "$PERF_RECORDER_PID"
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertIn("perf sampling event: cpu-clock:u", result.stdout)
+        commands = command_log.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(commands[:2], ["stat --event cycles:u -- true", "stat --event cpu-clock:u -- true"])
+        self.assertIn("record --event cpu-clock:u --freq 99 --call-graph fp --pid 4321", commands[2])
+        self.assertEqual(len(commands), 3, "the probed event is cached; the recorder must not probe again")
+
+    def test_perf_preflight_rejects_non_root_without_running_perf(self) -> None:
+        fake_bin = self.directory / "bin"
+        fake_bin.mkdir()
+        self.write_executable("bin/id", "#!/usr/bin/env bash\necho 1000\n")
+        self.write_executable(
+            "bin/perf",
+            "#!/usr/bin/env bash\nprintf 'called\\n' >> \"$PERF_COMMAND_LOG\"\nexit 0\n",
+        )
+        command_log = self.directory / "perf-commands.log"
+        environment = os.environ.copy()
+        environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+        environment["PERF_COMMAND_LOG"] = str(command_log)
+
+        result = self.run_rpc_library("set -euo pipefail; require_perf_access", environment)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("requires the self-hosted runner to execute as root", result.stderr)
+        self.assertFalse(command_log.exists())
+
+    def test_perf_preflight_rejects_unusable_cycles_access_without_recording(self) -> None:
+        fake_bin = self.directory / "bin"
+        fake_bin.mkdir()
+        self.write_executable(
+            "bin/perf",
+            "#!/bin/bash\n"
+            "printf '%s\\n' \"$*\" >> \"$PERF_COMMAND_LOG\"\n"
+            "case \"${1:-}\" in\n"
+            "  stat) exit 1 ;;\n"
+            "  record) exit 99 ;;\n"
+            "  *) exit 64 ;;\n"
+            "esac\n",
+        )
+        command_log = self.directory / "perf-commands.log"
+        environment = os.environ.copy()
+        environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+        environment["PERF_COMMAND_LOG"] = str(command_log)
+
+        result = self.run_rpc_library(
+            """
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_perf_recorder 99 4321 ignored.data ignored.log
+            """,
+            environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("perf can sample neither cycles:u nor cpu-clock:u as root", result.stderr)
+        self.assertEqual(
+            command_log.read_text(encoding="utf-8").splitlines(),
+            ["stat --event cycles:u -- true", "stat --event cpu-clock:u -- true"],
+        )
+
+    def test_perf_recorder_identity_rejects_pid_reuse_without_signaling(self) -> None:
+        proc_root = self.directory / "proc"
+        process = proc_root / "123"
+        process.mkdir(parents=True)
+        stat_fields = ["S", *(["0"] * 18), "4243", "0"]
+        (process / "stat").write_text(f"123 (perf) {' '.join(stat_fields)}\n", encoding="utf-8")
+        (process / "comm").write_text("perf\n", encoding="utf-8")
+        (process / "exe").write_text("", encoding="utf-8")
+        signal_log = self.directory / "signals.log"
+        environment = os.environ.copy()
+        environment["RPC_BENCH_PROC_ROOT"] = str(proc_root)
+        environment["SIGNAL_LOG"] = str(signal_log)
+
+        result = self.run_rpc_library(
+            """
+            set -euo pipefail
+            kill() { printf '%s %s\\n' "$1" "$2" >> "$SIGNAL_LOG"; }
+            IFS=$'\\t' read -r start_time comm executable < <(perf_recorder_identity 123)
+            [[ "$start_time" == "4243" && "$comm" == "perf" ]]
+            if signal_perf_recorder_if_matches INT 123 4242 "$comm" "$executable"; then exit 1; fi
+            [[ ! -s "$SIGNAL_LOG" ]]
+            signal_perf_recorder_if_matches INT 123 "$start_time" "$comm" "$executable"
+            [[ "$(cat "$SIGNAL_LOG")" == "-INT 123" ]]
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+
+    def profiler_environment(self) -> tuple[dict[str, str], Path, Path]:
+        """Fake perf (its `record` publishes its own identity under a fake /proc and stays alive), a
+        fake /proc entry for the client process, and an empty diag dir."""
+        fake_bin = self.directory / "bin"
+        fake_bin.mkdir()
+        self.write_executable(
+            "bin/perf",
+            "#!/bin/bash\n"
+            "printf '%s\\n' \"$*\" >> \"$PERF_COMMAND_LOG\"\n"
+            "case \"${1:-}\" in\n"
+            "  stat) exit 0 ;;\n"
+            "  record)\n"
+            "    mkdir -p \"$RPC_BENCH_PROC_ROOT/$$\"\n"
+            "    printf '%s (perf) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 4243 0\\n' \"$$\" > \"$RPC_BENCH_PROC_ROOT/$$/stat\"\n"
+            "    printf 'perf\\n' > \"$RPC_BENCH_PROC_ROOT/$$/comm\"\n"
+            "    : > \"$RPC_BENCH_PROC_ROOT/$$/exe\"\n"
+            # Long enough to outlive the whole fixture: the tests kill it themselves, and a
+            # recorder that expired mid-test would fail them on the teardown kill rather than on
+            # anything real.
+            "    sleep 120 ;;\n"
+            "  *) exit 64 ;;\n"
+            "esac\n",
+        )
+        proc_root = self.directory / "proc"
+        (proc_root / "1300").mkdir(parents=True)
+        (proc_root / "1300" / "status").write_text("Name:\tnethermind\nNSpid:\t1300\t42\n", encoding="utf-8")
+        command_log = self.directory / "perf-commands.log"
+        diag = self.directory / "diag"
+        (diag / "perf").mkdir(parents=True)
+        (diag / "dottrace").mkdir()
+        (diag / "dottrace" / "control.svc").write_bytes(b"")
+        environment = os.environ.copy()
+        environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+        environment["PERF_COMMAND_LOG"] = str(command_log)
+        environment["DOCKER_COMMAND_LOG"] = (self.directory / "docker-commands.log").as_posix()
+        environment["RPC_BENCH_PROC_ROOT"] = str(proc_root)
+        environment["DOTTRACE_START_TIMEOUT"] = "2"
+        environment["DOTNET_TRACE_STOP_TIMEOUT"] = "10"
+        environment["DIAG"] = diag.as_posix()
+        return environment, diag, command_log
+
+    def docker_commands(self) -> list[str]:
+        log = self.directory / "docker-commands.log"
+        return log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+
+    def write_node_env(self, diag: Path, dotnet_trace: bool = False) -> Path:
+        values = {
+            "CLIENT": "nethermind",
+            "INSTANCE_SUFFIX": "",
+            "CONTAINER_NAME": "rpcbench-primary",
+            # Forward slashes: the file is `source`d, and unquoted backslashes would not survive.
+            "DIAG_DIR": diag.as_posix(),
+            "DOTTRACE": "true",
+            "DOTTRACE_DEFERRED": "true",
+            "PERF": "true",
+            "PERF_FREQUENCY": "99",
+            "PROFILE_AFTER_WARMUP": "true",
+        }
+        if dotnet_trace:
+            values["DOTNET_TRACE"] = "true"
+            (diag / "dotnet-trace").mkdir(exist_ok=True)
+        env_file = self.directory / "node.env"
+        env_file.write_text("".join(f"{k}={v}\n" for k, v in values.items()), encoding="utf-8")
+        return env_file
+
+    # `docker top` lists the dotTrace launcher, the client and, once attached, the dotnet-trace collector;
+    # `docker logs` acknowledges a start message only once it has been appended to the control file, as
+    # the real launcher would. `docker exec` answers the runtime probe and plays the collector: it publishes
+    # its identity under the fake /proc, then waits to be stopped and writes the .nettrace on the way out.
+    FAKE_DOCKER = r"""
+        docker() {
+          printf '%s\n' "$*" >> "$DOCKER_COMMAND_LOG"
+          case "$1" in
+            top)
+              printf '%s\n' 'PID ARGS' '1200 /opt/dottrace/dottrace start --framework=NetCore' '1300 /nethermind/nethermind --datadir=/execution-data'
+              if [[ -f "$DIAG/collector.pid" ]]; then
+                printf '%s /opt/dotnet-trace/dotnet-trace collect -p 42 --clrevents gc+contention+threading+exception\n' "$(cat "$DIAG/collector.pid")"
+              fi ;;
+            logs)
+              printf '##dotTrace["connected", {pid: 1300, path: "/nethermind/nethermind"}]\n'
+              if [[ "${DOTTRACE_ACK:-true}" == "true" ]] && grep -qF '##dotTrace["start"]' "$DIAG/dottrace/control.svc" 2>/dev/null; then
+                printf '##dotTrace["started", {pid: 1300, path: "/nethermind/nethermind"}]\n'
+              fi ;;
+            exec)
+              shift
+              while [[ "${1:-}" == "-e" ]]; do shift 2; done
+              shift
+              case "$*" in
+                'dotnet --list-runtimes')
+                  printf 'Microsoft.AspNetCore.App 10.0.11 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]\n'
+                  printf 'Microsoft.NETCore.App 10.0.11 [/usr/share/dotnet/shared/Microsoft.NETCore.App]\n' ;;
+                'test -d '*) [[ "${DOTNET_FXR:-true}" == "true" ]] ;;
+                '/opt/dotnet-trace/dotnet-trace collect '*)
+                  if [[ "${DOTNET_TRACE_STARTS:-true}" != "true" ]]; then
+                    printf 'You must install or update .NET to run this application.\n.NET location: Not found\n' >&2
+                    return 1
+                  fi
+                  printf '%s' "$BASHPID" > "$DIAG/collector.pid"
+                  mkdir -p "$RPC_BENCH_PROC_ROOT/$BASHPID"
+                  printf 'Name:\tdotnet-trace\nNSpid:\t%s\t77\n' "$BASHPID" > "$RPC_BENCH_PROC_ROOT/$BASHPID/status"
+                  # Background jobs of a non-interactive shell ignore SIGINT, so the in-container
+                  # `kill -INT` below is played back as SIGTERM to this fake.
+                  sleep 30 & sleeper=$!
+                  trap 'kill "$sleeper" 2>/dev/null; printf nettrace > "$DIAG/dotnet-trace/rpcbench.nettrace"; exit 0' TERM
+                  wait "$sleeper" ;;
+                'sh -c kill -INT "$1" sh 77') kill -TERM "$(cat "$DIAG/collector.pid")" ;;
+                *) return 64 ;;
+              esac ;;
+            *) return 64 ;;
+          esac
+        }
+    """
+
+    def test_start_profilers_records_the_recorder_identity_and_refuses_to_run_twice(self) -> None:
+        environment, diag, command_log = self.profiler_environment()
+        env_file = self.write_node_env(diag)
+        environment["NODE_ENV"] = str(env_file)
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            set -euo pipefail
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_profilers "$NODE_ENV"
+            if (start_profilers "$NODE_ENV"); then echo "second start accepted"; exit 1; fi
+            source "$NODE_ENV"
+            kill "$PERF_PID"
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertIn("refusing to start a second recorder", result.stderr)
+        self.assertIn("dotTrace: data collection started", result.stdout)
+        self.assertEqual(
+            (diag / "dottrace" / "control.svc").read_bytes(),
+            b'\n##dotTrace["start"]\r\n',
+            "service messages must start on a new line and end with a carriage return",
+        )
+        commands = command_log.read_text(encoding="utf-8").splitlines()
+        records = [c for c in commands if c.startswith("record ")]
+        self.assertEqual(len(records), 1, commands)
+        self.assertIn("--pid 1300", records[0])
+        node_env = env_file.read_text(encoding="utf-8")
+        self.assertIn("PERF_NODE_PID=1300\n", node_env)
+        self.assertIn("PERF_CONTAINER_PID=42\n", node_env)
+        self.assertIn("PERF_RECORDER_START_TIME=4243\n", node_env)
+        self.assertIn("PERF_RECORDER_COMM=perf\n", node_env)
+        self.assertEqual(node_env.count("DOTTRACE_STARTED_AT="), 1)
+        self.assertEqual(node_env.count("PROFILERS_STARTED_AT="), 1)
+        self.assertEqual(
+            [c for c in self.docker_commands() if c.startswith("exec ")],
+            [],
+            "dotnet-trace must stay off unless DOTNET_TRACE=true",
+        )
+        self.assertNotIn("DOTNET_TRACE_PID=", node_env)
+
+    def test_start_profilers_attaches_dotnet_trace_inside_the_container_and_stops_it_before_the_node(self) -> None:
+        environment, diag, command_log = self.profiler_environment()
+        env_file = self.write_node_env(diag, dotnet_trace=True)
+        environment["NODE_ENV"] = str(env_file)
+        environment["DOTNET_TRACE_MAX_SECONDS"] = "3900"
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            set -euo pipefail
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_profilers "$NODE_ENV"
+            source "$NODE_ENV"
+            kill -0 "$DOTNET_TRACE_PID"
+            stop_dotnet_trace_collector rpcbench-primary "$DOTNET_TRACE_PID" "$DOTNET_TRACE_COLLECTOR_PID"
+            if kill -0 "$DOTNET_TRACE_PID" 2>/dev/null; then echo "collector still running"; exit 1; fi
+            kill "$PERF_PID"
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        docker_commands = self.docker_commands()
+        self.assertIn("exec rpcbench-primary dotnet --list-runtimes", docker_commands)
+        self.assertIn("exec rpcbench-primary test -d /usr/share/dotnet/host/fxr", docker_commands)
+        self.assertEqual(
+            [c for c in docker_commands if " collect " in c],
+            [
+                "exec -e DOTNET_ROOT=/usr/share/dotnet -e DOTNET_ROLL_FORWARD=Major rpcbench-primary "
+                "/opt/dotnet-trace/dotnet-trace collect -p 42 "
+                "--clrevents gc+contention+threading+exception --clreventlevel verbose "
+                "-o /dotnet-trace-output/rpcbench.nettrace --duration 01:05:00"
+            ],
+            "the collector attaches exactly once, to the client's container pid",
+        )
+        self.assertIn('exec rpcbench-primary sh -c kill -INT "$1" sh 77', docker_commands)
+        self.assertIn(
+            "dotnet-trace collecting gc+contention+threading+exception (verbose) from container pid 42, capped at 3900s",
+            result.stdout,
+        )
+        self.assertEqual((diag / "dotnet-trace" / "rpcbench.nettrace").read_bytes(), b"nettrace")
+        node_env = env_file.read_text(encoding="utf-8")
+        self.assertIn("DOTNET_TRACE_COLLECTOR_PID=77\n", node_env)
+        self.assertEqual(node_env.count("DOTNET_TRACE_PID="), 1)
+        self.assertLess(
+            node_env.index("DOTNET_TRACE_PID="),
+            node_env.index("PERF_PID="),
+            "dotnet-trace attaches before perf so a failure leaves no recorder behind",
+        )
+        self.assertEqual(len([c for c in command_log.read_text(encoding="utf-8").splitlines() if c.startswith("record ")]), 1)
+
+    def test_start_profilers_dies_with_the_log_when_the_dotnet_trace_collector_exits_immediately(self) -> None:
+        environment, diag, command_log = self.profiler_environment()
+        env_file = self.write_node_env(diag, dotnet_trace=True)
+        environment["NODE_ENV"] = str(env_file)
+        environment["DOTNET_TRACE_STARTS"] = "false"
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_profilers "$NODE_ENV"
+            """,
+            environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("dotnet-trace exited immediately", result.stdout)
+        self.assertIn(".NET location: Not found", result.stdout, "the collector log must be dumped")
+        self.assertIn("dotnet-trace did not start", result.stderr)
+        self.assertFalse(
+            command_log.exists() and "record" in command_log.read_text(encoding="utf-8"),
+            "perf must not start when the dotnet-trace collector could not be attached",
+        )
+        node_env = env_file.read_text(encoding="utf-8")
+        self.assertNotIn("DOTNET_TRACE_PID=", node_env)
+        self.assertNotIn("PROFILERS_STARTED_AT=", node_env)
+
+    def test_start_profilers_requires_hostfxr_under_the_container_dotnet_root(self) -> None:
+        environment, diag, _ = self.profiler_environment()
+        env_file = self.write_node_env(diag, dotnet_trace=True)
+        environment["NODE_ENV"] = str(env_file)
+        environment["DOTNET_FXR"] = "false"
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_profilers "$NODE_ENV"
+            """,
+            environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no .NET root with host/fxr found inside rpcbench-primary", result.stderr)
+        self.assertEqual([c for c in self.docker_commands() if " collect " in c], [])
+
+    def test_container_dotnet_root_probe_does_not_consume_the_runtime_listing(self) -> None:
+        """The probe runs inside the loop reading the listing, so it must not share its stdin."""
+        environment, _, _ = self.profiler_environment()
+
+        result = self.run_rpc_library(
+            r"""
+            set -euo pipefail
+            docker() {
+              shift                                        # exec
+              while [[ "${1:-}" == "-e" ]]; do shift 2; done
+              shift                                        # container
+              case "$*" in
+                'dotnet --list-runtimes')
+                  printf 'Microsoft.NETCore.App 8.0.0 [/opt/dotnet-a/shared/Microsoft.NETCore.App]\n'
+                  printf 'Microsoft.NETCore.App 10.0.0 [/opt/dotnet-b/shared/Microsoft.NETCore.App]\n' ;;
+                'test -d /opt/dotnet-a/host/fxr') cat > /dev/null; return 1 ;;
+                'test -d /opt/dotnet-b/host/fxr') cat > /dev/null; return 0 ;;
+                *) return 64 ;;
+              esac
+            }
+            container_dotnet_root rpcbench-primary
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertEqual(result.stdout.strip(), "/opt/dotnet-b")
+
+    def test_stop_dotnet_trace_collector_signals_only_the_collector_it_started(self) -> None:
+        environment, diag, _ = self.profiler_environment()
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            set -euo pipefail
+            ( : ) & finished=$!
+            wait "$finished"
+            if stop_dotnet_trace_collector rpcbench-primary "$finished" 77; then echo "unexpected success"; exit 1; fi
+            sleep 5 & alive=$!
+            if stop_dotnet_trace_collector rpcbench-primary "$alive" 77; then echo "unexpected success"; exit 1; fi
+            kill "$alive"
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertIn("exited before it was stopped; the trace does not cover the measured phase", result.stdout)
+        self.assertIn("is pid '<none>', expected 77; refusing to signal", result.stdout)
+        self.assertEqual([c for c in self.docker_commands() if "kill -INT" in c], [])
+
+    def test_start_profilers_fails_when_dottrace_never_acknowledges_the_start(self) -> None:
+        environment, diag, command_log = self.profiler_environment()
+        env_file = self.write_node_env(diag)
+        environment["NODE_ENV"] = str(env_file)
+        environment["DOTTRACE_ACK"] = "false"
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_profilers "$NODE_ENV"
+            """,
+            environment,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("did not acknowledge the start message", result.stderr)
+        self.assertFalse(
+            command_log.exists() and "record" in command_log.read_text(encoding="utf-8"),
+            "perf must not start when dotTrace collection could not be started",
+        )
+        self.assertNotIn("PROFILERS_STARTED_AT=", env_file.read_text(encoding="utf-8"))
+
+    def test_start_profilers_retry_after_a_perf_failure_leaves_the_collecting_dottrace_alone(self) -> None:
+        environment, diag, command_log = self.profiler_environment()
+        env_file = self.write_node_env(diag)
+        # The first attempt got dotTrace collecting and then died on perf, so its start was recorded.
+        with env_file.open("a", encoding="utf-8") as f:
+            f.write("DOTTRACE_STARTED_AT=2026-08-26T00:00:00Z\n")
+        environment["NODE_ENV"] = str(env_file)
+        environment["DOTTRACE_ACK"] = "false"
+
+        result = self.run_rpc_library(
+            self.FAKE_DOCKER
+            + """
+            set -euo pipefail
+            id() { printf '0\\n'; }
+            require_perf_access
+            start_profilers "$NODE_ENV"
+            source "$NODE_ENV"
+            kill "$PERF_PID"
+            """,
+            environment,
+        )
+
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertIn("dotTrace: data collection already started at 2026-08-26T00:00:00Z", result.stdout)
+        self.assertEqual((diag / "dottrace" / "control.svc").read_bytes(), b"", "no second start message")
+        self.assertEqual(len([c for c in command_log.read_text(encoding="utf-8").splitlines() if c.startswith("record ")]), 1)
+        node_env = env_file.read_text(encoding="utf-8")
+        self.assertEqual(node_env.count("DOTTRACE_STARTED_AT="), 1)
+        self.assertEqual(node_env.count("PROFILERS_STARTED_AT="), 1)
+
+    FAKE_GIT = r"""#!/bin/bash
+printf '%s\n' "$*" >> "$FAKE_STATE/git.log"
+if [[ "$1" == "ls-remote" ]]; then
+  [[ -z "${FAKE_GIT_SHA:-}" ]] || printf '%s\trefs/heads/%s\n' "$FAKE_GIT_SHA" "$3"
+fi
+if [[ "$1" == "init" ]]; then mkdir -p "${@: -1}/runner" && : > "${@: -1}/runner/Dockerfile"; fi
+exit 0
+"""
+
+    # `build` registers the tag `image inspect` answers for; `run` numbers its results.csv so a
+    # stale output republished by a later invocation is told apart from that invocation's own.
+    FAKE_DOCKER_CLI = r"""#!/bin/bash
+printf '%s\n' "$*" >> "$FAKE_STATE/docker.log"
+case "$1 $2" in
+  "build -q") prev=""; for a in "$@"; do [[ "$prev" == "-t" ]] && : > "$FAKE_STATE/images/${a//:/_}"; prev="$a"; done ;;
+  "image inspect") [[ -f "$FAKE_STATE/images/${3//:/_}" ]] ;;
+  "run --rm")
+    n=$(( $(cat "$FAKE_STATE/runs" 2>/dev/null || echo 0) + 1 )); printf '%s' "$n" > "$FAKE_STATE/runs"
+    for a in "$@"; do [[ "$a" == *:/io ]] && printf 'run %s\n' "$n" > "${a%:/io}/out/results.csv"; done
+    true ;;
+esac
+"""
+
+    def run_jsonbench(self, environment: dict[str, str], out_dir: Path) -> subprocess.CompletedProcess[str]:
+        environment = dict(environment)
+        environment["OUT_DIR"] = out_dir.as_posix()
+        # Git Bash needs /c/... paths for the scripts' absolute-path guards, and the fakes must precede
+        # the real git/docker/sudo on its PATH; elsewhere cygpath is absent and the fallback is a no-op.
+        return subprocess.run(
+            [
+                BASH, "-c",
+                'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
+                'export PATH="$(to_posix "$FAKE_BIN"):$PATH" SCRATCH_ROOT="$(to_posix "$SCRATCH_ROOT")" OUT_DIR="$(to_posix "$OUT_DIR")"; exec "$1"',
+                "bash", str(RUN_JSONBENCH),
+            ],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+            env=environment,
+        )
+
+    def test_every_script_with_a_shebang_is_committed_executable(self) -> None:
+        # The workflow, run-rpc-sweep.sh and run_jsonbench above all run these by path rather than
+        # through `bash <path>`, so a script committed 100644 dies with exit 126 wherever the
+        # checkout's mode bits are honoured. The index mode is the only platform-independent record
+        # of the bit — a Windows working tree reports nothing useful about it.
+        # rpc-bench plus the two perf-flow scripts one level up, which the benchmark skills document as commands to
+        # run by path. Deliberately not the whole scripts/ tree: unrelated scripts there predate this flow.
+        listing = subprocess.run(
+            ["git", "ls-files", "-s", "--", "scripts/rpc-bench",
+             "scripts/perf-report.sh", "scripts/validate-folded-profile.sh"],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        if listing.returncode != 0:
+            self.skipTest(f"git is unavailable: {listing.stderr.strip()}")
+        not_executable = []
+        for line in listing.stdout.splitlines():
+            metadata, _, path = line.partition("\t")
+            if not path.endswith(".sh") or not (ROOT / path).read_bytes().startswith(b"#!"):
+                continue
+            mode = metadata.split(" ", 1)[0]
+            if mode != "100755":
+                not_executable.append(f"{path} ({mode})")
+        self.assertEqual(not_executable, [], "a script with a shebang must be committed executable")
+
+    def test_run_jsonbench_reuses_the_preparation_only_when_asked_and_unchanged(self) -> None:
+        fake_bin = self.directory / "bin"
+        fake_bin.mkdir()
+        state = self.directory / "state"
+        (state / "images").mkdir(parents=True)
+        self.write_executable("bin/sudo", '#!/bin/bash\nexec "$@"\n')
+        self.write_executable("bin/git", self.FAKE_GIT)
+        self.write_executable("bin/docker", self.FAKE_DOCKER_CLI)
+        environment = os.environ.copy()
+        environment["FAKE_BIN"] = fake_bin.as_posix()
+        environment["FAKE_STATE"] = state.as_posix()
+        environment["RPC_URL"] = "http://localhost:1"
+        environment["SCRATCH_ROOT"] = (self.directory / "scratch").as_posix()
+        environment["JB_REF"] = "testref"
+        environment["JB_REUSE_PREPARED"] = "true"
+
+        def preparations() -> tuple[int, int]:
+            git_log = (state / "git.log").read_text(encoding="utf-8").splitlines()
+            docker_log = (state / "docker.log").read_text(encoding="utf-8").splitlines()
+            return (
+                len([c for c in git_log if " fetch " in f" {c} "]),
+                len([c for c in docker_log if c.startswith("build ")]),
+            )
+
+        first = self.run_jsonbench(environment, self.directory / "out1")
+        self.assertEqual(first.returncode, 0, f"{first.stdout}\n{first.stderr}")
+        self.assertEqual(preparations(), (1, 1))
+        self.assertEqual((self.directory / "out1" / "results.csv").read_text(encoding="utf-8"), "run 1\n")
+        self.assertEqual(
+            (self.directory / "scratch" / "jsonbench" / "prepared").read_text(encoding="utf-8"),
+            "https://github.com/NethermindEth/json-bench.git@testref\n",
+        )
+
+        # Same repo/ref: the checkout and image are reused, the previous outputs are not.
+        second = self.run_jsonbench(environment, self.directory / "out2")
+        self.assertEqual(second.returncode, 0, f"{second.stdout}\n{second.stderr}")
+        self.assertEqual(preparations(), (1, 1))
+        self.assertIn("Reusing the json-bench checkout, runner image and fixture", second.stdout)
+        self.assertEqual((self.directory / "out2" / "results.csv").read_text(encoding="utf-8"), "run 2\n")
+
+        # Default (the sweep, a run without warm-up): wiped and prepared afresh as before.
+        environment["JB_REUSE_PREPARED"] = "false"
+        third = self.run_jsonbench(environment, self.directory / "out3")
+        self.assertEqual(third.returncode, 0, f"{third.stdout}\n{third.stderr}")
+        self.assertEqual(preparations(), (2, 2))
+        self.assertNotIn("Reusing", third.stdout)
+
+        # A different ref never reuses another ref's checkout.
+        environment["JB_REUSE_PREPARED"] = "true"
+        environment["JB_REF"] = "otherref"
+        fourth = self.run_jsonbench(environment, self.directory / "out4")
+        self.assertEqual(fourth.returncode, 0, f"{fourth.stdout}\n{fourth.stderr}")
+        self.assertEqual(preparations(), (3, 3))
+        self.assertNotIn("Reusing", fourth.stdout)
+
+        # A ref that resolves is keyed on the commit, so the same name over a moved branch misses.
+        environment["JB_REF"] = "movingref"
+        environment["FAKE_GIT_SHA"] = "a" * 40
+        fifth = self.run_jsonbench(environment, self.directory / "out5")
+        self.assertEqual(fifth.returncode, 0, f"{fifth.stdout}\n{fifth.stderr}")
+        self.assertEqual(preparations(), (4, 4))
+        self.assertEqual(
+            (self.directory / "scratch" / "jsonbench" / "prepared").read_text(encoding="utf-8"),
+            f"https://github.com/NethermindEth/json-bench.git@{'a' * 40}\n",
+        )
+        sixth = self.run_jsonbench(environment, self.directory / "out6")
+        self.assertEqual(sixth.returncode, 0, f"{sixth.stdout}\n{sixth.stderr}")
+        self.assertEqual(preparations(), (4, 4))
+        self.assertIn("Reusing", sixth.stdout)
+
+        environment["FAKE_GIT_SHA"] = "b" * 40
+        seventh = self.run_jsonbench(environment, self.directory / "out7")
+        self.assertEqual(seventh.returncode, 0, f"{seventh.stdout}\n{seventh.stderr}")
+        self.assertEqual(preparations(), (5, 5))
+        self.assertNotIn("Reusing", seventh.stdout)
+
+    def test_run_jsonbench_probes_primary_and_reference_even_when_preparation_is_reused(self) -> None:
+        fake_bin = self.directory / "probe-bin"
+        fake_bin.mkdir()
+        corpus = self.directory / "eth-call-corpus.jsonl.gz"
+        corpus.write_bytes(b"fixture contents are never read by the command stub\n")
+        self.write_executable("probe-bin/sudo", '#!/bin/bash\nexec "$@"\n')
+        self.write_executable("probe-bin/git", self.FAKE_GIT)
+        self.write_executable("probe-bin/docker", self.FAKE_DOCKER_CLI)
+        self.write_executable(
+            "probe-bin/python3",
+            "#!/bin/bash\n"
+            "printf '%s\\n' \"$*\" >> \"$PROBE_LOG\"\n"
+            "if [[ \"${1:-}\" == *corpus_parity.py && \"${2:-}\" == probe && -n \"${PROBE_FAILURE_URL:-}\" && \"$*\" == *\"$PROBE_FAILURE_URL\"* ]]; then\n"
+            "  if [[ \"${PROBE_FAILURE_RESPONSE:-}\" == all-error ]]; then printf '%s\\n' 'corpus method probe found no successful results over 2 records (rpc_error:-32000)' >&2; fi\n"
+            "  exit 7\n"
+            "fi\n"
+            # The converter writes one fixture per selector class, plus the manifest that both
+            # the benchmark config and the reuse check read.
+            "if [[ \"${1:-}\" == *prepare-eth-call-corpus.py ]]; then\n"
+            "  mkdir -p \"$3\"; printf '[]' > \"$3/class_1.json\"\n"
+            "  printf '%s' '{\"class_1\":1}' > \"$3/classes.json\"\n"
+            "fi\n"
+            # The renderer is invoked as `python3 - <benchmark.yaml>`; the summary reads back the
+            # duration/rps/vus it wrote.
+            "if [[ \"${1:-}\" == - ]]; then\n"
+            "  mkdir -p \"$(dirname \"$2\")\"; printf '%s\\n' 'duration: \"60s\"' 'rps: 100' 'vus: 10' > \"$2\"\n"
+            "fi\n"
+            "if [[ \"${1:-}\" == *corpus_results.py && \"${2:-}\" == sanitize ]]; then\n"
+            "  mkdir -p \"$(dirname \"$4\")\"; printf '%s\\n' '{\"metrics\":{\"http_req_duration\":{\"values\":{\"avg\":1,\"med\":1,\"p(90)\":1,\"p(95)\":1,\"p(99)\":1,\"max\":1}},\"http_reqs\":{\"values\":{\"count\":1,\"rate\":1}},\"http_req_failed\":{\"values\":{\"rate\":0}},\"checks\":{\"values\":{\"passes\":1,\"fails\":0}},\"dropped_iterations\":{\"values\":{\"count\":0}}}}' > \"$4\"\n"
+            "fi\n",
+        )
+        for method in ("trace_call", "debug_traceCall"):
+            with self.subTest(method=method):
+                state = self.directory / f"probe-state-{method}"
+                (state / "images").mkdir(parents=True)
+                probe_log = self.directory / f"probe-{method}.log"
+                environment = os.environ.copy()
+                environment.update({
+                    "FAKE_BIN": fake_bin.as_posix(),
+                    "FAKE_STATE": state.as_posix(),
+                    "PROBE_LOG": probe_log.as_posix(),
+                    "RPC_URL": "http://primary.invalid:8545",
+                    "REFERENCE_RPC_URL": "http://reference.invalid:8546",
+                    "SCRATCH_ROOT": (self.directory / f"scratch-{method}").as_posix(),
+                    "JB_MODE": "benchmark",
+                    "JB_ETH_CALL_CORPUS": "true",
+                    "JB_ETH_CALL_CORPUS_FILE": corpus.as_posix(),
+                    "CORPUS_METHOD": method,
+                    "JB_REUSE_PREPARED": "true",
+                    "PROBE_FAILURE_URL": "",
+                    "PROBE_FAILURE_RESPONSE": "",
+                })
+
+                first = self.run_jsonbench(environment, self.directory / f"out-{method}-1")
+                second = self.run_jsonbench(environment, self.directory / f"out-{method}-2")
+
+                self.assertEqual(first.returncode, 0, f"{first.stdout}\n{first.stderr}")
+                self.assertEqual(second.returncode, 0, f"{second.stdout}\n{second.stderr}")
+                calls = probe_log.read_text(encoding="utf-8").splitlines()
+                probes = [call for call in calls if "corpus_parity.py probe " in call]
+                self.assertEqual(len(probes), 4, calls)
+                self.assertTrue(any("http://primary.invalid:8545" in call for call in probes), probes)
+                self.assertTrue(any("http://reference.invalid:8546" in call for call in probes), probes)
+                docker_calls = (state / "docker.log").read_text(encoding="utf-8").splitlines()
+                self.assertEqual(len([call for call in docker_calls if call.startswith("build ")]), 1)
+                self.assertIn("Reusing the json-bench checkout, runner image and fixture", second.stdout)
+
+                environment["PROBE_FAILURE_URL"] = "http://reference.invalid:8546"
+                environment["PROBE_FAILURE_RESPONSE"] = "all-error"
+                before_failure = len(docker_calls)
+                failed = self.run_jsonbench(environment, self.directory / f"out-{method}-3")
+                self.assertNotEqual(failed.returncode, 0, failed.stdout)
+                self.assertIn("rpc_error:-32000", failed.stderr)
+                self.assertEqual(len((state / "docker.log").read_text(encoding="utf-8").splitlines()), before_failure)
+                self.assertFalse((self.directory / f"out-{method}-3").exists())
+
+    def resolve(self, **inputs: str) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
+        """Run the workflow's resolve body with these dispatch inputs; return it plus its outputs."""
+        script = self.directory / "resolve.sh"
+        script.write_text(resolve_script(RPC_WORKFLOW.read_text(encoding="utf-8")), encoding="utf-8", newline="\n")
+        output = self.directory / "github-output"
+        output.write_text("", encoding="utf-8")
+        environment = os.environ.copy()
+        environment.update(
+            EVENT_NAME="workflow_dispatch",
+            PUSH_BRANCH="feature/profiling",
+            GITHUB_OUTPUT=output.as_posix(),
+            **inputs,
+        )
+        result = subprocess.run(
+            [BASH, str(script)], cwd=ROOT, check=False, text=True, capture_output=True, env=environment
+        )
+        values: dict[str, str] = {}
+        for line in output.read_text(encoding="utf-8").splitlines():
+            name, separator, value = line.partition("=")
+            if separator:
+                values.setdefault(name, value)
+        return result, values
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to run the resolve body")
+    def test_dotnet_trace_is_only_resolved_where_a_warmup_precedes_the_measured_cell(self) -> None:
+        # The collector attaches between the warm-up and the cell, and nettrace-report.cs states GC
+        # pause and contention as a share of the window it covers. So dotnet_trace is accepted only on
+        # the shape that has a warm-up, and it supplies one when the dispatch does not: otherwise the
+        # window would also hold json-bench's clone, image build and corpus conversion, deflating both
+        # shares with nothing in the artifact to show it had happened.
+        jsonbench = {"IN_TOOL": "jsonbench", "IN_CLIENT": "nethermind"}
+
+        result, outputs = self.resolve(**jsonbench, IN_DOTNET_TRACE="true", IN_TOOL_CONFIG='{"duration":"600s"}')
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertEqual(outputs["warmup_seconds"], "60")
+        # The cap runs from the attach, which the warm-up now keeps immediately ahead of the cell.
+        self.assertEqual(outputs["dotnet_trace_max_seconds"], "1200")
+
+        # An explicitly requested warm-up is kept as given; without dotnet_trace nothing is implied.
+        _, outputs = self.resolve(
+            **jsonbench, IN_DOTNET_TRACE="true", IN_TOOL_CONFIG='{"duration":"600s","corpus_warmup_duration":"120"}'
+        )
+        self.assertEqual(outputs["warmup_seconds"], "120")
+        _, outputs = self.resolve(**jsonbench, IN_TOOL_CONFIG='{"duration":"600s"}')
+        self.assertEqual(outputs["warmup_seconds"], "0")
+
+        for label, inputs in (
+            ("an explicit zero warm-up", {**jsonbench, "IN_TOOL_CONFIG": '{"corpus_warmup_duration":0}'}),
+            ("a tool with no warm-up", {"IN_TOOL": "flood", "IN_CLIENT": "nethermind"}),
+            ("a comparison run", {**jsonbench, "IN_REFERENCE_CLIENT": "geth"}),
+        ):
+            with self.subTest(rejected=label):
+                result, _ = self.resolve(IN_DOTNET_TRACE="true", **inputs)
+                self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
+                self.assertIn("::error::", result.stdout)
+
+    def validate_paths(self, **environment_overrides: str) -> subprocess.CompletedProcess[str]:
+        """Run the benchmark job's path-validation body with these resolved outputs."""
+        script = self.directory / "validate-paths.sh"
+        script.write_text(
+            workflow_step_script(
+                RPC_WORKFLOW.read_text(encoding="utf-8"), "benchmark", "Validate snapshot and output paths"
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        scratch = (self.directory / "scratch").as_posix()
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "BENCHMARK_TOOL": "jsonbench",
+                "DB_SOURCE": "",
+                "REFERENCE_DB_SOURCE": "",
+                "SCRATCH_ROOT": scratch,
+                "SNAPSHOT_ROOT": (self.directory / "snapshots").as_posix(),
+                "TOOL_CONFIG": "{}",
+                "DIAG_DIR": f"{scratch}/diag",
+                "BENCH_TEMP": f"{scratch}/rpcbench.test",
+                "OUT_DIR": f"{scratch}/rpcbench.test/out",
+                "STATE_DIR": f"{scratch}/rpcbench.test/state",
+                **environment_overrides,
+            }
+        )
+        return subprocess.run(
+            [BASH, str(script)], cwd=ROOT, check=False, text=True, capture_output=True, env=environment
+        )
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to read the sweep's snapshot sets")
+    def test_path_validation_checks_the_snapshots_each_mode_actually_mounts(self) -> None:
+        # `db_source` is resolved for every dispatch, but only `Start node` mounts it and that step is
+        # skipped in sweep mode - run-rpc-sweep.sh derives one `<type>-<block>` set per client type itself.
+        # Requiring `db_source` to exist in sweep mode aborted a bare sweep over a directory it never touches.
+        snapshots = self.directory / "snapshots"
+        (snapshots / "nethermind-flat-25490000").mkdir(parents=True)
+        (snapshots / "nethermind-flat-25000000").mkdir()
+        parked = self.directory / "parked-db"
+        parked.mkdir()
+        absent = (self.directory / "absent").as_posix()
+
+        sweep = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", DB_SOURCE=absent)
+        self.assertEqual(sweep.returncode, 0, sweep.stdout + sweep.stderr)
+        # `Set up run paths` owns the output dirs; the check only reads.
+        self.assertFalse((self.directory / "scratch").exists())
+
+        pinned = self.validate_paths(
+            BENCHMARK_TOOL="jsonbench-sweep", DB_SOURCE=absent, TOOL_CONFIG='{"snapshot_block":"25000000"}'
+        )
+        self.assertEqual(pinned.returncode, 0, pinned.stdout + pinned.stderr)
+
+        # A sweep snapshot that is genuinely absent still has to stop the run, named by its own input.
+        missing_sweep = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG='{"snapshot_block":"1"}')
+        self.assertEqual(missing_sweep.returncode, 1, missing_sweep.stdout + missing_sweep.stderr)
+        self.assertIn("tool_config.snapshot_block", missing_sweep.stdout)
+
+        # The sweep's Nethermind set follows its state_layout, and every other arm type mounts its own set.
+        halfpath = '{"state_layout":"halfpath"}'
+        missing_halfpath = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=halfpath)
+        self.assertEqual(missing_halfpath.returncode, 1, missing_halfpath.stdout + missing_halfpath.stderr)
+        self.assertIn("nethermind-25490000", missing_halfpath.stdout)
+        (snapshots / "nethermind-25490000").mkdir()
+        present_halfpath = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=halfpath)
+        self.assertEqual(present_halfpath.returncode, 0, present_halfpath.stdout + present_halfpath.stderr)
+        cross_client = json.dumps(
+            {"clients": "nethermind@registry.example/nm:pr reth@registry.example/reth:main#RUST_LOG=info"}
+        )
+        missing_reth = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=cross_client)
+        self.assertEqual(missing_reth.returncode, 1, missing_reth.stdout + missing_reth.stderr)
+        self.assertIn(f"{snapshots.as_posix()}/reth-25490000", missing_reth.stdout)
+        (snapshots / "reth-25490000").mkdir()
+        present_reth = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=cross_client)
+        self.assertEqual(present_reth.returncode, 0, present_reth.stdout + present_reth.stderr)
+
+        # Single-node mode keeps the original contract against `db_source`.
+        single = self.validate_paths(DB_SOURCE=parked.as_posix())
+        self.assertEqual(single.returncode, 0, single.stdout + single.stderr)
+        missing_db = self.validate_paths(DB_SOURCE=absent)
+        self.assertEqual(missing_db.returncode, 1, missing_db.stdout + missing_db.stderr)
+        self.assertIn("node_config.db_source", missing_db.stdout)
+
+        # The overlap guards stay unconditional: they are what keeps output off a pristine snapshot.
+        for db_tree in ("nethermind-flat-25490000", "reth-25490000"):
+            with self.subTest(overlapping=db_tree):
+                overlapping = self.validate_paths(
+                    BENCHMARK_TOOL="jsonbench-sweep",
+                    TOOL_CONFIG=cross_client,
+                    SCRATCH_ROOT=(snapshots / db_tree).as_posix(),
+                )
+                self.assertEqual(overlapping.returncode, 1, overlapping.stdout + overlapping.stderr)
+                self.assertIn("disjoint", overlapping.stdout)
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to run the resolve body")
+    def test_arm_runs_a_provisioned_client_single_node_from_its_own_set(self) -> None:
+        # The ARM box keeps one directory per client beside the Nethermind root: /data/<client>/<client>-<block>.
+        for client, expected_db, expected_isolation in (
+            ("reth", "/data/reth/reth-25490000", "direct"),
+            ("nethermind", "/data/nethermind/nethermind-flat-25490000", "overlay"),
+        ):
+            with self.subTest(client=client):
+                result, outputs = self.resolve(
+                    IN_TOOL="jsonbench", IN_ARCH="arm64", IN_CLIENT=client, IN_DOCKER_IMAGE="registry.example/client:tag"
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertEqual(outputs["client"], client)
+                self.assertEqual(outputs["db_source"], expected_db)
+                self.assertEqual(outputs["db_isolation"], expected_isolation)
+                self.assertEqual(outputs["image_ref"], "registry.example/client:tag")
+
+        # The sweep presets pin the node to Nethermind whatever `client` says, so they keep the Nethermind set.
+        result, outputs = self.resolve(
+            IN_TOOL="corpus-ab", IN_ARCH="arm64", IN_CLIENT="reth", IN_DOCKER_IMAGE="registry.example/nm:pr"
+        )
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertEqual(outputs["client"], "nethermind")
+        self.assertEqual(outputs["db_source"], "/data/nethermind/nethermind-flat-25490000")
+
+        # Only a second node stays refused on that box.
+        result, _ = self.resolve(
+            IN_TOOL="jsonbench",
+            IN_ARCH="arm64",
+            IN_CLIENT="reth",
+            IN_REFERENCE_CLIENT="nethermind",
+            IN_DOCKER_IMAGE="registry.example/client:tag",
+        )
+        self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
+        self.assertIn("reference client", result.stdout)
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to run the resolve body")
+    def test_explicit_sweep_clients_supply_the_image_on_arm(self) -> None:
+        cases = (
+            (
+                " \t nethermind@registry.example/master:baseline#trace=true\t nethermind@registry.example/pr:head",
+                "registry.example/pr:head",
+            ),
+            (
+                "nethermind@registry.example/pr:head nethermind@registry.example/master:baseline",
+                "registry.example/master:baseline",
+            ),
+            (
+                "nethermind@registry.example/master:baseline reth@registry.example/reth:latest",
+                "registry.example/master:baseline",
+            ),
+            (
+                "reth@registry.example/reth:first reth@registry.example/reth:second",
+                "registry.example/reth:first",
+            ),
+        )
+        for clients, expected_image in cases:
+            with self.subTest(clients=clients):
+                result, outputs = self.resolve(
+                    IN_TOOL="jsonbench-sweep",
+                    IN_ARCH="arm64",
+                    IN_TOOL_CONFIG=json.dumps({"clients": clients}),
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertEqual(outputs["image_mode"], "provided")
+                self.assertEqual(outputs["image_ref"], expected_image)
+                self.assertEqual(outputs["baseline_image"], "cache")
+                tool_config = re.search(r"^tool_config: (\{.*\})$", result.stdout, re.M)
+                self.assertIsNotNone(tool_config)
+                self.assertEqual(json.loads(tool_config.group(1))["clients"], clients)
+
+        mixed_clients = " \t nethermind@registry.example/master:baseline nethermind"
+        mixed, _ = self.resolve(
+            IN_TOOL="jsonbench-sweep",
+            IN_ARCH="arm64",
+            IN_TOOL_CONFIG=json.dumps({"clients": mixed_clients}),
+        )
+        self.assertNotEqual(mixed.returncode, 0, f"{mixed.stdout}\n{mixed.stderr}")
+        self.assertIn("does not build images", mixed.stdout)
+
+        malformed, _ = self.resolve(
+            IN_TOOL="jsonbench-sweep",
+            IN_ARCH="arm64",
+            IN_TOOL_CONFIG='{"clients":["nethermind@registry.example/a","nethermind@registry.example/b"]}',
+        )
+        self.assertEqual(malformed.returncode, 1, f"{malformed.stdout}\n{malformed.stderr}")
+        self.assertIn("tool_config.clients must be a string", malformed.stdout)
+
+    def test_response_limit_is_validated_and_exported_to_both_corpus_paths(self) -> None:
+        jsonbench = {"IN_TOOL": "jsonbench", "IN_CLIENT": "nethermind"}
+        result, _ = self.resolve(**jsonbench, IN_TOOL_CONFIG='{"max_response_bytes":123456}')
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        result, _ = self.resolve(
+            **jsonbench,
+            IN_DEBUG_TRACE_CALL_CORPUS="true",
+            IN_TOOL_CONFIG='{"eth_call_corpus":true,"trace_call_tracer":"stateGasTracer"}',
+        )
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+
+        # A corpus run serves only the module its method lives in, so the replay cannot reach a
+        # method the dispatch did not ask for - and the narrowing must still follow the method.
+        for inputs, expected in (
+            ({"IN_DEBUG_TRACE_CALL_CORPUS": "true"}, "Eth,Debug"),
+            ({"IN_TRACE_CALL_CORPUS": "true"}, "Eth,Trace"),
+            ({}, "Eth"),
+        ):
+            with self.subTest(modules=expected):
+                result, outputs = self.resolve(
+                    **jsonbench, **inputs, IN_TOOL_CONFIG='{"eth_call_corpus":true}'
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertEqual(outputs["jsonrpc_modules"], expected)
+        result, outputs = self.resolve(
+            **jsonbench,
+            IN_NODE_CONFIG='{"jsonrpc_modules":"Eth,Trace"}',
+            IN_DEBUG_TRACE_CALL_CORPUS="true",
+            IN_TOOL_CONFIG='{"eth_call_corpus":true}',
+        )
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        self.assertEqual(outputs["jsonrpc_modules"], "Eth,Trace")
+
+        for value in (0, -1, 1.5, '"123"'):
+            with self.subTest(value=value):
+                result, _ = self.resolve(**jsonbench, IN_TOOL_CONFIG=f'{{"max_response_bytes":{value}}}')
+                self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
+                self.assertIn("max_response_bytes must be a positive JSON integer", result.stdout)
+
+        workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("callTracer|prestateTracer|4byteTracer|stateGasTracer|\"\"", resolve_script(workflow))
+        # Every path that replays the corpus has to accept the same responses; the sweep and the
+        # measured cell export it through their tool_config tables, the warm-up on its own line.
+        for step_name in ("Warm up node", "Run json-bench benchmark", "Run RPC sweep"):
+            self.assertIn(
+                "RPC_BENCH_MAX_RESPONSE_BYTES",
+                workflow_named_step_body(workflow, "benchmark", step_name),
+            )
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to run the parity gate")
+    def test_trace_parity_gate_rejects_every_replay_defect(self) -> None:
+        # A replay that could not produce a trustworthy answer is not "no divergence found": a trace
+        # response that never arrived, was invalid, or was an RPC error has to count as a defect.
+        sweep = (ROOT / "scripts" / "rpc-bench" / "run-rpc-sweep.sh").read_text(encoding="utf-8")
+        match = re.search(r"(?ms)^parity_compare\(\) \{.*?^\}$", sweep)
+        self.assertIsNotNone(match, "could not extract the checked-in parity gate")
+        self.write_executable(
+            "python3",
+            """#!/usr/bin/env bash
+set -euo pipefail
+report=''
+for ((i = 1; i <= $#; i++)); do
+  if [[ "${!i}" == "--report" ]]; then
+    j=$((i + 1)); report="${!j}"
+  fi
+done
+[[ -z "${report}" || -z "${FAKE_REPORT}" ]] || printf '%s' "${FAKE_REPORT}" > "${report}"
+exit "${FAKE_EXIT}"
+""",
+        )
+        script = self.write_executable(
+            "parity-gate.sh",
+            """#!/usr/bin/env bash
+set -uo pipefail
+here=/unused
+RPC=http://localhost:8545
+OUT_DIR="$1"
+CORPUS_PARITY_DIFFS=false
+PARITY_ROWS=()
+parity_fail=0
+parity_skipped=0
+__PARITY_FUNCTION__
+mkdir -p "$OUT_DIR"
+parity_compare corpus candidate corpus-file state base "${SAVED_MARKER}"
+printf 'parity_fail=%s parity_skipped=%s rows=%s\\n' "$parity_fail" "$parity_skipped" "${#PARITY_ROWS[@]}"
+""".replace("__PARITY_FUNCTION__", match.group(0).rstrip()),
+        )
+
+        clean = '{"candidate_transport_failures":0,"candidate_invalid_responses":0,"candidate_rpc_errors":0}'
+        transport = '{"candidate_transport_failures":1,"candidate_invalid_responses":0,"candidate_rpc_errors":0}'
+        cases = (
+            ("divergence", clean, "1", "", "parity_fail=1 parity_skipped=0 rows=1"),
+            ("transport failure", transport, "1", "", "parity_fail=1 parity_skipped=0 rows=1"),
+            ("unparseable report", '{"candidate_transport_failures":0}', "1", "", "parity_fail=1 parity_skipped=0 rows=1"),
+            ("no report written", "", "1", "", "parity_fail=1 parity_skipped=0 rows=0"),
+            # Exit 2 is "the comparison could not run". Against a live baseline that is a defect;
+            # against a saved one it is reported separately, because only a moved snapshot calls
+            # for re-recording and neither must be silently read as parity.
+            ("replay could not run", clean, "2", "", "parity_fail=1 parity_skipped=0"),
+            ("saved baseline unusable", clean, "2", "saved", "parity_fail=0 parity_skipped=1 rows=0"),
+            ("clean", clean, "0", "", "parity_fail=0 parity_skipped=0 rows=1"),
+        )
+        for label, report, status, saved, expected in cases:
+            with self.subTest(case=label):
+                result = subprocess.run(
+                    [BASH, str(script), str(self.directory / label.replace(" ", "-"))],
+                    check=False,
+                    text=True,
+                    capture_output=True,
+                    env={
+                        **os.environ,
+                        "PATH": f"{self.directory}{os.pathsep}{os.environ.get('PATH', '')}",
+                        "FAKE_EXIT": status,
+                        "FAKE_REPORT": report,
+                        "SAVED_MARKER": saved,
+                    },
+                )
+                self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+                self.assertIn(expected, result.stdout)
+
+
+    def test_profilers_start_between_the_warmup_and_the_measured_cell(self) -> None:
+        start_node = START_NODE.read_text(encoding="utf-8")
+        start_profilers = START_PROFILERS.read_text(encoding="utf-8")
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+
+        # No warm-up: as before — perf starts right after RPC is ready and dotTrace collects from launch.
+        self.assertIn(
+            'if [[ "$PROFILE_AFTER_WARMUP" == "true" ]]; then\n'
+            '  log "profilers deferred: run start-profilers.sh after the warm-up"\n'
+            'elif [[ "$PERF" == "true" || "$DOTNET_TRACE" == "true" ]]; then\n'
+            '  start_profilers "$STATE_DIR/node$SUFFIX.env"\n'
+            "fi",
+            start_node,
+        )
+        self.assertIn(
+            '[[ "$DOTTRACE" == "true" && "$PROFILE_AFTER_WARMUP" == "true" ]] && DOTTRACE_DEFERRED="true"',
+            start_node,
+        )
+        self.assertIn(
+            'entry_args+=(--collect-data-from-start=off --service-output=on "--service-input=/dottrace-output/$DOTTRACE_CONTROL_FILE_NAME")',
+            start_node,
+        )
+        self.assertNotIn("perf record", start_node)
+        self.assertIn('start_profilers "$NODE_ENV_FILE"', start_profilers)
+        self.assertIn('"${PROFILE_AFTER_WARMUP:-false}" != "true"', start_profilers)
+
+        job = workflow_job_body(rpc_workflow, "benchmark")
+        order = [
+            "- name: Start node\n",
+            "- name: Warm up node\n",
+            "- name: Start profilers\n",
+            "- name: Run json-bench benchmark\n",
+            "- name: Stop node and verify DB integrity\n",
+        ]
+        positions = [job.index(step) for step in order]
+        self.assertEqual(positions, sorted(positions), "profilers must start after the warm-up and before the measured cell")
+        self.assertIn(
+            "PROFILE_AFTER_WARMUP: ${{ needs.resolve.outputs.warmup_seconds != '0' && 'true' || 'false' }}",
+            workflow_named_step_body(rpc_workflow, "benchmark", "Start node"),
+        )
+        warmup = workflow_named_step_body(rpc_workflow, "benchmark", "Warm up node")
+        self.assertIn('export OUT_DIR="${SCRATCH_ROOT}/warmup-cell/single"', warmup)
+        self.assertIn('JB_MAX_FAIL_RATE_PCT="100"', warmup)
+        self.assertIn('JB_REUSE_PREPARED: "true"', warmup)
+        self.assertIn(
+            "JB_REUSE_PREPARED: ${{ needs.resolve.outputs.warmup_seconds != '0' && 'true' || 'false' }}",
+            workflow_named_step_body(rpc_workflow, "benchmark", "Run json-bench benchmark"),
+        )
+        self.assertEqual(
+            workflow_named_step_if(rpc_workflow, "benchmark", "Start profilers"),
+            "needs.resolve.outputs.benchmark_tool == 'jsonbench' && needs.resolve.outputs.warmup_seconds != '0' "
+            "&& (needs.resolve.outputs.perf == 'true' || needs.resolve.outputs.dottrace == 'true' "
+            "|| needs.resolve.outputs.dotnet_trace == 'true')",
+        )
+
+    def test_a_failed_perf_capture_still_ships_its_recorder_log(self) -> None:
+        """Exiting before the zip discarded perf-record*.log - the only file that says why the capture
+        produced nothing. Archive first, tail the log into the job, then fail."""
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+
+        step = rpc_workflow[rpc_workflow.index("- name: Collect perf profile"):rpc_workflow.index("- name: Collect dotnet-trace")]
+        self.assertIn("perf_validation_failed=false", step)
+        self.assertIn("perf-record*.log", step)
+        # the zip must precede the deferred exit
+        self.assertLess(step.index('zip -9r "${ARCHIVE}" perf'),
+                        step.index('if [[ "${perf_validation_failed}" == "true" ]]; then'))
+        self.assertLess(step.index('if [[ "${perf_validation_failed}" == "true" ]]; then'), step.index("exit 1"))
+
+    def test_a_failed_warmup_fails_the_run_when_a_profiler_will_attach(self) -> None:
+        """The deferred profiler start is what makes "the measured phase only" true. A warm-up that dies
+        before writing the reuse marker puts the clone, image build and corpus conversion back inside the
+        window, and nettrace-report reports GC and contention as a share of it - so the numbers would be
+        silently deflated. Unprofiled, a cold cell is still a valid measurement and stays a warning."""
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+
+        warmup = rpc_workflow[rpc_workflow.index("- name: Warm up node"):rpc_workflow.index("- name: Start profilers")]
+        self.assertIn("PROFILED:", warmup)
+        self.assertIn("if ! ./scripts/rpc-bench/run-jsonbench.sh; then", warmup)
+        self.assertIn('if [[ "${PROFILED}" == "true" ]]; then', warmup)
+        self.assertIn("::error::warm-up failed with profiling enabled", warmup)
+        self.assertIn("exit 1", warmup)
+        # The unprofiled path must still only warn.
+        self.assertIn("::warning::warm-up failed", warmup)
+
+    def test_dotnet_trace_sidecar_is_stopped_before_the_node_and_shipped_as_its_own_artifact(self) -> None:
+        start_node = START_NODE.read_text(encoding="utf-8")
+        stop_node = STOP_NODE.read_text(encoding="utf-8")
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn('-v "$DOTNET_TRACE_HOST_PATH:$DOTNET_TRACE_CONTAINER_PATH:ro"', start_node)
+        self.assertIn('-v "$DIAG_DIR/dotnet-trace:$DOTNET_TRACE_OUTPUT_PATH:rw"', start_node)
+        self.assertIn('echo "DOTNET_TRACE=$DOTNET_TRACE"', start_node)
+        # SIGINT inside the container finalizes the .nettrace, so the collector must go before the
+        # container does — and before perf's finalization, which reads through the live container too.
+        self.assertLess(
+            stop_node.index("stop_dotnet_trace_collector"),
+            stop_node.index("signal_perf_recorder_if_matches INT"),
+        )
+        self.assertLess(stop_node.index("stop_dotnet_trace_collector"), stop_node.index('docker stop -t "$STOP_GRACE"'))
+        self.assertIn("dotnet-trace collection FAILED", stop_node)
+
+        job = workflow_job_body(rpc_workflow, "benchmark")
+        order = [
+            "- name: Stop node and verify DB integrity\n",
+            "- name: Collect dotnet-trace\n",
+            "- name: Upload perf profile\n",
+            "- name: Upload dotnet-trace\n",
+        ]
+        positions = [job.index(step) for step in order]
+        self.assertEqual(positions, sorted(positions))
+        dotnet_trace_gate = "always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dotnet_trace == 'true'"
+        for step_name in ("Collect dotnet-trace", "Upload dotnet-trace"):
+            self.assertEqual(workflow_named_step_if(rpc_workflow, "benchmark", step_name), dotnet_trace_gate)
+        self.assertIn("name: dotnet-trace-rpcbench", workflow_named_step_body(rpc_workflow, "benchmark", "Upload dotnet-trace"))
+        self.assertIn(
+            "DOTNET_TRACE: ${{ needs.resolve.outputs.dotnet_trace }}",
+            workflow_named_step_body(rpc_workflow, "benchmark", "Start node"),
+        )
+        self.assertIn('DOTNET_TRACE: "false"', workflow_named_step_body(rpc_workflow, "benchmark", "Start reference node"))
+        self.assertIn("rpcbench.nettrace", workflow_named_step_body(rpc_workflow, "benchmark", "Publish step summary"))
+
+    def test_benchmark_outputs_use_the_per_run_dir_and_killed_runs_are_swept(self) -> None:
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+        job = workflow_job_body(rpc_workflow, "benchmark")
+
+        # Placement of the per-run dir and the disk gate itself are pinned by scripts/ci/test_rpc_runner_workspace.py.
+        self.assertNotIn("diag/results", job)
+        self.assertNotIn("${{ runner.temp }}/rpcbench-out", job)
+        self.assertNotIn("${{ runner.temp }}/rpcbench-state", job)
+        self.assertNotIn("${{ runner.temp }}/dottrace-rpcbench.zip", job)
+        self.assertNotIn("${{ runner.temp }}/perf-rpcbench.zip", job)
+        self.assertNotIn("${{ runner.temp }}/dotnet-trace-rpcbench.zip", job)
+        self.assertIn('"${BENCH_TEMP}/rpcbench-corpus-results"', job)
+        self.assertIn("find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete", job)
+        self.assertIn('docker rmi "${img}" >/dev/null 2>&1 && echo "  dropped ${img}"', job)
+
+        upload = job.index("- name: Upload benchmark results")
+        cleanup = job.index("- name: Defensive cleanup")
+        self.assertLess(upload, cleanup)
+
+        start_node = START_NODE.read_text(encoding="utf-8")
+        self.assertIn("/data/*/*-*", start_node)
+
+        reclaim = workflow_step_script(rpc_workflow, "benchmark", "Reclaim root disk before pulling")
+        fake_bin = self.directory / "headroom-bin"
+        fake_bin.mkdir()
+        docker_root = self.directory / "docker-root"
+        docker_root.mkdir()
+        self.write_executable(
+            "headroom-bin/docker",
+            '#!/bin/bash\n[[ "$1" == "info" ]] && printf \'%s\\n\' "$FAKE_DOCKER_ROOT"\nexit 0\n',
+        )
+        self.write_executable(
+            "headroom-bin/df",
+            r'''#!/bin/bash
+if [[ "$*" == *"--output=avail"* ]]; then printf 'Avail\n%s\n' "$((100 * 1024 * 1024 * 1024))";
+else printf 'Filesystem  Size  Used Avail Use%% Mounted on\nrootfs 1 0 1 0%% /\n'; fi
+''',
+        )
+        for command in ("apt-get", "journalctl", "rm", "du"):
+            self.write_executable(f"headroom-bin/{command}", "#!/bin/bash\nexit 0\n")
+        self.write_executable(
+            "headroom-bin/find",
+            '#!/bin/bash\nprintf "%s\\n" "$*" >> "$FIND_CALLS"\nexit 0\n',
+        )
+
+        find_calls = self.directory / "find-calls"
+        environment = os.environ.copy()
+        environment.update(
+            SCRATCH_ROOT=(self.directory / "scratch").as_posix(),
+            BENCH_TEMP=(self.directory / "scratch" / "rpcbench.test").as_posix(),
+            FIND_CALLS=find_calls.as_posix(),
+            FAKE_DOCKER_ROOT=docker_root.as_posix(),
+            FAKE_BIN=fake_bin.as_posix(),
+            KEEP_IMAGES="",
+            KEEP_TOOL_CONFIG="{}",
+        )
+        launcher = (
+            'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
+            'export PATH="$(to_posix "$FAKE_BIN"):$PATH"; exec bash -c "$1"'
+        )
+        result = subprocess.run(
+            [BASH, "-c", launcher, "bash", reclaim], cwd=ROOT, check=False, text=True, capture_output=True, env=environment
+        )
+        self.assertEqual(result.returncode, 0, f"{result.stdout}\n{result.stderr}")
+        # On ARM the per-run dir sits on the scratch disk; a run that died with the box never reaches `Remove run
+        # output`, so only a bounded sweep here keeps it from leaking its multi-GB archives for good.
+        sweeps = [line for line in find_calls.read_text(encoding="utf-8").splitlines() if "rpcbench.*" in line]
+        self.assertEqual(len(sweeps), 1, find_calls.read_text(encoding="utf-8"))
+        self.assertIn("-maxdepth 1", sweeps[0])
+        self.assertIn("-mtime +1", sweeps[0])
+
+    def test_start_node_lists_snapshot_candidates_or_says_there_are_none(self) -> None:
+        fake_bin = self.directory / "candidates-bin"
+        fake_bin.mkdir()
+        # A real ls exits 2 whenever any pattern is unmatched, whether or not others matched.
+        self.write_executable(
+            "candidates-bin/ls",
+            "#!/usr/bin/env bash\n"
+            '[[ -n "${FAKE_LS_OUTPUT:-}" ]] && printf \'%s\\n\' "$FAKE_LS_OUTPUT"\n'
+            "exit 2\n",
+        )
+
+        def run_start_node(listing: str) -> subprocess.CompletedProcess[str]:
+            environment = os.environ.copy()
+            environment.update(
+                FAKE_BIN=fake_bin.as_posix(),
+                FAKE_LS_OUTPUT=listing,
+                DB_SOURCE=(self.directory / "absent-snapshot").as_posix(),
+                SCRATCH_ROOT=(self.directory / "scratch").as_posix(),
+                STATE_DIR=(self.directory / "state").as_posix(),
+                NODE_IMAGE="nethermindeth/nethermind:test",
+            )
+            launcher = (
+                'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
+                'export PATH="$(to_posix "$FAKE_BIN"):$PATH"; exec bash "$1"'
+            )
+            return subprocess.run(
+                [BASH, "-c", launcher, "bash", START_NODE.as_posix()],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+                env=environment,
+            )
+
+        none_found = run_start_node("")
+        self.assertNotEqual(none_found.returncode, 0, f"{none_found.stdout}\n{none_found.stderr}")
+        self.assertIn("<none found under /mnt or /data>", none_found.stdout)
+        self.assertIn("set node_config.db_source to a valid snapshot path", none_found.stderr)
+
+        found = run_start_node("/data/reth/reth-25490000")
+        self.assertNotEqual(found.returncode, 0, f"{found.stdout}\n{found.stderr}")
+        self.assertIn("  /data/reth/reth-25490000", found.stdout)
+        self.assertNotIn("<none found", found.stdout)
+
+    def test_path_validation_rejects_symlinked_output_escape(self) -> None:
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+        validate = workflow_step_script(rpc_workflow, "benchmark", "Validate snapshot and output paths")
+
+        def run_validate(scratch: Path, db: Path, bench_temp: Path) -> subprocess.CompletedProcess[str]:
+            environment = os.environ.copy()
+            environment.update(
+                BENCHMARK_TOOL="jsonbench",
+                DB_SOURCE=db.as_posix(),
+                REFERENCE_DB_SOURCE="",
+                SCRATCH_ROOT=scratch.as_posix(),
+                SNAPSHOT_ROOT=(self.directory / "snapshots").as_posix(),
+                TOOL_CONFIG="{}",
+                DIAG_DIR=(scratch / "diag").as_posix(),
+                BENCH_TEMP=bench_temp.as_posix(),
+                OUT_DIR=(bench_temp / "out").as_posix(),
+                STATE_DIR=(bench_temp / "state").as_posix(),
+            )
+            launcher = (
+                'to_posix() { cygpath -u "$1" 2>/dev/null || printf "%s" "$1"; }; '
+                'for name in DB_SOURCE SCRATCH_ROOT DIAG_DIR BENCH_TEMP OUT_DIR STATE_DIR; do '
+                'value="$(to_posix "${!name}")"; printf -v "$name" "%s" "$value"; export "$name"; done; '
+                'exec bash -c "$1"'
+            )
+            return subprocess.run(
+                [BASH, "-c", launcher, "bash", validate],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+                env=environment,
+            )
+
+        primary_db = self.directory / "primary-db"
+        primary_db.mkdir()
+
+        missing_db = self.directory / "missing-db"
+        missing_scratch = self.directory / "missing-scratch"
+        missing = run_validate(missing_scratch, missing_db, missing_scratch / "rpcbench.test")
+        self.assertNotEqual(missing.returncode, 0, f"{missing.stdout}\n{missing.stderr}")
+        self.assertIn("missing or unresolvable", missing.stdout)
+        self.assertIn("set node_config.db_source to an existing snapshot path", missing.stdout)
+        self.assertFalse(missing_scratch.exists())
+
+        scratch_symlink = self.directory / "scratch-symlink"
+        scratch_symlink.mkdir()
+        try:
+            (scratch_symlink / "diag").symlink_to(primary_db, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"directory symlinks are unavailable: {error}")
+        escaped = run_validate(scratch_symlink, primary_db, scratch_symlink / "rpcbench.test")
+        self.assertNotEqual(escaped.returncode, 0, f"{escaped.stdout}\n{escaped.stderr}")
+        self.assertIn("escapes SCRATCH_ROOT", escaped.stdout)
+
+        # The per-run output dir may live outside the scratch root (RUNNER_TEMP on amd64), but never inside a DB tree.
+        scratch = self.directory / "scratch"
+        scratch.mkdir()
+        try:
+            (scratch / "rpcbench.test").symlink_to(primary_db, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"directory symlinks are unavailable: {error}")
+        overlapping = run_validate(scratch, primary_db, scratch / "rpcbench.test")
+        self.assertNotEqual(overlapping.returncode, 0, f"{overlapping.stdout}\n{overlapping.stderr}")
+        self.assertIn("overlaps the DB source", overlapping.stdout)
+        self.assertEqual([], list(primary_db.iterdir()))
+
+        good_scratch = self.directory / "good-scratch"
+        for bench_temp in (good_scratch / "rpcbench.arm", self.directory / "runner-temp" / "rpcbench.amd"):
+            with self.subTest(bench_temp=bench_temp.name):
+                good = run_validate(good_scratch, primary_db, bench_temp)
+                self.assertEqual(good.returncode, 0, f"{good.stdout}\n{good.stderr}")
+                # `Set up run paths` creates the output dirs; the check itself only reads.
+                self.assertFalse(bench_temp.exists())
+
+    def test_workflow_profile_contracts_cover_both_collectors(self) -> None:
+        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+        start_node = START_NODE.read_text(encoding="utf-8")
+        stop_node = STOP_NODE.read_text(encoding="utf-8")
+
+        self.assertEqual(expb_workflow.count('bash scripts/validate-folded-profile.sh "${folded_profile}"'), 2)
+        self.assertEqual(expb_workflow.count("-x '*/perf.data'"), 2)
+        self.assertEqual(expb_workflow.count('artifact_prefix="dottrace"'), 2)
+        self.assertEqual(expb_workflow.count('artifact_prefix="profiling"'), 2)
+        self.assertIn("pattern: ${{ needs.resolve.outputs.perf == 'true' && 'profiling-*' || 'dottrace-*' }}", expb_workflow)
+        for job_name in ("benchmark", "benchmark-multi"):
+            job_body = workflow_job_body(expb_workflow, job_name)
+            self.assertIn(
+                'capability_output="$(NO_COLOR=1 "${expb_bin}" execute-scenarios "${requested_flags[@]}" --help 2>&1)"',
+                job_body,
+            )
+        self.assertIn("bash scripts/validate-folded-profile.sh", rpc_workflow)
+        self.assertIn("zip -9r \"${ARCHIVE}\" perf -x '*/perf.data'", rpc_workflow)
+        self.assertIn("require_perf_access", rpc_workflow)
+        self.assertIn("require_perf_access", start_node)
+        self.assertLess(
+            rpc_workflow.index("- name: Verify perf profiling prerequisites"),
+            rpc_workflow.index("- name: Ensure Docker is installed"),
+        )
+        self.assertLess(
+            start_node.index('if [[ "$PERF" == "true" ]]; then\n  require_perf_access'),
+            start_node.index('mkdir -p "$STATE_DIR"'),
+        )
+        self.assertIn(
+            "# Start the profilers once the node serves RPC, so they exclude startup. With a warm-up the\n"
+            "# workflow starts them via start-profilers.sh after it, so they exclude the warm-up as well.",
+            start_node,
+        )
+        self.assertNotIn("itself rather than startup and warm-up", start_node)
+        self.assertIn('perf record --event "$PERF_SAMPLING_EVENT"', RPC_LIB.read_text(encoding="utf-8"))
+        self.assertIn('bash "$HERE/../validate-folded-profile.sh" "$folded_tmp"', stop_node)
+        self.assertIn('signal_perf_recorder_if_matches INT', stop_node)
+        self.assertIn('signal_perf_recorder_if_matches KILL', stop_node)
+
+        for job_name in ("benchmark", "benchmark-multi"):
+            for step_name in ("Collect and upload profiling artifacts", "Upload profiling artifact"):
+                self.assertEqual(workflow_named_step_if(expb_workflow, job_name, step_name), PROFILE_ARTIFACT_GATE)
+
+        perf_preflight = workflow_named_step_body(
+            rpc_workflow,
+            "benchmark",
+            "Verify perf profiling prerequisites",
+        )
+        self.assertIn("source scripts/rpc-bench/lib.sh", perf_preflight)
+        self.assertIn("require_perf_access", perf_preflight)
+        mutated_rpc_workflow = rpc_workflow.replace("          require_perf_access\n", "", 1)
+        self.assertNotEqual(mutated_rpc_workflow, rpc_workflow)
+        with self.assertRaises(AssertionError):
+            self.assertIn(
+                "require_perf_access",
+                workflow_named_step_body(
+                    mutated_rpc_workflow,
+                    "benchmark",
+                    "Verify perf profiling prerequisites",
+                ),
+            )
+
+        dottrace_only = "always() && needs.resolve.outputs.dottrace == 'true'"
+        mutated_workflow = expb_workflow.replace(PROFILE_ARTIFACT_GATE, dottrace_only, 1)
+        self.assertNotEqual(mutated_workflow, expb_workflow)
+        with self.assertRaises(AssertionError):
+            for job_name in ("benchmark", "benchmark-multi"):
+                for step_name in ("Collect and upload profiling artifacts", "Upload profiling artifact"):
+                    self.assertEqual(workflow_named_step_if(mutated_workflow, job_name, step_name), PROFILE_ARTIFACT_GATE)
+
+    def test_perf_and_dotnet_trace_preconditions_are_resolved_before_the_runner_is_paid_for(self) -> None:
+        rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
+        resolve = workflow_job_body(rpc_workflow, "resolve")
+
+        for collector in ("dottrace", "perf", "dotnet_trace"):
+            with self.subTest(collector=collector):
+                self.assertIn(f'if [[ "${{{collector}}}" == "true" && "${{client}}" != "nethermind" ]]; then', resolve)
+
+        # The cap runs from the attach, which the implied warm-up keeps immediately ahead of the cell
+        # (behaviour covered by test_dotnet_trace_is_only_resolved_where_a_warmup_precedes_the_measured_cell);
+        # sizing it before the warm-up is resolved would cap against the wrong window.
+        implied_warmup = 'if [[ "${dotnet_trace}" == "true" && "${warmup_seconds}" == "0" ]]; then'
+        self.assertIn(implied_warmup, resolve)
+        self.assertLess(
+            resolve.index(implied_warmup),
+            resolve.index('dotnet_trace_max_seconds=""'),
+            "the cap is sized against the cell the warm-up keeps the attach in front of",
+        )
+        self.assertIn(
+            "the dotnet-trace collector exited before it was stopped; the trace does not cover the measured phase",
+            RPC_LIB.read_text(encoding="utf-8"),
+        )
+
+        # Pinned collector: the rig pins json-bench to keep profiling reproducible.
+        start_node = START_NODE.read_text(encoding="utf-8")
+        self.assertRegex(start_node, r'DOTNET_TRACE_VERSION="\$\{DOTNET_TRACE_VERSION:-[0-9]+\.[0-9]+\.[0-9]+\}"')
+        self.assertEqual(start_node.count('dotnet tool install --version "$DOTNET_TRACE_VERSION"'), 2)
+
+    def test_expb_profile_archive_precedes_deferred_perf_failure(self) -> None:
+        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
+        archive = 'zip -9r "${archive}" "${profiling_dirs[@]}" -x \'*/perf.data\''
+        deferred_failure = 'if [[ "${perf_validation_failed}" == "true" ]]; then'
+
+        for job_name in ("benchmark", "benchmark-multi"):
+            collector = workflow_named_step_body(expb_workflow, job_name, "Collect and upload profiling artifacts")
+            self.assertIn("perf_validation_failed=false", collector)
+            self.assertIn("perf_validation_failed=true", collector)
+            self.assertLess(
+                collector.index(archive),
+                collector.index(deferred_failure),
+                f"{job_name} must archive dotTrace/EventPipe data before failing invalid perf output",
+            )
+            self.assertIn("exit 1", collector[collector.index(deferred_failure) :])
+
+    def test_campaign_fail_fast_is_scoped_to_an_explicit_image_comparison(self) -> None:
+        # Retrospective sweeps bisect across many master builds, where the images that did run stay
+        # useful; an explicit `docker_images` A/B is invalid the moment one arm fails.
+        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
+        campaign = workflow_named_step_body(expb_workflow, "benchmark-multi", "Run sequential EXPB campaign")
+        self.assertIn("CAMPAIGN_FAIL_FAST: ${{ needs.resolve.outputs.docker_images != '' }}", campaign)
+        self.assertIn('fail_fast = get("CAMPAIGN_FAIL_FAST", "true") != "false"', SEQUENTIAL_DRIVER.read_text(encoding="utf-8"))
+
+
+if __name__ == "__main__":
+    unittest.main()

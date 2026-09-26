@@ -25,8 +25,11 @@ public class ServiceStopperTests
         Service2 service2 = container.Resolve<Service2>();
         await container.Resolve<IServiceStopper>().StopAllServices();
 
-        Assert.That(service1.Stopped, Is.True);
-        Assert.That(service2.Stopped, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service1.Stopped, Is.True);
+            Assert.That(service2.Stopped, Is.True);
+        }
     }
 
     [Test]
@@ -43,8 +46,11 @@ public class ServiceStopperTests
         Service2 service2 = container.Resolve<Service2>();
         await container.Resolve<IServiceStopper>().StopAllServices();
 
-        Assert.That(service1.Stopped, Is.True);
-        Assert.That(service2.Stopped, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service1.Stopped, Is.True);
+            Assert.That(service2.Stopped, Is.False);
+        }
     }
 
     internal class Service1 : IStoppableService

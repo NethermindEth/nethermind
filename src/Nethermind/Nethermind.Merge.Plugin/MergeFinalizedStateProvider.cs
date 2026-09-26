@@ -4,15 +4,13 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin;
 
-public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheService blockCacheService, IBlockTree blockTree, IFinalizedStateProvider baseFinalizedStateProvider) : IFinalizedStateProvider
+public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheService blockCacheService, IBlockTree blockTree, IStateHeaderProvider baseFinalizedStateProvider) : IStateHeaderProvider
 {
-    public long FinalizedBlockNumber
+    public ulong FinalizedBlockNumber
     {
         get
         {
@@ -45,9 +43,11 @@ public class MergeFinalizedStateProvider(IPoSSwitcher poSSwitcher, IBlockCacheSe
         }
     }
 
-    public Hash256? GetFinalizedStateRootAt(long blockNumber)
+    public BlockHeader? GetFinalizedHeader(ulong blockNumber)
     {
         if (FinalizedBlockNumber < blockNumber) return null;
-        return baseFinalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
+        return baseFinalizedStateProvider.GetFinalizedHeader(blockNumber);
     }
+
+    public BlockHeader? FindParentHeader(BlockHeader target) => baseFinalizedStateProvider.FindParentHeader(target);
 }

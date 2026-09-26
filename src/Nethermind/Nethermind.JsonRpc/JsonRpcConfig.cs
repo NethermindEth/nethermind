@@ -44,7 +44,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     }
 
     public string[] AdditionalRpcUrls { get; set; } = [];
-    public long? GasCap { get; set; } = 100000000;
+    public ulong? GasCap { get; set; } = 100000000;
     public int ReportIntervalSeconds { get; set; } = 300;
     public bool BufferResponses { get; set; }
     public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
@@ -54,6 +54,8 @@ public class JsonRpcConfig : IJsonRpcConfig
     public bool EnableLogsStreamMode { get; set; } = false;
     public long? MaxLogsResponseBodySize { get; set; } = null;
     public int? DebugModuleConcurrentInstances { get; set; } = null;
+    public int? TraceModuleConcurrentInstances { get; set; } = null;
+    public int TraceBlockParallelism { get; set; } = 4;
     public int? EthModuleConcurrentInstances { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
@@ -87,5 +89,6 @@ public class JsonRpcConfig : IJsonRpcConfig
     public bool StrictHexFormat { get; set; } = true;
     public int RpcTxSyncDefaultTimeoutMs { get; set; } = 20_000;
     public int RpcTxSyncMaxTimeoutMs { get; set; } = 60_000;
+    public int RpcTxSyncMaxConcurrentRequests { get; set; } = 128;
     public string[] AdditionalTrustedNetworks { get; set; } = [];
 };
