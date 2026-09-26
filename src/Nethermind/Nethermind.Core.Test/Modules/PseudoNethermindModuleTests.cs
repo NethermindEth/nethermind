@@ -135,15 +135,17 @@ public class PseudoNethermindModuleTests
     }
 
     [Test]
-    public void FlatDb_test_container_wires_inert_persisted_snapshot_tier()
+    public void FlatDb_test_container_wires_inert_persisted_snapshot_tier([Values] bool registerOwnFlatDbConfig)
     {
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
-            .Build();
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule());
+        if (registerOwnFlatDbConfig) builder.AddSingleton<IFlatDbConfig>(new FlatDbConfig());
+        using IContainer container = builder.Build();
 
         Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));
         Assert.That(container.Resolve<IPersistedSnapshotLoader>(), Is.SameAs(NullPersistedSnapshotLoader.Instance));
         Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
+        Assert.That(container.Resolve<IFlatDbConfig>().EnableLongFinality, Is.False);
     }
 
     [Test]

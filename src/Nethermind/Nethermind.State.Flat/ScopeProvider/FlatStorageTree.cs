@@ -12,52 +12,57 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
-public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
+public sealed class FlatStorageTree(
+    FlatWorldStateScope scope,
+    ITrieWarmer trieCacheWarmer,
+    SnapshotBundle bundle,
+    IFlatDbConfig config,
+    ConcurrencyController concurrencyQuota,
+    Hash256 storageRoot,
+    Address address,
+    ILogManager logManager) : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
 {
-    private readonly StorageTree _tree;
-    private readonly StorageTree _warmupStorageTree;
-    private readonly Address _address;
-    private readonly IFlatDbConfig _config;
-    private readonly ITrieWarmer _trieCacheWarmer;
-    private readonly FlatWorldStateScope _scope;
-    private readonly SnapshotBundle _bundle;
-    private readonly Hash256 _addressHash;
+    private readonly Address _address = address;
+    private readonly IFlatDbConfig _config = config;
+    private readonly ITrieWarmer _trieCacheWarmer = trieCacheWarmer;
+    private readonly FlatWorldStateScope _scope = scope;
+    private readonly SnapshotBundle _bundle = bundle;
+    private readonly ConcurrencyController _concurrencyQuota = concurrencyQuota;
+    private readonly ILogManager _logManager = logManager;
+    private readonly Hash256 _storageRoot = storageRoot;
+    private Hash256? _addressHash;
+
+    private Trees? _trees;
+
+    private sealed class Trees(StorageTree tree, StorageTree warmup)
+    {
+        public readonly StorageTree Tree = tree;
+        public readonly StorageTree Warmup = warmup;
+    }
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
-    private int _selfDestructKnownStateIdx;
+    private int _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
 
-    public FlatStorageTree(
-        FlatWorldStateScope scope,
-        ITrieWarmer trieCacheWarmer,
-        SnapshotBundle bundle,
-        IFlatDbConfig config,
-        ConcurrencyController concurrencyQuota,
-        Hash256 storageRoot,
-        Address address,
-        ILogManager logManager)
+    private Hash256 AddressHash => _addressHash ??= _address.ToAccountPath.ToHash256();
+
+    private Trees GetTrees() => Volatile.Read(ref _trees) ?? CreateTrees();
+
+    private Trees CreateTrees()
     {
-        _scope = scope;
-        _trieCacheWarmer = trieCacheWarmer;
-        _bundle = bundle;
-        _address = address;
-        _addressHash = address.ToAccountPath.ToHash256();
-        _selfDestructKnownStateIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
-
-        StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
-        StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
-
-        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager);
+        Hash256 addressHash = AddressHash;
+        StorageTree tree = new(new StorageTrieStoreAdapter(_bundle, _concurrencyQuota, addressHash), _storageRoot, _logManager);
 
         // Set the rootref manually. Cut the call to find nodes by about 1/4th.
-        _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
-        _warmupStorageTree.SetRootHash(storageRoot, false);
-        _warmupStorageTree.RootRef = _tree.RootRef;
+        StorageTree warmup = new(new StorageTrieStoreWarmerAdapter(_bundle, addressHash), _logManager);
+        warmup.SetRootHash(_storageRoot, false);
+        warmup.RootRef = tree.RootRef;
 
-        _config = config;
+        Trees created = new(tree, warmup);
+        return Interlocked.CompareExchange(ref _trees, created, null) ?? created;
     }
 
-    public Hash256 RootHash => _tree.RootHash;
+    public Hash256 RootHash => Volatile.Read(ref _trees)?.Tree.RootHash ?? _storageRoot;
 
     internal bool IsDisposed => _scope.IsDisposed;
 
@@ -70,10 +75,11 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         // access, and a historical value verified against the current trie would be wrong anyway.
         if (_config.VerifyWithTrie && !_scope.Trieless)
         {
-            _tree.Get(in index, out UInt256 treeValue);
+            StorageTree tree = GetTrees().Tree;
+            tree.Get(in index, out UInt256 treeValue);
             if (treeValue != value)
             {
-                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue} vs Flat: {value}. Self destruct it {_selfDestructKnownStateIdx}");
+                throw new TrieException($"Get slot got wrong value. Address {_address}, {tree.RootHash}, {index}. Tree: {treeValue} vs Flat: {value}. Self destruct it {_selfDestructKnownStateIdx}");
             }
         }
     }
@@ -117,7 +123,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
 
-                _warmupStorageTree.WarmUpPath(key.BytesAsSpan);
+                GetTrees().Warmup.WarmUpPath(key.BytesAsSpan);
                 return true;
             }
             finally
@@ -135,12 +141,14 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     internal void ClearStorage()
     {
-        _bundle.ClearStorage(_address, _addressHash);
+        _bundle.ClearStorage(_address, AddressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
-        _tree.RootHash = Keccak.EmptyTreeHash;
+        // Trieless scopes too: IWorldState.GetStorageRoot still reads RootHash there.
+        GetTrees().Tree.RootHash = Keccak.EmptyTreeHash;
     }
 
-    public void CommitTree() => _tree.Commit();
+    // No trees means nothing was written, so there is nothing to commit.
+    public void CommitTree() => Volatile.Read(ref _trees)?.Tree.Commit();
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
@@ -148,7 +156,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
-        StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, _tree, onRootUpdated, _address, commit: true);
+        StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, GetTrees().Tree, onRootUpdated, _address, commit: true);
         return new TrieAndOverlayStorageWriteBatch(trieBatch, this);
     }
 

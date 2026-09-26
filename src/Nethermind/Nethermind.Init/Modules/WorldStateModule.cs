@@ -43,9 +43,14 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
 
             .RegisterSingletonJsonRpcModule<IVerifyTrieAdminRpcModule, VerifyTrieAdminRpcModule>()
+
+            // Registered unconditionally so `nethermind verify-trie` can always find it. Carrying
+            // [StepCommand] keeps it out of a normal node start; it runs only when selected below or by name.
+            // Backend-agnostic: VerifyTrie resolves to whichever backend is active.
+            .AddStep(typeof(RunVerifyTrie))
         ;
 
         if (initConfig.DiagnosticMode == DiagnosticMode.VerifyTrie)
-            builder.AddStep(typeof(RunVerifyTrie));
+            builder.SelectStepTarget(typeof(RunVerifyTrie));
     }
 }

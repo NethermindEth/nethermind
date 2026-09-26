@@ -334,6 +334,32 @@ public class EvmStackTests
     }
 
     [Test]
+    public void Shifts_match_BigInteger_for_every_amount(
+        [Values(Instruction.SHL, Instruction.SHR)] Instruction instruction,
+        [ValueSource(nameof(ShiftValues))] UInt256 value)
+    {
+        byte[] buffer = new byte[64];
+        BigInteger unsigned = (BigInteger)value;
+        BigInteger mask = (BigInteger.One << 256) - 1;
+        for (int count = 0; count <= 300; count++)
+        {
+            EvmStack stack = new(0, ref buffer[0], ReadOnlySpan<byte>.Empty, null);
+            UInt256 shift = (ulong)count;
+            stack.PushUInt256<OffFlag>(in value);
+            stack.PushUInt256<OffFlag>(in shift);
+            EthereumGasPolicy gas = EthereumGasPolicy.FromULong(100);
+            BigInteger expected = instruction == Instruction.SHL ? (unsigned << count) & mask : unsigned >> count;
+
+            EvmExceptionType status = instruction == Instruction.SHL
+                ? EvmInstructions.InstructionShift<EthereumGasPolicy, EvmInstructions.OpShl, OffFlag>(ref stack, ref gas)
+                : EvmInstructions.InstructionShift<EthereumGasPolicy, EvmInstructions.OpShr, OffFlag>(ref stack, ref gas);
+            stack.PopUInt256(out UInt256 actual);
+            Assert.That(status, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(actual, Is.EqualTo((UInt256)expected), $"{value} {instruction} {count}");
+        }
+    }
+
+    [Test]
     public void Arithmetic_preserves_unaligned_native_slots(
         [Values(Instruction.ADD, Instruction.SUB)] Instruction instruction,
         [Values(0, 1, 7)] int offset,
@@ -375,11 +401,32 @@ public class EvmStackTests
         }
     }
 
+    private static IEnumerable<UInt256> ShiftValues()
+    {
+        yield return UInt256.Zero;
+        yield return UInt256.One;
+        yield return UInt256.MaxValue;
+        yield return new UInt256(0, 0, 0, 1UL << 63);
+        yield return new UInt256(ulong.MaxValue, 0, 0, 0);
+        yield return new UInt256(0, ulong.MaxValue, 0, 0);
+        yield return new UInt256(0, 0, ulong.MaxValue, 0);
+        yield return new UInt256(0, 0, 0, ulong.MaxValue);
+        yield return new UInt256(0x0123456789abcdefUL, 0xfedcba9876543210UL, 0x0f1e2d3c4b5a6978UL, 0x8796a5b4c3d2e1f0UL);
+        Random random = new(20260925);
+        byte[] bytes = new byte[32];
+        for (int i = 0; i < 200; i++)
+        {
+            random.NextBytes(bytes);
+            yield return new UInt256(bytes, isBigEndian: true);
+        }
+    }
+
     private static IEnumerable<UInt256> ShiftAmounts()
     {
         int[] counts = [0, 1, 63, 64, 65, 127, 128, 129, 191, 192, 193, 255, 256, 257];
         foreach (int count in counts) yield return new UInt256((ulong)count);
         for (int bit = 64; bit <= 192; bit += 64) yield return UInt256.One << bit;
+        yield return new UInt256(1, 1, 0, 0);
         yield return new UInt256(1_000_000_000_000_000_000);
         yield return UInt256.MaxValue;
     }
