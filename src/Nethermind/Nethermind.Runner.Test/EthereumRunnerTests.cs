@@ -397,6 +397,22 @@ public class EthereumRunnerTests
         }
     }
 
+    [Test]
+    public async Task Startup_pipeline_warmup_report_preparation_failure_does_not_block_drain()
+    {
+        using BasicTestBlockchain live = await BasicTestBlockchain.Create();
+        StartupPipelineWarmer.WarmMetrics warmMetrics = new();
+        IProcessingStats stats = new StartupPipelineWarmer.WarmProcessingStats(live.StateReader, LimboLogs.Instance, new BlocksConfig(), warmMetrics);
+        IReadOnlyList<Block> blocks = Substitute.For<IReadOnlyList<Block>>();
+        blocks.Count.Returns(1);
+        blocks[0].Returns(_ => throw new InvalidOperationException("report preparation failed"));
+
+        Assert.Throws<InvalidOperationException>(() => stats.UpdateStats(blocks, null, 1_000));
+
+        Assert.That(warmMetrics.PendingReports, Is.Zero);
+        Assert.That(warmMetrics.DrainAsync().IsCompletedSuccessfully, Is.True);
+    }
+
     [TestCase(2UL, new ulong[] { 10 }, 0UL, 10UL, TestName = "Warm metric value is replaced by the live value")]
     [TestCase(9UL, new ulong[] { 10 }, 0UL, 9UL, TestName = "Live metric value published after the warm one is kept")]
     [TestCase(2UL, new ulong[] { 10, 11 }, 0UL, 11UL, TestName = "Live head moving during the metric swap is followed")]

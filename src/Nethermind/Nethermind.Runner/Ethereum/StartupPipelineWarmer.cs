@@ -338,8 +338,17 @@ internal static class StartupPipelineWarmer
         void IProcessingStats.UpdateStats(IReadOnlyList<Block> blocks, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
         {
             // The base queues one report for each non-empty update.
-            if (blocks.Count > 0) Interlocked.Increment(ref warmMetrics.PendingReports);
-            UpdateStats(blocks, baseBlock, blockProcessingTimeInMicros);
+            if (blocks.Count == 0) return;
+            Interlocked.Increment(ref warmMetrics.PendingReports);
+            try
+            {
+                UpdateStats(blocks, baseBlock, blockProcessingTimeInMicros);
+            }
+            catch
+            {
+                Interlocked.Decrement(ref warmMetrics.PendingReports);
+                throw;
+            }
         }
 
         protected override void GenerateReport(BlockData data)
