@@ -143,7 +143,7 @@ public partial class BeaconSyncOrchestratorTests
     /// retry set without importing, here by failing its retry or by falling behind finality; held for good, such blocks would fill the bounded queue.
     /// </summary>
     [Test]
-    public async Task Child_held_for_a_parked_block_is_released_when_that_block_can_no_longer_import([Values] bool finalizedAway)
+    public async Task Child_held_for_a_parked_block_is_released_when_that_block_can_no_longer_import([Values] ParkedBlockFate fate)
     {
         ParkedParentScenario scenario = CreateParkedParentScenario();
         Harness harness = scenario.Harness;
@@ -153,14 +153,18 @@ public partial class BeaconSyncOrchestratorTests
         await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Grandchild, CancellationToken.None);
         int heldBefore = harness.Orchestrator.PendingGossipBlockCount;
 
-        if (finalizedAway)
+        switch (fate)
         {
-            harness.Importer.Head = CreateHead(TestItem.KeccakA, WallSlot, finalizedEpoch: Spec.GetEpoch(scenario.Parent.Slot) + 1);
-        }
-        else
-        {
-            harness.Importer.UnverifiedPayloads.Remove(scenario.FullRoot);
-            harness.Importer.Forged.Add(scenario.Parent.ComputeMessageRoot());
+            case ParkedBlockFate.FinalizedAway:
+                harness.Importer.Head = CreateHead(TestItem.KeccakA, WallSlot, finalizedEpoch: Spec.GetEpoch(scenario.Parent.Slot) + 1);
+                break;
+            case ParkedBlockFate.RetryInvalid:
+                harness.Importer.UnverifiedPayloads.Remove(scenario.FullRoot);
+                harness.Importer.Forged.Add(scenario.Parent.ComputeMessageRoot());
+                break;
+            case ParkedBlockFate.RetryUnknownParent:
+                harness.Importer.Known.Remove(scenario.FullRoot);
+                break;
         }
 
         await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
@@ -174,6 +178,13 @@ public partial class BeaconSyncOrchestratorTests
             Assert.That(heldAfterRelease, Is.Zero);
             Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero, "a released block no longer holds children of its own");
         }
+    }
+
+    public enum ParkedBlockFate
+    {
+        FinalizedAway,
+        RetryInvalid,
+        RetryUnknownParent,
     }
 
     /// <summary>

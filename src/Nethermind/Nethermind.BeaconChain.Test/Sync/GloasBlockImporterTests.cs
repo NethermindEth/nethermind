@@ -483,20 +483,20 @@ public class GloasBlockImporterTests
     }
 
     [Test]
-    public void Deferred_block_at_the_finalized_slot_is_forgotten_once_finalized()
+    public void Deferred_block_at_or_below_the_finalized_epoch_start_is_forgotten_once_finalized([Values(ForkSlot + 2, ForkSlot + 8)] ulong siblingSlot)
     {
         SignedGloasChain chain = new();
         BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
         SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
         SignedGloasChain.Block finalized = chain.Next(first, ForkSlot + 2, full: false, 0xA3);
-        SignedGloasChain.Block sibling = chain.Next(first, ForkSlot + 2, full: true, 0xA4);
+        SignedGloasChain.Block sibling = chain.Next(first, siblingSlot, full: true, 0xA4);
         Import(importer, first, finalized);
         Assert.That(importer.Import(sibling.Forked, sibling.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.ParentPayloadUnverified), "fixture");
 
         Finalize(importer, new CheckpointRef(2, finalized.Root));
         importer.OnFinalized(new CheckpointRef(2, finalized.Root));
 
-        Assert.That(DeferredCount(importer), Is.Zero, "on_block refuses a block at the finalized slot, so it must not keep a deferral place");
+        Assert.That(DeferredCount(importer), Is.Zero, "on_block refuses a block at or below the finalized epoch's start slot, so it must not keep a deferral place");
     }
 
     private static int DeferredCount(BlockImporter importer) =>
