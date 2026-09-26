@@ -2110,9 +2110,10 @@ public class BlockCachePreWarmerTests
         using ManualResetEventSlim release = new(false);
         using CountdownEvent occupied = new(budget);
         using ManualResetEventSlim exceeded = new(false);
+        using ManualResetEventSlim entered = new(false);
         using CancellationTokenSource cancellation = new();
         SharedBudgetPolicy policy = new(_processingScope.Resolve<PrewarmerEnvFactory>(), caches,
-            release, occupied, exceeded);
+            release, occupied, exceeded, entered);
         using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 4, concurrency: 2,
             parallelExecutionBatchRead: true, _processingScope.Resolve<NodeStorageCache>(), caches, LimboLogs.Instance);
         Block block = Build.A.Block.WithTransactions(
@@ -2125,7 +2126,7 @@ public class BlockCachePreWarmerTests
         BlockHeader parent = BuildParentHeader();
         using (_processingScope.Resolve<IWorldState>().BeginScope(parent))
         {
-            Task warming = StartPrewarming(preWarmer, block, parent, Osaka.Instance, cancellation.Token, budget);
+            Task warming = StartPrewarming(preWarmer, block, parent, Osaka.Instance, cancellation.Token, budget, entered);
             bool filled;
             bool oversubscribed;
             try
@@ -2150,7 +2151,7 @@ public class BlockCachePreWarmerTests
     }
 
     private sealed class SharedBudgetPolicy(PrewarmerEnvFactory factory, PreBlockCaches caches,
-        ManualResetEventSlim release, CountdownEvent occupied, ManualResetEventSlim exceeded)
+        ManualResetEventSlim release, CountdownEvent occupied, ManualResetEventSlim exceeded, ManualResetEventSlim entered)
         : IPooledObjectPolicy<IPrewarmerEnv>
     {
         private int _active;
@@ -2158,6 +2159,7 @@ public class BlockCachePreWarmerTests
         private ManualResetEventSlim Release => release;
         private CountdownEvent Occupied => occupied;
         private ManualResetEventSlim Exceeded => exceeded;
+        private ManualResetEventSlim Entered => entered;
         private PreBlockCaches Caches => caches;
         public int Timeouts;
         public int DiscoveryBuilds;
@@ -2175,6 +2177,7 @@ public class BlockCachePreWarmerTests
                 try
                 {
                     if (active > owner.Occupied.InitialCount) owner.Exceeded.Set();
+                    owner.Entered.Set();
                     if (Interlocked.Increment(ref owner._entered) <= owner.Occupied.InitialCount) owner.Occupied.Signal();
                     if (!owner.Release.Wait(DiscoveryTimeout)) Interlocked.Increment(ref owner.Timeouts);
                     if (owner.Caches.CurrentStorageReadCapture is not null) Interlocked.Increment(ref owner.DiscoveryBuilds);
@@ -2340,14 +2343,21 @@ public class BlockCachePreWarmerTests
     }
 
     private static Task StartPrewarming(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent,
-        IReleaseSpec spec, CancellationToken token = default, int workerBudget = 0)
+        IReleaseSpec spec, CancellationToken token = default, int workerBudget = 0, ManualResetEventSlim? warmerEntered = null)
     {
         if (workerBudget > 0)
             return Task.Run(() =>
             {
                 using ParallelUnbalancedWork.WorkerScope scope = ParallelUnbalancedWork.BeginWorkerScope(workerBudget);
+                // Queued ahead of the session: a helper that starts before this thread joins would otherwise take the
+                // coordinator and leave this thread's share of the budget idle in the join. Parked here, it waits for
+                // the coordinator to be warming on this thread, then drains the session's helper work.
+                using ParallelUnbalancedWork.BackgroundWork? parkedHelper = warmerEntered is null ? null
+                    : ParallelUnbalancedWork.BackgroundFor(0, 1, ParallelUnbalancedWork.DefaultOptions,
+                        _ => warmerEntered.Wait(DiscoveryTimeout));
                 using IDisposable? scopedSession = preWarmer.PreWarmCaches(block, parent, spec, token);
                 ((PrewarmingSession?)scopedSession)?.WaitForCompletion();
+                parkedHelper?.WaitForCompletion();
             });
 
         IDisposable? session = preWarmer.PreWarmCaches(block, parent, spec, token);
