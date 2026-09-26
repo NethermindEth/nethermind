@@ -579,9 +579,6 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Reads_after_writes_in_later_transactions_see_the_journal([Values] bool discardSecondTransaction)
     {
-        // 1. tx1 writes slot 1 of contract A and commits.
-        // 2. tx2 reads slot 1, writes slot 2 of A and a slot of B, reverts the slot 2 write, then commits or is discarded.
-        // 3. tx3 overwrites slot 1 of A; every later read must see the journalled value, not the committed one.
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell slot1 = new(ctx.Address1, 1);
