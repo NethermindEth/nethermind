@@ -31,35 +31,6 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private StateId _basis;
     private long _generation;
 
-    // Handed from one write batch to the next, so a persist does not grow fresh sets on the LOH. A spare keeps the
-    // capacity of the batch that filled it for the node's lifetime, so only sets within the cache's own per-kind
-    // capacity are kept.
-    private HashSet<Address>? _spareWrittenAccounts;
-    private HashSet<(Address, UInt256)>? _spareWrittenSlots;
-
-    private HashSet<Address> RentWrittenAccounts() => Interlocked.Exchange(ref _spareWrittenAccounts, null) ?? [];
-
-    private HashSet<(Address, UInt256)> RentWrittenSlots() => Interlocked.Exchange(ref _spareWrittenSlots, null) ?? [];
-
-    private void ReturnWrittenSets(HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots)
-    {
-        if (writtenAccounts is not null && writtenAccounts.Count <= _maxEntriesPerKind)
-        {
-            writtenAccounts.Clear();
-            Volatile.Write(ref _spareWrittenAccounts, writtenAccounts);
-        }
-
-        if (writtenSlots is not null && writtenSlots.Count <= _maxEntriesPerKind)
-        {
-            writtenSlots.Clear();
-            Volatile.Write(ref _spareWrittenSlots, writtenSlots);
-        }
-    }
-
-    internal bool HasSpareWrittenAccounts => Volatile.Read(ref _spareWrittenAccounts) is not null;
-
-    internal bool HasSpareWrittenSlots => Volatile.Read(ref _spareWrittenSlots) is not null;
-
     public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind)
     {
         _inner = inner;
@@ -256,13 +227,13 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetAccount(Address addr, Account? account)
         {
-            (_writtenAccounts ??= parent.RentWrittenAccounts()).Add(addr);
+            (_writtenAccounts ??= []).Add(addr);
             inner.SetAccount(addr, account);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
-            (_writtenSlots ??= parent.RentWrittenSlots()).Add((addr, slot));
+            (_writtenSlots ??= []).Add((addr, slot));
             inner.SetStorage(addr, slot, value);
         }
 
@@ -299,9 +270,6 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             inner.Dispose();
             parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
-            parent.ReturnWrittenSets(_writtenAccounts, _writtenSlots);
-            _writtenAccounts = null;
-            _writtenSlots = null;
         }
     }
 }
