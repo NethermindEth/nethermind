@@ -71,6 +71,24 @@ public abstract class TransactionForRpc
     public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
         => new Transaction { Type = ResolveType(spec) };
 
+    /// <summary>
+    /// Converts the request with its input validated, rejecting a fee cap below the priority fee as well; a call that
+    /// leaves that pair to execution, where it fails before any gas is bought, validates with <see cref="ToTransaction"/>.
+    /// </summary>
+    /// <remarks>
+    /// The pair is checked after the type-specific and gas price checks and before the missing contract data check,
+    /// so the first failing check still names the request.
+    /// </remarks>
+    public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
+    {
+        Result<Transaction> result = ToTransaction(validateUserInput: true, gasCap, spec);
+        return this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
+            && maxFeePerGas < maxPriorityFeePerGas
+            && (!result.IsError || result.Error == RpcTransactionErrors.ContractCreationWithoutData)
+                ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(maxFeePerGas, maxPriorityFeePerGas)
+                : result;
+    }
+
     private TxType ResolveType(IReleaseSpec? spec)
     {
         // Pre-Berlin only knows Legacy; defaulted-type requests downgrade to avoid EVM rejection.
@@ -94,7 +112,7 @@ public abstract class TransactionForRpc
         if (this is not LegacyTransactionForRpc { Nonce: not null })
             return Result<Transaction>.Fail("nonce not specified");
 
-        return PromoteToEip1559IfTypeDefaulted().ToTransaction(validateUserInput: true);
+        return PromoteToEip1559IfTypeDefaulted().ToValidatedTransaction();
     }
 
     private static bool HasFeeFields(TransactionForRpc rpcTx) =>
