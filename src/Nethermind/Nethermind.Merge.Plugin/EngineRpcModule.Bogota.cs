@@ -16,11 +16,14 @@ namespace Nethermind.Merge.Plugin;
 
 public partial class EngineRpcModule : IEngineRpcModule
 {
-    // Inclusion-list compliance computed during engine_newPayloadV6, retained so a later
-    // engine_forkchoiceUpdatedV5 to that head can report it (execution-apis#609).
-    private readonly LruCache<Hash256, bool> _inclusionListSatisfiedByBlock = new(64, "inclusionListSatisfied");
+    // Retains the inclusion list from engine_newPayloadV6 so forkchoiceUpdatedV5 can report
+    // inclusionListSatisfied for that payload (execution-apis#609 / bogota.md).
+    private readonly LruCache<Hash256, RetainedInclusionList> _retainedInclusionLists = new(64, "retainedInclusionLists");
 
     private readonly IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> _newPayloadWithWitnessHandlerV6 = newPayloadWithWitnessHandlerV6;
+
+    /// <summary>Inclusion list retained for a payload, with a satisfaction verdict when known.</summary>
+    private readonly record struct RetainedInclusionList(byte[][] Transactions, bool? Satisfied);
 
     public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256? parentBlockHash = null)
         => getInclusionListTransactionsHandler.Handle(parentBlockHash);
@@ -58,8 +61,11 @@ public partial class EngineRpcModule : IEngineRpcModule
             _ => null
         };
 
-        if (inclusionListSatisfied is { } satisfied && status.LatestValidHash is { } validHash)
-            _inclusionListSatisfiedByBlock.Set(validHash, satisfied);
+        UpdateRetainedInclusionList(
+            executionPayloadParams.ExecutionPayload.BlockHash,
+            executionPayloadParams.InclusionListTransactions,
+            status.Status,
+            inclusionListSatisfied);
 
         return ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2
         {
@@ -103,15 +109,40 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (result.Result.ResultType != ResultType.Success)
             return ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(result.Result.Error!, result.ErrorCode, result.IsTemporary);
 
-        // execution-apis#609: report compliance retained from the head's engine_newPayloadV6 validation.
-        // The list is not part of the block body, so a head this process never validated leaves nothing
-        // to re-derive from and the field stays null.
-        bool? inclusionListSatisfied = result.Data.PayloadStatus.Status == PayloadStatus.Valid
-            && _inclusionListSatisfiedByBlock.TryGet(forkchoiceState.HeadBlockHash, out bool satisfied)
-            ? satisfied
-            : null;
+        // Report compliance for the currently retained list of a VALID head; null when none is retained
+        // or the verdict is still unknown (e.g. ACCEPTED without a later evaluation).
+        bool? inclusionListSatisfied = null;
+        if (result.Data.PayloadStatus.Status == PayloadStatus.Valid
+            && _retainedInclusionLists.TryGet(forkchoiceState.HeadBlockHash, out RetainedInclusionList retained))
+        {
+            inclusionListSatisfied = retained.Satisfied;
+        }
 
         return ResultWrapper<ForkchoiceUpdatedV2Result>.Success(ForkchoiceUpdatedV2Result.From(result.Data, inclusionListSatisfied));
+    }
+
+    private void UpdateRetainedInclusionList(
+        Hash256? payloadHash,
+        byte[][]? inclusionListTransactions,
+        string status,
+        bool? inclusionListSatisfied)
+    {
+        if (payloadHash is null) return;
+
+        switch (status)
+        {
+            case PayloadStatus.Valid:
+            case PayloadStatus.InclusionListUnsatisfied:
+                _retainedInclusionLists.Set(payloadHash, new(inclusionListTransactions ?? [], inclusionListSatisfied));
+                break;
+            case PayloadStatus.Accepted:
+                _retainedInclusionLists.Set(payloadHash, new(inclusionListTransactions ?? [], Satisfied: null));
+                break;
+            case PayloadStatus.Syncing:
+            case PayloadStatus.Invalid:
+                _retainedInclusionLists.Delete(payloadHash);
+                break;
+        }
     }
 
     // Mirrors the newPayloadV6 aggregate bound (IExecutionPayloadParams.ValidateInitialParams).
