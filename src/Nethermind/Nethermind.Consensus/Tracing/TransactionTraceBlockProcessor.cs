@@ -5,6 +5,7 @@ using System.Threading;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -35,6 +36,10 @@ public sealed class TransactionTraceBlockProcessor(
 
         return base.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
     }
+
+    /// <inheritdoc/>
+    /// <remarks>Tracers read only execution; <see cref="IntermediateRootsBlockTracer"/> derives its roots itself.</remarks>
+    protected override bool ComputesCommitments(ProcessingOptions options) => !TransactionTraceBoundary.IsUnpersistedReplay(options);
 
     /// <inheritdoc/>
     /// <remarks>Intentionally empty: the suggested block is the canonical instance and a replay never writes its artifacts back onto it.</remarks>
