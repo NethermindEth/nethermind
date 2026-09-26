@@ -1711,8 +1711,6 @@ namespace Nethermind.Evm.TransactionProcessing
             if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
                 return false;
 
-            // Top-level and create outputs are never staged in reusable return scratch, so the backing array is
-            // exclusive to this output and can be stored as the code without another copy.
             return TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, executionDepositCost, stateDepositCost, substate.Output.AsReadOnlyArray());
         }
 
