@@ -130,6 +130,37 @@ public class Eip8298Tests : VirtualMachineTestsBase
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
     }
 
+    [Test]
+    public void SourceSelfDestructedInSameTx_AdoptedCodeRemainsAvailable()
+    {
+        // Runtime: self-destruct when called without calldata, otherwise return 42.
+        byte[] selfDestruct = Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressF).Done;
+        const int jumpHeaderLength = 4; // CALLDATASIZE; PUSH1 dest; JUMPI
+        byte[] runtime = Prepare.EvmCode.CALLDATASIZE().PushData(jumpHeaderLength + selfDestruct.Length).Op(Instruction.JUMPI)
+            .Data(selfDestruct).JUMPDEST().PushData(42).MSTORE(0).Return(32, 0).Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(runtime).Done;
+        byte[] salt = new byte[32];
+        Address source = ContractAddress.From(Recipient, salt, initCode);
+        Address adopter = TestItem.AddressE;
+        TestState.CreateAccount(adopter, 1.Ether);
+        TestState.InsertCode(adopter, Prepare.EvmCode.SETCODEFROM(source).STOP().Done, Spec);
+
+        // Create the source, adopt its code, then self-destruct it, all in one transaction (EIP-6780).
+        byte[] code = Prepare.EvmCode.Create2(initCode, salt, 0).POP()
+            .Call(adopter, 100_000).POP()
+            .Call(source, 100_000).POP()
+            .STOP().Done;
+        TestAllTracerWithOutput result = Execute(Activation, 1_000_000, code);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(TestState.AccountExists(source), Is.False);
+        Assert.That(TestState.GetCode(adopter), Is.EqualTo(runtime));
+
+        result = Execute(Prepare.EvmCode.CallWithInput(adopter, 50_000, [1]).ReturnInnerCallResult().Done);
+
+        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)42));
+    }
+
     public enum SourceKind { Missing, SameCode, OtherCode }
 
     // Expected values are the EIP-8298 execution-gas table under the EIP-8038 access costs.

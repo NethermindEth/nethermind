@@ -693,7 +693,8 @@ public static partial class EvmInstructions
         if (state.GetCodeHash(executingAccount) != codeHash)
         {
             if (!TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite)) goto OutOfGas;
-            vm.CodeInfoRepository.InsertCode(code, executingAccount, spec);
+            // Install by the known hash; passing the code retains a pending entry if the source self-destructs.
+            state.InsertCode(executingAccount, in codeHash, code, spec);
         }
 
         return stack.PushOne<TTracingInst>();
