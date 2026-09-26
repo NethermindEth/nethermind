@@ -986,6 +986,25 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
+    public void Eip8360_activates_only_at_its_transition_timestamp()
+    {
+        const ulong eip8360Timestamp = 70;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip8360TransitionTimestamp = eip8360Timestamp },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8360Timestamp - 1)).IsEip8360Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8360Timestamp)).IsEip8360Enabled, Is.True);
+        }
+    }
+
+    [Test]
     public void Eip2200_is_set_correctly_directly()
     {
         ChainSpec chainSpec = new()

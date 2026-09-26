@@ -247,11 +247,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         StackAccessTracker batchTracker = default;
         FrameCheckpoint batchStart = new(
             Snapshot.Empty, Index: 0, Refund: 0, StateGas: 0, Journal: 0,
-            Destroys: accessTracker.DestroyList.TakeSnapshot());
+            Destroys: accessTracker.DestroyList.TakeSnapshot(),
+            TransientCreates: accessTracker.TransientCreateList.TakeSnapshot());
 
         FrameCheckpoint prefixEnd = new(
             txSnapshot, Index: -1, Refund: 0, StateGas: 0, Journal: 0,
-            Destroys: accessTracker.DestroyList.TakeSnapshot());
+            Destroys: accessTracker.DestroyList.TakeSnapshot(),
+            TransientCreates: accessTracker.TransientCreateList.TakeSnapshot());
         bool postTxReverted = false;
         // EIP-161: once any frame touches RIPEMD-160, the touch outlives every later rollback that
         // leaves the transaction valid, so it is tracked for the whole transaction rather than per frame.
@@ -269,7 +271,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 inBatch = true;
                 batchStart = new FrameCheckpoint(
                     WorldState.TakeSnapshot(), Index: i, Refund: refundCounter, StateGas: totalFrameStateGasUsed,
-                    Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot());
+                    Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot(),
+                    TransientCreates: accessTracker.TransientCreateList.TakeSnapshot());
                 batchTracker = accessTracker;
                 batchTracker.TakeSnapshot();
             }
@@ -341,6 +344,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 // batch unroll, but unlike a VERIFY revert it leaves the transaction valid.
                 WorldState.Restore(prefixEnd.Snapshot);
                 accessTracker.DestroyList.Restore(prefixEnd.Destroys);
+                accessTracker.TransientCreateList.Restore(prefixEnd.TransientCreates);
                 VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, shouldRestoreRipemdTouch);
                 refundCounter = prefixEnd.Refund;
 
@@ -368,7 +372,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     // End of the validation prefix: EIP-7906 keeps everything up to here when POST_TX reverts.
                     prefixEnd = new FrameCheckpoint(
                         WorldState.TakeSnapshot(), Index: i, Refund: refundCounter, StateGas: totalFrameStateGasUsed,
-                        Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot());
+                        Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot(),
+                        TransientCreates: accessTracker.TransientCreateList.TakeSnapshot());
                 }
             }
             else if (!inBatch)
@@ -545,10 +550,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         UInt256 fees = premiumPerGas * (UInt256)spentGas;
         WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
 
+        bool commitDestroys = opts.HasFlag(ExecutionOptions.Commit) && !opts.HasFlag(ExecutionOptions.Restore);
+        FinalizeTransientCreates(WorldState, in accessTracker, commitDestroys);
+
         // EIP-6780: finalize committed frames' self-destructs.
         if (accessTracker.DestroyList.Count > 0)
         {
-            bool commitDestroys = opts.HasFlag(ExecutionOptions.Commit) && !opts.HasFlag(ExecutionOptions.Restore);
             bool removeSelfdestructBurn = spec.IsEip8246Enabled;
             Debug.Assert(removeSelfdestructBurn && spec.GasCosts.DestroyRefund == 0,
                 "frame-tx self-destruct finalization assumes EIP-8246 (balance kept, no burn log) and a zero post-EIP-3529 destroy refund, so it emits no burn log, adds no refund and needs no canonical ordering");
@@ -1007,13 +1014,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 /// <param name="StateGas">Accumulated frame state gas at the checkpoint.</param>
 /// <param name="Journal">The frame journal position at the checkpoint.</param>
 /// <param name="Destroys">The EIP-6780 destroy-list position at the checkpoint.</param>
+/// <param name="TransientCreates">The EIP-8360 <c>TCREATE</c>-account list position at the checkpoint.</param>
 file readonly record struct FrameCheckpoint(
     Snapshot Snapshot,
     int Index,
     long Refund,
     long StateGas,
     int Journal,
-    int Destroys);
+    int Destroys,
+    int TransientCreates);
 
 /// <summary>Frame-loop rollback bookkeeping that does not depend on the processor's gas policy.</summary>
 file static class FrameTxRollback

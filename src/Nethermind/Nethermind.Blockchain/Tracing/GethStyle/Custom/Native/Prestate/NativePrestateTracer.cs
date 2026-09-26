@@ -85,7 +85,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH or Instruction.EXTCODESIZE
         or Instruction.BALANCE or Instruction.SELFDESTRUCT
         or Instruction.DELEGATECALL or Instruction.CALL or Instruction.STATICCALL or Instruction.CALLCODE
-        or Instruction.CREATE or Instruction.CREATE2;
+        or Instruction.CREATE or Instruction.CREATE2 or Instruction.TCREATE;
 
     public override GethLikeTxTrace BuildResult()
     {
@@ -133,7 +133,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
 
-        IsTracingMemory = _op == Instruction.CREATE2;
+        IsTracingMemory = _op is Instruction.CREATE2 or Instruction.TCREATE;
         IsTracingStack = RequiresStack(_op);
     }
 
@@ -187,6 +187,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 }
                 break;
             case Instruction.CREATE2:
+            case Instruction.TCREATE:
                 if (stackLen >= 4)
                 {
                     try
@@ -195,7 +196,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                         int length = stack.Peek(2).ReadEthInt32();
                         ReadOnlySpan<byte> initCode = _memoryTrace.Slice(offset, length);
                         ReadOnlySpan<byte> salt = stack.Peek(3);
-                        address = ContractAddress.From(_executingAccount!, salt, initCode);
+                        address = _op == Instruction.TCREATE
+                            ? ContractAddress.FromTransientCreate(_executingAccount!, salt, initCode)
+                            : ContractAddress.From(_executingAccount!, salt, initCode);
                         LookupAccount(address);
                         if (_diffMode)
                             _createdAccounts.Add(address);

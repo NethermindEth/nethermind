@@ -55,12 +55,23 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Implements the CREATE/CREATE2 opcode, handling new contract deployment.
+    /// Implements the EIP-8360 TCREATE opcode, which creates a contract whose code, nonce and storage last for one transaction.
+    /// </summary>
+    public struct OpTCreate : IOpCreate
+    {
+        /// <summary>
+        /// Gets the execution type for the TCREATE opcode.
+        /// </summary>
+        public static ExecutionType ExecutionType => ExecutionType.TCREATE;
+    }
+
+    /// <summary>
+    /// Implements the CREATE/CREATE2/TCREATE opcode, handling new contract deployment.
     /// This method performs validation, gas and memory cost calculations, state updates,
     /// and delegates execution to a new call frame for the contract's initialization code.
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
-    /// <typeparam name="TOpCreate">The type of create operation (either <see cref="OpCreate"/> or <see cref="OpCreate2"/>).</typeparam>
+    /// <typeparam name="TOpCreate">The type of create operation (<see cref="OpCreate"/>, <see cref="OpCreate2"/> or <see cref="OpTCreate"/>).</typeparam>
     /// <typeparam name="TTracingInst">Tracing instructions type used for instrumentation if active.</typeparam>
     /// <typeparam name="TSpec">The fork rules the opcode table specialized this handler on.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
@@ -77,6 +88,14 @@ public static partial class EvmInstructions
         where TSpec : struct, ICreateSpec
     {
         vm.MetricsCounters.IncrementCreates();
+
+        bool isTransientCreate = typeof(TOpCreate) == typeof(OpTCreate);
+
+        // EIP-8360: CREATE2 halts in the context of a TCREATE account, before any check that could push zero.
+        if (typeof(TOpCreate) == typeof(OpCreate2) && vm.VmState.IsTransientCreateContext)
+        {
+            goto BadInstruction;
+        }
 
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
         IReleaseSpec spec = vm.Spec;
@@ -95,8 +114,8 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         Span<byte> salt = default;
-        // For CREATE2, an extra salt value is required. Use type check to differentiate.
-        if (typeof(TOpCreate) == typeof(OpCreate2))
+        // For CREATE2 and TCREATE, an extra salt value is required. Use type check to differentiate.
+        if (typeof(TOpCreate) != typeof(OpCreate))
         {
             if (!stack.PopWord256(out salt))
                 goto StackUnderflow;
@@ -154,19 +173,28 @@ public static partial class EvmInstructions
         // Compute the contract address:
         // - For CREATE: based on the executing account and its current nonce.
         // - For CREATE2: based on the executing account, the provided salt, and the init code.
+        // - For TCREATE: as CREATE2 with the EIP-8360 0xfe prefix.
         Address contractAddress = typeof(TOpCreate) == typeof(OpCreate)
             ? ContractAddress.From(env.ExecutingAccount, accountNonce)
-            : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
+            : isTransientCreate
+                ? ContractAddress.FromTransientCreate(env.ExecutingAccount, salt, initCode.Span)
+                : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
+        if (isTransientCreate)
+        {
+            // EIP-8360: no account-creation charge; the target access is priced as an EIP-8038 account access.
+            if (!TSpec.TryConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, contractAddress))
+                goto OutOfGas;
+        }
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
-        if (TSpec.UseHotAndColdStorage)
+        else if (TSpec.UseHotAndColdStorage)
         {
             vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
 
         bool isNonZeroAccount = state.IsNonZeroAccount(contractAddress, out bool accountExists);
         bool isAliveAccount = !state.IsDeadAccount(contractAddress);
-        bool chargeCreateStateGas = TEip8037.IsActive && !isAliveAccount;
+        bool chargeCreateStateGas = TEip8037.IsActive && !isAliveAccount && !isTransientCreate;
 
         if (chargeCreateStateGas && !TGasPolicy.TryConsumeCreateStateGas(ref gas))
             goto OutOfGas;
@@ -178,8 +206,11 @@ public static partial class EvmInstructions
         if (!TSpec.TryReserveChildGas<TGasPolicy>(ref gas, spec, out ulong callGas))
             goto OutOfGas;
 
-        // Increment the nonce of the executing account to reflect the contract creation.
-        state.IncrementNonce(env.ExecutingAccount);
+        // Increment the nonce of the executing account to reflect the contract creation; EIP-8360 TCREATE does not.
+        if (!isTransientCreate)
+        {
+            state.IncrementNonce(env.ExecutingAccount);
+        }
 
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
@@ -201,6 +232,9 @@ public static partial class EvmInstructions
 
         state.ClearStorage(contractAddress);
 
+        // EIP-8360: the balance before this creation is the "original balance" of the TCREATE balance-change tables.
+        UInt256 originalBalance = isTransientCreate ? state.GetBalance(contractAddress) : default;
+
         // Deduct the transfer value from the executing account's balance.
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
@@ -216,7 +250,7 @@ public static partial class EvmInstructions
             inputData: in _emptyMemory);
 
         // Rent a new frame to run the initialization code in the new execution environment.
-        vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+        VmState<TGasPolicy> createFrame = VmState<TGasPolicy>.RentFrame(
             gas: TGasPolicy.CreateChildFrameGas(ref gas, callGas),
             outputDestination: 0,
             outputLength: 0,
@@ -229,6 +263,12 @@ public static partial class EvmInstructions
             isCreateStateGasCharged: chargeCreateStateGas,
             frameJournalCheckpoint: vm.TxExecutionContext.FrameTxContext?.FrameJournalCheckpoint ?? 0);
 
+        if (isTransientCreate)
+        {
+            createFrame.MarkTransientCreate(in originalBalance);
+        }
+
+        vm.ReturnData = createFrame;
         return EvmExceptionType.Suspend;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
@@ -237,6 +277,7 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
-
+    BadInstruction:
+        return EvmExceptionType.BadInstruction;
     }
 }

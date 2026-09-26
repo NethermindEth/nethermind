@@ -20,12 +20,17 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
     public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
 
+    /// <summary>EIP-8360 accounts created by <c>TCREATE</c> in the current transaction.</summary>
+    /// <remarks>Journaled with the call frames, so a reverted or failed <c>TCREATE</c> drops its address.</remarks>
+    public readonly JournalSet<Address> TransientCreateList => _trackingState.TransientCreateList;
+
     private readonly bool _isTracingAccess = isTracingAccess;
     private TrackingState _trackingState = TrackingState.RentState();
 
     private int _addressesSnapshots;
     private int _storageKeysSnapshots;
     private int _destroyListSnapshots;
+    private int _transientCreateListSnapshots;
     private int _logsSnapshots;
 
     public readonly bool IsCold(Address? address) => address is null || !_trackingState.AccessedAddresses.Contains(address);
@@ -57,11 +62,30 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
     public readonly void WasCreated(Address address) => _trackingState.CreateList.Add(address);
 
+    /// <summary>Returns <see langword="true"/> when <paramref name="address"/> is an EIP-8360 <c>TCREATE</c> account.</summary>
+    public readonly bool IsTransientCreate(Address address)
+    {
+        JournalSet<Address> list = _trackingState.TransientCreateList;
+        return list.Count != 0 && list.Contains(address);
+    }
+
+    /// <summary>Registers an EIP-8360 <c>TCREATE</c> account and the balance it had before the creation.</summary>
+    public readonly void WasTransientlyCreated(Address address, in UInt256 originalBalance)
+    {
+        _trackingState.TransientCreateList.Add(address);
+        _trackingState.TransientCreateOriginalBalances[address] = originalBalance;
+    }
+
+    /// <summary>The balance a <c>TCREATE</c> account had when it was created, the EIP-8360 "original balance".</summary>
+    public readonly UInt256 GetTransientCreateOriginalBalance(Address address) =>
+        _trackingState.TransientCreateOriginalBalances.GetValueOrDefault(address);
+
     public void TakeSnapshot()
     {
         _addressesSnapshots = _trackingState.AccessedAddresses.TakeSnapshot();
         _storageKeysSnapshots = _trackingState.AccessedStorageCells.TakeSnapshot();
         _destroyListSnapshots = _trackingState.DestroyList.TakeSnapshot();
+        _transientCreateListSnapshots = _trackingState.TransientCreateList.TakeSnapshot();
         _logsSnapshots = _trackingState.Logs.TakeSnapshot();
     }
 
@@ -76,6 +100,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             _trackingState.ForgetWarm();
         }
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
+        _trackingState.TransientCreateList.Restore(_transientCreateListSnapshots);
         _trackingState.Logs.Restore(_logsSnapshots);
     }
 
@@ -109,6 +134,9 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalCollection<LogEntry> Logs { get; } = [];
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
+        public JournalSet<Address> TransientCreateList { get; } = new(Address.EqualityComparer);
+        // Not journaled: entries are only read for addresses still in TransientCreateList.
+        public Dictionary<AddressAsKey, UInt256> TransientCreateOriginalBalances { get; } = new(AddressAsKey.EqualityComparer);
 
         private StorageCell _lastWarmCell;
         private bool _hasLastWarmCell;
@@ -159,6 +187,8 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
+            TransientCreateList.Clear();
+            TransientCreateOriginalBalances.Clear();
         }
     }
 }

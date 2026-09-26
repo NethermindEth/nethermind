@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
@@ -52,6 +53,12 @@ public class VmState<TGasPolicy> : IDisposable
     /// recipient; on this frame's error/revert no account is created, so the parent refunds it.
     /// </summary>
     public bool NewAccountCharged { get; private set; } // TODO: move to CallEnv
+
+    /// <summary>
+    /// EIP-8360: the executing account is a <c>TCREATE</c> account, so storage opcodes act on transient storage
+    /// and <c>CREATE2</c> halts. Also true for code it runs through <c>DELEGATECALL</c> or <c>CALLCODE</c>.
+    /// </summary>
+    public bool IsTransientCreateContext { get; private set; } // TODO: move to CallEnv
 
     private bool _isDisposed = true;
 
@@ -162,6 +169,7 @@ public class VmState<TGasPolicy> : IDisposable
             _accessTracker.WasCreated(env.ExecutingAccount);
         }
         _accessTracker.TakeSnapshot();
+        IsTransientCreateContext = _accessTracker.IsTransientCreate(env.ExecutingAccount);
         Debug.Assert(StateGasRefundAdvanced == 0, "Pooled VmState returned with uncleared StateGasRefundAdvanced.");
         Gas = gas;
         InitialStateGasUsed = TGasPolicy.GetStateGasUsed(in gas);
@@ -194,10 +202,19 @@ public class VmState<TGasPolicy> : IDisposable
         static void ThrowIsInUse() => throw new InvalidOperationException("Already in use");
     }
 
+    /// <summary>Registers this <c>TCREATE</c> frame's account as an EIP-8360 <c>TCREATE</c> account.</summary>
+    /// <remarks>Runs after the frame's snapshot, so a revert or failure of this frame unregisters it.</remarks>
+    public void MarkTransientCreate(in UInt256 originalBalance)
+    {
+        Debug.Assert(ExecutionType == ExecutionType.TCREATE, "Only a TCREATE frame creates a TCREATE account.");
+        _accessTracker.WasTransientlyCreated(Env.ExecutingAccount, in originalBalance);
+        IsTransientCreateContext = true;
+    }
+
     public Address From => ExecutionType switch
     {
         ExecutionType.STATICCALL or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE
-            or ExecutionType.CREATE2 or ExecutionType.TRANSACTION => Env.Caller,
+            or ExecutionType.CREATE2 or ExecutionType.TCREATE or ExecutionType.TRANSACTION => Env.Caller,
         ExecutionType.DELEGATECALL => Env.ExecutingAccount,
         _ => throw new ArgumentOutOfRangeException(),
     };

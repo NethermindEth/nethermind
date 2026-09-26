@@ -67,6 +67,7 @@ namespace Nethermind.Core
         public const ulong TLoad = WarmStateRead; // eip-1153
         public const ulong TStore = WarmStateRead; // eip-1153
         public const ulong TxTrace = WarmStateRead; // eip-7906 placeholder; TXTRACE_GAS_COST is TBD in the spec
+        public const ulong TCreate = 100; // eip-8360 BASE_OPCODE_COST
         public const ulong PerAuthBaseCost = Eip7702Constants.PerAuthBaseCost;
         public const ulong TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const ulong TotalCostFloorPerTokenEip7976 = 16; // eip-7976

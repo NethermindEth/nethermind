@@ -290,6 +290,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             lookup[(int)Instruction.CREATE2] = GetCreateHandler<EvmInstructions.OpCreate2, TTracingInst, TCancelable>(spec);
         }
+        if (spec.IsEip8360Enabled)
+            lookup[(int)Instruction.TCREATE] = GetCreateHandler<EvmInstructions.OpTCreate, TTracingInst, TCancelable>(spec);
         if (spec.StaticCallEnabled)
             lookup[(int)Instruction.STATICCALL] = GetCallHandler<EvmInstructions.OpStaticCall, TTracingInst, TCancelable>(spec);
         if (spec.RevertOpcodeEnabled)
@@ -1189,8 +1191,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip8038 : struct, IEip8038Flag
         where Eip2929 : struct, IFlag
     {
+        // EIP-8360: in a TCREATE account's context SLOAD behaves as TLOAD.
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSLoad<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref stack, ref gas, vm);
+            vm.VmState.IsTransientCreateContext
+                ? EvmInstructions.InstructionTLoad<TGasPolicy, TTracingInst>(ref stack, ref gas, vm)
+                : EvmInstructions.InstructionSLoad<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
@@ -1201,8 +1206,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip8038 : struct, IEip8038Flag
         where Eip2929 : struct, IFlag
     {
+        // EIP-8360: in a TCREATE account's context SSTORE behaves as TSTORE.
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSStoreMetered<TGasPolicy, TTracingInst, TStipendFix, TEip8037, Eip8038, Eip2929>(ref stack, ref gas, vm);
+            vm.VmState.IsTransientCreateContext
+                ? EvmInstructions.InstructionTStore(ref stack, ref gas, vm)
+                : EvmInstructions.InstructionSStoreMetered<TGasPolicy, TTracingInst, TStipendFix, TEip8037, Eip8038, Eip2929>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
