@@ -11,7 +11,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -22,7 +21,7 @@ using Nethermind.Core.Messages;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
-public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAccessList
+public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAccessList
 {
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
 
@@ -89,11 +88,19 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
     public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
     {
         _transactionProcessor = transactionProcessor;
-        _withdrawalTransaction.Hash = _withdrawalTransaction.CalculateHash();
-        _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
-        _builderDepositTransaction.Hash = _builderDepositTransaction.CalculateHash();
-        _builderExitTransaction.Hash = _builderExitTransaction.CalculateHash();
+        SetSystemCallHashes();
     }
+
+    /// <summary>Stamps the system calls with their transaction hashes.</summary>
+    /// <remarks>
+    /// Implemented in <c>ExecutionRequestsProcessor.std.cs</c> only. The zkEVM guest leaves the hashes unset, as
+    /// the EIP-4788 beacon root system call always does: executing a system call does not read its hash, while
+    /// computing one resolves the transaction encoder's generic virtual methods through the NativeAOT type loader.
+    /// That is sound while the hashes reach nothing the guest outputs or validates: the calls get no receipt, run only
+    /// under the private <c>CallOutputTracer</c> in <c>ReadRequests</c>, and the block access list keys their changes
+    /// by block access index rather than by transaction.
+    /// </remarks>
+    partial void SetSystemCallHashes();
 
     /// <inheritdoc/>
     /// <remarks>
