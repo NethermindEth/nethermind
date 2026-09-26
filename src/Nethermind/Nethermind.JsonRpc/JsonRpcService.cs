@@ -37,6 +37,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
+    private readonly bool _webSocketsCanQueue = jsonRpcConfig.WebSocketsProcessingConcurrency > 1;
+
+    internal EvmAdmissionGate EvmGate { get; } = new(jsonRpcConfig);
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
@@ -58,7 +61,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = ExecuteAsync(rpcRequest, methodName, method!, context);
+            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution
+                ? ExecuteGatedAsync(rpcRequest, methodName, method, context)
+                : ExecuteAsync(rpcRequest, methodName, method, context);
             return responseTask.IsCompletedSuccessfully
                 ? responseTask
                 : AwaitRequestAsync(responseTask, rpcRequest);
@@ -73,6 +78,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             try
             {
                 return await responseTask;
+            }
+            catch (OperationCanceledException) when (rpcRequest.CancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -108,6 +117,24 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         ex is OutOfMemoryException or { InnerException: OutOfMemoryException }
             ? $"Id:{request.Id}, {request.Method}(params omitted)"
             : request.ToString();
+
+    private async ValueTask<JsonRpcResponse> ExecuteGatedAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
+    {
+        // Admitted before binding, so a rejected request never pays for deserializing its parameters.
+        using EvmAdmissionGate.Lease lease = await EvmGate.AdmitAsync(request.ParamsUtf8Length, CanQueue(request, context), request.CancellationToken);
+        request.CancellationToken.ThrowIfCancellationRequested();
+        return await ExecuteAsync(request, methodName, method, context);
+    }
+
+    // Waiting would hold up the requests behind this one: the rest of its batch, a connection served one request at a
+    // time, or the engine calls on an authenticated connection (IPC always is).
+    private bool CanQueue(JsonRpcRequest request, JsonRpcContext context) =>
+        !request.IsBatchItem && !context.IsAuthenticated && context.RpcEndpoint switch
+        {
+            RpcEndpoint.Http => true,
+            RpcEndpoint.Ws => _webSocketsCanQueue,
+            _ => false,
+        };
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {

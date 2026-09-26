@@ -316,8 +316,8 @@ public class JsonRpcProcessorTests
     private ValueTask<CollectedJsonRpcResponses> ProcessAsync(string request, JsonRpcContext? context = null, JsonRpcConfig? config = null, bool returnErrors = false) =>
         ProcessAsync(CreateFixtureProcessor(config, returnErrors), CreateReader(request), context ?? CreateHttpContext());
 
-    private static ValueTask<CollectedJsonRpcResponses> ProcessAsync(JsonRpcProcessor processor, string request, JsonRpcContext context, CollectingJsonRpcResponseSink? sink = null) =>
-        ProcessAsync(processor, CreateReader(request), context, sink);
+    private static ValueTask<CollectedJsonRpcResponses> ProcessAsync(JsonRpcProcessor processor, string request, JsonRpcContext context, CollectingJsonRpcResponseSink? sink = null, CancellationToken cancellationToken = default) =>
+        ProcessAsync(processor, CreateReader(request), context, sink, cancellationToken);
 
     private static PipeReader CreateReader(string request, bool segmentedInput) =>
         segmentedInput
@@ -328,15 +328,36 @@ public class JsonRpcProcessorTests
         JsonRpcProcessor processor,
         PipeReader reader,
         JsonRpcContext context,
-        CollectingJsonRpcResponseSink? sink = null)
+        CollectingJsonRpcResponseSink? sink = null,
+        CancellationToken cancellationToken = default)
     {
         sink ??= new CollectingJsonRpcResponseSink();
         JsonRpcInputMode inputMode = context.RpcEndpoint == RpcEndpoint.Http
             ? JsonRpcInputMode.SingleDocument
             : JsonRpcInputMode.MultipleDocuments;
 
-        await processor.ProcessAsync(reader, context, sink, new JsonRpcProcessingOptions(inputMode));
+        await processor.ProcessAsync(reader, context, sink, new JsonRpcProcessingOptions(inputMode), cancellationToken);
         return sink.Responses;
+    }
+
+    [Test]
+    public async Task Request_carries_what_evm_admission_needs([Values(RpcEndpoint.Http, RpcEndpoint.Ws)] RpcEndpoint endpoint, [Values] bool inBatch)
+    {
+        const string paramsJson = "[{\"parentHash\":\"0x0\"},[],null,null]";
+        using CancellationTokenSource cancellation = new();
+        List<(int ParamsUtf8Length, bool IsBatchItem, CancellationToken CancellationToken)> seen = [];
+        IJsonRpcService service = CreateService(request =>
+        {
+            seen.Add((request.ParamsUtf8Length, request.IsBatchItem, request.CancellationToken));
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        string request = CreateRequest("1", "eth_call", paramsJson);
+        using JsonRpcContext context = new(endpoint);
+
+        using CollectedJsonRpcResponses _ = await ProcessAsync(
+            CreateProcessor(service), inBatch ? CreateBatchRequest(request) : request, context, cancellationToken: cancellation.Token);
+
+        Assert.That(seen, Is.EqualTo(new[] { (Encoding.UTF8.GetByteCount(paramsJson), inBatch, cancellation.Token) }));
     }
 
     [Test]

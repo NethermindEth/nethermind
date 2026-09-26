@@ -101,6 +101,8 @@ public class JsonRpcServiceTests
     private ILogManager _logManager = null!;
     private JsonRpcContext _context = null!;
 
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
+
     private static HexBytes ToHexBytes(string value) => new(Bytes.FromHexString(value));
 
     private static PolymorphicDerivedPayload CreatePolymorphicPayload() =>
@@ -249,25 +251,31 @@ public class JsonRpcServiceTests
     }
 
     private JsonRpcResponse TestRawRequest<T>(T module, string method, string rawParameters) where T : IRpcModule =>
-        SendRequestWithPool(
-            new SingletonModulePool<T>(new SingletonFactory<T>(module), true),
-            new JsonRpcRequest
-            {
-                JsonRpc = "2.0",
-                Method = method,
-                ParamsUtf8 = Encoding.UTF8.GetBytes(rawParameters),
-                ParamsKind = JsonValueKind.Array,
-                Id = 67
-            });
+        SendRequestWithPool(new SingletonModulePool<T>(new SingletonFactory<T>(module), true), BuildRawRequest(method, rawParameters));
+
+    private static JsonRpcRequest BuildRawRequest(string method, string rawParameters) =>
+        new()
+        {
+            JsonRpc = "2.0",
+            Method = method,
+            ParamsUtf8 = Encoding.UTF8.GetBytes(rawParameters),
+            ParamsKind = JsonValueKind.Array,
+            Id = 67
+        };
 
     private JsonRpcResponse SendRequestWithPool<T>(IRpcModulePool<T> pool, JsonRpcRequest request) where T : IRpcModule
     {
-        RpcModuleProvider moduleProvider = new(new RealFileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
-        moduleProvider.Register(pool);
-        _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
+        _jsonRpcService = CreateService(pool, _configurationProvider.GetConfig<IJsonRpcConfig>());
         JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
         Assert.That(response.Id, Is.EqualTo(request.Id));
         return response;
+    }
+
+    private JsonRpcService CreateService<T>(IRpcModulePool<T> pool, IJsonRpcConfig config) where T : IRpcModule
+    {
+        RpcModuleProvider moduleProvider = new(new RealFileSystem(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        moduleProvider.Register(pool);
+        return new JsonRpcService(moduleProvider, _logManager, config, _gcKeeper);
     }
 
     [TestCase(false, 2UL, TestName = "Number")]
@@ -1002,6 +1010,153 @@ public class JsonRpcServiceTests
         static MissingTrieNodeException MissingTrieNode(StateUnavailableException inner) =>
             new("State proof at historical block 1 is unavailable", null, TreePath.Empty, TestItem.KeccakA, inner);
     }
+
+    [TestCase(null, null, TestName = "Succeeds")]
+    [TestCase(typeof(InvalidOperationException), ErrorCodes.InternalError, TestName = "Throws")]
+    [TestCase(typeof(OperationCanceledException), ErrorCodes.Timeout, TestName = "Throws a cancellation the caller did not request")]
+    public async Task Eth_call_holds_an_execution_slot_until_it_completes(Type? exceptionType, int? expectedErrorCode)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcService service = CreateGatedService(ethRpcModule);
+        int inFlightDuringCall = -1;
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ =>
+        {
+            inFlightDuringCall = service.EvmGate.InFlight;
+            return exceptionType is null
+                ? ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"))
+                : throw (Exception)Activator.CreateInstance(exceptionType)!;
+        });
+
+        using JsonRpcResponse response = await service.SendRequestAsync(EthCall(), _context);
+
+        if (expectedErrorCode is null) RpcTest.AssertSuccess<HexBytes>(response);
+        else AssertJsonRpcError(response, expectedErrorCode.Value);
+        Assert.That((inFlightDuringCall, service.EvmGate.InFlight), Is.EqualTo((1, 0)));
+    }
+
+    [TestCase(true, ErrorCodes.LimitExceeded, TestName = "Busy: rejected before binding")]
+    [TestCase(false, ErrorCodes.InvalidParams, TestName = "Free: bound, then rejected")]
+    public async Task Evm_request_is_admitted_before_its_parameters_are_bound(bool busy, int expectedCode)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_blockNumber().Returns(Task.FromResult(ResultWrapper<ulong?>.Success(7)));
+        JsonRpcService service = CreateGatedService(ethRpcModule, maxQueueWaitMs: 0);
+        using EvmAdmissionGate.Lease held = busy ? await HoldSlot(service) : default;
+
+        using JsonRpcResponse evmResponse = await service.SendRequestAsync(EthCall("not a transaction"), _context);
+        using JsonRpcResponse otherResponse = await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_blockNumber"), _context);
+
+        AssertJsonRpcError(evmResponse, expectedCode);
+        Assert.That(RpcTest.AssertSuccess<ulong?>(otherResponse), Is.EqualTo(7UL), "other methods are not gated");
+        Assert.That(service.EvmGate.InFlight, Is.EqualTo(busy ? 1 : 0));
+    }
+
+    [TestCaseSource(nameof(EvmQueueingCases))]
+    public async Task Evm_request_queues_only_where_waiting_holds_up_no_other_request(
+        RpcEndpoint endpoint, int webSocketsProcessingConcurrency, bool authenticated, bool batchItem, bool queues)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
+        JsonRpcService service = CreateGatedService(ethRpcModule, webSocketsProcessingConcurrency: webSocketsProcessingConcurrency);
+        using JsonRpcContext context = authenticated
+            ? new JsonRpcContext(endpoint, url: new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, [ModuleType.Eth]))
+            : new JsonRpcContext(endpoint);
+        JsonRpcRequest request = EthCall();
+        request.IsBatchItem = batchItem;
+
+        Task<JsonRpcResponse> response;
+        using (await HoldSlot(service))
+        {
+            response = service.SendRequestAsync(request, context).AsTask();
+            Assert.That(service.EvmGate.Queued, Is.EqualTo(queues ? 1 : 0));
+        }
+
+        using JsonRpcResponse completed = await response.WaitAsync(TestTimeout);
+        if (queues) RpcTest.AssertSuccess<HexBytes>(completed);
+        else AssertJsonRpcError(completed, ErrorCodes.LimitExceeded);
+    }
+
+    private static IEnumerable<TestCaseData> EvmQueueingCases()
+    {
+        yield return new TestCaseData(RpcEndpoint.Http, 1, false, false, true).SetName("HTTP queues");
+        yield return new TestCaseData(RpcEndpoint.Http, 1, true, false, false).SetName("Authenticated HTTP is rejected at once");
+        yield return new TestCaseData(RpcEndpoint.Http, 1, false, true, false).SetName("Batch item is rejected at once");
+        yield return new TestCaseData(RpcEndpoint.Ws, 1, false, false, false).SetName("Single-worker WebSocket is rejected at once");
+        yield return new TestCaseData(RpcEndpoint.Ws, 2, false, false, true).SetName("Multi-worker WebSocket queues");
+        yield return new TestCaseData(RpcEndpoint.IPC, 2, false, false, false).SetName("IPC is rejected at once");
+    }
+
+    [TestCase(true, TestName = "Raw params")]
+    [TestCase(false, TestName = "Parsed params")]
+    public async Task Smaller_evm_request_overtakes_a_larger_one_by_params_size(bool rawParams)
+    {
+        List<int> servedInputLengths = [];
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(callInfo =>
+        {
+            lock (servedInputLengths)
+            {
+                servedInputLengths.Add(callInfo.Arg<SignableTransactionForRpc>() is LegacyTransactionForRpc { Input: { } input } ? input.Length : -1);
+            }
+
+            return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
+        });
+        JsonRpcService service = CreateGatedService(ethRpcModule);
+        // Calldata is hex-encoded on the wire, so one unit of bytes makes the params weigh 3.
+        LegacyTransactionForRpc large = new() { Input = new byte[EvmAdmissionGate.BytesPerWeightUnit] };
+        LegacyTransactionForRpc small = new() { Input = new byte[1] };
+        JsonRpcRequest[] requests = [.. new[] { large, small }.Select(transaction => rawParams
+            ? BuildRawRequest("eth_call", $"[{new EthereumJsonSerializer().Serialize(transaction)}]")
+            : EthCall(transaction))];
+
+        Task<JsonRpcResponse>[] responses;
+        using (await HoldSlot(service))
+        {
+            responses = [.. requests.Select(request => service.SendRequestAsync(request, _context).AsTask())];
+            Assert.That(service.EvmGate.Queued, Is.EqualTo(2));
+        }
+
+        foreach (Task<JsonRpcResponse> response in responses)
+        {
+            using JsonRpcResponse completed = await response.WaitAsync(TestTimeout);
+            RpcTest.AssertSuccess<HexBytes>(completed);
+        }
+
+        Assert.That(servedInputLengths, Is.EqualTo(new[] { small.Input.Length, large.Input.Length }));
+    }
+
+    [Test]
+    public async Task Cancelled_caller_leaves_the_queue_and_gets_no_response()
+    {
+        JsonRpcService service = CreateGatedService(Substitute.For<IEthRpcModule>());
+        using CancellationTokenSource cancellation = new();
+        JsonRpcRequest request = EthCall();
+        request.CancellationToken = cancellation.Token;
+        using EvmAdmissionGate.Lease held = await HoldSlot(service);
+        Task<JsonRpcResponse> response = service.SendRequestAsync(request, _context).AsTask();
+        Assert.That(service.EvmGate.Queued, Is.EqualTo(1));
+
+        cancellation.Cancel();
+
+        Assert.That(async () => await response.WaitAsync(TestTimeout), Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(service.EvmGate.Queued, Is.Zero);
+    }
+
+    private JsonRpcService CreateGatedService(IEthRpcModule ethRpcModule, int maxQueueWaitMs = 60_000, int webSocketsProcessingConcurrency = 1) =>
+        CreateService(
+            new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(ethRpcModule), true),
+            new JsonRpcConfig
+            {
+                EthModuleConcurrentInstances = 1,
+                EvmExecutionMaxQueueWaitMs = maxQueueWaitMs,
+                WebSocketsProcessingConcurrency = webSocketsProcessingConcurrency,
+            });
+
+    private static JsonRpcRequest EthCall(object? transaction = null) =>
+        RpcTest.BuildJsonRequest("eth_call", transaction ?? new LegacyTransactionForRpc());
+
+    private static ValueTask<EvmAdmissionGate.Lease> HoldSlot(JsonRpcService service) =>
+        service.EvmGate.AdmitAsync(0, allowQueue: false, CancellationToken.None);
 
     [RpcModule(ModuleType.Eth)]
     public interface IMetadataTestRpcModule : IRpcModule

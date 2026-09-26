@@ -38,6 +38,7 @@ public interface IJsonRpcConfig : IConfig
             The max number of concurrent in-flight requests on the shared (sharable) singleton handler.
             Caps heavy methods promoted to sharable — `eth_call`, `eth_estimateGas`,
             `eth_createAccessList` — preventing unbounded concurrency from exhausting memory.
+            Those methods are first limited to `EthModuleConcurrentInstances` at a time; see `EvmExecutionMaxQueueWaitMs`.
             Light sharable methods (e.g. `eth_blockNumber`, `eth_getBalance`) complete in <1 ms and
             effectively never approach this limit. `eth_sendRawTransactionSync` holds a slot for as long
             as it waits for inclusion; see `RpcTxSyncMaxConcurrentRequests`. `0` to lift the limit.
@@ -161,10 +162,34 @@ public interface IJsonRpcConfig : IConfig
             HTTP 503 is returned along with the JSON-RPC error. Also acts as the hard active
             concurrency cap on the override-path env pool used by sharable `eth_call` /
             `eth_estimateGas` / `eth_createAccessList` when called with state or blob-base-fee
-            overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. Defaults
-            to the number of logical processors.
+            overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. Also the
+            number of execution slots shared by `eth_call`, `eth_estimateGas`, `eth_createAccessList`,
+            `eth_simulateV1` and `eth_fillTransaction`, with or without overrides; see
+            `EvmExecutionMaxQueueWaitMs`. Raising it above the number of logical processors also
+            runs more of those calls at once, and a value far above it effectively turns off their
+            queueing and load shedding. Defaults to the number of logical processors.
             """)]
     int? EthModuleConcurrentInstances { get; set; }
+
+    /// <summary>Maximum time, in milliseconds, that an EVM-executing request may wait for an execution slot. Defaults to 500 ms; 0 or less disables queueing.</summary>
+    [ConfigItem(
+        Description = """
+            The max time, in milliseconds, an EVM-executing JSON-RPC request (`eth_call`, `eth_estimateGas`,
+            `eth_createAccessList`, `eth_simulateV1`, `eth_fillTransaction`) waits for one of the
+            `EthModuleConcurrentInstances` execution slots before it is answered with `LimitExceeded` (HTTP 503).
+            Waiters are served in arrival order, except that each full 128 KiB of `params` delays a request's turn by 1/14 of
+            this budget, up to half of it; a request that has waited half this budget is served before any later arrival.
+            The budget bounds only the wait for a slot, not the response time. `0` or a negative value disables queueing.
+            Batch items, authenticated and IPC requests, and WebSocket requests with `WebSocketsProcessingConcurrency` of 1 never queue.
+            """,
+        DefaultValue = "500")]
+    int EvmExecutionMaxQueueWaitMs { get; set; }
+
+    /// <summary>Maximum number of EVM-executing requests waiting for an execution slot. Defaults to 500; 0 or less removes the limit.</summary>
+    [ConfigItem(
+        Description = "The max number of EVM-executing JSON-RPC requests waiting for an execution slot; further requests are answered with `LimitExceeded` (HTTP 503) at once. `0` or a negative value removes the limit.",
+        DefaultValue = "500")]
+    int EvmExecutionQueueLimit { get; set; }
 
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
     public string JwtSecretFile { get; set; }

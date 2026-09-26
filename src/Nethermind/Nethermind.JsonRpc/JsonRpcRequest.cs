@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 
 namespace Nethermind.JsonRpc
 {
@@ -41,6 +43,17 @@ namespace Nethermind.JsonRpc
 
         internal ReadOnlyMemory<byte> ParamsUtf8 { get; set; }
         internal JsonValueKind ParamsKind { get; set; }
+
+        internal bool IsBatchItem { get; set; }
+
+        /// <summary>Signals that the caller has gone, e.g. the connection was closed.</summary>
+        internal CancellationToken CancellationToken { get; set; }
+
+        /// <summary>Byte length of the raw <c>params</c> element, or zero when the request carries none.</summary>
+        /// <remarks>Read it before the parameters are bound: disposing the parsed document invalidates it.</remarks>
+        internal int ParamsUtf8Length => !ParamsUtf8.IsEmpty
+            ? ParamsUtf8.Length
+            : _params.ValueKind == JsonValueKind.Undefined ? 0 : JsonMarshal.GetRawUtf8Value(_params).Length;
 
         internal void DisposeParsedParamsDocument()
         {
