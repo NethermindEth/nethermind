@@ -387,6 +387,27 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             Assert.That(container.Resolve<StepA>().WasExecuted, Is.True);
         }
 
+        [Test]
+        [CancelAfter(5000)]
+        public async Task Target_initialization_follows_dependencies_and_plugin_dependents([Values] bool alreadyInitialized, CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                new StepInfo(typeof(StepB)),
+                new StepInfo(typeof(StepCStandard)),
+                new StepInfo(typeof(StepE)),
+                new StepInfo(typeof(FailedConstructorWithInvalidConfigurationStep)));
+            Task initialization = container.Resolve<EthereumStepsManager>().InitializeThrough(typeof(StepB), cancellationToken,
+                alreadyInitialized ? [typeof(StepE)] : []);
+            if (!alreadyInitialized)
+            {
+                Assert.That(initialization.IsCompleted, Is.False);
+                Assert.That(container.Resolve<StepB>().WasExecuted, Is.False);
+                container.Resolve<StepE>().Waiter.SetResult();
+            }
+            await initialization.WaitAsync(cancellationToken);
+            Assert.That(container.Resolve<StepB>().WasExecuted, Is.True);
+        }
+
         private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos) =>
             CreateNethermindEnvironment(target: null, command: null, stepInfos);
 

@@ -62,6 +62,7 @@ public class HiveModule : Module
         {
             // A Hive container processes a handful of blocks and exits, so the warm-up never pays back.
             initConfig.EvmWarmupEnabled = false;
+            initConfig.PipelineWarmupEnabled = false;
             return initConfig;
         })
         .AddDecorator<IKeyStoreConfig>((_, keyStoreConfig) =>
