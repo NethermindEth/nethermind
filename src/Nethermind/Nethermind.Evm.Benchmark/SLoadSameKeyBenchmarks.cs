@@ -75,9 +75,8 @@ public class SLoadSameKeyBenchmarks
         if (PreSet)
         {
             // SLOAD(0) -> K and SLOAD(K) -> K keep the chained key constant and non-zero.
-            byte[] selfKeyBytes = SelfKey.ToBigEndian();
-            _stateProvider.Set(new StorageCell(ContractAddress, UInt256.Zero), selfKeyBytes);
-            _stateProvider.Set(new StorageCell(ContractAddress, SelfKey), selfKeyBytes);
+            _stateProvider.Set(new StorageCell(ContractAddress, UInt256.Zero), SelfKey);
+            _stateProvider.Set(new StorageCell(ContractAddress, SelfKey), SelfKey);
         }
         _stateProvider.Commit(_spec);
 
