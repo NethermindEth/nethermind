@@ -1152,6 +1152,32 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [TestCase(Instruction.GASPRICE, TestName = "GASPRICE")]
+    [TestCase(Instruction.BASEFEE, TestName = "BASEFEE")]
+    public async Task Eth_createAccessList_zero_priority_fee_only_runs_with_the_filled_fee_cap(Instruction opcode)
+    {
+        // The target reads the balance of the address its fee opcode returns, so that value lands in the access list.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        UInt256 baseFee = ctx.Test.BlockTree.Head!.BaseFeePerGas;
+        string code = Prepare.EvmCode.Op(opcode).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.STOP).Done.ToHexString(true);
+        string explicitFeeCap = (baseFee * 2).ToHexString(skipLeadingZeros: true);
+
+        string defaulted = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest("""{"type":"0x2","maxPriorityFeePerGas":"0x0"}"""), "latest", TipFeeState(OneEtherBalance, code));
+        string priced = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest($$"""{"type":"0x2","maxPriorityFeePerGas":"0x0","maxFeePerGas":"{{explicitFeeCap}}"}"""), "latest", TipFeeState(OneEtherBalance, code));
+
+        Address observed = new(baseFee.ToBigEndian()[12..]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(baseFee.IsZero, Is.False, "precondition: the head block has a base fee");
+            Assert.That(JToken.Parse(defaulted)["result"], Is.EqualTo(JToken.Parse(priced)["result"]).Using(JToken.EqualityComparer),
+                $"a zero priority fee with a filled fee cap runs as the explicitly priced request: {defaulted}");
+            Assert.That(JToken.Parse(defaulted)["result"]?["accessList"]?[0]?["address"]?.Value<string>(), Is.EqualTo(observed.ToString()),
+                "the fee opcode sees the base fee");
+        }
+    }
+
     [Test]
     public async Task Eth_estimateGas_fee_cap_below_the_priority_fee_is_still_rejected_as_input()
     {
@@ -1230,8 +1256,8 @@ public partial class EthRpcModuleTests
         return JsonSerializer.Deserialize<object>(request.ToJsonString());
     }
 
-    private static object? TipFeeState(string balance) =>
-        JsonSerializer.Deserialize<object>($$$"""{"{{{TipFeeSender}}}":{"balance":"{{{balance}}}"},"{{{TipFeeTarget}}}":{"code":"{{{TipFeeTargetCode}}}"}}""");
+    private static object? TipFeeState(string balance, string code = TipFeeTargetCode) =>
+        JsonSerializer.Deserialize<object>($$$"""{"{{{TipFeeSender}}}":{"balance":"{{{balance}}}"},"{{{TipFeeTarget}}}":{"code":"{{{code}}}"}}""");
 
     [Test]
     public async Task Eth_call_maxFeePerGas_smaller_then_maxPriorityFeePerGas()
