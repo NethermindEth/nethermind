@@ -35,6 +35,7 @@ public class PersistenceManager(
     IPersistedSnapshotCompactor compactor,
     IPersistedSnapshotLoader loader,
     IProcessExitSource processExitSource,
+    IPersistTarget persistTarget,
     IFlatPersistenceCaptureHook? captureHook = null) : IPersistenceManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
@@ -124,6 +125,9 @@ public class PersistenceManager(
             ? latestSnapshot.BlockNumber + 1
             : latestSnapshot.BlockNumber.SaturatingSub(currentPersistedState.BlockNumber);
 
+        if (persistTarget.TargetBlock is { } targetBlock && currentPersistedState != StateId.PreGenesis)
+            return StepTowardsTarget(latestSnapshot, currentPersistedState, targetBlock);
+
         // ---- Phase 1: persistence to RocksDB ----
         ulong finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
         ulong nextBoundary = schedule.NextFullCompactionAfter(in currentPersistedState);
@@ -183,6 +187,29 @@ public class PersistenceManager(
         }
 
         return (null, null, conversion);
+    }
+
+    /// <summary>Advances persistence towards a pinned target block and freezes it there.</summary>
+    /// <remarks>
+    /// Batched persistence lands only on CompactSize-aligned boundaries, so it would step over the target;
+    /// within <see cref="IPersistTarget.StepDistance"/> this persists a single block at a time instead.
+    /// Each step keeps the ordinary finality and <see cref="_minReorgDepth"/> gates, so a target is reached
+    /// only once it is as deep as anything else this node persists — flat keeps no history to undo it with.
+    /// Conversion to the persisted-snapshot tier is suppressed as well: the target exists so a consumer can
+    /// read one exact persisted state, and nothing may move underneath it.
+    /// </remarks>
+    private (PersistedSnapshot?, Snapshot?, ConversionCandidate?) StepTowardsTarget(StateId latestSnapshot, StateId currentPersistedState, ulong targetBlock)
+    {
+        ulong persistedBlock = currentPersistedState.BlockNumber;
+        if (persistedBlock >= targetBlock) return (null, null, null);
+        ulong step = targetBlock - persistedBlock <= persistTarget.StepDistance ? persistedBlock + 1 : schedule.NextFullCompactionAfter(in currentPersistedState);
+        if (step > targetBlock
+            || finalizedStateProvider.GetFinalizedHeader(step)?.StateRoot is not { } stepRoot
+            || latestSnapshot.BlockNumber.SaturatingSub(step) < _minReorgDepth)
+            return (null, null, null);
+        (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersist(
+            new StateId(step, stepRoot), currentPersistedState, step - persistedBlock);
+        return (persisted, inMemory, null);
     }
 
     /// <summary>

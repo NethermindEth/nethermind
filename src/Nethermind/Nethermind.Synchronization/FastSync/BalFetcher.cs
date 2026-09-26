@@ -69,11 +69,8 @@ public class BalFetcher(
                     return false;
                 }
 
-                int stored;
-                using (SyncPeerAllocation allocation = await peerPool.Allocate(PeerStrategy, AllocationContexts.State, _allocateTimeoutMs, token))
-                {
-                    stored = allocation.Current is null ? 0 : await FetchFromPeer(allocation.Current, missing, token);
-                }
+                using SyncPeerAllocation allocation = await peerPool.Allocate(PeerStrategy, AllocationContexts.State, _allocateTimeoutMs, token);
+                int stored = allocation.Current is null ? 0 : await FetchFromPeer(allocation.Current, missing, token);
 
                 if (stored == 0)
                     noProgress++;

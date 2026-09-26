@@ -21,6 +21,44 @@ public interface IWorldStateScopeProvider
     /// <remarks>Does not verify the integrity or availability of every descendant trie node.</remarks>
     bool HasRoot(BlockHeader? baseBlock);
 
+    /// <summary>A borrowed, hint-only reference for warming trie paths.</summary>
+    /// <remarks>Dispose releases one borrowed reference, not other callers' references to the same session.</remarks>
+    interface ITrieWarmupSession : IDisposable
+    {
+        /// <summary>Queues an account path for warm-up.</summary>
+        /// <param name="address">The account address to warm.</param>
+        void HintWarmAccount(in ValueAddress address);
+
+        /// <summary>Queues a storage slot path for warm-up.</summary>
+        /// <param name="address">The account and storage address to warm.</param>
+        /// <param name="index">The storage slot index to warm.</param>
+        void HintWarmSlot(in ValueAddress address, in UInt256 index);
+
+        /// <summary>A reusable no-op session for backends without trie warm-up support.</summary>
+        sealed class Noop : ITrieWarmupSession
+        {
+            public static Noop Instance { get; } = new();
+
+            public void HintWarmAccount(in ValueAddress address) { }
+
+            public void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
+
+            public void Dispose() { }
+        }
+
+        /// <summary>Preserves legacy scope hints without owning the scope's lifetime.</summary>
+        sealed class ScopeForwarder(IScope scope) : ITrieWarmupSession
+        {
+            private volatile IScope? _scope = scope;
+
+            public void HintWarmAccount(in ValueAddress address) => _scope?.HintWarmAccount(in address);
+
+            public void HintWarmSlot(in ValueAddress address, in UInt256 index) => _scope?.HintWarmSlot(in address, in index);
+
+            public void Dispose() => _scope = null;
+        }
+    }
+
     /// <summary>
     /// Attempts to open the state required to execute <paramref name="targetBlock"/>.
     /// </summary>
@@ -52,6 +90,17 @@ public interface IWorldStateScopeProvider
     public interface IScope : IDisposable
     {
         Hash256 RootHash { get; }
+
+        /// <summary>
+        /// Acquires a hint-only trie-warmer reference bound to this scope's state resources.
+        /// </summary>
+        /// <remarks>
+        /// Calls may share one reference-counted session. Each acquired reference must be disposed exactly once.
+        /// The main scope controls cancellation; releasing a borrow does not cancel other borrowers' hints.
+        /// The default forwards legacy hints without extending the scope lifetime; backends with leased resources override it.
+        /// </remarks>
+        /// <returns>A borrowed trie-warmer reference bound to this scope.</returns>
+        ITrieWarmupSession CreateTrieWarmupSession() => new ITrieWarmupSession.ScopeForwarder(this);
 
         bool StorageRootsAreAuthoritative => true;
 
@@ -206,6 +255,13 @@ public interface IWorldStateScopeProvider
     public interface IStorageTree
     {
         Hash256 RootHash { get; }
+
+        /// <summary>Whether the backend can prove that the account has no stored slots.</summary>
+        /// <remarks>
+        /// Implementations that cannot prove emptiness must return <c>false</c>. Decorators must forward this
+        /// value with <see cref="RootHash"/> when the wrapped backend does not maintain its root.
+        /// </remarks>
+        bool IsKnownEmpty => RootHash == Keccak.EmptyTreeHash;
 
         void Get(in UInt256 index, out UInt256 value);
 

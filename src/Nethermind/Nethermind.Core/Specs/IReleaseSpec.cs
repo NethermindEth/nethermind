@@ -481,6 +481,11 @@ namespace Nethermind.Core.Specs
         public bool IsEip8246Enabled { get; }
 
         /// <summary>
+        /// EIP-8347: Binary trie state migration.
+        /// </summary>
+        public bool IsEip8347Enabled { get; }
+
+        /// <summary>
         /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
         /// and cold-account costs against actual state work.
         /// </summary>

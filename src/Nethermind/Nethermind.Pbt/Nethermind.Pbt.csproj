@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- for [SkipLocalsInit] on the descent's frames, whose inline slot buffers clear themselves -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.State.Pbt" />
+    <InternalsVisibleTo Include="Nethermind.State.Pbt.Test" />
+    <InternalsVisibleTo Include="Nethermind.Benchmark" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Nethermind.Numerics.Int256" />
+  </ItemGroup>
+
+</Project>

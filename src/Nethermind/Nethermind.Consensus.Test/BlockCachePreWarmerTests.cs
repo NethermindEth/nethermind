@@ -872,7 +872,7 @@ public class BlockCachePreWarmerTests
     private const ulong Eip4788HistoryBufferLength = 8191;
 
     private static Block BuildEmptyChild(BlockHeader head, ulong timestamp) =>
-        Build.A.Block.WithGasLimit(30_000_000).WithParentHash(head.Hash!).WithTimestamp(timestamp).TestObject;
+        Build.A.Block.WithNumber(head.Number + 1).WithGasLimit(30_000_000).WithParentHash(head.Hash!).WithTimestamp(timestamp).TestObject;
 
     private static BlockCachePreWarmer CreatePreWarmerWithHints(ILifetimeScope hintScope) =>
         new(hintScope.Resolve<PrewarmerEnvFactory>(),
@@ -2866,7 +2866,7 @@ public class BlockCachePreWarmerTests
     {
         Transaction late = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
         late.SenderAddress = null;
-        Block block = Build.A.Block.WithTransactions(
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(
             GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
             late,
             GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 100_000)).TestObject;

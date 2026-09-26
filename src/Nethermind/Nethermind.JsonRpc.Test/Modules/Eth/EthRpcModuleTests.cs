@@ -561,6 +561,25 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Get_proof_is_unavailable_for_pbt_state([Values] bool binaryFork)
+    {
+        OverridableReleaseSpec releaseSpec = new(Prague.Instance);
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        using Context ctx = await Context.Create(new TestSpecProvider(releaseSpec), bridge);
+        _ = ctx.Test;
+        releaseSpec.IsEip8347Enabled = binaryFork;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestAccountAddress, "[]", "latest");
+
+        if (binaryFork)
+            Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,\"message\":\"MPT proofs are not available for the PBT state backend\"},\"id\":67}"));
+        else
+            Assert.That(serialized, Does.Contain("\"result\":"));
+        Assert.That(bridge.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "RunTreeVisitor"), Is.EqualTo(binaryFork ? 0 : 1));
+    }
+
     // HasStateForBlock passes but the read finds the node gone: state this node does not hold (a still-syncing flat
     // node, #13603) is -32002, while a genuinely missing trie node keeps the Geth-parity -32000.
     [TestCase(true, ErrorCodes.ResourceUnavailable, "No state available for block")]
