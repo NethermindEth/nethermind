@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -196,6 +197,38 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
+    [TestCase("0xfe", "invalid opcode: INVALID", TestName = "Designated invalid opcode")]
+    [TestCase("0x0c", "invalid opcode: opcode 0xc not defined", TestName = "Unassigned opcode")]
+    [TestCase("0x01", "stack underflow (0 <=> 2)", TestName = "Stack underflow")]
+    [TestCase("0x600056", "invalid jump destination", TestName = "Invalid jump destination")]
+    public async Task Eth_call_execution_failure_is_reported_with_the_standard_text(string code, string expected)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"0xc200000000000000000000000000000000000000","data":"0x01"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"0xc200000000000000000000000000000000000000":{"code":"{{{code}}}"}}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(expected), serialized);
+    }
+
+    [Test]
+    public async Task Eth_call_stack_overflow_is_reported_with_the_standard_text()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        string code = "0x" + string.Concat(Enumerable.Repeat("5f", 1025));
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{TestItem.AddressA}}","to":"0xc200000000000000000000000000000000000000","data":"0x01"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>(
+            $$$"""{"0xc200000000000000000000000000000000000000":{"code":"{{{code}}}"}}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("stack limit reached 1024 (1023)"), serialized);
+    }
+
     [Test]
     public async Task Eth_call_no_recipient_should_work_as_init()
     {
@@ -210,7 +243,7 @@ public partial class EthRpcModuleTests
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"stack underflow\"},\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"stack underflow (0 <=> 2)\"},\"id\":67}"));
     }
 
 

@@ -112,8 +112,8 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
             case RunStatus.Failed when probe.Reverted:
                 return GasEstimation.Revert(probe.Error!, probe.ReturnValue);
             case RunStatus.Failed when !probe.OutOfGas:
-                return HasSharedFailureText(probe)
-                    ? GasEstimation.Failure(probe.Error!)
+                return execution.TryDescribeFailure(hi, in probe, out string failureText)
+                    ? GasEstimation.Failure(failureText)
                     : ReportFailure(execution, tx, spec, probe, hi);
             case RunStatus.Failed:
             case RunStatus.FailedBelowGasLimitBounds:
@@ -157,16 +157,7 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
         return GasEstimation.Success(hi);
     }
 
-    /// <summary>Whether the failure is reported with text every estimator uses for it.</summary>
-    private static bool HasSharedFailureText(in Run run) =>
-        run.ExceptionType is EvmExceptionType.InvalidJumpDestination
-            or EvmExceptionType.StaticCallViolation
-            or EvmExceptionType.AccessViolation
-            or EvmExceptionType.TransactionCollision
-            or EvmExceptionType.InvalidCode
-        && run.Error == run.ExceptionType.GetEvmExceptionDescription();
-
-    /// <summary>Reports an execution failure at the highest gas limit the way the funded-gas-limit run reports it.</summary>
+    /// <summary>Reports an execution failure at the highest gas limit that has no standard text, as it always was.</summary>
     /// <remarks>
     /// The run at the requested gas limit, capped by what the balance pays for at the fee cap, names the failure;
     /// when that run is below the intrinsic cost, or passes, the failure at the highest limit is reported as the
@@ -261,10 +252,12 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
         private readonly BlockExecutionContext _blockContext;
         private readonly EstimationTracer _tracer;
         private readonly ITxTracer _cancellableTracer;
+        private readonly CancellationToken _token;
 
         public Execution(ITransactionProcessor transactionProcessor, Transaction tx, in BlockExecutionContext blockContext, CancellationToken token)
         {
             _transactionProcessor = transactionProcessor;
+            _token = token;
             _tx = tx;
             _blockContext = blockContext;
             // Only a creation can run out of gas after its frame completes, while depositing the code.
@@ -272,11 +265,20 @@ public class GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyS
             _cancellableTracer = _tracer.WithCancellation(token);
         }
 
-        public Run Run(ulong gasLimit)
+        public bool TryDescribeFailure(ulong gasLimit, in Run run, out string text) =>
+            ExecutionFailureText.TryDescribe(_transactionProcessor, CloneWithGasLimit(gasLimit), in _blockContext, run.ExceptionType, run.Error!, _token, out text);
+
+        private Transaction CloneWithGasLimit(ulong gasLimit)
         {
             Transaction txClone = new();
             _tx.CopyTo(txClone, copyHash: false);
             txClone.GasLimit = gasLimit;
+            return txClone;
+        }
+
+        public Run Run(ulong gasLimit)
+        {
+            Transaction txClone = CloneWithGasLimit(gasLimit);
 
             _tracer.ResetRun();
             TransactionResult result;

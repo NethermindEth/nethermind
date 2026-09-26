@@ -183,12 +183,19 @@ namespace Nethermind.Facade
         private CallOutput RunCall(IWorldState nonceSource, ITransactionProcessor txProcessor, BlockHeader header, Transaction tx, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
             CallOutputTracer tracer = new();
-            TransactionResult result = TryCallAndRestore(nonceSource, txProcessor, header, tx,
-                blobBaseFeeOverride, tracer.WithCancellation(cancellationToken));
+            BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
+            TransactionResult result = TryCallAndRestore(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
+
+            string? error = result.GetErrorMessage(tracer.Error);
+            if (result.TransactionExecuted && error is not null && result.EvmExceptionType is not EvmExceptionType.Revert
+                && ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText))
+            {
+                error = failureText;
+            }
 
             return new CallOutput
             {
-                Error = result.GetErrorMessage(tracer.Error),
+                Error = error,
                 GasSpent = tracer.GasSpent,
                 OutputData = tracer.ReturnValue,
                 InputError = !result.TransactionExecuted,
@@ -413,6 +420,18 @@ namespace Nethermind.Facade
             (int addrs, int keys) previousCount = previous?.Count ?? (0, 0);
             (int addrs, int keys) discoveredCount = discovered?.Count ?? (0, 0);
             return previousCount == discoveredCount;
+        }
+
+        private static TransactionResult TryCallAndRestore(ITransactionProcessor txProcessor, Transaction transaction, in BlockExecutionContext blockContext, ITxTracer tracer)
+        {
+            try
+            {
+                return txProcessor.CallAndRestore(transaction, in blockContext, tracer);
+            }
+            catch (InsufficientBalanceException)
+            {
+                return TransactionResult.InsufficientSenderBalance;
+            }
         }
 
         private TransactionResult TryCallAndRestore(
