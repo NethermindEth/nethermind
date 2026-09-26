@@ -25,8 +25,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>Whether dispatch owns the gas/depth guards and Execute cannot fail.</summary>
         static virtual bool HasCheckedBody => false;
         static virtual bool UsesVm => false;
+        /// <summary>Whether every charge an unchecked Execute makes is a fixed execution-gas cost.</summary>
+        static virtual bool ChargesFixedGas => false;
+        /// <summary>Whether a checked Execute calls out of line; dispatch assumes every unchecked one may.</summary>
+        static virtual bool CallsOutOfLine => false;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static virtual bool TryConsumeGas(ref TGasPolicy gas) => false;
+        static virtual bool TryConsumeGas(ref ulong gas) => false;
         static virtual int StackInputs => 0;
         static virtual int StackGrowth => 0;
         static virtual int PushSize => -1;
@@ -38,34 +42,49 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref nint programCounter);
     }
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    /// <summary>Charges the fixed cost <typeparamref name="TCost"/> against remaining gas that dispatch holds by value.</summary>
+    /// <remarks>The charge <c>UpdateGas</c> makes: an unaffordable cost exhausts the gas.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryConsumeFixedGas<TCost>(ref ulong gas) where TCost : struct, GasPolicy.IGasCost
+    {
+        if (gas < TCost.GasCost)
+        {
+            gas = 0;
+            return false;
+        }
+
+        gas -= TCost.GasCost;
+        return true;
+    }
+
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         OpcodeHandler<TOpcode, TTracingInst, TCancelable>()
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
         &RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OnFlag>;
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         TerminatingOpcodeHandler<TOpcode, TTracingInst, TCancelable>()
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
         &RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OffFlag>;
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         JumpIfOpcodeHandler<TTracingInst, TCancelable>()
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
         &RawCalliHelper.ExecuteJumpIfOpcode<TTracingInst, TCancelable>;
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[]
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>[]
         GenerateOpcodeHandlers<TTracingInst, TCancelable>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] lookup =
-            new delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[byte.MaxValue + 1];
-        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType> badInstruction =
+        delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>[] lookup =
+            new delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>[byte.MaxValue + 1];
+        delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType> badInstruction =
             TerminatingOpcodeHandler<BadInstructionOpcode, TTracingInst, TCancelable>();
 
         for (int i = 0; i < lookup.Length; i++)
@@ -300,7 +319,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         return lookup;
     }
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetCallHandler<TOpCall, TTracingInst, TCancelable>(IReleaseSpec spec)
         where TOpCall : struct, EvmInstructions.IOpCall
         where TTracingInst : struct, IFlag
@@ -309,7 +328,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetCallHandler<TOpCall, TTracingInst, TCancelable, OnFlag>(spec)
             : GetCallHandler<TOpCall, TTracingInst, TCancelable, OffFlag>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929>(IReleaseSpec spec)
         where TOpCall : struct, EvmInstructions.IOpCall
         where TTracingInst : struct, IFlag
@@ -319,7 +338,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, OnFlag>(spec)
             : GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, OffFlag>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150>(IReleaseSpec spec)
         where TOpCall : struct, EvmInstructions.IOpCall
         where TTracingInst : struct, IFlag
@@ -330,7 +349,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, OnFlag>(spec)
             : GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, OffFlag>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158>(IReleaseSpec spec)
         where TOpCall : struct, EvmInstructions.IOpCall
         where TTracingInst : struct, IFlag
@@ -342,7 +361,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip8038On>(spec)
             : GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip8038Off>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip8038>(IReleaseSpec spec)
         where TOpCall : struct, EvmInstructions.IOpCall
         where TTracingInst : struct, IFlag
@@ -355,7 +374,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip8038, OnFlag>(spec)
             : GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip8038, OffFlag>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip8038, Eip2780>(IReleaseSpec spec)
         where TOpCall : struct, EvmInstructions.IOpCall
         where TTracingInst : struct, IFlag
@@ -373,7 +392,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             (false, false) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OffFlag, OffFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
         };
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetCreateHandler<TOpCreate, TTracingInst, TCancelable>(IReleaseSpec spec)
         where TOpCreate : struct, EvmInstructions.IOpCreate
         where TTracingInst : struct, IFlag
@@ -382,7 +401,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetCreateHandler<TOpCreate, TTracingInst, TCancelable, OnFlag>(spec)
             : GetCreateHandler<TOpCreate, TTracingInst, TCancelable, OffFlag>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929>(IReleaseSpec spec)
         where TOpCreate : struct, EvmInstructions.IOpCreate
         where TTracingInst : struct, IFlag
@@ -392,7 +411,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, OnFlag>(spec)
             : GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, OffFlag>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150>(IReleaseSpec spec)
         where TOpCreate : struct, EvmInstructions.IOpCreate
         where TTracingInst : struct, IFlag
@@ -403,7 +422,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, OnFlag>(spec)
             : GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, OffFlag>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, Eip3860>(IReleaseSpec spec)
         where TOpCreate : struct, EvmInstructions.IOpCreate
         where TTracingInst : struct, IFlag
@@ -415,7 +434,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, Eip3860, Eip8038On>(spec)
             : GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, Eip3860, Eip8038Off>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, Eip3860, Eip8038>(IReleaseSpec spec)
         where TOpCreate : struct, EvmInstructions.IOpCreate
         where TTracingInst : struct, IFlag
@@ -428,7 +447,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? OpcodeHandler<CreateOpcode<TOpCreate, TTracingInst, OnFlag, EvmInstructions.CreateSpec<Eip2929, Eip150, Eip3860, Eip8038>>, TTracingInst, TCancelable>()
             : OpcodeHandler<CreateOpcode<TOpCreate, TTracingInst, OffFlag, EvmInstructions.CreateSpec<Eip2929, Eip150, Eip3860, Eip8038>>, TTracingInst, TCancelable>();
 
-    private static void ConfigureAccessOpcodes<TTracingInst, TCancelable, Eip2929>(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] lookup, IReleaseSpec spec)
+    private static void ConfigureAccessOpcodes<TTracingInst, TCancelable, Eip2929>(delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>[] lookup, IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
         where Eip2929 : struct, IFlag
@@ -439,7 +458,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ConfigureAccessOpcodes<TTracingInst, TCancelable, Eip2929, Eip8038Off>(lookup, spec);
     }
 
-    private static void ConfigureAccessOpcodes<TTracingInst, TCancelable, Eip2929, Eip8038>(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] lookup, IReleaseSpec spec)
+    private static void ConfigureAccessOpcodes<TTracingInst, TCancelable, Eip2929, Eip8038>(delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>[] lookup, IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
         where Eip2929 : struct, IFlag
@@ -456,7 +475,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             GetSelfDestructHandler<TTracingInst, TCancelable, EvmInstructions.AccessSpec<Eip2929, Eip8038>, Eip8038>(spec);
     }
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
@@ -466,7 +485,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, OnFlag>(spec)
             : GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, OffFlag>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
@@ -477,7 +496,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, OnFlag>(spec)
             : GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, OffFlag>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, Eip158>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
@@ -489,7 +508,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, Eip158, OnFlag>(spec)
             : GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, Eip158, OffFlag>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, Eip158, Eip6780>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
@@ -502,7 +521,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ? GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, Eip158, Eip6780, OnFlag>(spec)
             : GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, Eip158, Eip6780, OffFlag>(spec);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, Eip158, Eip6780, Eip8246>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
@@ -543,8 +562,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             get => !TTracingInst.IsActive;
         }
 
+        public static bool CallsOutOfLine
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => typeof(TOpMath) == typeof(EvmInstructions.OpDiv) || typeof(TOpMath) == typeof(EvmInstructions.OpSDiv) ||
+                typeof(TOpMath) == typeof(EvmInstructions.OpMod) || typeof(TOpMath) == typeof(EvmInstructions.OpSMod);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpMath>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpMath>(ref gas);
         public static int StackInputs => 2;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
@@ -561,6 +587,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpMath : struct, EvmInstructions.IOpMath3Param
         where TTracingInst : struct, IFlag
     {
+        public static bool CallsOutOfLine => true;
         public static bool HasCheckedBody
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -568,7 +595,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpMath>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpMath>(ref gas);
         public static int StackInputs => 3;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
@@ -589,7 +616,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpMath>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpMath>(ref gas);
         public static int StackInputs => 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
@@ -613,7 +640,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpBitwise>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpBitwise>(ref gas);
         public static int StackInputs => 2;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
@@ -646,7 +673,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         public static bool HasCheckedBody => true;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.LowGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.LowGasCost>(ref gas);
         public static int StackInputs => 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
@@ -662,7 +689,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             get => !TTracingInst.IsActive;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.VeryLowGasCost>(ref gas);
         public static int StackInputs => 2;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
@@ -676,6 +703,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         // ShiftCore's x86 Vector128 paired pop/push path retains its own checks and fallible status.
+        public static bool CallsOutOfLine => true;
         public static bool HasCheckedBody
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -683,7 +711,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 !(Vector128.IsHardwareAccelerated && !Vector256.IsHardwareAccelerated && X86Base.IsSupported);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpShift>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpShift>(ref gas);
         public static int StackInputs => 2;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
@@ -694,13 +722,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct SarOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool CallsOutOfLine => true;
         public static bool HasCheckedBody
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => !TTracingInst.IsActive;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.VeryLowGasCost>(ref gas);
         public static int StackInputs => 2;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
@@ -728,7 +757,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool UsesVm => true;
         public static int StackGrowth => 1;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpEnv>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpEnv>(ref gas);
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody ? stack.Push20Bytes<TTracingInst, OffFlag>(ref MemoryMarshal.GetReference(TOpEnv.Operation(vm.VmState).Bytes))
                 : EvmInstructions.InstructionEnvAddress<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
@@ -747,7 +776,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool UsesVm => true;
         public static int StackGrowth => 1;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpEnv>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpEnv>(ref gas);
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody ? stack.Push32Bytes<TTracingInst, OffFlag>(in TOpEnv.Operation(vm))
                 : EvmInstructions.InstructionEnv32Bytes<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
@@ -766,7 +795,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool UsesVm => true;
         public static int StackGrowth => 1;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpEnv>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpEnv>(ref gas);
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody ? stack.PushUInt256<TTracingInst, OffFlag>(TOpEnv.Operation(vm.VmState))
                 : EvmInstructions.InstructionEnvUInt256<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
@@ -785,7 +814,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool UsesVm => true;
         public static int StackGrowth => 1;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpEnv>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpEnv>(ref gas);
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody ? stack.PushUInt32<TTracingInst, OffFlag>(TOpEnv.Operation(vm.VmState))
                 : EvmInstructions.InstructionEnvUInt32<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
@@ -804,7 +833,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool UsesVm => true;
         public static int StackGrowth => 1;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpEnv>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpEnv>(ref gas);
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody ? stack.PushUInt64<TTracingInst, OffFlag>(TOpEnv.Operation(vm.VmState))
                 : EvmInstructions.InstructionEnvUInt64<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
@@ -823,7 +852,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool UsesVm => true;
         public static int StackGrowth => 1;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpEnv>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpEnv>(ref gas);
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody ? stack.Push20Bytes<TTracingInst, OffFlag>(ref MemoryMarshal.GetReference(TOpEnv.Operation(vm).Bytes))
                 : EvmInstructions.InstructionBlkAddress<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
@@ -842,7 +871,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool UsesVm => true;
         public static int StackGrowth => 1;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpEnv>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpEnv>(ref gas);
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody ? stack.PushUInt256<TTracingInst, OffFlag>(TOpEnv.Operation(vm))
                 : EvmInstructions.InstructionBlkUInt256<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
@@ -861,7 +890,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool UsesVm => true;
         public static int StackGrowth => 1;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<TOpEnv>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<TOpEnv>(ref gas);
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody ? stack.PushUInt64<TTracingInst, OffFlag>(TOpEnv.Operation(vm))
                 : EvmInstructions.InstructionBlkUInt64<TGasPolicy, TOpEnv, TTracingInst>(ref stack, ref gas, vm);
@@ -878,11 +907,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct CallDataLoadOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool CallsOutOfLine => true;
         public static bool HasCheckedBody => true;
         public static bool UsesVm => true;
         public static int StackInputs => 1;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.VeryLowGasCost>(ref gas);
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.CallDataLoadCore<TGasPolicy, TTracingInst>(ref stack, vm);
     }
@@ -903,7 +933,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             get => !TTracingInst.IsActive;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.BaseGasCost>(ref gas);
         public static int StackGrowth => 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
@@ -953,7 +983,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool UsesVm => true;
         public static int StackGrowth => 1;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.BaseGasCost>(ref gas);
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody ? stack.PushUInt32<TTracingInst, OffFlag>((uint)vm.ReturnDataBuffer.Length)
@@ -993,7 +1023,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool UsesVm => true;
         public static int StackGrowth => 1;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.BaseGasCost>(ref gas);
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody ? stack.Push32Bytes<TTracingInst, OffFlag>(in vm.BlockExecutionContext.PrevRandao)
@@ -1003,6 +1033,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct SelfBalanceOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool CallsOutOfLine => true;
         public static bool HasCheckedBody
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1011,7 +1042,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool UsesVm => true;
         public static int StackGrowth => 1;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.SelfBalanceGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.SelfBalanceGasCost>(ref gas);
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             HasCheckedBody ? EvmInstructions.InstructionSelfBalance<TGasPolicy, TTracingInst, OffFlag>(ref stack, ref gas, vm)
@@ -1125,7 +1156,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static bool HasCheckedBody => true;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.BaseGasCost>(ref gas);
         public static int StackInputs => 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
@@ -1157,7 +1188,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     [SkipLocalsInit]
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ulong, ref DispatchState, nint, int, nint*, ref byte, nint, EvmExceptionType>
         SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
@@ -1208,6 +1239,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct JumpOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool ChargesFixedGas => true;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         {
             OpcodeResult result = TTracingInst.IsActive
@@ -1227,7 +1260,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             get => !TTracingInst.IsActive;
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.BaseGasCost>(ref gas);
         public static int StackGrowth => 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
@@ -1238,23 +1271,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct GasOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
-        public static bool HasCheckedBody
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => !TTracingInst.IsActive;
-        }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
-        public static int StackGrowth => 1;
-
+        // Unchecked: a checked body gets no gas to read, as dispatch holds the remaining gas outside the policy.
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            HasCheckedBody ? stack.PushUInt64<TTracingInst, OffFlag>(TGasPolicy.GetRemainingGas(in gas))
-                : EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(ref stack, ref gas);
+            EvmInstructions.InstructionGas<TGasPolicy, TTracingInst>(ref stack, ref gas);
     }
 
     [SkipLocalsInit]
     private readonly struct JumpDestOpcode : IOpcodeBody
     {
+        public static bool ChargesFixedGas => true;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionJumpDest(ref stack, ref gas, vm);
     }
@@ -1291,7 +1317,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.BaseGasCost>(ref gas);
         public static int StackGrowth => 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
@@ -1303,6 +1329,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct Push2Opcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool ChargesFixedGas => true;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(ref stack, ref gas, vm, ref programCounter);
     }
@@ -1320,7 +1348,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.VeryLowGasCost>(ref gas);
         public static int StackGrowth => 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
@@ -1346,7 +1374,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.VeryLowGasCost>(ref gas);
         public static int StackInputs => TOpCount.Count;
         public static int StackGrowth => 1;
 
@@ -1368,7 +1396,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.VeryLowGasCost>(ref gas);
+        public static bool TryConsumeGas(ref ulong gas) => TryConsumeFixedGas<GasPolicy.VeryLowGasCost>(ref gas);
         public static int StackInputs => TOpCount.Count + 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>

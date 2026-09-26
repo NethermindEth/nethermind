@@ -29,6 +29,7 @@ internal sealed class EvmFrameMemory : MemoryManager<byte>
 
     internal byte[]? BackingArray => _backingArray;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override Span<byte> GetSpan()
         => _backingArray is null ? _inlineMemory : _backingArray;
 

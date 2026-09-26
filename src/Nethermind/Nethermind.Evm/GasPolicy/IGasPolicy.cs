@@ -30,6 +30,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static abstract ulong GetRemainingGas(in TSelf gas);
 
+    /// <summary>Overwrites the remaining execution gas without changing state-gas accounting.</summary>
+    static abstract void SetRemainingGas(ref TSelf gas, ulong value);
+
     /// <summary>Cold account-access cost (EIP-2929), repriced by EIP-8038.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual ulong GetColdAccountAccessCost(IReleaseSpec spec) => spec.GasCosts.ColdAccountAccessCost;

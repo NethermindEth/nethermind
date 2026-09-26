@@ -50,6 +50,19 @@ public class GasPolicyContractTests<TGasPolicy> where TGasPolicy : struct, IGasP
     }
 
     [Test]
+    public void SetRemainingGas_overwrites_remaining_and_preserves_state_gas([Values(0UL, 1000UL)] ulong value)
+    {
+        TGasPolicy gas = TGasPolicy.FromFrameLimits(500, 700);
+        long reservoir = TGasPolicy.GetStateReservoir(in gas);
+        TGasPolicy.SetRemainingGas(ref gas, value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TGasPolicy.GetRemainingGas(in gas), Is.EqualTo(value));
+            Assert.That(TGasPolicy.GetStateReservoir(in gas), Is.EqualTo(reservoir));
+        }
+    }
+
+    [Test]
     public void TryConsume_leaves_gas_untouched_when_unaffordable()
     {
         TGasPolicy gas = TGasPolicy.FromULong(100);

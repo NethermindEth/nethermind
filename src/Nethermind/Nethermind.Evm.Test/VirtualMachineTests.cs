@@ -593,6 +593,21 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Gas_observes_the_charges_of_preceding_opcodes([Values] bool traced)
+    {
+        // Checked and fixed-cost bodies charge gas that dispatch carries by value between handlers.
+        byte[] prefix =
+        [
+            (byte)Instruction.PUSH1, 1, (byte)Instruction.PUSH1, 2, (byte)Instruction.ADD,
+            (byte)Instruction.PUSH1, 11, (byte)Instruction.JUMPI, (byte)Instruction.INVALID, (byte)Instruction.INVALID, (byte)Instruction.INVALID,
+            (byte)Instruction.JUMPDEST, (byte)Instruction.PUSH2, 0, 16, (byte)Instruction.JUMP,
+            (byte)Instruction.JUMPDEST, (byte)Instruction.GAS
+        ];
+        ulong charged = 5 * GasCostOf.VeryLow + GasCostOf.High + GasCostOf.Mid + 2 * GasCostOf.JumpDest + GasCostOf.Base;
+        AssertStackValue(prefix, ((UInt256)(100000UL - GasCostOf.Transaction - charged)).ToBigEndian(), traced, 15);
+    }
+
+    [Test]
     public void Modular_arithmetic_preserves_full_width_operands(
         [Values(Instruction.ADDMOD, Instruction.MULMOD)] Instruction opcode,
         [Values(0, 1, 251, -1)] int modulusValue, [Values] bool traced)
