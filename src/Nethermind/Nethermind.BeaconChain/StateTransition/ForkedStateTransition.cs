@@ -226,7 +226,7 @@ public static class ForkedStateTransition
 
         GloasBlockProcessing.ProcessBlock(state, block, cache, pubkeys, notifier, spec, verifySignatures);
 
-        if (validateResult && block.StateRoot != SszRoots.HashTreeRoot(state))
+        if (validateResult && block.StateRoot != cache.Hasher.HashTreeRoot(state))
             throw new BeaconStateException($"Block state root {block.StateRoot} does not match the post-state root");
 
         return gloas;
