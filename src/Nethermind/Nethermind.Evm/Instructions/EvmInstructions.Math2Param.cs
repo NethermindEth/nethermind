@@ -415,18 +415,20 @@ public static partial class EvmInstructions
         // Charge the fixed gas cost for exponentiation.
         if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        // Pop the base value and exponent from the stack.
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 exponent))
-        {
-            goto StackUnderflow;
-        }
+        // The base is popped and the exponent's slot becomes the result slot, as with the other binary ops.
+        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
+        ref UInt256 exponent = ref As<byte, UInt256>(ref topRef);
+        ref UInt256 a = ref Add(ref exponent, 1);
 
         // Determine the effective byte-length of the exponent.
         int leadingZeros = exponent.CountLeadingZeros() >> 3;
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
-            return stack.PushOne<TTracingInst>();
+            WriteSmallWordToSlot(ref topRef, 1UL);
+            if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(Bytes.OneByteSpan);
+            return EvmExceptionType.None;
         }
 
         ulong expSize = (ulong)(32 - leadingZeros);
@@ -435,16 +437,22 @@ public static partial class EvmInstructions
 
         if (a.IsZero)
         {
-            return stack.PushZero<TTracingInst, OnFlag>();
+            WriteSmallWordToSlot(ref topRef, 0UL);
+            if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(Bytes.ZeroByteSpan);
+            return EvmExceptionType.None;
         }
         if (a.IsOne)
         {
-            return stack.PushOne<TTracingInst>();
+            WriteSmallWordToSlot(ref topRef, 1UL);
+            if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(Bytes.OneByteSpan);
+            return EvmExceptionType.None;
         }
 
-        // Perform exponentiation and push the 256-bit result onto the stack.
+        // The result goes to a local first: the exponent it overwrites is still an input.
         UInt256.Exp(in a, in exponent, out UInt256 expResult);
-        return stack.PushUInt256<TTracingInst>(in expResult);
+        EvmStack.WriteUInt256ToSlot(ref topRef, in expResult);
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+        return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
