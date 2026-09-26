@@ -655,7 +655,8 @@ public static partial class EvmInstructions
     /// </summary>
     /// <remarks>
     /// Valid source pushes 1 and updates the executing account's code hash; invalid source pushes 0 with no
-    /// state change. Initcode or static context halts exceptionally. The running frame keeps its loaded code.
+    /// state change. Static context halts exceptionally. The running frame keeps its loaded code; in initcode
+    /// the adopted code replaces the return data when the creation completes.
     /// </remarks>
     [SkipLocalsInit]
     internal static EvmExceptionType InstructionSetCodeFrom<TGasPolicy, TTracingInst, TSpec>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
@@ -664,8 +665,6 @@ public static partial class EvmInstructions
         where TSpec : struct, IAccessSpec
     {
         VmState<TGasPolicy> vmState = vm.VmState;
-        // Runtime-only, never static: preserves the creation invariant and read-only guarantees.
-        if (vmState.ExecutionType.IsAnyCreate()) goto BadInstruction;
         if (vmState.IsStatic) goto StaticCallViolation;
 
         IReleaseSpec spec = vm.Spec;
@@ -707,8 +706,6 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
-    BadInstruction:
-        return EvmExceptionType.BadInstruction;
     }
 
     /// <summary>

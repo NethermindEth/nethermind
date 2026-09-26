@@ -1705,6 +1705,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected bool DeployContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
         {
+            if (CodeDepositHandler.HasAdoptedCode(spec, WorldState, codeOwner))
+                return true;
+
             if (!CodeDepositHandler.CalculateCost(spec, substate.Output.Length, in unspentGas, out ulong executionDepositCost, out long stateDepositCost))
                 return false;
 

@@ -582,6 +582,15 @@ public partial class VirtualMachine<TGasPolicy>(
         ref bool previousStateSucceeded)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
+        if (CodeDepositHandler.HasAdoptedCode(spec, _worldState, previousState.Env.ExecutingAccount))
+        {
+            if (IsTracingActions)
+            {
+                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), previousState.Env.ExecutingAccount, ReadOnlyMemory<byte>.Empty);
+            }
+            return;
+        }
+
         if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in previousState.Gas, out ulong executionDepositCost, out long stateDepositCost))
         {
             executionDepositCost = ulong.MaxValue;
@@ -1192,12 +1201,18 @@ public partial class VirtualMachine<TGasPolicy>(
     protected void TraceTransactionActionEnd(VmState<TGasPolicy> currentState, in CallResult callResult)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
+        bool isCreateSuccess = currentState.ExecutionType.IsAnyCreate() && !callResult.IsException && !callResult.ShouldRevert;
+        // Cache the output bytes for reuse in the tracing reports; adopted code (EIP-8298) makes them empty.
+        ReadOnlyMemory<byte> outputBytes = isCreateSuccess && CodeDepositHandler.HasAdoptedCode(spec, _worldState, currentState.Env.ExecutingAccount)
+            ? ReadOnlyMemory<byte>.Empty
+            : callResult.Output;
+
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
         ulong codeDepositGasCost = 0;
         bool hasEnoughGasForCodeDeposit = true;
-        if (currentState.ExecutionType.IsAnyCreate() && !callResult.IsException && !callResult.ShouldRevert)
+        if (isCreateSuccess)
         {
-            if (CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas, out ulong executionDepositCost, out long stateDepositCost))
+            if (CodeDepositHandler.CalculateCost(spec, outputBytes.Length, in currentState.Gas, out ulong executionDepositCost, out long stateDepositCost))
             {
                 ulong remainingGas = TGasPolicy.GetRemainingGas(currentState.Gas);
                 ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in currentState.Gas, stateDepositCost);
@@ -1211,9 +1226,6 @@ public partial class VirtualMachine<TGasPolicy>(
                 hasEnoughGasForCodeDeposit = false;
             }
         }
-
-        // Cache the output bytes for reuse in the tracing reports.
-        ReadOnlyMemory<byte> outputBytes = callResult.Output;
 
         // If an exception occurred during execution, report the error immediately.
         if (callResult.IsException)

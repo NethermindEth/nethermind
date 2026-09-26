@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -24,14 +25,23 @@ public class Eip8298Tests : VirtualMachineTestsBase
 {
     private static readonly Address Source = TestItem.AddressC;
     private static readonly byte[] SourceCode = Prepare.EvmCode.PushData(1).PushData(2).Op(Instruction.ADD).STOP().Done;
+    private static readonly Hash256 SourceCodeHash = Keccak.Compute(SourceCode);
+    private bool _eip8298Enabled = true;
 
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
-    protected override ISpecProvider SpecProvider => new TestSpecProvider(new Amsterdam { IsEip8298Enabled = true });
+    protected override ISpecProvider SpecProvider => new TestSpecProvider(new Amsterdam { IsEip8298Enabled = _eip8298Enabled });
 
     // Disable access tracing so cold/warm account access is charged per EIP-2929
     // (the default tracer pre-warms accesses, masking the cold cost in gas assertions).
     protected override TestAllTracerWithOutput CreateTracer() => new() { IsTracingAccess = false };
+
+    // NUnit reuses the fixture instance, so a test that disables the EIP must not leak into the next one.
+    public override void Setup()
+    {
+        _eip8298Enabled = true;
+        base.Setup();
+    }
 
     private void DeploySource(byte[]? code = null)
     {
@@ -117,17 +127,134 @@ public class Eip8298Tests : VirtualMachineTestsBase
         Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.Zero));
     }
 
+    public enum CreationKind { Transaction, Create, Create2 }
+
+    public enum ReturnKind { ValidCode, EfPrefixed, Empty }
+
     [Test]
-    public void Initcode_ExceptionalHalt()
+    public void Initcode_AdoptsCode_AndIgnoresReturnData([Values] CreationKind kind)
     {
         DeploySource();
-        byte[] initCode = Prepare.EvmCode.SETCODEFROM(Source).STOP().Done;
-        (Block block, Transaction tx) = PrepareInitTx(Activation, 100000, initCode);
 
-        TestAllTracerWithOutput tracer = CreateTracer();
+        (TestAllTracerWithOutput result, Address created) = RunCreation(kind, AdoptingInitCode(0xef, 32), 0);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        AssertCodeHash(created, SourceCodeHash);
+        TestState.Get(new StorageCell(created, 0), out UInt256 observedHash);
+        Assert.That(observedHash, Is.EqualTo(new UInt256(SourceCodeHash.Bytes, true)), "EXTCODEHASH seen by the initcode");
+    }
+
+    [Test]
+    public void Initcode_AdoptedCode_ChargesNoCodeDeposit([Values] CreationKind kind)
+    {
+        DeploySource();
+
+        (TestAllTracerWithOutput shortReturn, Address shortCreated) = RunCreation(kind, AdoptingInitCode(0x01, 1), 0);
+        (TestAllTracerWithOutput longReturn, Address longCreated) = RunCreation(kind, AdoptingInitCode(0x01, 64), 1);
+
+        AssertCodeHash(shortCreated, SourceCodeHash);
+        AssertCodeHash(longCreated, SourceCodeHash);
+        Assert.That(longReturn.GasSpent, Is.EqualTo(shortReturn.GasSpent));
+    }
+
+    [Test]
+    public void Initcode_DelegateCallToSetCodeFrom_AdoptsForCreatedAccount([Values] CreationKind kind)
+    {
+        DeploySource();
+        Address library = TestItem.AddressE;
+        TestState.CreateAccount(library, 1.Ether);
+        TestState.InsertCode(library, Prepare.EvmCode.SETCODEFROM(Source).STOP().Done, Spec);
+        byte[] initCode = Prepare.EvmCode.DelegateCall(library, 100_000).POP()
+            .PushData(0xef).PushData(0).Op(Instruction.MSTORE8).Return(32, 0).Done;
+
+        (TestAllTracerWithOutput result, Address created) = RunCreation(kind, initCode, 0);
+
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+        AssertCodeHash(created, SourceCodeHash);
+    }
+
+    [Test]
+    public void Initcode_RevertAfterSetCodeFrom_LeavesNoCode([Values] CreationKind kind)
+    {
+        DeploySource();
+        byte[] initCode = Prepare.EvmCode.SETCODEFROM(Source).POP().Revert(0, 0).Done;
+
+        (_, Address created) = RunCreation(kind, initCode, 0);
+
+        AssertCodeHash(created, Keccak.OfAnEmptyString);
+    }
+
+    [TestCase(CreationKind.Transaction)]
+    [TestCase(CreationKind.Create)]
+    public void Initcode_AdoptedCode_TracedAsSuccessfulCreation(CreationKind kind)
+    {
+        DeploySource();
+        byte[] initCode = AdoptingInitCode(0xef, 32);
+        (Block block, Transaction tx) = kind == CreationKind.Transaction
+            ? PrepareInitTx(Activation, 1_000_000, initCode)
+            : PrepareTx(Activation, 1_000_000, Prepare.EvmCode.Create(initCode, 0).STOP().Done);
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace);
+
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        ParityTraceAction action = tracer.BuildResult().Action!;
+        ParityTraceAction creation = kind == CreationKind.Transaction ? action : action.Subtraces[0];
+        Assert.That(creation.Error, Is.Null);
+        Assert.That(creation.Result!.Code, Is.Null.Or.Empty);
+    }
+
+    // Creation completion only consults EIP-8298 once SETCODEFROM has run, so plain creations must not change.
+    [Test]
+    public void Creation_WithoutSetCodeFrom_IsUnaffectedByEip8298([Values] CreationKind kind, [Values] ReturnKind returnKind)
+    {
+        byte[] initCode = returnKind switch
+        {
+            ReturnKind.ValidCode => Prepare.EvmCode.ForInitOf(SourceCode).Done,
+            ReturnKind.EfPrefixed => Prepare.EvmCode.ForInitOf([0xef, .. SourceCode]).Done,
+            _ => Prepare.EvmCode.STOP().Done,
+        };
+
+        (TestAllTracerWithOutput enabled, Address enabledCreated) = RunCreation(kind, initCode, 0);
+        _eip8298Enabled = false;
+        (TestAllTracerWithOutput disabled, Address disabledCreated) = RunCreation(kind, initCode, 1);
+
+        Assert.That(TestState.GetCodeHash(enabledCreated), Is.EqualTo(TestState.GetCodeHash(disabledCreated)), "code hash");
+        Assert.That(enabled.StatusCode, Is.EqualTo(disabled.StatusCode), "status");
+        Assert.That(enabled.GasSpent, Is.EqualTo(disabled.GasSpent), "gas");
+        AssertCodeHash(enabledCreated, returnKind == ReturnKind.ValidCode ? SourceCodeHash : Keccak.OfAnEmptyString);
+    }
+
+    // Adopts the source's code, stores the EXTCODEHASH it then observes for itself, and returns data starting
+    // with firstByte that creation would otherwise validate, install and charge code deposit for.
+    private static byte[] AdoptingInitCode(byte firstByte, int returnSize) => Prepare.EvmCode
+        .SETCODEFROM(Source).POP()
+        .ADDRESS().Op(Instruction.EXTCODEHASH).PushData(0).Op(Instruction.SSTORE)
+        .PushData(0).PushData(32).Op(Instruction.MSTORE)
+        .PushData(firstByte).PushData(0).Op(Instruction.MSTORE8)
+        .Return(returnSize, 0).Done;
+
+    /// <summary>Runs <paramref name="initCode"/> through <paramref name="kind"/>; distinct runs create distinct accounts.</summary>
+    private (TestAllTracerWithOutput Result, Address Created) RunCreation(CreationKind kind, byte[] initCode, int run)
+    {
+        if (kind == CreationKind.Transaction)
+        {
+            SenderRecipientAndMiner accounts = new() { SenderKey = run == 0 ? TestItem.PrivateKeyA : TestItem.PrivateKeyF };
+            (Block block, Transaction tx) = PrepareInitTx(Activation, 1_000_000, initCode, accounts);
+            TestAllTracerWithOutput tracer = CreateTracer();
+            _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+            return (tracer, ContractAddress.From(accounts.Sender, 0));
+        }
+
+        byte[] salt = new byte[32];
+        salt[^1] = (byte)(run + 1);
+        UInt256 nonce = TestState.AccountExists(Recipient) ? TestState.GetNonce(Recipient) : UInt256.Zero;
+        Address created = kind == CreationKind.Create
+            ? ContractAddress.From(Recipient, nonce)
+            : ContractAddress.From(Recipient, salt, initCode);
+        byte[] factory = kind == CreationKind.Create
+            ? Prepare.EvmCode.Create(initCode, 0).STOP().Done
+            : Prepare.EvmCode.Create2(initCode, salt, 0).STOP().Done;
+        return (Execute(Activation, 1_000_000, factory), created);
     }
 
     [Test]
