@@ -129,6 +129,12 @@ public class EncodingTest
         Assert.That(() => ByteListItself.Decode(encoded, out ByteListItself[] _), Throws.InstanceOf<InvalidDataException>());
     }
 
+    [TestCase(new byte[] { 8, 0, 0, 0, 4, 0, 0, 0 }, "offsets are out of order (4 < 8).")]
+    [TestCase(new byte[] { 8, 0, 0, 0, 9, 0, 0, 0 }, "offset 9 exceeds the input length 8.")]
+    public void Decode_collection_itself_byte_lists_rejects_bad_offsets(byte[] encoded, string reason) =>
+        Assert.That(() => ByteListItself.Decode(encoded, out ByteListItself[] _),
+            Throws.InstanceOf<InvalidDataException>().With.Message.EndsWith(reason));
+
     [Test]
     public void Decode_collection_itself_byte_lists_supports_class_items()
     {
@@ -831,6 +837,21 @@ public class EncodingTest
         ulong[] items = container.Items!;
         UInt256 expected = ProgressiveMerkleizeBytes(MemoryMarshal.AsBytes(items.AsSpan()));
         Merkle.MixIn(ref expected, items.Length);
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Merkleize_progressive_byte_list_uses_progressive_merkleization([Values(0, 1, 31, 32, 33, 160, 161, 700)] int length)
+    {
+        byte[] bytes = new byte[length];
+        for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(i + 1);
+        ProgressiveByteListContainer container = new() { Bytes = bytes };
+
+        Merkleize(container, out UInt256 actual);
+
+        UInt256 expected = ProgressiveMerkleizeBytes(bytes);
+        Merkle.MixIn(ref expected, bytes.Length);
 
         Assert.That(actual, Is.EqualTo(expected));
     }
