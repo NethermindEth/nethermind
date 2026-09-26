@@ -4,19 +4,23 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -192,6 +196,99 @@ public partial class EngineModuleTests
         {
             Assert.That(second.Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(second.Data.InclusionListSatisfied, Is.False);
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task ForkchoiceUpdatedV5_reports_compliance_for_latest_retained_inclusion_list(bool emptyListLast)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
+        byte[][]? executionRequests = payloadResult.Data!.ExecutionRequests;
+
+        Transaction censoredTx = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        byte[][] censoringIl = [Rlp.Encode(censoredTx).Bytes];
+        byte[][] emptyIl = [];
+
+        byte[][] firstIl = emptyListLast ? censoringIl : emptyIl;
+        byte[][] secondIl = emptyListLast ? emptyIl : censoringIl;
+        bool expectedSatisfied = emptyListLast;
+
+        Assert.That((await rpc.engine_newPayloadV6(emptyPayload, [], Keccak.Zero, executionRequests, firstIl)).Data.Status,
+            Is.EqualTo(PayloadStatus.Valid));
+        Assert.That((await rpc.engine_newPayloadV6(emptyPayload, [], Keccak.Zero, executionRequests, secondIl)).Data.InclusionListSatisfied,
+            Is.EqualTo(expectedSatisfied));
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(emptyPayload.BlockHash, startingHead, startingHead),
+            payloadAttributes: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.EqualTo(expectedSatisfied));
+        }
+    }
+
+    [Test]
+    public async Task ForkchoiceUpdatedV5_omits_inclusion_list_satisfaction_after_syncing()
+    {
+        bool hasState = true;
+        IStateReader mockedStateReader = Substitute.For<IStateReader>();
+        mockedStateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(_ => hasState);
+
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder
+                .UpdateSingleton<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(inner =>
+                    inner.AddSingleton<IStateReader>(mockedStateReader)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
+
+        ResultWrapper<PayloadStatusV2> first = await rpc.engine_newPayloadV6(
+            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(first.Data.InclusionListSatisfied, Is.True);
+        }
+
+        await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(emptyPayload.BlockHash, emptyPayload.BlockHash, emptyPayload.BlockHash),
+            payloadAttributes: null);
+
+        // Without state the same hash with a different IL is SYNCING and must drop the retained verdict.
+        hasState = false;
+        Transaction censoredTx = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        ResultWrapper<PayloadStatusV2> syncing = await rpc.engine_newPayloadV6(
+            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, [Rlp.Encode(censoredTx).Bytes]);
+        Assert.That(syncing.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(emptyPayload.BlockHash, emptyPayload.BlockHash, emptyPayload.BlockHash),
+            payloadAttributes: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.Null);
         }
     }
 
