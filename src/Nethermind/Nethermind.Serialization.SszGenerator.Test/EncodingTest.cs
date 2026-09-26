@@ -842,6 +842,21 @@ public class EncodingTest
     }
 
     [Test]
+    public void Merkleize_progressive_byte_list_uses_progressive_merkleization([Values(0, 1, 31, 32, 33, 160, 161, 700)] int length)
+    {
+        byte[] bytes = new byte[length];
+        for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(i + 1);
+        ProgressiveByteListContainer container = new() { Bytes = bytes };
+
+        Merkleize(container, out UInt256 actual);
+
+        UInt256 expected = ProgressiveMerkleizeBytes(bytes);
+        Merkle.MixIn(ref expected, bytes.Length);
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
     public void Encode_and_decode_progressive_bitlist_round_trip()
     {
         BitArray bits = MakeSampleBits10();

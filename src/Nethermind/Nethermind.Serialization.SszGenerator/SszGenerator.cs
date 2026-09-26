@@ -386,52 +386,7 @@ internal static class SszCodecHelpers
         Merkle.MixIn(ref root, values.Length);
     }
 
-    private static void MerkleizeProgressiveBytes(ReadOnlySpan<byte> value, out UInt256 root)
-    {
-        if (value.Length is 0)
-        {
-            root = UInt256.Zero;
-            return;
-        }
-
-        int chunkCount = (value.Length + 31) / 32;
-        // Stack-alloc up to 4 chunks (128 bytes); rent for larger payloads.
-        const int StackChunkLimit = 4;
-        scoped Span<UInt256> chunks;
-        UInt256[]? rented = null;
-        if (chunkCount <= StackChunkLimit)
-        {
-            Span<UInt256> stack = stackalloc UInt256[StackChunkLimit];
-            chunks = stack[..chunkCount];
-        }
-        else
-        {
-            rented = System.Buffers.ArrayPool<UInt256>.Shared.Rent(chunkCount);
-            chunks = rented.AsSpan(0, chunkCount);
-        }
-        try
-        {
-            int fullByteLength = value.Length / 32 * 32;
-            if (fullByteLength > 0)
-            {
-                MemoryMarshal.Cast<byte, UInt256>(value[..fullByteLength]).CopyTo(chunks);
-            }
-
-            if (fullByteLength != value.Length)
-            {
-                Span<byte> lastChunk = stackalloc byte[32];
-                lastChunk.Clear();
-                value[fullByteLength..].CopyTo(lastChunk);
-                chunks[chunkCount - 1] = new UInt256(lastChunk);
-            }
-
-            Merkle.MerkleizeProgressive(out root, chunks);
-        }
-        finally
-        {
-            if (rented is not null) System.Buffers.ArrayPool<UInt256>.Shared.Return(rented);
-        }
-    }
+    private static void MerkleizeProgressiveBytes(ReadOnlySpan<byte> value, out UInt256 root) => Merkle.MerkleizeProgressive(out root, value);
 
     internal static void MerkleizeProgressiveBasicList<T>(ReadOnlySpan<T> values, out UInt256 root)
         where T : struct
@@ -521,8 +476,7 @@ internal static class SszCodecHelpers
     {
         BitArray bits = value ?? new BitArray(0);
         int byteLength = (bits.Length + 7) / 8;
-        // BitArray.CopyTo requires a byte[] target, so we rent regardless of size;
-        // the small-chunkCount fast path in MerkleizeProgressiveBytes covers stackalloc.
+        // BitArray.CopyTo requires a byte[] target, so we rent regardless of size.
         byte[] bytes = System.Buffers.ArrayPool<byte>.Shared.Rent(byteLength);
         try
         {
@@ -939,9 +893,9 @@ internal static class SszCodecHelpers
             Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeBasicVectorWithConverter<{enumType.TypeReferenceName}>({EnumSpanExpression(property, expression)}, {enumType.StaticLength}, {property.Length}, {enumType.CustomEncodeMethod}, out {rootName});",
             Kind.List when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeBasicListWithConverter<{enumType.TypeReferenceName}>({EnumSpanExpression(property, expression)}, {enumType.StaticLength}, {property.Limit}UL, {enumType.CustomEncodeMethod}, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.EnumType is { HasCustomInlineCodec: true, IsSszBasicType: true } enumType => $"MerkleizeProgressiveBasicListWithConverter<{enumType.TypeReferenceName}>({EnumSpanExpression(property, expression)}, {enumType.StaticLength}, {enumType.CustomEncodeMethod}, out {rootName});",
-            Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeBasicVectorWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Length}, {property.Type.CustomEncodeMethod}, out {rootName});",
-            Kind.List when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeBasicListWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}UL, {property.Type.CustomEncodeMethod}, out {rootName});",
-            Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.HasCustomInlineCodec && property.Type.IsSszBasicType => $"MerkleizeProgressiveBasicListWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Type.CustomEncodeMethod}, out {rootName});",
+            Kind.Vector when property.Type.Kind == Kind.Basic && EncodesThroughConverter(property.Type) => $"MerkleizeBasicVectorWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Length}, {property.Type.CustomEncodeMethod}, out {rootName});",
+            Kind.List when property.Type.Kind == Kind.Basic && EncodesThroughConverter(property.Type) => $"MerkleizeBasicListWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}UL, {property.Type.CustomEncodeMethod}, out {rootName});",
+            Kind.ProgressiveList when property.Type.Kind == Kind.Basic && EncodesThroughConverter(property.Type) => $"MerkleizeProgressiveBasicListWithConverter<{property.Type.TypeReferenceName}>({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Type.CustomEncodeMethod}, out {rootName});",
             Kind.Vector when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeBasicVector({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Length}, out {rootName});",
             Kind.List when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeBasicList({SpanExpression(property, expression)}, {property.Type.StaticLength}, {property.Limit}UL, out {rootName});",
             Kind.ProgressiveList when property.Type.Kind == Kind.Basic && property.Type.IsSszBasicType => $"MerkleizeProgressiveBasicList({SpanExpression(property, expression)}, out {rootName});",
@@ -953,6 +907,10 @@ internal static class SszCodecHelpers
             Kind.ProgressiveList => $"{property.Type.StaticMemberAccess}.MerkleizeProgressiveList({SpanExpression(property, expression)}, out {rootName});",
             _ => $"{property.Type.StaticMemberAccess}.Merkleize({expression}, out {rootName});",
         };
+
+    // A byte encodes as itself, so a byte collection is merkleized straight from its span rather than through a copy.
+    private static bool EncodesThroughConverter(SszType type) =>
+        type is { HasCustomInlineCodec: true, IsSszBasicType: true } and not { Namespace: nameof(System), Name: nameof(Byte) };
 
     private static string MerkleizeEmptyCollectionRootStatement(SszProperty property, string rootName) =>
         property.Kind switch

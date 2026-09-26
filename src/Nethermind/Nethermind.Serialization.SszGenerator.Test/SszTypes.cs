@@ -479,6 +479,13 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong[]? Items { get; set; }
     }
 
+    [SszContainer]
+    public partial struct ProgressiveByteListContainer
+    {
+        [SszProgressiveList]
+        public byte[]? Bytes { get; set; }
+    }
+
     [SszContainer(isCollectionItself: true)]
     public partial struct ProgressiveVarTestStructList
     {
