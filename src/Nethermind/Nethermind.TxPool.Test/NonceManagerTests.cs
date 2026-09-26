@@ -167,6 +167,27 @@ public class NonceManagerTests
         }
     }
 
+    [TestCase(new ulong[] { 5 }, 6UL, TestName = "ReserveNonce_should_skip_used_nonce_when_account_nonce_catches_up")]
+    [TestCase(new ulong[] { 5, 6 }, 7UL, TestName = "ReserveNonce_should_skip_run_of_used_nonces_when_account_nonce_catches_up")]
+    public void ReserveNonce_should_skip_used_nonces_when_account_nonce_catches_up(ulong[] usedNonces, ulong expectedNonce)
+    {
+        IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns(0UL);
+        _nonceManager = new NonceManager(accountStateProvider);
+
+        foreach (ulong usedNonce in usedNonces)
+        {
+            using NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, usedNonce);
+            locker.Accept();
+        }
+
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns(5UL);
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo(expectedNonce));
+        }
+    }
+
     [Test]
     public void should_reuse_nonce_if_tx_rejected()
     {

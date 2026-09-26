@@ -41,6 +41,7 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
             NonceLocker locker = new(_accountLock, TxAccepted);
             ReleaseNonces(accountNonce);
             _currentNonce = ulong.Max(_currentNonce, accountNonce);
+            SkipUsedNonces();
             _reservedNonce = _currentNonce;
             reservedNonce = _currentNonce;
             return locker;
@@ -49,6 +50,11 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
         private void TxAccepted()
         {
             _usedNonces.Add(_reservedNonce);
+            SkipUsedNonces();
+        }
+
+        private void SkipUsedNonces()
+        {
             while (_usedNonces.Contains(_currentNonce))
             {
                 _currentNonce++;
