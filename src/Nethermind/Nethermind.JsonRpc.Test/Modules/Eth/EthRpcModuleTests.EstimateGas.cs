@@ -292,7 +292,11 @@ public partial class EthRpcModuleTests
     public async Task FrameRpc_EstimateGas_PlaceholderCoversSignedTransaction()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc placeholder = UnsignedFrameRequest();
         FrameTransactionForRpc signed = UnsignedFrameRequest();
+        // Explicit limits: filling would change the frames the signature commits to.
+        foreach (FrameForRpc frame in placeholder.Frames!) frame.StateGasLimit = 0;
+        foreach (FrameForRpc frame in signed.Frames!) frame.StateGasLimit = 0;
         signed.Nonce = ctx.Test.ReadOnlyState.GetNonce(TestItem.AddressC);
         Transaction tx = signed.ToTransaction().Data!;
         tx.ChainId = ctx.Test.Bridge.GetChainId();
@@ -303,7 +307,7 @@ public partial class EthRpcModuleTests
         signature.Bytes.CopyTo(vrs.AsSpan(1));
         signed.Signatures![0].Signature = vrs;
 
-        string placeholderEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", UnsignedFrameRequest());
+        string placeholderEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", placeholder);
         string signedEstimate = await ctx.Test.TestEthRpc("eth_estimateGas", signed);
 
         Assert.That(JToken.Parse(signedEstimate)["error"], Is.Null, signedEstimate);
