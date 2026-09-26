@@ -305,14 +305,40 @@ public sealed class BeaconP2P : IAsyncDisposable
     public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ISession session, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
     {
         using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(count));
-        return await session.DialAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsByRangeRequest, IReadOnlyList<DataColumnSidecar>>(
-            new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }, cts.Token);
+        ForkedDataColumnSidecars sidecars = await session.DialAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(
+            new(new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }, Gloas: false), cts.Token);
+        return sidecars.Fulu;
     }
 
     public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(ISession session, DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
     {
+        // An empty list encodes to a zero-length request payload, which ReqRespFraming.ReadRequestAsync refuses.
+        if (identifiers.Length == 0) return [];
+
         using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(identifiers.Length));
-        return await session.DialAsync<DataColumnSidecarsByRootProtocol, DataColumnsByRootIdentifier[], IReadOnlyList<DataColumnSidecar>>(identifiers, cts.Token);
+        ForkedDataColumnSidecars sidecars = await session.DialAsync<DataColumnSidecarsByRootProtocol, DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>, ForkedDataColumnSidecars>(
+            new(identifiers, Gloas: false), cts.Token);
+        return sidecars.Fulu;
+    }
+
+    /// <summary>The window must lie wholly in Gloas epochs.</summary>
+    public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ISession session, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
+    {
+        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(count));
+        ForkedDataColumnSidecars sidecars = await session.DialAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(
+            new(new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }, Gloas: true), cts.Token);
+        return sidecars.Gloas;
+    }
+
+    public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(ISession session, DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
+    {
+        // An empty list encodes to a zero-length request payload, which ReqRespFraming.ReadRequestAsync refuses.
+        if (identifiers.Length == 0) return [];
+
+        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(identifiers.Length));
+        ForkedDataColumnSidecars sidecars = await session.DialAsync<DataColumnSidecarsByRootProtocol, DataColumnSidecarsDial<DataColumnsByRootIdentifier[]>, ForkedDataColumnSidecars>(
+            new(identifiers, Gloas: true), cts.Token);
+        return sidecars.Gloas;
     }
 
     public async Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ISession session, ulong startSlot, ulong count, CancellationToken token)
