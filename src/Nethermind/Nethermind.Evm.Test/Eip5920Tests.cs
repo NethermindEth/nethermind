@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -240,8 +242,40 @@ public class Eip5920Tests(bool amsterdam) : VirtualMachineTestsBase
             Assert.That(targetBalance, Is.EqualTo((UInt256)12));
             Assert.That(StorageAt(Existing), Is.EqualTo(UInt256.Zero));
             Assert.That(StorageAt(codeHolder), Is.EqualTo(UInt256.Zero));
-            Assert.That(result.Actions, Has.Count.EqualTo(1), "only the top-level frame runs");
             Assert.That(cost, Is.EqualTo(ColdAccess + ValueCost), "the delegation target is not accessed");
+        }
+    }
+
+    [TestCase(true, TestName = "Successful PAY is reported as a codeless zero-gas CALL")]
+    [TestCase(false, TestName = "PAY with insufficient balance reports no action")]
+    public void Pay_is_reported_to_action_tracers(bool withinBalance)
+    {
+        TestState.CreateAccount(Existing, 5);
+        UInt256 value = withinBalance ? 7 : UInt256.MaxValue;
+
+        LogTracer result = Run(Pay(Prepare.EvmCode, Existing, value).STOP().Done);
+
+        AssertSucceeded(result);
+        TestAllTracerWithOutput.ActionTrace[] payActions = result.Actions.Skip(1).ToArray();
+        Assert.That(payActions, withinBalance
+            ? Is.EqualTo(new[] { new TestAllTracerWithOutput.ActionTrace(0, value, Recipient, Existing, ExecutionType.CALL, false) })
+            : Is.Empty);
+    }
+
+    [Test]
+    public void Parity_trace_shows_pay_as_a_call_subtrace()
+    {
+        TestState.CreateAccount(Existing, 5);
+        (Block block, Transaction transaction) = PrepareTx(Activation, GasLimit, Pay(Prepare.EvmCode, Existing, 7).STOP().Done);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+
+        ParityTraceAction pay = tracer.BuildResult().Action!.Subtraces.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((pay.CallType, pay.From, pay.To, pay.Value), Is.EqualTo(("call", Recipient, Existing, (UInt256)7)));
+            Assert.That(pay.Result?.GasUsed, Is.EqualTo(0UL));
         }
     }
 

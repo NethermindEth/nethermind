@@ -342,12 +342,21 @@ public static partial class EvmInstructions
         }
 
         EvmExceptionType pushResult = stack.PushOne<TTracingInst>();
-        // A self-payment moves no ether and, like a self-CALL, writes neither balance.
-        if (pushResult != EvmExceptionType.None || !hasValueTransfer || target == executingAccount) return pushResult;
+        if (pushResult != EvmExceptionType.None) return pushResult;
 
-        state.SubtractFromBalance(executingAccount, in value, spec);
-        state.AddToBalanceAndCreateIfNotExists(target, in value, spec);
-        vm.AddTransferLog<TEip7708>(executingAccount, target, in value);
+        // Action tracers see PAY as a zero-gas CALL that runs no code, like a value CALL to an EOA.
+        bool reportsAction = vm.IsTracingActions;
+        if (reportsAction) vm.TxTracer.ReportAction(0, value, executingAccount, target, default, ExecutionType.CALL);
+
+        // A self-payment moves no ether and, like a self-CALL, writes neither balance.
+        if (hasValueTransfer && target != executingAccount)
+        {
+            state.SubtractFromBalance(executingAccount, in value, spec);
+            state.AddToBalanceAndCreateIfNotExists(target, in value, spec);
+            vm.AddTransferLog<TEip7708>(executingAccount, target, in value);
+        }
+
+        if (reportsAction) vm.TxTracer.ReportActionEnd(0, default);
         return EvmExceptionType.None;
 
     OutOfGas:
