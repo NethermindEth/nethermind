@@ -16,10 +16,17 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyStateProvider headState)
 {
-    // Conservative lower bound for an encoded transaction's size.
+    // Deliberately below any real minimum, so the encode loop's early-break check below never skips a
+    // smaller tx that could still fit.
     private const int MinTransactionSizeBytes = 32;
-    // Senders drawn per list. The byte cap, not this, decides how many of them reach the wire.
-    private const int SenderSampleCapacity = Eip7805Constants.MaxBytesPerInclusionList / MinTransactionSizeBytes;
+    // Deliberate slack under the smallest encoding seen in practice (73 bytes over a 300k-key scan), so the
+    // entry count over-counts rather than under-counts.
+    private const int MinEmittableTransactionSizeBytes = 64;
+    // Upper bound on the entries the byte cap can emit.
+    private const int MaxEmittableEntries = Eip7805Constants.MaxBytesPerInclusionList / MinEmittableTransactionSizeBytes;
+    // Senders drawn per list, at twice the emittable entries: an entry skipped for size spends a draw
+    // without spending budget, and the spare senders are what refill it.
+    private const int SenderSampleCapacity = 2 * MaxEmittableEntries;
 
     /// <summary>Draws pending transactions for an inclusion list, up to the per-list byte cap.</summary>
     /// <param name="parent">Header the next-block base fee is derived from; the head when null.</param>
