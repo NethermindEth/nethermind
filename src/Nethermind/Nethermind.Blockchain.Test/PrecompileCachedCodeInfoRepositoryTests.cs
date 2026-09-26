@@ -517,6 +517,27 @@ public class PrecompileCachedCodeInfoRepositoryTests
         Assert.That(caches.BlockCacheCount, Is.EqualTo(1), "the reclaimed budget must admit a new entry");
     }
 
+    [Test]
+    public void Key_FromEqualDataInDifferentBuffers_IsEqualAndHashEqualIncludingCopies()
+    {
+        Address address = new("0x0000000000000000000000000000000000000002");
+        byte[] buffer = [9, 1, 2, 3, 9];
+        PrecompileCaches.Key key = new(address, new byte[] { 1, 2, 3 }, Prague.Instance);
+        PrecompileCaches.Key sliced = new(address, buffer.AsMemory(1, 3), Prague.Instance);
+        PrecompileCaches.Key copied = sliced.WithCopiedData();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sliced, Is.EqualTo(key), "keys over equal bytes must be equal whatever buffer holds them");
+            Assert.That(sliced.GetHashCode(), Is.EqualTo(key.GetHashCode()), "keys over equal bytes must hash equal");
+            Assert.That(copied, Is.EqualTo(key), "a copy must stay equal to the key it was built from");
+            Assert.That(copied.GetHashCode(), Is.EqualTo(key.GetHashCode()), "a copy must carry the hash of the key it was built from");
+        }
+
+        buffer[2] = 7;
+        Assert.That(copied, Is.EqualTo(key), "a copy must own its data, not follow later writes to the source buffer");
+    }
+
     private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile
     {
         public bool SupportsCaching => supportsCaching;
