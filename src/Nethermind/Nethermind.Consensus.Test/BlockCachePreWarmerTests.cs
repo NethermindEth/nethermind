@@ -1426,7 +1426,9 @@ public class BlockCachePreWarmerTests
         {
             Transaction ready = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction pending = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressF)
+            // Gas for a few of F's reads: at 12M it discovers thousands of cells, whose warm-up can evict F's slot 0
+            // from the set-associative cache.
+            Transaction pending = Build.A.Transaction.WithGasLimit(50_000).WithTo(TestItem.AddressF)
                 .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             Address sender = pending.SenderAddress!;
             pending.SenderAddress = null;
