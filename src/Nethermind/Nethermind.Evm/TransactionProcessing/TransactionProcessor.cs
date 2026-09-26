@@ -456,7 +456,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (!balance.IsZero && !removeSelfdestructBurn)
                     {
                         LogEntry burnLog = TransferLog.CreateBurn(toBeDestroyed, balance);
-                        substate.Logs.Add(burnLog);
+                        substate.Logs!.Add(burnLog);
                         if (tracingLogs) tracer.ReportLog(burnLog);
                     }
 
@@ -732,7 +732,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.LogsToArray() : [];
+                    LogEntry[] logs = substate.Logs is { Count: > 0 } ? substate.LogsToArray() : [];
                     tracer.MarkAsSuccess(executingAccount, spentGas, substate.Output.AsReadOnlyArray(), logs, stateRoot);
                 }
             }
@@ -1495,7 +1495,7 @@ namespace Nethermind.Evm.TransactionProcessing
                             if (eip7708Enabled && !removeSelfdestructBurn && !balance.IsZero)
                             {
                                 LogEntry selfDestructLog = TransferLog.CreateSelfDestruct(toBeDestroyed, balance);
-                                substate.Logs.Add(selfDestructLog);
+                                substate.Logs!.Add(selfDestructLog);
                                 if (tracingLogs) tracer.ReportLog(selfDestructLog);
                             }
 
@@ -1711,8 +1711,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
                 return false;
 
-            // Copy the bytes so it's not live memory that will be used in another tx.
-            return TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, executionDepositCost, stateDepositCost, substate.Output.ToArray());
+            return TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, executionDepositCost, stateDepositCost, substate.Output.AsReadOnlyArray());
         }
 
         private bool TryChargeCodeDeposit(
