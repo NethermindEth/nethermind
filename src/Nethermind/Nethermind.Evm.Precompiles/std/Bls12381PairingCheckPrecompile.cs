@@ -3,10 +3,10 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 using G2Affine = Nethermind.Crypto.Bls.P2Affine;
 using GT = Nethermind.Crypto.Bls.PT;
@@ -58,14 +58,16 @@ public partial class Bls12381PairingCheckPrecompile
         {
             Memory<long> g1Memory = g1Points.AsMemory();
             Memory<long> g2Memory = g2Points.AsMemory();
-            Parallel.For(0, pairDestinations.Count, (index, state) =>
+            // Within a worker budget the caller decodes too and never waits for a helper that has not started.
+            using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+            ParallelUnbalancedWork.For(0, pairDestinations.Count, index =>
             {
+                if (!result) return;
                 Result local = TryDecodePairToBuffer(inputData, g1Memory, g2Memory, pairDestinations[index], index);
                 if (!local)
                 {
                     // racy but safe: workers only ever store a failure, so post-barrier result fails iff any pair did
                     result = local;
-                    state.Break();
                 }
             });
         }

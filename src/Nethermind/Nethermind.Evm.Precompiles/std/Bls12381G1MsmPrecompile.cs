@@ -3,10 +3,10 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using G1 = Nethermind.Crypto.Bls.P1;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
@@ -94,13 +94,15 @@ public partial class Bls12381G1MsmPrecompile
         {
             Memory<long> rawPointsMemory = rawPoints.AsMemory();
             Memory<byte> rawScalarsMemory = rawScalars.AsMemory();
-            Parallel.For(0, pointDestinations.Count, (index, state) =>
+            // Within a worker budget the caller decodes too and never waits for a helper that has not started.
+            using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+            ParallelUnbalancedWork.For(0, pointDestinations.Count, index =>
             {
+                if (!result) return;
                 Result local = Eip2537.TryDecodeG1ToBuffer(inputData, rawPointsMemory, rawScalarsMemory, pointDestinations[index], index);
                 if (!local)
                 {
                     result = local;
-                    state.Break();
                 }
             });
         }
