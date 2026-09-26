@@ -31,6 +31,9 @@ public static class GenericEqualityComparer
         {
 #if !ZK_EVM
             IGenericEqualityComparer => null,
+#else
+            // A value-type key calls its own GetHashCode/Equals directly; only reference types need the fallback.
+            IGenericEqualityComparer when typeof(T).IsValueType => null,
 #endif
             _ => comparer
         };

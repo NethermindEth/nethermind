@@ -237,8 +237,7 @@ namespace Nethermind.Core
         /// An address is always 20 bytes, so the body skips the length-dispatching <see cref="SpanExtensions.FastHash"/>
         /// for the dedicated 20-byte hasher.
         /// </remarks>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal int GetHashCodeNonVirtual() => unchecked((int)GetHashCode64());
+        internal partial int GetHashCodeNonVirtual();
 
         public static bool operator ==(Address? a, Address? b)
         {
@@ -297,6 +296,9 @@ namespace Nethermind.Core
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
+
+        /// <summary>Returns the 64-bit hash of this address' storage cell at <paramref name="index"/>.</summary>
+        internal partial long GetHashCode64(in UInt256 index);
 
         /// <summary>Whether this address could name a precompile at all: sixteen leading zero bytes.</summary>
         /// <remarks>The membership test every CALL pays. Two loads reject an ordinary contract, against
