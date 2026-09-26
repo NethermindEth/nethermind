@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -200,7 +201,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (result.InputError)
                 {
-                    string wrapped = ErrorWrapper.CreateAccessList(result.Error!, tx.Hash!);
+                    string wrapped = ErrorWrapper.CreateAccessList(result.Error!, tx.Hash ?? tx.CalculateHash());
                     return ResultWrapper<AccessListResultForRpc?>.Fail(wrapped, ErrorCodes.InvalidInput);
                 }
                 return ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
