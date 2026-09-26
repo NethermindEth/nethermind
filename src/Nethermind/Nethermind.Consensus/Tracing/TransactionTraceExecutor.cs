@@ -52,13 +52,13 @@ public sealed class TransactionTraceExecutor(
 
         // A seeded prefix stands in for the transactions ahead of the target: they are neither executed nor traced.
         // The access list generated alongside misses them, which is harmless only because a trace discards it and a
-        // caller that reads it forces full construction above; on a block carrying a list, the prefix is taken only
-        // from that list, the one record of what those transactions wrote the block commits to.
+        // caller that reads it forces full construction above. Which seed a block carrying a list may take is the
+        // seed source's rule, not this executor's.
         try
         {
             int first = 0;
             int target = -1;
-            if (boundary.Seeds is { } seeds && readOverlay is not null && (!balManager.Enabled || seeds.SeedsFromBlockAccessLists))
+            if (boundary.Seeds is { } seeds && readOverlay is not null)
             {
                 target = boundary.IndexOf(block);
                 if (target > 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)

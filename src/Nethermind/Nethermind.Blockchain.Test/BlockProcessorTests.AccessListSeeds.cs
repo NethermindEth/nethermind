@@ -21,6 +21,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -73,12 +74,8 @@ public partial class BlockProcessorTests
     [TestCaseSource(nameof(AccessListSeedGethTracers))]
     public async Task AccessListSeed_WhenTracingEachTransaction_ExecutesOnlyItAndMatchesTheReplay(GethTraceOptions options)
     {
-        // 1. One block writes shared state: a contract counts, clears a slot for a refund and uses transient storage;
-        //    a creation self-destructs into a fresh account; an EIP-7702 delegation to the contract is followed by a
-        //    call into the delegated account; a transfer reaches the account the self-destruct created.
-        // 2. Every transaction is traced alone, once replaying its prefix and once seeded from the block's access list,
-        //    read back from the store as for any historical block.
-        // 3. The seeded trace executes only its target and is byte-identical to the replay.
+        // Every transaction is traced alone, once replaying its prefix and once seeded from the block's access list,
+        // read back from the store as for any historical block; the seeded trace executes only its target.
         using BasicTestBlockchain chain = await CreateAccessListSeedChain();
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = Historical(await AddSharedStateBlock(chain));
@@ -177,7 +174,7 @@ public partial class BlockProcessorTests
         ExecutionCounter seeded = new();
         ExecutionCounter parallelExecutions = new();
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: parallelExecutions), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: parallelExecutions), seeds, Budgets(chain, budget), LimboLogs.Instance);
 
         string expected = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, options), seeds: null, replayed));
         string actual = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, options), seeds, seeded));
@@ -206,7 +203,7 @@ public partial class BlockProcessorTests
         GethTraceOptions traceOptions = new() { Tracer = tracerName! };
         ExecutionCounter executions = new();
         using ParallelTraceBudget budget = new(3);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions), seeds, Budgets(chain, budget), LimboLogs.Instance);
 
         string expected = chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(TraceWholeBlockThroughTraceEnvironment(chain, parent, block,
             state => GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions, state, chain.SpecProvider))));
@@ -233,7 +230,7 @@ public partial class BlockProcessorTests
         ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.Rewards;
         ExecutionCounter executions = new();
         using ParallelTraceBudget budget = new(3);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions), seeds, Budgets(chain, budget), LimboLogs.Instance);
 
         IReadOnlyCollection<ParityLikeTxTrace> sequential = TraceWholeBlockThroughTraceEnvironment(chain, parent, block, _ => new ParityLikeBlockTracer(types));
         List<ParityLikeTxTrace> emitted = [];
@@ -258,6 +255,124 @@ public partial class BlockProcessorTests
         }
     }
 
+    [TestCase(1, TestName = "AccessListSeed_WhenTheDelegationTheTargetRunsWasReplacedLaterInTheBlock_ServesItsCodeFromTheList")]
+    [TestCase(3, TestName = "AccessListSeed_WhenTheTargetRunsTheLastDelegation_MatchesTheReplay")]
+    public async Task AccessListSeed_WhenAnAccountChangesCodeTwiceInOneBlock_TracesEachDelegationLikeTheReplay(int targetIndex)
+    {
+        // A block validated from its access list persists only the code each account ends the block with, so the
+        // delegation to the first contract is dropped from the code database here, as that validation leaves it.
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.WithGenesisPostProcessor((_, state) =>
+        {
+            state.CreateAccount(SecondContract, 0);
+            state.InsertCode(SecondContract, SecondContractCode, Amsterdam.Instance);
+        }));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await AddRedelegationBlock(chain));
+        ValueHash256 firstDelegation = ValueKeccak.Compute([.. Eip7702Constants.DelegationHeader, .. SharedContract.Bytes]);
+        chain.DbProvider.CodeDb.Remove(firstDelegation.Bytes);
+        Assert.That(chain.DbProvider.CodeDb.KeyExists(firstDelegation.Bytes), Is.False, "precondition: only the last delegation of the block is in the code database");
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        Hash256 target = block.Transactions[targetIndex].Hash!;
+        GethTraceOptions prestate = new() { TxHash = target, Tracer = "prestateTracer", TracerConfig = JsonDocument.Parse("{\"diffMode\":true}").RootElement };
+        GethTraceOptions calls = new() { TxHash = target, Tracer = "callTracer" };
+        ExecutionCounter replayed = new();
+        ExecutionCounter seeded = new();
+
+        string expected = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, prestate), seeds: null, replayed))
+            + SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, calls), seeds: null, replayed));
+        string actual = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, prestate), seeds, seeded))
+            + SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, calls), seeds, seeded));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeded.Calls, Is.EqualTo(2), "both traces are seeded, so only the target executes in each");
+            Assert.That(actual, Is.EqualTo(expected), "the seeded account runs the delegation the list records, with its code read from the list");
+        }
+    }
+
+    [Test]
+    public async Task AccessListSeed_WhenTheListIsPruned_NeverAsksTheSourceUnderneathAndReplays()
+    {
+        RefusingSeedSource underneath = new();
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Amsterdam.Instance, underneath, builder => builder
+            .AddDecorator<IPrefixStateSeedSource, BlockAccessListPrefixStateSeedSource>());
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await AddThreeTransferBlock(chain));
+        chain.Container.Resolve<IBlockAccessListStore>().Delete((ulong)block.Number, block.Hash!);
+        Hash256 target = block.Transactions[^1].Hash!;
+        GethTraceOptions options = new() { TxHash = target, Tracer = "callTracer" };
+        ExecutionCounter executions = new();
+
+        TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, options), chain.Container.Resolve<IPrefixStateSeedSource>(), executions).DisposeItems();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(underneath.AskedFor, Is.EqualTo(-1), "a block carrying an access list is seeded from it or not at all");
+            Assert.That(executions.Calls, Is.EqualTo(block.Transactions.Length), "without its list the prefix is replayed");
+        }
+    }
+
+    [Test]
+    public async Task AccessListSeed_WhenATransactionWritesASlotTheSystemCallWrote_ReplaysThePrefixWithTheSameTrace()
+    {
+        // The history contract here stores GAS at slot 0: the block's opening system call writes it at index 0, and the
+        // first transaction calling it writes the same slot again. The system call runs again under every trace, so
+        // its write sits in the world state above the overlay; the overlay is refused rather than shadowed by it.
+        byte[] storeGasLeft = [(byte)Instruction.GAS, (byte)Instruction.PUSH0, (byte)Instruction.SSTORE];
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.WithGenesisPostProcessor((_, state) =>
+        {
+            state.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
+            state.InsertCode(Eip2935Constants.BlockHashHistoryAddress, storeGasLeft, Amsterdam.Instance);
+        }));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await chain.AddBlock(
+            Build.A.Transaction.WithTo(Eip2935Constants.BlockHashHistoryAddress).WithNonce(0).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Build.A.Transaction.WithTo(Eip2935Constants.BlockHashHistoryAddress).WithNonce(0).WithGasLimit(200_000).SignedAndResolved(TestItem.PrivateKeyC).TestObject));
+        Assert.That(block.Transactions.Length, Is.EqualTo(2), "precondition: both calls are in the block");
+        Hash256 target = block.Transactions[1].Hash!;
+        GethTraceOptions options = new() { TxHash = target, Tracer = "prestateTracer", TracerConfig = JsonDocument.Parse("{\"diffMode\":true}").RootElement };
+        ExecutionCounter replayed = new();
+        ExecutionCounter seeded = new();
+
+        string expected = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, options), seeds: null, replayed));
+        string actual = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, target, GethTracer(chain, block, options), chain.Container.Resolve<IPrefixStateSeedSource>(), seeded));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeded.Calls, Is.EqualTo(2), "the overlay is refused and the prefix replayed");
+            Assert.That(actual, Is.EqualTo(expected), "the target reads the slot the first transaction wrote, as in the replay");
+        }
+    }
+
+    private static readonly Address SecondContract = new("0x00000000000000000000000000000000000c0de2");
+
+    // slot0 = 1
+    private static readonly byte[] SecondContractCode = [0x60, 0x01, 0x60, 0x00, 0x55, 0x00];
+
+    /// <summary>An authority delegates to one contract, is called, re-delegates to another and is called again.</summary>
+    private static async Task<Block> AddRedelegationBlock(BasicTestBlockchain chain)
+    {
+        ulong chainId = chain.SpecProvider.ChainId;
+        EthereumEcdsa ecdsa = new(chainId);
+        Transaction[] transactions =
+        [
+            Delegate(ecdsa, chainId, 0, SharedContract, 0),
+            Build.A.Transaction.WithTo(Delegated).WithNonce(0).WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Delegate(ecdsa, chainId, 1, SecondContract, 1),
+            Build.A.Transaction.WithTo(Delegated).WithNonce(1).WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+        ];
+
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length), "precondition: the block must hold every transaction of the scenario");
+        return block;
+
+        static Transaction Delegate(EthereumEcdsa ecdsa, ulong chainId, ulong senderNonce, Address codeSource, ulong authorityNonce) =>
+            Build.A.Transaction.WithType(TxType.SetCode).WithChainId(chainId).WithTo(TestItem.AddressA).WithNonce(senderNonce).WithGasLimit(1_000_000)
+                .WithMaxFeePerGas(1.GWei).WithMaxPriorityFeePerGas(1)
+                .WithAuthorizationCode(ecdsa.Sign(TestItem.PrivateKeyD, chainId, codeSource, authorityNonce))
+                .SignedAndResolved(ecdsa, TestItem.PrivateKeyC).TestObject;
+    }
+
     private static Task<BasicTestBlockchain> CreateAccessListSeedChain(Action<ContainerBuilder>? configure = null) =>
         CreatePrefixReplayChain(Amsterdam.Instance, configure: builder =>
         {
@@ -273,6 +388,10 @@ public partial class BlockProcessorTests
             configure?.Invoke(builder);
         });
 
+    /// <summary>One block whose transactions write shared state: a contract counts, clears a slot for a refund and
+    /// uses transient storage; a creation self-destructs into a fresh account; an EIP-7702 delegation to the contract
+    /// is followed by a call into the delegated account; an EIP-7002 withdrawal request is queued for the system call
+    /// after the transactions to dequeue; a transfer reaches the account the self-destruct created.</summary>
     private static async Task<Block> AddSharedStateBlock(BasicTestBlockchain chain)
     {
         ulong chainId = chain.SpecProvider.ChainId;
@@ -289,6 +408,8 @@ public partial class BlockProcessorTests
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeyC).TestObject,
             Call(TestItem.PrivateKeyB, 2, Delegated, 2),
             Call(TestItem.PrivateKeyC, 2, SharedContract, 0),
+            Build.A.Transaction.WithTo(Eip7002Constants.WithdrawalRequestPredeployAddress).WithData(new byte[56]).WithValue(1_000_000)
+                .WithNonce(3).WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
             Call(TestItem.PrivateKeyB, 3, Beneficiary, 1),
         ];
 
@@ -319,7 +440,7 @@ public partial class BlockProcessorTests
         Func<IWorldState, IBlockTracer<TTrace>> tracerFor, IPrefixStateSeedSource? seeds, ExecutionCounter executions)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
-        IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
+        IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
         using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
             .AddModule(validation)
             .AddModule(new TransactionTraceModule(validation))

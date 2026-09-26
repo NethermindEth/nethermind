@@ -31,8 +31,6 @@ internal sealed class BlockAccessListCoveredBlock(BlockAccessListPrefix prefix) 
 
         public bool Enabled => true;
 
-        public bool SeedsFromBlockAccessLists => true;
-
         public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
         {
             if (block.Hash != prefix.BlockHash || (uint)transactionIndex > (uint)prefix.TransactionCount) return false;

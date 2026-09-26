@@ -13,15 +13,15 @@ using Nethermind.Evm.TransactionProcessing;
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory(
-    IOverridableEnvFactory envFactory,
+    ITraceEnvFactory envFactory,
     ILifetimeScope rootLifetimeScope,
     IBlockValidationModule[] validationBlockProcessingModules,
     IPrefixStateSeedSource prefixSeeds,
-    ParallelTraceBudget parallelBudget,
+    ParallelTraceBudgets parallelBudgets,
     ILogManager logManager
 ) : IRpcModuleFactory<IDebugRpcModule>
 {
-    private readonly SharedParallelBlockTracer _parallelTracer = new(envFactory, rootLifetimeScope, prefixSeeds, parallelBudget, logManager,
+    private readonly SharedParallelBlockTracer _parallelTracer = new(envFactory, rootLifetimeScope, prefixSeeds, parallelBudgets, logManager,
         builder => ConfigureTracerContainer(builder, validationBlockProcessingModules));
 
     private static ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder, IBlockValidationModule[] validationBlockProcessingModules) =>
@@ -41,7 +41,7 @@ public class DebugModuleFactory(
 
     public IDebugRpcModule Create()
     {
-        IOverridableEnv env = envFactory.Create();
+        IOverridableEnv env = envFactory.CreateForTracing();
         IParallelBlockTracer? parallelTracer = _parallelTracer.Get();
 
         ILifetimeScope tracerLifecycle = rootLifetimeScope.BeginLifetimeScope((builder) =>

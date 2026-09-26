@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -16,24 +18,21 @@ namespace Nethermind.Consensus.Tracing;
 /// <summary>Seeds a trace of a block that carries an access list from that list: the state before transaction T is
 /// the parent state read through the changes the list records for transactions 0..T-1, so none of them is replayed.
 /// Blocks without an access list are left to <paramref name="inner"/>.</summary>
-/// <remarks>A block with an access list is seeded from it or not at all: the list is taken only when it hashes to the
-/// header's commitment, and when it is pruned, missing or does not match, the prefix is replayed as it always was.
-/// Arming costs one lookup of the block in a small cache of validated lists; a miss reads, decodes and hashes the list
-/// once, which the header commitment forces, and indexes it in time linear in its size.</remarks>
+/// <remarks>This is the one place that decides what may seed a block with an access list: the list itself or nothing.
+/// It is taken only when it hashes to the header's commitment, and when it is pruned, missing or does not match, the
+/// prefix is replayed as it always was; <paramref name="inner"/> is never asked about such a block. Arming costs one
+/// lookup in a small cache of validated lists. A miss reads, decodes and hashes the list once, which the header
+/// commitment forces, and indexes it in time linear in its size; concurrent misses on one block share that work.</remarks>
 public sealed class BlockAccessListPrefixStateSeedSource(IPrefixStateSeedSource inner, IBlockAccessListStore store, ISpecProvider specProvider)
     : IPrefixStateSeedSource
 {
     private const int ValidatedBlocks = 4;
 
     private readonly bool _chainHasAccessLists = specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
-    private readonly ClockCache<ValueHash256, BlockAccessListPrefix> _validated = new(ValidatedBlocks);
+    private readonly ClockCache<ValueHash256, Lazy<BlockAccessListPrefix?>> _validated = new(ValidatedBlocks);
+    private readonly Lock _validatedLock = new();
 
     public bool Enabled => _chainHasAccessLists || inner.Enabled;
-
-    /// <summary>What seeds the blocks that carry no access list.</summary>
-    internal IPrefixStateSeedSource Fallback => inner;
-
-    public bool SeedsFromBlockAccessLists => true;
 
     public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
     {
@@ -58,16 +57,47 @@ public sealed class BlockAccessListPrefixStateSeedSource(IPrefixStateSeedSource 
     private bool TryGetPrefix(Block block, [NotNullWhen(true)] out BlockAccessListPrefix? prefix)
     {
         prefix = null;
-        if (block.Hash is not { } blockHash || block.Header.BlockAccessListHash is not { } commitment) return false;
-        if (_validated.TryGet(blockHash.ValueHash256, out prefix)) return true;
+        if (block.Hash is not { } blockHash || block.Header.BlockAccessListHash is null) return false;
 
+        Lazy<BlockAccessListPrefix?> validation = GetOrStartValidation(block, blockHash);
+        try
+        {
+            prefix = validation.Value;
+        }
+        catch
+        {
+            Forget(blockHash, validation);
+            throw;
+        }
+
+        return prefix is not null;
+    }
+
+    private Lazy<BlockAccessListPrefix?> GetOrStartValidation(Block block, Hash256 blockHash)
+    {
+        using Lock.Scope scope = _validatedLock.EnterScope();
+        if (_validated.TryGet(blockHash.ValueHash256, out Lazy<BlockAccessListPrefix?>? validation)) return validation;
+
+        validation = new Lazy<BlockAccessListPrefix?>(() => Validate(block, blockHash), LazyThreadSafetyMode.ExecutionAndPublication);
+        _validated.Set(blockHash.ValueHash256, validation);
+        return validation;
+    }
+
+    /// <summary>A store that failed is asked again on the next trace rather than failing every trace of the block.</summary>
+    private void Forget(Hash256 blockHash, Lazy<BlockAccessListPrefix?> failed)
+    {
+        using Lock.Scope scope = _validatedLock.EnterScope();
+        if (_validated.TryGet(blockHash.ValueHash256, out Lazy<BlockAccessListPrefix?>? current) && ReferenceEquals(current, failed))
+            _validated.Delete(blockHash.ValueHash256);
+    }
+
+    private BlockAccessListPrefix? Validate(Block block, Hash256 blockHash)
+    {
+        Hash256 commitment = block.Header.BlockAccessListHash!;
         ReadOnlyBlockAccessList? accessList = block.BlockAccessList is { WireHash: { } own } carried && own == commitment
             ? carried
             : store.Get((ulong)block.Number, blockHash);
-        if (accessList?.WireHash != commitment) return false;
 
-        prefix = new BlockAccessListPrefix(blockHash, accessList, block.Transactions.Length);
-        _validated.Set(blockHash.ValueHash256, prefix);
-        return true;
+        return accessList?.WireHash == commitment ? new BlockAccessListPrefix(blockHash, accessList, block.Transactions.Length) : null;
     }
 }

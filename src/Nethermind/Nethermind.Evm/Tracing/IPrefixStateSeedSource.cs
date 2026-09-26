@@ -14,10 +14,6 @@ public interface IPrefixStateSeedSource
     /// <summary>Whether this source can ever arm a slot; a read path is only prepared for an overlay when it can.</summary>
     bool Enabled { get; }
 
-    /// <summary>Whether a seed this source arms on a block carrying an access list is read from that block's own
-    /// validated list. On such a block any other seed is refused and the prefix is replayed.</summary>
-    bool SeedsFromBlockAccessLists => false;
-
     /// <summary>Arms <paramref name="slot"/> with an overlay of everything the transactions before
     /// <paramref name="transactionIndex"/> wrote; reads of the scope in flight then see it ahead of the parent state.
     /// False leaves the slot untouched and means the caller replays the prefix as it always did.</summary>

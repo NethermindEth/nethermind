@@ -557,7 +557,7 @@ public partial class BlockProcessorTests
         GethTraceOptions traceOptions = new() { Tracer = tracerName! };
         ExecutionCounter executions = new();
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions), seeds, Budgets(chain, budget), LimboLogs.Instance);
 
         string expected = chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(TraceWholeBlockThroughTraceEnvironment(chain, parent, block,
             state => GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions, state, chain.SpecProvider))));
@@ -587,7 +587,7 @@ public partial class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
         using CancellationTokenSource cancellation = new();
         DisposalCounter sentinel = new();
         GethTraceOptions traceOptions = new() { Tracer = "callTracer" };
@@ -666,8 +666,11 @@ public partial class BlockProcessorTests
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Prague.Instance;
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
-        ChangesetPrefixStateSeedSource seeds = new(index);
-        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary()));
+        // As the node wires it: on an Amsterdam block the access list seeds, on any other the changesets do.
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, new ChangesetPrefixStateSeedSource(index), builder => builder
+            .AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary())
+            .AddDecorator<IPrefixStateSeedSource, BlockAccessListPrefixStateSeedSource>());
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
         BlockHeader parent = chain.BlockTree.Head!.Header;
         // The transfers create the beneficiary inside the block: a reward applied on the parent state would create
         // the account a second time, and the state diff of the reward trace would say so.
@@ -675,7 +678,7 @@ public partial class BlockProcessorTests
         IndexThroughTheCapture(chain, index, block, parent, spec);
         ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.Rewards;
         using ParallelTraceBudget budget = new(3);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, refuseNonEmpty: refuseNonEmpty), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, refuseNonEmpty: refuseNonEmpty), seeds, Budgets(chain, budget), LimboLogs.Instance);
 
         IReadOnlyCollection<ParityLikeTxTrace> sequential = TraceWholeBlockThroughTraceEnvironment(chain, parent, block, _ => new ParityLikeBlockTracer(types));
         List<ParityLikeTxTrace> emitted = [];
@@ -688,16 +691,6 @@ public partial class BlockProcessorTests
                 (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
                 _ => new ParityLikeBlockTracer(types), CancellationToken.None, out traces);
 
-        Assert.That(traced, Is.EqualTo(!amsterdam), "BAL processing must fall back before emitting any parallel results");
-        if (amsterdam)
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(emitted, Is.Empty, "a fallback must not leave a partial streamed response");
-                Assert.That(traces, Is.Null);
-            }
-            return;
-        }
         if (stream) traces = emitted;
 
         using (Assert.EnterMultipleScope())
@@ -730,7 +723,7 @@ public partial class BlockProcessorTests
         using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
         GethTraceOptions traceOptions = new() { Tracer = "prestateTracer" };
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
 
         // The beneficiary takes the reward after the transactions, so the rows never describe it; it is also what
         // every block's transactions pay here, which is the shape the chain has to refuse: the first block holds a
@@ -830,7 +823,7 @@ public partial class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
         using ParallelTraceBudget budget = new(3);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
         ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff;
 
         using ManualResetEventSlim secondEntered = new(false);
@@ -887,7 +880,7 @@ public partial class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
         using ParallelTraceBudget budget = new(2);
-        ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
         using ManualResetEventSlim started = new(false);
         using ManualResetEventSlim release = new(false);
         GethTraceOptions traceOptions = new() { Tracer = "callTracer" };
@@ -947,7 +940,7 @@ public partial class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, Prague.Instance);
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
         using CountdownEvent occupied = new(4);
         using ManualResetEventSlim releaseWorkers = new(false);
         using ManualResetEventSlim callerStarted = new(false);
@@ -1005,7 +998,7 @@ public partial class BlockProcessorTests
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => throw new InvalidOperationException("Uncovered blocks must not build an environment"), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => throw new InvalidOperationException("Uncovered blocks must not build an environment"), seeds, Budgets(chain, budget), LimboLogs.Instance);
         budget.Wait(CancellationToken.None);
         budget.Wait(CancellationToken.None);
         using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(5));
@@ -1046,11 +1039,13 @@ public partial class BlockProcessorTests
         public void Dispose() => (inner as IDisposable)?.Dispose();
     }
 
+    private static ParallelTraceBudgets Budgets(BasicTestBlockchain chain, ParallelTraceBudget budget) => new(chain.SpecProvider, budget, budget);
+
     private static ParallelBlockTracer.OwnedEnvironment BuildParallelEnvironment(
         BasicTestBlockchain chain, bool? hideRewardBoundary = null, bool refuseOverlay = false, bool refuseNonEmpty = false, ExecutionCounter? executions = null)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
-        IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
+        IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
         ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder =>
         {
             builder
@@ -1079,7 +1074,7 @@ public partial class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, Prague.Instance);
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, refuseOverlay: true), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, refuseOverlay: true), seeds, Budgets(chain, budget), LimboLogs.Instance);
         List<ParityLikeTxTrace> emitted = [];
         IReadOnlyList<ParityLikeTxTrace>? traces = null;
 
@@ -1109,7 +1104,7 @@ public partial class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, rewards), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, rewards), seeds, Budgets(chain, budget), LimboLogs.Instance);
         List<ParityLikeTxTrace> emitted = [];
         Func<IWorldState, IBlockTracer<ParityLikeTxTrace>>? afterTransactions = rewards
             ? _ => new ParityLikeBlockTracer(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)
@@ -1147,7 +1142,7 @@ public partial class BlockProcessorTests
     private static IReadOnlyCollection<TTrace> TraceWholeBlockThroughTraceEnvironment<TTrace>(BasicTestBlockchain chain, BlockHeader parent, Block block, Func<IWorldState, IBlockTracer<TTrace>> tracerFor)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
-        IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
+        IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
         using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
             .AddModule(validation)
             .AddModule(new TransactionTraceModule(validation))
@@ -1172,7 +1167,7 @@ public partial class BlockProcessorTests
         BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? processed = null)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
-        IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
+        IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
         using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder =>
         {
             builder
