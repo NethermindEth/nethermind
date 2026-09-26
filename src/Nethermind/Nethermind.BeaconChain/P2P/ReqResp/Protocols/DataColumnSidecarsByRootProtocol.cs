@@ -135,7 +135,7 @@ public sealed class DataColumnSidecarsByRootProtocol(BeaconChainSpec spec, DataC
         CancellationTokenSource cts = timeout.Cts;
         try
         {
-            byte[] requestSsz = await ReqRespFraming.ReadRequestAsync(stream, MaxRequestLength, cts.Token);
+            byte[] requestSsz = await ReqRespFraming.ReadRequestAsync(stream, MaxRequestLength, cts.Token, allowEmpty: true);
             DataColumnSidecarsByRootRequest request;
             try
             {
