@@ -131,7 +131,7 @@ public class BeaconP2PLoopbackTests
         server.StatusHolder.CurrentStatus = status;
         server.Pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, gloasSlot, heldRoot));
         server.Pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(7, gloasSlot, heldRoot));
-        server.Pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, gloasSlot, pendingRoot), "gossip peer");
+        server.Pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, gloasSlot, pendingRoot), gloasSlot);
         server.Store.SetCanonicalRoot(gloasSlot, heldRoot);
         DataColumnSidecar fulu = DataColumnSidecarTestFixture.BuildValidSidecar(3, spec.GloasForkEpoch * spec.SlotsPerEpoch - 1, blobCount: 1);
         Hash256 fuluRoot = SszRoots.HashTreeRoot(fulu.SignedBlockHeader!.Message!);

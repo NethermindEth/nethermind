@@ -220,7 +220,7 @@ public class GloasColumnReqRespTests
         Hash256 pendingRoot = Keccak.Compute("pending block");
         DataColumnSidecarPool pool = new();
         pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, GloasStartSlot + 2, heldRoot));
-        pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, GloasStartSlot + 2, pendingRoot), "gossip peer");
+        pool.AddPendingGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(3, GloasStartSlot + 2, pendingRoot), GloasStartSlot + 2);
         DataColumnSidecarsByRootProtocol protocol = new(Spec, pool);
         ISessionContext context = Substitute.For<ISessionContext>();
         context.State.Returns(new Nethermind.Libp2p.Core.State());
