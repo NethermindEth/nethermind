@@ -33,7 +33,7 @@ namespace Nethermind.Runner.Ethereum.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(HiveStep))]
 public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats, GCKeeper gcKeeper,
-    Lazy<FlatStateActivationPolicy> flatStateActivationPolicy) : IStep
+    Lazy<FlatStateActivationPolicy> flatStateActivationPolicy, IRpcAuthentication? authentication = null) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -57,10 +57,10 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         IRpcModuleProvider rpcModuleProvider = api.RpcModuleProvider!;
 
         JsonRpcService jsonRpcService = new(rpcModuleProvider, api.LogManager, jsonRpcConfig, gcKeeper);
-        IRpcAuthentication auth =
-            jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
+        IRpcAuthentication auth = authentication ??
+            (jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                 ? NoAuthentication.Instance
-                : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, api.Timestamper, logger);
+                : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, api.Timestamper, logger));
 
         // Added before the warmup, whose own RPC host would otherwise claim this entry.
         ThisNodeInfo.AddInfo("JSON RPC     :", string.Join(" ; ", jsonRpcUrlCollection.Urls));

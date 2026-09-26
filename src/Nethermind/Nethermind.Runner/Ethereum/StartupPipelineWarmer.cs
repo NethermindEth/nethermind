@@ -82,7 +82,7 @@ internal static class StartupPipelineWarmer
         try
         {
             string? token = (authentication as JwtAuthentication)?.CreateWarmupToken();
-            await RunAsync(source, liveConfig, flatState, directory.FullName, token, keys, configureContainer, warmMetrics, cancellationToken);
+            await RunAsync(source, liveConfig, flatState, directory.FullName, token, authentication, keys, configureContainer, warmMetrics, cancellationToken);
         }
         finally
         {
@@ -101,7 +101,7 @@ internal static class StartupPipelineWarmer
         }
     }
 
-    private static async Task RunAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, string directory, string? token,
+    private static async Task RunAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, string directory, string? token, IRpcAuthentication? authentication,
         PrivateKey[] keys, Action<ContainerBuilder>? configureContainer, WarmMetrics warmMetrics, CancellationToken cancellationToken)
     {
         ulong timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -154,8 +154,7 @@ internal static class StartupPipelineWarmer
                 Port = port,
                 RequestQueueLimit = liveRpcConfig.RequestQueueLimit,
                 MaxConcurrentSharedRequests = liveRpcConfig.MaxConcurrentSharedRequests,
-                // An empty path makes StartRpc migrate a legacy secret into the disposable directory.
-                JwtSecretFile = token is null ? Path.Combine(directory, "jwt-secret") : liveRpcConfig.JwtSecretFile,
+                JwtSecretFile = Path.Combine(directory, "jwt-secret"),
                 UnsecureDevNoRpcAuthentication = token is null,
                 // Modules that subscribe to block processing are created only when enabled.
                 EnabledModules = [.. liveRpcConfig.EnabledModules.Union(liveRpcConfig.EngineEnabledModules).Append(ModuleType.Engine).Distinct()],
@@ -206,6 +205,8 @@ internal static class StartupPipelineWarmer
             .AddSingleton<ISpecProvider>(new ChainSpecBasedSpecProvider(source))
             .AddSingleton(warmMetrics)
             .AddScoped<IProcessingStats, WarmProcessingStats>();
+        // Reuse the loaded authenticator so warmup never reads or recreates the live secret file.
+        if (authentication is not null) builder.AddSingleton(authentication);
         configureContainer?.Invoke(builder);
         try
         {

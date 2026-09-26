@@ -165,9 +165,12 @@ public class EthereumRunnerTests
     [TestCase("sepolia", false, false)]
     [TestCase("sepolia", true, false)]
     [TestCase("foundation", false, true)]
+    [TestCase("foundation", false, true, WarmupSecretChange.Removed)]
+    [TestCase("foundation", false, true, WarmupSecretChange.Replaced)]
     [TestCase("amsterdam", false, false)]
     [TestCase("amsterdam", true, false)]
-    public async Task Startup_pipeline_warmup_processes_payload(string chain, bool flatState, bool authenticated)
+    public async Task Startup_pipeline_warmup_processes_payload(string chain, bool flatState, bool authenticated,
+        WarmupSecretChange secretChange = WarmupSecretChange.None)
     {
         ChainSpec spec = LoadWarmupChainSpec(chain);
         Block originalGenesis = spec.Genesis!;
@@ -180,6 +183,11 @@ public class EthereumRunnerTests
         IRpcAuthentication authentication = authenticated
             ? JwtAuthentication.FromFile(secretPath.Path, Timestamper.Default, NullLogger.Instance)
             : NoAuthentication.Instance;
+        string expectedSecret = secretChange == WarmupSecretChange.Replaced ? new string('b', 64) : secret;
+        if (secretChange == WarmupSecretChange.Removed)
+            File.Delete(secretPath.Path);
+        else if (secretChange == WarmupSecretChange.Replaced)
+            await File.WriteAllTextAsync(secretPath.Path, expectedSecret);
         using CancellationTokenSource cancellation = new(RunnerTimeout);
         // Holding the node's RPC and engine ports fails the warmup if it binds them, where the consensus client could reach it.
         using System.Net.Sockets.TcpListener livePorts = new(IPAddress.Loopback, 0);
@@ -209,10 +217,15 @@ public class EthereumRunnerTests
             Assert.That(spec.Genesis, Is.SameAs(originalGenesis));
             Assert.That(originalGenesis.Hash, Is.EqualTo(originalGenesisHash));
             Assert.That(spec.Allocations, Is.SameAs(originalAllocations));
-            Assert.That(File.ReadAllText(secretPath.Path), Is.EqualTo(secret));
+            if (secretChange == WarmupSecretChange.Removed)
+                Assert.That(File.Exists(secretPath.Path), Is.False);
+            else
+                Assert.That(File.ReadAllText(secretPath.Path), Is.EqualTo(expectedSecret));
             Assert.That(Directory.EnumerateDirectories(Path.Combine(dataDirectory.Path, "startup-warmup")), Is.Empty);
         }
     }
+
+    public enum WarmupSecretChange { None, Removed, Replaced }
 
     [Test]
     public async Task Startup_pipeline_warmup_keeps_live_head_metrics()
