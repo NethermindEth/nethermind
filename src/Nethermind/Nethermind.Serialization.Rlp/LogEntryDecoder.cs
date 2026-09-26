@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
@@ -127,20 +128,11 @@ namespace Nethermind.Serialization.Rlp
             return (contentLength, topicsLength);
         }
 
-        private static int GetTopicsLength(LogEntry? item)
+        // Every topic is a 32-byte word, as the decoder's topic count also assumes.
+        private static int GetTopicsLength(LogEntry item)
         {
-            if (item is null)
-            {
-                return 0;
-            }
-
-            int topicsLength = 0;
-            for (int i = 0; i < item.Topics.Length; i++)
-            {
-                topicsLength += Rlp.LengthOf(item.Topics[i]);
-            }
-
-            return topicsLength;
+            Debug.Assert(Array.TrueForAll(item.Topics, static topic => topic is not null), "A null topic encodes shorter than the length counted for it.");
+            return item.Topics.Length * Rlp.LengthOfKeccakRlp;
         }
 
         public static void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors storage, out LogEntryStructRef item)

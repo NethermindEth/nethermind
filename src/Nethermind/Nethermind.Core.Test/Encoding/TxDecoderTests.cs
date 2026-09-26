@@ -335,6 +335,33 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("Non-canonical integer"));
         }
 
+        /// <summary>The signature's r decodes as a byte string of at most 32 bytes: shorter ones pad, the rest fail.</summary>
+        [TestCase(new byte[] { 0x9f }, 31, true)]
+        [TestCase(new byte[] { 0xa1 }, 33, false)]
+        [TestCase(new byte[] { 0x81 }, 1, false)]
+        public void Decodes_signature_r_as_a_byte_string_of_at_most_32_bytes(byte[] rPrefix, int rLength, bool valid)
+        {
+            byte[] r = [.. rPrefix, .. Enumerable.Repeat((byte)0x05, rLength)];
+            byte[] s = [0xa0, .. Enumerable.Repeat((byte)0x06, 32)];
+            byte[] content = [0x80, 0x01, 0x82, 0x52, 0x08, 0x94, .. new byte[20], 0x80, 0x80, 0x1b, .. r, .. s];
+            byte[] encoded = [0xf8, (byte)content.Length, .. content];
+
+            Transaction Decode()
+            {
+                RlpReader ctx = new(encoded);
+                return _txDecoder.DecodeGuardNotNull(ref ctx);
+            }
+
+            if (valid)
+            {
+                Assert.That(Decode().Signature!.R.ToArray(), Is.EqualTo((byte[])[0x00, .. Enumerable.Repeat((byte)0x05, rLength)]));
+            }
+            else
+            {
+                Assert.That(Decode, Throws.InstanceOf<RlpException>());
+            }
+        }
+
         [Test]
         public void Rejects_trailing_bytes_for_skip_typed_wrapping_transactions()
         {
