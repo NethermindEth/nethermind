@@ -178,10 +178,10 @@ public partial class VirtualMachine<TGasPolicy>(
     private byte[] _tracedStackWords = [];
     private bool _isInstructionTraceActive;
 
-    /// <summary>Scratch holding the output of the ID precompile on the inline call path.</summary>
+    /// <summary>Scratch holding the output of the ID precompile on the inline call path and for nested ID frames.</summary>
     /// <remarks>Only guaranteed until the next ID call served this way. That is safe because
-    /// <see cref="ReturnDataBuffer"/> is replaced by every call, and that path already refuses to run when a
-    /// tracer is attached, so nothing can retain the previous contents.</remarks>
+    /// <see cref="ReturnDataBuffer"/> is replaced by every call, and both paths refuse to run when an action or
+    /// instruction tracer is attached, so nothing can retain the previous contents.</remarks>
     private byte[] _precompileScratch = [];
 
     /// <summary>Pooled scratch for an ID output too large to hold on the VM between transactions.</summary>
@@ -1312,6 +1312,13 @@ public partial class VirtualMachine<TGasPolicy>(
         ReadOnlyMemory<byte> callData,
         IReleaseSpec spec)
     {
+        if (precompile is IdentityPrecompile && CanReturnIdentityOutputInScratch(state))
+        {
+            Memory<byte> scratch = RentPrecompileScratch(callData.Length);
+            callData.Span.CopyTo(scratch.Span);
+            return new(scratch, precompileSuccess: true);
+        }
+
         try
         {
             Result<byte[]> output = precompile.Run(callData, spec);
@@ -1338,6 +1345,13 @@ public partial class VirtualMachine<TGasPolicy>(
             return new(default, precompileSuccess: false, shouldRevert: true);
         }
     }
+
+    /// <summary>Whether an ID frame may hand its output back in the precompile scratch instead of a new array.</summary>
+    /// <remarks>A nested output only reaches the parent's <see cref="ReturnDataBuffer"/> and memory, as on the inline
+    /// path. A top-level output becomes the transaction output, which outlives the scratch, and an action or
+    /// instruction tracer may keep a nested one, so those still get their own array.</remarks>
+    private bool CanReturnIdentityOutputInScratch(VmState<TGasPolicy> state) =>
+        !state.IsTopLevel && !IsTracingActions && !_txTracer.IsTracingInstructions;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected void LogExecutionException(IPrecompile precompile, Exception exception)

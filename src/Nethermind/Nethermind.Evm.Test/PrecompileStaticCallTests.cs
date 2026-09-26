@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -133,6 +134,89 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
         Assert.That(Machine.RetainedPrecompileScratchLength, Is.EqualTo(VirtualMachineStatics.MaxRetainedPrecompileScratch));
     }
 
+    private static IEnumerable<TestCaseData> IdentityFrameChainCases()
+    {
+        const int limit = VirtualMachineStatics.MaxRetainedPrecompileScratch;
+        foreach (Instruction call in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL })
+        {
+            yield return new TestCaseData(new[] { 64, 32, 0, 40, 64 }, 100_000UL, call)
+                .SetName($"Identity_frames_of_changing_lengths_each_return_their_own_input_{call}");
+            yield return new TestCaseData(new[] { 32, limit, 32, limit + 32, 32 }, DefaultBlockGasLimit, call)
+                .SetName($"Identity_frames_crossing_the_retained_scratch_limit_each_return_their_own_input_{call}");
+        }
+    }
+
+    [TestCaseSource(nameof(IdentityFrameChainCases))]
+    public void Identity_frames_each_return_their_own_input(int[] lengths, ulong gasLimit, Instruction call)
+    {
+        byte[] code = BuildIdentityChain(lengths, out byte[] expected, call);
+
+        AssertOutput(code, expected, gasLimit: gasLimit);
+    }
+
+    [Test]
+    public void Identity_frame_returns_its_output_in_the_retained_scratch()
+    {
+        byte[] code = BuildIdentityChain([VirtualMachineStatics.MaxRetainedPrecompileScratch], out byte[] expected, Instruction.CALL);
+        AssertOutput(code, expected, gasLimit: DefaultBlockGasLimit);
+
+        Assert.That(Machine.RetainedPrecompileScratchLength, Is.EqualTo(VirtualMachineStatics.MaxRetainedPrecompileScratch),
+            "a nested ID frame without a retaining tracer serves its output from the scratch");
+    }
+
+    [Test]
+    public void Identity_as_transaction_target_keeps_its_output_after_later_identity_calls()
+    {
+        byte[] input = Word(7);
+        (Block block, _) = PrepareTx(Activation, 100_000UL);
+        Transaction direct = Build.A.Transaction
+            .To(IdentityPrecompile.Address)
+            .WithData(input)
+            .WithGasLimit(100_000)
+            .WithGasPrice(1)
+            .WithNonce(TestState.GetNonce(Sender))
+            .SignedAndResolved(SenderKey)
+            .TestObject;
+        ReceiptOnlyTracer directTracer = new();
+        _processor.Execute(direct, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), directTracer);
+        byte[] directOutput = directTracer.ReturnValue;
+
+        Assert.That(directOutput, Is.EqualTo(input), "precondition: ID returns its input as the transaction output");
+
+        byte[] later = BuildIdentityChain([32, 32], out _, Instruction.CALL);
+        (Block laterBlock, Transaction laterTx) = PrepareTx(Activation, 100_000UL, later);
+        _processor.Execute(laterTx, new BlockExecutionContext(laterBlock.Header, SpecProvider.GetSpec(laterBlock.Header)), new ReceiptOnlyTracer());
+
+        Assert.That(directOutput, Is.EqualTo(input), "a top-level ID output must not share the reusable scratch");
+    }
+
+    [Test]
+    public void Identity_frame_outputs_kept_by_an_action_tracer_stay_distinct()
+    {
+        byte[] first = Word(1);
+        byte[] second = Word(2);
+        byte[] code = Prepare.EvmCode
+            .MSTORE(InputOffset, first)
+            .CALL(100_000, IdentityPrecompile.Address, 0, InputOffset, 32, 0, 0)
+            .Op(Instruction.POP)
+            .MSTORE(InputOffset, second)
+            .CALL(100_000, IdentityPrecompile.Address, 0, InputOffset, 32, 0, 0)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100_000UL, code);
+        ActionOutputTracer tracer = new();
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Outputs, Has.Count.EqualTo(2), "precondition: both ID frames report an output");
+            Assert.That(tracer.Outputs[0].ToArray(), Is.EqualTo(first), "the first output must survive the second ID frame");
+            Assert.That(tracer.Outputs[1].ToArray(), Is.EqualTo(second), "the second output is its own input");
+        }
+    }
+
     [Test]
     public void Identity_call_gives_its_pooled_buffer_back_when_the_transaction_ends()
     {
@@ -191,7 +275,7 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
     /// call's bytes — the stale tail of a longer one, or a wrongly sliced buffer — cannot go unnoticed. Each call
     /// writes only its two marker words; every other byte keeps whatever an earlier call left there (a shorter
     /// call's markers can fall inside a longer call's input), which the <c>memory</c> mirror tracks.</remarks>
-    private static byte[] BuildIdentityChain(int[] lengths, out byte[] expected)
+    private static byte[] BuildIdentityChain(int[] lengths, out byte[] expected, Instruction call = Instruction.STATICCALL)
     {
         int longest = 0;
         foreach (int length in lengths) longest = Math.Max(longest, length);
@@ -219,8 +303,7 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
             }
 
             int record = step * RecordSize;
-            code = code
-                .STATICCALL(1_000_000, IdentityPrecompile.Address, InputOffset, (UInt256)length, 0, 0)
+            code = CallIdentity(code, call, (UInt256)length)
                 .Op(Instruction.POP)
                 .RETURNDATASIZE()
                 .MSTORE((UInt256)record);
@@ -244,11 +327,32 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
         return code.RETURN(0, (UInt256)records.Length).Done;
     }
 
+    private static Prepare CallIdentity(Prepare code, Instruction call, UInt256 length) => call switch
+    {
+        Instruction.STATICCALL => code.STATICCALL(1_000_000, IdentityPrecompile.Address, InputOffset, length, 0, 0),
+        Instruction.CALL => code.CALL(1_000_000, IdentityPrecompile.Address, 0, InputOffset, length, 0, 0),
+        Instruction.CALLCODE => code.CALLCODE(1_000_000, IdentityPrecompile.Address, 0, InputOffset, length, 0, 0),
+        Instruction.DELEGATECALL => code.DELEGATECODE(1_000_000, IdentityPrecompile.Address, InputOffset, length, 0, 0),
+        _ => throw new ArgumentOutOfRangeException(nameof(call), call, null)
+    };
+
     private static byte[] Word(int marker)
     {
         byte[] word = new byte[32];
         for (int i = 0; i < word.Length; i++) word[i] = (byte)(marker * 31 + i + 1);
         return word;
+    }
+
+    private sealed class ActionOutputTracer : TxTracer
+    {
+        public override bool IsTracingActions => true;
+
+        public List<ReadOnlyMemory<byte>> Outputs { get; } = [];
+
+        public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
+        {
+            if (!output.IsEmpty) Outputs.Add(output);
+        }
     }
 
     private sealed class ReceiptOnlyTracer : TxTracer
