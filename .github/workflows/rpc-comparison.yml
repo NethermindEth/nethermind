@@ -27,6 +27,11 @@ on:
         description: "Git ref (branch/tag/SHA) of a second Nethermind to spawn and snap-sync as the reference node (NM-vs-NM). Leave empty to use 'reference_url' or 'spawn_geth' instead. Ignored when 'spawn_geth' is true."
         default: ""
         required: false
+      rpc_tests_ref:
+        type: string
+        description: "Git ref (branch/tag/SHA) of NethermindEth/rpc-tests to check out."
+        default: "main"
+        required: false
       spawn_geth:
         type: boolean
         description: "Spawn a fresh pruned Geth node (snap sync) and use it as the rpc_int -e reference, instead of 'reference_url'."
@@ -586,7 +591,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: NethermindEth/rpc-tests
-          ref: main
+          ref: ${{ inputs.rpc_tests_ref || 'main' }}
 
       - name: Setup Go environment
         uses: actions/setup-go@v6

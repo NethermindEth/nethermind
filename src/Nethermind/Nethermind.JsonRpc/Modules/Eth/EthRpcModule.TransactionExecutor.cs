@@ -16,6 +16,7 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -199,42 +200,67 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, bool optimize)
+        private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, IGasPriceOracle gasPriceOracle, bool optimize)
             : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
             private BigInteger? _feeCapBeyond256Bits;
+            private string? _feeDefaultsError;
 
             protected override bool ValidatesFeeCapOrder => false;
 
             /// <remarks>
             /// The fee fields follow the defaults a transaction about to be sent gets, so a malformed pair is reported
             /// with its values in hexadecimal, as the request carried them, rather than failing where the fees are
-            /// applied. A priority fee without a fee cap gets a fee cap of the priority fee plus twice the block's base
-            /// fee. A missing priority fee would be suggested by the fee oracle, so those shapes keep their own handling.
+            /// applied. A request that sets one of the fee cap and priority fee after London gets the other before it
+            /// is priced: a missing priority fee is the node's suggested one, and a missing fee cap is the priority fee
+            /// plus twice the block's base fee. A request with no fee field at all stays unpriced, so a sender that
+            /// cannot afford fees the node would pick can still get its access list.
             /// </remarks>
-            protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
+            public override ResultWrapper<AccessListResultForRpc?> Execute(
+                TransactionForRpc transactionCall,
+                BlockParameter? blockParameter,
+                Dictionary<Address, AccountOverride>? stateOverride = null,
+                SearchResult<BlockHeader>? searchResult = null)
+            {
+                searchResult ??= _blockFinder.SearchForHeader(blockParameter);
+                if (!searchResult.Value.IsError)
+                    FillFeeDefaults(transactionCall, searchResult.Value.Object!);
+
+                return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
+            }
+
+            protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header) =>
+                _feeDefaultsError is { } feeDefaultsError ? feeDefaultsError : base.Prepare(call, header);
+
+            private void FillFeeDefaults(TransactionForRpc call, BlockHeader header)
             {
                 bool isLondon = GetSpec(header).IsEip1559Enabled;
-                if (FeeDefaultRules.Error(call, isLondon) is { } feeDefaultsError)
-                    return feeDefaultsError;
+                _feeDefaultsError = FeeDefaultRules.Error(call, isLondon);
 
-                Result<Transaction> result = base.Prepare(call, header);
-                if (result.IsError
+                // Before London the rules above leave no fee field to fill.
+                if (_feeDefaultsError is not null
                     || !isLondon
-                    || call is not EIP1559TransactionForRpc { GasPrice: null, MaxFeePerGas: null, MaxPriorityFeePerGas: { } priorityFee })
+                    || call is not EIP1559TransactionForRpc { GasPrice: null } request
+                    || request.MaxFeePerGas is null == request.MaxPriorityFeePerGas is null)
                 {
-                    return result;
+                    return;
+                }
+
+                UInt256 priorityFee = request.MaxPriorityFeePerGas ??= gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+                if (request.MaxFeePerGas is { } feeCap)
+                {
+                    _feeDefaultsError = feeCap < priorityFee
+                        ? $"maxFeePerGas ({feeCap.ToHexString(skipLeadingZeros: true)}) < maxPriorityFeePerGas ({priorityFee.ToHexString(skipLeadingZeros: true)})"
+                        : null;
+                    return;
                 }
 
                 // The fee cap is filled without a bound and applied as its low 256 bits, which then sit below the
                 // priority fee; the error names the transaction with the fee cap it was filled with.
-                BigInteger feeCap = (BigInteger)priorityFee + (BigInteger)header.BaseFeePerGas * 2;
-                Transaction tx = result.Data;
-                tx.DecodedMaxFeePerGas = (UInt256)(feeCap & (BigInteger)UInt256.MaxValue);
-                if (feeCap > (BigInteger)UInt256.MaxValue && call.GetType() == typeof(EIP1559TransactionForRpc))
-                    _feeCapBeyond256Bits = feeCap;
-
-                return tx;
+                BigInteger filledFeeCap = (BigInteger)priorityFee + (BigInteger)header.BaseFeePerGas * 2;
+                request.MaxFeePerGas = (UInt256)(filledFeeCap & (BigInteger)UInt256.MaxValue);
+                if (filledFeeCap > (BigInteger)UInt256.MaxValue && call.GetType() == typeof(EIP1559TransactionForRpc))
+                    _feeCapBeyond256Bits = filledFeeCap;
             }
 
             /// <summary>The hash of an unsigned dynamic-fee <paramref name="tx"/> carrying <paramref name="feeCap"/>.</summary>
