@@ -19,7 +19,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm;
@@ -1002,7 +1001,6 @@ public partial class BlockDownloaderTests
     private IContainer CreateNode(Action<ContainerBuilder>? configurer = null, IConfigProvider? configProvider = null)
     {
         configProvider ??= new ConfigProvider();
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = TestStateBackend.UseFlatDb;
 
         Block genesis = Build.A.Block.Genesis.TestObject;
         ContainerBuilder b = new ContainerBuilder()

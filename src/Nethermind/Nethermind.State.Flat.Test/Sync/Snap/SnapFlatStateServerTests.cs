@@ -161,7 +161,7 @@ public class SnapFlatStateServerTests
 
     private static byte[] BuildRootRlp(out Hash256 rootHash)
     {
-        using MemDb trieDb = new();
+        MemoryNodeStorage trieDb = new();
         RawScopedTrieStore trieStore = new(trieDb);
         StateTree tree = new(trieStore, LimboLogs.Instance);
 
@@ -177,7 +177,7 @@ public class SnapFlatStateServerTests
 
     private static Hash256 BuildAndPersistStorageRoot(Hash256 addressHash, int slotCount, out byte[] rootRlp)
     {
-        using MemDb storageDb = new();
+        MemoryNodeStorage storageDb = new();
         RawScopedTrieStore storageStore = new(storageDb, addressHash);
         StorageTree storageTree = new(storageStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
 
@@ -196,7 +196,7 @@ public class SnapFlatStateServerTests
 
     private static byte[] BuildSingleAccountStateRoot(Hash256 addressHash, Hash256 storageRoot, out Hash256 rootHash)
     {
-        using MemDb trieDb = new();
+        MemoryNodeStorage trieDb = new();
         RawScopedTrieStore trieStore = new(trieDb);
         StateTree tree = new(trieStore, LimboLogs.Instance);
 

@@ -76,8 +76,8 @@ public class FlatStateReader(
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
     /// <summary>
-    /// Translates "state unavailable" into <see cref="MissingTrieNodeException"/> — the hash-based reader's
-    /// contract — keeping the cause as inner, so JSON-RPC answers resource-unavailable (-32002) for a
+    /// Translates "state unavailable" into <see cref="MissingTrieNodeException"/> — what <see cref="IStateReader"/>
+    /// callers expect — keeping the cause as inner, so JSON-RPC answers resource-unavailable (-32002) for a
     /// <see cref="StateNotRetainedException"/> and resource-not-found otherwise.
     /// </summary>
     private ReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock)

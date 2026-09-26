@@ -83,11 +83,6 @@ namespace Nethermind.Trie
         {
         }
 
-        public PatriciaTree(IKeyValueStoreWithBatching keyValueStore)
-            : this(keyValueStore, EmptyTreeHash, true, NullLogManager.Instance)
-        {
-        }
-
         public PatriciaTree(ITrieStore trieStore, ILogManager logManager, ICappedArrayPool? bufferPool = null)
             : this(trieStore.GetTrieStore(null), EmptyTreeHash, true, logManager, bufferPool: bufferPool)
         {
@@ -95,21 +90,6 @@ namespace Nethermind.Trie
 
         public PatriciaTree(IScopedTrieStore trieStore, ILogManager logManager, ICappedArrayPool? bufferPool = null)
             : this(trieStore, EmptyTreeHash, true, logManager, bufferPool: bufferPool)
-        {
-        }
-
-        public PatriciaTree(
-            IKeyValueStoreWithBatching keyValueStore,
-            Hash256 rootHash,
-            bool allowCommits,
-            ILogManager logManager,
-            ICappedArrayPool? bufferPool = null)
-            : this(
-                new RawScopedTrieStore(new NodeStorage(keyValueStore), null),
-                rootHash,
-                allowCommits,
-                logManager,
-                bufferPool: bufferPool)
         {
         }
 
@@ -353,7 +333,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        public ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             byte[]? array = null;
             try
@@ -518,7 +498,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual void Set(ReadOnlySpan<byte> rawKey, byte[] value) => Set(rawKey, new CappedArray<byte>(value));
+        public void Set(ReadOnlySpan<byte> rawKey, byte[] value) => Set(rawKey, new CappedArray<byte>(value));
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
@@ -1054,8 +1034,8 @@ namespace Nethermind.Trie
         /// <param name="visitingOptions">Options</param>
         /// <param name="storageAddr">Address of storage, if it should visit storage.</param>
         /// <param name="storageRoot">Root of storage if it should visit storage. Optional for performance.</param>
-        /// <param name="diagnostics">When non-null, the resolver is wrapped with <see cref="MeteredTrieNodeResolver"/>
-        /// and per-call lookup, cache-miss, and depth counters are accumulated into this instance.</param>
+        /// <param name="diagnostics">When non-null, per-call lookup, cache-miss, and depth counters are accumulated
+        /// into this instance.</param>
         /// <typeparam name="TNodeContext"></typeparam>
         public void Accept<TNodeContext>(
             ITreeVisitor<TNodeContext> visitor,
@@ -1073,7 +1053,8 @@ namespace Nethermind.Trie
             using TrieVisitContext trieVisitContext = new()
             {
                 MaxDegreeOfParallelism = visitingOptions.MaxDegreeOfParallelism,
-                IsStorage = storageAddr is not null
+                IsStorage = storageAddr is not null,
+                Diagnostics = diagnostics
             };
 
             if (storageAddr is not null)
@@ -1091,16 +1072,7 @@ namespace Nethermind.Trie
             ReadFlags flags = visitor.ExtraReadFlag;
             if (visitor.IsFullDbScan)
             {
-                if (TrieStore.Scheme == INodeStorage.KeyScheme.HalfPath)
-                {
-                    // With halfpath or flat, the nodes are ordered so readahead will make things faster.
-                    flags |= ReadFlags.HintReadAhead;
-                }
-                else
-                {
-                    // With hash, we don't wanna add cache as that will take some CPU time away.
-                    flags |= ReadFlags.HintCacheMiss;
-                }
+                flags |= ReadFlags.HintReadAhead;
             }
 
             ITrieNodeResolver resolver = flags != ReadFlags.None
@@ -1142,13 +1114,6 @@ namespace Nethermind.Trie
                     TreePath emptyPath = TreePath.Empty;
                     rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
                 }
-            }
-            // Full db scan
-            else if (TrieStore.Scheme == INodeStorage.KeyScheme.Hash && visitingOptions.FullScanMemoryBudget != 0)
-            {
-                visitor.VisitTree(default, rootHash);
-                BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
-                batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }
             else if (TryGetRootRef(out TrieNode? rootRef))
             {

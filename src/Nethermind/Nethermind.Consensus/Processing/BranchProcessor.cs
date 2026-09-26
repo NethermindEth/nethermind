@@ -30,8 +30,6 @@ public class BranchProcessor(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
 
-    private const int MaxUncommittedBlocks = 64;
-
     public event EventHandler<BlockExecutedEventArgs>? BlockExecuted;
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
@@ -192,17 +190,17 @@ public class BranchProcessor(
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
-                // CommitBranch in parts if we have long running branch
-                bool isFirstInBatch = i == 0;
-                bool isLastInBatch = i == blocksCount - 1;
-                bool isNotAtTheEdge = !isFirstInBatch && !isLastInBatch;
-                bool isCommitPoint = i % MaxUncommittedBlocks == 0 && isNotAtTheEdge;
-                if (isCommitPoint && notReadOnly)
+                // Reopen the scope for the next block of the branch, as the tip does for every block. A FlatDB scope
+                // is built for one commit: every further commit keeps its block on the scope's own lookup path, which
+                // a cold read scans before the shared snapshots, and draws its buffers outside the processing pool.
+                // A read-only chain publishes no snapshots, so its next block could not open at this one.
+                // Opens at the block just committed rather than looking up the next block's parent, which a branch
+                // processed outside the block tree does not have there.
+                if (i < blocksCount - 1 && notReadOnly && worldStateCloser is not null)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-
-                    worldStateCloser?.Dispose();
-                    worldStateCloser = BeginTargetScope(suggestedBlocks[i + 1]);
+                    worldStateCloser.Dispose();
+                    worldStateCloser = null;
+                    worldStateCloser = stateProvider.BeginScope(processedBlock.Header);
                 }
 
                 preBlockBaseBlock = processedBlock.Header;

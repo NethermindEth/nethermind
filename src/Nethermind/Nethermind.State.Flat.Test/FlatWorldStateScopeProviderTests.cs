@@ -178,6 +178,7 @@ public class FlatWorldStateScopeProviderTests
 
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
+                    .AddSingleton<FlatWorldStateManager>()
                     .Bind<IWorldStateManager, FlatWorldStateManager>()
                     .AddSingleton<IPersistence>(Substitute.For<IPersistence>())
                     .AddSingleton<IFlatStateRootIndex>(Substitute.For<IFlatStateRootIndex>())
@@ -221,7 +222,7 @@ public class FlatWorldStateScopeProviderTests
                     .AddSingleton<IProcessExitSource>(_ => new CancellationTokenSourceProcessExitSource(_cancellationTokenSource))
                     .AddSingleton<ILogManager>(LimboLogs.Instance)
                     .AddSingleton<IFlatDbConfig>(config)
-                    .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()))
+                    .AddSingleton<IWorldStateScopeProvider.ICodeDb>(_ => new KeyValueWithBatchingBackedCodeDb(new TestMemDb()))
                     .AddSingleton<IInitConfig>(_ => Substitute.For<IInitConfig>())
                 ;
 
@@ -646,7 +647,7 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         // Compute expected storage root using standalone StorageTree
-        TestMemDb testDb = new();
+        MemoryNodeStorage testDb = new();
         RawScopedTrieStore trieStore = new(testDb);
         StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
         expectedTree.Set(slotIndex, slotValue);
@@ -689,7 +690,7 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         // Compute expected storage root
-        TestMemDb testDb = new();
+        MemoryNodeStorage testDb = new();
         RawScopedTrieStore trieStore = new(testDb);
         StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
         expectedTree.Set(slot1, value1);
@@ -727,7 +728,7 @@ public class FlatWorldStateScopeProviderTests
             scope.Commit((ulong)(commit + 1));
         }
 
-        TestMemDb testDb = new();
+        MemoryNodeStorage testDb = new();
         RawScopedTrieStore trieStore = new(testDb);
         StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
         for (int i = 1; i <= slotsPerCommit * commitCount; i++) expectedTree.Set((UInt256)i, new UInt256([(byte)i, (byte)(i >> 8)], isBigEndian: true).ToMinimalBigEndian());
@@ -772,7 +773,7 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(2);
 
         // Compute expected storage root with both slots
-        TestMemDb testDb = new();
+        MemoryNodeStorage testDb = new();
         RawScopedTrieStore trieStore = new(testDb);
         StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
         expectedTree.Set(slot1, value1);
@@ -828,7 +829,7 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(3);
 
         // Expected: only slot2 should exist (storage was cleared)
-        TestMemDb testDb = new();
+        MemoryNodeStorage testDb = new();
         RawScopedTrieStore trieStore = new(testDb);
         StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
         expectedTree.Set(slot2, value2);
@@ -1190,7 +1191,7 @@ public class FlatWorldStateScopeProviderTests
         FlatWorldStateScope scope = new(
             new StateId(0, TestItem.KeccakA),
             bundle,
-            new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
+            new KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
             Substitute.For<IFlatCommitTarget>(),
             config,
             warmer,

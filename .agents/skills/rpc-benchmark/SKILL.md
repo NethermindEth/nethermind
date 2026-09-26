@@ -30,10 +30,10 @@ More than two arms: `tool_config.clients` (`nethermind@<image>` per arm) overrid
 
 ## What the runners actually hold
 
-The amd64 box holds the full snapshot set, so it serves every `client`, `reference_client` and
-`state_layout`. The ARM box carries the Nethermind **flat** set plus one directory per additionally
+The amd64 box holds the full snapshot set, so it serves every `client` and `reference_client`.
+The ARM box carries the Nethermind **flat** set plus one directory per additionally
 provisioned client (`/data/<client>/<client>-<block>`), so any provisioned `client` runs there in
-single-node mode with `reference_client=none`, `state_layout=flat`, and a prebuilt image (its small
+single-node mode with `reference_client=none` and a prebuilt image (its small
 root disk dies under a build). Sweeps resolve every arm's set under the Nethermind snapshot root, so
 geth/reth sweep arms (`tool_config.clients`) run on amd64 only; the ARM box's per-client sets serve
 single-node runs.

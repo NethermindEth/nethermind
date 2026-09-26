@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool ExitOnSynced { get; set; } = false;
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
         public int MallocTrimIntervalSec { get; set; } = 300;
-        public bool? SnapServingEnabled { get; set; } = null;
+        public bool? SnapServingEnabled { get; set; } = true;
         public ulong SnapServingMaxDepth { get; set; } = 128;
         public int SnapServingMaxPathsPerGroup { get; set; } = 1024;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
@@ -82,7 +82,6 @@ namespace Nethermind.Blockchain.Synchronization
         public int SyncDispatcherAllocateTimeoutMs { get; set; } = 1000;
         public bool NeedToWaitForHeader { get; set; }
         public bool VerifyTrieOnStateSyncFinished { get; set; }
-        public bool TrieHealing { get; set; } = true;
         public ulong StateMaxDistanceFromHead { get; set; } = 128;
         public ulong StateMinDistanceFromHead { get; set; } = 32;
         public bool GCOnFeedFinished { get; set; } = true;

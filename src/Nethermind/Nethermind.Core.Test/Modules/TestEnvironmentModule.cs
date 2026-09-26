@@ -84,9 +84,7 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 ISyncServer syncServer = ctx.Resolve<ISyncServer>();
                 IEnode enode = ctx.Resolve<IEnode>();
                 ISnapServer snapServer = ctx.Resolve<ISnapServer>();
-                ISnapSyncPeer? snapSyncPeer = snapServer.CanServe ? new MockSnapSyncPeer(snapServer) : null;
-
-                return new SyncPeerMock(blockTree, syncServer, enode.PublicKey, snapSyncPeer: snapSyncPeer);
+                return new SyncPeerMock(blockTree, syncServer, enode.PublicKey, snapSyncPeer: new MockSnapSyncPeer(snapServer));
             })
 
             .AddDecorator<ISyncConfig>((_, syncConfig) =>
@@ -113,14 +111,6 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 networkConfig.RlpxHostShutdownCloseTimeoutMs = 1;
                 return networkConfig;
             })
-            .AddDecorator<IPruningConfig>((_, pruningConfig) =>
-            {
-                pruningConfig.CacheMb = 8;
-                pruningConfig.DirtyCacheMb = 4;
-                pruningConfig.DirtyNodeShardBit = 1;
-                return pruningConfig;
-            })
-
             .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
             ;
     }

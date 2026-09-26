@@ -21,12 +21,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Container;
-using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 
@@ -471,15 +468,17 @@ public class BlockProcessingBenchmark
         // TestNethermindModule wires PseudoNethermindModule + TestEnvironmentModule
         // with TestSpecProvider(Spec) and in-memory databases.
         // Includes PrewarmerModule (via NethermindModule) for block cache pre-warming.
+        // The processing scope opens each block's parent through this provider (target-aware scopes),
+        // and the benchmark's genesis header never enters the block tree.
+        TestStateHeaderProvider stateHeaderProvider = new();
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Spec))
+            .AddSingleton<IStateHeaderProvider>(stateHeaderProvider)
             .Build();
 
         // Single world state — BranchProcessor.Process() manages scope internally,
         // matching the live client's block processing path.
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        TestStateHeaderProvider stateHeaderProvider = new();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, stateHeaderProvider, LimboLogs.Instance);
+        IWorldStateManager wsm = _container.Resolve<IWorldStateManager>();
         IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
 
         IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();

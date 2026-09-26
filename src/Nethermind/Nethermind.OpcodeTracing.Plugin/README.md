@@ -92,7 +92,7 @@ RetrospectiveExecution mode replays historical transactions through the actual E
 
 **Not suitable for**:
 
-- Nodes running with state pruning (use archive mode: `--Pruning.Mode None`)
+- Nodes without historical state (enable FlatDB history with `--FlatDb.HistoryEnabled true`)
 
 **Parallel Processing**:
 
@@ -292,10 +292,10 @@ dotnet run --project Nethermind.Runner -- \\
 ### Trace Historical Blocks with EVM Execution
 
 ```bash
-# Replay historical transactions through the EVM (requires archive node)
+# Replay historical transactions through the EVM (requires historical state)
 dotnet run --project Nethermind.Runner -- \\
   --config mainnet \\
-  --Pruning.Mode None \\
+  --FlatDb.HistoryEnabled true \\
   --OpcodeTracing.Enabled true \\
   --OpcodeTracing.StartBlock 17000000 \\
   --OpcodeTracing.EndBlock 17001000 \\
@@ -404,9 +404,9 @@ State unavailable for block 12345678, skipping (parent state may be pruned)
 
 **Solutions**:
 
-1. **Use an archive node**: Run Nethermind with pruning disabled:
+1. **Use an archive node**: Run Nethermind with FlatDB history enabled:
    ```bash
-   --Pruning.Mode None
+   --FlatDb.HistoryEnabled true
    ```
    Note: Archive nodes require significantly more disk space (several TB for mainnet).
 
@@ -449,4 +449,3 @@ And then use `--loggerConfigSource=/nethermind/data/customNLog.config` with the 
 ## Additional Resources
 
 - [Nethermind Plugin Documentation](https://docs.nethermind.io/developers/plugins/)
-

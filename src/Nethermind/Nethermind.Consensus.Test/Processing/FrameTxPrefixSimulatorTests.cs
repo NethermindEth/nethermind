@@ -24,7 +24,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -158,7 +157,6 @@ public class FrameTxPrefixSimulatorTests
     {
         yield return new TestCaseData(new MissingTrieNodeException("missing", null, default, TestItem.KeccakA)).SetName("missing trie node");
         yield return new TestCaseData(new TrieNodeException("bad node", default, TestItem.KeccakA)).SetName("trie node error");
-        yield return new TestCaseData(new TrieStoreException("store failure")).SetName("trie store error");
         yield return new TestCaseData(new TrieException("trie failure")).SetName("trie error");
         yield return new TestCaseData(new ObjectDisposedException("db")).SetName("disposed db");
         yield return new TestCaseData(new IOException("disk failure")).SetName("disk error");

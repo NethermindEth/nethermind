@@ -14,28 +14,23 @@ namespace Nethermind.Consensus.Stateless;
 
 /// <summary>A node storage that maps a witness node's keccak straight to its bytes.</summary>
 /// <remarks>
-/// The alternative is a <c>MemDb</c> behind <see cref="NodeStorage"/>, which keys a dictionary by
-/// <c>byte[]</c>: every witness node pays a key-array allocation on load, and every read builds a
-/// key span, hashes its bytes and compares them against the stored array. Here the keccak is the key,
-/// so witness-bucket reads compare the keccak word-wise. After the first write, reads first probe the
-/// seeded write dictionary, whose null tombstones must override the original witness.
+/// Witness entries are placed into buckets using their leading hash bytes and compared by their complete
+/// 256-bit key. Buckets with more than eight entries use a seeded overflow dictionary, so a maliciously
+/// crowded witness cannot make every read scan an unbounded array. Writes are kept in a separate dictionary;
+/// null entries are tombstones that override an immutable witness entry.
 /// <para>
-/// The masked leading bytes are unseeded, so an offline grind can crowd the same bucket across payloads.
-/// Buckets larger than eight entries use the seeded overflow dictionary instead of scanning; a crowded
-/// witness therefore loses the bucket optimization but cannot make the array scan unbounded. Duplicate
-/// witness entries consume separate slots, and overflow entries remain retained in both representations.
+/// Duplicate witness entries consume separate bucket slots, while the overflow dictionary keeps one value per
+/// key. The empty-tree RLP is seeded explicitly because witnesses may omit it.
 /// </para>
 /// <para>
-/// Only the zkEVM guest uses this (see <c>WitnessNodeStorage.zkevm.cs</c>). It is not thread-safe, and
-/// the host commits storage tries in parallel — <c>PersistentStorageProvider.UpdateRootHashesMultiThread</c>
-/// — so the host keeps the <c>MemDb</c> form, whose dictionary is concurrent.
+/// The write overlay is a plain dictionary in the zkEVM guest and a concurrent one on the host, which updates
+/// storage roots on several threads.
 /// </para>
 /// </remarks>
-internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBatch
+internal sealed partial class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBatch
 {
     private static readonly NodeKey EmptyRootKey = new(Keccak.EmptyTreeHash.ValueHash256);
 
-    private readonly Dictionary<NodeKey, byte[]?> _nodes = [];
     private readonly Dictionary<NodeKey, byte[]> _overflow = [];
     private readonly NodeKey[] _keys;
     private readonly byte[][] _values;
@@ -73,27 +68,13 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         }
     }
 
-    /// <inheritdoc/>
-    /// <remarks>The scheme is fixed: only <c>FullPruner</c> reassigns it, and it does not run in the guest.</remarks>
-    public INodeStorage.KeyScheme Scheme
-    {
-        get => INodeStorage.KeyScheme.Hash;
-        set => throw new NotSupportedException();
-    }
-
-    public bool RequirePath => true;
-
-    /// <inheritdoc/>
-    /// <remarks>
-    /// <see cref="NodeStorage"/> falls back to a half-path key when the hash key misses. Nothing writes
-    /// a half-path key under <see cref="INodeStorage.KeyScheme.Hash"/>, so that probe can only miss here.
-    /// </remarks>
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
         => Find(new NodeKey(keccak));
 
-    private byte[]? Find(NodeKey key)
+    private byte[]? Find(NodeKey key) => TryGetOverlay(key, out byte[]? value) ? value : FindImmutable(key);
+
+    private byte[]? FindImmutable(NodeKey key)
     {
-        if (_nodes.Count != 0 && _nodes.TryGetValue(key, out byte[]? value)) return value;
         int bucket = key.Bucket(_bucketMask);
         int start = _starts[bucket];
         int end = _starts[bucket + 1];
@@ -103,13 +84,6 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         return null;
     }
 
-    /// <inheritdoc/>
-    /// <remarks>
-    /// Null <paramref name="data"/> evicts the node. <see cref="NodeStorage"/>'s direct <c>Set</c> keeps
-    /// the hash-keyed entry and removes only the half-path one, but every stateless write arrives
-    /// through <see cref="INodeStorage.IWriteBatch"/>, whose <see cref="NodeStorage"/> form removes the
-    /// hash key as well.
-    /// </remarks>
     public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
     {
         NodeKey key = new(keccak);
@@ -120,17 +94,19 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 
         if (data.IsNull())
         {
-            _nodes[key] = null;
+            SetOverlay(key, null);
         }
         else
         {
-            _nodes[key] = data.ToArray();
+            SetOverlay(key, data.ToArray());
         }
     }
 
     // The empty root is seeded, so it needs no special case here.
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
-        => Find(new NodeKey(keccak)) is not null;
+        => Exists(new NodeKey(keccak));
+
+    private bool Exists(NodeKey key) => TryGetOverlay(key, out byte[]? value) ? value is not null : FindImmutable(key) is not null;
 
     public INodeStorage.IWriteBatch StartWriteBatch() => this;
 
@@ -139,10 +115,6 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 
     // The store outlives every batch taken on it.
     public void Dispose() { }
-
-    public void Flush(bool onlyWal) { }
-
-    public void Compact() { }
 
     /// <summary>A node keccak as a dictionary key.</summary>
     /// <remarks>

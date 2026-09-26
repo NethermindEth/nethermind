@@ -211,7 +211,6 @@ case "$CLIENT" in
       "--JsonRpc.GasCap=$RPC_GAS_CAP"
       "--Init.DiscoveryEnabled=false"
       "--Network.MaxActivePeers=0"
-      "--Pruning.Mode=None"
       "--HealthChecks.Enabled=false"
       "--Metrics.Enabled=false"
     )

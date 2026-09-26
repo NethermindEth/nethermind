@@ -25,7 +25,6 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
     public Func<byte[], byte[]>? ReadFunc { get; set; }
     public Func<byte[], byte[]?, bool>? WriteFunc { get; set; }
 
-    public bool WasFlushed => FlushCount > 0;
     public int FlushCount { get; private set; }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -56,9 +55,6 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
 
     public void KeyWasRead(byte[] key, int times = 1) =>
         Assert.That(_readKeys.Count(it => Bytes.AreEqual(it.Item1, key)), Is.EqualTo(times));
-
-    public void KeyWasReadWithFlags(byte[] key, ReadFlags flags, int times = 1) =>
-        Assert.That(_readKeys.Count(it => Bytes.AreEqual(it.Item1, key) && it.Item2 == flags), Is.EqualTo(times));
 
     public void KeyWasWritten(byte[] key, int times = 1) =>
         Assert.That(_writes.Count(it => Bytes.AreEqual(it.Item1.Item1, key)), Is.EqualTo(times));

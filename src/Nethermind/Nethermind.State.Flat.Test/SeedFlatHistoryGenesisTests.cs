@@ -1,25 +1,18 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
-using System.IO.Abstractions;
-using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test;
 using Nethermind.Db;
-using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat.History;
-using Nethermind.State.Flat.Persistence;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -124,21 +117,8 @@ public class SeedFlatHistoryGenesisTests
         Assert.That(_reader.HasHistoryForBlock(0), Is.True);
     }
 
-    // On-disk state can keep an upgraded node on patricia even with the flag on; then nothing reads this history
-    // and the step must not seed it.
-    [Test]
-    public async Task Skips_seeding_on_a_patricia_backend()
-    {
-        ChainSpec chainSpec = new() { Allocations = new() { [TestItem.AddressA] = new ChainSpecAllocation(1000) } };
-
-        SeedFlatHistoryGenesis step = new(CreatePolicy(flatActive: false), chainSpec, BlockTree(), _writer, _reader, LimboLogs.Instance);
-        await step.Execute(CancellationToken.None);
-
-        Assert.That(_reader.HasHistoryForBlock(0), Is.False);
-    }
-
     private SeedFlatHistoryGenesis Step(ChainSpec chainSpec, int headBlockNumber = 100, bool hasGenesis = true) =>
-        new(CreatePolicy(flatActive: true), chainSpec, BlockTree(headBlockNumber, hasGenesis), _writer, _reader, LimboLogs.Instance);
+        new(chainSpec, BlockTree(headBlockNumber, hasGenesis), _writer, _reader, LimboLogs.Instance);
 
     private static IBlockTree BlockTree(int headBlockNumber = 100, bool hasGenesis = true)
     {
@@ -148,25 +128,4 @@ public class SeedFlatHistoryGenesisTests
         return blockTree;
     }
 
-    private static FlatStateActivationPolicy CreatePolicy(bool flatActive)
-    {
-        IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
-        flatDbConfig.Enabled.Returns(flatActive);
-
-        MemColumnsDb<FlatDbColumns> flatDb = new();
-        if (flatActive)
-            BasePersistence.SetCurrentState(flatDb.GetColumnDb(FlatDbColumns.Metadata), new StateId(1, Keccak.Zero));
-
-        IInitConfig initConfig = Substitute.For<IInitConfig>();
-        initConfig.BaseDbPath.Returns("/data");
-        return new FlatStateActivationPolicy(
-            flatDbConfig,
-            new TestHardwareInfo(32L * 1024 * 1024 * 1024),
-            new Lazy<IColumnsDb<FlatDbColumns>>(() => flatDb),
-            new Lazy<IDb>(() => new MemDb()),
-            Substitute.For<ISyncConfig>(),
-            initConfig,
-            Substitute.For<IFileSystem>(),
-            LimboLogs.Instance);
-    }
 }

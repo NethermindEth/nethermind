@@ -1,15 +1,12 @@
 name: Sync Chain
 description: >-
-  Run a Nethermind sync test for one network in one sync mode on a self-hosted runner:
+  Run a Nethermind FlatDB sync test for one network on a self-hosted runner:
   builds sedge, brings up the node pair, ships telemetry, and waits for the sync to
   complete or fail. Requires the repository to be checked out already.
 
 inputs:
   network:
     description: Network to sync (e.g. hoodi, op-sepolia, taiko-alethia).
-    required: true
-  mode:
-    description: HalfPath or Flat.
     required: true
   docker_image:
     description: Nethermind Docker image to sync with.
@@ -124,15 +121,13 @@ runs:
       env:
         PREFIX: ${{ inputs.node_name_prefix }}
         NETWORK: ${{ inputs.network }}
-        SYNC_MODE: ${{ inputs.mode }}
-      run: echo "name=${PREFIX}-${NETWORK}-${SYNC_MODE}-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+      run: echo "name=${PREFIX}-${NETWORK}-flat-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
 
     - name: Run Sedge
       shell: bash
       working-directory: sedge
       env:
         NETWORK: ${{ inputs.network }}
-        SYNC_MODE: ${{ inputs.mode }}
         DOCKER_IMAGE: ${{ inputs.docker_image }}
         CL_CLIENT: ${{ inputs.cl }}
         CL_IMAGE: ${{ inputs.cl_image }}
@@ -165,7 +160,6 @@ runs:
       shell: bash
       env:
         NETWORK: ${{ inputs.network }}
-        SYNC_MODE: ${{ inputs.mode }}
       run: python scripts/wait-for-sync.py
 
     - name: Collect Nethermind debug logs
@@ -173,13 +167,12 @@ runs:
       shell: bash
       env:
         NETWORK: ${{ inputs.network }}
-        SYNC_MODE: ${{ inputs.mode }}
       run: |
         target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
         cd "$target_dir/logs"
         log_file=$(find . -type f -name "*.log" | head -n 1)
         echo "Found log file: $log_file"
-        artifact_name="$(basename "$log_file")-${NETWORK}-${SYNC_MODE}-${GITHUB_RUN_ID}"
+        artifact_name="$(basename "$log_file")-${NETWORK}-flat-${GITHUB_RUN_ID}"
         zip "${artifact_name}.zip" "$log_file"
         echo "artifact_name=$artifact_name" >> "$GITHUB_ENV"
         echo "artifact_path=$(pwd)/${artifact_name}.zip" >> "$GITHUB_ENV"

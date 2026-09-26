@@ -54,7 +54,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     // further captures would only write rows above a gap no read can cross, so skip them until restart.
     private volatile bool _permanentGapDetected;
     private int _consecutiveCaptureFailures;
-    // Config cannot prove the hook is wired (a patricia backend constructs this writer but never invokes it).
+    // Config cannot prove that the persistence hook is wired until the first capture succeeds.
     private volatile bool _captureProven;
 
     private readonly byte _formatVersion;

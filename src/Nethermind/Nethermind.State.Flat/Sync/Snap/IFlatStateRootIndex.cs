@@ -7,9 +7,8 @@ namespace Nethermind.State.Flat.Sync.Snap;
 
 /// <summary>
 /// Tracks mapping from state root hash to StateId for serving snap sync requests.
-/// Similar to <see cref="ILastNStateRootTracker"/> but provides StateId for lookup.
 /// </summary>
-public interface IFlatStateRootIndex : ILastNStateRootTracker
+public interface IFlatStateRootIndex
 {
     /// <summary>
     /// Try to get the StateId for a given state root hash.

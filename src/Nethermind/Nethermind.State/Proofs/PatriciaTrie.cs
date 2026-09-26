@@ -3,10 +3,10 @@
 
 using System;
 using Nethermind.Core.Buffers;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Proofs;
 
@@ -23,7 +23,7 @@ public abstract class PatriciaTrie<T> : PatriciaTree
     /// otherwise, <c>false</c>.
     /// </param>
     protected PatriciaTrie(ReadOnlySpan<T> list, bool canBuildProof, ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
-        : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, NullLogManager.Instance, bufferPool: bufferPool)
+        : base(canBuildProof ? new RawScopedTrieStore(new MemoryNodeStorage()) : NullTrieStore.Instance, EmptyTreeHash, false, NullLogManager.Instance, bufferPool: bufferPool)
     {
         CanBuildProof = canBuildProof;
 

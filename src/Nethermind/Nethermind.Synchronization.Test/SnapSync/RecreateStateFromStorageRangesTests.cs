@@ -44,8 +44,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         private ContainerBuilder CreateContainerBuilder() =>
             new ContainerBuilder()
                 .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
-                .AddKeyedSingleton<IDb>(DbNames.State, (_) => (IDb)new TestMemDb())
-                .AddSingleton<ISnapTestHelper, PatriciaSnapTestHelper>()
+                .AddSingleton<ISnapTestHelper, FlatSnapTestHelper>()
                 ;
 
         private IContainer CreateContainer() =>

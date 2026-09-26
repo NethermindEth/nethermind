@@ -28,8 +28,6 @@ using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -48,7 +46,6 @@ namespace Nethermind.Synchronization
         private readonly IBlockAccessListStore _blockAccessListStore;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
-        private readonly IReadOnlyKeyValueStore? _stateDb;
         private readonly IReadOnlyKeyValueStore _codeDb;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
@@ -70,7 +67,6 @@ namespace Nethermind.Synchronization
         private const int NewHeadBlockRangeUpdateFrequency = 32;
 
         public SyncServer(
-            IWorldStateManager worldStateManager,
             [KeyFilter(DbNames.Code)] IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
@@ -94,7 +90,6 @@ namespace Nethermind.Synchronization
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
-            _stateDb = worldStateManager.HashServer;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
@@ -420,7 +415,7 @@ namespace Nethermind.Synchronization
 
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
 
-        public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken)
         {
             using DeferredRlpItemList.Builder builder = new(keys.Count);
             DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
@@ -430,28 +425,9 @@ namespace Nethermind.Synchronization
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
-                bool found = false;
-                if ((includedTypes & NodeDataType.State) == NodeDataType.State && _stateDb is not null)
-                {
-                    Span<byte> value = _stateDb.GetSpan(keys[i].Bytes);
-                    if (!value.IsNullOrEmpty())
-                    {
-                        writer.WriteValue(value);
-                        _stateDb.DangerousReleaseMemory(value);
-                        found = true;
-                    }
-                }
-
-                if (!found && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
-                {
-                    Span<byte> value = _codeDb.GetSpan(keys[i].Bytes);
-                    writer.WriteValue(value);
-                    _codeDb.DangerousReleaseMemory(value);
-                    found = true;
-                }
-
-                if (!found)
-                    writer.WriteValue([]);
+                Span<byte> value = _codeDb.GetSpan(keys[i].Bytes);
+                writer.WriteValue(value);
+                _codeDb.DangerousReleaseMemory(value);
                 count++;
             }
 

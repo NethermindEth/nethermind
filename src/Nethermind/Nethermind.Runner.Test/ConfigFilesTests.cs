@@ -56,26 +56,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("fast", true)]
     public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled) => Test<ISyncConfig, bool>(configWildcard, static c => c.FastSync, fastSyncEnabled);
 
-    [TestCase("archive")]
-    public void Archive_configs_have_pruning_turned_off(string configWildcard) => Test<IPruningConfig, PruningMode>(configWildcard, static c => c.Mode, PruningMode.None);
-
-    [Test]
-    public void Fast_sync_without_snap_stays_on_patricia()
-    {
-        int fastWithoutSnapConfigs = 0;
-        foreach (string configFile in AllConfigFiles())
-        {
-            ISyncConfig sync = GetConfigFromFile<ISyncConfig>(configFile);
-            if (!sync.FastSync || sync.SnapSync)
-                continue;
-
-            fastWithoutSnapConfigs++;
-            Assert.That(GetConfigFromFile<IFlatDbConfig>(configFile).Enabled, Is.False, configFile);
-        }
-
-        Assert.That(fastWithoutSnapConfigs, Is.GreaterThan(0));
-    }
-
     [TestCase("archive", true)]
     [TestCase("fast", true)]
     [TestCase("spaceneth", false)]
@@ -312,8 +292,18 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
+    // FlatDb.Enabled=false is refused at startup, so no shipped config may pin it (fast sync without snap included).
     [Test]
-    public void Archive_named_configs_have_pruning_turned_off_in_all_runner_configs()
+    public void No_config_disables_flat_db()
+    {
+        foreach (string configFile in AllConfigFiles())
+        {
+            Assert.That(GetConfigFromFile<IFlatDbConfig>(configFile).Enabled, Is.True, configFile);
+        }
+    }
+
+    [Test]
+    public void Archive_named_configs_enable_flat_history_in_all_runner_configs()
     {
         int archiveConfigs = 0;
         foreach (string configFile in AllConfigFiles())
@@ -324,8 +314,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
             }
 
             archiveConfigs++;
-            IPruningConfig pruningConfig = GetConfigFromFile<IPruningConfig>(configFile);
-            Assert.That(pruningConfig.Mode, Is.EqualTo(PruningMode.None), configFile);
+            Assert.That(GetConfigFromFile<IFlatDbConfig>(configFile).HistoryEnabled, Is.True, configFile);
         }
 
         Assert.That(archiveConfigs, Is.GreaterThan(0));
@@ -372,15 +361,6 @@ public class ConfigFilesTests : ConfigFileTestsBase
             Assert.That(syncConfig.FastSync, Is.True);
             Assert.That(syncConfig.PivotNumber, Is.EqualTo(switchBlock + 1));
         });
-    }
-
-    // XDPoSChain peers state-sync via GetNodeData, which SyncServer can only answer from
-    // WorldStateManager.HashServer — non-null solely on the patricia backend with hash-keyed nodes.
-    [Test]
-    public void Xdc_configs_can_serve_node_data([Values("xdc.json", "xdc-testnet.json", "xdc_archive.json")] string configWildcard)
-    {
-        Test<IFlatDbConfig, bool>(configWildcard, static c => c.Enabled, false);
-        Test<IInitConfig, INodeStorage.KeyScheme>(configWildcard, static c => c.StateDbKeyScheme, INodeStorage.KeyScheme.Hash);
     }
 
     // NeedToWaitForHeader would hold state sync back until the reverse header sync reaches genesis. XdcStateSyncPivot

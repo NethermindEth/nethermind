@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
@@ -17,9 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -40,14 +39,14 @@ public class ReorgTests
     private BlockTree _blockTree = null!;
     private BlockHeader _genesis = null!;
     private TestStateHeaderProvider _stateHeaderProvider = null!;
+    private IContainer _worldStateContainer = null!;
 
     [OneTimeSetUp]
     public void Setup()
     {
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
-        IDbProvider memDbProvider = TestMemDbProvider.Init();
         TestStateHeaderProvider stateHeaderProvider = _stateHeaderProvider = new();
-        (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance, stateHeaderProvider);
+        (IWorldState stateProvider, IStateReader stateReader, _worldStateContainer) = TestWorldStateFactory.CreateFlatForTestWithStateReader(LimboLogs.Instance, stateHeaderProvider);
 
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
 
@@ -134,7 +133,11 @@ public class ReorgTests
     }
 
     [OneTimeTearDown]
-    public async Task TearDownAsync() => await (_blockchainProcessor?.DisposeAsync() ?? default);
+    public async Task TearDownAsync()
+    {
+        await (_blockchainProcessor?.DisposeAsync() ?? default);
+        _worldStateContainer?.Dispose();
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Test()

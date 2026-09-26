@@ -23,7 +23,7 @@ namespace Nethermind.State;
 
 /// <summary>
 /// Manages persistent storage allowing for snapshotting and restoring
-/// Persists data to ITrieStore
+/// Persists data through the world-state scope
 /// </summary>
 internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager, LocalMetrics metrics)
     : PartialStorageProviderBase(logManager)

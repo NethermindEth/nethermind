@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.Trie;
@@ -28,7 +27,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
         (ulong from, ulong to, CommitmentEmitter? emitter, SeriesWriter series, WalkProgress progress, int item, CancellationToken token) = context;
         long replayed = 0;
         ulong replayedUpTo = resumeFrom ?? from;
-        RawScopedTrieStore store = new(new MemDb());
+        RawScopedTrieStore store = new(new MemoryNodeStorage());
         StateTree state = new(store, logManager);
         TrieChangeCollector? changes = emitter is null ? null : new TrieChangeCollector();
         using SeriesPublisher publisher = new(SeriesScope.Accounts, prefix, seriesKey, series);

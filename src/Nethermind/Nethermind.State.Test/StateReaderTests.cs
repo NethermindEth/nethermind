@@ -12,10 +12,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using Nethermind.State;
@@ -25,32 +23,19 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture(false)]
-    [TestFixture(true)]
     [Parallelizable(ParallelScope.All)]
-    public class StateReaderTests(bool useFlat)
+    public class StateReaderTests
     {
         private static readonly Hash256 Hash1 = Keccak.Compute("1");
         private readonly Address _address1 = new(Hash1);
-        private static readonly ILogManager Logger = LimboLogs.Instance;
 
         private sealed class Context : IDisposable
         {
             public IWorldState WorldState { get; }
             public IStateReader Reader { get; }
-            private readonly IContainer? _container;
+            private readonly IContainer _container;
 
-            public Context(bool useFlat)
-            {
-                if (useFlat)
-                {
-                    (WorldState, Reader, _container) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
-                }
-                else
-                {
-                    (WorldState, Reader) = TestWorldStateFactory.CreateForTestWithStateReader();
-                }
-            }
+            public Context() => (WorldState, Reader, _container) = TestWorldStateFactory.CreateFlatForTestWithStateReader();
 
             public BlockHeader CommitAndCapture(Action<IWorldState> populate, ulong blockNumber = 0)
             {
@@ -61,14 +46,14 @@ namespace Nethermind.Store.Test
                 return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(WorldState.StateRoot).TestObject;
             }
 
-            public void Dispose() => _container?.Dispose();
+            public void Dispose() => _container.Dispose();
         }
 
         [Test]
         public void Can_ask_about_balance_in_parallel()
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
-            using Context ctx = new(useFlat);
+            using Context ctx = new();
             IWorldState provider = ctx.WorldState;
             IStateReader reader = ctx.Reader;
 
@@ -110,7 +95,7 @@ namespace Nethermind.Store.Test
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
-            using Context ctx = new(useFlat);
+            using Context ctx = new();
             IWorldState provider = ctx.WorldState;
             IStateReader reader = ctx.Reader;
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
@@ -162,7 +147,7 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
 
-            using Context ctx = new(useFlat);
+            using Context ctx = new();
             IWorldState provider = ctx.WorldState;
             IStateReader reader = ctx.Reader;
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
@@ -212,7 +197,7 @@ namespace Nethermind.Store.Test
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new(_address1, UInt256.One);
 
-            using Context ctx = new(useFlat);
+            using Context ctx = new();
             IWorldState state = ctx.WorldState;
             IStateReader reader = ctx.Reader;
             BlockHeader baseBlock;
@@ -237,8 +222,7 @@ namespace Nethermind.Store.Test
             /* Now we are testing scenario where the storage is being changed by the block processor.
                To do that we create some different storage / state access stack that represents the processor.
                It is a different stack of objects than the one that is used by the blockchain bridge. */
-            // Note: There is only one global IWorldState and IStateReader now. With pruning trie store, the data is
-            // not written to db immediately.
+            // The processor and blockchain bridge share one IWorldState and IStateReader.
 
             byte[] newValue = new byte[] { 1, 2, 3, 4, 5 };
 
@@ -262,7 +246,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Get_storage_returns_zero_when_missing([Values] bool accountExists)
         {
-            using Context ctx = new(useFlat);
+            using Context ctx = new();
             BlockHeader header = ctx.CommitAndCapture(state =>
             {
                 state.CreateAccount(TestItem.AddressB, 1);
@@ -279,9 +263,7 @@ namespace Nethermind.Store.Test
             get
             {
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
-                    Assert.That(r.CollectStats(h, new MemDb(), Logger).AccountCount, Is.EqualTo(1)))).SetName("CollectStats");
-                yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
-                    r.RunTreeVisitor(new TrieStatsCollector(new MemDb(), LimboLogs.Instance), h))).SetName("RunTreeVisitor");
+                    r.RunTreeVisitor(new TreeDumper(), h))).SetName("RunTreeVisitor");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
                     Assert.That(r.DumpState(h), Is.Not.Empty))).SetName("DumpState");
                 yield return new TestCaseData((Action<IStateReader, BlockHeader>)((r, h) =>
@@ -292,7 +274,7 @@ namespace Nethermind.Store.Test
         [TestCaseSource(nameof(ReaderApiSmokeCases))]
         public void Reader_OnCommittedAccount(Action<IStateReader, BlockHeader> verify)
         {
-            using Context ctx = new(useFlat);
+            using Context ctx = new();
             BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, 1.Ether));
 
             verify(ctx.Reader, header);
@@ -304,7 +286,7 @@ namespace Nethermind.Store.Test
             IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.IsEip3607Enabled.Returns(eip3607Enabled);
             releaseSpec.IsEip7702Enabled.Returns(eip7702Enabled);
-            Context ctx = new(useFlat);
+            Context ctx = new();
             IWorldState sut = ctx.WorldState;
             IDisposable scope = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
@@ -348,7 +330,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void TryGetAccount_NonExistentAccount_ReturnsFalse()
         {
-            using Context ctx = new(useFlat);
+            using Context ctx = new();
             BlockHeader header = ctx.CommitAndCapture(state => state.CreateAccount(TestItem.AddressA, 1, 1));
 
             // The out parameter is intentionally not asserted: the IStateReader contract leaves it
@@ -362,7 +344,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void GetCode_EmptyHash_ReturnsEmpty()
         {
-            using Context ctx = new(useFlat);
+            using Context ctx = new();
 
             Assert.That(ctx.Reader.GetCode(Keccak.OfAnEmptyString), Is.Empty);
             Assert.That(ctx.Reader.GetCode(Keccak.OfAnEmptyString.ValueHash256), Is.Empty);
@@ -371,7 +353,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void GetCode_KnownCode_ReturnsCode()
         {
-            using Context ctx = new(useFlat);
+            using Context ctx = new();
             byte[] code = [0x60, 0x80];
             ValueHash256 codeHash = ValueKeccak.Compute(code);
             ctx.CommitAndCapture(state =>

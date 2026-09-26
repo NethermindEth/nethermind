@@ -47,20 +47,6 @@ namespace Nethermind.Db
         internal static void AddStateTreeReads(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateTreeReads.Value : ref _otherStateTreeReads.Value, count);
 
         [CounterMetric]
-        [Description("Number of State Reader reads.")]
-        public static long StateReaderReads => _mainStateReaderReads.Value + _otherStateReaderReads.Sum;
-        private static CacheLinePaddedLong _mainStateReaderReads;
-        // Bumped once per state read (StateReader), so every RPC and prewarm thread previously
-        // hit one shared word: a contended cross-core RMW per read. The block-processing thread
-        // keeps its own padded word and is left alone.
-        private static readonly StripedLong _otherStateReaderReads = new();
-        internal static void IncrementStateReaderReads()
-        {
-            if (IsBlockProcessingThread) Interlocked.Increment(ref _mainStateReaderReads.Value);
-            else _otherStateReaderReads.Increment();
-        }
-
-        [CounterMetric]
         [Description("Number of state trie writes.")]
         public static long StateTreeWrites => _stateTreeWrites.Value;
         private static CacheLinePaddedLong _stateTreeWrites;
@@ -71,10 +57,6 @@ namespace Nethermind.Db
         public static long StateSkippedWrites => _stateSkippedWrites.Value;
         private static CacheLinePaddedLong _stateSkippedWrites;
         internal static void IncrementStateSkippedWrites(long value) => Interlocked.Add(ref _stateSkippedWrites.Value, value);
-
-        [CounterMetric]
-        [Description("Number of State DB duplicate writes during full pruning.")]
-        public static int StateDbInPruningWrites;
 
         [CounterMetric]
         [Description("Number of storage trie cache hits.")]
@@ -125,12 +107,6 @@ namespace Nethermind.Db
         internal static void AddPreBlockStorageMisses(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainPreBlockStorageMisses.Value : ref _otherPreBlockStorageMisses.Value, count);
 
         [CounterMetric]
-        [Description("Number of storage reader reads.")]
-        public static long StorageReaderReads => _storageReaderReads.Sum;
-        private static readonly StripedLong _storageReaderReads = new();
-        internal static void IncrementStorageReaderReads() => _storageReaderReads.Increment();
-
-        [CounterMetric]
         [Description("Number of storage trie writes.")]
         public static long StorageTreeWrites => _storageTreeWrites.Value;
         private static CacheLinePaddedLong _storageTreeWrites;
@@ -152,20 +128,6 @@ namespace Nethermind.Db
         public static long StorageCleared => _storageCleared.Value;
         private static CacheLinePaddedLong _storageCleared;
         internal static void IncrementStorageCleared() => Interlocked.Increment(ref _storageCleared.Value);
-
-        [GaugeMetric]
-        [Description("Indicator if StateDb is being pruned.")]
-        public static int StateDbPruning { get; set; }
-
-        [GaugeMetric]
-        [Description("Duration of the last full pruning's trie copy and commit (excludes waiting for a suitable state root), in seconds.")]
-        public static long FullPruningLastDurationSeconds { get; set; }
-
-        [CounterMetric]
-        [Description("Number of full prunings completed since the node started.")]
-        public static long FullPruningCount => _fullPruningCount;
-        private static long _fullPruningCount;
-        internal static void IncrementFullPruningCount() => Interlocked.Increment(ref _fullPruningCount);
 
 #if ZK_EVM
         public static Dictionary<string, long> DbReads { get; } = [];

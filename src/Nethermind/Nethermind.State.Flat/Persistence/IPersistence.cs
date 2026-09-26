@@ -42,7 +42,7 @@ public interface IPersistence
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
 
-        // Raw operations are used in importer
+        // Raw operations are used by state sync and verification.
         byte[]? GetAccountRaw(in ValueHash256 addrHash);
         bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value);
 

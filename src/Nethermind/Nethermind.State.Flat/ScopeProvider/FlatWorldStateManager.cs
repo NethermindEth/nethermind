@@ -46,8 +46,6 @@ public class FlatWorldStateManager(
         flatDbManager,
         flatStateRootIndex,
         logManager);
-    public IReadOnlyKeyValueStore? HashServer => null;
-
     public IWorldStateScopeProvider CreateResettableWorldState() =>
         new FlatScopeProvider(
             codeDb,

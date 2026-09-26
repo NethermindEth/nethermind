@@ -107,7 +107,7 @@ public class WitnessGeneratingWorldState(
     {
         Hash256 stateRoot = parentHeader.StateRoot!;
 
-        // Required for flat layout (FlatReadOnlyTrieStore resolves nothing until a scope is opened); a no-op for patricia.
+        // Required for FlatDB (FlatReadOnlyTrieStore resolves nothing until a scope is opened).
         using IDisposable _ = trieStore.BeginScope(parentHeader);
 
         if (_storageSlots.Count > 0)

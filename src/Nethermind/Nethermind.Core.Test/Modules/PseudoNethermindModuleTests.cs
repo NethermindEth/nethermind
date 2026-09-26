@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Core.Test.Blockchain;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Specs.Forks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Receipts;
@@ -17,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.LogIndex;
+using Nethermind.Init;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
 using Nethermind.Facade.Find;
@@ -32,64 +31,33 @@ namespace Nethermind.Core.Test.Modules;
 public class PseudoNethermindModuleTests
 {
     [Test]
-    public void Default_backend_follows_suite_selection([Range(0, 3)] int constructor)
+    public void Explicit_history_configuration_is_preserved([Values] bool historyEnabled, [Values] bool useProvider)
     {
-        bool expectedFlatDb = Environment.GetEnvironmentVariable(TestStateBackend.UseTrieEnvironmentVariable) != "1";
-        TestNethermindModule module = constructor switch
-        {
-            0 => new TestNethermindModule(Osaka.Instance),
-            1 => new TestNethermindModule(Array.Empty<IConfig>()),
-            2 => new TestNethermindModule(new ChainSpec()),
-            _ => TestNethermindModule.CreateWithRealChainSpec()
-        };
-        using IContainer container = new ContainerBuilder().AddModule(module).Build();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(TestStateBackend.UseFlatDb, Is.EqualTo(expectedFlatDb));
-            Assert.That(container.Resolve<IFlatDbConfig>().Enabled, Is.EqualTo(expectedFlatDb));
-        }
-    }
-
-    [Test]
-    public void Explicit_backend_is_preserved([Values] bool enabled, [Values] bool historyEnabled, [Values] bool useProvider)
-    {
-        FlatDbConfig flatDbConfig = new() { Enabled = enabled, HistoryEnabled = historyEnabled };
+        FlatDbConfig flatDbConfig = new() { HistoryEnabled = historyEnabled };
         TestNethermindModule module = useProvider
             ? new TestNethermindModule(new ConfigProvider(flatDbConfig))
             : new TestNethermindModule(flatDbConfig);
         using IContainer container = new ContainerBuilder().AddModule(module).Build();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(container.Resolve<IFlatDbConfig>().Enabled, Is.EqualTo(enabled));
-            Assert.That(container.Resolve<IFlatDbConfig>().HistoryEnabled, Is.EqualTo(historyEnabled));
-        }
+        Assert.That(container.Resolve<IFlatDbConfig>().HistoryEnabled, Is.EqualTo(historyEnabled));
     }
 
     [Test]
-    public async Task Test_blockchain_preserves_explicit_backend([Values] bool enabled, [Values] bool historyEnabled)
+    public async Task Test_blockchain_preserves_explicit_history_configuration([Values] bool historyEnabled)
     {
-        using BackendTestBlockchain chain = new(new FlatDbConfig { Enabled = enabled, HistoryEnabled = historyEnabled });
-        chain.UseFlatDb = !enabled;
+        using BackendTestBlockchain chain = new(new FlatDbConfig { HistoryEnabled = historyEnabled });
         await chain.Initialize();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(chain.Container.Resolve<IFlatDbConfig>().Enabled, Is.EqualTo(enabled));
-            Assert.That(chain.Container.Resolve<IFlatDbConfig>().HistoryEnabled, Is.EqualTo(historyEnabled));
-        }
+        Assert.That(chain.Container.Resolve<IFlatDbConfig>().HistoryEnabled, Is.EqualTo(historyEnabled));
     }
 
     [Test]
-    public async Task Test_blockchain_applies_backend_property([Values] bool enabled)
+    public void Test_blockchain_rejects_explicit_flat_disable()
     {
-        using BackendTestBlockchain chain = new(null);
-        Assert.That(chain.UseFlatDb, Is.EqualTo(TestStateBackend.UseFlatDb));
-        chain.UseFlatDb = enabled;
-        await chain.Initialize();
+        using BackendTestBlockchain chain = new(new FlatDbConfig { Enabled = false });
 
-        Assert.That(chain.Container.Resolve<IFlatDbConfig>().Enabled, Is.EqualTo(enabled));
+        DependencyResolutionException exception = Assert.ThrowsAsync<DependencyResolutionException>(async () => await chain.Initialize())!;
+        Assert.That(exception.ToString(), Does.Contain(FlatStateActivationPolicy.LegacySchemaMessage));
     }
 
     private sealed class BackendTestBlockchain(FlatDbConfig? flatDbConfig) : BasicTestBlockchain
@@ -110,7 +78,7 @@ public class PseudoNethermindModuleTests
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(
                 new ReceiptConfig { DeriveFromState = deriveFromState },
-                new FlatDbConfig { Enabled = true, HistoryEnabled = true }))
+                new FlatDbConfig { HistoryEnabled = true }))
             .Build();
 
         using (Assert.EnterMultipleScope())
@@ -131,7 +99,7 @@ public class PseudoNethermindModuleTests
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(
                 new ReceiptConfig { DeriveFromState = true },
-                new FlatDbConfig { Enabled = true, HistoryEnabled = true }))
+                new FlatDbConfig { HistoryEnabled = true }))
             .AddSingleton<IReceiptFinder>(pluginFinder)
             .Build();
 
@@ -155,7 +123,7 @@ public class PseudoNethermindModuleTests
     {
         ConfigProvider configProvider = new(
             new ReceiptConfig { DeriveFromState = true, StoreReceipts = storeReceipts },
-            new FlatDbConfig { Enabled = historyEnabled, HistoryEnabled = historyEnabled },
+            new FlatDbConfig { HistoryEnabled = historyEnabled },
             new LogIndexConfig { Enabled = logIndexEnabled });
 
         void Validate() => NethermindModule.ValidateReceiptDerivationConfig(configProvider);
@@ -170,8 +138,8 @@ public class PseudoNethermindModuleTests
     public void FlatDb_test_container_wires_inert_persisted_snapshot_tier([Values] bool registerOwnFlatDbConfig)
     {
         ContainerBuilder builder = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }));
-        if (registerOwnFlatDbConfig) builder.AddSingleton<IFlatDbConfig>(new FlatDbConfig { Enabled = true });
+            .AddModule(new TestNethermindModule());
+        if (registerOwnFlatDbConfig) builder.AddSingleton<IFlatDbConfig>(new FlatDbConfig());
         using IContainer container = builder.Build();
 
         Assert.That(container.Resolve<ISnapshotCatalog>(), Is.SameAs(NullSnapshotCatalog.Instance));

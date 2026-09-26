@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -28,9 +27,6 @@ public class BalParentReadBenchmarks
 {
     public enum ReadPattern { First, Consecutive, Alternating, Accounts }
 
-    [Params(false, true)]
-    public bool Flat { get; set; }
-
     [ParamsAllValues]
     public ReadPattern Pattern { get; set; }
 
@@ -46,9 +42,7 @@ public class BalParentReadBenchmarks
     public void Setup()
     {
         _container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(
-                new BlocksConfig { PreWarming = PreWarmMode.None },
-                new FlatDbConfig { Enabled = Flat }))
+            .AddModule(new TestNethermindModule(new BlocksConfig { PreWarming = PreWarmMode.None }))
             .Map<IWorldStateScopeProvider, IWorldStateManager>(manager => manager.GlobalWorldState)
             .AddScoped<BlockAccessListBasedWorldState>()
             .Build();

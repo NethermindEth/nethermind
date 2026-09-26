@@ -14,7 +14,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
 using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -638,65 +637,6 @@ public class StateProviderTests(bool useFlat)
         Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
     }
 
-    [Test]
-    public void Same_code_can_be_redeployed_across_overlay_resets()
-    {
-        IContainer? containerToDispose = null;
-        IWorldStateManager manager;
-        if (useFlat)
-        {
-            (_, IContainer container) = TestWorldStateFactory.CreateFlatScopeProvider(UnavailableStateHeaderProvider.Instance);
-            containerToDispose = container;
-            manager = container.Resolve<IWorldStateManager>();
-        }
-        else
-        {
-            IDbProvider dbProvider = TestMemDbProvider.Init();
-            manager = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
-        }
-
-        try
-        {
-            using IOverridableWorldScope overridableScope = manager.CreateOverridableWorldScope();
-            IWorldState worldState = new WorldState(overridableScope.WorldState, LimboLogs.Instance);
-
-            byte[] code = [0x60, 0x60, 0x60, 0x40, 0x52, 0x00];
-            Address addr = TestItem.AddressA;
-            IReleaseSpec spec = Prague.Instance;
-
-            // First scope — deploy + commit. Commit triggers CommitCodeAsync which, before
-            // the fix, marked the shared filter on StateProvider as "persisted".
-            using (worldState.BeginScope(IWorldState.PreGenesis))
-            {
-                worldState.CreateAccount(addr, 0);
-                worldState.InsertCode(addr, code, spec);
-                worldState.Commit(spec);
-
-                Assert.That(worldState.GetCode(addr), Is.EqualTo(code));
-            }
-
-            // End of scope #1 — overlay's temp KV is discarded.
-            overridableScope.ResetOverrides();
-
-            // Second scope — same hash, fresh overlay. Before the fix, InsertCode consulted
-            // the stale "persisted" filter, skipped the _codeBatch write, and the next
-            // GetCode threw "Code 0x… is missing from the database".
-            using (worldState.BeginScope(IWorldState.PreGenesis))
-            {
-                worldState.CreateAccount(addr, 0);
-                worldState.InsertCode(addr, code, spec);
-
-                Action getCode = () => worldState.GetCode(addr);
-                Assert.That(getCode, Throws.Nothing);
-                Assert.That(worldState.GetCode(addr), Is.EqualTo(code));
-            }
-        }
-        finally
-        {
-            containerToDispose?.Dispose();
-        }
-    }
-
     /// <summary>
     /// Drops the code db's "already persisted" hint for a code hash, as a node restart would.
     /// No-op for code dbs that keep no hint, which already report <c>ContainsCode</c> false.
@@ -766,11 +706,64 @@ public class CodeDbTests
     public void KeyValueWithBatchingBackedCodeDb_ContainsCode_respects_isPersistent_flag(bool isPersistent, bool expectedContains)
     {
         IKeyValueStoreWithBatching backing = new MemDb();
-        TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb codeDb = new(backing, isPersistent);
+        KeyValueWithBatchingBackedCodeDb codeDb = new(backing, isPersistent);
         ValueHash256 hash = Keccak.Compute("any code").ValueHash256;
 
         codeDb.MarkCodePersisted(hash);
 
         Assert.That(codeDb.ContainsCode(hash), Is.EqualTo(expectedContains));
+    }
+}
+
+/// <summary>Tests of the overridable world state, which only FlatDB provides.</summary>
+[TestFixture]
+public class OverridableStateProviderTests
+{
+    [Test]
+    public void Same_code_can_be_redeployed_across_overlay_resets()
+    {
+        (IWorldStateScopeProvider _, IContainer containerToDispose) = TestWorldStateFactory.CreateFlatScopeProvider(UnavailableStateHeaderProvider.Instance);
+        IWorldStateManager manager = containerToDispose.Resolve<IWorldStateManager>();
+
+        try
+        {
+            using IOverridableWorldScope overridableScope = manager.CreateOverridableWorldScope();
+            IWorldState worldState = new WorldState(overridableScope.WorldState, LimboLogs.Instance);
+
+            byte[] code = [0x60, 0x60, 0x60, 0x40, 0x52, 0x00];
+            Address addr = TestItem.AddressA;
+            IReleaseSpec spec = Prague.Instance;
+
+            // First scope — deploy + commit. Commit triggers CommitCodeAsync which, before
+            // the fix, marked the shared filter on StateProvider as "persisted".
+            using (worldState.BeginScope(IWorldState.PreGenesis))
+            {
+                worldState.CreateAccount(addr, 0);
+                worldState.InsertCode(addr, code, spec);
+                worldState.Commit(spec);
+
+                Assert.That(worldState.GetCode(addr), Is.EqualTo(code));
+            }
+
+            // End of scope #1 — overlay's temp KV is discarded.
+            overridableScope.ResetOverrides();
+
+            // Second scope — same hash, fresh overlay. Before the fix, InsertCode consulted
+            // the stale "persisted" filter, skipped the _codeBatch write, and the next
+            // GetCode threw "Code 0x… is missing from the database".
+            using (worldState.BeginScope(IWorldState.PreGenesis))
+            {
+                worldState.CreateAccount(addr, 0);
+                worldState.InsertCode(addr, code, spec);
+
+                Action getCode = () => worldState.GetCode(addr);
+                Assert.That(getCode, Throws.Nothing);
+                Assert.That(worldState.GetCode(addr), Is.EqualTo(code));
+            }
+        }
+        finally
+        {
+            containerToDispose?.Dispose();
+        }
     }
 }

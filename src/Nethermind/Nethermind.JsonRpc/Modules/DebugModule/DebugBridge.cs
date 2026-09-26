@@ -100,8 +100,6 @@ public class DebugBridge : IDebugBridge
 
         _dbMappings = new Dictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase)
         {
-            {DbNames.State, dbProvider.StateDb},
-            {DbNames.Storage, dbProvider.StateDb},
             {DbNames.BlockInfos, blockInfosDb},
             {DbNames.Headers, headersDb},
             {DbNames.Metadata, metadataDb},
@@ -262,8 +260,8 @@ public class DebugBridge : IDebugBridge
     }
 
     private bool HasProcessingState(BlockHeader header) =>
-        // The scope provider rejects read-only flat history; the reader enforces trie pruning retention.
-        _worldStateManager.GlobalWorldState.HasRoot(header) && _worldStateManager.GlobalStateReader.HasStateForBlock(header);
+        // The scope provider rejects read-only flat history, which the state reader would accept.
+        _worldStateManager.GlobalWorldState.HasRoot(header);
 
     public Task<bool> MigrateReceipts(ulong from, ulong to) => _receiptsMigration.Run(from, to);
 

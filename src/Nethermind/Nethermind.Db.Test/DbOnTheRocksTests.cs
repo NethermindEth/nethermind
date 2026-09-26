@@ -44,7 +44,7 @@ namespace Nethermind.Db.Test
         public void Setup()
         {
             Directory.CreateDirectory(DbPath);
-            _rocksdbConfigFactory = new RocksDbConfigFactory(_dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            _rocksdbConfigFactory = new RocksDbConfigFactory(_dbConfig, new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
         }
 
         [TearDown]
@@ -59,13 +59,9 @@ namespace Nethermind.Db.Test
             IDbConfig config = new DbConfig();
             using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
-            WriteOptions options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority)!;
-            Assert.That(options.GetLowPriority(), Is.True);
+            WriteOptions options = db.WriteFlagsToWriteOptions(WriteFlags.None)!;
+            Assert.That(options.GetLowPriority(), Is.False);
             Assert.That(options.GetDisableWal(), Is.False);
-
-            options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority | WriteFlags.DisableWAL)!;
-            Assert.That(options.GetLowPriority(), Is.True);
-            Assert.That(options.GetDisableWal(), Is.True);
 
             options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL)!;
             Assert.That(options.GetLowPriority(), Is.False);
@@ -148,7 +144,6 @@ namespace Nethermind.Db.Test
                 .AddSingleton<IInitConfig>(initConfig)
                 .AddSingleton<IReceiptConfig>(receiptConfig)
                 .AddSingleton<ISyncConfig>(syncConfig)
-                .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .Build();
@@ -251,7 +246,7 @@ namespace Nethermind.Db.Test
 
             Action act = () =>
             {
-                RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+                RocksDbConfigFactory configFactory = new(config, new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
                 using DbOnTheRocks _ = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
             };
 
@@ -379,7 +374,6 @@ namespace Nethermind.Db.Test
                 .AddSingleton<IDbConfig>(config)
                 .AddSingleton<IFlatDbConfig>(flatConfig)
                 .AddSingleton<IInitConfig>(initConfig)
-                .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .Add<IDisposableStack, AutofacDisposableStack>()
@@ -1020,7 +1014,6 @@ namespace Nethermind.Db.Test
                 .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
                 .AddSingleton<IDbConfig>(config)
                 .AddSingleton<IInitConfig>(initConfig)
-                .AddSingleton<IPruningConfig>(new PruningConfig())
                 .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
                 .AddSingleton<ILogManager>(LimboLogs.Instance)
                 .Build();
@@ -1164,7 +1157,7 @@ namespace Nethermind.Db.Test
         [SetUp]
         public void Setup()
         {
-            RocksDbConfigFactory rocksdbConfigFactory = new(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            RocksDbConfigFactory rocksdbConfigFactory = new(new DbConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
 
             if (Directory.Exists(DbPath))
             {
@@ -1215,7 +1208,7 @@ namespace Nethermind.Db.Test
             _db[[1, 2, 3]] = [4, 5, 6];
             AssertCanGetViaAllMethod(_db, [1, 2, 3], [4, 5, 6]);
 
-            _db.Set([2, 3, 4], [5, 6, 7], WriteFlags.LowPriority);
+            _db.Set([2, 3, 4], [5, 6, 7], WriteFlags.DisableWAL);
             AssertCanGetViaAllMethod(_db, [2, 3, 4], [5, 6, 7]);
         }
 
@@ -1709,7 +1702,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void DeadWeight_AgainstARealDatabase_TheAggregatedPropertiesParseAndTheOpenRangeCompactionDigestsTombstones()
         {
-            RocksDbConfigFactory configFactory = new(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            RocksDbConfigFactory configFactory = new(new DbConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
             using DbOnTheRocks db = new("testDeadWeight", GetRocksDbSettings("testDeadWeight", "DeadWeightTest"), new DbConfig(), configFactory, LimboLogs.Instance);
             IDb store = db;
             byte[] value = new byte[64];

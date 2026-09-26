@@ -26,7 +26,6 @@ public sealed class SnapServer(
 {
     private const long HardResponseByteLimit = ISnapStateServer.HardResponseByteLimit;
 
-    public bool CanServe => stateServer.CanServe;
 
     public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken) =>
         stateServer.GetTrieNodes(pathSet, rootHash, cancellationToken);

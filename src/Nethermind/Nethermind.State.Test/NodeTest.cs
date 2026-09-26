@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -135,11 +134,12 @@ namespace Nethermind.Store.Test
 
             byte[] rlpBytes = rlp.ToArray();
             MemDb memDb = new();
-            memDb[NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, node.Keccak)] = rlpBytes;
+            TestNodeStorage nodeStorage = new(memDb);
+            nodeStorage.Set(null, TreePath.Empty, node.Keccak, rlpBytes);
 
             // The oracle is an independent copy. A write into the stored buffer must fail
             // the compare, not silently update the expectation.
-            return (TestTrieStoreFactory.Build(memDb, NullLogManager.Instance).GetTrieStore(null), [.. rlpBytes]);
+            return (new TestRawTrieStore(nodeStorage).GetTrieStore(null), [.. rlpBytes]);
         }
     }
 }

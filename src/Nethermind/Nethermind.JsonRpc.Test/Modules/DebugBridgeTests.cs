@@ -6,14 +6,11 @@ using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Evm.State;
-using Nethermind.Init;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs;
-using Nethermind.Trie.Pruning;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -63,6 +60,9 @@ public class DebugBridgeTests
     public async Task Delete_slice_after_rewind_below_advanced_pivot(bool force, HistoricalSync history)
     {
         TestStateBoundary boundary = new();
+        // FlatDB's best full state is its persisted block, the fact the stand-in boundary reports.
+        IFullStateFinder fullState = Substitute.For<IFullStateFinder>();
+        fullState.FindBestFullState().Returns(_ => boundary.BestPersistedState ?? 0UL);
         ISyncPeer peer = Substitute.For<ISyncPeer>();
         peer.HeadNumber.Returns(5UL);
         peer.HeadHash.Returns(TestItem.KeccakC);
@@ -80,16 +80,24 @@ public class DebugBridgeTests
                 AncientBodiesBarrier = history == HistoricalSync.BodyFloor ? 3UL : history == HistoricalSync.BodyAboveHead ? 2UL : 1,
                 AncientReceiptsBarrier = history == HistoricalSync.ReceiptFloor ? 3UL : 1,
                 AncientBlockAccessListsBarrier = history == HistoricalSync.AccessListFloor ? 3UL : 1
-            }, new FlatDbConfig { Enabled = false }))
+            }))
             .AddSingleton<ISyncPeerPool>(peerPool)
             .AddSingleton<IStateBoundary>(boundary)
+            .AddSingleton(fullState)
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance))
             .Build();
         container.Resolve<IBlockProcessingPauseControl>().Pause();
         IBlockTree tree = container.Resolve<IBlockTree>();
+        IWorldState state = container.Resolve<IMainProcessingContext>().WorldState;
         Block[] blocks = new Block[5];
         for (int i = 0; i < blocks.Length; i++)
         {
+            // A rewind needs its target's state, so each block gets the empty state its default root names.
+            using (state.BeginScope(i == 0 ? IWorldState.PreGenesis : blocks[i - 1].Header))
+            {
+                state.Commit(Frontier.Instance);
+                state.CommitTree((ulong)i);
+            }
             blocks[i] = (i == 0 ? Build.A.Block.Genesis : Build.A.Block.WithParent(blocks[i - 1])).WithBlockAccessListHash(TestItem.KeccakA).TestObject;
             AddToMainChain(tree, blocks[i]);
         }
@@ -606,65 +614,11 @@ public class DebugBridgeTests
         Assert.That(tree.Head!.Number, Is.EqualTo(expectedNumber));
     }
 
-    public enum TrieRetention { Pruned, AtBoundary, Archive }
-
-    [Test]
-    public async Task Head_reset_respects_trie_retention([Values] TrieRetention retention, [Values] bool byHash)
-    {
-        await using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(
-                new FlatDbConfig { Enabled = false },
-                new InitConfig { StateDbKeyScheme = INodeStorage.KeyScheme.HalfPath },
-                new SyncConfig { TrieHealing = false, SnapServingEnabled = false },
-                new PruningConfig { Mode = retention == TrieRetention.Archive ? PruningMode.None : PruningMode.Memory, PruningBoundary = 64 }))
-            .Build();
-        IWorldState worldState = container.Resolve<IMainProcessingContext>().WorldState;
-        IWorldStateManager manager = container.Resolve<IWorldStateManager>();
-        container.Resolve<IBlockProcessingPauseControl>().Pause();
-        IBlockTree blockTree = container.Resolve<IBlockTree>();
-        Block head = Build.A.Block.WithNumber(0).TestObject;
-        AddToMainChain(blockTree, head);
-        Block target = head;
-        int targetNumber = retention == TrieRetention.AtBoundary ? 2 : 1;
-        for (int i = 1; i <= 66; i++)
-        {
-            using (worldState.BeginScope(head.Header))
-            {
-                if (i == 1) worldState.CreateAccount(TestItem.AddressA, 1);
-                worldState.Set(new StorageCell(TestItem.AddressA, 0), (UInt256)(i + 6));
-                worldState.Commit(Frontier.Instance);
-                worldState.CommitTree((ulong)i);
-                head = Build.A.Block.WithParent(head).WithStateRoot(worldState.StateRoot).TestObject;
-            }
-            AddToMainChain(blockTree, head);
-            if (i == targetNumber) target = head;
-        }
-        manager.FlushCache(CancellationToken.None);
-        TrieStore trieStore = (TrieStore)container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore;
-        Assert.That(trieStore.LastPersistedBlockNumber, Is.EqualTo(66));
-        Assert.That(trieStore.HasRoot(target.StateRoot!), Is.True, "root presence alone does not enforce retention");
-        ResultWrapper<bool> result = ResetHead(container, target, byHash);
-
-        bool accepted = retention != TrieRetention.Pruned;
-        Hash256 expectedHead = (accepted ? target : head).Hash!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-            Assert.That(result.Data, Is.EqualTo(accepted));
-            Assert.That(blockTree.Head!.Hash, Is.EqualTo(expectedHead));
-            Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(expectedHead));
-            Assert.That(blockTree.IsMainChain(head.Header), Is.EqualTo(!accepted));
-            Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes), Is.EqualTo(expectedHead.Bytes.ToArray()));
-        }
-        manager.GlobalStateReader.GetStorage(blockTree.Head!.Header, TestItem.AddressA, 0, out UInt256 stored);
-        Assert.That(stored, Is.EqualTo((UInt256)(accepted ? targetNumber + 6 : 72)));
-    }
-
     [Test]
     public async Task Head_reset_accepts_live_snapshot_with_history_enabled([Values] bool byHash)
     {
         await using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, Layout = FlatLayout.Flat }))
+            .AddModule(new TestNethermindModule(new FlatDbConfig { HistoryEnabled = true, Layout = FlatLayout.Flat }))
             .Build();
         IWorldState state = container.Resolve<IMainProcessingContext>().WorldState;
         container.Resolve<IBlockProcessingPauseControl>().Pause();
@@ -756,7 +710,7 @@ public class DebugBridgeTests
         logger.IsWarn.Returns(true);
         ObservedPersistenceManager? persistence = null;
         await using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }))
+            .AddModule(new TestNethermindModule())
             .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
             .AddDecorator<IPersistenceManager>((_, inner) => persistence = new ObservedPersistenceManager(inner))
             .Build();
@@ -967,7 +921,6 @@ public class DebugBridgeTests
         await using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new FlatDbConfig
             {
-                Enabled = true,
                 HistoryEnabled = true,
                 HistoryRetention = HistoryRetentionMode.Rolling,
                 HistoryRetentionBlocks = 1,

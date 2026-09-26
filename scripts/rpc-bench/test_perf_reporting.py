@@ -1205,14 +1205,13 @@ esac
         self.assertEqual(missing_sweep.returncode, 1, missing_sweep.stdout + missing_sweep.stderr)
         self.assertIn("tool_config.snapshot_block", missing_sweep.stdout)
 
-        # The sweep's Nethermind set follows its state_layout, and every other arm type mounts its own set.
-        halfpath = '{"state_layout":"halfpath"}'
-        missing_halfpath = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=halfpath)
-        self.assertEqual(missing_halfpath.returncode, 1, missing_halfpath.stdout + missing_halfpath.stderr)
-        self.assertIn("nethermind-25490000", missing_halfpath.stdout)
-        (snapshots / "nethermind-25490000").mkdir()
-        present_halfpath = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=halfpath)
-        self.assertEqual(present_halfpath.returncode, 0, present_halfpath.stdout + present_halfpath.stderr)
+        # The sweep's Nethermind set is the flat one. A layout with no set is refused before the pull, even with
+        # the flat set present, and every other arm type mounts its own set.
+        flat = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG='{"state_layout":"flat"}')
+        self.assertEqual(flat.returncode, 0, flat.stdout + flat.stderr)
+        halfpath = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG='{"state_layout":"halfpath"}')
+        self.assertEqual(halfpath.returncode, 1, halfpath.stdout + halfpath.stderr)
+        self.assertIn("tool_config.state_layout 'halfpath'", halfpath.stdout)
         cross_client = json.dumps(
             {"clients": "nethermind@registry.example/nm:pr reth@registry.example/reth:main#RUST_LOG=info"}
         )

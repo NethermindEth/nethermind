@@ -3,7 +3,7 @@
 
 namespace Nethermind.Trie.Pruning;
 
-public class NullCommitter : ICommitter, IBlockCommitter
+public class NullCommitter : ICommitter
 {
     public static NullCommitter Instance = new();
 

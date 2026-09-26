@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -30,7 +31,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     private bool IsPreimage => layout is FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat;
 
     private static readonly AccountDecoder SlimAccountDecoder = AccountDecoder.Slim;
-    private MemDb _trieDb = null!;
+    private MemoryNodeStorage _trieDb = null!;
     private RawScopedTrieStore _trieStore = null!;
     private StateTree _stateTree = null!;
     private ILogManager _logManager = null!;
@@ -40,7 +41,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     [SetUp]
     public void SetUp()
     {
-        _trieDb = new MemDb();
+        _trieDb = new MemoryNodeStorage();
         _trieStore = new RawScopedTrieStore(_trieDb);
         _stateTree = new StateTree(_trieStore, LimboLogs.Instance);
         _logManager = LimboLogs.Instance;
@@ -55,11 +56,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _trieDb.Dispose();
-        _columnsDb.Dispose();
-    }
+    public void TearDown() => _columnsDb.Dispose();
 
     private StateId GetCurrentState()
     {

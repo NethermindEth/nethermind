@@ -37,9 +37,7 @@ public sealed class GCScheduler
     private bool _fireGC = false;
     private long _countToGC = 0L;
 
-    private bool _skipNextGC = false;
     private long _sweepBaselineAllocatedBytes;
-    private int _forcedGCExclusions;
 
     // Singleton instance of GCScheduler
     public static GCScheduler Instance { get; } = new GCScheduler();
@@ -152,11 +150,6 @@ public sealed class GCScheduler
     /// </summary>
     internal void PerformFullGC()
     {
-        if (Interlocked.Exchange(ref _skipNextGC, false))
-        {
-            return;
-        }
-
         // Decide if the next GC should compact the large object heap
         bool compacting = _isNextGcBlocking && _isNextGcCompacting;
 
@@ -191,17 +184,12 @@ public sealed class GCScheduler
     /// <param name="mode">The garbage collection mode.</param>
     /// <param name="blocking">Whether the GC should be blocking.</param>
     /// <param name="compacting">Whether the GC should compact the large object heap.</param>
-    /// <returns>True if GC was performed; false if another GC was in progress or forced collections are excluded (e.g. during pruning).</returns>
+    /// <returns>True if GC was performed; false if another GC was in progress.</returns>
     public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting) =>
         GCCollect(generation, mode, blocking, compacting, trimNativeMemory: true);
 
     internal bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory, bool compactLoh = false)
     {
-        if (Volatile.Read(ref _forcedGCExclusions) > 0)
-        {
-            return false;
-        }
-
         if (!MarkGCPaused())
         {
             // Skip if another GC is in progress
@@ -229,20 +217,6 @@ public sealed class GCScheduler
         MarkGCResumed();
 
         return true;
-    }
-
-    public void SkipNextGC() => Volatile.Write(ref _skipNextGC, true);
-
-    /// <summary>Excludes forced collections for the scope's lifetime (e.g. while pruning).</summary>
-    public ForcedGCExclusionScope ExcludeForcedGC()
-    {
-        Interlocked.Increment(ref _forcedGCExclusions);
-        return new ForcedGCExclusionScope(this);
-    }
-
-    public readonly struct ForcedGCExclusionScope(GCScheduler scheduler) : IDisposable
-    {
-        public void Dispose() => Interlocked.Decrement(ref scheduler._forcedGCExclusions);
     }
 
     // Keeps gen2 small when blocks stream back-to-back and the idle-window sweeps never engage,

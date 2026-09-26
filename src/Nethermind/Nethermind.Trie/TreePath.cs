@@ -228,20 +228,6 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
     }
 
     [SkipLocalsInit]
-    public readonly byte[] ToNibble()
-    {
-        if ((Length & 1) != 0)
-        {
-            Span<byte> theNibbles = stackalloc byte[Length + 1];
-            Nibbles.BytesToNibbleBytes(Span[..((Length + 1) / 2)], theNibbles);
-            return theNibbles[..Length].ToArray();
-        }
-
-        byte[] nibbles = GC.AllocateUninitializedArray<byte>(Length);
-        Nibbles.BytesToNibbleBytes(Span[..(Length / 2)], nibbles);
-        return nibbles;
-    }
-
     public readonly string ToHexString()
     {
         string fromPath = Span.ToHexString();

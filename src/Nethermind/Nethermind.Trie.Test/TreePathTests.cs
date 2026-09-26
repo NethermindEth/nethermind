@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-#if !ZK_EVM
-using System.Buffers.Binary;
-#endif
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
@@ -21,66 +18,18 @@ public class TreePathTests
     public void TreePath_holds_its_hash_without_alignment_padding() =>
         Assert.That(Unsafe.SizeOf<TreePath>(), Is.EqualTo(40));
 
-    [TestCase(false, false)]
-    [TestCase(true, false)]
-    [TestCase(true, true)]
-    public void Hashing_distinguishes_zero_paths_of_different_lengths(bool tiny, bool chained)
+    [Test]
+    public void Hashing_distinguishes_zero_paths_of_different_lengths()
     {
         HashSet<int> hashes = [];
-        int maximum = tiny ? TinyTreePath.MaxNibbleLength : 64;
-        for (int length = 0; length <= maximum; length++)
+        for (int length = 0; length <= 64; length++)
         {
             TreePath path = new(Keccak.Zero, length);
-            int hash = chained ? new TinyTreePath(path).GetChainedHashCode(0x55555555)
-                : tiny ? new TinyTreePath(path).GetHashCode() : path.GetHashCode();
-            hashes.Add(hash);
+            hashes.Add(path.GetHashCode());
         }
 
-        Assert.That(hashes.Count, Is.EqualTo(maximum + 1));
+        Assert.That(hashes.Count, Is.EqualTo(65));
     }
-
-    [TestCase(0u)]
-    [TestCase(uint.MaxValue)]
-    public void Tiny_path_hash_includes_each_chained_seed_bit(uint seed)
-    {
-        TinyTreePath path = new(new TreePath(Keccak.Zero, TinyTreePath.MaxNibbleLength));
-        int original = path.GetChainedHashCode(seed);
-        for (int bit = 0; bit < 32; bit++)
-            Assert.That(path.GetChainedHashCode(seed ^ (1u << bit)), Is.Not.EqualTo(original), $"bit {bit}");
-    }
-
-#if !ZK_EVM
-    [TestCase(0u)]
-    [TestCase(0x55555555u)]
-    [TestCase(uint.MaxValue)]
-    public void Tiny_path_chaining_breaks_raw_crc_collision_family(uint seed)
-    {
-        const int count = 256;
-        // Shifted copies of the reflected CRC32C generator leave the checksum unchanged.
-        const ulong crcKernel = 0x105EC76F1UL;
-        HashSet<int> rawHashes = [];
-        HashSet<int> chainedHashes = [];
-        for (int value = 0; value < count; value++)
-        {
-            ulong data = (ulong)TinyTreePath.MaxNibbleLength << 56;
-            for (int bit = 0; bit < 8; bit++)
-                if ((value & (1 << bit)) != 0) data ^= crcKernel << bit;
-
-            ValueHash256 hash = Keccak.Zero;
-            BinaryPrimitives.WriteUInt64LittleEndian(hash.BytesAsSpan, data);
-            TinyTreePath path = new(new TreePath(hash, TinyTreePath.MaxNibbleLength));
-            rawHashes.Add(SpanExtensions.CombineHash(seed, data));
-            chainedHashes.Add(path.GetChainedHashCode(seed));
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(rawHashes.Count, Is.EqualTo(1));
-            Assert.That(chainedHashes.Count, Is.GreaterThan(count - 4));
-        }
-    }
-
-#endif
 
     [Test]
     public void TestAppend()
@@ -198,22 +147,6 @@ public class TreePathTests
         TreePath path = TreePath.FromNibble(nibbles);
         Assert.That(path.Length, Is.EqualTo(expectedLength));
         Assert.That(path.Span.ToHexString(), Is.EqualTo(expectedHashHex));
-    }
-
-    [Test]
-    public void TestToNibble([Values(0, 1, 2, 3, 63, 64)] int nibbleLength)
-    {
-        byte[] nibbles = new byte[nibbleLength];
-        for (int i = 0; i < nibbles.Length; i++)
-        {
-            nibbles[i] = (byte)(i & 0x0F);
-        }
-
-        TreePath path = TreePath.FromNibble(nibbles);
-
-        byte[] result = path.ToNibble();
-
-        Assert.That(result, Is.EqualTo(nibbles).AsCollection);
     }
 
     [Test]

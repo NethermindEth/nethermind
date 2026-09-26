@@ -2104,14 +2104,11 @@ public class BlockProcessorTests
         IReleaseSpec spec = mispredictedSlot ? Osaka.Instance : MuirGlacier.Instance;
         ulong deltaTimestampOffset = mispredictedSlot ? MissedSlotSeconds : 0;
 
-        (Hash256? coldStateRoot, bool coldHandoff, ulong coldGasUsed) = await ProcessTinyBlock(useHandoff: false, spec, deltaTimestampOffset);
-        (Hash256? hotStateRoot, bool hotHandoff, ulong hotGasUsed) = await ProcessTinyBlock(useHandoff: true, spec, deltaTimestampOffset);
+        (Hash256? coldStateRoot, ulong coldGasUsed) = await ProcessTinyBlock(useHandoff: false, spec, deltaTimestampOffset);
+        (Hash256? hotStateRoot, ulong hotGasUsed) = await ProcessTinyBlock(useHandoff: true, spec, deltaTimestampOffset);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(coldHandoff, Is.False, "precondition: cold execution must clear the caches");
-            Assert.That(hotHandoff, Is.True,
-                "precondition: the tiny block must execute with the matching-parent handoff");
             // Without this the roots could match on a rejected transaction, comparing two no-op executions.
             Assert.That(coldGasUsed, Is.EqualTo(GasCostOf.Transaction), "precondition: the transaction must execute");
             Assert.That(hotGasUsed, Is.EqualTo(coldGasUsed), "the handoff must not change what executed");
@@ -2329,11 +2326,10 @@ public class BlockProcessorTests
             public void Dispose() => owner.SessionDisposals++;
         }
 
-        public CacheType ClearCaches()
+        public void ClearCaches()
         {
             Clears++;
             ClearedBeforeDrain |= StartSession && SessionDisposals == 0;
-            return default;
         }
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -2343,7 +2339,7 @@ public class BlockProcessorTests
     /// <summary>A slot the prediction can miss by, so the warmed header names other EIP-4788 cells than the block.</summary>
     private const ulong MissedSlotSeconds = 12;
 
-    private static async Task<(Hash256? StateRoot, bool HandoffObserved, ulong GasUsed)> ProcessTinyBlock(bool useHandoff, IReleaseSpec spec, ulong deltaTimestampOffset)
+    private static async Task<(Hash256? StateRoot, ulong GasUsed)> ProcessTinyBlock(bool useHandoff, IReleaseSpec spec, ulong deltaTimestampOffset)
     {
         TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
@@ -2381,10 +2377,7 @@ public class BlockProcessorTests
             preWarmer.ClearCaches();
         }
 
-        NodeStorageCache nodeStorageCache = processingContext.LifetimeScope.Resolve<NodeStorageCache>();
-        bool handoffObserved = false;
         ulong gasUsed = 0;
-        chain.BranchProcessor.BlockProcessing += (_, _) => handoffObserved = nodeStorageCache.Enabled;
         chain.BranchProcessor.BlockProcessed += (_, e) =>
         {
             foreach (TxReceipt receipt in e.TxReceipts)
@@ -2398,7 +2391,7 @@ public class BlockProcessorTests
             ProcessingOptions.NoValidation,
             NullBlockTracer.Instance)[0];
 
-        return (processed.StateRoot, handoffObserved, gasUsed);
+        return (processed.StateRoot, gasUsed);
     }
 
     /// <remarks>

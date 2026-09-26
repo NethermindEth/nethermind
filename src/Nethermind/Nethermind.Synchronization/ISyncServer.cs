@@ -9,7 +9,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Synchronization
 {
@@ -24,7 +23,8 @@ namespace Nethermind.Synchronization
         BlockHeader? FindHeader(Hash256 hash);
         Hash256? FindHash(ulong number);
         IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
-        IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
+        /// <summary>Serves contract code by hash; state trie nodes are not served by hash.</summary>
+        IByteArrayList GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken);
         int GetPeerCount();
         ulong NetworkId { get; }
         BlockHeader Genesis { get; }

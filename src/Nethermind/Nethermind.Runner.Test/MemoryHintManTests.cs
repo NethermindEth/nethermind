@@ -90,7 +90,7 @@ namespace Nethermind.Runner.Test
             syncConfig.FastSync = fastSync;
 
             Assert.That(_memoryHintMan.DbMemory, Is.GreaterThan((memoryHint - 100 * MB) / 2));
-            Assert.That(_memoryHintMan.DbMemory, Is.LessThan((memoryHint - 100 * MB) * 9 / 10));
+            Assert.That(_memoryHintMan.DbMemory, Is.LessThan(memoryHint));
         }
 
         [TestCase(100 * GB, 16u, -1)]
@@ -112,14 +112,6 @@ namespace Nethermind.Runner.Test
             _initConfig.MemoryHint = memoryHint;
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => SetMemoryAllowances(cpuCount));
-        }
-
-        [TestCase(500 * GB)]
-        public void Big_value_at_memory_hint(ulong memoryHint)
-        {
-            _initConfig.MemoryHint = memoryHint;
-            SetMemoryAllowances(1);
-            Assert.That(_dbConfig.StateDbRowCacheSize, Is.GreaterThan(0));
         }
 
         [Test]

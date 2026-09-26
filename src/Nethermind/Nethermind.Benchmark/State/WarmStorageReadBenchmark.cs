@@ -9,7 +9,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -50,15 +49,10 @@ public class WarmStorageReadBenchmark
     private StorageCell _otherContractWritten;
     private static readonly UInt256 Value = (UInt256)7;
 
-    [Params(true, false)]
-    public bool UseFlat { get; set; }
-
     private Env Create(in StorageCell probe)
     {
         IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(
-                new BlocksConfig { PreWarming = PreWarmMode.None },
-                new FlatDbConfig { Enabled = UseFlat }))
+            .AddModule(new TestNethermindModule(new BlocksConfig { PreWarming = PreWarmMode.None }))
             .Build();
 
         IWorldState worldState = container.Resolve<IMainProcessingContext>().WorldState;

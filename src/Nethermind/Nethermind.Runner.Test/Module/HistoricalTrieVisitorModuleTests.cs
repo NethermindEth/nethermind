@@ -21,7 +21,7 @@ public class HistoricalTrieVisitorModuleTests
     public void The_historical_visitor_follows_the_flat_history_switch(bool historyEnabled, Type expected)
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = historyEnabled }))
+            .AddModule(new TestNethermindModule(new FlatDbConfig { HistoryEnabled = historyEnabled }))
             .Build();
 
         Assert.That(container.Resolve<IHistoricalTrieVisitor>(), Is.TypeOf(expected),

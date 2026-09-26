@@ -22,11 +22,11 @@ namespace Nethermind.Trie.Test;
 public class VisitingTests
 {
     [TestCaseSource(nameof(GetOptions))]
-    public void Visitors_state(VisitingOptions options, INodeStorage.KeyScheme scheme)
+    public void Visitors_state(VisitingOptions options)
     {
         MemDb memDb = new();
 
-        using ITrieStore trieStore = TestTrieStoreFactory.Build(new NodeStorage(memDb, scheme), LimboLogs.Instance);
+        using ITrieStore trieStore = new TestRawTrieStore(memDb);
         PatriciaTree patriciaTree = new(trieStore, LimboLogs.Instance);
 
         Span<byte> raw = stackalloc byte[32];
@@ -39,7 +39,7 @@ public class VisitingTests
             patriciaTree.Set(raw, Rlp.Encode(new Account(10UL, (ulong)(10_000_000 + i))));
         }
 
-        using (trieStore.BeginBlockCommit(0)) { patriciaTree.Commit(); }
+        patriciaTree.Commit();
 
         AppendingVisitor visitor = new(false);
 
@@ -60,16 +60,14 @@ public class VisitingTests
     }
 
     [TestCaseSource(nameof(GetOptions))]
-    public void Visitors_storage(VisitingOptions options, INodeStorage.KeyScheme scheme)
+    public void Visitors_storage(VisitingOptions options)
     {
         MemDb memDb = new();
 
-        using ITrieStore trieStore = TestTrieStoreFactory.Build(new NodeStorage(memDb, scheme), LimboLogs.Instance);
+        using ITrieStore trieStore = new TestRawTrieStore(memDb);
 
         byte[] value = Enumerable.Range(1, 32).Select(static i => (byte)i).ToArray();
         Hash256 stateRootHash = Keccak.Zero;
-
-        IBlockCommitter blockCommit = trieStore.BeginBlockCommit(0);
 
         for (int outerIndex = 0; outerIndex < 64; outerIndex++)
         {
@@ -101,7 +99,6 @@ public class VisitingTests
         }
 
         stateTree.Commit();
-        blockCommit.Dispose();
 
         AppendingVisitor visitor = new(true);
 
@@ -144,23 +141,12 @@ public class VisitingTests
     {
         yield return new TestCaseData(new VisitingOptions
         {
-        }, INodeStorage.KeyScheme.HalfPath).SetName("Default");
-
-        yield return new TestCaseData(new VisitingOptions
-        {
-        }, INodeStorage.KeyScheme.Hash).SetName("Default Hash");
+        }).SetName("Default");
 
         yield return new TestCaseData(new VisitingOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount,
-            FullScanMemoryBudget = 1.MiB,
-        }, INodeStorage.KeyScheme.HalfPath).SetName("Parallel");
-
-        yield return new TestCaseData(new VisitingOptions
-        {
-            MaxDegreeOfParallelism = Environment.ProcessorCount,
-            FullScanMemoryBudget = 1.MiB,
-        }, INodeStorage.KeyScheme.Hash).SetName("Parallel Hash");
+        }).SetName("Parallel");
     }
 
     public class AppendingVisitor(bool expectAccount) : ITreeVisitor<AppendingVisitor.PathGatheringContext>

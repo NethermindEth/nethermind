@@ -26,7 +26,6 @@ public partial class EthRpcModuleTests
     private static readonly ResourceAvailability Disabled = new(Disabled: true, OldestBlock: null);
 
     private static EthCapabilities GetCaps(
-        ulong? retentionWindow = null,
         ulong headNumber = 1000,
         ulong? oldestStateBlock = null,
         SyncConfig? syncConfig = null,
@@ -42,7 +41,6 @@ public partial class EthRpcModuleTests
 
         IStateBoundary boundary = Substitute.For<IStateBoundary>();
         boundary.OldestStateBlock.Returns(oldestStateBlock);
-        boundary.RetentionWindowBlocks.Returns(retentionWindow);
 
         ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
         syncPointers.LowestInsertedBodyNumber.Returns(lowestInsertedBody);
@@ -72,7 +70,6 @@ public partial class EthRpcModuleTests
         ResourceAvailability ExpectedReceipts,
         ResourceAvailability ExpectedBlocks)
     {
-        public ulong? RetentionWindow { get; init; }
         public ulong HeadNumber { get; init; } = 1000;
         public ulong? OldestStateBlock { get; init; }
         public ulong? LowestInsertedBody { get; init; }
@@ -200,41 +197,6 @@ public partial class EthRpcModuleTests
         { HeadNumber = 18_001_000, OldestStateBlock = fastSyncFloor, SyncConfig = fullSync };
 
         yield return new CapabilitiesScenario(
-            Name: "full_pruning_before_first_run_looks_archive",
-            ExpectedState: Available, ExpectedStateproofs: Available,
-            ExpectedReceipts: Available, ExpectedBlocks: Available)
-        { SyncConfig = fullSync };
-
-        const ulong fullPruneFloor = 500UL;
-        ResourceAvailability fullPruned = new(Disabled: false, OldestBlock: (long)fullPruneFloor);
-        yield return new CapabilitiesScenario(
-            Name: "full_pruning_after_run_reports_copied_state_floor",
-            ExpectedState: fullPruned, ExpectedStateproofs: fullPruned,
-            ExpectedReceipts: Available, ExpectedBlocks: Available)
-        { OldestStateBlock = fullPruneFloor, SyncConfig = fullSync };
-
-        const ulong retention = 128;
-        const ulong memoryHead = 1000;
-        ResourceAvailability memoryPruned = new(
-            Disabled: false,
-            OldestBlock: memoryHead - retention,
-            DeleteStrategy: new DeleteStrategy("window", retention));
-        yield return new CapabilitiesScenario(
-            Name: "memory_pruning_window_dominates_old_floor",
-            ExpectedState: memoryPruned, ExpectedStateproofs: memoryPruned,
-            ExpectedReceipts: Available, ExpectedBlocks: Available)
-        { RetentionWindow = retention, HeadNumber = memoryHead, OldestStateBlock = 0, SyncConfig = fullSync };
-
-        // Floor dominates window — DeleteStrategy is suppressed so oldestBlock and head-retentionBlocks stay consistent.
-        const ulong recentPivot = 950UL;
-        ResourceAvailability postSyncMemory = new(Disabled: false, OldestBlock: (long)recentPivot);
-        yield return new CapabilitiesScenario(
-            Name: "memory_pruning_floor_dominates_window",
-            ExpectedState: postSyncMemory, ExpectedStateproofs: postSyncMemory,
-            ExpectedReceipts: Available, ExpectedBlocks: Available)
-        { RetentionWindow = retention, HeadNumber = memoryHead, OldestStateBlock = recentPivot, SyncConfig = fullSync };
-
-        yield return new CapabilitiesScenario(
             Name: "fast_sync_no_receipts_disables_tx_logs_receipts",
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: Disabled, ExpectedBlocks: Available)
@@ -309,7 +271,7 @@ public partial class EthRpcModuleTests
     [TestCaseSource(nameof(CapabilitiesScenarios))]
     public void Eth_capabilities_returns_expected_availability_for(CapabilitiesScenario s)
     {
-        EthCapabilities caps = GetCaps(s.RetentionWindow, s.HeadNumber, s.OldestStateBlock, s.SyncConfig,
+        EthCapabilities caps = GetCaps(s.HeadNumber, s.OldestStateBlock, s.SyncConfig,
             s.LowestInsertedBody, s.LowestInsertedReceipt, s.HistoryConfig, s.HistoryPruner);
 
         using (Assert.EnterMultipleScope())
@@ -378,10 +340,12 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_capabilities_json_matches_spec_schema()
     {
+        // A rolling history window, so the serialized availability carries a delete strategy too.
         EthCapabilities caps = GetCaps(
-            retentionWindow: 64,
             headNumber: 1000,
-            syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 });
+            syncConfig: new SyncConfig { DownloadReceiptsInFastSync = true, PivotNumber = 0 },
+            historyConfig: new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 2 },
+            historyPruner: MockHistoryPruner(500));
 
         string json = new EthereumJsonSerializer().Serialize(caps);
         JsonSchema schema = await JsonSchema.FromJsonAsync(EthCapabilitiesSchema);

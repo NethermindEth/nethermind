@@ -19,7 +19,6 @@ public class SnapFlatStateServer(
     IFlatStateRootIndex stateRootIndex,
     ILogManager logManager) : ISnapStateServer
 {
-    public bool CanServe => true;
 
     private readonly ILogger _logger = logManager.GetClassLogger<SnapFlatStateServer>();
 

@@ -184,8 +184,6 @@ namespace Nethermind.State
             }
             else
             {
-                // Bind the CappedArray overload the Rlp one used to forward to, so a non-zero write
-                // keeps bypassing the virtual byte[] entry point that HealingStorageTree overrides.
                 Set(rawKey, new CappedArray<byte>(EncodeNonZeroValue(value)));
             }
         }

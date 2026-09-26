@@ -12,7 +12,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
@@ -29,7 +28,7 @@ public class DbTrackerTests
     // Metric keys mutated across tests; cleared in TearDown so test order does not cause flakiness.
     private static readonly string[] TouchedMetricKeys =
     {
-        "TestDb", "GoodDb", "ThrowingDb", "SkippedDb", "TrackedDb", "PrunedState",
+        "TestDb", "GoodDb", "ThrowingDb", "SkippedDb", "TrackedDb",
     };
 
     private static readonly IDictionary<string, long>[] PerDbMetricMaps =
@@ -158,47 +157,6 @@ public class DbTrackerTests
 
         Assert.That(Metrics.DbReads.ContainsKey("GoodDb"), Is.True);
         Assert.That(Metrics.DbReads["GoodDb"], Is.EqualTo(42));
-    }
-
-    [Parallelizable(ParallelScope.None)]
-    [Test]
-    public void FullPruningDbTrackedWrapper_SurvivesPruningCycle()
-    {
-        // Inner factory returns a new FakeDb per call with a distinct size, so we can tell which
-        // inner DB the FullPruningDb wrapper is currently pointing at.
-        IDbFactory innerFactory = Substitute.For<IDbFactory>();
-        innerFactory.CreateDb(Arg.Any<DbSettings>()).Returns(
-            new FakeDb(new IDbMeta.DbMetric { Size = 100 }),
-            new FakeDb(new IDbMeta.DbMetric { Size = 200 }));
-
-        // DbMetricIntervalSeconds = 0 disables the interval guard so we can update twice in a row.
-        (IContainer container, Action updateAction) = BuildTrackerContainer(
-            innerFactory,
-            new MetricsConfig { DbMetricIntervalSeconds = 0 },
-            withInterceptor: false);
-        using IContainer _ = container;
-
-        DbMonitoringModule.DbTracker tracker = container.Resolve<DbMonitoringModule.DbTracker>();
-        FullPruningDb pruningDb = new(new DbSettings("PrunedState", "PrunedState"), innerFactory);
-
-        // Mirror WorldStateModule's behavior: register the outer wrapper, not the inner DBs.
-        tracker.AddDb("PrunedState", pruningDb);
-
-        updateAction!();
-        Assert.That(Metrics.DbSize["PrunedState"], Is.EqualTo(100));
-
-        // Trigger and commit a full pruning cycle; pruningDb._currentDb now points to the second inner DB.
-        Assert.That(pruningDb.TryStartPruning(out IPruningContext context), Is.True);
-        context.Commit();
-        context.Dispose();
-
-        updateAction!();
-
-        // After pruning, the wrapper delegates GatherMetric() to the new inner DB. No stale entry.
-        Assert.That(Metrics.DbSize["PrunedState"], Is.EqualTo(200));
-        KeyValuePair<string, IDbMeta>[] allDbMeta = [.. tracker.GetAllDbMeta()];
-        Assert.That(allDbMeta, Has.Length.EqualTo(1));
-        Assert.That(allDbMeta[0].Key, Is.EqualTo("PrunedState"));
     }
 
     [Parallelizable(ParallelScope.None)]

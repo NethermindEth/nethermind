@@ -23,11 +23,16 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Proofs;
 using Nethermind.State.SnapServer;
+using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.Trie.Pruning;
 using Nethermind.Trie;
 using AccountRange = Nethermind.State.Snap.AccountRange;
+using NSubstitute;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
 
@@ -37,9 +42,10 @@ public class SnapProviderTests
 
     private ContainerBuilder CreateContainerBuilder(
         TestSyncConfig? testSyncConfig = null,
-        Func<INodeStorage, ILogManager, ISnapTrieFactory>? factoryCreator = null) =>
+        Func<ILogManager, ISnapTrieFactory>? factoryCreator = null) =>
         new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(testSyncConfig ?? new TestSyncConfig(), factoryCreator));
+            .AddModule(new TestSynchronizerModule(testSyncConfig ?? new TestSyncConfig(), factoryCreator))
+            .AddSingleton<ISnapTestHelper, FlatSnapTestHelper>();
 
     private IContainer CreateContainer(TestSyncConfig? testSyncConfig = null) =>
         CreateContainerBuilder(testSyncConfig).Build();
@@ -700,7 +706,7 @@ public class SnapProviderTests
     {
         using IContainer container = CreateContainerBuilder(
                 new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 },
-                (_, _) => new TestSnapTrieFactory(
+                (_) => new TestSnapTrieFactory(
                     static () => throw new IOException("state backend unavailable"),
                     static () => throw new IOException("state backend unavailable")))
             .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
@@ -914,7 +920,7 @@ public class SnapProviderTests
 
         Assert.That(snapProvider.AddAccountRange(batch?.AccountRangeRequest!, accountsAndProofs), Is.EqualTo(AddRangeResult.OK));
 
-        Assert.That(container.ResolveNamed<IDb>(DbNames.State).GetAllKeys().Count(), Is.EqualTo(3)); // 3 child. Root branch node not saved due to state sync compatibility
+        Assert.That(container.Resolve<ISnapTestHelper>().CountTrieNodes(), Is.EqualTo(3)); // 3 child. Root branch node not saved due to state sync compatibility
     }
 
     [Test]
@@ -938,11 +944,8 @@ public class SnapProviderTests
         List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
 
-        TestMemDb db = new();
-        NodeStorage nodeStorage = new(db);
-        SnapUpperBoundAdapter adapter = new(new RawScopedTrieStore(nodeStorage));
-        StateTree stree = new(adapter, LimboLogs.Instance);
-        TestSnapTrieFactory factory = new(() => new PatriciaSnapStateTree(stree, adapter, nodeStorage));
+        using IContainer container = CreateContainer();
+        ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
         Assert.That(SnapProviderHelper.AddAccountRange(
                 factory,
                 0,
@@ -995,19 +998,54 @@ public class SnapProviderTests
 
     private static (ISnapStateServer, Hash256) BuildSnapServerFromEntries((Hash256, Account)[] entries)
     {
-        TestMemDb stateDb = new();
-        TestRawTrieStore trieStore = new(stateDb);
-        StateTree st = new(trieStore, LimboLogs.Instance);
+        SnapshotableMemColumnsDb<FlatDbColumns> columns = new();
+        RocksDbPersistence persistence = new(columns, LimboLogs.Instance);
+        FlatSnapTrieFactory factory = new(persistence, new TestSyncConfig(), LimboLogs.Instance);
+        Hash256 root;
+
+        using (ISnapTree<PathWithAccount> stateTree = factory.CreateStateTree())
         {
-            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
-            foreach ((Hash256, Account) entry in entries)
-            {
-                st.Set(entry.Item1, entry.Item2);
-            }
-            st.Commit();
+            PathWithAccount[] accounts = entries
+                .Select(static entry => new PathWithAccount(entry.Item1, entry.Item2))
+                .ToArray();
+            Array.Sort(accounts, static (left, right) => left.Path.CompareTo(right.Path));
+            stateTree.BulkSetAndUpdateRootHash(accounts);
+            root = stateTree.RootHash;
+            stateTree.Commit(ValueKeccak.MaxValue);
         }
 
-        SnapStateServer ss = new(trieStore.AsReadOnly(), LimboLogs.Instance);
-        return (ss, st.RootHash);
+        // Flat snap trees intentionally omit the root node because the sync target receives it from the
+        // block header. A serving fixture still needs that node to traverse the state, so write the same
+        // root RLP produced by a generic in-memory trie into the flat persistence.
+        byte[] rootRlp;
+        MemoryNodeStorage rootStorage = new();
+        StateTree rootTree = new(new RawScopedTrieStore(rootStorage), LimboLogs.Instance);
+        foreach ((Hash256 path, Account account) in entries)
+            rootTree.Set(path, account);
+        rootTree.Commit();
+        root = rootTree.RootHash;
+        rootRlp = rootTree.GetNodeByPath([], root)!;
+
+        using (IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+            writeBatch.SetStateTrieNode(TreePath.Empty, rootRlp);
+
+        StateId stateId = new(0, root.ValueHash256);
+        IFlatDbManager flatDbManager = Substitute.For<IFlatDbManager>();
+        flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
+            .Returns(_ => new ReadOnlySnapshotBundle(
+                new SnapshotPooledList(0),
+                persistence.CreateReader(),
+                recordDetailedMetrics: false,
+                PersistedSnapshotStack.Empty()));
+
+        IFlatStateRootIndex stateRootIndex = Substitute.For<IFlatStateRootIndex>();
+        stateRootIndex.TryGetStateId(Arg.Any<Hash256>(), out Arg.Any<StateId>())
+            .Returns(callInfo =>
+            {
+                callInfo[1] = stateId;
+                return true;
+            });
+
+        return (new SnapFlatStateServer(flatDbManager, stateRootIndex, LimboLogs.Instance), root);
     }
 }

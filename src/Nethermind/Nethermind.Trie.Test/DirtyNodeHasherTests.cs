@@ -8,7 +8,6 @@ using System.Linq;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -54,7 +53,7 @@ public class DirtyNodeHasherTests
         // A one-byte value under a two-byte key encodes below thirty-two bytes, so the parent
         // carries the node itself rather than a hash and the level order must not hash it. A trie
         // keyed by a 32-byte hash never reaches that, because the path alone is longer than that.
-        PatriciaTree tree = new(new RawScopedTrieStore(new MemDb()), NullLogManager.Instance);
+        PatriciaTree tree = new(new RawScopedTrieStore(new MemoryNodeStorage()), NullLogManager.Instance);
         for (int i = 0; i < 40; i++)
         {
             tree.Set([(byte)i, (byte)(i * 7)], [(byte)(i + 1)]);
@@ -241,7 +240,7 @@ public class DirtyNodeHasherTests
     private static PatriciaTree BuildDirtyTree(int entries, int valueLength, Func<int, byte[]> key,
         Func<int, int>? valueLengthFor = null)
     {
-        PatriciaTree tree = new(new RawScopedTrieStore(new MemDb()), NullLogManager.Instance);
+        PatriciaTree tree = new(new RawScopedTrieStore(new MemoryNodeStorage()), NullLogManager.Instance);
         for (int i = 0; i < entries; i++)
         {
             tree.Set(key(i), Value(i, valueLengthFor?.Invoke(i) ?? valueLength));

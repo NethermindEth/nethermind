@@ -54,7 +54,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly ISenderRecoveryTracker? _senderRecovery;
     private readonly ILogger _logger;
     private readonly PreBlockCaches _preBlockCaches;
-    private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
 
     private const int MaxDiscoveryCandidates = 16;
@@ -93,7 +92,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
         IBlocksConfig blocksConfig,
-        NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
         ISenderRecoveryTracker? senderRecovery = null
@@ -102,7 +100,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         Environment.ProcessorCount * 2,
         blocksConfig.PreWarmStateConcurrency,
         blocksConfig.ParallelExecutionBatchRead,
-        nodeStorageCache,
         preBlockCaches,
         logManager,
         blocksConfig.MempoolPreWarmConcurrency,
@@ -118,7 +115,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         int minPoolSize,
         int concurrency,
         bool parallelExecutionBatchRead,
-        NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
         int speculativeConcurrency = 0,
@@ -133,7 +129,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = Math.Max(minPoolSize, _concurrencyLevel * 3 + 1) }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
-        _nodeStorageCache = nodeStorageCache;
         _warmupQueue = new WarmupQueue(this);
         // A consumer scope and a speculative session never coexist: the session is joined the moment a consumer opens.
         if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened += CancelAndJoinSpeculative;
@@ -162,19 +157,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // The marker's tx set only means anything while the entries it describes are still in the caches.
         ISet<Hash256>? speculativelyWarmed =
             TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? warmed) && carried ? warmed : null;
-        if (speculativelyWarmed is not null)
-        {
-            // Handoff taken: the RLP cache holds the session's nodes for this parent, so keep RLP caching on for execution.
-            _nodeStorageCache.Enabled = true;
-        }
-        else
-        {
-            _nodeStorageCache.ClearCaches();
-            // Without a handoff or a reactive pass, leave RLP caching disabled for execution.
-            if (skipReactiveWarming) return null;
-            _nodeStorageCache.Enabled = true;
-        }
-
         if (skipReactiveWarming) return null;
         return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken);
     }
@@ -665,9 +647,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             ClearWarmMarker();
             _warmedTxHashes.Clear();
             _preBlockCaches.PrepareFor(head.StateRoot, _logger);
-            _nodeStorageCache.ClearCaches();
-            _nodeStorageCache.Enabled = true;
-
             return _speculativeTask = Task.Run(() => RunSpeculativeLoop(headHash, head, spec, nextDelta, idlePassDelayMs, token));
         }
     }
@@ -796,7 +775,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
     public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
 
-    public CacheType ClearCaches()
+    public void ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CancelAndJoinSpeculative();
@@ -804,9 +783,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // The account and storage caches carry over: the block's commit writes its final values into them, and PrepareFor
         // keeps or clears them before the next use.
         _preBlockCaches?.ClearPrecompileCache();
-        CacheType cachesCleared = _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
-        if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
-        return cachesCleared;
     }
 
     public void Dispose()

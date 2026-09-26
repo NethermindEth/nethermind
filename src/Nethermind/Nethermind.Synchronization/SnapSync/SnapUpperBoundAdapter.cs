@@ -10,10 +10,9 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Synchronization.SnapSync;
 
 /// <summary>
-/// A wrapper to trie store that prevent committing boundary proof node and nodes whose subtree extend beyond
-/// UpperBound. This is to prevent double writes on partitioned snap ranges.
+/// A wrapper to trie store that prevents committing boundary proof nodes and nodes whose subtree extends beyond
+/// the upper bound. This prevents double writes on partitioned snap ranges.
 /// </summary>
-/// <param name="baseTrieStore"></param>
 public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrieStore
 {
     public ValueHash256 UpperBound = ValueKeccak.MaxValue;
@@ -25,8 +24,6 @@ public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrie
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, hash, flags);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new NotSupportedException("Get storage trie node resolver not supported");
-
-    public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new BoundedSnapCommitter(baseTrieStore.BeginCommit(root, writeFlags), UpperBound);
 

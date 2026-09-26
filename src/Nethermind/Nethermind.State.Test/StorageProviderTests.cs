@@ -2382,7 +2382,7 @@ public class StorageProviderTests(bool useFlat)
             else
             {
                 scopeProvider = new TrieStoreScopeProvider(
-                    TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance),
+                    new TestRawTrieStore(new MemDb()),
                     new MemDb(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
             }
 

@@ -17,7 +17,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -255,49 +254,8 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    [NonParallelizable]
-    public void Account_write_batch_preserves_hashes_and_balances([Values(3, 4, 7, 8, 9)] int count, [Values] bool warm)
-    {
-        ConfigProvider config = new();
-        config.GetConfig<IFlatDbConfig>().Enabled = useFlat;
-        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(config)).Build();
-        IWorldStateScopeProvider provider = container.Resolve<IWorldStateManager>().GlobalWorldState;
-        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null);
-        Address[] addresses = new Address[count];
-        StateTree expected = new();
-        Random random = new(9213);
-        for (int i = 0; i < count; i++)
-        {
-            byte[] bytes = new byte[Address.Size];
-            do
-            {
-                random.NextBytes(bytes);
-            } while (KeccakCache.TryGet(bytes, out _));
-            addresses[i] = new Address(bytes);
-            if (warm) KeccakCache.ComputeTo(bytes, out _);
-            expected.Set(ValueKeccak.Compute(bytes), new Account(1, (UInt256)(i + 1)));
-        }
-
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch write = scope.StartWriteBatch(count))
-        {
-            for (int i = 0; i < count; i++) write.Set(addresses[i], new Account(1, (UInt256)(i + 1)));
-        }
-
-        for (int i = 0; i < count; i++)
-        {
-            Assert.That(scope.Get(addresses[i]).Balance, Is.EqualTo((UInt256)(i + 1)));
-        }
-
-        // The root is the oracle for the batched key hashes: a wrong hash files an account under a
-        // different path. Cache residency is not, because a write only stores on an uncontended slot.
-        expected.UpdateRootHash();
-        scope.Commit(1);
-        Assert.That(scope.RootHash, Is.EqualTo(expected.RootHash));
-    }
-
-    [Test]
     public void Test_CanSaveToStorage(
-        [Values(1, TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)] int estimatedEntries,
+        [Values(1, StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)] int estimatedEntries,
         [Values(1, 3, 32)] int valueLength,
         [Values(1UL, 1023UL, 1024UL, ulong.MaxValue)] ulong index, [Values] bool delete)
     {
@@ -1961,4 +1919,48 @@ public class ScopeProviderTests(bool useFlat)
             => Storage[storageCell] = value.ToMinimalBigEndian();
     }
 #nullable disable
+}
+
+/// <summary>Tests of the world state a node container provides, which is FlatDB whatever the fixture above selects.</summary>
+[TestFixture]
+public class ContainerScopeProviderTests
+{
+    [Test]
+    [NonParallelizable]
+    public void Account_write_batch_preserves_hashes_and_balances([Values(3, 4, 7, 8, 9)] int count, [Values] bool warm)
+    {
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(new ConfigProvider())).Build();
+        IWorldStateScopeProvider provider = container.Resolve<IWorldStateManager>().GlobalWorldState;
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null);
+        Address[] addresses = new Address[count];
+        StateTree expected = new();
+        Random random = new(9213);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            do
+            {
+                random.NextBytes(bytes);
+            } while (KeccakCache.TryGet(bytes, out _));
+            addresses[i] = new Address(bytes);
+            if (warm) KeccakCache.ComputeTo(bytes, out _);
+            expected.Set(ValueKeccak.Compute(bytes), new Account(1, (UInt256)(i + 1)));
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch write = scope.StartWriteBatch(count))
+        {
+            for (int i = 0; i < count; i++) write.Set(addresses[i], new Account(1, (UInt256)(i + 1)));
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(scope.Get(addresses[i]).Balance, Is.EqualTo((UInt256)(i + 1)));
+        }
+
+        // The root is the oracle for the batched key hashes: a wrong hash files an account under a
+        // different path. Cache residency is not, because a write only stores on an uncontended slot.
+        expected.UpdateRootHash();
+        scope.Commit(1);
+        Assert.That(scope.RootHash, Is.EqualTo(expected.RootHash));
+    }
 }

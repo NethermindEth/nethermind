@@ -114,7 +114,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between 1 and 256.", DefaultValue = "8")]
     int SnapSyncAccountRangePartitionCount { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Whether to heal the state left by Snap sync using block access lists instead of trie nodes. Only applies to the flat state layout.", DefaultValue = "true", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Whether to heal the state left by Snap sync using block access lists instead of trie nodes.", DefaultValue = "true", HiddenFromDocs = true)]
     bool BalHealing { get; set; }
 
     [ConfigItem(Description = $"Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. The range to verify is `{nameof(FixReceiptsStartingBlock)}`..`{nameof(FixReceiptsLastBlock)}`.", DefaultValue = "false")]
@@ -142,7 +142,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Deprecated.", DefaultValue = "false", HiddenFromDocs = true)]
     public bool NonValidatorNode { get; set; }
 
-    [ConfigItem(Description = "Configure the database for write optimizations during sync. Significantly reduces the total number of writes and sync time if you are not network limited.", DefaultValue = nameof(ITunableDb.TuneType.HeavyWrite), HiddenFromDocs = true)]
+    [ConfigItem(Description = "Configure the code database (during state sync) and the receipts database (during receipts sync) for write optimizations. Significantly reduces the total number of writes and sync time if you are not network limited.", DefaultValue = nameof(ITunableDb.TuneType.HeavyWrite), HiddenFromDocs = true)]
     public ITunableDb.TuneType TuneDbMode { get; set; }
 
     [ConfigItem(Description = "Configure the blocks database for write optimizations during sync.", DefaultValue = nameof(ITunableDb.TuneType.EnableBlobFiles), HiddenFromDocs = true)]
@@ -150,9 +150,6 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors. Snap and state sync allow up to twice this many in-flight requests while limiting concurrent response processing to this value.", DefaultValue = "0")]
     public int MaxProcessingThreads { get; set; }
-
-    [ConfigItem(Description = "Enables healing trie from network when state is corrupted.", DefaultValue = "true", HiddenFromDocs = true)]
-    public bool TrieHealing { get; set; }
 
     [ConfigItem(Description = "Whether to shut down Nethermind once sync is finished.", DefaultValue = "false")]
     public bool ExitOnSynced { get; set; }
@@ -163,7 +160,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Interval, in seconds, between `malloc_trim` calls during sync.", DefaultValue = "300", HiddenFromDocs = true)]
     public int MallocTrimIntervalSec { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Whether to enable snap serving. WARNING: Very slow on hash db layout. Default is to enable on halfpath layout.", DefaultValue = "null", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Whether to enable snap serving. FlatDB nodes advertise snap serving by default.", DefaultValue = "true", HiddenFromDocs = true)]
     bool? SnapServingEnabled { get; set; }
 
     [ConfigItem(Description = "The maximum depth (in blocks) for serving snap sync requests. Higher values allow serving requests for older blocks, useful for networks with fast block times like Arbitrum.", DefaultValue = "128")]

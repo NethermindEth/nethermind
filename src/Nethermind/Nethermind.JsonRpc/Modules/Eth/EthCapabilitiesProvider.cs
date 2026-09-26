@@ -6,7 +6,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.History;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -48,7 +47,7 @@ public sealed class EthCapabilitiesProvider(
         ulong lowestBody = Math.Max(syncPointers.LowestInsertedBodyNumber ?? 0ul, bodiesBarrier);
         ulong lowestBlock = Math.Max(blockTree.LowestInsertedHeader?.Number ?? 0ul, lowestBody);
 
-        ResourceAvailability state = BuildState(head, fastSyncing);
+        ResourceAvailability state = BuildState(fastSyncing);
 
         return new EthCapabilities(
             Head: new ChainHead(head.Number, head.Hash!),
@@ -58,22 +57,13 @@ public sealed class EthCapabilitiesProvider(
             Stateproofs: state);
     }
 
-    private ResourceAvailability BuildState(BlockHeader head, bool fastSyncing)
+    private ResourceAvailability BuildState(bool fastSyncing)
     {
         ulong? oldestStateBlock = stateBoundary.OldestStateBlock;
         // During fast sync, state isn't queryable until StateSyncRunner writes the pivot floor.
         if (fastSyncing && oldestStateBlock is null) return Disabled;
 
-        ulong stateFloor = oldestStateBlock ?? 0UL;
-        if (stateBoundary.RetentionWindowBlocks is not { } retention)
-            return new ResourceAvailability(Disabled: false, OldestBlock: stateFloor, DeleteStrategy: null);
-
-        ulong windowOldest = head.Number.SaturatingSub(retention);
-        ulong stateOldest = Math.Max(stateFloor, windowOldest);
-        // Emit the window only when it's the binding constraint, and report the configured
-        // retention so the value stays accurate before head reaches it.
-        DeleteStrategy? window = windowOldest >= stateFloor ? BuildWindow(retention) : null;
-        return new ResourceAvailability(Disabled: false, OldestBlock: stateOldest, DeleteStrategy: window);
+        return new ResourceAvailability(Disabled: false, OldestBlock: oldestStateBlock ?? 0UL, DeleteStrategy: null);
     }
 
     private static bool IsDescendingResourceDownloaded(bool fastSyncing, ulong pivot, bool downloadInFastSync, ulong? pointer) =>

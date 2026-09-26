@@ -13,6 +13,5 @@ namespace Nethermind.Core.Test.Builders;
 public class TestStateBoundary : IStateBoundary
 {
     public ulong? OldestStateBlock { get; set; }
-    public ulong? RetentionWindowBlocks { get; set; }
     public ulong? BestPersistedState { get; set; }
 }

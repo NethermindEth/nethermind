@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Trie;
 
 namespace Nethermind.State
@@ -38,18 +34,6 @@ namespace Nethermind.State
         {
             stateReader.TryGetAccount(baseBlock, address, out AccountStruct account);
             return account.CodeHash;
-        }
-
-        public static TrieStats CollectStats(this IStateReader stateProvider, BlockHeader? baseBlock, IKeyValueStore codeStorage, ILogManager logManager, CancellationToken cancellationToken = default)
-        {
-            TrieStatsCollector collector = new(codeStorage, logManager, cancellationToken);
-            stateProvider.RunTreeVisitor(collector, baseBlock, new VisitingOptions
-            {
-                MaxDegreeOfParallelism = Environment.ProcessorCount,
-                FullScanMemoryBudget = 16.GiB, // Gonna guess that if you are running this, you have a decent setup.
-            });
-            collector.Finish();
-            return collector.Stats;
         }
 
         public static string DumpState(this IStateReader stateReader, BlockHeader? baseBlock)

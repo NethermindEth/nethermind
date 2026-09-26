@@ -149,7 +149,7 @@ public class NodeViewsTests
             leaves.Add((new ValueHash256(path), new Account((ulong)i, (UInt256)(1000 + i))));
         }
 
-        StateTree whole = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        StateTree whole = new(new RawScopedTrieStore(new MemoryNodeStorage()), LimboLogs.Instance);
         foreach ((ValueHash256 path, Account account) in leaves) whole.Set(path, account);
         whole.UpdateRootHash();
 
@@ -179,7 +179,7 @@ public class NodeViewsTests
     {
         if (prefix.Length == partitionDepth)
         {
-            RawScopedTrieStore store = new(new MemDb());
+            RawScopedTrieStore store = new(new MemoryNodeStorage());
             StateTree partial = new(store, LimboLogs.Instance);
             foreach ((ValueHash256 path, Account account) in leaves)
             {

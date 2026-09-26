@@ -26,7 +26,7 @@ on:
         default: corpus-ab
       arch:
         description: >-
-          Runner. amd64 = EPYC box (all clients/layouts, builds images); arm64 = Axion box (flat only, no reference client,
+          Runner. amd64 = EPYC box (all clients, builds images); arm64 = Axion box (no reference client,
           prebuilt images only; a non-Nethermind client runs single-node from its own provisioned set). Never compare
           timings across boxes.
         required: false
@@ -133,15 +133,14 @@ on:
           - reth
         default: none
       state_layout:
-        description: Single-node tools — Nethermind DB layout (sweeps are flat only).
+        description: Single-node tools — Nethermind DB layout (FlatDB is the only supported layout).
         required: false
         type: choice
         options:
           - flat
-          - halfpath
         default: flat
       additional_nethermind_flags:
-        description: Extra Nethermind flags for single-node runs (e.g. --Pruning.CacheMb=4000).
+        description: Extra Nethermind flags for single-node runs (e.g. --FlatDb.TrieCacheMemoryBudget=1073741824).
         required: false
         default: ""
       debug_trace_call_corpus:
@@ -368,7 +367,7 @@ jobs:
           if [[ "${arch}" == "arm64" && "${reference_client}" != "none" ]]; then
             fail "The arm64 runner only supports a single client — use arch=amd64 for a reference client."
           fi
-          [[ "${arch}" != "arm64" || "${state_layout}" == "flat" ]] || fail "The arm64 runner only supports the flat state layout."
+          [[ "${state_layout}" == "flat" ]] || fail "Only the FlatDB state layout is supported."
           comparison="false"; [[ "${reference_client}" != "none" ]] && comparison="true"
           [[ "${comparison}" != "true" || "${benchmark_tool}" != "ethcallchaos" ]] || fail "reference_client comparison is supported for flood and jsonbench only."
           case "${dottrace}" in
@@ -580,7 +579,7 @@ jobs:
           snapshot_path() {
             if [[ -n "${snapshot_block}" ]]; then
               if [[ "$1" == "nethermind" ]]; then
-                [[ "${state_layout}" == "flat" ]] && echo "${snapshot_root}/nethermind-flat-${snapshot_block}" || echo "${snapshot_root}/nethermind-${snapshot_block}"
+                echo "${snapshot_root}/nethermind-flat-${snapshot_block}"
               elif [[ "${arch}" == "arm64" ]]; then
                 # The ARM box keeps one directory per client under /data; its snapshot root is the Nethermind one.
                 echo "$(dirname "${snapshot_root}")/$1/$1-${snapshot_block}"
@@ -588,10 +587,10 @@ jobs:
                 echo "${snapshot_root}/$1-${snapshot_block}"
               fi
             else
-              [[ "${state_layout}" == "flat" ]] && echo "${snapshot_root}/nethermind-flat-snapshot" || echo "${snapshot_root}/nethermind-snapshot"
+              echo "${snapshot_root}/nethermind-flat-snapshot"
             fi
           }
-          client_layout_flags() { [[ "$1" == "nethermind" && "${state_layout}" == "flat" ]] && echo "--FlatDb.Enabled=true" || true; }
+          client_layout_flags() { [[ "$1" == "nethermind" ]] && echo "--FlatDb.Enabled=true" || true; }
           layout_flags="$(client_layout_flags "${client}")"
           ref_layout_flags=""; [[ "${comparison}" == "true" ]] && ref_layout_flags="$(client_layout_flags "${reference_client}")"
 
@@ -888,13 +887,14 @@ jobs:
 
           # `db_source` is resolved for every dispatch but only `Start node` mounts it, and that step does not run in sweep
           # mode: run-rpc-sweep.sh mounts one set per client type in tool_config.clients, all at one block under SNAPSHOT_ROOT -
-          # Nethermind's in the sweep's state_layout, any other type's as `<type>-<block>`. Checking `db_source` there would
+          # Nethermind's as `nethermind-flat-<block>`, any other type's as `<type>-<block>`. Checking `db_source` there would
           # abort the run over a directory it was never going to mount, so check what the sweep resolves instead.
           if [[ "${BENCHMARK_TOOL}" == "jsonbench-sweep" ]]; then
             sweep_get() { printf '%s' "${TOOL_CONFIG:-}" | jq -r "$1 // empty" 2>/dev/null || true; }
             sweep_block="$(sweep_get .snapshot_block)"; sweep_block="${sweep_block:-25490000}"
             sweep_nethermind="${SNAPSHOT_ROOT}/nethermind-flat-${sweep_block}"
-            [[ "$(sweep_get .state_layout)" != "halfpath" ]] || sweep_nethermind="${SNAPSHOT_ROOT}/nethermind-${sweep_block}"
+            sweep_layout="$(sweep_get .state_layout)"
+            [[ -z "${sweep_layout}" || "${sweep_layout}" == "flat" ]] || fail_path "tool_config.state_layout '${sweep_layout}' has no snapshot set; FlatDB is the only state layout."
             # Nethermind's set always: it is the sweep's default arm, and a cache miss prepends a master arm.
             declare -A sweep_sets=(["${sweep_nethermind}"]=1)
             read -ra sweep_arms <<< "$(sweep_get .clients)"
@@ -903,7 +903,7 @@ jobs:
               [[ "${ctype}" == "nethermind" ]] || sweep_sets["${SNAPSHOT_ROOT}/${ctype}-${sweep_block}"]=1
             done
             db_sources=("${!sweep_sets[@]}")
-            db_fix="set tool_config.snapshot_block, state_layout and clients to a snapshot set this runner holds"
+            db_fix="set tool_config.snapshot_block and clients to a snapshot set this runner holds"
           else
             db_sources=("${DB_SOURCE}")
             db_fix="set node_config.db_source to an existing snapshot path"

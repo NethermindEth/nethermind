@@ -1073,8 +1073,6 @@ public class FlatTrieVerifier
                 ? this
                 : new HashVerifyingTrieStore((IScopedTrieStore)inner.GetStorageTrieNodeResolver(address), address, logger);
 
-        public INodeStorage.KeyScheme Scheme => inner.Scheme;
-
         public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             inner.BeginCommit(root, writeFlags);
 

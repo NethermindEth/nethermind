@@ -58,8 +58,7 @@ DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION="${DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION:-fa
 SNAPSHOT_ROOT="${SNAPSHOT_ROOT:-/data/nethermind}"
 case "$STATE_LAYOUT" in
   flat) SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-flat-${SNAPSHOT_BLOCK}"; NM_LAYOUT_FLAGS="--FlatDb.Enabled=true" ;;
-  halfpath) SNAPSHOT_PATH="${SNAPSHOT_ROOT}/nethermind-${SNAPSHOT_BLOCK}"; NM_LAYOUT_FLAGS="" ;;
-  *) echo "::error::sweep mode resolves a flat or halfpath Nethermind snapshot; state_layout '$STATE_LAYOUT' cannot run here"; exit 1 ;;
+  *) echo "::error::sweep mode resolves a FlatDB Nethermind snapshot; state_layout '$STATE_LAYOUT' cannot run here"; exit 1 ;;
 esac
 PARITY_STATE="$SCRATCH_ROOT/parity"
 RPC="http://localhost:8545"

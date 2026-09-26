@@ -37,15 +37,6 @@ public class FlatReadOnlyTrieStoreTests
         Assert.That(_store.HasRoot(TestItem.KeccakA), Is.True);
 
     [Test]
-    public void HasRoot_WithBlockNumber_DelegatesToFlatDbManager()
-    {
-        _flatDbManager.HasStateForBlock(Arg.Any<StateId>()).Returns(true);
-
-        Assert.That(_store.HasRoot(TestItem.KeccakA, 42), Is.True);
-        _flatDbManager.Received(1).HasStateForBlock(Arg.Any<StateId>());
-    }
-
-    [Test]
     public void Resolve_BeforeBeginScope_Throws() =>
         Assert.That(() => _store.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA),
             Throws.InvalidOperationException);
@@ -105,11 +96,8 @@ public class FlatReadOnlyTrieStoreTests
     }
 
     [Test]
-    public void BeginCommit_ReturnsNullCommitter_NoOps()
-    {
-        Assert.That(_store.BeginBlockCommit(1), Is.Not.Null);
+    public void BeginCommit_ReturnsNullCommitter_NoOps() =>
         Assert.That(_store.BeginCommit(null, null, WriteFlags.None), Is.Not.Null);
-    }
 
     [Test]
     public void GetTrieStore_ReturnsScopedAdapter()

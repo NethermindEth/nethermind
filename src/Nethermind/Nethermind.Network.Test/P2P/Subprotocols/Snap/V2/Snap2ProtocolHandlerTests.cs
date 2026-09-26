@@ -85,7 +85,6 @@ public class Snap2ProtocolHandlerTests
     public void GetBlockAccessLists_forwards_requested_byte_budget_to_snap_server()
     {
         ISnapServer snapServer = Substitute.For<ISnapServer>();
-        snapServer.CanServe.Returns(true);
         snapServer.GetBlockAccessLists(Arg.Any<IReadOnlyList<ValueHash256>>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
             .Returns(EmptyByteArrayList.Instance);
         ISession session = Substitute.For<ISession>();
@@ -147,7 +146,6 @@ public class Snap2ProtocolHandlerTests
     {
         // snap/2 removed GetTrieNodes/TrieNodes (EIP-8189); the peer must be disconnected, not served.
         ISnapServer snapServer = Substitute.For<ISnapServer>();
-        snapServer.CanServe.Returns(true);
         ISession session = Substitute.For<ISession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
 

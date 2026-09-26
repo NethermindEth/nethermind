@@ -3,7 +3,6 @@
 
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Buffers;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -21,7 +20,7 @@ public class RlpTrieNodeEncodingBenchmark
 
     public RlpTrieNodeEncodingBenchmark()
     {
-        _store = new RawScopedTrieStore(new NodeStorage(new MemDb()), null);
+        _store = new RawScopedTrieStore(new MemoryNodeStorage(), null);
         PatriciaTree tree = new(_store, NullLogManager.Instance);
 
         // Some simple nodes to create E->B->L1, ...

@@ -51,8 +51,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     internal WriteOptions? WriteOptions { get; private set; }
     private WriteOptions? _noWalWrite;
-    private WriteOptions? _lowPriorityAndNoWalWrite;
-    private WriteOptions? _lowPriorityWriteOptions;
 
     private ReadOptions _defaultReadOptions = null!;
     private ReadOptions _hintCacheMissOptions = null!;
@@ -718,13 +716,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _noWalWrite = CreateWriteOptions(dbConfig);
         _noWalWrite.SetDisableWal(true);
 
-        _lowPriorityWriteOptions = CreateWriteOptions(dbConfig);
-        _lowPriorityWriteOptions.SetLowPriority(true);
-
-        _lowPriorityAndNoWalWrite = CreateWriteOptions(dbConfig);
-        _lowPriorityAndNoWalWrite.SetDisableWal(true);
-        _lowPriorityAndNoWalWrite.SetLowPriority(true);
-
         _defaultReadOptions = CreateReadOptions();
 
         _hintCacheMissOptions = CreateReadOptions();
@@ -787,7 +778,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         success = true;
 
-        using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
+        using IteratorManager.RentWrapper wrapper = iteratorManager.Rent();
         Iterator iterator = wrapper.Iterator;
 
         if (iterator.Valid() && TryCloseReadAhead(iterator, key, iteratorManager.SequentialKeys, out byte[]? closeRes))
@@ -814,7 +805,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         keyLength = 0;
         valueLength = 0;
 
-        using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(ReadFlags.None);
+        using IteratorManager.RentWrapper wrapper = iteratorManager.Rent();
         Iterator iterator = wrapper.Iterator;
 
         iterator.Seek(lowerBoundIncl);
@@ -867,7 +858,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// <returns></returns>
     private static bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, bool sequentialKeys, out byte[]? result)
     {
-        // Probably hash db. Can't really do this with hashdb. Even with batched trie visitor, its going to skip a lot.
+        // Hash-like keys have no locality, so the key after this one is unlikely to be close enough to probe for.
         if (!sequentialKeys && key.Length <= 32)
         {
             result = null;
@@ -965,13 +956,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    public WriteOptions? WriteFlagsToWriteOptions(WriteFlags flags) => flags switch
-    {
-        _ when (flags & WriteFlags.LowPriorityAndNoWAL) == WriteFlags.LowPriorityAndNoWAL => _lowPriorityAndNoWalWrite,
-        _ when (flags & WriteFlags.DisableWAL) == WriteFlags.DisableWAL => _noWalWrite,
-        _ when (flags & WriteFlags.LowPriority) == WriteFlags.LowPriority => _lowPriorityWriteOptions,
-        _ => WriteOptions
-    };
+    public WriteOptions? WriteFlagsToWriteOptions(WriteFlags flags) =>
+        (flags & WriteFlags.DisableWAL) == WriteFlags.DisableWAL ? _noWalWrite : WriteOptions;
 
 
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
@@ -1694,7 +1680,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             string fullPath = _fullPath!;
             if (Directory.Exists(fullPath))
             {
-                // We want to keep the folder if it can have subfolders with copied databases from pruning
+                // Keep the folder itself when the settings say it is not ours to delete
                 if (_settings.CanDeleteFolder)
                 {
                     Directory.Delete(fullPath, true);
@@ -1844,9 +1830,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             case ITunableDb.TuneType.EnableBlobFiles:
                 ApplyOptions(GetBlobFilesOptions());
                 break;
-            case ITunableDb.TuneType.HashDb:
-                ApplyOptions(GetHashDbOptions());
-                break;
             case ITunableDb.TuneType.Default:
             default:
                 ApplyOptions(GetStandardOptions());
@@ -1881,18 +1864,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
             { "soft_pending_compaction_bytes_limit", 64.GiB.ToString() },
             { "hard_pending_compaction_bytes_limit", 256.GiB.ToString() },
-        };
-
-    private static Dictionary<string, string> GetHashDbOptions() =>
-        new()
-        {
-            // Some database config is slightly faster on a hash db database. These are applied when hash db is detected
-            // to prevent unexpected regression.
-            { "table_factory.block_size", "4096" },
-            { "table_factory.block_restart_interval", "16" },
-            { "compression", "kSnappyCompression" },
-            { "max_bytes_for_level_multiplier", "10" },
-            { "max_bytes_for_level_base", "256000000" },
         };
 
     /// <summary>
@@ -1998,8 +1969,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     public class IteratorManager : IDisposable
     {
         private readonly ManagedIterators _readaheadIterators = new();
-        private readonly ManagedIterators _readaheadIterators2 = new();
-        private readonly ManagedIterators _readaheadIterators3 = new();
         private readonly RocksDb _rocksDb;
         private readonly IColumnFamilyHandle? _cf;
         private readonly ReadOptions _readOptions;
@@ -2034,8 +2003,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
                 if (_isDisposed) return;
 
                 _readaheadIterators.ClearIterators();
-                _readaheadIterators2.ClearIterators();
-                _readaheadIterators3.ClearIterators();
             }
             finally
             {
@@ -2052,31 +2019,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
                 _timer.Dispose();
                 _readaheadIterators.DisposeAll();
-                _readaheadIterators2.DisposeAll();
-                _readaheadIterators3.DisposeAll();
             }
         }
 
-        public RentWrapper Rent(ReadFlags flags)
+        public RentWrapper Rent()
         {
-            ManagedIterators iterators = GetIterators(flags);
-            IteratorHolder holder = iterators.Value!;
+            IteratorHolder holder = _readaheadIterators.Value!;
             // If null, we create a new one.
             Iterator? iterator = Interlocked.Exchange(ref holder.Iterator, null);
-            return new RentWrapper(iterator ?? _rocksDb.NewIterator(_cf, _readOptions), flags, this);
+            return new RentWrapper(iterator ?? _rocksDb.NewIterator(_cf, _readOptions), this);
         }
 
-        private ManagedIterators GetIterators(ReadFlags flags) => flags switch
+        private void Return(Iterator iterator)
         {
-            _ when (flags & ReadFlags.HintReadAhead2) != 0 => _readaheadIterators2,
-            _ when (flags & ReadFlags.HintReadAhead3) != 0 => _readaheadIterators3,
-            _ => _readaheadIterators
-        };
-
-        private void Return(Iterator iterator, ReadFlags flags)
-        {
-            ManagedIterators iterators = GetIterators(flags);
-            IteratorHolder holder = iterators.Value!;
+            IteratorHolder holder = _readaheadIterators.Value!;
 
             // We don't keep using the same iterator for too long.
             if (holder.Usage > IteratorUsageLimit)
@@ -2093,11 +2049,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             oldIterator?.Dispose();
         }
 
-        public readonly struct RentWrapper(Iterator iterator, ReadFlags flags, IteratorManager manager) : IDisposable
+        public readonly struct RentWrapper(Iterator iterator, IteratorManager manager) : IDisposable
         {
             public Iterator Iterator => iterator;
 
-            public void Dispose() => manager.Return(iterator, flags);
+            public void Dispose() => manager.Return(iterator);
         }
 
         // Note: use of threadlocal is very important as the seek forward is fast, but the seek backward is not fast.

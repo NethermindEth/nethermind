@@ -1167,20 +1167,6 @@ public class TrieNodeTests
     }
 
     [Test]
-    public void Extension_child_as_keccak_call_recursively([Values] bool skipPersisted)
-    {
-        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
-        TrieNode trieNode = new(NodeType.Extension);
-        trieNode.SetChild(0, child);
-
-        trieNode.PrunePersistedRecursively(1);
-        int count = 0;
-        TreePath emptyPath = TreePath.Empty;
-        trieNode.CallRecursively((n, s, p) => count++, null, ref emptyPath, NullTrieStore.Instance, skipPersisted, LimboTraceLogger.Instance);
-        Assert.That(count, Is.EqualTo(1));
-    }
-
-    [Test]
     public void Branch_child_as_keccak_encode()
     {
         TrieNode child = new(NodeType.Unknown, Keccak.Zero);
@@ -1301,9 +1287,8 @@ public class TrieNodeTests
 
         TreePath path = TreePath.Empty;
 
-        using (IBlockCommitter _ = fullTrieStore.BeginBlockCommit(0))
+        using (ICommitter committer = trieStore.BeginCommit(leaf2))
         {
-            using ICommitter? committer = trieStore.BeginCommit(leaf2);
             committer.CommitNode(ref path, leaf1);
             committer.CommitNode(ref path, leaf2);
         }
@@ -1411,7 +1396,6 @@ public class TrieNodeTests
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new InvalidOperationException($"{nameof(GetStorageTrieNodeResolver)} not supported");
 
-        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
         public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(this);
 
         private class Committer(InMemoryScopedTrieStore trieStore) : ICommitter

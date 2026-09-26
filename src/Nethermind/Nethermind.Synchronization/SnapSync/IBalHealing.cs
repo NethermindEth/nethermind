@@ -15,9 +15,6 @@ namespace Nethermind.Synchronization.SnapSync;
 /// </remarks>
 public interface IBalHealing
 {
-    /// <summary>Whether the state backend behind this instance can heal with block access lists at all.</summary>
-    bool IsAvailable { get; }
-
     /// <summary>Rebuilds the trie over the flat state left by snap sync and returns the root to heal from, or <c>null</c> on failure.</summary>
     /// <param name="updatedStorages">Hashed addresses of the accounts whose storage was synced after their account leaf.</param>
     Hash256? Reassemble(IReadOnlyCollection<Hash256> updatedStorages, CancellationToken token);

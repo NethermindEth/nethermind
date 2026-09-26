@@ -26,8 +26,5 @@
   },
   "Merge": {
     "Enabled": false
-  },
-  "FlatDb": {
-    "Enabled": false
   }
 }
