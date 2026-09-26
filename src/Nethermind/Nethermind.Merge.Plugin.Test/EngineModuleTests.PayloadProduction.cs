@@ -22,6 +22,7 @@ using Nethermind.Specs.Test;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Core.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -500,15 +501,12 @@ public partial class EngineModuleTests
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
         await improvementWaitTask;
 
-        improvementWaitTask = improvementContextFactory.WaitForImprovedBlockWithCondition(chain.CancellationToken, static b => b.Transactions.Length == 11);
-        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
-        await improvementWaitTask;
-
         // An improvement starts building before it is stored for its payload, so a fast build can finish while
         // the previous context is still the stored one. getPayload returns the stored context: wait for it.
         ObservablePayloadPreparationService payloadPreparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
-        Assert.That(() => payloadPreparation.StoredBestBlock(payloadId)?.Transactions.Length, Is.EqualTo(11).After(10_000, 10),
-            "precondition: the improvement with every transaction is the stored context");
+        Task storedImprovementTask = payloadPreparation.WaitForStoredBlockAsync(payloadId, static block => block.Transactions.Length == 11, chain.CancellationToken);
+        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
+        await storedImprovementTask;
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
@@ -952,7 +950,12 @@ public partial class EngineModuleTests
         }
     }
 
-    /// <summary>Exposes which improvement is stored for a payload, the one <c>getPayload</c> returns.</summary>
+    /// <summary>Signals when the improvement stored for a payload, the one <c>getPayload</c> returns, holds a matching block.</summary>
+    /// <remarks>
+    /// A context is stored before its build completes, so waiters are checked both when a context is stored and when the
+    /// stored context's build completes. Registration and notification check the stored block under one lock, so a
+    /// publication cannot fall between a waiter's initial check and its registration.
+    /// </remarks>
     private sealed class ObservablePayloadPreparationService(
         IBlockProducer blockProducer,
         ITxPool txPool,
@@ -965,7 +968,55 @@ public partial class EngineModuleTests
         : PayloadPreparationService(blockProducer, txPool, blockImprovementContextFactory, timerFactory, logManager, timePerSlot,
             slotsPerOldPayloadCleanup: slotsPerOldPayloadCleanup, improvementDelay: improvementDelay)
     {
-        public Block? StoredBestBlock(string payloadId) =>
-            _payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? context) ? context.Best.CurrentBestBlock : null;
+        private readonly Lock _waitersLock = new();
+        private readonly List<StoredBlockWaiter> _waiters = [];
+
+        public Task WaitForStoredBlockAsync(string payloadId, Func<Block, bool> predicate, CancellationToken cancellationToken)
+        {
+            StoredBlockWaiter waiter = new(payloadId, predicate);
+            lock (_waitersLock)
+            {
+                if (StoredBlockMatches(waiter))
+                {
+                    return Task.CompletedTask;
+                }
+
+                _waiters.Add(waiter);
+            }
+
+            cancellationToken.Register(static state => ((StoredBlockWaiter)state!).Completion.TrySetCanceled(), waiter);
+            return waiter.Completion.Task;
+        }
+
+        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        {
+            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
+
+            if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? stored))
+            {
+                NotifyWaiters();
+                stored.ImprovementTask.ContinueWith(_ => NotifyWaiters(), TaskContinuationOptions.ExecuteSynchronously);
+            }
+        }
+
+        private void NotifyWaiters()
+        {
+            lock (_waitersLock)
+            {
+                _waiters.RemoveAll(waiter => waiter.Completion.Task.IsCompleted || (StoredBlockMatches(waiter) && waiter.Completion.TrySetResult()));
+            }
+        }
+
+        private bool StoredBlockMatches(StoredBlockWaiter waiter) =>
+            _payloadStorage.TryGetValue(waiter.PayloadId, out IBlockImprovementContext? context)
+            && context.Best.CurrentBestBlock is { } block
+            && waiter.Predicate(block);
+
+        private sealed class StoredBlockWaiter(string payloadId, Func<Block, bool> predicate)
+        {
+            public string PayloadId { get; } = payloadId;
+            public Func<Block, bool> Predicate { get; } = predicate;
+            public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
     }
 }
