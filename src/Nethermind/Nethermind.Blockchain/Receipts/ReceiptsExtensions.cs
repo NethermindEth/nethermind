@@ -29,5 +29,14 @@ namespace Nethermind.Blockchain.Receipts
             }
             return sum;
         }
+
+        /// <summary>Sets every receipt's bloom to the zero-length <see cref="Bloom.Removed"/> that EIP-7668 requires.</summary>
+        public static void RemoveBlooms(this TxReceipt[] receipts)
+        {
+            foreach (TxReceipt receipt in receipts)
+            {
+                receipt.Bloom = Bloom.Removed;
+            }
+        }
     }
 }

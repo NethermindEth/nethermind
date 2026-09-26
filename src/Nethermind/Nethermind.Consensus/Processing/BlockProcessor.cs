@@ -188,12 +188,15 @@ public partial class BlockProcessor(
 
         using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         (Bloom BlockBloom, Hash256 ReceiptsRoot) receiptResults = default;
+        // EIP-7668: the header and receipt blooms are zero-length, so none are computed.
+        // Genesis keeps the bloom it was declared with.
+        bool bloomsRemoved = spec.IsEip7668Enabled && !block.IsGenesis;
         // Receipts are immutable apart from their blooms now; overlap with the first state commit too.
         using ParallelUnbalancedWork.BackgroundWork? bloomWork = ShouldCalculateReceiptsInBackground(receipts)
-            ? StartBloomComputation(receipts)
+            ? StartBloomComputation(receipts, bloomsRemoved)
             : null;
         using ParallelUnbalancedWork.BackgroundWork? receiptWork = bloomWork?.ContinueWith(() => receiptResults =
-            (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block)));
+            (bloomsRemoved ? Bloom.Removed : AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block)));
 
         CommitState(spec);
 
@@ -204,7 +207,16 @@ public partial class BlockProcessor(
 
         if (receiptWork is null)
         {
-            CalculateBlooms(receipts);
+            if (bloomsRemoved)
+            {
+                receipts.RemoveBlooms();
+                header.Bloom = Bloom.Removed;
+            }
+            else
+            {
+                CalculateBlooms(receipts);
+            }
+
             header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
         }
 
@@ -217,7 +229,7 @@ public partial class BlockProcessor(
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
-        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: receiptWork is null);
+        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: receiptWork is null && !bloomsRemoved);
 
         CommitStateAndStorageRoots(spec);
 
@@ -296,13 +308,17 @@ public partial class BlockProcessor(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static ParallelUnbalancedWork.BackgroundWork StartBloomComputation(TxReceipt[] receipts)
+    private static ParallelUnbalancedWork.BackgroundWork StartBloomComputation(TxReceipt[] receipts, bool bloomsRemoved)
     {
         long started = ExecutionMetricsFlag.IsActive ? Stopwatch.GetTimestamp() : 0;
         ParallelOptions options = receipts.Length <= Environment.ProcessorCount
             ? SmallBloomOptions : ParallelUnbalancedWork.DefaultOptions;
         return ParallelUnbalancedWork.BackgroundFor(0, receipts.Length, options,
-            i => receipts[i].CalculateBloom(), () =>
+            i =>
+            {
+                if (bloomsRemoved) receipts[i].Bloom = Bloom.Removed;
+                else receipts[i].CalculateBloom();
+            }, () =>
             {
                 if (ExecutionMetricsFlag.IsActive)
                     BloomsTimeSink.AddTicks(Stopwatch.GetElapsedTime(started).Ticks);

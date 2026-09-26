@@ -41,5 +41,10 @@ public enum RlpBehaviors
     /// <summary>
     /// Creates fresh transaction objects for long-lived payloads instead of renting them from the object pool.
     /// </summary>
-    SkipPooledTransactions = 512
+    SkipPooledTransactions = 512,
+
+    /// <summary>
+    /// EIP-7668: encodes the receipt bloom as a zero-length string, whatever bloom the receipt holds.
+    /// </summary>
+    Eip7668Receipts = 1024
 }

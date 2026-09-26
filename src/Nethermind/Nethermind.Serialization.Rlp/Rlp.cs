@@ -785,7 +785,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(Address? item) => item is null ? 1 : 21;
 
-        public static int LengthOf(Bloom? bloom) => bloom is null ? 1 : 259;
+        public static int LengthOf(Bloom? bloom) => bloom is null || bloom.IsRemoved ? 1 : 259;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfSequence(int contentLength)

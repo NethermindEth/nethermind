@@ -275,7 +275,7 @@ public class HeaderDecoderTests
     }
 
     [Test]
-    public void Should_reject_empty_rlp_string_for_mandatory_fixed_size_field([Values(0, 1, 2, 3, 4, 5, 6)] int fieldIndex)
+    public void Should_reject_empty_rlp_string_for_mandatory_fixed_size_field([Values(0, 1, 2, 3, 4, 5)] int fieldIndex)
     {
         byte[] validRlp = Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes;
         byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, fieldIndex, [0x80]);
@@ -290,6 +290,21 @@ public class HeaderDecoderTests
         BlockHeader blockHeader = DecodeHeader(rlp);
 
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
+    }
+
+    [Test]
+    public void Decodes_empty_rlp_string_bloom_as_zero_length_bloom()
+    {
+        byte[] validRlp = Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes;
+        byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, BloomFieldIndex, [0x80]);
+
+        BlockHeader decoded = DecodeHeader(new Rlp(crafted));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Bloom, Is.SameAs(Bloom.Removed));
+            Assert.That(Rlp.Encode(decoded).Bytes, Is.EqualTo(crafted));
+        }
     }
 
     [Test]

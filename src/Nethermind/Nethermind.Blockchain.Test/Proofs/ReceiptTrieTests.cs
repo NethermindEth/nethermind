@@ -12,6 +12,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -69,6 +70,18 @@ public class ReceiptTrieTests
                 receipts[i] = Build.A.Receipt.WithAllFieldsFilled.TestObject;
         }
         AssertRootMatches(Osaka.Instance, receipts, _decoder);
+    }
+
+    [TestCase(true, ExpectedResult = true)]
+    [TestCase(false, ExpectedResult = false)]
+    public bool Eip7668_root_encodes_zero_length_blooms(bool eip7668)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Osaka.Instance) { IsEip7668Enabled = eip7668 };
+        TxReceipt[] receipts = [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject];
+        TxReceipt[] removed = [Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.Removed).TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.Removed).TestObject];
+
+        AssertRootMatches(spec, receipts, _decoder);
+        return ReceiptTrie.CalculateRoot(spec, receipts, _decoder) == ReceiptTrie.CalculateRoot(Osaka.Instance, removed, _decoder);
     }
 
     [Test]

@@ -262,17 +262,37 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Receipt_message_decoding_rejects_null_bloom()
+        public void Receipt_message_decoding_maps_null_bloom_to_removed()
         {
             byte[] encoded = EncodeReceiptMessageWithNullBloom();
             ReceiptMessageDecoder decoder = new();
+            RlpReader reader = new(encoded);
 
-            Assert.That(Decode, Throws.TypeOf<RlpException>());
+            TxReceipt decoded = decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts);
 
-            void Decode()
+            using (Assert.EnterMultipleScope())
             {
-                RlpReader reader = new(encoded);
-                decoder.Decode(ref reader, RlpBehaviors.Eip658Receipts);
+                Assert.That(decoded.Bloom, Is.SameAs(Bloom.Removed));
+                Assert.That(decoder.Encode(decoded, RlpBehaviors.Eip658Receipts).Bytes, Is.EqualTo(encoded));
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Receipt_message_encoding_with_eip7668_behavior_writes_zero_length_bloom(bool removedInMemory)
+        {
+            TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
+            if (removedInMemory) receipt.Bloom = Bloom.Removed;
+            ReceiptMessageDecoder decoder = new();
+
+            byte[] encoded = decoder.Encode(receipt, RlpBehaviors.Eip658Receipts | RlpBehaviors.Eip7668Receipts).Bytes;
+            RlpReader reader = new(encoded);
+            TxReceipt decoded = decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.Bloom, Is.SameAs(Bloom.Removed));
+                Assert.That(decoder.GetLength(receipt, RlpBehaviors.Eip658Receipts | RlpBehaviors.Eip7668Receipts), Is.EqualTo(encoded.Length));
             }
         }
 
