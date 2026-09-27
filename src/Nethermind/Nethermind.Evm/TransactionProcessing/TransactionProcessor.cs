@@ -84,7 +84,8 @@ namespace Nethermind.Evm.TransactionProcessing
         /// A cancellation wrapper that traces nothing of its own is looked through.</remarks>
         private protected static bool ShouldSuppressLogs(ExecutionOptions opts, ITxTracer tracer) =>
             opts.HasFlag(ExecutionOptions.Warmup)
-            && ReferenceEquals(tracer is CancellationTxTracer cancellable && !((ITxTracer)cancellable).IsTracing ? cancellable.InnerTracer : tracer, NullTxTracer.Instance);
+            && (ReferenceEquals(tracer, NullTxTracer.Instance)
+                || tracer is CancellationTxTracer { InnerTracer: NullTxTracer } && !tracer.IsTracing);
 
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
         {

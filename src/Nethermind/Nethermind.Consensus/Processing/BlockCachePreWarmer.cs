@@ -1458,6 +1458,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // The loaded block. Cleared on unload so the queue pins nothing between blocks.
         public BlockState BlockState { get; private set; } = null!;
         public CancellationToken Token { get; private set; }
+        public CancellationTxTracer Tracer { get; private set; } = null!;
         public int Degree { get; private set; }
         private Transaction[] _txs = [];
         private ISet<Hash256>? _speculativelyWarmed;
@@ -1486,6 +1487,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             BlockState = blockState;
             Token = parallelOptions.CancellationToken;
+            Tracer = new(NullTxTracer.Instance, Token);
             int maxDegree = parallelOptions.MaxDegreeOfParallelism;
             Degree = maxDegree > 0 ? maxDegree : PreWarmer._concurrencyLevel;
             _txs = blockState.Block.Transactions;
@@ -1562,6 +1564,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             _scratch.ReturnJobs();
             BlockState = null!;
             Token = default;
+            Tracer = null!;
             _txs = [];
             _speculativelyWarmed = null;
             _claimed = [];
@@ -2014,7 +2017,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             using IReadOnlyTxProcessingScope scope = _env!.BuildAtTarget(blockState.Block.Header);
             BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
             scope.TransactionProcessor.SetBlockExecutionContext(context);
-            CancellationTxTracer tracer = new(NullTxTracer.Instance, token);
+            CancellationTxTracer tracer = _queue.Tracer;
 
             foreach ((int txIndex, Transaction tx) in transactions)
             {
