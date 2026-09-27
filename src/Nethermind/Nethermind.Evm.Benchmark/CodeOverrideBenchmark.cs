@@ -33,11 +33,14 @@ public class CodeOverrideBenchmark
         IOverridableEnv env = _container.Resolve<IOverridableEnvFactory>().Create();
         _scope = _container.BeginLifetimeScope(builder => builder.AddModule(env));
         _repository = _scope.Resolve<IOverridableCodeInfoRepository>();
-        // Setting an override reads the code hash it is set against.
-        _stateScope = _scope.Resolve<IWorldState>().BeginScope(IWorldState.PreGenesis);
+        // Setting an override reads the code hash it is set against, so the state must hold the code.
+        IWorldState worldState = _scope.Resolve<IWorldState>();
+        _stateScope = worldState.BeginScope(IWorldState.PreGenesis);
         byte[] bytes = new byte[CodeLength];
         new System.Random(42).NextBytes(bytes);
         _code = new CodeInfo(bytes);
+        worldState.CreateAccount(TestItem.AddressA, 0);
+        worldState.InsertCode(TestItem.AddressA, bytes, Prague.Instance);
     }
 
     [Benchmark]

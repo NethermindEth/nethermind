@@ -2651,8 +2651,10 @@ public class FrameTxProcessorTests
         OverridableCodeInfoRepository repository = alsoMovedAway
             ? MovedPrecompile(IdentityPrecompile.Address, TestItem.AddressF)
             : new OverridableCodeInfoRepository(new EthereumCodeInfoRepository(_stateProvider), _stateProvider);
-        repository.SetCodeOverride(Spec, IdentityPrecompile.Address,
-            new CodeInfo(Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done));
+        // As a state override does, the code goes into state before the override that serves it.
+        byte[] revertingCode = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done;
+        DeployContract(IdentityPrecompile.Address, revertingCode);
+        repository.SetCodeOverride(Spec, IdentityPrecompile.Address, new CodeInfo(revertingCode));
 
         FrameReceiptTracer tracer = new();
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));

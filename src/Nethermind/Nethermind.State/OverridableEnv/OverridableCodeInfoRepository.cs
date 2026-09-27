@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -52,7 +53,13 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
         Address key,
-        CodeInfo value) => _codeOverrides[key] = (value, worldState.GetCodeHash(key));
+        CodeInfo value)
+    {
+        ValueHash256 codeHash = worldState.GetCodeHash(key);
+        Debug.Assert(value.IsPrecompile || ValueKeccak.Compute(value.CodeSpan) == codeHash,
+            $"The world state must hold the override code at {key} before {nameof(SetCodeOverride)}");
+        _codeOverrides[key] = (value, codeHash);
+    }
 
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {
