@@ -101,6 +101,23 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>A slot tick queued behind imports can carry an epoch older than the one gossip started at; it must not drop the next digest.</summary>
+    [Test]
+    public async Task A_stale_tick_does_not_undo_the_window_gossip_started_at()
+    {
+        const ulong bpo1Epoch = 412_672;
+        await using IContainer container = BuildGossipContainer(BlockchainIds.Mainnet, Spec, bpo1Epoch - 2, out BeaconSyncOrchestrator orchestrator, out BeaconDiscovery discovery);
+        discovery.CreateDiscv5Services(IPAddress.Loopback);
+        byte[] next = ForkDigest.Compute(Spec, bpo1Epoch);
+        Dictionary<string, FakeTopic> topics = [];
+        orchestrator.StartGossip(id => topics[id] = new FakeTopic());
+        orchestrator.ReconcileGossipDigests(bpo1Epoch - 1);
+
+        orchestrator.ReconcileGossipDigests(bpo1Epoch - 2);
+
+        Assert.That(IsSubscribed(topics, next, GossipTopics.BeaconBlock), Is.True, "the next digest joined at the later epoch stays subscribed");
+    }
+
     [Test]
     public async Task Successive_digest_changes_each_drop_the_digest_before_them()
     {

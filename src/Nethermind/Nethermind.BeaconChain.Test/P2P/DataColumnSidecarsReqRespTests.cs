@@ -20,6 +20,7 @@ using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using NSubstitute;
 using NUnit.Framework;
+using Snappier;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
@@ -244,10 +245,12 @@ public class DataColumnSidecarsReqRespTests
     public async Task The_largest_sidecar_its_epoch_permits_is_served_and_read_back_whole()
     {
         const ulong slot = 13_410_304;
-        const ulong column = 5;
+        // An extension-half column: its cells are erasure-coded, so they do not compress like the blob's own half.
+        const ulong column = 100;
         int maxBlobs = (int)Spec.GetBlobParameters(Spec.GetEpoch(slot))!.Value.MaxBlobsPerBlock;
-        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: maxBlobs);
+        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: maxBlobs, seed: 1);
         byte[] ssz = DataColumnSidecar.Encode(sidecar);
+        Assert.That(Snappy.CompressToArray(ssz), Has.Length.GreaterThan(ssz.Length * 99 / 100), "fixture: the cells must not compress, or the wire bound is never approached");
         DataColumnSidecarPool pool = new();
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         Hash256 root = Keccak.Compute("canonical");
