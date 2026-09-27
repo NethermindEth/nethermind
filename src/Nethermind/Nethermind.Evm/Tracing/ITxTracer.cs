@@ -381,6 +381,9 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
     void ReportActionError(EvmExceptionType evmExceptionType);
 
+    /// <summary>Sets additional diagnostic information for the current action's subsequent error.</summary>
+    void ReportActionErrorDetails(string error) { }
+
     /// <summary>
     /// Reports the remaining gas observed at an execution-segment boundary.
     /// </summary>
