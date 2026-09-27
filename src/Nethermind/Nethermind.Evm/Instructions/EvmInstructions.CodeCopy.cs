@@ -134,6 +134,7 @@ public static partial class EvmInstructions
 
     /// <summary>
     /// CALLDATACOPY - copies a portion of the transaction's calldata into memory.
+    /// Sources bytes from <c>stack.InputData</c>/<c>stack.InputDataLength</c> (hoisted at frame entry).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [SkipLocalsInit]
@@ -142,7 +143,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
-            vm.VmState.Env.InputData.Span);
+            MemoryMarshal.CreateReadOnlySpan(in stack.InputData, (int)stack.InputDataLength));
 
     /// <summary>
     /// Copies data from the previous call's return buffer into memory.
