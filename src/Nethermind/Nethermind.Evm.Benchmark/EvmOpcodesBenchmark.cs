@@ -315,6 +315,7 @@ public unsafe class EvmOpcodesBenchmark
     private EvmExceptionType ExecuteOpcodeWithStackWalk()
     {
         EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
+        stack.HoistInputData(_env.InputData.Span);
         DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
         int remaining = InnerCount;
@@ -339,6 +340,7 @@ public unsafe class EvmOpcodesBenchmark
     private EvmExceptionType ExecuteOpcodeWithPerRunRefresh()
     {
         EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
+        stack.HoistInputData(_env.InputData.Span);
         DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
         for (int runIndex = 0; runIndex < InnerCount; runIndex++)
@@ -357,6 +359,7 @@ public unsafe class EvmOpcodesBenchmark
     private EvmExceptionType ExecuteOpcodeWithIndependentBinaryInputs()
     {
         EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
+        stack.HoistInputData(_env.InputData.Span);
         DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
         int remaining = InnerCount;
@@ -713,6 +716,7 @@ public unsafe class EvmOpcodesBenchmark
     private long ExecuteOpcodeOnceForGas()
     {
         EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
+        stack.HoistInputData(_env.InputData.Span);
         if (RequiresPerRunLocationSetup(Opcode))
         {
             stack.Head = _stackDepth;
