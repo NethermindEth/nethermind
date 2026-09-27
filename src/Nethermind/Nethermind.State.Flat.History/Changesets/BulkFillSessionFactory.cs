@@ -21,9 +21,10 @@ public sealed class BulkFillSessionFactory(
     HistoryRowFormat format,
     HistoryScopeGate scopes,
     IFlatDbConfig config,
-    ILogManager logs)
+    ILogManager logs) : IDisposable
 {
     private readonly ILogger _logger = logs.GetClassLogger<BulkFillSessionFactory>();
+    private readonly ManualResetEventSlim _delay = new(false, spinCount: 0);
     private long _lastDiskCheck;
     private BulkFillSession? _lastCheckedSession;
 
@@ -125,8 +126,10 @@ public sealed class BulkFillSessionFactory(
         while (rest > TimeSpan.Zero)
         {
             TimeSpan part = rest > TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : rest;
-            if (token.WaitHandle.WaitOne(part)) token.ThrowIfCancellationRequested();
+            _delay.Wait(part, token);
             rest -= part;
         }
     }
+
+    void IDisposable.Dispose() => _delay.Dispose();
 }

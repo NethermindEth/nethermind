@@ -287,13 +287,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         Handle(e);
                         processingState.ShouldExit = true;
                     }
-                    catch (JsonException ex)
-                    {
-                        // Deliberately NOT IsRequestDecodingException: this catch wraps request *execution* as
-                        // well as decoding. See JsonRpcRequestDecoder.IsRequestDecodingException.
-                        result = GetParsingError(startTime, in buffer, context, "Error during parsing/validation.", ex);
-                        processingState.ShouldExit = true;
-                    }
                 }
             }
 
@@ -377,15 +370,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             return;
         }
 
-        try
-        {
-            PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>(requestBody));
-            await ProcessCoreAsync(reader, context, sink, options, timeoutSource: null, timeoutToken: CancellationToken.None, cancellationToken, recordRequest: false);
-        }
-        catch (JsonException ex)
-        {
-            await WriteParsingErrorAsync(new ReadOnlySequence<byte>(requestBody), context, sink, startTime, "Error during parsing/validation.", cancellationToken, ex);
-        }
+        PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>(requestBody));
+        await ProcessCoreAsync(reader, context, sink, options, timeoutSource: null, timeoutToken: CancellationToken.None, cancellationToken, recordRequest: false);
     }
 
     private enum CompleteBodyOutcome
@@ -406,12 +392,6 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     /// which shapes take the fast route or on where the decode guard sits. Only the decode is guarded (see
     /// <see cref="JsonRpcRequestDecoder.IsRequestDecodingException"/>); dispatching a decoded request happens outside
     /// it, so a node fault surfacing as an <see cref="InvalidOperationException"/> is not answered as a parse error.
-    /// <para>
-    /// The <see cref="JsonException"/> catch around the batch run is knowingly wider than a decode: a serialization
-    /// failure part-way through a batch is answered -32700, which the sink appends after
-    /// <c>EndBatchAsync</c> has already closed the array. Narrowing it to the envelope decode would turn that
-    /// malformed 200 into a 500, so the scope is a client-visible contract and not to be changed incidentally.
-    /// </para>
     /// </remarks>
     private async ValueTask<(CompleteBodyOutcome Outcome, JsonRpcResult.Entry? Entry)> TryProcessCompleteBodyAsync(
         ReadOnlyMemory<byte> body,
@@ -447,14 +427,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             return (CompleteBodyOutcome.NotApplicable, null);
         }
 
-        try
-        {
-            await RunBatchAsync(new MemoryBatchItemSource(batchBody), context, sink, cancellationToken);
-        }
-        catch (JsonException ex)
-        {
-            return (CompleteBodyOutcome.ParseError, CreateBodyParsingError(body, context, startTime, ex));
-        }
+        await RunBatchAsync(new MemoryBatchItemSource(batchBody), context, sink, cancellationToken);
 
         return (CompleteBodyOutcome.Handled, null);
     }
@@ -632,17 +605,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             }
 
             if (_logger.IsTrace) _logger.Trace($"  {requestIndex} requests handled in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            await sink.EndBatchAsync(cancellationToken);
         }
         finally
         {
-            try
-            {
-                if (batchStarted) await sink.EndBatchAsync(cancellationToken);
-            }
-            finally
-            {
-                batchRequestJsonLifetime.Dispose();
-            }
+            batchRequestJsonLifetime.Dispose();
         }
     }
 
@@ -845,7 +812,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         if (isSuccess)
         {
             if (_logger.IsTrace) _logger.Trace($"Responded to Id:{request.Id} Method:{request.Method} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
-            Metrics.JsonRpcSuccesses++;
+            if (response.Streaming is { } streaming)
+            {
+                streaming.ReportCompletion = true;
+            }
+            else Metrics.JsonRpcSuccesses++;
         }
         else
         {
