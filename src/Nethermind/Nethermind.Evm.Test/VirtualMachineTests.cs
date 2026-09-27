@@ -1860,34 +1860,46 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
     private static IEnumerable<TestCaseData> ZeroLengthMemoryRangeAtMaxOffsetCases()
     {
-        yield return new TestCaseData(Prepare.EvmCode.KECCAK256(UInt256.MaxValue, 0).STOP().Done, StatusCode.Success)
+        yield return new TestCaseData((Func<UInt256, byte[]>)(static offset => Prepare.EvmCode.KECCAK256(offset, 0).STOP().Done), StatusCode.Success)
             .SetName("Zero_length_KECCAK256_ignores_its_offset");
-        yield return new TestCaseData(Prepare.EvmCode.LOGx(0, UInt256.MaxValue, 0).STOP().Done, StatusCode.Success)
+        yield return new TestCaseData((Func<UInt256, byte[]>)(static offset => Prepare.EvmCode.LOGx(0, offset, 0).STOP().Done), StatusCode.Success)
             .SetName("Zero_length_LOG0_ignores_its_offset");
-        yield return new TestCaseData(Prepare.EvmCode.RETURN(UInt256.MaxValue, 0).Done, StatusCode.Success)
+        yield return new TestCaseData((Func<UInt256, byte[]>)(static offset => Prepare.EvmCode.RETURN(offset, 0).Done), StatusCode.Success)
             .SetName("Zero_length_RETURN_ignores_its_offset");
-        yield return new TestCaseData(Prepare.EvmCode.REVERT(UInt256.MaxValue, 0).Done, StatusCode.Failure)
+        yield return new TestCaseData((Func<UInt256, byte[]>)(static offset => Prepare.EvmCode.REVERT(offset, 0).Done), StatusCode.Failure)
             .SetName("Zero_length_REVERT_ignores_its_offset");
         yield return new TestCaseData(
-                Prepare.EvmCode.CALL(50_000, TestItem.AddressC, 0, UInt256.MaxValue, 0, UInt256.MaxValue, 0).STOP().Done,
+                (Func<UInt256, byte[]>)(static offset => Prepare.EvmCode.CALL(50_000, TestItem.AddressC, 0, offset, 0, offset, 0).STOP().Done),
                 StatusCode.Success)
             .SetName("Zero_length_CALL_input_and_output_ignore_their_offsets");
         yield return new TestCaseData(
-                Prepare.EvmCode.STATICCALL(50_000, IdentityPrecompile.Address, UInt256.MaxValue, 0, UInt256.MaxValue, 0).STOP().Done,
+                (Func<UInt256, byte[]>)(static offset => Prepare.EvmCode.STATICCALL(50_000, IdentityPrecompile.Address, offset, 0, offset, 0).STOP().Done),
                 StatusCode.Success)
             .SetName("Zero_length_precompile_STATICCALL_input_and_output_ignore_their_offsets");
     }
 
     [TestCaseSource(nameof(ZeroLengthMemoryRangeAtMaxOffsetCases))]
-    public void Zero_length_memory_range_ignores_its_offset(byte[] code, byte expectedStatus)
+    public void Zero_length_memory_range_ignores_its_offset(Func<UInt256, byte[]> buildCode, byte expectedStatus)
     {
+        byte[] code = buildCode(UInt256.MaxValue);
+        byte[] baselineCode = buildCode(UInt256.Zero);
         CallOutputTracer untraced = Execute(new CallOutputTracer(), code, MainnetSpecProvider.CancunActivation);
         TestAllTracerWithOutput traced = Execute(new TestAllTracerWithOutput(), code, MainnetSpecProvider.CancunActivation);
+        CallOutputTracer untracedBaseline = Execute(new CallOutputTracer(), baselineCode, MainnetSpecProvider.CancunActivation);
+        TestAllTracerWithOutput tracedBaseline = Execute(new TestAllTracerWithOutput(), baselineCode, MainnetSpecProvider.CancunActivation);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(untraced.StatusCode, Is.EqualTo(expectedStatus), "the untraced run takes the inline fast paths");
             Assert.That(traced.StatusCode, Is.EqualTo(expectedStatus), "the traced run creates full call frames");
+            if (expectedStatus == StatusCode.Failure)
+            {
+                Assert.That(untraced.Error, Is.EqualTo(TransactionSubstate.Revert), "an explicit revert, not an exceptional halt");
+                Assert.That(traced.Error, Is.EqualTo(TransactionSubstate.Revert), "an explicit revert, not an exceptional halt");
+            }
+
+            Assert.That(untraced.GasSpent, Is.EqualTo(untracedBaseline.GasSpent), "a zero-length range charges no memory expansion at any offset");
+            Assert.That(traced.GasSpent, Is.EqualTo(tracedBaseline.GasSpent), "a zero-length range charges no memory expansion at any offset");
         }
     }
 
