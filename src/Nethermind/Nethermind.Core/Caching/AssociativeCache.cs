@@ -61,7 +61,7 @@ namespace Nethermind.Core.Caching;
 /// Use <see cref="ClockCache{TKey,TValue}"/> for value-type TValues (it uses an McsLock that
 /// makes reads and writes mutually exclusive, preventing tearing).</para>
 /// </summary>
-public sealed class AssociativeCache<TKey, TValue>
+public sealed partial class AssociativeCache<TKey, TValue>
     where TKey : struct, IHash64bit<TKey>
     where TValue : class?
 {
@@ -157,12 +157,7 @@ public sealed class AssociativeCache<TKey, TValue>
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e.Header);
-#if ZK_EVM
-            // Guests run single-threaded, so no entry is seen mid-write and the retry would only cost steps.
-            if (h1 != h2) continue;
-#else
-            if (((h1 & LockMarker) != 0 || h1 != h2) && !TryReadSettled(ref e, expectedTag, out storedKey, out storedValue)) continue;
-#endif
+            if (!TrySettleRead(ref e, h1, h2, expectedTag, ref storedKey, ref storedValue)) continue;
 
             if (storedKey.Equals(in key))
             {
@@ -440,42 +435,14 @@ public sealed class AssociativeCache<TKey, TValue>
     }
 
     /// <summary>
-    /// Waits for an entry found locked or changed mid-read to settle, then reads its key and value.
+    /// Validates a read of an entry carrying <paramref name="expectedTag"/> whose header was
+    /// <paramref name="h1"/> before the key and value were copied and <paramref name="h2"/> after.
     /// </summary>
-    /// <returns><see langword="false"/> when the entry no longer carries <paramref name="expectedTag"/>.</returns>
-    /// <remarks>
-    /// Such an entry is being written with a key of this tag, usually a new value for the key looked up. Reporting a
-    /// miss for a present key would make callers reload and re-cache it as another instance. Kept out of line so the
-    /// uncontended read path stays as small as before.
-    /// </remarks>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool TryReadSettled(ref Entry entry, long expectedTag, out TKey key, out TValue? value)
-    {
-        SpinWait spin = default;
-        while (true)
-        {
-            spin.SpinOnce(sleep1Threshold: -1);
-            long h1 = Volatile.Read(ref entry.Header);
-            if ((h1 & TagMask) != expectedTag)
-            {
-                key = default;
-                value = null;
-                return false;
-            }
-
-            if ((h1 & LockMarker) == 0)
-            {
-                // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
-                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
-                key = entry.Key;
-                value = entry.Value;
-                // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
-                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
-
-                if (Volatile.Read(ref entry.Header) == h1) return true;
-            }
-        }
-    }
+    /// <returns>
+    /// <see langword="true"/> when <paramref name="key"/> and <paramref name="value"/> hold a consistent copy of the
+    /// entry; <see langword="false"/> when the entry cannot be used for this lookup.
+    /// </returns>
+    private static partial bool TrySettleRead(ref Entry entry, long h1, long h2, long expectedTag, ref TKey key, ref TValue? value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteEntry(ref Entry entry, long existing, in TKey key, TValue? value, long tagToStore, long ticker)
