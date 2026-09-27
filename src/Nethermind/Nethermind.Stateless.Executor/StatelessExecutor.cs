@@ -65,7 +65,7 @@ public static class StatelessExecutor
                 if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
                     KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
 #endif
-                if (TryAssignSenders(transactions, publicKeys, specProvider, spec))
+                if (TryAssignSenders(transactions, payload.EncodedTransactions, publicKeys, specProvider, spec))
                 {
                     using Witness witness = payload.Witness.ToWitness();
 
@@ -168,9 +168,6 @@ public static class StatelessExecutor
     /// </remarks>
     public static ReadOnlyMemory<byte> FailureOutput { get; private set; }
 
-    /// <summary>SEC1 tag for an uncompressed public key, the form the stateless input carries.</summary>
-    private const byte UncompressedPublicKeyPrefix = 0x04;
-
     private static readonly StatelessValidationResult _defaultFailureResult = new()
     {
         NewPayloadRequestRoot = Hash256.Zero,
@@ -189,28 +186,23 @@ public static class StatelessExecutor
     /// its own and would name a different sender.
     /// </remarks>
     private static bool TryAssignSenders(
-        Transaction[] transactions, ReadOnlySpan<SszPublicKey> publicKeys, ISpecProvider specProvider, IReleaseSpec spec)
+        Transaction[] transactions, byte[][] encodedTransactions, ReadOnlySpan<SszPublicKey> publicKeys,
+        ISpecProvider specProvider, IReleaseSpec spec)
     {
         EthereumEcdsa ecdsa = new(specProvider.ChainId);
+        Span<byte> recovered = stackalloc byte[PublicKey.PrefixedLengthInBytes];
 
         for (int i = 0; i < transactions.Length; i++)
         {
             Transaction transaction = transactions[i];
 
-            if (transaction.Signature is null)
-                return false;
-
-            PublicKey? recovered = ecdsa.RecoverPublicKey(transaction, !spec.ValidateChainId);
-            ReadOnlySpan<byte> declared = publicKeys[i].AsSpan();
-
-            if (recovered is null ||
-                declared[0] != UncompressedPublicKeyPrefix ||
-                !declared[1..].SequenceEqual(recovered.Bytes))
+            if (!ecdsa.TryRecoverPublicKey(transaction, encodedTransactions[i], recovered, !spec.ValidateChainId) ||
+                !publicKeys[i].AsSpan().SequenceEqual(recovered))
             {
                 return false;
             }
 
-            transaction.SenderAddress = recovered.Address;
+            transaction.SenderAddress = PublicKey.ComputeAddress(recovered[1..]);
         }
 
         return true;

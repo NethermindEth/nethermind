@@ -68,7 +68,7 @@ public abstract class TxTracer : ITxTracer
     public virtual void ReportStackPush(in ReadOnlySpan<byte> stackItem) { }
     public virtual void SetOperationMemory(TraceMemory memoryTrace) { }
     public virtual void SetOperationMemorySize(ulong newSize) { }
-    public virtual void SetOperationReturnData(ReadOnlyMemory<byte> returnData) { }
+    public virtual void SetOperationReturnData(ReadOnlySpan<byte> returnData) { }
     public virtual void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
     public virtual void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
     public virtual void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }

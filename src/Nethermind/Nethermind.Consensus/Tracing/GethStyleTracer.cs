@@ -107,10 +107,9 @@ public class GethStyleTracer(
             scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, blockTracer.WithCancellation(cancellationToken), cancellationToken);
             return blockTracer.BuildResult().SingleOrDefault();
         }
-        catch
+        finally
         {
             blockTracer.TryDispose();
-            throw;
         }
     }
 
@@ -217,10 +216,9 @@ public class GethStyleTracer(
             scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, executionTracer, cancellationToken);
             return tracer.BuildResult().SingleOrDefault();
         }
-        catch
+        finally
         {
             tracer.TryDispose();
-            throw;
         }
     }
 
@@ -228,15 +226,9 @@ public class GethStyleTracer(
         options switch
         {
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
-            { Tracer.Length: > 0 } => CreateJavaScriptTracer(block, options, worldState, specProvider),
+            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options, (long)specProvider.GetSpec(block).GasCosts.DestroyRefund),
         };
-
-    private static GethLikeBlockJavaScriptTracer CreateJavaScriptTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider)
-    {
-        Engine.ValidateTracer(options.Tracer);
-        return new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options);
-    }
 
     private IReadOnlyCollection<GethLikeTxTrace> TraceBlockImpl(Block? block, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null, bool allowIndexed = true)
     {
@@ -276,10 +268,9 @@ public class GethStyleTracer(
                 ? new GethLikeTxTraceCollection(tracer.BuildResult())
                 : Array.Empty<GethLikeTxTrace>();
         }
-        catch
+        finally
         {
             tracer.TryDispose();
-            throw;
         }
     }
 

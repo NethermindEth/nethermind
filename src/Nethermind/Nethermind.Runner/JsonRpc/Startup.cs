@@ -208,7 +208,7 @@ public class Startup : IStartup
         {
             if (!TryGetTrustedHttpJsonRpcUrl(ctx, jsonRpcUrlCollection, additionalTrustedNetworks, out JsonRpcUrl? jsonRpcUrl))
             {
-                return next();
+                return next(ctx);
             }
 
             return ProcessJsonRpcRequestCoreAsync(ctx, jsonRpcUrl);
@@ -305,16 +305,16 @@ public class Startup : IStartup
         return false;
     }
 
-    internal Task HandleJsonRpcHttpRequestAsync(HttpContext ctx, Func<Task> next, IJsonRpcUrlCollection jsonRpcUrlCollection)
+    internal Task HandleJsonRpcHttpRequestAsync(HttpContext ctx, RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection)
     {
         if (ctx.GetEndpoint() is not null)
         {
-            return next();
+            return next(ctx);
         }
 
         if (!IsJsonContentType(ctx.Request.ContentType))
         {
-            return next();
+            return next(ctx);
         }
 
         string method = ctx.Request.Method;

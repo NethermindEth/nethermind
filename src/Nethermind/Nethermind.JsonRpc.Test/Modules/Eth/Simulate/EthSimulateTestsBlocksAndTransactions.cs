@@ -192,7 +192,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
         Assert.That((bool)result.Result, Is.EqualTo(true), result.Result.ToString());
@@ -393,7 +393,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
@@ -434,7 +434,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
@@ -579,7 +579,7 @@ public class EthSimulateTestsBlocksAndTransactions
             ]
         };
 
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, chain.RpcConfig, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
@@ -1246,7 +1246,7 @@ public class EthSimulateTestsBlocksAndTransactions
             Validation = true
         };
 
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig { GasCap = 20_000 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig { GasCap = 20_000, Timeout = -1 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         // With the budget enforced, the first call spends most of it and the second call's clamped
@@ -1512,7 +1512,7 @@ public class EthSimulateTestsBlocksAndTransactions
         // first and leaves the second short only while both dimensions deplete it; counting execution alone
         // would leave ~173k and let both writes through, spending ~250k against a 200k cap.
         SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder,
-            new JsonRpcConfig { GasCap = TwoSstoreRequestGasCap }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+            new JsonRpcConfig { GasCap = TwoSstoreRequestGasCap, Timeout = -1 }, chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
