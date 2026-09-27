@@ -144,18 +144,7 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
 
         if (!found) return true;
         if (newcomer <= victim.Value) return false;
-        if (RemoveTracked(victim.Key, victim.Value)) return true;
-
-        foreach (KeyValuePair<AddressAsKey, UInt256> entry in _width)
-        {
-            if (_width.TryRemove(entry.Key, out _))
-            {
-                Untrack();
-                return true;
-            }
-        }
-
-        return true;
+        return RemoveTracked(victim.Key, victim.Value) || Count < maxSenders;
     }
 
     private void Untrack()

@@ -136,7 +136,7 @@ public class FrameTxWidthConcurrencyTests
             cache.Earn(incumbents[i], Cost);
         }
 
-        for (int i = 0; i < 4 * capacity; i++)
+        for (int i = 0; i < 16 * capacity && incumbents.Any(a => !cache.GetWidth(a).IsZero); i++)
         {
             cache.Earn(SenderAt(capacity + i), 2 * Cost);
         }
