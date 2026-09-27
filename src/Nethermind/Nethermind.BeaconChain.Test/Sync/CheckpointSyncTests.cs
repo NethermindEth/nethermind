@@ -23,6 +23,7 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -165,6 +166,41 @@ public class CheckpointSyncTests
         }
 
         Assert.That(store.GetMetadata(BeaconChainMetadataKeys.GenesisValidatorsRoot), Is.EqualTo(state.GenesisValidatorsRoot.BytesToArray()));
+    }
+
+    /// <summary>
+    /// Altair <c>eth_aggregate_pubkeys</c> KeyValidates every sync committee member, and sync-aggregate verification
+    /// only decodes the keys, so an anchor committee with an infinity or off-subgroup key, or an aggregate_pubkey that is not
+    /// their aggregate, must be refused before it is persisted.
+    /// </summary>
+    [Test]
+    public void A_checkpoint_with_an_invalid_sync_committee_key_is_refused_before_anything_is_persisted(
+        [Values] bool gloas, [Values] bool nextCommittee, [Values] InvalidSyncCommitteeKey key)
+    {
+        using TempPath stateFile = TempPath.GetTempFile();
+        File.WriteAllBytes(stateFile.Path, SyncCommitteeKeyAnchors.EncodeState(gloas, nextCommittee, key, out _));
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = stateFile.Path }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+
+        InvalidDataException ex = Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None))!;
+
+        Assert.That(ex.Message, Does.Contain(SyncCommitteeKeyAnchors.Refusal(nextCommittee, key)));
+        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+    }
+
+    [Test]
+    public async Task A_checkpoint_with_valid_sync_committee_keys_is_persisted([Values] bool gloas)
+    {
+        using TempPath stateFile = TempPath.GetTempFile();
+        File.WriteAllBytes(stateFile.Path, SyncCommitteeKeyAnchors.EncodeState(gloas, nextCommittee: false, key: null, out Hash256 blockRoot));
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = stateFile.Path }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+
+        CheckpointAnchor anchor = await sync.RunAsync(CancellationToken.None);
+
+        Assert.That(anchor.BlockRoot, Is.EqualTo(blockRoot));
+        Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out _), Is.True);
+        Assert.That(anchorRoot, Is.EqualTo(blockRoot));
     }
 
     private static ExternalClDetector CreateDetector(ILogManager logManager) =>

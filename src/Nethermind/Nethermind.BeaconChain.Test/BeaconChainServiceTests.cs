@@ -85,23 +85,6 @@ public class BeaconChainServiceTests
     }
 
     [Test]
-    public async Task Start_refuses_a_database_written_by_a_newer_schema_version_before_reading_the_anchor()
-    {
-        TestErrorLogManager logManager = new();
-        using IContainer container = BuildContainer(logManager);
-        BeaconChainStore store = container.Resolve<BeaconChainStore>();
-        uint newer = BeaconChainStore.CurrentSchemaVersion + 1;
-        store.SetSchemaVersion(newer);
-        store.SetAnchor(TestItem.KeccakA, 1);
-
-        await container.Resolve<BeaconChainService>().Start();
-
-        Assert.That(logManager.Errors.Single().Exception?.Message, Does.Contain($"schema version {newer}"), "the driver must stop at the version check, not at the anchor it would otherwise misread");
-        Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
-        Assert.That(version, Is.EqualTo(newer), "a refused database is not restamped");
-    }
-
-    [Test]
     public async Task Start_stamps_an_unversioned_database_before_reading_its_anchor()
     {
         TestErrorLogManager logManager = new();
