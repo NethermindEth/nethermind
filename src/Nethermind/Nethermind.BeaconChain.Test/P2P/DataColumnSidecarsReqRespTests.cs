@@ -12,7 +12,9 @@ using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
@@ -169,6 +171,94 @@ public class DataColumnSidecarsReqRespTests
         Assert.That(served, Has.Count.EqualTo(BlocksProtocolBase.MaxRequestBlocks));
     }
 
+    /// <summary>
+    /// fulu/p2p-interface.md: a peer unable to reply within <c>data_column_serve_range</c> SHOULD answer ResourceUnavailable,
+    /// so a requester asks elsewhere instead of reading an incomplete response as the columns that exist.
+    /// </summary>
+    [TestCase(-1, 2, 1UL, true, TestName = "Inside the serve range from one slot below the complete columns")]
+    [TestCase(-1, 1, 1UL, true, TestName = "Inside the serve range at the single slot below the complete columns")]
+    [TestCase(0, 2, 1UL, false, TestName = "Inside the serve range from the first complete slot")]
+    [TestCase(-3, 5, 1UL, true, TestName = "Inside the serve range across slots below the complete columns")]
+    [TestCase(-3, 3, 0UL, false, TestName = "Wholly below the serve range")]
+    [TestCase(-3, 5, 0UL, false, TestName = "Below the serve range up to the complete columns")]
+    [TestCase(-35, 3, 1UL, false, TestName = "Ending one slot below the serve range")]
+    public async Task By_range_answers_resource_unavailable_only_when_the_serve_range_part_starts_below_the_complete_columns(int startOffset, int count, ulong serveRangeEpochsBelowFirstHeld, bool unavailable)
+    {
+        const ulong firstHeldSlot = 13_410_304;
+        const ulong column = 5;
+        DataColumnSidecarPool pool = new();
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        for (ulong slot = firstHeldSlot; slot < firstHeldSlot + 2; slot++)
+        {
+            Hash256 root = Keccak.Compute($"canonical {slot}");
+            pool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: 1));
+            store.SetCanonicalRoot(slot, root);
+        }
+
+        // firstHeldSlot opens an epoch, so the serve range starts at it or whole epochs below it.
+        ulong currentEpoch = Spec.GetEpoch(firstHeldSlot) - serveRangeEpochsBelowFirstHeld + Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests;
+        SlotClock clock = new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + currentEpoch * Spec.SlotsPerEpoch * Spec.SecondsPerSlot)).UtcDateTime));
+        long invalidBefore = FailureCount(ByRangeId, ReqRespFailureReason.InvalidMessage);
+        ulong startSlot = (ulong)((long)firstHeldSlot + startOffset);
+
+        Task<IReadOnlyList<DataColumnSidecar>> request = RequestRangeAsync(pool, store, startSlot, (ulong)count, [column], clock);
+
+        if (unavailable)
+        {
+            Eth2ReqRespException? error = Assert.ThrowsAsync<Eth2ReqRespException>(async () => await request);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable));
+                Assert.That(FailureCount(ByRangeId, ReqRespFailureReason.InvalidMessage), Is.EqualTo(invalidBefore), "an honest request for columns this node lacks is not the requester's fault");
+            }
+        }
+        else
+        {
+            ulong firstServed = Math.Max(startSlot, firstHeldSlot);
+            ulong lastServed = Math.Min(startSlot + (ulong)count - 1, firstHeldSlot + 1);
+            ulong[] expected = firstServed <= lastServed ? [.. Enumerable.Range(0, (int)(lastServed - firstServed + 1)).Select(i => firstServed + (ulong)i)] : [];
+            Assert.That((await request).Select(static s => s.SignedBlockHeader!.Message!.Slot), Is.EqualTo(expected));
+        }
+    }
+
+    /// <summary>
+    /// <c>data_column_serve_range</c> ends at the current slot, so a request wholly after it asks nothing this node must serve:
+    /// even a node that holds no columns answers it with an empty response, not ResourceUnavailable.
+    /// </summary>
+    [Test]
+    public async Task By_range_serves_a_request_wholly_after_the_current_slot_empty_even_with_no_columns_held()
+    {
+        const ulong currentSlot = 13_410_304;
+        SlotClock clock = new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + currentSlot * Spec.SecondsPerSlot)).UtcDateTime));
+
+        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(new DataColumnSidecarPool(), new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), currentSlot + 1, 4, [5], clock);
+
+        Assert.That(served, Is.Empty);
+    }
+
+    /// <summary>
+    /// The reader bounds a chunk's wire bytes by a function of its declared SSZ length; the largest sidecar its epoch
+    /// permits, of incompressible cells, is the honest worst case that bound must still admit.
+    /// </summary>
+    [Test]
+    public async Task The_largest_sidecar_its_epoch_permits_is_served_and_read_back_whole()
+    {
+        const ulong slot = 13_410_304;
+        const ulong column = 5;
+        int maxBlobs = (int)Spec.GetBlobParameters(Spec.GetEpoch(slot))!.Value.MaxBlobsPerBlock;
+        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: maxBlobs);
+        byte[] ssz = DataColumnSidecar.Encode(sidecar);
+        DataColumnSidecarPool pool = new();
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        Hash256 root = Keccak.Compute("canonical");
+        pool.Add(root, slot, sidecar);
+        store.SetCanonicalRoot(slot, root);
+
+        IReadOnlyList<DataColumnSidecar> served = await RequestRangeAsync(pool, store, slot, 1, [column]);
+
+        Assert.That(served.Select(static s => DataColumnSidecar.Encode(s)), Is.EqualTo(new[] { ssz }));
+    }
+
     [Test]
     public void DialAsync_rejects_more_identifiers_than_MaxRequestBlocks_before_writing_to_the_wire()
     {
@@ -214,9 +304,9 @@ public class DataColumnSidecarsReqRespTests
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new DataColumnSidecarsByRootProtocol(Spec, new DataColumnSidecarPool()).DialAsync(null!, null!, new(request, Gloas: false)));
     }
 
-    private static async Task<IReadOnlyList<DataColumnSidecar>> RequestRangeAsync(DataColumnSidecarPool pool, BeaconChainStore store, ulong startSlot, ulong count, ulong[] columns)
+    private static async Task<IReadOnlyList<DataColumnSidecar>> RequestRangeAsync(DataColumnSidecarPool pool, BeaconChainStore store, ulong startSlot, ulong count, ulong[] columns, SlotClock? clock = null)
     {
-        DataColumnSidecarsByRangeProtocol protocol = new(Spec, pool, store);
+        DataColumnSidecarsByRangeProtocol protocol = new(Spec, pool, store, clock);
         ISessionContext context = Substitute.For<ISessionContext>();
         context.State.Returns(new Nethermind.Libp2p.Core.State());
 
@@ -233,6 +323,8 @@ public class DataColumnSidecarsReqRespTests
         await protocol.ListenAsync(channel, context);
         await channel.WriteEofAsync();
     }
+
+    private const string ByRangeId = "/eth2/beacon_chain/req/data_column_sidecars_by_range/1/ssz_snappy";
 
     private static long FailureCount(string protocolId, ReqRespFailureReason reason) =>
         Metrics.BeaconChainReqRespFailures.TryGetValue(new ReqRespFailureKey(protocolId, reason), out long count) ? count : 0;

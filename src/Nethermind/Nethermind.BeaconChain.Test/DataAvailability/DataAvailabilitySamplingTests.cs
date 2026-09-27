@@ -36,19 +36,29 @@ public class DataAvailabilitySamplingTests
         });
     }
 
+    /// <summary>
+    /// Expectations are the pyspec <c>get_custody_groups</c> results for the raw id bytes <c>00..1f</c> read big-endian,
+    /// computed outside this code base: 4 groups for custody, <c>max(SAMPLES_PER_SLOT, 4)</c> = 8 for the sample.
+    /// </summary>
     [Test]
-    public void GetColumnsToSample_is_a_superset_of_the_nodes_own_custody_columns()
+    public void GetColumnsToSample_is_the_spec_sample_and_a_superset_of_the_nodes_own_custody_columns()
     {
         // The spec's own invariant: "the custody groups to custody ... are then in particular a
         // subset of those to sample." A node must never sample fewer columns than it custodies.
-        Hash256 nodeId = NodeId(0x37);
-        ulong custodyGroupCount = Eip7594DasConstants.CustodyRequirement;
+        Hash256 nodeId = new(Enumerable.Range(0, 32).Select(static i => (byte)i).ToArray());
+        ulong[] expectedCustodyColumns = [57, 84, 105, 113];
+        ulong[] expectedSample = [40, 57, 61, 84, 102, 105, 113, 120];
 
-        ulong[] custodyColumns = [.. CustodyGroups.GetCustodyGroups(nodeId, custodyGroupCount)
+        ulong[] custodyColumns = [.. CustodyGroups.GetCustodyGroups(nodeId, Eip7594DasConstants.CustodyRequirement)
             .SelectMany(CustodyGroups.ComputeColumnsForCustodyGroup)];
-        ulong[] sampledColumns = DataAvailabilitySampling.GetColumnsToSample(nodeId, custodyGroupCount);
+        ulong[] sampledColumns = DataAvailabilitySampling.GetColumnsToSample(nodeId, Eip7594DasConstants.CustodyRequirement);
 
-        Assert.That(custodyColumns, Is.SubsetOf(sampledColumns));
+        Assert.Multiple(() =>
+        {
+            Assert.That(custodyColumns, Is.EqualTo(expectedCustodyColumns));
+            Assert.That(sampledColumns, Is.EqualTo(expectedSample));
+            Assert.That(expectedCustodyColumns, Is.SubsetOf(expectedSample));
+        });
     }
 
     [Test]

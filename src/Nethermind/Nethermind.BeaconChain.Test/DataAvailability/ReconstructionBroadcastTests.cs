@@ -57,14 +57,17 @@ public class ReconstructionBroadcastTests
         IReadOnlyList<ReconstructedSidecarToPublish> newlyReconstructed = ReconstructionBroadcast.SelectNewlyReconstructed([], fullMatrix);
 
         Assert.That(newlyReconstructed, Has.Count.EqualTo(Eip7594DasConstants.NumberOfColumns));
+        // fulu/p2p-interface.md compute_subnet_for_data_column_sidecar: column_index % 128 subnets, so column i goes to subnet i.
+        (ulong Column, ulong Subnet)[] expectedSubnets = [.. Enumerable.Range(0, 128).Select(static i => ((ulong)i, (ulong)i))];
         Assert.Multiple(() =>
         {
             foreach (ReconstructedSidecarToPublish entry in newlyReconstructed)
             {
                 Assert.That(entry.Slot, Is.EqualTo(Slot));
                 Assert.That(entry.ProposerIndex, Is.EqualTo(ProposerIndex));
-                Assert.That(entry.Subnet, Is.EqualTo(CustodyGroups.ComputeSubnetForDataColumnSidecar(entry.Sidecar.Index)));
             }
+
+            Assert.That(newlyReconstructed.Select(static e => (e.Sidecar.Index, e.Subnet)), Is.EquivalentTo(expectedSubnets));
         });
     }
 

@@ -18,24 +18,23 @@ namespace Nethermind.BeaconChain.P2P;
 /// <remarks>
 /// This is a bounded recent-sidecar cache, not the spec-required persisted store (a node MUST be
 /// able to serve these requests for <see cref="Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests"/>
-/// epochs): entries are evicted under capacity pressure like any LRU cache, with no epoch-based
-/// retention guarantee. A durable, retention-window-honoring store belongs with <c>Storage/</c>.
-/// The slot-to-root index is itself LRU-bounded to the same capacity: an unbounded map keyed by slot
-/// would otherwise grow for as long as the process runs, one entry per slot forever. It is
-/// last-write-wins and untracked against reorgs: a sidecar added for a slot that is later reorged out
-/// is only replaced once a sidecar for the new canonical block at that slot is added, so by-range
-/// serving never reads it and looks up the canonical root's sidecars by (root, column) instead.
-/// Gloas sidecars (<see cref="DataColumnSidecarGloas"/>) sit in their own map with the same bound and
-/// no slot index: a slot can carry competing blocks, so by-range serving must resolve the canonical
-/// root first and look up by (root, column). A Gloas sidecar whose block is not yet known can be
+/// epochs). Each served map retains at most <c>capacity</c> sidecars and evicts the lowest slot first, so
+/// a flood of old-slot sidecars can never push out a newer block's columns, and the slots still retained
+/// completely always form one suffix, reported by <see cref="EarliestCompletelyServableSlot"/>. The
+/// <c>capacity</c> most recently given sidecars are held as well, so a verified range-synced column
+/// that the retained set refuses is still found when its block is imported.
+/// Fulu and Gloas sidecars sit in separate maps keyed by (block root, column): a slot can carry
+/// competing blocks, so by-range serving must resolve the canonical root first and look up by
+/// (root, column). A Gloas sidecar whose block is not yet known can be
 /// parked as pending: pending sidecars are never returned by the served lookups, and move to the
 /// served map only through <see cref="AddGloas"/> once verified against their block's bid.
 /// </remarks>
 public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
 {
-    private readonly LruCache<(Hash256 BlockRoot, ulong Column), DataColumnSidecar> _byRootAndColumn = new(capacity, "data column sidecars");
-    private readonly LruCache<ulong, Hash256> _rootBySlot = new(capacity, "data column sidecars by slot");
-    private readonly LruCache<(Hash256 BlockRoot, ulong Column), DataColumnSidecarGloas> _gloasByRootAndColumn = new(capacity, "gloas data column sidecars");
+    private readonly Lock _servedLock = new();
+    private readonly SlotOrderedSidecars<DataColumnSidecar> _byRootAndColumn = new(capacity);
+    private readonly SlotOrderedSidecars<DataColumnSidecarGloas> _gloasByRootAndColumn = new(capacity);
+    private ulong? _firstGivenSlot;
     // Pending sidecars are unverified and peer-supplied, so they get a smaller bound than the served maps.
     private readonly int _maxPendingGloas = Math.Min(capacity, MaxPendingGloasSidecars);
     private readonly Lock _pendingLock = new();
@@ -50,27 +49,52 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
     /// <remarks>Availability runs a KZG batch per candidate, so this bounds that work per column; above one, so an earlier forgery cannot block the genuine sidecar alone.</remarks>
     public const int MaxPendingGloasCandidatesPerKey = 4;
 
-    /// <summary>The slot-to-root index's current entry count, bounded by <paramref name="capacity"/>; for tests and diagnostics.</summary>
-    internal int SlotIndexCount => _rootBySlot.Count;
+    /// <summary>The distinct slots the served maps index, bounded by twice <paramref name="capacity"/>; for tests and diagnostics.</summary>
+    internal int SlotIndexCount
+    {
+        get
+        {
+            lock (_servedLock)
+            {
+                return _byRootAndColumn.SlotCount + _gloasByRootAndColumn.SlotCount;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The lowest slot from which every sidecar this pool was given is still retained; <see cref="ulong.MaxValue"/> before the first one.
+    /// </summary>
+    /// <remarks>
+    /// A lower slot either lost or was refused a sidecar, or is below the slot of the first sidecar this process received,
+    /// so its columns cannot be assumed complete. Never decreases. A block that carried no blobs has no sidecars, so its
+    /// slot never counts against this.
+    /// </remarks>
+    internal ulong EarliestCompletelyServableSlot
+    {
+        get
+        {
+            lock (_servedLock)
+            {
+                return Math.Max(_firstGivenSlot ?? ulong.MaxValue, Math.Max(_byRootAndColumn.IncompleteBelow, _gloasByRootAndColumn.IncompleteBelow));
+            }
+        }
+    }
 
     public void Add(Hash256 blockRoot, ulong slot, DataColumnSidecar sidecar)
     {
-        _byRootAndColumn.Set((blockRoot, sidecar.Index), sidecar);
-        _rootBySlot.Set(slot, blockRoot);
+        lock (_servedLock)
+        {
+            MarkGiven(slot);
+            _byRootAndColumn.Set((blockRoot, sidecar.Index), slot, sidecar);
+        }
     }
 
-    public bool TryGet(Hash256 blockRoot, ulong column, out DataColumnSidecar? sidecar) =>
-        _byRootAndColumn.TryGet((blockRoot, column), out sidecar);
-
-    public bool TryGet(ulong slot, ulong column, out DataColumnSidecar? sidecar)
+    public bool TryGet(Hash256 blockRoot, ulong column, out DataColumnSidecar? sidecar)
     {
-        if (_rootBySlot.TryGet(slot, out Hash256? root))
+        lock (_servedLock)
         {
-            return TryGet(root, column, out sidecar);
+            return _byRootAndColumn.TryGet((blockRoot, column), out sidecar);
         }
-
-        sidecar = null;
-        return false;
     }
 
     /// <summary>Stores a verified Gloas sidecar under its own <c>beacon_block_root</c> and <c>index</c>, and drops every pending candidate for them.</summary>
@@ -78,7 +102,11 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
     public void AddGloas(DataColumnSidecarGloas sidecar)
     {
         Hash256 blockRoot = BlockRootOf(sidecar);
-        _gloasByRootAndColumn.Set((blockRoot, sidecar.Index), sidecar);
+        lock (_servedLock)
+        {
+            MarkGiven(sidecar.Slot);
+            _gloasByRootAndColumn.Set((blockRoot, sidecar.Index), sidecar.Slot, sidecar);
+        }
 
         lock (_pendingLock)
         {
@@ -89,8 +117,13 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
         }
     }
 
-    public bool TryGetGloas(Hash256 blockRoot, ulong column, [NotNullWhen(true)] out DataColumnSidecarGloas? sidecar) =>
-        _gloasByRootAndColumn.TryGet((blockRoot, column), out sidecar);
+    public bool TryGetGloas(Hash256 blockRoot, ulong column, [NotNullWhen(true)] out DataColumnSidecarGloas? sidecar)
+    {
+        lock (_servedLock)
+        {
+            return _gloasByRootAndColumn.TryGet((blockRoot, column), out sidecar);
+        }
+    }
 
     /// <summary>
     /// Parks an unverified Gloas sidecar whose block is not yet known as a candidate for its own
@@ -220,6 +253,99 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
     // A candidate outlives its own slot by one, so a block that arrives late in the next slot still finds it.
     private static bool IsStale(DataColumnSidecarGloas sidecar, ulong currentSlot) => sidecar.Slot < currentSlot && currentSlot - sidecar.Slot > 1;
 
+    // A sidecar older than the first one given does not make the slots between them complete.
+    private void MarkGiven(ulong slot) => _firstGivenSlot ??= slot;
+
     private static Hash256 BlockRootOf(DataColumnSidecarGloas sidecar) =>
         sidecar.BeaconBlockRoot ?? throw new ArgumentException("A Gloas data column sidecar must name its beacon block root", nameof(sidecar));
+
+    /// <summary>
+    /// Sidecars by (block root, column): at most <paramref name="capacity"/> retained lowest slot first, oldest first within a
+    /// slot, plus the <paramref name="capacity"/> most recently given; not thread-safe.
+    /// </summary>
+    /// <remarks>
+    /// The retained set is what <see cref="IncompleteBelow"/> describes. The recent set holds a sidecar the retained set
+    /// refuses, so a verified range-synced column below every held slot is still found when its block is imported.
+    /// </remarks>
+    private sealed class SlotOrderedSidecars<TSidecar>(int capacity) where TSidecar : class
+    {
+        private readonly int _capacity = capacity >= 1 ? capacity : throw new ArgumentOutOfRangeException(nameof(capacity), capacity, "The pool must hold at least one sidecar");
+        private readonly Dictionary<(Hash256 BlockRoot, ulong Column), (TSidecar Sidecar, ulong Slot, LinkedListNode<(Hash256 BlockRoot, ulong Column)> Node)> _entries = [];
+        private readonly SortedDictionary<ulong, LinkedList<(Hash256 BlockRoot, ulong Column)>> _keysBySlot = [];
+        private readonly LruCache<(Hash256 BlockRoot, ulong Column), TSidecar> _recent = new(capacity, "recent data column sidecars");
+
+        /// <summary>One past the highest slot that lost or was refused a retained sidecar; every slot from here up is retained completely.</summary>
+        public ulong IncompleteBelow { get; private set; }
+
+        public int SlotCount => _keysBySlot.Count;
+
+        public void Set((Hash256 BlockRoot, ulong Column) key, ulong slot, TSidecar sidecar)
+        {
+            _recent.Set(key, sidecar);
+            if (_entries.TryGetValue(key, out (TSidecar Sidecar, ulong Slot, LinkedListNode<(Hash256 BlockRoot, ulong Column)> Node) held))
+            {
+                if (held.Slot == slot)
+                {
+                    _entries[key] = (sidecar, slot, held.Node);
+                    return;
+                }
+
+                Remove(key, held.Slot);
+            }
+
+            if (_entries.Count >= _capacity && !TryEvictAtOrBelow(slot))
+            {
+                MarkIncomplete(slot);
+                return;
+            }
+
+            if (!_keysBySlot.TryGetValue(slot, out LinkedList<(Hash256 BlockRoot, ulong Column)>? keys))
+            {
+                keys = [];
+                _keysBySlot[slot] = keys;
+            }
+
+            _entries[key] = (sidecar, slot, keys.AddLast(key));
+        }
+
+        public bool TryGet((Hash256 BlockRoot, ulong Column) key, [NotNullWhen(true)] out TSidecar? sidecar)
+        {
+            if (_entries.TryGetValue(key, out (TSidecar Sidecar, ulong Slot, LinkedListNode<(Hash256 BlockRoot, ulong Column)> Node) held))
+            {
+                sidecar = held.Sidecar;
+                return true;
+            }
+
+            return _recent.TryGet(key, out sidecar!) && sidecar is not null;
+        }
+
+        // A slot below the lowest held one would itself be the next eviction, so it is refused instead of displacing a higher slot.
+        private bool TryEvictAtOrBelow(ulong slot)
+        {
+            foreach (KeyValuePair<ulong, LinkedList<(Hash256 BlockRoot, ulong Column)>> lowest in _keysBySlot)
+            {
+                if (slot < lowest.Key) return false;
+
+                Remove(lowest.Value.First!.Value, lowest.Key);
+                return true;
+            }
+
+            return false;
+        }
+
+        private void Remove((Hash256 BlockRoot, ulong Column) key, ulong slot)
+        {
+            LinkedList<(Hash256 BlockRoot, ulong Column)> keys = _keysBySlot[slot];
+            keys.Remove(_entries[key].Node);
+            _entries.Remove(key);
+            if (keys.Count == 0)
+            {
+                _keysBySlot.Remove(slot);
+            }
+
+            MarkIncomplete(slot);
+        }
+
+        private void MarkIncomplete(ulong slot) => IncompleteBelow = Math.Max(IncompleteBelow, slot == ulong.MaxValue ? slot : slot + 1);
+    }
 }

@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.Api;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -51,7 +52,7 @@ public partial class RangeSyncTests
             _ => [new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(startSlot, parentRoot: Hash256.Zero)), .. ServeRange(chain, startSlot + 1, count - 1)],
         });
         StubPeer goodPeer = new("good", headSlot: TargetSlot, (startSlot, count) => ServeRange(chain, startSlot, count));
-        RangeSync sync = new(new StubPool(badPeer, goodPeer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet);
+        RangeSync sync = new(new StubPool(badPeer, goodPeer), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
 
         List<ForkedSignedBeaconBlock> imported = [];
         await foreach (ForkedSignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token))
@@ -91,7 +92,7 @@ public partial class RangeSyncTests
             (startSlot, count) => [new ForkedSignedBeaconBlock.OfFulu(chain.Block)],
             (startSlot, count, columns) => [.. columns.Select(c => chain.Columns[(int)c])]);
         DataColumnSidecarPool sidecarPool = new();
-        RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, sidecarPool, chain.Spec, discovery);
+        RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, sidecarPool, chain.Spec, chain.ClockAtEpoch(0), discovery);
 
         List<ForkedSignedBeaconBlock> imported = [];
         await foreach (ForkedSignedBeaconBlock block in sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => chain.Block.Message!.Slot, token))
@@ -111,6 +112,84 @@ public partial class RangeSyncTests
             }
         }
     }
+
+    /// <summary>
+    /// fulu/fork-choice.md <c>is_data_available</c> demands no columns for a block before the data availability window, so
+    /// asking a peer for them spends its rate limit on sidecars it need not serve and may penalize it for not having them.
+    /// The fixture block sits in epoch 0, which leaves the window once the clock is more than the window width past it.
+    /// </summary>
+    [TestCase(Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests, 1)]
+    [TestCase(Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests + 1, 0)]
+    [CancelAfter(30_000)]
+    public async Task Fulu_blob_blocks_before_the_data_availability_window_get_no_column_request(ulong currentEpoch, int expectedRequests, CancellationToken token)
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, chain.Spec, store, new FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
+        discovery.CreateDiscv5Services(IPAddress.Loopback);
+        StubPeer peer = new(
+            "peer",
+            headSlot: chain.Block.Message!.Slot,
+            (startSlot, count) => [new ForkedSignedBeaconBlock.OfFulu(chain.Block)],
+            (startSlot, count, columns) => [.. columns.Select(c => chain.Columns[(int)c])]);
+        RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, new DataColumnSidecarPool(), chain.Spec, chain.ClockAtEpoch(currentEpoch), discovery);
+
+        List<ForkedSignedBeaconBlock> imported = [];
+        await foreach (ForkedSignedBeaconBlock block in sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => chain.Block.Message!.Slot, token))
+        {
+            imported.Add(block);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(imported, Has.Count.EqualTo(1), "the block is yielded whether or not its columns are fetched");
+            Assert.That(peer.ColumnRequests, Is.EqualTo(expectedRequests));
+        }
+    }
+
+    /// <summary>
+    /// Gossip fills the pool with head-slot columns while range sync is still behind; the importer checks the columns range
+    /// sync fetched in the same pool, so refusing them for being older than every held slot would stall sync for good.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_range_synced_blob_block_imports_while_the_pool_is_full_of_higher_slot_columns(CancellationToken token)
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, chain.Spec, store, new FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
+        discovery.CreateDiscv5Services(IPAddress.Loopback);
+        int sampled = new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Count;
+        DataColumnSidecarPool sidecarPool = new(sampled);
+        const ulong headSlot = 100;
+        Hash256 headRoot = Keccak.Compute("head");
+        for (int column = 0; column < sampled; column++)
+        {
+            sidecarPool.Add(headRoot, headSlot, chain.Columns[column]);
+        }
+
+        StubPeer peer = new(
+            "peer",
+            headSlot: chain.Block.Message!.Slot,
+            (startSlot, count) => [new ForkedSignedBeaconBlock.OfFulu(chain.Block)],
+            (startSlot, count, columns) => [.. columns.Select(c => chain.Columns[(int)c])]);
+        SlotClock clock = chain.ClockAtEpoch(1);
+        RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, sidecarPool, chain.Spec, clock, discovery);
+        IBlockImporter importer = new BlockImporterFactory(chain.Spec, store, chain.Pubkeys, new NoOpEngineDriver(), new BeaconChainConfig(), LimboLogs.Instance, sidecarPool, clock, discovery)
+            .Create(chain.AnchorState, chain.AnchorBlock, chain.AnchorRoot);
+
+        List<BlockImportResult> results = [];
+        await foreach (ForkedSignedBeaconBlock block in sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => chain.Block.Message!.Slot, token))
+        {
+            results.Add(importer.Import(block, chain.BlockRoot, verifySignatures: true));
+        }
+
+        Assert.That(results, Is.EqualTo(new[] { BlockImportResult.Imported }));
+    }
+
+    /// <summary>A wall clock stopped at genesis, which puts every Fulu or later block inside the data availability window.</summary>
+    internal static SlotClock ClockAtGenesis(BeaconChainSpec spec) =>
+        new(spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)spec.GenesisTime).UtcDateTime));
 
     private static ForkedSignedBeaconBlock[] ServeRange(SignedBeaconBlock[] chain, ulong startSlot, ulong count) =>
         [.. chain.Where(b => b.Message!.Slot >= startSlot && b.Message.Slot < startSlot + count).Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];

@@ -49,7 +49,7 @@ public partial class RangeSyncTests
                 return [.. columns.Select(c => chain.Columns[(int)c])];
             });
         DataColumnSidecarPool sidecarPool = new();
-        RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, sidecarPool, chain.Spec, discovery);
+        RangeSync sync = new(new StubPool(peer), LimboLogs.Instance, sidecarPool, chain.Spec, chain.ClockAtEpoch(0), discovery);
 
         List<ForkedSignedBeaconBlock> yielded = [];
         await foreach (ForkedSignedBeaconBlock block in sync.Run(chain.AnchorRoot, chain.AnchorBlock.Message!.Slot, () => gloasChild.Slot, token))
