@@ -219,9 +219,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         TestFullPruningDb.TestPruningContext ctx = await test.WaitForPruningStart();
         byte[] key = { 1, 2, 3 };
         test.FullPruningDb[key] = key;
-        test.FullPruningDb.Context.WaitForFinish.Set();
 
-        await test.WaitForPruningEnd(ctx);
+        Assert.That(await test.WaitForPruningEnd(ctx), Is.True);
         Assert.That(test.FullPruningDb[key], Is.EqualTo(key));
     }
 
