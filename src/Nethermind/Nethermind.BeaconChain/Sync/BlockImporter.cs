@@ -15,7 +15,6 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -973,13 +972,13 @@ public sealed class BlockImporter : IBlockImporter
 /// deliberately not reachable from this factory.
 /// </remarks>
 /// <param name="pool">Where an importer looks up the columns this node holds for a block.</param>
+/// <param name="clock">
+/// The one wall clock the <see cref="DataAvailabilityBoundary"/> and the future-slot bound are measured against, shared with
+/// range sync so both agree on the window.
+/// </param>
 /// <param name="discovery">
 /// Supplies the node id the custody columns derive from; <c>null</c> (the P2P-less configuration
 /// some tests run) leaves the identity unknown, so no blob-carrying block is ever available.
-/// </param>
-/// <param name="clock">
-/// The wall clock the <see cref="DataAvailabilityBoundary"/> and the future-slot bound are measured against; <c>null</c> (tests
-/// that construct the factory by hand) means the system clock, which is what the container supplies.
 /// </param>
 /// <param name="forkChoiceSnapshots">Where every importer publishes its fork-choice snapshots; <c>null</c> publishes nothing.</param>
 public sealed class BlockImporterFactory(
@@ -990,12 +989,10 @@ public sealed class BlockImporterFactory(
     IBeaconChainConfig config,
     ILogManager logManager,
     DataColumnSidecarPool pool,
+    SlotClock clock,
     BeaconDiscovery? discovery = null,
-    SlotClock? clock = null,
     ForkChoiceSnapshotHolder? forkChoiceSnapshots = null) : IBlockImporterFactory
 {
-    private readonly SlotClock _clock = clock ?? new SlotClock(spec, Timestamper.Default);
-
     public IBlockImporter Create(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot)
     {
         DiscoveryNodeCustodySource custody = new(discovery);
@@ -1006,9 +1003,9 @@ public sealed class BlockImporterFactory(
             engine,
             config,
             logManager,
-            new CustodySamplingAvailability(custody, new DataColumnPoolSource(pool), _clock),
-            new GloasCustodySamplingAvailability(custody, pool, _clock, spec).IsDataAvailable,
-            _clock,
+            new CustodySamplingAvailability(custody, new DataColumnPoolSource(pool), clock),
+            new GloasCustodySamplingAvailability(custody, pool, clock, spec).IsDataAvailable,
+            clock,
             anchorState,
             anchorBlock,
             anchorRoot,

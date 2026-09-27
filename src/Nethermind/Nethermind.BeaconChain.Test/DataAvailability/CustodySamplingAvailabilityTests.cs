@@ -6,10 +6,18 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.Api;
+using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.Sync;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
 
@@ -163,7 +171,71 @@ public class CustodySamplingAvailabilityTests
         });
     }
 
+    /// <summary>
+    /// deneb/fork-choice.md <c>is_data_available</c> needs a pre-Fulu block's blob sidecars, which this node cannot retrieve,
+    /// so inside the blob sidecar retention window such a block is never available; columns cannot stand in for them.
+    /// </summary>
+    [TestCase(0UL, false)]
+    [TestCase(DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests, false)]
+    [TestCase(DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests + 1, true)]
+    public void A_pre_fulu_blob_block_is_unavailable_inside_the_blob_sidecar_window(ulong epochsSinceBlock, bool expected)
+    {
+        BeaconChainSpec spec = BeaconChainSpec.Mainnet;
+        ulong blockEpoch = spec.FuluForkEpoch - 1;
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        BeaconBlock electraBlock = TestChain.CreateBlock(blockEpoch * spec.SlotsPerEpoch, Hash256.Zero).Message!;
+        electraBlock.Body!.BlobKzgCommitments = chain.Block.Message!.Body!.BlobKzgCommitments;
+        RecordingColumnSource columns = new(chain, All());
+        ulong currentEpoch = blockEpoch + epochsSinceBlock;
+        SlotClock clock = new(spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(spec.GenesisTime + currentEpoch * spec.SlotsPerEpoch * spec.SecondsPerSlot)).UtcDateTime));
+        CustodySamplingAvailability rule = new(new FixedCustodySource(BaseCustody()), columns, clock);
+
+        bool available = rule.IsDataAvailable(electraBlock, SszRoots.HashTreeRoot(electraBlock), spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(available, Is.EqualTo(expected));
+            Assert.That(columns.Requested, Is.Empty, "a pre-Fulu block has blob sidecars, not columns");
+        }
+    }
+
+    /// <summary>
+    /// Every anchor decodes only as a Fulu or Gloas state, and a block not after the anchor's finalized slot is refused before
+    /// <c>is_data_available</c> is asked, so no block before <c>FULU_FORK_EPOCH</c> reaches the rule on import.
+    /// </summary>
+    [Test]
+    public void A_block_not_after_the_anchor_finalized_slot_is_refused_before_availability_is_asked()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        RecordingRule rule = new();
+        BlockImporter importer = new(chain.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), chain.Pubkeys, new NoOpEngineDriver(),
+            new BeaconChainConfig(), LimboLogs.Instance, rule, static (_, _) => true, chain.ClockAtEpoch(1), chain.AnchorState, chain.AnchorBlock, chain.AnchorRoot);
+
+        BlockImportResult child = importer.Import(new ForkedSignedBeaconBlock.OfFulu(chain.Block), chain.BlockRoot, verifySignatures: true);
+        int askedForChild = rule.Asked;
+        BeaconBlock atFinalizedSlot = chain.Block.Message!;
+        atFinalizedSlot.Slot = chain.AnchorBlock.Message!.Slot;
+        BlockImportResult old = importer.Import(new ForkedSignedBeaconBlock.OfFulu(chain.Block), SszRoots.HashTreeRoot(atFinalizedSlot), verifySignatures: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((child, askedForChild), Is.EqualTo((BlockImportResult.DataUnavailable, 1)), "a block after the anchor is asked");
+            Assert.That((old, rule.Asked), Is.EqualTo((BlockImportResult.Invalid, 1)), "a block at the finalized slot is refused unasked");
+        }
+    }
+
     private static IEnumerable<ulong> All() => Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(c => (ulong)c);
+
+    private sealed class RecordingRule : IDataAvailabilityRule
+    {
+        public int Asked { get; private set; }
+
+        public bool IsDataAvailable(BeaconBlock block, Hash256 blockRoot, BeaconChainSpec spec)
+        {
+            Asked++;
+            return false;
+        }
+    }
 
     private sealed class FixedCustodySource(NodeColumnCustody? custody) : INodeColumnCustodySource
     {

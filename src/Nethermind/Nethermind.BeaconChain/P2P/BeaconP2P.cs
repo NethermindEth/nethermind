@@ -16,6 +16,7 @@ using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -86,7 +87,8 @@ public sealed class BeaconP2P : IAsyncDisposable
         DataColumnSidecarPool dataColumnSidecarPool,
         ExecutionPayloadEnvelopePool executionPayloadEnvelopePool,
         ILogManager logManager,
-        GossipMessageValidator? messageValidator = null)
+        GossipMessageValidator? messageValidator = null,
+        SlotClock? clock = null)
     {
         _config = config;
         _messageValidator = messageValidator;
@@ -104,7 +106,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new MetaDataProtocolV3(metadataSource))
             .AddSingleton(new BeaconBlocksByRangeProtocolV2(spec, store))
             .AddSingleton(new BeaconBlocksByRootProtocolV2(spec, store))
-            .AddSingleton(new DataColumnSidecarsByRangeProtocol(spec, dataColumnSidecarPool, store))
+            .AddSingleton(new DataColumnSidecarsByRangeProtocol(spec, dataColumnSidecarPool, store, clock))
             .AddSingleton(new DataColumnSidecarsByRootProtocol(spec, dataColumnSidecarPool))
             .AddSingleton(new ExecutionPayloadEnvelopesByRangeProtocol(spec, executionPayloadEnvelopePool))
             .AddSingleton(new ExecutionPayloadEnvelopesByRootProtocol(spec, executionPayloadEnvelopePool))
