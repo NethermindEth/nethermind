@@ -27,9 +27,10 @@ public partial class FrameTxProcessorTests
     private const ParityTraceTypes AllParityTraceTypes = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace;
     private static readonly Address ParitySponsor = TestItem.AddressD;
     private static readonly Address ParityReverter = TestItem.AddressF;
+    private static readonly Address ParityTailCaller = TestItem.Addresses[10];
 
-    /// <summary>Frame transactions covering nested calls, a skipped frame, a frame that never enters the VM, and
-    /// a sponsored payer. <see cref="Observer"/> calls <see cref="Recipient"/>, so its frame has a subtrace.</summary>
+    /// <summary>Frame transactions covering nested calls, a skipped frame, a frame that never enters the VM, a
+    /// sponsored payer, and a frame ending on a CALL. <see cref="Observer"/> calls <see cref="Recipient"/>, so its frame has a subtrace.</summary>
     private Transaction ParityScenarioTx(string scenario)
     {
         DeployContract(Recipient, LogEmitter(7));
@@ -56,6 +57,12 @@ public partial class FrameTxProcessorTests
                     Frame(FrameMode.Sender, target: Recipient),
                     Frame(FrameMode.Default, target: Observer)
                 ];
+                break;
+            case "tailCall":
+                DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+                // No trailing STOP: the frame ends on the CALL's return, with no operation after it.
+                DeployContract(ParityTailCaller, Prepare.EvmCode.Call(Recipient, 50_000).Done);
+                frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: ParityTailCaller), Frame(FrameMode.Default, target: Recipient)];
                 break;
             case "undispatched":
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
@@ -84,6 +91,7 @@ public partial class FrameTxProcessorTests
     [TestCase("skipped", new[] { 0, 1, 3 }, new[] { 3, 0 })]
     [TestCase("undispatched", new[] { 0, 2 }, new[] { 2, 0 })]
     [TestCase("sponsored", new[] { 0, 1, 2 }, new[] { 2, 0 })]
+    [TestCase("tailCall", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     public void ParityTrace_FrameTx_RootsEveryFrameAtItsIndex(string scenario, int[] framesInVm, int[] nestedCall)
     {
         Transaction tx = ParityScenarioTx(scenario);
@@ -102,6 +110,7 @@ public partial class FrameTxProcessorTests
             Assert.That(root.Gas, Is.EqualTo(tx.GasLimit));
             Assert.That(root.Result?.GasUsed, Is.EqualTo(receipt.GasUsed));
             Assert.That(root.Subtraces, Has.Count.EqualTo(frames.Length));
+            Assert.That(frameReceipts.Count(static r => r.Status == TxFrameReceipt.StatusSkipped), Is.EqualTo(scenario is "skipped" ? 1 : 0), "skipped frames");
 
             for (int i = 0; i < root.Subtraces.Count; i++)
             {
@@ -138,7 +147,7 @@ public partial class FrameTxProcessorTests
 
     [Test]
     public void ParityTrace_FrameTx_StreamedMatchesBuffered(
-        [Values("nested", "skipped", "undispatched", "sponsored")] string scenario, [Values] ParityTraceStreamMode mode)
+        [Values("nested", "skipped", "undispatched", "sponsored", "tailCall")] string scenario, [Values] ParityTraceStreamMode mode)
     {
         string buffered = BufferedParityJson(scenario, mode);
         TearDown();
@@ -147,6 +156,43 @@ public partial class FrameTxProcessorTests
 
         Assert.That(JsonNode.DeepEquals(JsonNode.Parse(streamed), JsonNode.Parse(buffered)), Is.True,
             $"streamed:{streamed}{System.Environment.NewLine}buffered:{buffered}");
+    }
+
+    /// <summary>A frame ending on its nested call's return, driven without the resume gas update that normally
+    /// clears the call's gas carry-over, must not pass it to the next frame's first operation.</summary>
+    [Test]
+    public void ParityVmTrace_FrameEndingOnACallReturn_DoesNotCarryTheCallGasIntoTheNextFrame()
+    {
+        Transaction tx = FrameTx(nonce: 0, Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Default, target: Recipient));
+        ParityLikeTxTracer tracer = new(Build.A.Block.WithTransactions(tx).TestObject, tx, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace);
+        IFrameTxReceiptTracer frameTracer = tracer;
+        tracer.ReportAction(100_000, UInt256.Zero, Sender, Observer, default, ExecutionType.TRANSACTION);
+        tracer.StartOperation(0, Instruction.CALL, 100_000, null!);
+        tracer.ReportOperationRemainingGas(40_000);
+        tracer.ReportAction(50_000, UInt256.Zero, Observer, Recipient, default, ExecutionType.CALL);
+        tracer.StartOperation(0, Instruction.STOP, 50_000, null!);
+        tracer.ReportOperationRemainingGas(50_000);
+        tracer.ReportActionEnd(50_000, default);
+        tracer.ReportActionEnd(90_000, default);
+        frameTracer.ReportFrameEnd(0, null);
+
+        tracer.ReportAction(100_000, UInt256.Zero, Eip8141Constants.EntryPointAddress, Recipient, default, ExecutionType.TRANSACTION);
+        tracer.StartOperation(0, Instruction.PUSH1, 100_000, null!);
+        tracer.ReportStackPush([1]);
+        tracer.ReportOperationRemainingGas(100_000 - GasCostOf.VeryLow);
+        tracer.StartOperation(2, Instruction.STOP, 100_000 - GasCostOf.VeryLow, null!);
+        tracer.ReportOperationRemainingGas(100_000 - GasCostOf.VeryLow);
+        tracer.ReportActionEnd(100_000 - GasCostOf.VeryLow, default);
+        frameTracer.ReportFrameEnd(1, null);
+
+        frameTracer.ReportFrameTxReceipt(Sender,
+        [
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 10_000, 0, []),
+            new TxFrameReceipt(TxFrameReceipt.StatusSuccess, GasCostOf.VeryLow, 0, [])
+        ]);
+        tracer.MarkAsSuccess(Eip8141Constants.EntryPointAddress, default, [], []);
+
+        Assert.That(tracer.BuildResult().VmTrace!.Operations[1].Sub.Operations[0].Cost, Is.EqualTo(GasCostOf.VeryLow), "the second frame's PUSH1");
     }
 
     [TestCase("nested")]

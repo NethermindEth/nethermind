@@ -262,6 +262,7 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
         if (IsFrameLevel(action))
         {
             _lastFrameOperation!.Used = _actionGasLeft;
+            _treatGasParityStyle = false;
         }
         else if (action.Type != "suicide")
         {
