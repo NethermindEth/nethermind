@@ -5,6 +5,7 @@ using NonBlocking;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.TxPool;
@@ -30,49 +31,67 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
 
     private class AddressNonceManager
     {
-        private readonly HashSet<ulong> _usedNonces = [];
-        private ulong _currentNonce;
+        private readonly Dictionary<ulong, (Hash256 Hash, TxType Type)> _usedNonces = [];
+        private ulong _nextUnusedNonce;
         private ulong _reservedNonce;
         private ulong _previousAccountNonce;
 
         private readonly SemaphoreSlim _accountLock = new(1);
 
+        /// <remarks>
+        /// Rederived from the account nonce on every call, so a nonce whose transaction has since left the pool is
+        /// handed out again. The account lock is held until the locker is disposed, so there is never more than one
+        /// reservation in flight and an accepted one is recorded before the next starts.
+        /// </remarks>
         public NonceLocker ReserveNonce(Address address, ulong accountNonce, ITxPool txPool, out ulong reservedNonce)
         {
             NonceLocker locker = new(_accountLock, TxAccepted);
             ReleaseNonces(accountNonce);
-            _currentNonce = ulong.Max(_currentNonce, accountNonce);
-            SkipPendingNonces(address, txPool);
-            _reservedNonce = _currentNonce;
-            reservedNonce = _currentNonce;
+            _reservedNonce = FindFreeNonce(address, accountNonce, txPool);
+            reservedNonce = _reservedNonce;
             return locker;
         }
 
-        private void TxAccepted()
+        private void TxAccepted(Transaction transaction)
         {
-            _usedNonces.Add(_reservedNonce);
-            SkipUsedNonces();
+            _usedNonces[_reservedNonce] = (transaction.Hash!, transaction.Type);
+            _nextUnusedNonce = ulong.Max(_nextUnusedNonce, _reservedNonce + 1);
         }
 
-        private void SkipPendingNonces(Address address, ITxPool txPool)
+        /// <remarks>
+        /// A nonce at or above <see cref="_nextUnusedNonce"/> was never accepted here, so it is free without asking the
+        /// pool. Below it, a nonce is taken while the pool still holds its recorded transaction (the persistent
+        /// broadcaster included) or any pending account-domain transaction of the sender at that nonce, which covers
+        /// replacements and transactions returned to the pool by a reorg. The pool snapshots are taken only when
+        /// the recorded transaction is gone.
+        /// </remarks>
+        private ulong FindFreeNonce(Address address, ulong accountNonce, ITxPool txPool)
         {
-            if (!_usedNonces.Contains(_currentNonce))
+            Transaction[]? pending = null;
+            Transaction[]? pendingBlobs = null;
+            ulong nonce = accountNonce;
+            for (; nonce < _nextUnusedNonce; nonce++)
             {
-                return;
-            }
-
-            Transaction[] pending = txPool.GetPendingTransactionsBySender(address);
-            Transaction[] pendingBlobs = txPool.GetPendingLightBlobTransactionsBySender(address);
-            while (_usedNonces.Contains(_currentNonce))
-            {
-                if (!HoldsAccountNonce(pending, _currentNonce) && !HoldsAccountNonce(pendingBlobs, _currentNonce))
+                bool recorded = _usedNonces.TryGetValue(nonce, out (Hash256 Hash, TxType Type) used);
+                if (recorded && txPool.ContainsTx(used.Hash, used.Type))
                 {
-                    _usedNonces.Remove(_currentNonce);
-                    return;
+                    continue;
                 }
 
-                _currentNonce++;
+                pending ??= txPool.GetPendingTransactionsBySender(address);
+                pendingBlobs ??= txPool.GetPendingLightBlobTransactionsBySender(address);
+                if (!HoldsAccountNonce(pending, nonce) && !HoldsAccountNonce(pendingBlobs, nonce))
+                {
+                    if (recorded)
+                    {
+                        _usedNonces.Remove(nonce);
+                    }
+
+                    return nonce;
+                }
             }
+
+            return nonce;
         }
 
         private static bool HoldsAccountNonce(Transaction[] transactions, ulong nonce)
@@ -86,14 +105,6 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
             }
 
             return false;
-        }
-
-        private void SkipUsedNonces()
-        {
-            while (_usedNonces.Contains(_currentNonce))
-            {
-                _currentNonce++;
-            }
         }
 
         public NonceLocker TxWithNonceReceived(ulong nonce)
