@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Evm;
+namespace Nethermind.Core.Caching;
 
 /// <summary>
 /// Shares one <see cref="Hash256"/> per repeated log topic through a fixed-size, direct-mapped table.
