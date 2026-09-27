@@ -90,6 +90,7 @@ public sealed class BlockImporter : IBlockImporter
     private bool _lineageBlockStartsEpoch = true;
 
     private Hash256 _canonicalHead;
+    private ulong _canonicalIndexTopSlot;
     private ulong _lastSnapshotEpoch;
 
     /// <summary>The last Gloas block imported; only its children may reuse <see cref="_gloasLineageCache"/>, which refuses a memo built on another branch.</summary>
@@ -133,6 +134,8 @@ public sealed class BlockImporter : IBlockImporter
         _canonicalHead = anchorRoot;
         _lastSnapshotEpoch = anchorState.GetCurrentEpoch();
         store.SetCanonicalRoot(anchorBlock.Message!.Slot, anchorRoot);
+        // A restart must clear what the previous run indexed above the head it replays up to.
+        _canonicalIndexTopSlot = Math.Max(anchorBlock.Message!.Slot, store.GetCanonicalIndexTopSlot() ?? 0);
     }
 
     /// <inheritdoc/>
@@ -832,7 +835,9 @@ public sealed class BlockImporter : IBlockImporter
     /// <remarks>
     /// The walk stops below the first already-canonical ancestor whose empty slots under it hold no entry. So one head change
     /// costs one write per block and per stale entry above the common ancestor, one read per slot from the common ancestor's
-    /// parent up to the higher of the two heads, and never walks past the fork-choice root.
+    /// parent up to the higher of the new head and the index's recorded top slot, and never walks past the fork-choice root.
+    /// Every change is computed from the index as it was and applied in one batch, so an interrupted update leaves the
+    /// previous index whole and the next head change starts from it.
     /// </remarks>
     private void UpdateCanonicalIndex(Hash256 head)
     {
@@ -841,18 +846,21 @@ public sealed class BlockImporter : IBlockImporter
             return;
         }
 
-        ulong previousHeadSlot = _runner.GetBlockSlot(_canonicalHead) ?? 0;
+        List<(ulong Slot, Hash256? Root)> changes = [];
+        ulong? headSlot = null;
         ulong? childSlot = null;
         bool childWasCanonical = false;
         foreach (ProtoNode node in _runner.EnumerateAncestors(head))
         {
-            // Above the head, clear up to the previous head; below it, the slots between this block and its child.
-            ulong clearTo = childSlot is ulong child ? child - 1 : Math.Max(previousHeadSlot, node.Slot);
+            headSlot ??= node.Slot;
+            // Above the head, clear up to the index's top slot; below it, the slots between this block and its child.
+            ulong clearTo = childSlot is ulong child ? child - 1 : Math.Max(_canonicalIndexTopSlot, node.Slot);
             bool skippedSlotsWereEmpty = true;
             for (ulong slot = node.Slot + 1; slot <= clearTo; slot++)
             {
-                if (_store.DeleteCanonicalRoot(slot))
+                if (_store.TryGetCanonicalRoot(slot, out _))
                 {
+                    changes.Add((slot, null));
                     skippedSlotsWereEmpty = false;
                 }
             }
@@ -865,13 +873,16 @@ public sealed class BlockImporter : IBlockImporter
             childWasCanonical = _store.TryGetCanonicalRoot(node.Slot, out Hash256? existing) && existing == node.Root;
             if (!childWasCanonical)
             {
-                _store.SetCanonicalRoot(node.Slot, node.Root);
+                changes.Add((node.Slot, node.Root));
             }
 
             childSlot = node.Slot;
         }
 
+        ulong topSlot = headSlot ?? _canonicalIndexTopSlot;
+        _store.ApplyCanonicalIndexChanges(changes, topSlot);
         _canonicalHead = head;
+        _canonicalIndexTopSlot = topSlot;
     }
 
     private void MaybeSnapshotState(Hash256 blockRoot, BeaconStateFulu state, ulong blockEpoch)

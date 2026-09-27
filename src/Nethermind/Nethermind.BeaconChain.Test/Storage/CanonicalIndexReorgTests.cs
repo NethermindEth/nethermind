@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
@@ -97,29 +100,122 @@ public class CanonicalIndexReorgTests
     }
 
     [Test]
-    public void DeleteCanonicalRoot_removes_only_the_given_slot_and_reports_whether_it_held_one()
+    public void Index_changes_set_and_clear_slots_and_record_the_top_slot_together()
     {
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         store.SetCanonicalRoot(7, Keccak.Compute("seven"));
         store.SetCanonicalRoot(8, Keccak.Compute("eight"));
 
-        bool removed = store.DeleteCanonicalRoot(7);
-        bool removedAgain = store.DeleteCanonicalRoot(7);
+        store.ApplyCanonicalIndexChanges([(7, null), (9, Keccak.Compute("nine"))], topSlot: 9);
 
         Assert.Multiple(() =>
         {
-            Assert.That(removed, Is.True);
-            Assert.That(removedAgain, Is.False, "an empty slot has nothing to remove");
             Assert.That(store.TryGetCanonicalRoot(7, out _), Is.False);
-            Assert.That(store.TryGetCanonicalRoot(8, out Hash256? eight) && eight == Keccak.Compute("eight"), Is.True);
+            Assert.That(store.TryGetCanonicalRoot(8, out Hash256? eight) && eight == Keccak.Compute("eight"), Is.True, "a slot the change does not name is kept");
+            Assert.That(store.TryGetCanonicalRoot(9, out Hash256? nine) && nine == Keccak.Compute("nine"), Is.True);
+            Assert.That(store.GetCanonicalIndexTopSlot(), Is.EqualTo(9UL));
         });
+    }
+
+    /// <summary>
+    /// A head change the store fails to commit, as a crash before the commit would, must leave the previous index whole:
+    /// a half-written index mixes two chains, and a later walk that meets an entry of the new chain trusts everything below it.
+    /// </summary>
+    [Test]
+    public void Head_change_that_fails_to_commit_leaves_the_previous_index_and_the_next_one_writes_it_whole()
+    {
+        CanonicalReorgFixture fixture = CanonicalReorgFixture.Create();
+        UnsignedChain.ChainBlock[] chainA = fixture.ImportLongerChainA();
+        UnsignedChain.ChainBlock b1 = fixture.Import(fixture.Chain.AnchorRoot, slot: 1, 0xb1);
+        UnsignedChain.ChainBlock b4 = fixture.Import(b1.Root, slot: 4, 0xb4, [fixture.Chain.Vote(1, b1.Root), fixture.Chain.Vote(3, b1.Root)]);
+
+        fixture.Db.FailNextCommit = true;
+        Assert.Throws<IOException>(() => fixture.ComputeHead());
+        Hash256?[] afterFailure = fixture.CanonicalRoots(through: 4);
+        Hash256 head = fixture.ComputeHead();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(afterFailure, Is.EqualTo(new Hash256?[] { fixture.Chain.AnchorRoot, chainA[0].Root, chainA[1].Root, chainA[2].Root, null }),
+                "nothing of chain B is written until the whole change commits");
+            Assert.That(head, Is.EqualTo(b4.Root));
+            Assert.That(fixture.CanonicalRoots(through: 4), Is.EqualTo(new Hash256?[] { fixture.Chain.AnchorRoot, b1.Root, null, null, b4.Root }));
+        });
+    }
+
+    /// <summary>A restart replays up to an older head than the previous run indexed; the first head change must clear the rest.</summary>
+    [Test]
+    public void First_head_change_after_a_restart_clears_what_the_previous_run_indexed_above_it()
+    {
+        CanonicalReorgFixture fixture = CanonicalReorgFixture.Create();
+        UnsignedChain.ChainBlock[] chainA = fixture.ImportLongerChainA();
+
+        CanonicalReorgFixture restarted = fixture.Restart();
+        UnsignedChain.ChainBlock a1 = restarted.Import(restarted.Chain.AnchorRoot, slot: 1, 0xa1);
+
+        Assert.That(a1.Root, Is.EqualTo(chainA[0].Root), "fixture: the replay re-imports the same block");
+        Assert.That(restarted.ComputeHead(), Is.EqualTo(a1.Root));
+        Assert.That(restarted.CanonicalRoots(through: 3), Is.EqualTo(new Hash256?[] { restarted.Chain.AnchorRoot, a1.Root, null, null }),
+            "slots 2 and 3 were indexed by the previous run above the head this run replayed to");
+    }
+}
+
+/// <summary>A column store whose write batches can be made to fail at commit without applying anything, as a crash before the commit would.</summary>
+internal sealed class FailableCommitColumnsDb(TestMemColumnsDb<BeaconChainDbColumns> inner) : IColumnsDb<BeaconChainDbColumns>
+{
+    public TestMemColumnsDb<BeaconChainDbColumns> Inner => inner;
+
+    /// <summary>When set, the next write batch that stages a canonical index change is discarded and its commit throws.</summary>
+    public bool FailNextCommit { get; set; }
+
+    public IDb GetColumnDb(BeaconChainDbColumns key) => inner.GetColumnDb(key);
+
+    public IEnumerable<BeaconChainDbColumns> ColumnKeys => inner.ColumnKeys;
+
+    public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new Batch(this, inner.StartWriteBatch());
+
+    public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => inner.CreateSnapshot();
+
+    public void Flush(bool onlyWal) => inner.Flush(onlyWal);
+
+    public void Dispose() => inner.Dispose();
+
+    private sealed class Batch(FailableCommitColumnsDb owner, IColumnsWriteBatch<BeaconChainDbColumns> real) : IColumnsWriteBatch<BeaconChainDbColumns>
+    {
+        private readonly MemColumnsDb<BeaconChainDbColumns> _discarded = new();
+        private bool _failing;
+
+        public IWriteBatch GetColumnBatch(BeaconChainDbColumns key)
+        {
+            if (key == BeaconChainDbColumns.BlockIndex && owner.FailNextCommit)
+            {
+                owner.FailNextCommit = false;
+                _failing = true;
+            }
+
+            return _failing ? _discarded.GetColumnDb(key).StartWriteBatch() : real.GetColumnBatch(key);
+        }
+
+        public void Clear() => real.Clear();
+
+        public void Dispose()
+        {
+            if (_failing)
+            {
+                real.Clear();
+                real.Dispose();
+                throw new IOException("the write batch failed to commit");
+            }
+
+            real.Dispose();
+        }
     }
 }
 
 /// <summary>An importer over <see cref="UnsignedChain"/> whose canonical index lives in a store the test can read and count.</summary>
 internal sealed class CanonicalReorgFixture
 {
-    private CanonicalReorgFixture(UnsignedChain chain, TestMemColumnsDb<BeaconChainDbColumns> db, BeaconChainStore store, BlockImporter importer)
+    private CanonicalReorgFixture(UnsignedChain chain, FailableCommitColumnsDb db, BeaconChainStore store, BlockImporter importer)
     {
         Chain = chain;
         Db = db;
@@ -132,7 +228,7 @@ internal sealed class CanonicalReorgFixture
 
     public UnsignedChain Chain { get; }
 
-    public TestMemColumnsDb<BeaconChainDbColumns> Db { get; }
+    public FailableCommitColumnsDb Db { get; }
 
     public BeaconChainStore Store { get; }
 
@@ -143,9 +239,17 @@ internal sealed class CanonicalReorgFixture
     public static CanonicalReorgFixture Create()
     {
         UnsignedChain chain = UnsignedChain.Create();
-        TestMemColumnsDb<BeaconChainDbColumns> db = new();
+        FailableCommitColumnsDb db = new(new TestMemColumnsDb<BeaconChainDbColumns>());
         BeaconChainStore store = new(db, chain.Spec);
         store.SetAnchor(chain.AnchorRoot, 0);
+        return new CanonicalReorgFixture(chain, db, store, CreateImporter(chain, store));
+    }
+
+    /// <summary>A new importer over the same store and anchor, as a restart builds one; blocks must be imported again.</summary>
+    public CanonicalReorgFixture Restart() => new(Chain, Db, Store, CreateImporter(Chain, Store));
+
+    private static BlockImporter CreateImporter(UnsignedChain chain, BeaconChainStore store)
+    {
         ImportableBlobBlock anchor = chain.Anchor;
         BlockImporter importer = new(
             chain.Spec,
@@ -163,7 +267,7 @@ internal sealed class CanonicalReorgFixture
             anchor.AnchorRoot);
         // Past every block's slot, so none is timely and proposer boost never decides the head.
         importer.OnSlotTick(8);
-        return new CanonicalReorgFixture(chain, db, store, importer);
+        return importer;
     }
 
     public static byte[] SlotKey(ulong slot)
