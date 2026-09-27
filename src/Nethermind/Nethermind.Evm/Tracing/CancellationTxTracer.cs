@@ -410,6 +410,15 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
+    public void ReportActionErrorDetails(string error)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingActions)
+        {
+            innerTracer.ReportActionErrorDetails(error);
+        }
+    }
+
     public void ReportActionRemainingGas(ulong gas)
     {
         ThrowIfCancellationRequestedUnlessTracingInstructions();
