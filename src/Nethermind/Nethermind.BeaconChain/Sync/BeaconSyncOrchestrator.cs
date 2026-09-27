@@ -218,16 +218,30 @@ public sealed class BeaconSyncOrchestrator(
         };
     }
 
-    /// <summary>The <c>earliest_available_slot</c> to advertise in Status v2: the anchor, raised once past Fulu to the first slot whose columns are all held.</summary>
+    /// <summary>The <c>earliest_available_slot</c> to advertise in Status v2.</summary>
     /// <remarks>
-    /// fulu/p2p-interface.md Status v2: a node unable to serve all sidecars advertises the earliest slot from which it can.
-    /// <c>data_column_serve_range</c> ends at the current slot, so the slot after it is servable even with no columns held;
-    /// a request from the advertised slot is never answered <c>ResourceUnavailable</c> at the time the Status is sent.
+    /// fulu/p2p-interface.md Status v2: it is the slot of the earliest available block, the anchor, except that a node able to
+    /// serve every block of the sidecar retention period but not every sidecar advertises the earliest slot from which it can
+    /// serve all sidecars. So the held columns raise it only once the anchor is at or below the start of
+    /// <c>data_column_serve_range</c>, and only when they start inside that range. The range ends at the current slot, so the
+    /// slot after it is servable even with no columns held.
     /// </remarks>
-    private ulong EarliestAvailableSlot() =>
-        columnPool is null || slotClock.CurrentEpoch < spec.FuluForkEpoch
-            ? _anchorSlot
-            : Math.Max(_anchorSlot, Math.Min(columnPool.EarliestCompletelyServableSlot, slotClock.CurrentSlot + 1));
+    private ulong EarliestAvailableSlot()
+    {
+        if (columnPool is null || slotClock.CurrentEpoch < spec.FuluForkEpoch)
+        {
+            return _anchorSlot;
+        }
+
+        ulong serveFrom = DataAvailabilityBoundary.ComputeStartSlot(slotClock.CurrentEpoch, spec);
+        if (_anchorSlot > serveFrom)
+        {
+            return _anchorSlot;
+        }
+
+        ulong columnsFrom = Math.Min(columnPool.EarliestCompletelyServableSlot, slotClock.CurrentSlot + 1);
+        return columnsFrom <= serveFrom ? _anchorSlot : columnsFrom;
+    }
 
     /// <summary>
     /// Re-imports the canonical blocks already persisted between the anchor and the wall clock, so
