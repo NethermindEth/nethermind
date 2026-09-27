@@ -1256,6 +1256,46 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(Volatile.Read(ref blocks), Is.EqualTo(2), "dispose must wait again after a stale wake instead of returning");
     }
 
+    public enum WarmupHint
+    {
+        Account,
+        BalAccount,
+        StorageSlot,
+    }
+
+    /// <summary>
+    /// A job may complete before its push returns. Counting it only afterwards drives the count below zero, and then a
+    /// later increment can bring it to zero with no completion to wake a disposing scope, which waits out its timeout.
+    /// </summary>
+    [Test]
+    public async Task Warmup_CompletingDuringItsPush_NeverDrivesTheCountBelowZero([Values] WarmupHint hint)
+    {
+        InlineTrieWarmer warmer = new();
+        using TestContext ctx = new(trieWarmer: warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        warmer.Scope = scope;
+
+        switch (hint)
+        {
+            case WarmupHint.Account:
+                scope.HintWarmAccount(TestItem.AddressA);
+                break;
+            case WarmupHint.BalAccount:
+                await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA)));
+                break;
+            case WarmupHint.StorageSlot:
+                scope.CreateStorageTree(TestItem.AddressA).HintSet((UInt256)1);
+                break;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmer.Completed, Is.EqualTo(1), "precondition: the hint must have run a job inside its push");
+            Assert.That(warmer.LowestCountAfterCompletion, Is.GreaterThanOrEqualTo(0));
+            Assert.That(scope.OutstandingWarmups, Is.Zero);
+        }
+    }
+
     [Test]
     public async Task Dispose_CompletesImmediately_WhenNoOutstandingWarmups()
     {
@@ -1537,6 +1577,43 @@ public class FlatWorldStateScopeProviderTests
                 if (path is not null) _addressJobPushes.Add(path);
             }
             return false;
+        }
+
+        public void OnEnterScope() { }
+
+        public void OnExitScope() { }
+    }
+
+    /// <summary>Runs each job inside its push, as a worker that dequeues it at once would, and records the count after.</summary>
+    private sealed class InlineTrieWarmer : ITrieWarmer
+    {
+        public FlatWorldStateScope? Scope { get; set; }
+        public int Completed { get; private set; }
+        public int LowestCountAfterCompletion { get; private set; } = int.MaxValue;
+
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            storageTree.WarmUpStorageTrie(index, sequenceId);
+            return Record();
+        }
+
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            storageTree.WarmUpStorageTrie(index, sequenceId);
+            return Record();
+        }
+
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+        {
+            scope.WarmUpStateTrie(path!, sequenceId);
+            return Record();
+        }
+
+        private bool Record()
+        {
+            Completed++;
+            LowestCountAfterCompletion = Math.Min(LowestCountAfterCompletion, Scope!.OutstandingWarmups);
+            return true;
         }
 
         public void OnEnterScope() { }

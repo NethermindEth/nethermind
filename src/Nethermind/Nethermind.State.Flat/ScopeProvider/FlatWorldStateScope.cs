@@ -40,8 +40,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
     // tasks within the trie warmer's ring buffer.
     private volatile int _hintSequenceId = 0;
+    // Counted before each push and uncounted if it is rejected: a job can complete before a later increment lands,
+    // and a count below zero would let that increment reach zero with no completion to wake dispose.
     private int _outstandingWarmups = 0;
-    // Published by dispose before it waits; the job that brings the count to zero sets it.
+    // Published by dispose before it waits; the job that brings the count to zero sets it. Never disposed: a job still
+    // running past the timeout sets it later, and a slim event takes no kernel handle unless its WaitHandle is read.
     private ManualResetEventSlim? _warmupsDrained;
     private StateId _currentStateId;
     internal volatile bool _pausePrewarmer = false;
@@ -119,9 +122,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private void QueueStateTrieWarmup(Address address, int sequenceId)
     {
-        if (NeedsStateTrieWarmup(address)
-            && _warmer.PushAddressJob(this, address, sequenceId))
-            Interlocked.Increment(ref _outstandingWarmups);
+        if (!NeedsStateTrieWarmup(address)) return;
+        Interlocked.Increment(ref _outstandingWarmups);
+        if (!_warmer.PushAddressJob(this, address, sequenceId)) CompleteWarmup();
     }
 
     // Exposed for tests to observe when the wait loop is entered.
@@ -235,10 +238,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     ReadOnlyAccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    if (ac.HasStateChanges
-                        && _snapshotBundle.ShouldQueuePrewarm(address)
-                        && _warmer.PushAddressJob(this, address, snapshot))
+                    if (ac.HasStateChanges && _snapshotBundle.ShouldQueuePrewarm(address))
+                    {
                         Interlocked.Increment(ref _outstandingWarmups);
+                        if (!_warmer.PushAddressJob(this, address, snapshot)) CompleteWarmup();
+                    }
 
                     ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
                     int storageChangeCount = storageChanges.Length;
@@ -267,9 +271,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         foreach (ReadOnlySlotChanges slotChanges in storageChanges)
                         {
                             UInt256 key = slotChanges.Key;
-                            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
-                                && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
-                                Interlocked.Increment(ref _outstandingWarmups);
+                            if (!_snapshotBundle.ShouldQueuePrewarm(address, key)) continue;
+                            Interlocked.Increment(ref _outstandingWarmups);
+                            if (!_warmer.PushSlotJobMpmc(storageWarmer, key, snapshot)) CompleteWarmup();
                         }
                     }
 
@@ -400,6 +404,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal void IncrementOutstandingWarmups() => Interlocked.Increment(ref _outstandingWarmups);
 
+    internal int OutstandingWarmups => Volatile.Read(ref _outstandingWarmups);
+
     internal void DecrementOutstandingWarmups() => CompleteWarmup();
 
     public void HintWarmAccount(Address address)
@@ -415,8 +421,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
 
         FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address);
-        if (tree is not null && _warmer.PushSlotJobMpmc(tree, index, _hintSequenceId))
-            Interlocked.Increment(ref _outstandingWarmups);
+        if (tree is null) return;
+        Interlocked.Increment(ref _outstandingWarmups);
+        if (!_warmer.PushSlotJobMpmc(tree, index, _hintSequenceId)) CompleteWarmup();
     }
 
     private FlatStorageTree? GetOrCreateHintWarmStorageTree(Address address) =>
