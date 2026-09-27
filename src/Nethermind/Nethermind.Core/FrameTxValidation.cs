@@ -557,21 +557,6 @@ public static class FrameTxValidation
         return priced;
     }
 
-    /// <summary>The <c>maxGas</c> <see cref="TryCalculateGasBudget"/> last priced <paramref name="transaction"/> at,
-    /// for a consumer that holds no spec to price it again.</summary>
-    /// <returns><c>false</c> when the transaction has not been priced, or could not be.</returns>
-    internal static bool TryGetPricedGasBudget(Transaction transaction, out ulong maxGas)
-    {
-        if (Volatile.Read(ref transaction.IntrinsicGasMemo) is FrameGasBudgetMemo { Priced: true } memo)
-        {
-            maxGas = memo.MaxGas;
-            return true;
-        }
-
-        maxGas = 0;
-        return false;
-    }
-
     private sealed record FrameGasBudgetMemo(
         IReleaseSpec Spec,
         (int ZeroBytes, int NonZeroBytes) ReferenceCalldata,

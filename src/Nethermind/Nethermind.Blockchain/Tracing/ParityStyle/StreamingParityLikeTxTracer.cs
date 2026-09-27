@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -82,8 +83,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         PipeWriter? pipeWriter,
         CancellationToken cancellationToken,
         bool fillVmTraceSlot,
-        int flushIntervalEntries = DefaultFlushIntervalEntries)
-        : base(block, tx, parityTraceTypes)
+        int flushIntervalEntries = DefaultFlushIntervalEntries,
+        IReleaseSpec? spec = null)
+        : base(block, tx, parityTraceTypes, spec)
     {
         ArgumentNullException.ThrowIfNull(writer);
         if (flushIntervalEntries <= 0) throw new ArgumentOutOfRangeException(nameof(flushIntervalEntries));

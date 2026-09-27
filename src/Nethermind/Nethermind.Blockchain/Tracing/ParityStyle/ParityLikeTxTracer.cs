@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -20,6 +21,7 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
     private const string SkippedFrameError = "frame skipped";
 
     private Transaction? _tx;
+    private readonly IReleaseSpec? _spec;
     private readonly ParityTraceTypes _parityTraceTypes;
     protected readonly ParityLikeTxTrace _trace;
 
@@ -44,9 +46,12 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
     private EvmExceptionType?[]? _frameErrors;
     private bool _framesOrdered;
 
-    public ParityLikeTxTracer(Block block, Transaction? tx, ParityTraceTypes parityTraceTypes)
+    /// <param name="spec">The block's spec, which prices an EIP-8141 frame transaction's gas budget for its root;
+    /// without it the root reports only the frame limits.</param>
+    public ParityLikeTxTracer(Block block, Transaction? tx, ParityTraceTypes parityTraceTypes, IReleaseSpec? spec = null)
     {
         _parityTraceTypes = parityTraceTypes;
+        _spec = spec;
 
         _tx = tx;
         _isFrameTx = tx?.Type == TxType.FrameTx;
@@ -452,8 +457,8 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
             action.From = _tx!.SenderAddress;
             action.To = Eip8141Constants.EntryPointAddress;
             action.Input = CappedArray<byte>.Empty;
-            // The processor priced it before any frame ran: frame limits plus intrinsic gas, raised to the floor.
-            action.Gas = FrameTxValidation.TryGetPricedGasBudget(_tx, out ulong maxGas) ? maxGas : _tx.GasLimit;
+            // GasLimit carries only the frame limits, short of the intrinsic gas the transaction also spends.
+            action.Gas = _spec is not null && FrameTxValidation.TryCalculateGasBudget(_tx, _spec, out _, out _, out ulong maxGas) ? maxGas : _tx.GasLimit;
             return action;
         }
 

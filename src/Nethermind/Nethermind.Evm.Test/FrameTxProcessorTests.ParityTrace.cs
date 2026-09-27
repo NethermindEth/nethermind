@@ -277,7 +277,7 @@ public partial class FrameTxProcessorTests
 
     private (ParityLikeTxTrace Trace, TxReceipt Receipt) TraceParity(Transaction tx, ParityTraceTypes types)
     {
-        ParityLikeBlockTracer blockTracer = new(types);
+        ParityLikeBlockTracer blockTracer = new(types, _specProvider);
         TxReceipt receipt = RunThroughReceiptsTracer(tx, blockTracer);
         return (blockTracer.BuildResult().Single(), receipt);
     }
@@ -297,7 +297,7 @@ public partial class FrameTxProcessorTests
         using (Utf8JsonWriter writer = new(sink))
         {
             writer.WriteStartArray();
-            using StreamingParityLikeBlockTracer blockTracer = new(AllParityTraceTypes, mode, includeTxHash: true, writer, pipeWriter: null, CancellationToken.None);
+            using StreamingParityLikeBlockTracer blockTracer = new(AllParityTraceTypes, mode, includeTxHash: true, writer, pipeWriter: null, CancellationToken.None, specProvider: _specProvider);
             RunThroughReceiptsTracer(tx, blockTracer);
             writer.WriteEndArray();
         }
