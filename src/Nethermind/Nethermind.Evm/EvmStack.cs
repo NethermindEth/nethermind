@@ -71,6 +71,7 @@ public ref partial struct EvmStack
     /// </remarks>
     internal readonly nint CodeLength;
     /// <summary>The first byte of the frame's input data, set by <see cref="HoistInputData"/>.</summary>
+    /// <remarks>Empty until hoisted: a stack built for execution must call <see cref="HoistInputData"/>, or calldata reads return zeros.</remarks>
     internal ref readonly byte InputData;
     /// <summary>The length of <see cref="InputData"/>; native width for the same reason as <see cref="CodeLength"/>.</summary>
     internal nint InputDataLength;

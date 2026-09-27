@@ -134,7 +134,6 @@ public static partial class EvmInstructions
 
     /// <summary>
     /// CALLDATACOPY - copies a portion of the transaction's calldata into memory.
-    /// Sources bytes from <c>stack.InputData</c>/<c>stack.InputDataLength</c> (hoisted at frame entry).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [SkipLocalsInit]
