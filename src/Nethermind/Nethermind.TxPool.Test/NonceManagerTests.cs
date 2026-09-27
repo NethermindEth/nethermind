@@ -141,6 +141,25 @@ public class NonceManagerTests
     }
 
     [Test]
+    public void ReserveNonce_should_release_the_account_lock_when_the_reservation_throws()
+    {
+        IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns(_ => throw new InvalidOperationException(), _ => 3UL);
+        _nonceManager = new NonceManager(accountStateProvider);
+
+        Assert.Throws<InvalidOperationException>(() => _nonceManager.ReserveNonce(TestItem.AddressA, _txPool, out _));
+
+        Task<ulong> next = Task.Run(() =>
+        {
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _txPool, out ulong nonce);
+            return nonce;
+        });
+
+        Assert.That(next.Wait(TimeSpan.FromSeconds(5)), Is.True, "a failed reservation must not keep the account locked");
+        Assert.That(next.Result, Is.EqualTo(3UL));
+    }
+
+    [Test]
     public void ReserveNonce_should_skip_nonce_if_TxWithNonceReceived()
     {
         using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 4))

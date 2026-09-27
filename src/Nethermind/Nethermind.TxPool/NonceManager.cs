@@ -47,9 +47,18 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
         public NonceLocker ReserveNonce(Address address, IAccountStateProvider accounts, ITxPool txPool, out ulong reservedNonce)
         {
             NonceLocker locker = new(_accountLock, TxAccepted);
-            ulong accountNonce = accounts.GetNonce(address);
-            ReleaseNonces(accountNonce);
-            _reservedNonce = FindFreeNonce(address, accountNonce, txPool);
+            try
+            {
+                ulong accountNonce = accounts.GetNonce(address);
+                ReleaseNonces(accountNonce);
+                _reservedNonce = FindFreeNonce(address, accountNonce, txPool);
+            }
+            catch
+            {
+                locker.Dispose();
+                throw;
+            }
+
             reservedNonce = _reservedNonce;
             return locker;
         }
