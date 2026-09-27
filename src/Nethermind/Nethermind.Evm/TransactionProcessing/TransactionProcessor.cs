@@ -80,9 +80,12 @@ namespace Nethermind.Evm.TransactionProcessing
 
         /// <summary>Whether LOG may skip materialising its entry: a prewarming run nobody observes.</summary>
         /// <remarks>Deliberately narrower than the tracer-requirement test the non-frame path uses: a frame
-        /// transaction reads its own logs from a POST_TX frame (EIP-7906), which no tracer flag describes.</remarks>
+        /// transaction reads its own logs from a POST_TX frame (EIP-7906), which no tracer flag describes.
+        /// A cancellation wrapper that traces nothing of its own is looked through.</remarks>
         private protected static bool ShouldSuppressLogs(ExecutionOptions opts, ITxTracer tracer) =>
-            opts.HasFlag(ExecutionOptions.Warmup) && ReferenceEquals(tracer, NullTxTracer.Instance);
+            opts.HasFlag(ExecutionOptions.Warmup)
+            && (ReferenceEquals(tracer, NullTxTracer.Instance)
+                || tracer is CancellationTxTracer { InnerTracer: NullTxTracer } && !tracer.IsTracing);
 
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
         {
