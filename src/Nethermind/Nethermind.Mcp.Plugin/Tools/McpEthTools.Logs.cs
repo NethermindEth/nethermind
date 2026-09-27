@@ -369,6 +369,12 @@ internal sealed partial class McpEthTools
     {
         ulong plainEnd = Math.Min(end, McpEthHelpers.SaturatingAdd(start, _maxLogBlockRange - 1));
 
+        // Without a module or stream cap, eth_getLogs materializes every match before this tool can apply its page limits.
+        if (!rpcConfig.EnableLogsStreamMode && rpcConfig.MaxLogsPerResponse == 0)
+        {
+            return (plainEnd, false);
+        }
+
         // Without an address or topic the index cannot narrow the blocks, so the eth module reads every block anyway.
         if (selective
             && logIndexStorage.Enabled

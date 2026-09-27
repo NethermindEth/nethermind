@@ -202,6 +202,45 @@ public class McpLogPagingTests
     }
 
     [Test]
+    public async Task Selective_pages_stay_bounded_when_the_eth_module_has_no_log_limit()
+    {
+        ILogIndexStorage logIndex = Substitute.For<ILogIndexStorage>();
+        logIndex.Enabled.Returns(true);
+        logIndex.MinBlockNumber.Returns(0);
+        logIndex.MaxBlockNumber.Returns(int.MaxValue);
+        await using McpTestNode node = await McpTestNode.Create(
+            c =>
+            {
+                c.MaxLogBlockRange = 2;
+                c.MaxIndexedLogBlockRange = 1000;
+                c.MaxLogs = MaxLogs;
+            },
+            b =>
+            {
+                b.AddSingleton(logIndex);
+                b.AddDecorator<IJsonRpcConfig>((_, rpc) =>
+                {
+                    rpc.EnableLogsStreamMode = false;
+                    rpc.MaxLogsPerResponse = 0;
+                    return rpc;
+                });
+            });
+        SeededLogs seeded = await SeedLogs(node, [1, 1, 1, 1, 1]);
+        await using McpClient client = await node.CreateClient();
+
+        (List<LogId> logs, List<JsonElement> pages) = await PageAll(client,
+            [("fromBlock", Hex(seeded.First)), ("toBlock", Hex(seeded.Last)), ("topics", Json(new object?[] { PagingTopic.ToString() }))], limit: null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs, Is.EqualTo(seeded.Expected));
+            Assert.That(pages, Has.Count.GreaterThan(1));
+            Assert.That(pages.All(static page => Number(page, "toBlock") - Number(page, "fromBlock") + 1 <= 2), Is.True);
+            Assert.That(pages.All(static page => !page.GetProperty("indexed").GetBoolean()), Is.True);
+        }
+    }
+
+    [Test]
     public async Task Selective_pages_without_index_coverage_stay_bounded()
     {
         LogId target = _seeded.Expected[^1];
