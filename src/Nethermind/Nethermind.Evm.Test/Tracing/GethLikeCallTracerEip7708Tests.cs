@@ -66,7 +66,8 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         {
             NativeCallTracerCallFrame childFrame = topFrame.Calls[0];
             NativeCallTracerLogEntry expectedInner = ExpectedTransferLog(Recipient, childFrame.To!, InnerValue, 0UL);
-            Assert.That(childFrame.Logs, Is.EqualTo([expectedInner]).UsingPropertiesComparer());
+            Assert.That(childFrame.Logs, Is.EqualTo([expectedInner]).UsingPropertiesComparer(c => c.Excluding(nameof(NativeCallTracerLogEntry.Index))));
+            Assert.That(childFrame.Logs[0].Index, Is.EqualTo(1));
         }
     }
 

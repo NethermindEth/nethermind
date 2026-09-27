@@ -29,6 +29,92 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     [Test]
+    public async Task Debug_traceTransaction_log_indices_include_preceding_transactions([Values] bool revertFirst)
+    {
+        string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
+            RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", block.Transactions[2].Hash!,
+                new { tracer = "callTracer", tracerConfig = new { withLog = true } }));
+
+        AssertLastTransactionLogIndex(responses, revertFirst);
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_log_indices_span_transactions(
+        [Values("debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock")] string method,
+        [Values] bool revertFirst)
+    {
+        string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
+        {
+            object blockParameter = method switch
+            {
+                "debug_traceBlockByHash" => block.Hash!,
+                "debug_traceBlockByNumber" => "latest",
+                "debug_traceBlock" => Nethermind.Serialization.Rlp.Rlp.Encode(block).ToString(),
+                _ => throw new AssertionException($"Unexpected block tracing method: {method}")
+            };
+            return RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockParameter,
+                new { tracer = "callTracer", tracerConfig = new { withLog = true } });
+        });
+
+        foreach (string response in responses)
+        {
+            JToken json = JToken.Parse(response);
+            Assert.That(json["error"], Is.Null, response);
+            JArray traces = (JArray)json["result"]!;
+            Assert.That(traces, Has.Count.EqualTo(3));
+            using (Assert.EnterMultipleScope())
+            {
+                if (revertFirst)
+                    Assert.That(traces[0]["result"]?["logs"], Is.Null, response);
+                for (int i = revertFirst ? 1 : 0; i < traces.Count; i++)
+                    Assert.That((string?)traces[i]["result"]?["logs"]?[0]?["index"], Is.EqualTo($"0x{i - (revertFirst ? 1 : 0):x}"), response);
+            }
+        }
+    }
+
+    private static void AssertLastTransactionLogIndex(string[] responses, bool revertFirst)
+    {
+        foreach (string response in responses)
+        {
+            JToken json = JToken.Parse(response);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((string?)json["result"]?["logs"]?[0]?["index"], Is.EqualTo(revertFirst ? "0x1" : "0x2"), response);
+            }
+        }
+    }
+
+    private static async Task<string[]> TraceLogsBeforeAndAfterIndexing(
+        bool revertFirst, Func<TestRpcBlockchain, Block, Task<string>> trace)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            byte[] code = revertFirst && i == 0
+                ? Prepare.EvmCode.Log(0, 0).Revert(0, 0).Done
+                : Prepare.EvmCode.Log(0, 0).STOP().Done;
+            transactions[i] = Build.A.Transaction.WithCode(code).WithNonce(nonce + (ulong)i)
+                .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions.Length, Is.EqualTo(3));
+        string replayed = await trace(chain, block);
+        IndexThroughTheCapture(chain, index, block, parent);
+        string indexed = await trace(chain, block);
+        return [replayed, indexed];
+    }
+
+    [Test]
     public async Task DebugAndTraceFactories_UseTheSameExecutionBudget()
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
