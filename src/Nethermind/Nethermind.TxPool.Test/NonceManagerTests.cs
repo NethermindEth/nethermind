@@ -295,6 +295,37 @@ public class NonceManagerTests
         }
     }
 
+    [Test]
+    public void ReserveNonce_should_recheck_the_pool_for_an_evicted_nonce_after_a_reservation_was_not_accepted()
+    {
+        // 1. A raw tx with nonce 5 is accepted while the account nonce is 0.
+        // 2. The account nonce catches up to 5 after tx 5 was evicted.
+        // 3. A reservation reuses 5, then is disposed without Accept.
+        // 4. A peer tx with nonce 5 enters the pool without going through the nonce manager.
+        _headState.GetNonce(TestItem.AddressA).Returns(0UL);
+        _nonceManager = CreateSweepingNonceManager();
+
+        Transaction raw;
+        using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 5))
+        {
+            raw = Accept(locker, TestItem.AddressA, 5);
+        }
+
+        Remove(raw);
+        _headState.GetNonce(TestItem.AddressA).Returns(5UL);
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong reusedNonce))
+        {
+            Assert.That(reusedNonce, Is.EqualTo(5UL), "precondition: tx 5 left the pool so its nonce is reused");
+        }
+
+        Transaction peer = BuildTx(TestItem.AddressA, 5, TxType.Legacy);
+        _pending[peer.Hash!] = peer;
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo(6UL), "a reservation that was never accepted must not stop later ones from checking the pool at 5");
+        }
+    }
+
     // 1. Four senders have raw nonce 0 accepted while the head nonce is 0.
     // 2. Their nonce moves to 1 at the head, and at the reorg-safe block only when the case says so.
     // 3. A fifth sender triggers the sweep.
