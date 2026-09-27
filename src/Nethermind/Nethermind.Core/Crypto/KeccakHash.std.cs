@@ -13,6 +13,9 @@ namespace Nethermind.Core.Crypto;
 
 public sealed partial class KeccakHash
 {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial bool TryComputeHash256Into(ReadOnlySpan<byte> input, Span<byte> output) => false;
+
     private const int LANE_BITS = 8 * 8;
     private const int TEMP_BUFF_SIZE = 144;
 
