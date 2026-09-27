@@ -113,6 +113,12 @@ jobs:
         chunk: ['']
         exclude: # These projects are chunked on slower runners (see include block) to stay within the 15-minute job budget.
           - runner: ubuntu-24.04-arm
+            project: Nethermind.BeaconChain.Test
+            chunk: ''
+          - runner: ubuntu-latest
+            project: Nethermind.BeaconChain.Test
+            chunk: ''
+          - runner: ubuntu-24.04-arm
             project: Nethermind.Synchronization.Test
             chunk: ''
           - runner: ubuntu-latest
@@ -125,6 +131,10 @@ jobs:
             project: Nethermind.Merge.AuRa.Test
             chunk: ''
         include:
+          - { runner: ubuntu-24.04-arm, project: Nethermind.BeaconChain.Test, chunk: 1of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.BeaconChain.Test, chunk: 2of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.BeaconChain.Test, chunk: 3of4 }
+          - { runner: ubuntu-24.04-arm, project: Nethermind.BeaconChain.Test, chunk: 4of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
@@ -137,6 +147,10 @@ jobs:
           - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 3of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 4of4 }
+          - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Test, chunk: 1of4 }
+          - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Test, chunk: 2of4 }
+          - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Test, chunk: 3of4 }
+          - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Test, chunk: 4of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
