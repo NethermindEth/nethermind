@@ -65,7 +65,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         IsTracingStack = false;
         IsTracingOpLevelStorage = false;
         IsTracingReturnData = false;
-        _gasLimit = tx!.GasLimit;
+        // A frame transaction's GasLimit carries only its frame limits, short of the intrinsic gas it also spends.
+        _gasLimit = tx!.SupportsFrames && FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas) ? maxGas : tx.GasLimit;
         _txHash = tx.Hash;
         _isEip8037Enabled = spec.IsEip8037Enabled;
         _isFrameTx = tx.SupportsFrames;

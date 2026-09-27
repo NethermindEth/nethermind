@@ -452,7 +452,8 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
             action.From = _tx!.SenderAddress;
             action.To = Eip8141Constants.EntryPointAddress;
             action.Input = CappedArray<byte>.Empty;
-            action.Gas = _tx.GasLimit;
+            // The processor priced it before any frame ran: frame limits plus intrinsic gas, raised to the floor.
+            action.Gas = FrameTxValidation.TryGetPricedGasBudget(_tx, out ulong maxGas) ? maxGas : _tx.GasLimit;
             return action;
         }
 

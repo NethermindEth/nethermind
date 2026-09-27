@@ -119,7 +119,8 @@ public partial class FrameTxProcessorTests
             Assert.That(root.CallType, Is.EqualTo("call"));
             Assert.That(root.From, Is.EqualTo(Sender));
             Assert.That(root.To, Is.EqualTo(Eip8141Constants.EntryPointAddress));
-            Assert.That(root.Gas, Is.EqualTo(tx.GasLimit));
+            Assert.That(root.Gas, Is.EqualTo(FrameGasBudget(tx)), "root gas");
+            Assert.That(root.Result?.GasUsed ?? 0, Is.LessThanOrEqualTo(root.Gas), "root gasUsed");
             if (scenario != "postTxReverted")
             {
                 Assert.That(root.Error, Is.Null, "root error");
@@ -234,6 +235,31 @@ public partial class FrameTxProcessorTests
             Assert.That((beneficiary?.Balance?.After ?? 0) - (beneficiary?.Balance?.Before ?? 0), Is.EqualTo(fee), "beneficiary credit");
             Assert.That(trace.StateChanges[Sender].Nonce?.After, Is.EqualTo((UInt256?)1), "sender nonce");
         }
+    }
+
+    [TestCase("nested")]
+    [TestCase("undispatched")]
+    [TestCase("postTxReverted")]
+    public void CallTrace_FrameTx_RootGasIsTheTransactionBudget(string scenario)
+    {
+        Transaction tx = ParityScenarioTx(scenario);
+        (JsonDocument trace, _) = TraceCall(tx);
+        using (trace)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(HexValue(trace.RootElement, "gas"), Is.EqualTo(FrameGasBudget(tx)), "root gas");
+                Assert.That(HexValue(trace.RootElement, "gasUsed"), Is.LessThanOrEqualTo(HexValue(trace.RootElement, "gas")), "root gasUsed");
+            }
+        }
+    }
+
+    /// <summary>The gas the processor reserves for <paramref name="tx"/>: its frame limits plus the intrinsic gas.</summary>
+    private ulong FrameGasBudget(Transaction tx)
+    {
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas), Is.True);
+        Assert.That(maxGas, Is.GreaterThan(tx.GasLimit), "the budget exceeds the frame limits");
+        return maxGas;
     }
 
     private (ParityLikeTxTrace Trace, TxReceipt Receipt) TraceParity(Transaction tx, ParityTraceTypes types)
