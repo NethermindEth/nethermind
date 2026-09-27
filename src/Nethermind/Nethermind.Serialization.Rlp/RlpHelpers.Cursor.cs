@@ -658,6 +658,10 @@ internal static partial class RlpHelpers
     }
 
     /// <summary>Decodes a bloom, interning <see cref="Bloom.Empty"/>; an RLP null decodes as <see cref="Bloom.Removed"/> (EIP-7668).</summary>
+    /// <remarks>
+    /// The result is never null, but a zero-length bloom is accepted at every fork: the decoder has no spec,
+    /// so a pre-fork one is rejected by the receipts-root check, whose encoding it cannot match.
+    /// </remarks>
     /// <returns>The position past the item.</returns>
     public static int DecodeBloomNonNull(ReadOnlySpan<byte> data, int position, out Bloom bloom)
     {

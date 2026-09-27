@@ -72,16 +72,15 @@ public class ReceiptTrieTests
         AssertRootMatches(Osaka.Instance, receipts, _decoder);
     }
 
-    [TestCase(true, ExpectedResult = true)]
-    [TestCase(false, ExpectedResult = false)]
-    public bool Eip7668_root_encodes_zero_length_blooms(bool eip7668)
+    [Test]
+    public void Eip7668_root_encodes_zero_length_blooms([Values] bool eip7668)
     {
         IReleaseSpec spec = new OverridableReleaseSpec(Osaka.Instance) { IsEip7668Enabled = eip7668 };
         TxReceipt[] receipts = [Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject];
         TxReceipt[] removed = [Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.Removed).TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.Removed).TestObject];
 
         AssertRootMatches(spec, receipts, _decoder);
-        return ReceiptTrie.CalculateRoot(spec, receipts, _decoder) == ReceiptTrie.CalculateRoot(Osaka.Instance, removed, _decoder);
+        Assert.That(ReceiptTrie.CalculateRoot(spec, receipts, _decoder) == ReceiptTrie.CalculateRoot(Osaka.Instance, removed, _decoder), Is.EqualTo(eip7668));
     }
 
     [Test]

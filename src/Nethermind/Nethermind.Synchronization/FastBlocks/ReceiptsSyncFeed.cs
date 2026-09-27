@@ -225,9 +225,10 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
-                    NormalizeZeroBlooms(receipts);
-                    // BlockInfo has no timestamp
-                    IReceiptSpec releaseSpec = _specProvider.GetReceiptSpec(blockInfo.BlockNumber);
+                    // The header carries the timestamp that timestamp-activated receipt rules (EIP-7668) need.
+                    IReceiptSpec releaseSpec = _specProvider.GetSpec(header);
+                    // EIP-7668 roots ignore receipt blooms, so there is nothing to normalize.
+                    if (!releaseSpec.IsEip7668Enabled) NormalizeZeroBlooms(receipts);
                     // TODO: Optimism use op root calculator
                     preparedReceipts = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot
                         ? null

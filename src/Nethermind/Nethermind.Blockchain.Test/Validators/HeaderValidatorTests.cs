@@ -213,13 +213,10 @@ public class HeaderValidatorTests
         }
     }
 
-    [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(true, true, true)]
-    [TestCase(true, false, false)]
-    [TestCase(false, true, false)]
-    [TestCase(false, false, true)]
-    public void When_orphaned_header_bloom_length_matches_eip7668(bool eip7668, bool zeroLengthBloom, bool expectedResult)
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_orphaned_header_bloom_length_matches_eip7668([Values] bool eip7668, [Values] bool zeroLengthBloom)
     {
+        bool expectedResult = eip7668 == zeroLengthBloom;
         IReleaseSpec spec = new OverridableReleaseSpec(Byzantium.Instance) { IsEip7668Enabled = eip7668 };
         _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec),
             new OneLoggerLogManager(new(_testLogger)));
