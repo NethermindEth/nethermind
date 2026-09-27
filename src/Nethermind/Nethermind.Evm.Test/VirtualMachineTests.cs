@@ -737,31 +737,22 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.True);
     }
 
-    [Test]
-    public void Trace_invalid_jump_exception()
+    [TestCase(Instruction.JUMP)]
+    [TestCase(Instruction.JUMPI)]
+    public void Trace_invalid_jump_exception(Instruction instruction)
     {
-        byte[] code = Prepare.EvmCode
-            .PushData(255)
-            .Op(Instruction.JUMP)
-            .Done;
+        byte[] code = instruction == Instruction.JUMPI
+            ? Prepare.EvmCode.PushData(1).PushData(255).Op(instruction).Done
+            : Prepare.EvmCode.PushData(255).Op(instruction).Done;
 
-        GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
+        using GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
 
-        Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.True);
-    }
-
-    [Test]
-    public void Trace_invalid_jumpi_exception()
-    {
-        byte[] code = Prepare.EvmCode
-            .PushData(1)
-            .PushData(255)
-            .Op(Instruction.JUMPI)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(1L, 21000L + 19000L, code);
-
-        Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.True);
+            Assert.That(trace.Gas, Is.EqualTo(40000));
+            Assert.That(trace.Entries.Any(static e => e.Error is not null), Is.False);
+        }
     }
 
     [Test(Description = "Test a case where the trace is created for one transaction and subsequent untraced transactions keep adding entries to the first trace created.")]
