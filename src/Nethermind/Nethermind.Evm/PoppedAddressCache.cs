@@ -10,17 +10,17 @@ using Nethermind.Core;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// Four-entry FIFO cache reusing <see cref="Address"/> instances popped from the EVM stack —
-/// repeated and small alternating address working sets dominate real traffic, so reuse removes
-/// the per-pop allocation. Not thread-safe; owned by a single <see cref="VirtualMachine{TGasPolicy}"/>.
+/// Cache reusing <see cref="Address"/> instances popped from the EVM stack: the most recent address, then a
+/// direct-mapped table, so multicalls and token loops cycling through a few dozen addresses do not allocate.
+/// Two hot addresses sharing a slot evict each other. Not thread-safe; owned by a single
+/// <see cref="VirtualMachine{TGasPolicy}"/>.
 /// </summary>
 public sealed class PoppedAddressCache
 {
-    private Entry _entry0;
-    private Entry _entry1;
-    private Entry _entry2;
-    private Entry _entry3;
-    private nint _next = 1;
+    private const int TableBits = 6;
+    private const int TableSize = 1 << TableBits;
+    private Entry _front;
+    private Table _table;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Address GetOrCreate(ReadOnlySpan<byte> addressBytes)
@@ -41,29 +41,36 @@ public sealed class PoppedAddressCache
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private Address GetOrCreate(ulong low, ulong middle, ulong high)
     {
-        if (_entry0.Matches(low, middle, high)) return _entry0.Address!;
+        if (_front.Matches(low, middle, high)) return _front.Address!;
         return GetOrCreateBehindFront(low, middle, high);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private Address GetOrCreateBehindFront(ulong low, ulong middle, ulong high)
     {
-        if (_entry1.Matches(low, middle, high)) return _entry1.Address!;
-        if (_entry2.Matches(low, middle, high)) return _entry2.Address!;
-        if (_entry3.Matches(low, middle, high)) return _entry3.Address!;
+        ref Entry slot = ref _table[Slot(low, middle, high)];
+        if (!slot.Matches(low, middle, high))
+        {
+            Span<byte> bytes = stackalloc byte[Address.Size];
+            BinaryPrimitives.WriteUInt32BigEndian(bytes, (uint)high);
+            BinaryPrimitives.WriteUInt64BigEndian(bytes[4..], middle);
+            BinaryPrimitives.WriteUInt64BigEndian(bytes[12..], low);
+            slot = new Entry(new Address(bytes), low, middle, high);
+        }
 
-        Span<byte> bytes = stackalloc byte[Address.Size];
-        BinaryPrimitives.WriteUInt32BigEndian(bytes, (uint)high);
-        BinaryPrimitives.WriteUInt64BigEndian(bytes[4..], middle);
-        BinaryPrimitives.WriteUInt64BigEndian(bytes[12..], low);
-        Address created = new(bytes);
-        // Rotate the three older entries without copying every key on a miss.
-        if (_next == 1) _entry1 = _entry0;
-        else if (_next == 2) _entry2 = _entry0;
-        else _entry3 = _entry0;
-        _next = _next == 3 ? 1 : _next + 1;
-        _entry0 = new Entry(created, low, middle, high);
-        return created;
+        _front = slot;
+        return slot.Address!;
+    }
+
+    /// <summary>The table slot of an address: the top bits of a multiplicative hash, so sequential and precompile addresses spread.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static int Slot(ulong low, ulong middle, ulong high) =>
+        (int)(((low ^ (middle * 0xC2B2AE3D27D4EB4FUL) ^ (high << 17)) * 0x9E3779B97F4A7C15UL) >> (64 - TableBits));
+
+    [InlineArray(TableSize)]
+    private struct Table
+    {
+        private Entry _element0;
     }
 
     private readonly struct Entry(Address address, ulong low, ulong middle, ulong high)

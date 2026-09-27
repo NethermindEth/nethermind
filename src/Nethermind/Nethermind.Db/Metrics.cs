@@ -220,7 +220,7 @@ namespace Nethermind.Db
         public static IMetricObserver PrewarmerGetTime { get; set; } = NoopMetricObserver.Instance;
     }
 
-    public readonly struct PrewarmerGetTimeLabel(string part, bool isPrewarmer) : IMetricLabels
+    public sealed class PrewarmerGetTimeLabel(string part, bool isPrewarmer) : IMetricLabels
     {
         public string[] Labels { get; } = [part, isPrewarmer ? "true" : "false"];
     }

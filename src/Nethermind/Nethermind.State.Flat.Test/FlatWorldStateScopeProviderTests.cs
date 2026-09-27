@@ -1198,7 +1198,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
         // simulating the slow cold read that is in flight when a restart-replay scope is disposed.
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
         Assert.That(reader.ReadEntered.Wait(30_000), Is.True, "Warmup job should reach the persistence reader");
 
         Task disposeTask = Task.Run(() => scope.Dispose());
@@ -1318,7 +1318,7 @@ public class FlatWorldStateScopeProviderTests
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
         await scope.HintBal(CreateBal());
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }
@@ -1331,9 +1331,9 @@ public class FlatWorldStateScopeProviderTests
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)));
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes)); // read-only in BAL
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressC.Bytes)); // not in BAL
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes)); // written, but already pushed by HintBal (bloom dedupe)
+        scope.HintWarmAccount(TestItem.AddressA); // read-only in BAL
+        scope.HintWarmAccount(TestItem.AddressC); // not in BAL
+        scope.HintWarmAccount(TestItem.AddressB); // written, but already pushed by HintBal (bloom dedupe)
 
         Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
     }
@@ -1347,7 +1347,7 @@ public class FlatWorldStateScopeProviderTests
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
         scope.StartWriteBatch(0).Dispose();
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.Empty);
     }
@@ -1365,7 +1365,7 @@ public class FlatWorldStateScopeProviderTests
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressB)));
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.Empty);
     }
@@ -1376,7 +1376,7 @@ public class FlatWorldStateScopeProviderTests
         using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
         FlatWorldStateScope scope = ctx.Scope;
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }

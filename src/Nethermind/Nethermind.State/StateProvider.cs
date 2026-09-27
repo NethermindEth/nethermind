@@ -1023,7 +1023,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         // without trie warm-up.
         if (changeType != ChangeType.JustCache && (!exists || _changes[head].ChangeType == ChangeType.JustCache))
         {
-            _tree?.HintWarmAccount(new ValueAddress(address.Bytes));
+            _tree?.HintWarmAccount(address);
         }
 
         int prevIdx = exists ? head : -1;

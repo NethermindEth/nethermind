@@ -271,16 +271,16 @@ public class PrewarmerScopeProvider(
         // Populator hints target the block's consumer scope (whose commit walks the hinted paths);
         // consumer hints go straight to the backend. Capturing (discovery) scopes execute on placeholder
         // values, so their hinted addresses and slots can be fictitious — never forward them.
-        public void HintWarmAccount(in ValueAddress address)
+        public void HintWarmAccount(Address address)
         {
             if (storageReadCapture is not null) return;
-            (isPrewarmer ? mainScope : baseScope)?.HintWarmAccount(in address);
+            (isPrewarmer ? mainScope : baseScope)?.HintWarmAccount(address);
         }
 
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index)
+        public void HintWarmSlot(Address address, in UInt256 index)
         {
             if (storageReadCapture is not null) return;
-            (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(in address, in index);
+            (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(address, in index);
         }
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
