@@ -46,6 +46,45 @@ namespace Nethermind.Runner.Test.Module;
 public class TransactionChangesetIndexModuleTests
 {
     [Test]
+    public async Task BulkReplay_Rest_ObservesCancellationWithoutCallerWiring([Values] bool cancelBeforeRest)
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig
+            {
+                Enabled = true,
+                HistoryEnabled = true,
+                HistoryTransactionIndexDutyCyclePercent = 50
+            }))
+            .Build();
+        BulkFillSessionFactory sessions = container.Resolve<BulkFillSessionFactory>();
+        using CancellationTokenSource cancellation = new();
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (cancelBeforeRest) cancellation.Cancel();
+        Task rest = Task.Run(() =>
+        {
+            started.SetResult();
+            sessions.Rest(TimeSpan.FromMinutes(1), cancellation.Token);
+        });
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            if (!cancelBeforeRest)
+            {
+                await Task.Delay(100);
+                Assert.That(rest.IsCompleted, Is.False);
+            }
+            cancellation.Cancel();
+            Assert.That(async () => await rest.WaitAsync(TimeSpan.FromSeconds(5)), Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(() => sessions.Rest(TimeSpan.FromMilliseconds(1), CancellationToken.None), Throws.Nothing);
+        }
+        finally
+        {
+            cancellation.Cancel();
+            await rest.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
     public void GenesisBootstrap_WhenAnchorIsHistorical_LeavesImportToHistoryScan()
     {
         using MemDb code = new();
