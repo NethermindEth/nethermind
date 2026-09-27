@@ -528,13 +528,14 @@ internal sealed class McpContractTools(
             }
 
             LogDecorator decorator = new(tokenMetadata, eth, metadataBlock);
+            McpAbiCodec.DecodeBudget decodeBudget = new();
             JsonArray entries = [];
             int decodedCount = 0;
             int shown = Math.Min(rawLogs!.Count, MaxDecodedLogs);
             for (int i = 0; i < shown; i++)
             {
                 cancellation.ThrowIfCancellationRequested();
-                JsonObject entry = DecodeLog(rawLogs[i], userEvents, anonymousEvents, decorator, out bool decoded);
+                JsonObject entry = DecodeLog(rawLogs[i], userEvents, anonymousEvents, decorator, decodeBudget, out bool decoded);
                 if (decoded) decodedCount++;
                 entries.Add(entry);
             }
@@ -772,7 +773,8 @@ internal sealed class McpContractTools(
         return entry;
     }
 
-    private JsonObject DecodeLog(RawLog raw, Dictionary<Hash256, List<McpAbiSignature>> userEvents, List<McpAbiSignature> anonymousEvents, LogDecorator decorator, out bool decoded)
+    private JsonObject DecodeLog(RawLog raw, Dictionary<Hash256, List<McpAbiSignature>> userEvents, List<McpAbiSignature> anonymousEvents,
+        LogDecorator decorator, McpAbiCodec.DecodeBudget decodeBudget, out bool decoded)
     {
         LogEntry log = raw.Log;
         JsonObject entry = new() { ["logIndex"] = raw.LogIndex, ["address"] = McpEthHelpers.Checksum(log.Address) };
@@ -782,7 +784,7 @@ internal sealed class McpContractTools(
         {
             foreach (McpAbiSignature candidate in candidates)
             {
-                if (McpAbiCodec.TryDecodeEvent(candidate, log, null, out result)) break;
+                if (McpAbiCodec.TryDecodeEvent(candidate, log, null, decodeBudget, out result)) break;
             }
         }
 
@@ -790,7 +792,7 @@ internal sealed class McpContractTools(
         {
             foreach (McpAbiSignature candidate in anonymousEvents)
             {
-                if (McpAbiCodec.TryDecodeEvent(candidate, log, null, out result)) break;
+                if (McpAbiCodec.TryDecodeEvent(candidate, log, null, decodeBudget, out result)) break;
             }
         }
 

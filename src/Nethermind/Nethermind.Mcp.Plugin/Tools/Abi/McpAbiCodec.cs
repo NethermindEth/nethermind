@@ -89,14 +89,22 @@ public static class McpAbiCodec
     /// <param name="values">One JSON-friendly value per parameter.</param>
     /// <param name="error">Why the data does not match the types.</param>
     public static bool TryDecode(IReadOnlyList<McpAbiParam> parameters, ReadOnlySpan<byte> data, [NotNullWhen(true)] out object?[]? values, [NotNullWhen(false)] out string? error)
+        => TryDecode(parameters, data, new DecodeBudget(), out values, out error);
+
+    private static bool TryDecode(IReadOnlyList<McpAbiParam> parameters, ReadOnlySpan<byte> data, DecodeBudget budget,
+        [NotNullWhen(true)] out object?[]? values, [NotNullWhen(false)] out string? error)
     {
         McpAbiType[] types = new McpAbiType[parameters.Count];
         for (int i = 0; i < types.Length; i++) types[i] = parameters[i].Type;
-        return TryDecode(types, data, out values, out error);
+        return TryDecode(types, data, budget, out values, out error);
     }
 
     /// <summary>Decodes <paramref name="data"/> as a tuple of <paramref name="types"/>.</summary>
     public static bool TryDecode(IReadOnlyList<McpAbiType> types, ReadOnlySpan<byte> data, [NotNullWhen(true)] out object?[]? values, [NotNullWhen(false)] out string? error)
+        => TryDecode(types, data, new DecodeBudget(), out values, out error);
+
+    internal static bool TryDecode(IReadOnlyList<McpAbiType> types, ReadOnlySpan<byte> data, DecodeBudget budget,
+        [NotNullWhen(true)] out object?[]? values, [NotNullWhen(false)] out string? error)
     {
         values = null;
         if (types.Count == 0)
@@ -112,7 +120,7 @@ public static class McpAbiCodec
             return false;
         }
 
-        Decoder decoder = new(data.ToArray());
+        Decoder decoder = new(data.ToArray(), budget);
         if (!decoder.TryDecodeSequence(types, 0, data.Length, out values))
         {
             error = decoder.Error ?? "the data does not match the types";
@@ -127,6 +135,9 @@ public static class McpAbiCodec
     /// <summary>Decodes a single static value from a 32-byte word (such as an indexed event topic).</summary>
     /// <returns><see langword="false"/> if the type is dynamic or the word is not a canonical encoding of it.</returns>
     public static bool TryDecodeWord(McpAbiType type, ReadOnlySpan<byte> word, out object? value)
+        => TryDecodeWord(type, word, new DecodeBudget(), out value);
+
+    private static bool TryDecodeWord(McpAbiType type, ReadOnlySpan<byte> word, DecodeBudget budget, out object? value)
     {
         value = null;
         if (word.Length != WordSize || type.IsDynamic || type.HeadSize != WordSize || type.Kind is McpAbiTypeKind.Tuple or McpAbiTypeKind.FixedArray)
@@ -134,7 +145,8 @@ public static class McpAbiCodec
             return false;
         }
 
-        Decoder decoder = new(word.ToArray());
+        Decoder decoder = new(word.ToArray(), budget);
+        if (!budget.TryAddValue()) return false;
         return decoder.TryDecodeElementary(type, 0, out value);
     }
 
@@ -145,6 +157,10 @@ public static class McpAbiCodec
     /// <param name="decoded">The decoded log. Indexed parameters of dynamic types (strings, bytes, arrays, tuples) are stored as their
     /// Keccak hash in the topic, so their value is that 32-byte hash as hex.</param>
     public static bool TryDecodeEvent(McpAbiSignature signature, LogEntry log, string? standard, [NotNullWhen(true)] out McpDecodedLog? decoded)
+        => TryDecodeEvent(signature, log, standard, new DecodeBudget(), out decoded);
+
+    internal static bool TryDecodeEvent(McpAbiSignature signature, LogEntry log, string? standard, DecodeBudget budget,
+        [NotNullWhen(true)] out McpDecodedLog? decoded)
     {
         decoded = null;
         Hash256[] topics = log.Topics ?? [];
@@ -166,7 +182,7 @@ public static class McpAbiCodec
         }
 
         object?[]? dataValues = [];
-        if (dataParams.Count > 0 && !TryDecode(dataParams, log.Data ?? [], out dataValues, out _))
+        if (dataParams.Count > 0 && !TryDecode(dataParams, log.Data ?? [], budget, out dataValues, out _))
         {
             return false;
         }
@@ -189,7 +205,7 @@ public static class McpAbiCodec
                 {
                     value = topic.ToString();
                 }
-                else if (!TryDecodeWord(input.Type, topic.Bytes, out value))
+                else if (!TryDecodeWord(input.Type, topic.Bytes, budget, out value))
                 {
                     return false;
                 }
@@ -543,11 +559,24 @@ public static class McpAbiCodec
         return true;
     }
 
-    private sealed class Decoder(byte[] data)
+    internal sealed class DecodeBudget
     {
         private int _values;
         private long _bytes;
 
+        public bool TryAddValue() => ++_values <= MaxDecodedValues;
+
+        public bool TryAddBytes(int count)
+        {
+            _bytes += count;
+            return _bytes <= MaxDecodedBytes;
+        }
+
+        public int RemainingValues => MaxDecodedValues - _values;
+    }
+
+    private sealed class Decoder(byte[] data, DecodeBudget budget)
+    {
         public string? Error { get; private set; }
 
         // Decodes a sequence whose head starts at `start`; offsets are relative to `start`, word-aligned, and must land
@@ -635,7 +664,7 @@ public static class McpAbiCodec
         private bool TryDecodeValue(McpAbiType type, int position, int end, out object? value)
         {
             value = null;
-            if (++_values > MaxDecodedValues)
+            if (!budget.TryAddValue())
             {
                 return Fail($"the data decodes to more than {MaxDecodedValues} values");
             }
@@ -650,8 +679,7 @@ public static class McpAbiCodec
                             return Fail($"invalid length for {type.CanonicalName} at byte {position}");
                         }
 
-                        _bytes += length;
-                        if (_bytes > MaxDecodedBytes)
+                        if (!budget.TryAddBytes(length))
                         {
                             return Fail($"the data decodes to more than {MaxDecodedBytes} bytes");
                         }
@@ -696,7 +724,7 @@ public static class McpAbiCodec
                 return Fail($"{array.CanonicalName} claims {length} elements, more than the data holds");
             }
 
-            if (length > MaxDecodedValues - _values)
+            if (length > budget.RemainingValues)
             {
                 return Fail($"the data decodes to more than {MaxDecodedValues} values");
             }

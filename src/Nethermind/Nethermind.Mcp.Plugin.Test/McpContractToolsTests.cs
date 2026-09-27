@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Text.Json;
 using Autofac;
 using ModelContextProtocol.Client;
@@ -469,6 +470,42 @@ public class McpContractToolsTests
             Assert.That(decoded[0].GetProperty("logIndex").GetString(), Is.EqualTo("0x10"));
             Assert.That(decoded[1].GetProperty("decoded").GetBoolean(), Is.False);
             Assert.That(decoded[1].GetProperty("topics").GetArrayLength(), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Decode_logs_shares_decode_budget_across_logs()
+    {
+        const int outerLength = 100;
+        const int innerLength = 160;
+        McpAbiSignature signature = McpAbiSignature.Parse("event Values(uint256[][] values)", McpAbiSignatureKind.Event);
+        byte[] encoded = new byte[(3 + outerLength + innerLength) * 32];
+        encoded[31] = 32;
+        encoded[63] = outerLength;
+        for (int i = 0; i < outerLength; i++)
+        {
+            BinaryPrimitives.WriteUInt32BigEndian(encoded.AsSpan((2 + i) * 32 + 28), outerLength * 32);
+        }
+        encoded[(2 + outerLength) * 32 + 31] = innerLength;
+        string data = "0x" + Convert.ToHexStringLower(encoded);
+        Dictionary<string, object>[] logs = new Dictionary<string, object>[2];
+        for (int i = 0; i < logs.Length; i++)
+        {
+            logs[i] = new Dictionary<string, object>
+            {
+                ["address"] = Hex(_deployed.Token),
+                ["topics"] = new[] { signature.Hash.ToString() },
+                ["data"] = data
+            };
+        }
+
+        JsonElement result = await Success("decode_logs", ("logs", logs), ("abi", new[] { signature.CanonicalSignature }));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("total").GetInt32(), Is.EqualTo(logs.Length));
+            Assert.That(result.GetProperty("decoded").GetInt32(), Is.EqualTo(1));
+            Assert.That(result.GetProperty("logs")[1].GetProperty("decoded").GetBoolean(), Is.False);
         }
     }
 

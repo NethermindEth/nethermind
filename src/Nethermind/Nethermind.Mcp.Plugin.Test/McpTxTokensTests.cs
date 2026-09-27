@@ -583,32 +583,39 @@ public class McpTxTokensTests
         await using McpTestNode node = await McpTestNode.Create(
             configureContainer: static builder => builder.AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)),
             start: false);
+        using ManualResetEventSlim release = new();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(),
             Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
             .Returns(_ =>
             {
-                Thread.Sleep(500);
+                entered.TrySetResult();
+                release.Wait();
                 return ResultWrapper<HexBytes>.Success(new HexBytes(new byte[160]));
             });
         ((FaultInjectingRpcModuleProvider)node.Chain.Container.Resolve<IRpcModuleProvider>())
             .Override(nameof(IEthRpcModule.eth_call), eth);
         McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
         McpPriceReader reader = node.Chain.Container.Resolve<McpPriceReader>();
-        Stopwatch stopwatch = Stopwatch.StartNew();
-
-        CallToolResult result = await executor.ExecuteLocalAsync("optional-price", async token =>
+        Task<CallToolResult> call = executor.ExecuteLocalAsync("optional-price", async token =>
         {
             (McpPriceQuote? quote, string reason) = await reader.ReadOptionalAsync(executor, "native", BlockParameter.Latest,
                 TimeSpan.FromMilliseconds(50), token);
             return executor.Success(new { price = quote?.PriceUsd, reason });
         }, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        CallToolResult result;
+        try
         {
-            Assert.That(McpAssert.Success(result).GetProperty("reason").GetString(), Does.Contain("deadline"));
-            Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(350)));
+            result = await call.WaitAsync(TimeSpan.FromSeconds(5));
         }
+        finally
+        {
+            release.Set();
+        }
+
+        Assert.That(McpAssert.Success(result).GetProperty("reason").GetString(), Does.Contain("deadline"));
     }
 
     [TestCase(true, TestName = "Concurrent read: head tracked")]
