@@ -24,6 +24,8 @@ public static class BeaconChainMetadataKeys
     public const string GenesisValidatorsRoot = "genesisValidatorsRoot";
     /// <summary>4-byte big-endian schema version the database was last opened with; absent in databases that predate versioning.</summary>
     public const string SchemaVersion = "schemaVersion";
+    /// <summary>8-byte big-endian slot above which the canonical index holds no entry; written with every index update.</summary>
+    public const string CanonicalIndexTopSlot = "canonicalIndexTopSlot";
 }
 
 /// <summary>Persistence for beacon blocks, states, the canonical slot index, the root-to-children index, and driver metadata.</summary>
@@ -337,20 +339,37 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         _blockIndex.PutSpan(key, root.Bytes);
     }
 
-    /// <summary>Removes the canonical index entry of <paramref name="slot"/>, if there is one.</summary>
-    /// <returns><c>true</c> when an entry was removed; an absent entry costs a read and no write.</returns>
-    public bool DeleteCanonicalRoot(ulong slot)
+    /// <summary>
+    /// Applies one head change to the canonical index in a single write batch: each slot is set to its root, or cleared
+    /// when the root is <c>null</c>, and <paramref name="topSlot"/> is recorded as the highest slot the index may hold.
+    /// </summary>
+    /// <remarks>Readers see the whole change or none of it, so an interrupted update cannot leave an index that mixes two chains.</remarks>
+    public void ApplyCanonicalIndexChanges(IReadOnlyList<(ulong Slot, Hash256? Root)> changes, ulong topSlot)
     {
+        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+        IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
         Span<byte> key = stackalloc byte[sizeof(ulong)];
-        BinaryPrimitives.WriteUInt64BigEndian(key, slot);
-        if (!_blockIndex.KeyExists(key))
+        foreach ((ulong slot, Hash256? root) in changes)
         {
-            return false;
+            BinaryPrimitives.WriteUInt64BigEndian(key, slot);
+            if (root is null)
+            {
+                index.Remove(key);
+            }
+            else
+            {
+                index.PutSpan(key, root.Bytes);
+            }
         }
 
-        _blockIndex.Remove(key);
-        return true;
+        byte[] top = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(top, topSlot);
+        batch.GetColumnBatch(BeaconChainDbColumns.Metadata).Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.CanonicalIndexTopSlot), top);
     }
+
+    /// <summary>The highest slot the canonical index may hold an entry for, as its last update recorded; <c>null</c> before the first.</summary>
+    public ulong? GetCanonicalIndexTopSlot() =>
+        GetMetadata(BeaconChainMetadataKeys.CanonicalIndexTopSlot) is { Length: sizeof(ulong) } value ? BinaryPrimitives.ReadUInt64BigEndian(value) : null;
 
     public bool TryGetCanonicalRoot(ulong slot, [NotNullWhen(true)] out Hash256? root)
     {
