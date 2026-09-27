@@ -1010,6 +1010,32 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(restored, Is.EqualTo((UInt256)1));
     }
 
+    /// <summary>A zero write to an absent cell journals nothing and must not cost a later revert.</summary>
+    [Test]
+    public void Transient_zero_write_to_absent_cell_journals_nothing()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell written = new(ctx.Address1, 1);
+        StorageCell absent = new(ctx.Address1, 2);
+
+        provider.SetTransientState(written, (UInt256)1);
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.SetTransientState(absent, UInt256.Zero);
+        Assert.That(provider.TakeSnapshot(), Is.EqualTo(snapshot), "a zero write to an absent cell adds no journal entry");
+
+        provider.SetTransientState(written, (UInt256)2);
+        provider.Restore(snapshot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            provider.GetTransientState(written, out UInt256 restored);
+            Assert.That(restored, Is.EqualTo((UInt256)1), "the later write is reverted");
+            provider.GetTransientState(absent, out UInt256 zero);
+            Assert.That(zero, Is.EqualTo(UInt256.Zero), "the absent cell still reads zero");
+        }
+    }
+
     /// <summary>A rewrite of the value already there journals nothing, and must not cost a later revert.</summary>
     /// <remarks>The snapshot below is taken after the deduped write, so it names the same journal position as
     /// the one before it — an off-by-one in the shortcut would restore to the wrong side of the first write.</remarks>
@@ -2431,9 +2457,9 @@ public class StorageProviderTests(bool useFlat)
         ctx.StateProvider.Set(new StorageCell(ctx.Address1, 42), new UInt256(_values[1], isBigEndian: true));
 
         if (populator)
-            mainScope.Received(1).HintWarmSlot(new ValueAddress(ctx.Address1.Bytes), (UInt256)42);
+            mainScope.Received(1).HintWarmSlot(ctx.Address1, (UInt256)42);
         else
-            mainScope.DidNotReceiveWithAnyArgs().HintWarmSlot(default, default);
+            mainScope.DidNotReceiveWithAnyArgs().HintWarmSlot(null!, default);
     }
 
     internal class Context : IDisposable

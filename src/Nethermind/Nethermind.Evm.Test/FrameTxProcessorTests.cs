@@ -230,6 +230,29 @@ public class FrameTxProcessorTests
         }
     }
 
+    // Nobody observes a prewarm, so its logs are never materialised; a cancellation wrapper that traces receipts observes them.
+    [TestCase(false, false, true, TestName = "Warmup_NullTracer_SuppressesLogs")]
+    [TestCase(true, false, true, TestName = "Warmup_CancellableNullTracer_SuppressesLogs")]
+    [TestCase(true, true, false, TestName = "Warmup_CancellableReceiptTracer_KeepsLogs")]
+    public void Warmup_SuppressesLogsOnlyWithoutAnObservingTracer(bool cancellable, bool tracingReceipt, bool suppressed)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine,
+            new EthereumCodeInfoRepository(_stateProvider), LimboLogs.Instance);
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
+        ITxTracer tracer = cancellable ? new CancellationTxTracer(NullTxTracer.Instance) { IsTracingReceipt = tracingReceipt } : NullTxTracer.Instance;
+
+        TransactionResult result = processor.Warmup(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, "must run a frame, else this pins nothing");
+            Assert.That(virtualMachine.TxExecutionContext.SuppressLogs, Is.EqualTo(suppressed));
+        }
+    }
+
     [Test]
     public void Execute_FrameCreatesAndSelfDestructsContractInSameTx_DeletesTheCreatedAccount()
     {

@@ -6,9 +6,12 @@ using System.Threading;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
+using Nethermind.State;
 using Nethermind.TxPool;
+using NSubstitute;
 
 namespace Nethermind.Benchmarks.TxPool;
 
@@ -26,6 +29,7 @@ public class NonceManagerBenchmarks
     private Transaction[] _transactions;
     private Transaction[] _otherSenderTransactions;
     private FakePool _pool;
+    private IChainHeadInfoProvider _chainHead;
     private NonceManager _backlogged;
 
     [Params(1, 16, 64, 256, 1024)]
@@ -47,7 +51,9 @@ public class NonceManagerBenchmarks
             _pool.Add(transaction);
         }
 
-        _backlogged = new NonceManager(new FixedNonceAccounts());
+        _chainHead = Substitute.For<IChainHeadInfoProvider>();
+        _chainHead.ReadOnlyStateProvider.Returns(new TestReadOnlyStateProvider());
+        _backlogged = CreateNonceManager();
         for (int i = 0; i < Pending; i++)
         {
             ReserveAndAccept(_backlogged);
@@ -64,7 +70,7 @@ public class NonceManagerBenchmarks
     [Benchmark]
     public ulong BurstOfSequentialSends()
     {
-        NonceManager nonceManager = new(new FixedNonceAccounts());
+        NonceManager nonceManager = CreateNonceManager();
         ulong last = 0;
         for (int i = 0; i < Pending; i++)
         {
@@ -78,7 +84,7 @@ public class NonceManagerBenchmarks
     [Benchmark]
     public ulong BurstWithOtherSenderRemovals()
     {
-        NonceManager nonceManager = new(new FixedNonceAccounts());
+        NonceManager nonceManager = CreateNonceManager();
         ulong last = 0;
         for (int i = 0; i < Pending; i++)
         {
@@ -99,7 +105,7 @@ public class NonceManagerBenchmarks
     [Benchmark]
     public ulong BurstWithOwnRemovals()
     {
-        NonceManager nonceManager = new(new FixedNonceAccounts());
+        NonceManager nonceManager = CreateNonceManager();
         ulong last = 0;
         for (int i = 0; i < Pending; i++)
         {
@@ -113,6 +119,9 @@ public class NonceManagerBenchmarks
 
         return last;
     }
+
+    private NonceManager CreateNonceManager() =>
+        new(_chainHead, Substitute.For<IStateHeaderProvider>(), Substitute.For<IStateReader>());
 
     private ulong ReserveAndAccept(NonceManager nonceManager)
     {
@@ -151,14 +160,6 @@ public class NonceManagerBenchmarks
         return TestItem.AddressB;
     }
 
-    private sealed class FixedNonceAccounts : IAccountStateProvider
-    {
-        public bool TryGetAccount(Address address, out AccountStruct account)
-        {
-            account = AccountStruct.TotallyEmpty;
-            return true;
-        }
-    }
 
     /// <summary>Counts removals in address-hash stripes, as the pool does.</summary>
     private sealed class FakePool : IPendingTxsBySender

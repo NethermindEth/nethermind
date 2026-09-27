@@ -47,6 +47,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData("6003565b00", 21012UL, 4).SetName("Jump_to_next_instruction"),
         new TestCaseData("600456fe5b5b00", 21013UL, 5).SetName("Jump_to_consecutive_markers"),
         new TestCaseData("6003565b", 21012UL, 3).SetName("Jump_to_final_byte"),
+        // PUSH2 fuses with the following jump.
+        new TestCaseData("61000556005b00", 21012UL, 4).SetName("Push2_Jump_taken"),
+        new TestCaseData("60006100005700", 21016UL, 4).SetName("Push2_JumpI_not_taken_to_invalid_destination"),
     ];
 
     private static readonly TestCaseData[] JumpFailureCases =
@@ -57,6 +60,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData("6003565b", 21011UL, 3).SetName("JumpDest_charge_out_of_gas_after_Jump"),
         new TestCaseData("60016005575b", 21015UL, 3).SetName("JumpI_charge_out_of_gas"),
         new TestCaseData("60016005575b", 21016UL, 4).SetName("JumpDest_charge_out_of_gas_after_JumpI"),
+        new TestCaseData("600161000057", 100000UL, 3).SetName("Push2_JumpI_taken_to_invalid_destination"),
+        new TestCaseData("61000556605b00", 100000UL, 2).SetName("Push2_Jump_into_push_data"),
     ];
 
     private sealed class NoInstructionTracer : TestAllTracerWithOutput
@@ -139,10 +144,13 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     [Test]
     public void Named_opcode_handlers_are_emitted([Values] Instruction opcode)
     {
-        Type vmType = typeof(VirtualMachine<EthereumGasPolicy>);
-        MethodInfo template = vmType.GetMethod(opcode == Instruction.JUMPI ? "ExecuteJumpIfOpcode" : "ExecuteOpcode",
+        // The handlers must stay in a type named RawCalliHelper: that name is what exempts their table calls
+        // from NativeAOT's fat-pointer guard.
+        Type dispatchType = typeof(VirtualMachine<EthereumGasPolicy>).GetNestedType("RawCalliHelper", BindingFlags.NonPublic)!
+            .MakeGenericType(typeof(EthereumGasPolicy));
+        MethodInfo template = dispatchType.GetMethod(opcode == Instruction.JUMPI ? "ExecuteJumpIfOpcode" : "ExecuteOpcode",
             BindingFlags.Static | BindingFlags.NonPublic)!;
-        MethodInfo handler = Array.Find(vmType.GetMethods(BindingFlags.Static | BindingFlags.NonPublic), method =>
+        MethodInfo handler = Array.Find(dispatchType.GetMethods(BindingFlags.Static | BindingFlags.NonPublic), method =>
             method.Name.Equals("Op" + opcode, StringComparison.OrdinalIgnoreCase)
             && method.GetGenericArguments().Length == template.GetGenericArguments().Length
             && method.GetParameters().Length == template.GetParameters().Length);
@@ -155,6 +163,14 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(handler.GetMethodImplementationFlags(), Is.EqualTo(template.GetMethodImplementationFlags()));
             Assert.That(handler.GetCustomAttributesData().Select(a => a.AttributeType), Is.EquivalentTo(template.GetCustomAttributesData().Select(a => a.AttributeType)));
         }
+    }
+
+    [TestCase(0x1000, false, TestName = "Thin handler is accepted")]
+    [TestCase(0x1002, true, TestName = "Fat handler is rejected")]
+    public void Opcode_table_rejects_fat_handlers(long handler, bool rejected)
+    {
+        Action ensure = () => VirtualMachine<EthereumGasPolicy>.EnsureThinHandler((nint)handler);
+        Assert.That(ensure, rejected ? Throws.TypeOf<NotSupportedException>() : Throws.Nothing);
     }
 
     [Test]

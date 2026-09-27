@@ -729,6 +729,7 @@ public struct EvmPooledMemory
     }
 
     private const int MinRentSize = 1_024;
+    private const int InlineZeroChunk = 256;
     // Above this, a cache miss rents from the shared pool instead of allocating (pow2 sizes from
     // here up are LOH-sized).
     private const int MaxNewAllocLength = 1 << 16;
@@ -858,8 +859,11 @@ public struct EvmPooledMemory
             ulong initializedSize = _initializedSize;
             if (requiredEnd > initializedSize)
             {
-                GetInlineSpan().Slice((int)initializedSize).Clear();
-                _initializedSize = InlineCapacity;
+                // Zero to the next chunk boundary rather than the whole inline tier, so a spill copies only
+                // the prefix the frame touched; InlineCapacity is a multiple of the chunk.
+                ulong target = (requiredEnd + (InlineZeroChunk - 1)) & ~(InlineZeroChunk - 1UL);
+                GetInlineSpan().Slice((int)initializedSize, (int)(target - initializedSize)).Clear();
+                _initializedSize = target;
             }
 
             return;

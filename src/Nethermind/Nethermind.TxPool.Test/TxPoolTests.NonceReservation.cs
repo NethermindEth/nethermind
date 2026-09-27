@@ -8,6 +8,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test;
@@ -142,7 +144,7 @@ public partial class TxPoolTests
     private NonceManager CreateReservingPool(ITxPoolConfig config = null, ISpecProvider specProvider = null)
     {
         _txPool = CreatePool(config, specProvider);
-        return new NonceManager(_headInfo.ReadOnlyStateProvider);
+        return new NonceManager(_headInfo, Substitute.For<IStateHeaderProvider>(), Substitute.For<IStateReader>());
     }
 
     /// <remarks>Also reserves once more without accepting, so the next reservation resumes past the submitted nonce
