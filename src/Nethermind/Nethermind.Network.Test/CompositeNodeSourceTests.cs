@@ -36,8 +36,6 @@ public class CompositeNodeSourceTests
         Node node = new(TestItem.PublicKeyA, "1.2.3.4", 1234);
         innerSource.AddNode(node);
 
-        // The buffered node is read synchronously, so the timeout starts once only the disposal can still be
-        // pending; a timer covering the whole test also counted JIT and type initialization on a loaded runner.
         Task<List<Node>> enumeration = compositeNodeSource.DiscoverNodes(CancellationToken.None).Take(1).ToListAsync().AsTask();
         List<Node> nodes = await enumeration.WaitAsync(TimeSpan.FromSeconds(10));
 
