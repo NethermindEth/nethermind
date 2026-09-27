@@ -429,15 +429,24 @@ public class NonceManagerTests
             using NonceLocker waitingLocker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out waitingNonce);
         });
 
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        try
         {
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
             Assert.That(nonce, Is.EqualTo(6UL), "precondition: nonce 5 is still pending");
             waiting.Start();
-            SpinWait.SpinUntil(() => waiting.ThreadState == ThreadState.WaitSleepJoin, TimeSpan.FromSeconds(10));
+            Assert.That(SpinWait.SpinUntil(() => waiting.ThreadState == ThreadState.WaitSleepJoin, TimeSpan.FromSeconds(10)),
+                Is.True, "precondition: the reservation is waiting on the account lock");
 
             accountStateProvider.GetNonce(TestItem.AddressA).Returns(6UL);
             _pending.TryRemove(mined.Hash!, out _);
             Accept(locker, TestItem.AddressA, nonce);
+        }
+        finally
+        {
+            if (waiting.IsAlive)
+            {
+                waiting.Join(TimeSpan.FromSeconds(10));
+            }
         }
 
         Assert.That(waiting.Join(TimeSpan.FromSeconds(10)), Is.True);
