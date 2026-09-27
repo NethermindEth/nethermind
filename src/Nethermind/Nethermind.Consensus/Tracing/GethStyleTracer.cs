@@ -27,7 +27,6 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
@@ -228,7 +227,7 @@ public class GethStyleTracer(
     public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider) =>
         options switch
         {
-            _ when RequiresLogIndices(options) => new GethLikeBlockCallTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
+            _ when RequiresLogIndices(options) => new GethLikeBlockCallTracer(options.TxHash, (b, tx) => new NativeCallTracer(tx, specProvider.GetSpec(b.Header), options)),
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options, (long)specProvider.GetSpec(block).GasCosts.DestroyRefund),
@@ -278,9 +277,19 @@ public class GethStyleTracer(
         }
     }
 
-    private static bool RequiresLogIndices(GethTraceOptions options) =>
-        options.Tracer == NativeCallTracer.CallTracer &&
-        options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions)?.WithLog is true;
+    private static bool RequiresLogIndices(GethTraceOptions options)
+    {
+        if (options.Tracer != NativeCallTracer.CallTracer || options.TracerConfig is not { ValueKind: JsonValueKind.Object } config)
+            return false;
+
+        bool withLog = false;
+        foreach (JsonProperty property in config.EnumerateObject())
+        {
+            if (property.Name.Equals("withLog", StringComparison.OrdinalIgnoreCase))
+                withLog = property.Value.ValueKind == JsonValueKind.True;
+        }
+        return withLog;
+    }
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>
     private static bool IsJavaScriptTracer(GethTraceOptions options) =>
