@@ -25,7 +25,7 @@ public class ParityLikeTxTracer : TxTracer
     private ParityTraceAction? _currentAction;
 
     private ParityVmOperationTrace? _currentOperation;
-    protected Instruction _currentOpcode;
+    private Instruction _currentOpcode;
     private readonly List<byte[]> _currentPushList = [];
 
     private readonly Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new();
@@ -307,7 +307,7 @@ public class ParityLikeTxTracer : TxTracer
         List<ParityVmOperationTrace> ops = _currentVmTrace.Ops;
         if (ops is not { Count: > 0 } || !ReferenceEquals(ops[^1], _currentOperation)) return;
 
-        if (IsRejectedBeforeExecution(error))
+        if (IsRejectedBeforeExecution(_currentOpcode, error))
         {
             ops.RemoveAt(ops.Count - 1);
         }
@@ -322,8 +322,8 @@ public class ParityLikeTxTracer : TxTracer
     /// and stack underflow or overflow reject an operation before it executes, so it is omitted. Any other error
     /// halts an operation that began executing, which is kept with a null <c>ex</c>.
     /// </summary>
-    protected bool IsRejectedBeforeExecution(EvmExceptionType error) =>
-        _currentOpcode == Instruction.INVALID ||
+    protected static bool IsRejectedBeforeExecution(Instruction opcode, EvmExceptionType error) =>
+        opcode == Instruction.INVALID ||
         error is EvmExceptionType.BadInstruction or EvmExceptionType.StackUnderflow or EvmExceptionType.StackOverflow;
 
     public override void ReportOperationRemainingGas(ulong gas)

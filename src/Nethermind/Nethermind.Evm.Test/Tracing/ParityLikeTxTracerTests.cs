@@ -562,7 +562,6 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         // An untouched window lies beyond the memory written so far, and the empty-code callee returns nothing.
         bool untouched = outcome == CallOutcome.UntouchedWindow;
         int windowOffset = untouched ? 0x1000 : 0x100;
-        const string tail = Tail;
 
         byte[] calleeCode = outcome switch
         {
@@ -581,7 +580,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         };
         UInt256 value = outcome == CallOutcome.FailsPrecheck ? 1000000.Ether : UInt256.Zero;
         int windowSize = outcome == CallOutcome.EmptyWindow ? 0 : 32;
-        byte[] code = (untouched ? Prepare.EvmCode : Prepare.EvmCode.StoreDataInMemory(windowOffset, tail))
+        byte[] code = (untouched ? Prepare.EvmCode : Prepare.EvmCode.StoreDataInMemory(windowOffset, Tail))
             .StoreDataInMemory(0, "ffee")
             .PushData(windowSize)
             .PushData(windowOffset)
@@ -602,8 +601,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         {
             CallOutcome.EmptyWindow => null,
             CallOutcome.UntouchedWindow => "0x" + new string('0', 64),
-            CallOutcome.Halts or CallOutcome.FailsPrecheck => "0x" + tail,
-            _ => "0xffee" + tail[4..],
+            CallOutcome.Halts or CallOutcome.FailsPrecheck => "0x" + Tail,
+            _ => "0xffee" + Tail[4..],
         };
 
         if (expected is null)

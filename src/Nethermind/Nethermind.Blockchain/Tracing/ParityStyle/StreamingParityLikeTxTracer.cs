@@ -42,6 +42,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private bool _hasPendingOp;
     private bool _pushAssigned;
     private int _pendingPc;
+    private Instruction _pendingOpcode;
     private ulong _pendingCost;
     private ulong _pendingUsed;
     private bool _pendingHalted;
@@ -296,7 +297,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _hasPendingOp = true;
         _pushAssigned = false;
         _pendingPc = pc;
-        _currentOpcode = opcode;
+        _pendingOpcode = opcode;
         _pendingCost = gas;
         _pendingUsed = 0;
         _gasAlreadySetForCurrentOp = false;
@@ -322,7 +323,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         if (error == EvmExceptionType.NotEnoughBalance || !_hasPendingOp) return;
 
-        if (IsRejectedBeforeExecution(error))
+        if (IsRejectedBeforeExecution(_pendingOpcode, error))
         {
             _hasPendingOp = false;
             ReleaseOpBuffers();
