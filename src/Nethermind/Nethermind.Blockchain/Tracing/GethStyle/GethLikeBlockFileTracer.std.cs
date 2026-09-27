@@ -17,7 +17,7 @@ using System.IO.Abstractions;
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 #pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
-public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxFileTracer>, IDisposable
+public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxFileTracer>, IDisposable, IGethFileTraceSink
 {
     private const string Alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -90,8 +90,13 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _jsonWriter = new(_file);
 
         ulong? standardIntrinsicGas = TopLevelGasTracker.GetStandardIntrinsicGas(tx, _spec, _block.Header.GasLimit);
-        return _txTracer = new(DumpTraceEntry, DumpActionEnd, _options, (long)_spec.GasCosts.DestroyRefund, standardIntrinsicGas);
+        return _txTracer = new(this, _options, (long)_spec.GasCosts.DestroyRefund, standardIntrinsicGas);
     }
+
+    void IGethFileTraceSink.WriteEntry(GethTxFileTraceEntry entry) => DumpTraceEntry(entry);
+
+    void IGethFileTraceSink.WriteActionEnd(ReadOnlyMemory<byte> output, ulong gas, string? error) =>
+        DumpActionEnd(output, gas, error);
 
     private void DisposeFileStreamIfAny()
     {
