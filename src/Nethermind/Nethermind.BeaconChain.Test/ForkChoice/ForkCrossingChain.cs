@@ -147,8 +147,9 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
         }
 
         BlsPublicKey[] syncCommittee = Enumerable.Repeat(validators[0].Pubkey, Presets.SyncCommitteeSize).ToArray();
-        state.CurrentSyncCommittee = new SyncCommittee { Pubkeys = syncCommittee, AggregatePubkey = Pubkey(0x60) };
-        state.NextSyncCommittee = new SyncCommittee { Pubkeys = syncCommittee, AggregatePubkey = Pubkey(0x61) };
+        BlsPublicKey aggregatePubkey = AggregatePubkey(syncCommittee);
+        state.CurrentSyncCommittee = new SyncCommittee { Pubkeys = syncCommittee, AggregatePubkey = aggregatePubkey };
+        state.NextSyncCommittee = new SyncCommittee { Pubkeys = syncCommittee, AggregatePubkey = aggregatePubkey };
 
         anchorBlock = TestChain.CreateBlock(0, Hash256.Zero).Message!;
         state.LatestBlockHeader = new BeaconBlockHeader
@@ -161,6 +162,20 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
         };
         anchorBlock.StateRoot = SszRoots.HashTreeRoot(state);
         return state;
+    }
+
+    /// <summary>Altair <c>eth_aggregate_pubkeys</c>, which a checkpoint anchor's sync committees must satisfy.</summary>
+    private static BlsPublicKey AggregatePubkey(BlsPublicKey[] pubkeys)
+    {
+        BlsSigner.AggregatedPublicKey aggregate = new();
+        Bls.P1Affine publicKey = new(stackalloc long[Bls.P1Affine.Sz]);
+        foreach (BlsPublicKey pubkey in pubkeys)
+        {
+            publicKey.Decode(pubkey.Bytes);
+            aggregate.Aggregate(publicKey);
+        }
+
+        return new BlsPublicKey(aggregate.PublicKey.Compress());
     }
 
     /// <summary>Applies a self-built block carrying <paramref name="attestations"/> to the live <paramref name="state"/> and freezes a copy of the result under the block's root.</summary>
