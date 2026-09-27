@@ -321,36 +321,19 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
 
         EnsureFrameTxRoot();
         TxFrame[] frames = _tx!.Frames!;
-        List<ParityTraceAction> dispatched = _frameTxRoot!.Subtraces;
         int frameCount = Math.Min(frameReceipts.Length, frames.Length);
-        List<ParityTraceAction> ordered = new(Math.Max(frameCount, dispatched.Count));
-        int claimed = 0;
+        // The processor reports every frame's end before the receipts, so each dispatched frame is claimed here.
+        List<ParityTraceAction> ordered = new(frameCount);
         for (int i = 0; i < frameCount; i++)
         {
-            ParityTraceAction? action = _frameActions?[i];
-            if (action is null)
-            {
-                action = BuildUndispatchedFrameAction(frames[i], frameReceipts[i], _frameErrors?[i]);
-            }
-            else
-            {
-                claimed++;
-            }
-
+            ParityTraceAction action = _frameActions?[i] ?? BuildUndispatchedFrameAction(frames[i], frameReceipts[i], _frameErrors?[i]);
             action.Gas = frames[i].GasLimit;
             action.Result?.GasUsed = frameReceipts[i].GasUsed;
             MoveToFramePosition(action, i);
             ordered.Add(action);
         }
 
-        // Anything no frame report claimed is kept, so nothing the VM reported is dropped.
-        for (int i = claimed; i < dispatched.Count; i++)
-        {
-            MoveToFramePosition(dispatched[i], ordered.Count);
-            ordered.Add(dispatched[i]);
-        }
-
-        _frameTxRoot.Subtraces = ordered;
+        _frameTxRoot!.Subtraces = ordered;
     }
 
     private ParityTraceAction BuildUndispatchedFrameAction(TxFrame frame, TxFrameReceipt receipt, EvmExceptionType? error)
