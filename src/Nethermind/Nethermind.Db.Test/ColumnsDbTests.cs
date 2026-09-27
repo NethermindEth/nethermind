@@ -86,7 +86,7 @@ public class ColumnsDbTests
     }
 
     [Test]
-    public void Read_settings_are_fixed_while_open_and_resolved_again_on_reopen()
+    public void Read_settings_are_fixed_while_open_and_resolved_for_new_instances()
     {
         string path = DbPath + "-read-settings";
         DbConfig config = new();
