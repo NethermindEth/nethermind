@@ -88,18 +88,22 @@ public unsafe class GuestArith256Tests
         }
     }
 
-    [Test]
-    public void A_zero_modulus_or_divisor_never_reaches_a_routine()
+    [TestCase(Instruction.ADDMOD, 0ul)]
+    [TestCase(Instruction.MULMOD, 0ul)]
+    [TestCase(Instruction.DIV, 0ul)]
+    [TestCase(Instruction.MOD, 0ul)]
+    [TestCase(Instruction.MOD, 1ul)]
+    public void A_zero_modulus_or_divisor_never_reaches_a_routine(Instruction op, ulong divisor)
     {
         InstallStandIns();
 
+        UInt256 result = op is Instruction.ADDMOD or Instruction.MULMOD
+            ? Run3(op, Max, Max, divisor)
+            : Run2(op, Max, divisor);
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Run3(Instruction.ADDMOD, Max, Max, UInt256.Zero), Is.EqualTo(UInt256.Zero));
-            Assert.That(Run3(Instruction.MULMOD, Max, Max, UInt256.Zero), Is.EqualTo(UInt256.Zero));
-            Assert.That(Run2(Instruction.DIV, Max, UInt256.Zero), Is.EqualTo(UInt256.Zero));
-            Assert.That(Run2(Instruction.MOD, Max, UInt256.Zero), Is.EqualTo(UInt256.Zero));
-            Assert.That(Run2(Instruction.MOD, Max, UInt256.One), Is.EqualTo(UInt256.Zero));
+            Assert.That(result, Is.EqualTo(UInt256.Zero));
             Assert.That(_addModCalls + _mulModCalls + _reduceModCalls + _divRemCalls, Is.Zero,
                 "the routines' contract excludes a zero modulus or divisor; the opcode must answer those itself");
         }

@@ -22,7 +22,9 @@ partial class Program
     /// libziskos exports 256-bit modular arithmetic and division on top of its arith256 precompiles,
     /// outside the shared zkvm_* interface, so SP1 and OpenVM have no counterpart and only this guest
     /// can import them. Each is one precompile call (division verifies a hinted quotient) against
-    /// hundreds to about 1,800 steps for the software UInt256 routines.
+    /// hundreds to about 1,800 steps for the software UInt256 routines. The hinted division stays sound:
+    /// div_rem256_c checks that q·b + r equals a with a zero high word and that r is below b, so a prover
+    /// cannot substitute another pair.
     /// </remarks>
     static partial void InstallAccelerators()
     {

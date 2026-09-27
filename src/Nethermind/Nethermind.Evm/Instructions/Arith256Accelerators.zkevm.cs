@@ -11,8 +11,9 @@ namespace Nethermind.Evm;
 /// the others install nothing and the opcodes keep the software <c>UInt256</c> path.
 /// <para>
 /// Every routine takes pointers to four little-endian 64-bit limbs, the <c>UInt256</c> layout, and is
-/// only called with a non-zero divisor or modulus. Results are written only after the inputs are read,
-/// so an output may not alias an input; the callers in <see cref="EvmInstructions"/> never alias them.
+/// only called with a non-zero divisor or modulus. An output must not alias an input: libziskos takes
+/// the operands as Rust references, which it may assume never overlap. The callers in
+/// <see cref="EvmInstructions"/> never alias them.
 /// </para>
 /// </remarks>
 public static unsafe class Arith256Accelerators
