@@ -216,7 +216,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pendingStorageTouched = true;
     }
 
-    public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    public override void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
         if (!_hasPendingOpcode) return;
         int needed = returnData.Length;
@@ -224,7 +224,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
         // The source buffer is reused across opcodes, so copy the bytes into our own scratch.
         EnsureBuffer(ref _returnDataBuffer, needed);
-        returnData.Span.CopyTo(_returnDataBuffer.AsSpan(0, needed));
+        returnData.CopyTo(_returnDataBuffer.AsSpan(0, needed));
         _returnDataByteCount = needed;
     }
 

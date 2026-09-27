@@ -464,6 +464,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(tracer.Actions[0].CallType, Is.EqualTo(ExecutionType.CREATE));
             Assert.That(tracer.Actions[0].Gas, Is.EqualTo((ulong)GasCostOf.CreateState - 1));
             Assert.That(tracer.ReportedActionErrors, Is.EqualTo(new[] { EvmExceptionType.OutOfGas }));
+            Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
+            Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, contractAddress, block.Header.GasBeneficiary! }));
         }
     }
 
@@ -536,6 +538,107 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
             Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit));
+            Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
+            Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, contractAddress, block.Header.GasBeneficiary! }));
+        }
+    }
+
+    [Test]
+    public void Eip8037_failed_top_level_code_deposit_reports_access_once()
+    {
+        byte[] initCode = Prepare.EvmCode
+            .PushData(0xef)
+            .PushData(0)
+            .Op(Instruction.MSTORE8)
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        const long gasLimit = 600_000;
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, initCode, value: 0, blockGasLimit: DynamicStatePricingBlockGasLimit);
+        transaction.To = null;
+        transaction.Data = initCode;
+        Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
+            Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, contractAddress, block.Header.GasBeneficiary! }));
+        }
+    }
+
+    // EIP-2929 pre-warms the recipient when the top frame is prepared; an authorization halt happens before
+    // that, so nothing loads or warms `tx.To` and the reported set must stay recipient-less.
+    [Test]
+    public void Eip8037_authorization_oog_reports_access_without_recipient()
+    {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        Address authority = TestItem.AddressF;
+        AuthorizationTuple authorization = ecdsa.Sign(TestItem.PrivateKeyF, SpecProvider.ChainId, TestItem.AddressC, 0);
+
+        Transaction SignSetCode(ulong? gasLimit = null)
+        {
+            TransactionBuilder<Transaction> builder = Build.A.Transaction
+                .WithType(TxType.SetCode)
+                .WithTo(Recipient)
+                .WithGasPrice(1)
+                .WithAuthorizationCode(authorization);
+            if (gasLimit is not null) builder = builder.WithGasLimit(gasLimit.Value);
+            return builder.SignedAndResolved(ecdsa, SenderKey, true).TestObject;
+        }
+
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(SignSetCode(), Spec);
+        // One gas short of the NEW_ACCOUNT state charge for the non-existent authority, so ProcessDelegations
+        // fails on its first state charge.
+        ulong gasLimit = intrinsicGas.Standard.Value
+            + (ulong)intrinsicGas.Standard.StateReservoir
+            + (ulong)GasCostOf.NewAccountState
+            - 1;
+
+        Transaction transaction = SignSetCode(gasLimit);
+        (Block block, _) = PrepareTx(
+            Activation,
+            gasLimit,
+            transaction: transaction,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCode(authority)), Is.False);
+            Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
+            Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, authority, block.Header.GasBeneficiary! }));
+        }
+    }
+
+    // The delegation target is warmed before its cold access charge fails, so the halt's report must hold it.
+    [Test]
+    public void Eip8037_delegated_recipient_access_oog_reports_delegation_target()
+    {
+        Address delegationTarget = TestItem.AddressE;
+        byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. delegationTarget.Bytes];
+        (Block block, Transaction transaction) = PrepareTx(Activation, 1_000_000, delegationCode, value: 0, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec);
+        transaction.GasLimit = intrinsicGas.Standard + Eip8038Constants.ColdAccountAccess - 1;
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.ReportedActionErrors, Is.EqualTo(new[] { EvmExceptionType.OutOfGas }));
+            Assert.That(tracer.AccessReportCount, Is.EqualTo(1));
+            Assert.That(tracer.AccessedAddresses, Is.EquivalentTo(new[] { transaction.SenderAddress!, Recipient, delegationTarget, block.Header.GasBeneficiary! }));
         }
     }
 

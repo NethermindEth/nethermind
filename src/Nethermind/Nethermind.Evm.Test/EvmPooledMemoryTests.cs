@@ -118,6 +118,18 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             .SetName("MCopy_zero_source_preserves_only_destination_prefix_during_resize");
     }
 
+    private static IEnumerable<TestCaseData> InlineMCopyCases()
+    {
+        yield return new TestCaseData(256, 16, 0, 96).SetName("InlineMCopy_overlap_right");
+        yield return new TestCaseData(256, 0, 16, 96).SetName("InlineMCopy_overlap_left");
+        yield return new TestCaseData(256, 64, 64, 64).SetName("InlineMCopy_same_range");
+        yield return new TestCaseData(256, 224, 0, 96).SetName("InlineMCopy_destination_extends_initialized_prefix");
+        yield return new TestCaseData(256, 512, 0, 128).SetName("InlineMCopy_destination_beyond_initialized_prefix");
+        yield return new TestCaseData(256, 32, 192, 128).SetName("InlineMCopy_source_crosses_initialized_prefix");
+        yield return new TestCaseData(256, 0, 512, 64).SetName("InlineMCopy_source_beyond_initialized_prefix");
+        yield return new TestCaseData(256, 960, 0, 128).SetName("InlineMCopy_destination_spills_past_inline_capacity");
+    }
+
     [TestCase(32UL, 1UL)]
     [TestCase(0UL, 0UL)]
     [TestCase(33UL, 2UL)]
@@ -320,7 +332,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [Test]
     public void GetTrace_slice_past_size_does_not_leak_dirty_bytes()
     {
-        // Must exceed the 4 KiB RentSlow zero chunk, otherwise the whole buffer is zeroed anyway.
+        // Must exceed the maximum 4 KiB zero-ahead chunk, otherwise the whole buffer is zeroed anyway.
         const int dirtySize = 32 * 1024;
         EvmPooledMemory dirty = new();
         Span<byte> pattern = new byte[dirtySize];
@@ -337,6 +349,50 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             TraceMemory trace = memory.GetTrace();
             Assert.That(trace.Size, Is.EqualTo((ulong)EvmPooledMemory.WordSize));
             Assert.That(trace.Slice(0, 8 * 1024).ToArray(), Is.EqualTo(new byte[8 * 1024]), "trace leaked dirty tail bytes past Size");
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
+    [TestCase(EvmPooledMemory.InlineCapacity + 1, 1280)]
+    [TestCase(2 * 1024, 2048)]
+    [TestCase(2 * 1024 + 1, 2560)]
+    [TestCase(4 * 1024, 4096)]
+    [TestCase(4 * 1024 + 1, 5120)]
+    [TestCase(8 * 1024, 8192)]
+    [TestCase(8 * 1024 + 1, 10240)]
+    [TestCase(16 * 1024, 16384)]
+    [TestCase(16 * 1024 + 1, 20480)]
+    [TestCase(24 * 1024 + 1, 28672)]
+    public void Read_expansion_uses_size_scaled_zero_window_on_dirty_reused_buffer(int requestedEnd, int expectedInitializedSize)
+    {
+        using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
+        using EvmFrameMemory frameMemory = new();
+        frameMemory.GetSpan().Fill(0xa7);
+        EvmPooledMemory memory = new(frameMemory);
+        UInt256 zero = UInt256.Zero;
+        UInt256 length = (UInt256)requestedEnd;
+
+        try
+        {
+            Assert.That(memory.TryLoadSpan(in zero, in length, out Span<byte> data), Is.True);
+            byte[]? backingMemory = GetBackingMemory(ref memory);
+            Assert.That(backingMemory, Is.Not.Null);
+            byte[] actualBackingMemory = backingMemory!;
+            Assert.That(actualBackingMemory.Length, Is.GreaterThan(expectedInitializedSize));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(memory.Size, Is.EqualTo((ulong)AlignToWord(requestedEnd)));
+                Assert.That(GetInitializedSize(ref memory), Is.EqualTo((ulong)expectedInitializedSize));
+                Assert.That(data.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "the requested read must be zero");
+                Assert.That(actualBackingMemory.AsSpan(0, expectedInitializedSize).IndexOfAnyExcept((byte)0), Is.EqualTo(-1),
+                    "the zeroed prefix must contain no stale bytes");
+                Assert.That(actualBackingMemory[expectedInitializedSize], Is.EqualTo(0xa7),
+                    "the dirty tail beyond the selected window must remain lazy");
+            }
         }
         finally
         {
@@ -1227,6 +1283,52 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         }
     }
 
+    [TestCaseSource(nameof(InlineMCopyCases))]
+    public void CopyAfterGas_OnDirtyInlineMemory_MatchesSnapshotModel(
+        int initialLength,
+        int destinationOffset,
+        int sourceOffset,
+        int length)
+    {
+        using EvmFrameMemory owner = new();
+        owner.GetSpan().Fill(0xa7);
+        EvmPooledMemory memory = new(owner);
+        byte[] initial = CreatePattern(initialLength, 0x31);
+        int end = Math.Max(destinationOffset + length, sourceOffset + length);
+        byte[] expected = new byte[AlignToWord(Math.Max(initialLength, end))];
+        initial.CopyTo(expected, 0);
+        expected.AsSpan(sourceOffset, length).ToArray().CopyTo(expected, destinationOffset);
+
+        try
+        {
+            UInt256 start = UInt256.Zero;
+            memory.CalculateMemoryCost(in start, (ulong)initialLength, out _);
+            memory.SaveAfterGas(in start, initial);
+            Assert.That(GetInitializedSize(ref memory), Is.EqualTo((ulong)initialLength),
+                "precondition: only the written prefix is initialized");
+
+            UInt256 destination = (UInt256)destinationOffset;
+            UInt256 source = (UInt256)sourceOffset;
+            UInt256 expansionStart = (UInt256)Math.Max(destinationOffset, sourceOffset);
+            memory.CalculateMemoryCost(in expansionStart, (ulong)length, out bool outOfGas);
+            Assert.That(outOfGas, Is.False, "the copy fits the EVM memory limit");
+
+            memory.CopyAfterGas(in destination, in source, (ulong)length);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GetBackingMemory(ref memory) is null, Is.EqualTo(end <= EvmPooledMemory.InlineCapacity),
+                    "a copy within the inline capacity must not spill to an array");
+                Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected),
+                    "the copy must move a snapshot of the source and read unwritten bytes as zero");
+            }
+        }
+        finally
+        {
+            memory.Dispose();
+        }
+    }
+
     [Test]
     public void Load32BytesAfterGas_OnDirtyReusedMemory_PreservesPrefixAndZeroesTail(
         [Values(false, true)] bool inline,
@@ -1533,7 +1635,7 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    public void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
     }
 

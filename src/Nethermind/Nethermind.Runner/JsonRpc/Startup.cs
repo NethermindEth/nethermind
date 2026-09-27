@@ -208,7 +208,7 @@ public class Startup : IStartup
         {
             if (!TryGetTrustedHttpJsonRpcUrl(ctx, jsonRpcUrlCollection, additionalTrustedNetworks, out JsonRpcUrl? jsonRpcUrl))
             {
-                return next();
+                return next(ctx);
             }
 
             return ProcessJsonRpcRequestCoreAsync(ctx, jsonRpcUrl);
@@ -305,16 +305,16 @@ public class Startup : IStartup
         return false;
     }
 
-    internal Task HandleJsonRpcHttpRequestAsync(HttpContext ctx, Func<Task> next, IJsonRpcUrlCollection jsonRpcUrlCollection)
+    internal Task HandleJsonRpcHttpRequestAsync(HttpContext ctx, RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection)
     {
         if (ctx.GetEndpoint() is not null)
         {
-            return next();
+            return next(ctx);
         }
 
         if (!IsJsonContentType(ctx.Request.ContentType))
         {
-            return next();
+            return next(ctx);
         }
 
         string method = ctx.Request.Method;
@@ -497,6 +497,13 @@ public class Startup : IStartup
                 responseSink,
                 new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
                 ctx.RequestAborted);
+        }
+        catch (Exception e) when (responseSink is { BytesWritten: > 0 })
+        {
+            bool responseStarted = ctx.Response.HasStarted;
+            responseSink.Abort(abortTransport: responseStarted);
+            if (!responseStarted || (e is not OperationCanceledException && e.InnerException is not OperationCanceledException)) throw;
+            if (_logger.IsDebug) _logger.Debug("Aborted an incomplete JSON-RPC response after cancellation.");
         }
         catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
         {

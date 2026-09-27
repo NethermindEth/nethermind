@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using Nethermind.Core;
@@ -135,6 +136,18 @@ public static class EthereumEcdsaExtensions
 
     private static ValueHash256 CalculateSignatureHash(IEthereumEcdsa ecdsa, Transaction tx, Signature signature, bool useSignatureChainId)
     {
+        (bool applyEip155, ulong chainId) = SigningParameters(ecdsa, tx, signature, useSignatureChainId);
+
+        KeccakRlpWriter writer = new();
+        _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
+
+        return writer.GetValueHash();
+    }
+
+    /// <summary>Resolves whether the EIP-155 chain id triplet is part of the signed payload, and which chain id it carries.</summary>
+    private static (bool ApplyEip155, ulong ChainId) SigningParameters(
+        IEthereumEcdsa ecdsa, Transaction tx, Signature signature, bool useSignatureChainId)
+    {
         useSignatureChainId &= signature.ChainId.HasValue;
 
         // feels like it is the same check twice
@@ -150,11 +163,72 @@ public static class EthereumEcdsaExtensions
                 ?? throw new InvalidDataException("Cannot recover signature hash from a typed transaction without a chain id."),
         };
 
+        return (applyEip155, chainId);
+    }
+
+    /// <summary>
+    /// Recovers the public key that signed the transaction, reading the signed payload out of the
+    /// transaction's own encoding rather than encoding it again.
+    /// </summary>
+    /// <param name="ecdsa">The ECDSA implementation used for recovery.</param>
+    /// <param name="tx">The transaction the encoding belongs to.</param>
+    /// <param name="encoded">
+    /// The transaction's canonical encoding with typed transactions left unwrapped, as
+    /// <see cref="RlpBehaviors.SkipTypedWrapping"/> produces and an execution payload carries.
+    /// </param>
+    /// <param name="publicKey">Receives the 65-byte SEC1 uncompressed public key, <c>0x04</c> prefix included, when recovery succeeds.</param>
+    /// <param name="useSignatureChainId">Whether to use the chain id encoded in a legacy EIP-155 signature.</param>
+    /// <returns><see langword="true"/> when the transaction's signature yields a public key; otherwise <see langword="false"/>.</returns>
+    /// <remarks>
+    /// A transaction's signed payload is its encoding without the trailing three signature items, so the hash
+    /// can be taken over bytes that are already on the wire plus a shorter sequence header - and, for a legacy
+    /// EIP-155 transaction, the chain id triplet that replaces the signature. That skips a full re-encode of the
+    /// transaction, which is the bulk of recovery's cost inside a zkVM guest, and allocates nothing: the key goes
+    /// to the caller's buffer.
+    /// </remarks>
+    public static bool TryRecoverPublicKey(
+        this IEthereumEcdsa ecdsa, Transaction tx, ReadOnlySpan<byte> encoded, Span<byte> publicKey, bool useSignatureChainId = false)
+    {
+        if (tx.Signature is not { } signature) return false;
+
+        // A type whose signed bytes are not a prefix of its encoding falls back to encoding the transaction.
+        ValueHash256 hash = TxDecoder.TryGetSignedPayload(encoded, tx.Type, out ReadOnlySpan<byte> signedPayload)
+            ? SignedPayloadHash(ecdsa, tx, signature, signedPayload, useSignatureChainId)
+            : CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
+
+        return EthereumEcdsa.RecoverPublicKeyRaw(signature.Bytes, signature.RecoveryId, hash.Bytes, publicKey);
+    }
+
+    /// <summary>Hashes a signed payload that is already encoded, behind the sequence header the signer used.</summary>
+    private static ValueHash256 SignedPayloadHash(
+        IEthereumEcdsa ecdsa, Transaction tx, Signature signature, scoped ReadOnlySpan<byte> signedPayload, bool useSignatureChainId)
+    {
+        (bool applyEip155, ulong chainId) = SigningParameters(ecdsa, tx, signature, useSignatureChainId);
+        bool typed = tx.Type != TxType.Legacy;
+        int eip155Length = !typed && applyEip155 && chainId != 0 ? Rlp.LengthOf(chainId) + 2 : 0;
+
         KeccakRlpWriter writer = new();
-        _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
+        if (typed) WriteByte(ref writer, (byte)tx.Type);
+        writer.StartSequence(signedPayload.Length + eip155Length);
+        WriteRaw(ref writer, signedPayload);
+
+        if (eip155Length > 0)
+        {
+            writer.Encode(chainId);
+            // The two empty byte arrays standing in for r and s, as LegacyTxDecoder encodes them.
+            WriteByte(ref writer, Rlp.EmptyByteArrayByte);
+            WriteByte(ref writer, Rlp.EmptyByteArrayByte);
+        }
 
         return writer.GetValueHash();
     }
+
+    // The write primitives are explicit interface implementations, so they are reached through the constraint.
+    private static void WriteByte<TWriter>(ref TWriter writer, byte value)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.WriteByte(value);
+
+    private static void WriteRaw<TWriter>(ref TWriter writer, scoped ReadOnlySpan<byte> bytes)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(bytes);
 
     public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
 
