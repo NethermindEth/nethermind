@@ -30,7 +30,7 @@ public partial class FrameTxProcessorTests
     private static readonly Address ParityTailCaller = TestItem.Addresses[10];
 
     /// <summary>Frame transactions covering nested calls, a skipped frame, a frame that never enters the VM, a
-    /// sponsored payer, and a frame ending on a CALL. <see cref="Observer"/> calls <see cref="Recipient"/>, so its frame has a subtrace.</summary>
+    /// sponsored payer, a frame ending on a CALL, and a reverted POST_TX frame. <see cref="Observer"/> calls <see cref="Recipient"/>, so its frame has a subtrace.</summary>
     private Transaction ParityScenarioTx(string scenario)
     {
         DeployContract(Recipient, LogEmitter(7));
@@ -64,6 +64,17 @@ public partial class FrameTxProcessorTests
                 DeployContract(ParityTailCaller, Prepare.EvmCode.Call(Recipient, 50_000).Done);
                 frames = [SelfVerifyFrame(), Frame(FrameMode.Sender, target: ParityTailCaller), Frame(FrameMode.Default, target: Recipient)];
                 break;
+            case "postTxReverted":
+                DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+                DeployContract(ParityReverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+                frames =
+                [
+                    SelfVerifyFrame(),
+                    Frame(FrameMode.Sender, target: Observer),
+                    Frame(FrameMode.PostTx, target: ParityReverter, stateGasLimit: 0),
+                    Frame(FrameMode.PostTx, target: Observer, stateGasLimit: 0)
+                ];
+                break;
             case "undispatched":
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
                 frames = [SelfVerifyFrame(), UndispatchedFrame(PreDispatchExit.EntryAccessCharge, out _), Frame(FrameMode.Default, target: Observer)];
@@ -92,6 +103,7 @@ public partial class FrameTxProcessorTests
     [TestCase("undispatched", new[] { 0, 2 }, new[] { 2, 0 })]
     [TestCase("sponsored", new[] { 0, 1, 2 }, new[] { 2, 0 })]
     [TestCase("tailCall", new[] { 0, 1, 2 }, new[] { 1, 0 })]
+    [TestCase("postTxReverted", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     public void ParityTrace_FrameTx_RootsEveryFrameAtItsIndex(string scenario, int[] framesInVm, int[] nestedCall)
     {
         Transaction tx = ParityScenarioTx(scenario);
@@ -108,9 +120,19 @@ public partial class FrameTxProcessorTests
             Assert.That(root.From, Is.EqualTo(Sender));
             Assert.That(root.To, Is.EqualTo(Eip8141Constants.EntryPointAddress));
             Assert.That(root.Gas, Is.EqualTo(tx.GasLimit));
-            Assert.That(root.Result?.GasUsed, Is.EqualTo(receipt.GasUsed));
+            if (scenario != "postTxReverted")
+            {
+                Assert.That(root.Error, Is.Null, "root error");
+                Assert.That(root.Result?.GasUsed, Is.EqualTo(receipt.GasUsed), "root gasUsed");
+            }
+            else
+            {
+                Assert.That(root.Error, Is.EqualTo("POST_TX frame reverted"), "root error");
+                Assert.That(root.Result, Is.Null, "root result");
+            }
+
             Assert.That(root.Subtraces, Has.Count.EqualTo(frames.Length));
-            Assert.That(frameReceipts.Count(static r => r.Status == TxFrameReceipt.StatusSkipped), Is.EqualTo(scenario is "skipped" ? 1 : 0), "skipped frames");
+            Assert.That(frameReceipts.Count(static r => r.Status == TxFrameReceipt.StatusSkipped), Is.EqualTo(scenario is "skipped" or "postTxReverted" ? 1 : 0), "skipped frames");
 
             for (int i = 0; i < root.Subtraces.Count; i++)
             {
@@ -147,7 +169,7 @@ public partial class FrameTxProcessorTests
 
     [Test]
     public void ParityTrace_FrameTx_StreamedMatchesBuffered(
-        [Values("nested", "skipped", "undispatched", "sponsored", "tailCall")] string scenario, [Values] ParityTraceStreamMode mode)
+        [Values("nested", "skipped", "undispatched", "sponsored", "tailCall", "postTxReverted")] string scenario, [Values] ParityTraceStreamMode mode)
     {
         string buffered = BufferedParityJson(scenario, mode);
         TearDown();
