@@ -53,11 +53,13 @@ public sealed class ProcessingTransactionIndexBulkFill(
             if (_logger.IsError) _logger.Error("Bulk transaction indexing requires mainnet and a nonzero retrofit floor.");
             return;
         }
+        using ManualResetEventSlim delay = new(false, spinCount: 0);
+        using CancellationTokenRegistration registration = token.UnsafeRegister(static state => ((ManualResetEventSlim)state!).Set(), delay);
         while (!token.IsCancellationRequested)
         {
             try
             {
-                if (TryFill(token)) return;
+                if (TryFill(token, delay)) return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -74,11 +76,11 @@ public sealed class ProcessingTransactionIndexBulkFill(
                 // captured, a disk that fills and is freed.
                 if (_logger.IsWarn) _logger.Warn($"Bulk transaction index paused with its checkpoint retained: {exception.Message}");
             }
-            if (token.WaitHandle.WaitOne(TimeSpan.FromSeconds(30))) return;
+            if (delay.Wait(TimeSpan.FromSeconds(30))) return;
         }
     }
 
-    private bool TryFill(CancellationToken token)
+    private bool TryFill(CancellationToken token, ManualResetEventSlim delay)
     {
         ulong first = config.HistoryTransactionIndexRetrofitFromBlock;
         if (!index.TryGetCoverage(out ulong coveredFrom, out _)) return false;
@@ -118,7 +120,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
             Execute(block, checkpoint, session, processor, token);
             checkpoint = block.Header;
             session.CleanStorage(token);
-            sessions.Rest(Stopwatch.GetElapsedTime(startedAt), token);
+            sessions.Rest(Stopwatch.GetElapsedTime(startedAt), token, delay);
             if (Stopwatch.GetElapsedTime(reportedAt) >= TimeSpan.FromSeconds(30))
             {
                 double rate = (session.CurrentState.BlockNumber - reportedBlock) / Stopwatch.GetElapsedTime(reportedAt).TotalSeconds;
