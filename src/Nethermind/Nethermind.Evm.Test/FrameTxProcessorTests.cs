@@ -4806,15 +4806,8 @@ public class FrameTxProcessorTests
     /// <summary>The processor marks every included frame transaction successful, so a tracer has to be given the
     /// status the receipt derives from the frames, and simulate the receipt's logs rather than those emitted by a
     /// frame an atomic batch later unrolled.</summary>
-    [TestCase(FrameTxStatusConsumer.CallTracer, true)]
-    [TestCase(FrameTxStatusConsumer.CallTracer, false)]
-    [TestCase(FrameTxStatusConsumer.StructLogger, true)]
-    [TestCase(FrameTxStatusConsumer.StructLogger, false)]
-    [TestCase(FrameTxStatusConsumer.JavaScriptTracer, true)]
-    [TestCase(FrameTxStatusConsumer.JavaScriptTracer, false)]
-    [TestCase(FrameTxStatusConsumer.Simulate, true)]
-    [TestCase(FrameTxStatusConsumer.Simulate, false)]
-    public void Execute_FrameTxTracedThroughTheReceiptsTracer_ReportsTheReceiptStatus(FrameTxStatusConsumer consumer, bool batchFails)
+    [Test]
+    public void Execute_FrameTxTracedThroughTheReceiptsTracer_ReportsTheReceiptStatus([Values] FrameTxStatusConsumer consumer, [Values] bool batchFails)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Recipient, LogEmitter(7));
@@ -4840,6 +4833,78 @@ public class FrameTxProcessorTests
             {
                 Assert.That(logCount, Is.EqualTo(receipt.Logs!.Length), "the simulated logs must be the receipt's");
             }
+        }
+    }
+
+    /// <summary>Without EIP-7708, simulate synthesises transfer logs as values move, so a frame an atomic batch
+    /// unrolled would keep its transfer while the receipt drops everything else it did.</summary>
+    [Test]
+    public void Simulate_TraceTransfersOverAnUnrolledBatch_KeepsOnlyTheCommittedFramesTransfers([Values] bool batchFails)
+    {
+        _spec.IsEip7708Enabled = false;
+        Address afterBatch = TestItem.AddressD;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, LogEmitter(7));
+        DeployContract(Observer, batchFails
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(afterBatch, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient, value: 1),
+            Frame(FrameMode.Sender, target: Observer),
+            Frame(FrameMode.Sender, target: afterBatch, value: 2));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: true, _specProvider);
+        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        LogEntry[] expected = batchFails
+            ? [TransferLog.CreateSimulateTransfer(Sender, afterBatch, 2)]
+            : [TransferLog.CreateSimulateTransfer(Sender, Recipient, 1), receipt.Logs![0], TransferLog.CreateSimulateTransfer(Sender, afterBatch, 2)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(batchFails ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(result.Logs.Select(static log => $"{log.Address}:{log.Topics[^1]}"),
+                Is.EqualTo(expected.Select(static log => $"{log.Address}:{log.Topics[^1]}")),
+                "the committed frames' transfers and logs, in emission order");
+        }
+    }
+
+    /// <summary>An atomic batch running out of gas fails the transaction without any frame reverting, so
+    /// simulate must report that frame's error rather than a later successful frame's inner revert.</summary>
+    [Test]
+    public void Simulate_BatchOutOfGasBeforeAnInnerRevert_ReportsTheFailedFramesError()
+    {
+        Address afterBatch = TestItem.AddressD;
+        Address reverter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(Observer, Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done);
+        DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(afterBatch, Prepare.EvmCode.Call(reverter, 50_000).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
+            Frame(FrameMode.Sender, target: Observer),
+            Frame(FrameMode.Default, target: afterBatch));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: false, _specProvider);
+        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.FrameReceipts!.Select(static r => r.Status),
+                Is.EqualTo(new[] { TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure, TxFrameReceipt.StatusSuccess }));
+            Assert.That(result.Status, Is.EqualTo(StatusCode.Failure));
+            Assert.That(result.Error!.EvmException, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(result.Error.Message, Is.EqualTo(EvmExceptionType.OutOfGas.GetEvmExceptionDescription()));
         }
     }
 

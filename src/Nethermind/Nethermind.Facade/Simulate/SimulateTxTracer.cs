@@ -26,6 +26,11 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     private readonly Transaction _tx;
     private readonly bool _isTracingTransfers;
     private bool _hasFrameReceipts;
+    private int[]? _frameLogStarts;
+    private int _framesEnded;
+    private int _frameLogEnd;
+    private HashSet<LogEntry>? _transferLogs;
+    private EvmExceptionType? _frameError;
 
     public SimulateTxTracer(
         bool isTracingTransfers,
@@ -60,7 +65,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         if (callType == ExecutionType.DELEGATECALL) return;
         if (!value.IsZero)
         {
-            _logs.Add(TransferLog.CreateSimulateTransfer(from, to, value));
+            AddTransferLog(from, to, value);
         }
     }
 
@@ -70,8 +75,15 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         if (!_isTracingTransfers) return;
         if (!balance.IsZero)
         {
-            _logs.Add(TransferLog.CreateSimulateTransfer(address, refundAddress, balance));
+            AddTransferLog(address, refundAddress, balance);
         }
+    }
+
+    private void AddTransferLog(Address from, Address to, in UInt256 value)
+    {
+        LogEntry transferLog = TransferLog.CreateSimulateTransfer(from, to, value);
+        (_transferLogs ??= new HashSet<LogEntry>(ReferenceEqualityComparer.Instance)).Add(transferLog);
+        _logs.Add(transferLog);
     }
 
     public override void ReportLog(LogEntry log)
@@ -86,11 +98,44 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         // The validation-prefix simulation reports an empty set, which pins no frame's outcome.
         if (frameReceipts.Length == 0) return;
 
-        // Logs are reported as emitted, so a frame a later rollback unrolled would leak its own.
+        // Failed and rolled-back frames are already dropped; what is left is a reverted inner call's logs,
+        // which the receipt does not hold. The synthetic transfer logs are in no receipt, so they stay.
         _hasFrameReceipts = true;
-        _logs.Clear();
-        _logs.AddRange(TxFrameReceipt.ConcatLogs(frameReceipts));
+        HashSet<LogEntry> committed = new(TxFrameReceipt.ConcatLogs(frameReceipts), ReferenceEqualityComparer.Instance);
+        _logs.RemoveAll(log => !committed.Contains(log) && _transferLogs?.Contains(log) != true);
     }
+
+    /// <inheritdoc/>
+    void IFrameTxReceiptTracer.ReportFrameEnd(int frameIndex, EvmExceptionType? error)
+    {
+        _frameLogStarts ??= new int[_tx.Frames?.Length ?? 0];
+        if ((uint)frameIndex >= (uint)_frameLogStarts.Length) return;
+
+        // A skipped frame emits nothing, so it starts where the next frame to run does.
+        for (; _framesEnded <= frameIndex; _framesEnded++)
+        {
+            _frameLogStarts[_framesEnded] = _frameLogEnd;
+        }
+
+        if (error is not null)
+        {
+            _frameError = error == EvmExceptionType.None ? EvmExceptionType.Revert : error;
+            TruncateLogs(_frameLogStarts[frameIndex]);
+        }
+
+        _frameLogEnd = _logs.Count;
+    }
+
+    /// <inheritdoc/>
+    void IFrameTxReceiptTracer.ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex)
+    {
+        if (_frameLogStarts is null || (uint)fromFrameIndex >= (uint)_framesEnded) return;
+
+        TruncateLogs(_frameLogStarts[fromFrameIndex]);
+        _frameLogEnd = _logs.Count;
+    }
+
+    private void TruncateLogs(int count) => _logs.RemoveRange(count, _logs.Count - count);
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
     {
@@ -107,14 +152,22 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
         Error = new Error
         {
-            Message = error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,
-            EvmException = _exceptionType,
+            Message = FailureMessage(error),
+            // A frame transaction fails for the frame that failed, not for whichever call last errored.
+            EvmException = _frameError ?? _exceptionType,
             Data = output
         },
         ReturnData = [],
         Status = StatusCode.Failure,
         // A failed frame transaction keeps the logs of the frames that committed, as its receipt does.
         Logs = _hasFrameReceipts ? BuildLogs() : []
+    };
+
+    private string FailureMessage(string? error) => _frameError switch
+    {
+        null => error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,
+        EvmExceptionType.Revert => "execution reverted",
+        EvmExceptionType frameError => frameError.GetEvmExceptionDescription() ?? frameError.ToString()
     };
 
     private List<Log> BuildLogs() => _logs.Select((entry, i) => new Log
