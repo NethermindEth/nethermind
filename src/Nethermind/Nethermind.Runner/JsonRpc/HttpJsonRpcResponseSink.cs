@@ -197,12 +197,12 @@ internal sealed class HttpJsonRpcResponseSink(
             : CompleteAfterWriterAsync(writerCompleteTask, cancellationToken);
     }
 
-    /// <summary>Aborts an incomplete response without completing or sending its buffered body.</summary>
-    public void Abort()
+    /// <summary>Discards an incomplete response and optionally aborts the transport.</summary>
+    public void Abort(bool abortTransport)
     {
         if (_completed) return;
         _completed = true;
-        context.Abort();
+        if (abortTransport) context.Abort();
 
         if (_bufferedStream is not null)
         {
