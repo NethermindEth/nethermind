@@ -53,6 +53,8 @@ public sealed class ProcessingTransactionIndexBulkFill(
             if (_logger.IsError) _logger.Error("Bulk transaction indexing requires mainnet and a nonzero retrofit floor.");
             return;
         }
+        using ManualResetEventSlim delay = new(false, spinCount: 0);
+        using CancellationTokenRegistration registration = token.UnsafeRegister(static state => ((ManualResetEventSlim)state!).Set(), delay);
         while (!token.IsCancellationRequested)
         {
             try
@@ -74,7 +76,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
                 // captured, a disk that fills and is freed.
                 if (_logger.IsWarn) _logger.Warn($"Bulk transaction index paused with its checkpoint retained: {exception.Message}");
             }
-            if (token.WaitHandle.WaitOne(TimeSpan.FromSeconds(30))) return;
+            if (delay.Wait(TimeSpan.FromSeconds(30))) return;
         }
     }
 

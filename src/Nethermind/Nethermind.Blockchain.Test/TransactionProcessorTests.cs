@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -18,7 +19,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using NUnit.Framework;
-using Nethermind.Config;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
@@ -272,7 +272,7 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
             .WithSenderAddress(systemUser ? Address.SystemUser : TestItem.AddressA).TestObject;
         Block block = Build.A.Block.WithParent(_baseBlock).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-        EstimateGasTracer tracer = new();
+        CallOutputTracer tracer = new();
         TransactionResult result = _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
         if (!systemUser)
@@ -298,11 +298,9 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
             .TestObject;
         Block block = Build.A.Block.WithNumber(1ul).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-        EstimateGasTracer tracer = new();
-        BlocksConfig blocksConfig = new();
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
-
-        ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
+        GasEstimation estimation = Estimate(tx, block);
+        ulong estimate = estimation.Gas;
+        string? err = estimation.Error;
 
         if (txValue == AccountBalance)
         {
@@ -312,8 +310,8 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         }
         else if (txValue + (UInt256)gasLimit > AccountBalance)
         {
-            Assert.That(err, Is.Not.Null); // Should have error
-            Assert.That(err, Is.EqualTo(GasEstimator.InsufficientBalance));
+            Assert.That(err, Does.StartWith(TxErrorMessages.InsufficientFundsForGas), "the unpriced transfer is rejected by the processor's balance check");
+            Assert.That(estimation.RejectedGasLimit, Is.EqualTo(gasLimit), "rejected at the requested gas limit");
         }
         else
         {
@@ -368,15 +366,13 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithGasLimit(gasLimit).TestObject;
         Block block = Build.A.Block.WithParent(_baseBlock).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-        EstimateGasTracer tracer = new();
-        BlocksConfig blocksConfig = new();
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
-
+        CallOutputTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
+        GasEstimation estimation = Estimate(tx, block);
 
         Assert.That(tracer.GasSpent, Is.EqualTo(21000ul));
-        Assert.That(estimator.Estimate(tx, block.Header, tracer, out string? err, 0), Is.EqualTo(21000ul));
-        Assert.That(err, Is.Null);
+        Assert.That(estimation.Gas, Is.EqualTo(21000ul));
+        Assert.That(estimation.Error, Is.Null);
     }
 
     [TestCase]
@@ -397,26 +393,19 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).WithCode(initByteCode).WithGasLimit(gasLimit).TestObject;
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2ul * gasLimit).TestObject;
 
-        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
+        CallOutputTracer tracer = new();
+        _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
+        GasEstimation estimation = Estimate(tx, block);
 
-        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasSpent, Is.EqualTo(54764ul), "gas used after the refund");
+            Assert.That(tracer.MaxUsedGas, Is.EqualTo(73964ul), "peak gas before the refund");
+            Assert.That(estimation.Gas, Is.EqualTo(75465ul), "lowest gas limit the refunded transaction succeeds with");
+            Assert.That(estimation.Error, Is.Null);
+        }
 
-        EstimateGasTracer tracer = new();
-        _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
-
-        BlocksConfig blocksConfig = new();
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
-
-        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
-        IReleaseSpec releaseSpec = Berlin.Instance;
-        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo((ulong)RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend - GasCostOf.SStoreNetMeteredEip2200 + 1ul));
-        Assert.That(tracer.GasSpent, Is.EqualTo(54764ul));
-        ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(estimate, Is.EqualTo(75465ul));
-        Assert.That(err, Is.Null);
-
-        ConfirmEnoughEstimate(tx, block, estimate);
+        ConfirmEnoughEstimate(tx, block, estimation.Gas);
     }
 
 
@@ -437,26 +426,25 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2ul * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
-        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
         BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
         TransactionResult initResult = _transactionProcessor.Execute(initTx, blkCtx, NullTxTracer.Instance);
 
-        EstimateGasTracer tracer = new();
+        CallOutputTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
+        GasEstimation estimation = Estimate(tx, block);
 
-        BlocksConfig blocksConfig = new();
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasSpent, Is.EqualTo(35228ul), "gas used after the selfdestruct refund");
+            Assert.That(estimation.Gas, Is.EqualTo(54225ul), "lowest gas limit the call succeeds with");
+            Assert.That(estimation.Error, Is.Null);
+        }
 
-        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
-        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(24080ul));
-        ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(tracer.GasSpent, Is.EqualTo(54224ul));
-        Assert.That(estimate, Is.EqualTo(54225ul));
-        Assert.That(err, Is.Null);
-
-        ConfirmEnoughEstimate(tx, block, estimate);
+        ConfirmEnoughEstimate(tx, block, estimation.Gas);
     }
+
+    private GasEstimation Estimate(Transaction tx, Block block) =>
+        new GasEstimator(_transactionProcessor, _stateProvider).Estimate(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), errorMargin: 0);
 
     private void ConfirmEnoughEstimate(Transaction tx, Block block, ulong estimate)
     {
@@ -487,25 +475,20 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2ul * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
-        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
-
         BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
 
-        EstimateGasTracer tracer = new();
+        CallOutputTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
+        GasEstimation estimation = Estimate(tx, block);
 
-        BlocksConfig blocksConfig = new();
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasSpent, Is.EqualTo(85669ul), "gas used with the stipend returned");
+            Assert.That(estimation.Gas, Is.EqualTo(87969ul), "lowest gas limit the value call succeeds with");
+            Assert.That(estimation.Error, Is.Null);
+        }
 
-        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
-        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(2300ul));
-        Assert.That(tracer.GasSpent, Is.EqualTo(85669ul));
-        ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(estimate, Is.EqualTo(87969ul));
-        Assert.That(err, Is.Null);
-
-        ConfirmEnoughEstimate(tx, block, estimate);
+        ConfirmEnoughEstimate(tx, block, estimation.Gas);
     }
 
     [TestCase]
@@ -528,25 +511,20 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2ul * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
-        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
-
         BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
 
-        EstimateGasTracer tracer = new();
+        CallOutputTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
+        GasEstimation estimation = Estimate(tx, block);
 
-        BlocksConfig blocksConfig = new();
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasSpent, Is.EqualTo(87429ul), "gas used after the refund");
+            Assert.That(estimation.Gas, Is.EqualTo(108130ul), "lowest gas limit the refunded value call succeeds with");
+            Assert.That(estimation.Error, Is.Null);
+        }
 
-        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
-        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo((ulong)RefundOf.SSetReversedEip2200 + GasCostOf.CallStipend));
-        ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(tracer.GasSpent, Is.EqualTo(87429ul));
-        Assert.That(estimate, Is.EqualTo(108130ul));
-        Assert.That(err, Is.Null);
-
-        ConfirmEnoughEstimate(tx, block, estimate);
+        ConfirmEnoughEstimate(tx, block, estimation.Gas);
     }
 
     [TestCase]
@@ -567,26 +545,21 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2ul * gasLimit).TestObject;
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
-        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
-
         BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
         _transactionProcessor.Execute(initTx, blkCtx, NullTxTracer.Instance);
 
-        EstimateGasTracer tracer = new();
+        CallOutputTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
+        GasEstimation estimation = Estimate(tx, block);
 
-        BlocksConfig blocksConfig = new();
-        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasSpent, Is.EqualTo(54224ul), "gas used by the call");
+            Assert.That(estimation.Gas, Is.EqualTo(54224ul), "lowest gas limit the call succeeds with");
+            Assert.That(estimation.Error, Is.Null);
+        }
 
-        ulong actualIntrinsic = tx.GasLimit - tracer.IntrinsicGasAt;
-        Assert.That(actualIntrinsic, Is.EqualTo(intrinsicGas.Standard));
-        Assert.That(tracer.CalculateAdditionalGasRequired(tx, releaseSpec), Is.EqualTo(1ul));
-        ulong estimate = estimator.Estimate(tx, block.Header, tracer, out string? err, 0);
-        Assert.That(tracer.GasSpent, Is.EqualTo(54224ul));
-        Assert.That(estimate, Is.EqualTo(54224ul));
-        Assert.That(err, Is.Null);
-
-        ConfirmEnoughEstimate(tx, block, estimate);
+        ConfirmEnoughEstimate(tx, block, estimation.Gas);
     }
 
     [TestCase]
