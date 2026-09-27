@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -15,9 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Specs;
 using NUnit.Framework;
-using NSubstitute;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -27,7 +24,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace;
 public class ParityStyleTracerTests
 {
     private BlockTree? _blockTree;
-    private IPoSSwitcher? _poSSwitcher;
     private ITraceRpcModule _traceRpcModule;
     private IContainer _container;
     private IBlockProcessingQueue _blockProcessingQueue;
@@ -46,11 +42,9 @@ public class ParityStyleTracerTests
             .WithAllocation(new Address("0xdea60e4f8ea50d5ed92b0a5b15ae9d24aeba0bee"), 1.Ether)
             .TestObject;
 
-        _poSSwitcher = Substitute.For<IPoSSwitcher>();
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(cp))
             .AddSingleton<ISpecProvider>(specProvider)
-            .AddSingleton<IPoSSwitcher>(_poSSwitcher)
             .AddSingleton<IBlockTree>(_blockTree)
             .Build();
 
@@ -79,14 +73,13 @@ public class ParityStyleTracerTests
 
     /// <summary>
     /// The chain pays no block reward (as on Taiko or Optimism, which are always post-merge), so the trace has no reward
-    /// record either side of the merge.
+    /// record.
     /// </summary>
     [Test]
-    public async Task Should_not_report_a_reward_the_block_does_not_pay([Values] bool isPostMerge)
+    public async Task Should_not_report_a_reward_the_block_does_not_pay()
     {
         Block block = Build.A.Block.WithParent(_blockTree!.Head!).TestObject;
         Assert.That((await _blockTree!.SuggestBlockAsync(block, BlockTreeSuggestOptions.None)), Is.EqualTo(AddBlockResult.Added));
-        _poSSwitcher!.IsPostMerge(Arg.Any<BlockHeader>()).Returns(isPostMerge);
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter(block.Number));
         Assert.That(rpcResult.Result, Is.EqualTo(Result.Success));
