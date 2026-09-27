@@ -104,6 +104,7 @@ public sealed class BeaconSyncOrchestrator(
     private byte[] _currentDigest = [];
     private (ulong Epoch, byte[] Digest)? _nextRotation;
     private (byte[] Digest, bool Gloas)[] _gossipDigests = [];
+    private ulong _reconciledEpoch;
     private bool _columnGossipStarted;
     private Func<string, ITopic>? _getTopic;
     private readonly DiscoveryNodeCustodySource _custody = new(discovery);
@@ -856,8 +857,15 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Subscribes both gossip routers to the digests of <see cref="GossipTopics.DigestsAround"/> at <paramref name="epoch"/> and unsubscribes the rest.</summary>
+    /// <remarks>An epoch older than the last one applied is ignored: a tick queued behind imports must not undo the window gossip started at.</remarks>
     internal void ReconcileGossipDigests(ulong epoch)
     {
+        if (_gossipDigests.Length > 0 && epoch < _reconciledEpoch)
+        {
+            return;
+        }
+
+        _reconciledEpoch = epoch;
         (byte[] Digest, bool Gloas)[] wanted = GossipTopics.DigestsAround(spec, epoch);
         foreach ((byte[] digest, bool _) in _gossipDigests)
         {
