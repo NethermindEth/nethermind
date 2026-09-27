@@ -1338,7 +1338,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
             )
             {
-                SubstateError = success ? null : GetErrorString(precompile, output.Error)
+                SubstateError = success || !state.IsTopLevel ? null : GetErrorString(precompile, output.Error)
             };
         }
         catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })

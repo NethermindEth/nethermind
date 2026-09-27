@@ -350,7 +350,6 @@ public class ForkchoiceUpdatedHandler(
             payloadId = payloadPreparationService.StartPreparingPayload(newHeadHeader, payloadAttributes);
         }
 
-        _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
         return ForkchoiceUpdatedV1Result.Valid(isPayloadSimulated ? null : payloadId, forkchoiceState.HeadBlockHash);
     }
 
