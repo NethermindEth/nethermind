@@ -137,7 +137,7 @@ public partial class GossipRouterTests
         int blocks = 0;
         router.BeaconBlockReceived += _ => blocks++;
 
-        Assert.That(() => router.RotateDigest(bpo2Digest), Throws.InvalidOperationException, "rotation requires Start");
+        Assert.That(() => router.SubscribeDigest(bpo2Digest), Throws.InvalidOperationException, "rotation requires Start");
 
         router.Start(id => topics[id] = new FakeTopic(), bpo1Digest);
 
@@ -153,7 +153,8 @@ public partial class GossipRouterTests
         blockTopicBpo1.Deliver(BlockMessage(CurrentSlot));
         Assert.That(blocks, Is.EqualTo(1), "messages on a subscribed topic reach the event");
 
-        router.RotateDigest(bpo2Digest);
+        router.SubscribeDigest(bpo2Digest);
+        router.UnsubscribeDigest(bpo1Digest);
         FakeTopic blockTopicBpo2 = topics[GossipTopics.Topic(bpo2Digest, GossipTopics.BeaconBlock)];
         blockTopicBpo1.Deliver(BlockMessage(CurrentSlot - 1));
         blockTopicBpo2.Deliver(BlockMessage(CurrentSlot - 2));
@@ -168,26 +169,21 @@ public partial class GossipRouterTests
     }
 
     [Test]
-    public void ActivateGloasTopics_requires_start()
+    public void Gloas_topics_are_subscribed_only_on_a_Gloas_digest_and_survive_digest_rotation()
     {
-        GossipRouter router = CreateRouter();
-        Assert.That(() => router.ActivateGloasTopics(), Throws.InvalidOperationException);
-    }
-
-    [Test]
-    public void Gloas_topics_are_not_subscribed_until_activated_and_survive_digest_rotation()
-    {
-        byte[] bpo1Digest = ForkDigest.Compute(Spec, 412_672);
-        byte[] bpo2Digest = ForkDigest.Compute(Spec, 419_072);
+        BeaconChainSpec spec = GossipDigestWindowTests.WithBlobEntry(Sepolia, new BlobScheduleEntry(Sepolia.GloasForkEpoch + 1, 21));
+        byte[] fuluDigest = ForkDigest.Compute(spec, spec.GloasForkEpoch - 1);
+        byte[] bpo1Digest = ForkDigest.Compute(spec, spec.GloasForkEpoch);
+        byte[] bpo2Digest = ForkDigest.Compute(spec, spec.GloasForkEpoch + 1);
         Dictionary<string, FakeTopic> topics = [];
-        GossipRouter router = CreateRouter();
+        GossipRouter router = new(spec, new SlotClock(spec, new ManualTimestamper(SepoliaSlotStart(FirstGloasSlot + 1).AddSeconds(6))), LimboLogs.Instance);
         int envelopes = 0;
         router.ExecutionPayloadEnvelopeReceived += _ => envelopes++;
 
-        router.Start(id => topics[id] = new FakeTopic(), bpo1Digest);
+        router.Start(id => topics[id] = new FakeTopic(), fuluDigest);
         Assert.That(topics.Keys, Has.None.Contain(GossipTopics.ExecutionPayload), "Gloas topics are not part of the fixed pre-Gloas set");
 
-        router.ActivateGloasTopics();
+        router.SubscribeDigest(bpo1Digest);
         string envelopeTopicBpo1 = GossipTopics.Topic(bpo1Digest, GossipTopics.ExecutionPayload);
         using (Assert.EnterMultipleScope())
         {
@@ -196,25 +192,26 @@ public partial class GossipRouterTests
             Assert.That(GossipTopics.GloasTopicNames, Does.Not.Contain(GossipTopics.PayloadAttestationMessage), "nothing consumes PTC votes, and the node cannot forward them");
         }
 
-        // Mainnet has no Gloas slot, so the envelope handler drops each delivery as a pre-Gloas slot.
-        topics[envelopeTopicBpo1].Deliver(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(CreateEnvelope())));
-        Assert.That(router.GetDropCount(GossipDropReason.InvalidField), Is.EqualTo(1), "activated Gloas topics deliver to their handlers");
+        // A pre-Gloas slot, so the envelope handler drops each delivery as one.
+        topics[envelopeTopicBpo1].Deliver(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(PreGloasEnvelope())));
+        Assert.That(router.GetDropCount(GossipDropReason.InvalidField), Is.EqualTo(1), "Gloas topics deliver to their handlers");
 
-        // A second activation must not double-subscribe.
-        router.ActivateGloasTopics();
+        // A second subscription must not double-subscribe.
+        router.SubscribeDigest(bpo1Digest);
         Assert.That(topics.Keys.Count(k => k == envelopeTopicBpo1), Is.EqualTo(1));
 
-        router.RotateDigest(bpo2Digest);
+        router.SubscribeDigest(bpo2Digest);
+        router.UnsubscribeDigest(bpo1Digest);
         string envelopeTopicBpo2 = GossipTopics.Topic(bpo2Digest, GossipTopics.ExecutionPayload);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topics[envelopeTopicBpo1].IsSubscribed, Is.False, "old Gloas topics are unsubscribed on rotation");
-            Assert.That(topics.Keys, Does.Contain(envelopeTopicBpo2), "Gloas topics rotate to the new digest automatically, not fixed at ActivateGloasTopics time");
+            Assert.That(topics.Keys, Does.Contain(envelopeTopicBpo2), "Gloas topics rotate to the new digest automatically");
         }
 
         // A distinct builder index, so the message differs from the BPO1 delivery and is not
         // suppressed as a duplicate of it (dedup keys on topic name + payload, not the digest).
-        topics[envelopeTopicBpo2].Deliver(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(CreateEnvelope(builderIndex: 4))));
+        topics[envelopeTopicBpo2].Deliver(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(PreGloasEnvelope(builderIndex: 4))));
         Assert.That((router.GetDropCount(GossipDropReason.InvalidField), envelopes), Is.EqualTo((2L, 0)), "the rotated Gloas topic still delivers");
     }
 
@@ -491,6 +488,13 @@ public partial class GossipRouterTests
 
         public MessageValidity Handle(SignedExecutionPayloadEnvelope envelope) =>
             Router.Handle(GossipTopics.ExecutionPayload, gloasTopic: true, Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(envelope)));
+    }
+
+    private static SignedExecutionPayloadEnvelope PreGloasEnvelope(ulong builderIndex = 3)
+    {
+        SignedExecutionPayloadEnvelope envelope = CreateEnvelope(builderIndex);
+        envelope.Message!.Payload!.SlotNumber = FirstGloasSlot - 1;
+        return envelope;
     }
 
     private static SignedExecutionPayloadEnvelope CreateEnvelope(ulong builderIndex = 3) => new()

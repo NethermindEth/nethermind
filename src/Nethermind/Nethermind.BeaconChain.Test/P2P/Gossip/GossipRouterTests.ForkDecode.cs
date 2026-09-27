@@ -25,7 +25,7 @@ public partial class GossipRouterTests
     private static readonly byte[] SepoliaGloasDigest = ForkDigest.Compute(Sepolia, Sepolia.GloasForkEpoch);
 
     [Test]
-    public void Block_is_raised_only_in_the_shape_of_its_topic_fork([Values] bool gloasTopic, [Values] bool gloasBlock)
+    public void Block_is_raised_only_in_the_shape_of_its_topic_fork([Values] bool gloasTopic, [Values] bool gloasBlock, [Values] bool viaStartDigestOverload)
     {
         GossipRouter router = CreateSepoliaRouter();
         List<ForkedSignedBeaconBlock> received = [];
@@ -34,7 +34,14 @@ public partial class GossipRouterTests
         byte[] digest = gloasTopic ? SepoliaGloasDigest : SepoliaFuluDigest;
         router.Start(id => topics[id] = new FakeTopic(), digest);
 
-        topics[GossipTopics.Topic(digest, GossipTopics.BeaconBlock)].Deliver(SepoliaBlockMessage(gloasBlock));
+        if (viaStartDigestOverload)
+        {
+            router.HandleBeaconBlock(SepoliaBlockMessage(gloasBlock));
+        }
+        else
+        {
+            topics[GossipTopics.Topic(digest, GossipTopics.BeaconBlock)].Deliver(SepoliaBlockMessage(gloasBlock));
+        }
 
         if (gloasTopic == gloasBlock)
         {
@@ -56,12 +63,14 @@ public partial class GossipRouterTests
         GossipRouter router = CreateSepoliaRouter();
         List<ForkedSignedBeaconBlock> received = [];
         router.BeaconBlockReceived += received.Add;
-        router.Start(_ => new FakeTopic(), SepoliaFuluDigest);
+        Dictionary<string, FakeTopic> topics = [];
+        router.Start(id => topics[id] = new FakeTopic(), SepoliaFuluDigest);
         Action<byte[]> fuluTopicHandler = router.HandlerFor(GossipTopics.BeaconBlock);
 
-        router.RotateDigest(SepoliaGloasDigest);
+        router.SubscribeDigest(SepoliaGloasDigest);
+        router.UnsubscribeDigest(SepoliaFuluDigest);
         fuluTopicHandler(SepoliaBlockMessage(gloas: false));
-        router.HandleBeaconBlock(SepoliaBlockMessage(gloas: true));
+        topics[GossipTopics.Topic(SepoliaGloasDigest, GossipTopics.BeaconBlock)].Deliver(SepoliaBlockMessage(gloas: true));
 
         Assert.That(received.Select(static b => b.GetType()), Is.EqualTo(new[] { typeof(ForkedSignedBeaconBlock.OfFulu), typeof(ForkedSignedBeaconBlock.OfGloas) }),
             "a Fulu-topic message delivered after rotation stays Fulu, and the current topic is Gloas");
