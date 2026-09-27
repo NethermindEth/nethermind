@@ -45,7 +45,7 @@ namespace Nethermind.Core.Caching;
 ///     <description>LruCache / ClockCache / AssociativeCache</description>
 ///   </listheader>
 ///   <item><term>Eviction scope</term><description>Global / Global / Within one 8-way set</description></item>
-///   <item><term>Read path</term><description>McsLock / bitmap update / lock-free seqlock read</description></item>
+///   <item><term>Read path</term><description>McsLock / bitmap update / lock-free seqlock read, spinning briefly on an in-flight write of a key with the same tag</description></item>
 ///   <item><term>Write path</term><description>McsLock / global lock / set-local gate</description></item>
 ///   <item><term>Capacity</term><description>Exact / Exact / Rounded to setCount × 8</description></item>
 ///   <item><term>Clear</term><description>O(n) zeroing / O(n) zeroing / O(1) epoch bump + optional O(n) reference release</description></item>
@@ -61,7 +61,7 @@ namespace Nethermind.Core.Caching;
 /// Use <see cref="ClockCache{TKey,TValue}"/> for value-type TValues (it uses an McsLock that
 /// makes reads and writes mutually exclusive, preventing tearing).</para>
 /// </summary>
-public sealed class AssociativeCache<TKey, TValue>
+public sealed partial class AssociativeCache<TKey, TValue>
     where TKey : struct, IHash64bit<TKey>
     where TValue : class?
 {
@@ -147,7 +147,7 @@ public sealed class AssociativeCache<TKey, TValue>
             ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
             long h1 = Volatile.Read(ref e.Header);
 
-            if ((h1 & (TagMask | LockMarker)) != expectedTag) continue;
+            if ((h1 & TagMask) != expectedTag) continue;
 
             // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
@@ -157,7 +157,11 @@ public sealed class AssociativeCache<TKey, TValue>
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e.Header);
-            if (h1 == h2 && storedKey.Equals(in key))
+            bool settled = (h1 & LockMarker) == 0 && h1 == h2;
+            SettleRead(ref e, expectedTag, ref settled, ref storedKey, ref storedValue);
+            if (!settled) continue;
+
+            if (storedKey.Equals(in key))
             {
                 // JIT eliminates this branch entirely per TRefreshTicker instantiation.
                 // Eviction age uses the high-resolution clock rather than a shared counter: a
@@ -233,7 +237,12 @@ public sealed class AssociativeCache<TKey, TValue>
                 {
                     if ((h & HashMask) == hashPart && e.Key.Equals(in key))
                     {
-                        WriteEntry(ref e, h, in key, val, tagToStore, Stopwatch.GetTimestamp());
+                        // Re-caching the stored instance, as lookups that cache every hit do, only refreshes the
+                        // ticker: locking the entry would make concurrent readers wait for an unchanged value.
+                        if (ReferenceEquals(e.Value, val))
+                            e.Ticker = Stopwatch.GetTimestamp();
+                        else
+                            WriteEntry(ref e, h, in key, val, tagToStore, Stopwatch.GetTimestamp());
                         return false;
                     }
                 }
@@ -426,6 +435,17 @@ public sealed class AssociativeCache<TKey, TValue>
 
         return Pick3RandomEvict(ta, tb, tc, a, b, c);
     }
+
+    /// <summary>
+    /// Re-reads an entry carrying <paramref name="expectedTag"/> that was locked or changed while its key and value
+    /// were copied, setting <paramref name="settled"/> when <paramref name="key"/> and <paramref name="value"/> then
+    /// hold a consistent copy.
+    /// </summary>
+    /// <remarks>
+    /// Implemented only for the host. The zkEVM guest runs single-threaded, so no entry is seen mid-write there, and
+    /// without an implementation the compiler drops the call along with its arguments.
+    /// </remarks>
+    static partial void SettleRead(ref Entry entry, long expectedTag, ref bool settled, ref TKey key, ref TValue? value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteEntry(ref Entry entry, long existing, in TKey key, TValue? value, long tagToStore, long ticker)
