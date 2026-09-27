@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Numerics;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain;
@@ -11,6 +13,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -4791,6 +4794,123 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <summary>A frame transaction has no <c>to</c> and creates nothing: prestateTracer has to record every
+    /// frame target and the payer, whose storage and fee charge it otherwise misses or crashes on.</summary>
+    [TestCase(FramePayer.Sender, false, 0)]
+    [TestCase(FramePayer.Sponsor, false, 0)]
+    [TestCase(FramePayer.CodelessSponsor, false, 0)]
+    [TestCase(FramePayer.Sender, true, 0)]
+    [TestCase(FramePayer.Sponsor, true, 0)]
+    [TestCase(FramePayer.CodelessSponsor, true, 0)]
+    [TestCase(FramePayer.Sender, true, 1)]
+    [TestCase(FramePayer.Sponsor, true, 1)]
+    [TestCase(FramePayer.CodelessSponsor, true, 1)]
+    public void Execute_FrameTxTracedWithPrestateTracer_RecordsFrameTargetsAndPayer(FramePayer framePayer, bool diffMode, int baseFeePerGas)
+    {
+        Address sponsor = TestItem.AddressF;
+        Address storageHelper = TestItem.AddressD;
+        DeployContract(Observer, Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        // CALLER is ENTRY_POINT in a DEFAULT frame, which only an opcode like this BALANCE touches.
+        DeployContract(storageHelper, Prepare.EvmCode
+            .Op(Instruction.CALLER).Op(Instruction.BALANCE).Op(Instruction.POP)
+            .PushData(1).Op(Instruction.SLOAD).Op(Instruction.POP)
+            .PushData(7).PushData(1).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+
+        Transaction tx;
+        if (framePayer != FramePayer.Sender)
+        {
+            DeploySmartSender(ApproveCode(FrameFlags.ApproveExecution));
+            // A codeless sponsor approves through the default code, which never enters the VM.
+            DeployContract(sponsor, framePayer == FramePayer.Sponsor ? ApproveCode(FrameFlags.ApprovePayment) : [], 1.Ether);
+            tx = FrameTx(nonce: 0,
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, sponsor, gasLimit: 200_000, UInt256.Zero, default),
+                Frame(FrameMode.Sender, target: Observer),
+                Frame(FrameMode.Default, target: storageHelper));
+        }
+        else
+        {
+            DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+            tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Default, target: storageHelper));
+        }
+
+        // Leaves a priority fee over the base fee, so the beneficiary is credited in every case.
+        tx.DecodedMaxFeePerGas = 2;
+        if (framePayer == FramePayer.CodelessSponsor)
+        {
+            tx.FrameSignatures =
+            [
+                new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0x01 }),
+                new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, sponsor, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
+            ];
+            SignCanonicalHash(tx, index: 1, TestItem.PrivateKeyF, sponsor);
+        }
+
+        Address payer = framePayer == FramePayer.Sender ? Sender : sponsor;
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = NativePrestateTracer.PrestateTracer,
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"diffMode":{{(diffMode ? "true" : "false")}}}""")
+        };
+
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, options, (UInt256)baseFeePerGas, out TxReceipt receipt);
+        JsonElement root = document.RootElement;
+        JsonElement pre = diffMode ? root.GetProperty("pre") : root;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pre.TryGetProperty(ContractAddress.From(Sender, 0).ToString(), out _), Is.False,
+                "a frame transaction creates no contract");
+            Assert.That(Balance(pre, payer.ToString()), Is.EqualTo((BigInteger)1.Ether), "the payer's balance before approval charged it");
+
+            if (diffMode)
+            {
+                JsonElement post = root.GetProperty("post");
+                Assert.That(Slot(post, Observer, 0), Is.EqualTo(Word(42)));
+                Assert.That(Slot(post, storageHelper, 1), Is.EqualTo(Word(7)));
+
+                // An account missing from pre was created at zero; one missing from post, or without a post
+                // balance, kept its pre balance.
+                BigInteger balanceDelta = 0;
+                foreach (JsonProperty account in pre.EnumerateObject())
+                {
+                    if (!post.TryGetProperty(account.Name, out JsonElement after) || !after.TryGetProperty("balance", out _)) continue;
+                    balanceDelta += Balance(post, account.Name) - Balance(pre, account.Name);
+                }
+
+                foreach (JsonProperty account in post.EnumerateObject())
+                {
+                    if (!pre.TryGetProperty(account.Name, out _) && account.Value.TryGetProperty("balance", out _))
+                        balanceDelta += Balance(post, account.Name);
+                }
+
+                BigInteger burnt = (BigInteger)baseFeePerGas * receipt.GasUsed;
+                Assert.That(balanceDelta, Is.EqualTo(-burnt), "the payer's debit has to balance the beneficiary's credit and the burn");
+            }
+            else
+            {
+                Assert.That(Slot(pre, Observer, 0), Is.EqualTo(Word(0)));
+                Assert.That(Slot(pre, storageHelper, 1), Is.EqualTo(Word(0)));
+                Assert.That(pre.TryGetProperty(Beneficiary.ToString(), out _), Is.True);
+                Assert.That(pre.TryGetProperty(Eip8141Constants.EntryPointAddress.ToString(), out _), Is.True);
+            }
+        }
+
+        static BigInteger Balance(JsonElement state, string address) =>
+            BigInteger.Parse("0" + state.GetProperty(address).GetProperty("balance").GetString()![2..], NumberStyles.AllowHexSpecifier);
+        static string? Slot(JsonElement state, Address address, int slot) =>
+            state.GetProperty(address.ToString()).GetProperty("storage").GetProperty(Word(slot)).GetString();
+        static string Word(int value) => "0x" + value.ToString("x64");
+    }
+
+    public enum FramePayer
+    {
+        Sender,
+        Sponsor,
+        CodelessSponsor
+    }
+
     /// <summary>The pre-dispatch exits of <c>ExecuteFrame</c>, each of which ends a frame without entering the VM.</summary>
     public enum PreDispatchExit
     {
@@ -4867,12 +4987,14 @@ public class FrameTxProcessorTests
 
     /// <summary>Runs <paramref name="tx"/> under <c>callTracer</c> through the chain the tracing RPCs build —
     /// the receipts tracer over the cancellable native block tracer — and returns the serialized trace.</summary>
-    private JsonDocument TraceThroughReceiptsTracer(Transaction tx)
+    private JsonDocument TraceThroughReceiptsTracer(Transaction tx) =>
+        TraceThroughReceiptsTracer(tx, GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer }, baseFeePerGas: 0, out _);
+
+    private JsonDocument TraceThroughReceiptsTracer(Transaction tx, GethTraceOptions options, UInt256 baseFeePerGas, out TxReceipt receipt)
     {
-        GethTraceOptions options = GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer };
         (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
         Block block = Build.A.Block.WithNumber(1)
-            .WithBaseFeePerGas(0)
+            .WithBaseFeePerGas(baseFeePerGas)
             .WithBeneficiary(Beneficiary)
             .WithTransactions(tx)
             .WithGasLimit(30_000_000).TestObject;
@@ -4886,6 +5008,7 @@ public class FrameTxProcessorTests
         Assert.That(tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), receiptsTracer).TransactionExecuted, Is.True);
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
+        receipt = receiptsTracer.TxReceipts[0];
 
         using GethLikeTxTrace trace = blockTracer.BuildResult().Single();
         return JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions));

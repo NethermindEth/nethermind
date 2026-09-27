@@ -42,7 +42,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         Hash256? txHash,
         Address? from,
         Address? to = null,
-        Address? beneficiary = null)
+        Address? beneficiary = null,
+        TxFrame[]? frames = null)
         : base(options)
     {
         IsTracingActions = true;
@@ -64,8 +65,20 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         }
 
         LookupAccount(from!);
-        LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
+        if (frames is null)
+            LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
+        else
+            LookupFrameAccounts(from, frames);
         LookupAccount(beneficiary ?? Address.Zero);
+    }
+
+    /// <summary>Records the accounts an EIP-8141 transaction's frames touch before the VM reports anything.</summary>
+    /// <remarks>A frame transaction creates no contract. The payer, always a frame target, is charged at approval,
+    /// which default code performs without entering the VM, so every frame target is read up front.</remarks>
+    private void LookupFrameAccounts(Address sender, TxFrame[] frames)
+    {
+        foreach (TxFrame frame in frames)
+            LookupAccount(frame.Target ?? sender);
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();
