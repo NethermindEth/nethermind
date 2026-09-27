@@ -95,10 +95,8 @@ public partial class EngineModuleTests
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
 
-        // Deliver the empty block with a censoring IL → newPayloadV6 retains inclusionListSatisfied=false.
-        Transaction censoredTx = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
-            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        // Deliver the empty block with a censoring IL → newPayloadV6 caches inclusionListSatisfied=false.
+        Transaction censoredTx = CreateCensoredInclusionListTx();
         ResultWrapper<PayloadStatusV2> np = await rpc.engine_newPayloadV6(
             emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, [Rlp.Encode(censoredTx).Bytes]);
         Assert.That(np.Data.InclusionListSatisfied, Is.False);
@@ -129,14 +127,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 emptyPayload = baselinePayload.Data!.ExecutionPayload;
 
         // Censored tx: a normal transfer that fits in the empty payload → IL unsatisfied.
-        Transaction censoredTx = Build.A.Transaction
-            .WithNonce(0)
-            .WithMaxFeePerGas(10.GWei)
-            .WithMaxPriorityFeePerGas(2.GWei)
-            .WithGasLimit(100_000)
-            .WithTo(TestItem.AddressA)
-            .SignedAndResolved(TestItem.PrivateKeyB)
-            .TestObject;
+        Transaction censoredTx = CreateCensoredInclusionListTx();
         byte[][] inclusionList = [Rlp.Encode(censoredTx).Bytes];
 
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
@@ -182,14 +173,7 @@ public partial class EngineModuleTests
         }
 
         // Same block hash, different IL: the cached VALID must not short-circuit the IL check.
-        Transaction censoredTx = Build.A.Transaction
-            .WithNonce(0)
-            .WithMaxFeePerGas(10.GWei)
-            .WithMaxPriorityFeePerGas(2.GWei)
-            .WithGasLimit(100_000)
-            .WithTo(TestItem.AddressA)
-            .SignedAndResolved(TestItem.PrivateKeyB)
-            .TestObject;
+        Transaction censoredTx = CreateCensoredInclusionListTx();
         ResultWrapper<PayloadStatusV2> second = await rpc.engine_newPayloadV6(
             emptyPayload,
             blobVersionedHashes: [],
@@ -203,9 +187,8 @@ public partial class EngineModuleTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task ForkchoiceUpdatedV5_reports_compliance_for_latest_retained_inclusion_list(bool emptyListLast)
+    [Test]
+    public async Task ForkchoiceUpdatedV5_reports_the_latest_inclusion_list_verdict([Values] bool emptyListLast)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -218,9 +201,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
         byte[][]? executionRequests = payloadResult.Data!.ExecutionRequests;
 
-        Transaction censoredTx = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
-            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction censoredTx = CreateCensoredInclusionListTx();
         byte[][] censoringIl = [Rlp.Encode(censoredTx).Bytes];
         byte[][] emptyIl = [];
 
@@ -279,9 +260,7 @@ public partial class EngineModuleTests
 
         // Without state the same hash with a different IL is SYNCING and must drop the retained verdict.
         hasState = false;
-        Transaction censoredTx = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
-            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction censoredTx = CreateCensoredInclusionListTx();
         ResultWrapper<PayloadStatusV2> syncing = await rpc.engine_newPayloadV6(
             emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, [Rlp.Encode(censoredTx).Bytes]);
         Assert.That(syncing.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
@@ -861,6 +840,12 @@ public partial class EngineModuleTests
             new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
         return payload;
     }
+
+    // A transfer that fits in an empty Bogota payload, so an inclusion list containing it is unsatisfied.
+    private static Transaction CreateCensoredInclusionListTx() =>
+        Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
 
     private PayloadAttributes BuildBogotaPayloadAttributes(byte[][] inclusionList, ulong targetGasLimit = 30_000_000UL, ulong? timestamp = null, ulong slotNumber = 1) => new()
     {
