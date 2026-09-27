@@ -15,7 +15,7 @@ using Log = Nethermind.Facade.Proxy.Models.Simulate.Log;
 
 namespace Nethermind.Facade.Simulate;
 
-public sealed class SimulateTxTracer : TxTracer
+public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
 {
     private readonly Hash256 _currentBlockHash;
     private readonly ulong _currentBlockNumber;
@@ -25,6 +25,7 @@ public sealed class SimulateTxTracer : TxTracer
     private readonly List<LogEntry> _logs;
     private readonly Transaction _tx;
     private readonly bool _isTracingTransfers;
+    private bool _hasFrameReceipts;
 
     public SimulateTxTracer(
         bool isTracingTransfers,
@@ -79,24 +80,25 @@ public sealed class SimulateTxTracer : TxTracer
         _logs.Add(log);
     }
 
+    /// <inheritdoc/>
+    void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
+    {
+        // The validation-prefix simulation reports an empty set, which pins no frame's outcome.
+        if (frameReceipts.Length == 0) return;
+
+        // Logs are reported as emitted, so a frame a later rollback unrolled would leak its own.
+        _hasFrameReceipts = true;
+        _logs.Clear();
+        _logs.AddRange(TxFrameReceipt.ConcatLogs(frameReceipts));
+    }
+
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
     {
         GasUsed = gasSpent.SpentGas,
         MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
         ReturnData = output,
         Status = StatusCode.Success,
-        Logs = _logs.Select((entry, i) => new Log
-        {
-            Address = entry.Address,
-            Topics = entry.Topics,
-            Data = entry.Data,
-            LogIndex = _logIndexStart + (ulong)i,
-            TransactionHash = _tx.Hash!,
-            TransactionIndex = _txIndex,
-            BlockHash = _currentBlockHash,
-            BlockNumber = _currentBlockNumber,
-            BlockTimestamp = _currentBlockTimestamp
-        }).ToList()
+        Logs = BuildLogs()
     };
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
@@ -110,8 +112,23 @@ public sealed class SimulateTxTracer : TxTracer
             Data = output
         },
         ReturnData = [],
-        Status = StatusCode.Failure
+        Status = StatusCode.Failure,
+        // A failed frame transaction keeps the logs of the frames that committed, as its receipt does.
+        Logs = _hasFrameReceipts ? BuildLogs() : []
     };
+
+    private List<Log> BuildLogs() => _logs.Select((entry, i) => new Log
+    {
+        Address = entry.Address,
+        Topics = entry.Topics,
+        Data = entry.Data,
+        LogIndex = _logIndexStart + (ulong)i,
+        TransactionHash = _tx.Hash!,
+        TransactionIndex = _txIndex,
+        BlockHash = _currentBlockHash,
+        BlockNumber = _currentBlockNumber,
+        BlockTimestamp = _currentBlockTimestamp
+    }).ToList();
 
     private EvmExceptionType _exceptionType = EvmExceptionType.None;
 

@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -25,6 +26,8 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -4791,6 +4794,101 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <summary>The tracer outputs that carry a frame transaction's transaction-level status.</summary>
+    public enum FrameTxStatusConsumer
+    {
+        CallTracer,
+        StructLogger,
+        JavaScriptTracer,
+        Simulate
+    }
+
+    /// <summary>The processor marks every included frame transaction successful, so a tracer has to be given the
+    /// status the receipt derives from the frames, and simulate the receipt's logs rather than those emitted by a
+    /// frame an atomic batch later unrolled.</summary>
+    [TestCase(FrameTxStatusConsumer.CallTracer, true)]
+    [TestCase(FrameTxStatusConsumer.CallTracer, false)]
+    [TestCase(FrameTxStatusConsumer.StructLogger, true)]
+    [TestCase(FrameTxStatusConsumer.StructLogger, false)]
+    [TestCase(FrameTxStatusConsumer.JavaScriptTracer, true)]
+    [TestCase(FrameTxStatusConsumer.JavaScriptTracer, false)]
+    [TestCase(FrameTxStatusConsumer.Simulate, true)]
+    [TestCase(FrameTxStatusConsumer.Simulate, false)]
+    public void Execute_FrameTxTracedThroughTheReceiptsTracer_ReportsTheReceiptStatus(FrameTxStatusConsumer consumer, bool batchFails)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, LogEmitter(7));
+        DeployContract(Observer, batchFails
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
+            Frame(FrameMode.Sender, target: Observer),
+            Frame(FrameMode.Default, target: Recipient));
+        tx.Hash = tx.CalculateHash();
+
+        (bool failed, int? logCount, TxReceipt receipt) = TraceStatus(tx, consumer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(batchFails ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(receipt.Logs, Has.Length.EqualTo(batchFails ? 1 : 2), "an unrolled frame's log leaves the receipt");
+            Assert.That(failed, Is.EqualTo(batchFails), "the traced status must be the receipt's");
+            if (logCount is not null)
+            {
+                Assert.That(logCount, Is.EqualTo(receipt.Logs!.Length), "the simulated logs must be the receipt's");
+            }
+        }
+    }
+
+    /// <summary>Runs <paramref name="tx"/> through the receipts tracer under <paramref name="consumer"/>,
+    /// returning whether it reported a failure, the logs it reported when it reports any, and the receipt.</summary>
+    private (bool Failed, int? LogCount, TxReceipt Receipt) TraceStatus(Transaction tx, FrameTxStatusConsumer consumer)
+    {
+        switch (consumer)
+        {
+            case FrameTxStatusConsumer.CallTracer:
+                {
+                    using JsonDocument document = TraceThroughReceiptsTracer(tx, out TxReceipt receipt);
+                    return (document.RootElement.TryGetProperty("error", out _), null, receipt);
+                }
+            case FrameTxStatusConsumer.StructLogger:
+                {
+                    GethLikeBlockMemoryTracer blockTracer = new(GethTraceOptions.Default);
+                    TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+                    using GethLikeTxTrace trace = blockTracer.BuildResult().Single();
+                    return (trace.Failed, null, receipt);
+                }
+            case FrameTxStatusConsumer.JavaScriptTracer:
+                {
+                    GethTraceOptions options = GethTraceOptions.Default with
+                    {
+                        Tracer = "{ step: function(log, db) { }, fault: function(log, db) { }, result: function(ctx, db) { return ctx.error !== undefined; } }"
+                    };
+                    GethLikeBlockJavaScriptTracer? blockTracer = null;
+                    try
+                    {
+                        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, state => blockTracer = new GethLikeBlockJavaScriptTracer(state, Spec, options));
+                        using GethLikeTxTrace trace = blockTracer!.BuildResult().Single();
+                        return (JsonSerializer.Serialize(trace.CustomTracerResult?.Value) == "true", null, receipt);
+                    }
+                    finally
+                    {
+                        blockTracer?.Dispose();
+                    }
+                }
+            default:
+                {
+                    SimulateBlockTracer blockTracer = new(isTracingLogs: false, _specProvider);
+                    TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+                    SimulateCallResult result = blockTracer.BuildResult().Single();
+                    return (result.Status == StatusCode.Failure, result.Logs.Count, receipt);
+                }
+        }
+    }
+
     /// <summary>The pre-dispatch exits of <c>ExecuteFrame</c>, each of which ends a frame without entering the VM.</summary>
     public enum PreDispatchExit
     {
@@ -4867,9 +4965,23 @@ public class FrameTxProcessorTests
 
     /// <summary>Runs <paramref name="tx"/> under <c>callTracer</c> through the chain the tracing RPCs build —
     /// the receipts tracer over the cancellable native block tracer — and returns the serialized trace.</summary>
-    private JsonDocument TraceThroughReceiptsTracer(Transaction tx)
+    private JsonDocument TraceThroughReceiptsTracer(Transaction tx) => TraceThroughReceiptsTracer(tx, out _);
+
+    private JsonDocument TraceThroughReceiptsTracer(Transaction tx, out TxReceipt receipt)
     {
         GethTraceOptions options = GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer };
+        GethLikeBlockNativeTracer? blockTracer = null;
+        receipt = ProcessThroughReceiptsTracer(tx, tracedState => blockTracer = new GethLikeBlockNativeTracer(txHash: null,
+            (b, t) => GethLikeNativeTracerFactory.CreateTracer(options, b, t, tracedState, Spec)));
+
+        using GethLikeTxTrace trace = blockTracer!.BuildResult().Single();
+        return JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions));
+    }
+
+    /// <summary>Runs <paramref name="tx"/> through the receipts tracer over the cancellable block tracer
+    /// <paramref name="createBlockTracer"/> builds on the traced state, and returns the built receipt.</summary>
+    private TxReceipt ProcessThroughReceiptsTracer(Transaction tx, Func<IWorldState, IBlockTracer> createBlockTracer)
+    {
         (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(0)
@@ -4877,18 +4989,14 @@ public class FrameTxProcessorTests
             .WithTransactions(tx)
             .WithGasLimit(30_000_000).TestObject;
 
-        GethLikeBlockNativeTracer blockTracer = new(txHash: null,
-            (b, t) => GethLikeNativeTracerFactory.CreateTracer(options, b, t, tracedState, Spec));
         BlockReceiptsTracer receiptsTracer = new();
-        receiptsTracer.SetOtherTracer(blockTracer.WithCancellation(CancellationToken.None));
+        receiptsTracer.SetOtherTracer(createBlockTracer(tracedState).WithCancellation(CancellationToken.None));
         receiptsTracer.StartNewBlockTrace(block);
         receiptsTracer.StartNewTxTrace(tx);
         Assert.That(tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), receiptsTracer).TransactionExecuted, Is.True);
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
-
-        using GethLikeTxTrace trace = blockTracer.BuildResult().Single();
-        return JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions));
+        return receiptsTracer.LastReceipt;
     }
 
     /// <summary>A <c>callTracer</c> that also keeps the per-frame receipts, so a test can hold the trace
