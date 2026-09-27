@@ -21,8 +21,9 @@ namespace Nethermind.Merge.Plugin;
 /// heights finalize together, so the gap is walked; the first finalization after start credits only its own
 /// block, not the history behind it. The watermark advances per credited block, so a failure mid-gap resumes
 /// after the last block credited instead of crediting it twice. The walk runs on the forkchoice thread, so a gap longer
-/// than <see cref="MaxBlocksPerFinalization"/>, such as after the consensus client was offline, credits only its
-/// latest blocks; skipping older ones only withholds width and never grants any. Senders come from the frame transaction's own
+/// than <see cref="MaxBlocksPerFinalization"/> credits only its latest blocks. Such a gap follows an offline consensus
+/// client, and also any stretch of three epochs or more without finality while the consensus client stays online;
+/// in both cases the older blocks are skipped and logged. Skipping only withholds width and never grants any. Senders come from the frame transaction's own
 /// <c>sender</c> field, so receipts are read without signature recovery. Inert unless the pool holds a width ledger and
 /// <see cref="ITxPoolConfig.FrameTxWidthEnabled"/> is set.
 /// </remarks>
@@ -58,7 +59,9 @@ public class FrameTxWidthFinalizer : IDisposable
             ulong from = _seenFinalization ? _lastFinalizedBlock + 1 : finalized;
             if (from <= finalized && finalized - from >= MaxBlocksPerFinalization)
             {
-                from = finalized - MaxBlocksPerFinalization + 1;
+                ulong skippedTo = finalized - MaxBlocksPerFinalization;
+                if (_logger.IsInfo) _logger.Info($"Skipped MATCHA width for finalized blocks {from}..{skippedTo}: the gap exceeds {MaxBlocksPerFinalization} blocks");
+                from = skippedTo + 1;
             }
 
             for (ulong number = from; number <= finalized; number++)

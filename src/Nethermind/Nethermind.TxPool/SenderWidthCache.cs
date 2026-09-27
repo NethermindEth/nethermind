@@ -17,9 +17,12 @@ namespace Nethermind.TxPool;
 /// Spent width is never returned: inclusion, invalidation, removal, expiry, or reorg do not credit it back,
 /// which is what bounds repeated mass invalidation (EIP-8141 MATCHA policy). A sender leaves the ledger when
 /// its width drains to zero. Finalized senders that never spend would otherwise accumulate for the life of
-/// the process, so the ledger holds at most <c>maxSenders</c> and, to admit a new earner, evicts the smallest
-/// balance among a bounded sample, so flooding the ledger with cheap senders displaces cheap senders first. Eviction only ever removes width, never grants it, so the bound fails safe: an evicted sender
-/// falls back to its free baseline. New earnings stop at the caller's cap and otherwise saturate at
+/// the process, so the ledger holds at most <c>maxSenders</c>. To admit a new earner into a full ledger it
+/// samples a bounded window that rotates through the whole ledger, and replaces the window's smallest balance
+/// only when the newcomer's balance exceeds it, so flooding the ledger with cheap senders never displaces a
+/// larger balance. Eviction only ever removes width, never grants it, so the bound fails safe: an evicted or
+/// refused sender falls back to its free baseline. Credits come from the single finalization thread, which is
+/// the only user of the rotating window. New earnings stop at the caller's cap and otherwise saturate at
 /// <see cref="UInt256.MaxValue"/> rather than wrapping; a cap lowered later never shrinks a balance already earned.
 /// </remarks>
 internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.DefaultMaxSenders)
@@ -29,6 +32,7 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
 
     private readonly ConcurrentDictionary<AddressAsKey, UInt256> _width = new();
     private int _count;
+    private IEnumerator<KeyValuePair<AddressAsKey, UInt256>>? _evictionWindow;
 
     public int Count => Volatile.Read(ref _count);
 
@@ -99,7 +103,7 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
             else
             {
                 UInt256 seeded = capped && amount > widthCap ? widthCap : amount;
-                if (Count >= maxSenders) EvictSmallestSampled();
+                if (Count >= maxSenders && !TryEvictFor(seeded)) return;
                 if (_width.TryAdd(sender, seeded))
                 {
                     Interlocked.Increment(ref _count);
@@ -110,32 +114,48 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
         }
     }
 
-    private void EvictSmallestSampled()
+    private bool TryEvictFor(in UInt256 newcomer)
     {
         KeyValuePair<AddressAsKey, UInt256> victim = default;
         bool found = false;
+        bool restarted = false;
         int sampled = 0;
-        foreach (KeyValuePair<AddressAsKey, UInt256> entry in _width)
+        while (sampled < EvictionSample)
         {
+            _evictionWindow ??= _width.GetEnumerator();
+            if (!_evictionWindow.MoveNext())
+            {
+                _evictionWindow.Dispose();
+                _evictionWindow = null;
+                if (restarted) break;
+                restarted = true;
+                continue;
+            }
+
+            KeyValuePair<AddressAsKey, UInt256> entry = _evictionWindow.Current;
             if (!found || entry.Value < victim.Value)
             {
                 victim = entry;
                 found = true;
             }
 
-            if (++sampled == EvictionSample) break;
+            sampled++;
         }
 
-        if (found && RemoveTracked(victim.Key, victim.Value)) return;
+        if (!found) return true;
+        if (newcomer <= victim.Value) return false;
+        if (RemoveTracked(victim.Key, victim.Value)) return true;
 
         foreach (KeyValuePair<AddressAsKey, UInt256> entry in _width)
         {
             if (_width.TryRemove(entry.Key, out _))
             {
                 Untrack();
-                return;
+                return true;
             }
         }
+
+        return true;
     }
 
     private void Untrack()

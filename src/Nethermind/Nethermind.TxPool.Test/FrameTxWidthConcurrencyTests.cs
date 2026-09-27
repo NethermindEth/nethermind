@@ -3,6 +3,8 @@
 
 #nullable enable
 
+using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -73,12 +75,12 @@ public class FrameTxWidthConcurrencyTests
         cache.Earn(Sender, Cost);
         cache.Earn(new Address(new byte[20] { 0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }), Cost);
 
-        cache.Earn(newcomer, Cost);
+        cache.Earn(newcomer, 2 * Cost);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(cache.Count, Is.EqualTo(2));
-            Assert.That(cache.GetWidth(newcomer), Is.EqualTo((UInt256)Cost));
+            Assert.That(cache.GetWidth(newcomer), Is.EqualTo((UInt256)(2 * Cost)));
         }
     }
 
@@ -88,17 +90,66 @@ public class FrameTxWidthConcurrencyTests
         Address small = new(new byte[20] { 0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
         Address newcomer = new(new byte[20] { 0xa3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
         SenderWidthCache cache = new(maxSenders: 2);
-        cache.Earn(Sender, 2 * Cost);
+        cache.Earn(Sender, 3 * Cost);
         cache.Earn(small, Cost);
 
-        cache.Earn(newcomer, Cost);
+        cache.Earn(newcomer, 2 * Cost);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(cache.Count, Is.EqualTo(2));
-            Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)(2 * Cost)));
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)(3 * Cost)));
             Assert.That(cache.GetWidth(small), Is.EqualTo(UInt256.Zero));
+            Assert.That(cache.GetWidth(newcomer), Is.EqualTo((UInt256)(2 * Cost)));
         }
+    }
+
+    [TestCase(1ul)]
+    [TestCase(Cost)]
+    public void FullLedger_RefusesANewcomerNoRicherThanTheSmallestBalance(ulong newcomerGas)
+    {
+        Address other = new(new byte[20] { 0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        Address newcomer = new(new byte[20] { 0xa3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        SenderWidthCache cache = new(maxSenders: 2);
+        cache.Earn(Sender, Cost);
+        cache.Earn(other, Cost);
+
+        cache.Earn(newcomer, newcomerGas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.GetWidth(newcomer), Is.EqualTo(UInt256.Zero));
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)Cost));
+            Assert.That(cache.GetWidth(other), Is.EqualTo((UInt256)Cost));
+        }
+    }
+
+    [Test]
+    public void FullLedger_EvictionReachesEverySender()
+    {
+        const int capacity = 256;
+        SenderWidthCache cache = new(maxSenders: capacity);
+        Address[] incumbents = new Address[capacity];
+        for (int i = 0; i < capacity; i++)
+        {
+            incumbents[i] = SenderAt(i);
+            cache.Earn(incumbents[i], Cost);
+        }
+
+        for (int i = 0; i < 4 * capacity; i++)
+        {
+            cache.Earn(SenderAt(capacity + i), 2 * Cost);
+        }
+
+        Assert.That(incumbents.Where(a => !cache.GetWidth(a).IsZero), Is.Empty);
+    }
+
+    private static Address SenderAt(int index)
+    {
+        byte[] bytes = new byte[20];
+        BitConverter.GetBytes(index + 1).CopyTo(bytes, 0);
+        bytes[19] = 0xb0;
+        return new Address(bytes);
     }
 
     [Test]
