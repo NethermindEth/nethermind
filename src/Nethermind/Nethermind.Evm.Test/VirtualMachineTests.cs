@@ -16,6 +16,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Crypto;
@@ -1855,6 +1856,39 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.CancunActivation, bytecode);
 
         Assert.That(receipt.Error, Is.Null);
+    }
+
+    private static IEnumerable<TestCaseData> ZeroLengthMemoryRangeAtMaxOffsetCases()
+    {
+        yield return new TestCaseData(Prepare.EvmCode.KECCAK256(UInt256.MaxValue, 0).STOP().Done, StatusCode.Success)
+            .SetName("Zero_length_KECCAK256_ignores_its_offset");
+        yield return new TestCaseData(Prepare.EvmCode.LOGx(0, UInt256.MaxValue, 0).STOP().Done, StatusCode.Success)
+            .SetName("Zero_length_LOG0_ignores_its_offset");
+        yield return new TestCaseData(Prepare.EvmCode.RETURN(UInt256.MaxValue, 0).Done, StatusCode.Success)
+            .SetName("Zero_length_RETURN_ignores_its_offset");
+        yield return new TestCaseData(Prepare.EvmCode.REVERT(UInt256.MaxValue, 0).Done, StatusCode.Failure)
+            .SetName("Zero_length_REVERT_ignores_its_offset");
+        yield return new TestCaseData(
+                Prepare.EvmCode.CALL(50_000, TestItem.AddressC, 0, UInt256.MaxValue, 0, UInt256.MaxValue, 0).STOP().Done,
+                StatusCode.Success)
+            .SetName("Zero_length_CALL_input_and_output_ignore_their_offsets");
+        yield return new TestCaseData(
+                Prepare.EvmCode.STATICCALL(50_000, IdentityPrecompile.Address, UInt256.MaxValue, 0, UInt256.MaxValue, 0).STOP().Done,
+                StatusCode.Success)
+            .SetName("Zero_length_precompile_STATICCALL_input_and_output_ignore_their_offsets");
+    }
+
+    [TestCaseSource(nameof(ZeroLengthMemoryRangeAtMaxOffsetCases))]
+    public void Zero_length_memory_range_ignores_its_offset(byte[] code, byte expectedStatus)
+    {
+        CallOutputTracer untraced = Execute(new CallOutputTracer(), code, MainnetSpecProvider.CancunActivation);
+        TestAllTracerWithOutput traced = Execute(new TestAllTracerWithOutput(), code, MainnetSpecProvider.CancunActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(untraced.StatusCode, Is.EqualTo(expectedStatus), "the untraced run takes the inline fast paths");
+            Assert.That(traced.StatusCode, Is.EqualTo(expectedStatus), "the traced run creates full call frames");
+        }
     }
 
     [Test]
