@@ -52,6 +52,8 @@ public class FrameTxFloodMeasurement
 {
     private const long BlockGasLimit = 30_000_000;
 
+    private const ulong MatchedDeclaredVerifyGasPerSecond = 30_000_000;
+
     /// <summary>Transfer count chosen to keep the baseline CPU-bound and below a full block.</summary>
     private const int TransfersPerBlock = 200;
 
@@ -228,7 +230,7 @@ public class FrameTxFloodMeasurement
         int Shed,
         List<double> ProcessMicros)
     {
-        /// <summary>The rate that actually reached the simulator, excluding shed submissions.</summary>
+        /// <summary>The submission rate not shed at admission; these transactions may still be rejected before EVM simulation.</summary>
         public double AdmittedRate => Submitted > 0 ? AchievedRate * (Submitted - Shed) / Submitted : 0;
     }
 
@@ -336,6 +338,68 @@ public class FrameTxFloodMeasurement
                     $"the generator delivered {outcome.AchievedRate:F1} tx/s against {offeredRate} offered, too far "
                     + "below the label for this row to describe a flood at that rate");
             }
+        }
+    }
+
+    /// <summary>Compares ceilings under a signature-stuffed flood at approximately 30M declared VERIFY gas/s.</summary>
+    [TestCaseSource(nameof(CeilingCases))]
+    public async Task Block_production_delay_at_matched_declared_verify_gas_per_second(ulong ceiling)
+    {
+        SkipUnlessSingleCore();
+        await BuildChain("signature-stuffed", ceiling);
+
+        ulong declaredGasPerTransaction = FrameTxValidation.ValidationWorkGas(FloodFrameTx(0));
+        int offeredRate = (int)Math.Round(
+            (double)MatchedDeclaredVerifyGasPerSecond / declaredGasPerTransaction,
+            MidpointRounding.AwayFromZero);
+        double offeredDeclaredGasPerSecond = offeredRate * (double)declaredGasPerTransaction;
+
+        List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
+        FloodOutcome outcome = MeasureUnderFlood(offeredRate, RejectionCounterFor("signature-stuffed"));
+        List<double> baselineAfter = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
+
+        double baselineP50 = Percentile(baseline, 0.50);
+        double floodP50 = Percentile(outcome.ProcessMicros, 0.50);
+        double baselineDriftPct = baselineP50 <= 0
+            ? 0
+            : Math.Abs(Percentile(baselineAfter, 0.50) - baselineP50) / baselineP50 * 100;
+        double signatureRejectedRate = outcome.Submitted > 0
+            ? outcome.AchievedRate * outcome.Rejected / outcome.Submitted
+            : 0;
+        double signatureRejectedDeclaredGasPerSecond = signatureRejectedRate * declaredGasPerTransaction;
+        bool matchedWorkReached = signatureRejectedRate >= offeredRate * RateHeldFloor;
+        bool baselineValid = baselineDriftPct < MaxBaselineDriftPercent;
+        bool valid = matchedWorkReached && baselineValid;
+
+        Emit($"case=matched_declared_verify_gas_rate shape=signature-stuffed ceiling={ceiling} "
+             + $"target_declared_gas_per_s={MatchedDeclaredVerifyGasPerSecond} "
+             + $"declared_gas_per_tx={declaredGasPerTransaction} offered_rate={offeredRate} "
+             + $"offered_declared_gas_per_s={offeredDeclaredGasPerSecond:F0} "
+             + $"achieved_submission_rate={outcome.AchievedRate:F1} signature_rejected_rate={signatureRejectedRate:F1} "
+             + $"signature_rejected_declared_gas_per_s={signatureRejectedDeclaredGasPerSecond:F0} "
+             + $"matched_work_reached={(matchedWorkReached ? "yes" : "no")} "
+             + $"submitted={outcome.Submitted} signature_rejected={outcome.Rejected} shed={outcome.Shed} "
+             + $"baseline_p50_us={baselineP50:F1} flood_p50_us={floodP50:F1} "
+             + $"delta_p50_us={floodP50 - baselineP50:F1} baseline_drift_pct={baselineDriftPct:F1} "
+             + $"baseline_valid={(baselineValid ? "yes" : "no")} valid={(valid ? "yes" : "no")} {CpuFields}");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Math.Abs(offeredDeclaredGasPerSecond - MatchedDeclaredVerifyGasPerSecond)
+                        / MatchedDeclaredVerifyGasPerSecond, Is.LessThan(0.01),
+                "the integer transaction rate does not approximate the target declared VERIFY gas/s closely enough");
+            Assert.That(outcome.ProcessMicros, Has.Count.GreaterThan(10),
+                "too few production passes to compare the matched-work flood with its baseline");
+            Assert.That(outcome.Submitted, Is.GreaterThan(10),
+                "the generator barely ran, so this is not a useful matched-work comparison");
+            Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
+                "flood transactions went missing instead of being simulated or shed");
+            Assert.That(outcome.AchievedRate, Is.GreaterThan(offeredRate * MinDeliveredRateFloor),
+                "the generator delivered less than 25% of its offered rate, so this row cannot represent the requested load");
+            Assert.That(matchedWorkReached, Is.True,
+                "the signature-stuffed rejection rate did not reach 95% of the matched declared VERIFY gas/s target");
+            Assert.That(baselineDriftPct, Is.LessThan(BrokenBaselineDriftPercent),
+                "the bracketing idle baselines' medians disagree too much for a valid comparison");
         }
     }
 

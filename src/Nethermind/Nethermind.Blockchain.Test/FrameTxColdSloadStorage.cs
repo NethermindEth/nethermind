@@ -139,8 +139,7 @@ internal sealed class SloadCountingTracer : TxTracer
 }
 
 /// <summary>
-/// Page-cache and device-read accounting, so a row that silently measured a warm cache is visible as such
-/// rather than being mistaken for a device read.
+/// Process-wide I/O diagnostics and requested page-cache eviction for the storage harnesses.
 /// </summary>
 internal static class StorageResidency
 {
@@ -157,8 +156,8 @@ internal static class StorageResidency
     public static void SyncAll() => sync();
 
     /// <summary>
-    /// Bytes this process caused to be fetched from the storage layer, which is what separates a device read
-    /// from a page-cache hit. Page-cache hits do not move it.
+    /// Process-wide bytes read from storage, including activity from every process thread. This counter cannot
+    /// attribute reads to the timed prefix or distinguish its cache misses from background RocksDB I/O.
     /// </summary>
     public static long ProcessReadBytes()
     {
@@ -198,9 +197,8 @@ internal static class StorageResidency
     }
 
     /// <summary>
-    /// The file system the database sits on, so a row can be read for what it is. A harness whose temp
-    /// directory is <c>tmpfs</c> has no block device under it at all, and no rung it reports can reach one
-    /// however the caches are arranged. Set <c>TMPDIR</c> to a disk-backed directory to change that.
+    /// The file-system type containing the database, for context. It does not establish device access by an
+    /// individual database lookup.
     /// </summary>
     /// <remarks>The deepest mount point <paramref name="path"/> sits under wins, so a bind mount inside the
     /// temp directory is reported rather than the file system it was carved out of.</remarks>
@@ -304,18 +302,13 @@ internal static class StorageResidency
 /// <param name="DirtyTrieCacheMb">Dirty share of <paramref name="TrieCacheMb"/>. It has to stay strictly
 /// below the total, or <c>PruningTrieStateFactory.AdviseConfig</c> throws.</param>
 /// <param name="SharedBlockCacheBytes">RocksDB's shared block cache. A block-cache hit is served inside the
-/// process, above the page cache, so <c>posix_fadvise</c> cannot reach it; this is the setting that decides
-/// whether a cold rung can exist at all.</param>
-/// <param name="ExpectsDeviceCold">Whether a rung this arm labels cold is claimed to reach the device. An arm
-/// that claims it is asserted against <c>read_bytes</c>; an arm that does not is exactly what the sweep is
-/// testing, so its rows report the collapse rather than failing on it.</param>
+/// process and is not evicted by <c>posix_fadvise</c>.</param>
 public sealed record StorageArm(
     string Name,
     bool UseFlatDb,
     long TrieCacheMb,
     long DirtyTrieCacheMb,
-    ulong SharedBlockCacheBytes,
-    bool ExpectsDeviceCold)
+    ulong SharedBlockCacheBytes)
 {
     /// <summary>
     /// The arm every storage figure of this campaign was measured on: the non-default patricia backend with
@@ -323,14 +316,14 @@ public sealed record StorageArm(
     /// </summary>
     /// <remarks>Held byte-for-byte at the values CI run <c>35740377693</c> used, so a sweep that includes it
     /// reproduces the published numbers and shows the harness did not drift underneath them.</remarks>
-    public static readonly StorageArm Adversarial = new("adversarial", false, 64, 32, 4 * 1024 * 1024, true);
+    public static readonly StorageArm Adversarial = new("adversarial", false, 64, 32, 4 * 1024 * 1024);
 
-    /// <summary>The same backend with the caches a default node runs.</summary>
+    /// <summary>The same trie backend with production-profile cache sizes, on the synthetic archive fixture.</summary>
     public static readonly StorageArm ProductionCaches =
-        new("production-caches", false, 1792, 1536, 256 * 1024 * 1024, false);
+        new("production-caches", false, 1792, 1536, 256 * 1024 * 1024);
 
-    /// <summary>The configuration a default node runs: flat backend, production caches.</summary>
-    public static readonly StorageArm Production = new("production", true, 1792, 1536, 256 * 1024 * 1024, false);
+    /// <summary>The production-profile flat backend and cache sizes, on the synthetic archive fixture.</summary>
+    public static readonly StorageArm Production = new("production", true, 1792, 1536, 256 * 1024 * 1024);
 
     private static readonly StorageArm[] Known = [Adversarial, ProductionCaches, Production];
 
@@ -366,12 +359,12 @@ public sealed record StorageArm(
 /// <see cref="StorageArm"/> rather than from constants.
 /// </summary>
 /// <remarks>
-/// Every other shape in this campaign runs on <c>MemDbFactory</c> (<c>TestEnvironmentModule</c>), where a
-/// cold <c>SLOAD</c> is a dictionary lookup. This swaps <see cref="IDbFactory"/> for
+/// Every other shape in this campaign runs on <c>MemDbFactory</c> (<c>TestEnvironmentModule</c>), where EVM
+/// cold <c>SLOAD</c>s are served from memory. This swaps <see cref="IDbFactory"/> for
 /// <see cref="RocksDbFactory"/> over a temp directory, the same override
-/// <c>FullPruning.FullPruningDiskTest</c> uses, so a slot read ends in RocksDB reads. On the flat arm the
-/// flat column database is re-registered over that same factory, because the test modules otherwise hold it
-/// in memory and no arrangement of caches could then reach a device.
+/// <c>FullPruning.FullPruningDiskTest</c> uses, so state reads pass through the RocksDB storage path and its
+/// configured caches. On the flat arm the flat column database is re-registered over that same factory,
+/// because the test modules otherwise hold it in memory.
 ///
 /// Two deviations from a production node survive every arm and are reported rather than hidden.
 /// <c>Pruning.Mode</c> is <c>None</c> (archive), because the seeded state has to be in the database rather
@@ -470,7 +463,7 @@ internal sealed class ColdSloadTestBlockchain : BasicTestBlockchain
                   + $"flat_trie_warmer_workers={flatDbConfig.TrieWarmerWorkerCount} "
                 : string.Empty;
 
-            return $"arm={_arm.Name} db_shared_block_cache_mb={dbConfig.SharedBlockCacheSize / MegaByte} "
+            return $"fixture=synthetic_archive arm={_arm.Name} db_shared_block_cache_mb={dbConfig.SharedBlockCacheSize / MegaByte} "
                    + flatFields
                    + $"pruning_mode={pruningConfig.Mode} "
                    + $"available_memory_gb={hardwareInfo.AvailableMemoryBytes / (1024 * 1024 * 1024d):F1}";
@@ -579,48 +572,22 @@ internal static class StorageRepetition
     }
 }
 
-/// <summary>
-/// Whether a rung a harness labels cold actually reached the device, and whether the ladder it belongs to
-/// still exists.
-/// </summary>
-/// <remarks>
-/// The campaign measured its storage ladder with a 4 MiB RocksDB block cache against a 164 MB database. A
-/// production node's 256 MiB block cache sits above the page cache and inside this process, so
-/// <c>posix_fadvise</c> cannot evict it and a rung that claims to be cold may read nothing at all. That
-/// outcome is a result, not a failure, so it is reported on the row rather than thrown.
-/// </remarks>
+/// <summary>Reports process-wide read activity and relative slowdown for requested cache conditions.</summary>
+/// <remarks><c>/proc/self/io</c> includes every thread in the test process, including RocksDB background work.
+/// It cannot attribute bytes to one SLOAD or prove that a particular lookup reached a device; these fields
+/// are diagnostic only.</remarks>
 internal static class ColdRung
 {
-    /// <summary>A cold rung this much slower than the warm one is still a ladder; anything below it has
-    /// collapsed into the warm rung and the ladder no longer separates anything.</summary>
+    /// <summary>A requested cache condition this much slower than the warm condition shows a timing difference.</summary>
     private const double AliveFactor = 1.5;
 
-    /// <summary>Whether the timed window pulled bytes from the storage layer at all.</summary>
-    public static bool ReachedDevice(long readBytesPerSample, string fileSystem) =>
-        readBytesPerSample > 0 && fileSystem != "tmpfs";
-
-    /// <summary>The verdict fields a cold-labelled row carries, so a collapse is visible without arithmetic
-    /// on the reader's side.</summary>
-    public static string Fields(long readBytesPerSample, string fileSystem, double coldOverWarm)
+    /// <summary>Diagnostic fields; process reads do not establish per-lookup device I/O.</summary>
+    public static string Fields(long processReadBytesPerSample, double coldOverWarm)
     {
-        bool reachedDevice = ReachedDevice(readBytesPerSample, fileSystem);
-        bool alive = reachedDevice && coldOverWarm >= AliveFactor;
-        return $"device_cold={(reachedDevice ? "yes" : "no")} cold_over_warm={coldOverWarm:F3} "
-               + $"cold_rung={(alive ? "alive" : "COLLAPSED")}";
-    }
-
-    /// <summary>
-    /// Fails an arm that claims its cold rung reaches the device when the rung read nothing, which is the
-    /// check that would have caught a whole campaign measured on <c>tmpfs</c>.
-    /// </summary>
-    public static void AssertReachedDevice(StorageArm arm, string rung, long readBytesPerSample, string fileSystem)
-    {
-        if (!arm.ExpectsDeviceCold) return;
-
-        Assert.That(ReachedDevice(readBytesPerSample, fileSystem), Is.True,
-            $"the {rung} rung of the {arm.Name} arm pulled {readBytesPerSample} bytes per sample from a "
-            + $"{fileSystem} file system, so it did not reach a device and its cost is a memory-resident "
-            + "lower bound wearing a cold label");
+        bool slower = coldOverWarm >= AliveFactor;
+        return $"process_read_observed={(processReadBytesPerSample > 0 ? "yes" : "no")} "
+               + $"requested_condition_over_comparator={coldOverWarm:F3} "
+               + $"cache_rung_slowdown={(slower ? "yes" : "no")}";
     }
 }
 
@@ -666,9 +633,17 @@ internal static class ColdSloadStorageFixture
                 }));
         });
 
-        // The pool refuses everything while the tree reports a zero best-suggested block.
-        await chain.AddBlock();
-        return chain;
+        try
+        {
+            // The pool refuses everything while the tree reports a zero best-suggested block.
+            await chain.AddBlock();
+            return chain;
+        }
+        catch
+        {
+            chain.Dispose();
+            throw;
+        }
     }
 
     public static void AssertSeededSlotIsVisible(ColdSloadTestBlockchain chain, Address attacker, int slotsSeeded)

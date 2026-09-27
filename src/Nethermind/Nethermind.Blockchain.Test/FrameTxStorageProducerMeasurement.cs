@@ -20,33 +20,28 @@ namespace Nethermind.Blockchain.Test;
 
 /// <summary>
 /// Measures what one block-production attempt costs when the EIP-8141 validation prefix it re-executes
-/// spends its whole declared budget on cold <c>SLOAD</c>s, against a real RocksDB-backed state database.
+/// spends its whole declared budget on scattered <c>SLOAD</c>s in a RocksDB-backed synthetic state database.
 /// </summary>
 /// <remarks>
 /// The campaign's <c>R_max</c> is bound by the producer at every ceiling, and the binding shape so far is
 /// signature stuffing. The admission-side storage harness
 /// (<see cref="FrameTxStorageIoMeasurement"/>) put a cold-<c>SLOAD</c> prefix above signature stuffing per
 /// unit of declared gas, which would move producer <c>R_max</c> if the same ordering held during block
-/// production. This fixture establishes whether it does.
+/// production. This fixture compares that ordering in a synthetic RocksDB steady-state replay; it is not a
+/// live-node or home-staker <c>R_max</c> measurement.
 ///
-/// The producer re-executes a pending transaction on every build attempt, so the decisive question is
-/// whether its storage reads are re-done each attempt or served from a cache warmed by the first.
-/// <see cref="Storage_reads_repeat_per_production_attempt"/> answers it directly by timing the first
-/// attempts against a never-read slot range and reporting <c>read_bytes</c> per attempt.
-/// <see cref="Production_cost_by_shape"/> then prices a build for every ranked shape on one rig, so the
-/// three are comparable without carrying CI absolutes onto other hardware.
+/// The attempt ladder replays immutable block contents and does not model transaction-pool eviction or retry.
+/// It is only a cache-sensitivity diagnostic. <see cref="Production_cost_by_shape"/> measures distinct
+/// storage accesses once per build and compares their cost with the CPU-bound shapes.
 ///
-/// Every ceiling is swept on every <see cref="StorageArm"/>, so one run answers whether the cold cost the
-/// campaign published survives the backend and the cache sizes a default node runs, rather than leaving that
-/// comparison to two runs on two machines. An arm whose cold rung stops reaching the device says so on its
-/// rows (<c>cold_rung=COLLAPSED</c>); that is the experiment's outcome, not its failure.
+/// Every ceiling is swept on every <see cref="StorageArm"/>. Rung labels describe requested cache conditions;
+/// process-wide I/O counters do not attribute reads to an individual prefix or establish device access.
 ///
 /// Every row names the environment it ran in rather than the one it asked for: the resolved backend, cache
 /// sizes, pruning mode, file system and database size (<see cref="ColdSloadTestBlockchain.ResolvedConfigFields"/>),
-/// the bytes the timed window pulled from the storage layer, and the CPU set the process was allowed to run
-/// on. A run whose temp directory is <c>tmpfs</c> has no block device under it, so no arrangement of caches
-/// can make a rung reach one and every figure is a memory-resident lower bound; point <c>TMPDIR</c> at a
-/// disk-backed directory to measure the other regime.
+/// process-wide read bytes, and the CPU set the process was allowed to run
+/// on. The database filesystem is reported for context, but these synthetic fixtures do not represent a fully
+/// populated production-node database.
 ///
 /// Rows are appended as <c>RESULT key=value</c> lines to <c>FRAME_FLOOD_OUT</c>, or
 /// <c>frame-tx-storage-producer.txt</c> in the temp directory. Run under <c>taskset -c 0</c>, which the
@@ -80,9 +75,8 @@ public class FrameTxStorageProducerMeasurement
     /// <summary>Independent ladders, each on a fresh rig over a never-read slot range.</summary>
     private const int LadderRepeats = 20;
 
-    /// <summary>A later attempt within this fraction of the first is charged the same work, so the reads
-    /// were re-done rather than served from a cache the first attempt filled.</summary>
-    private const double ReadsRepeatFloor = 0.90;
+    /// <summary>A later replay cost within 10% of the first shows a similar timing cost, not per-read I/O.</summary>
+    private const double ReplayCostFloor = 0.90;
 
     private static readonly UInt256 AttackerBalance = 1_000.Ether;
 
@@ -136,23 +130,11 @@ public class FrameTxStorageProducerMeasurement
         }
     }
 
-    /// <summary>
-    /// Times the first build attempts of a transaction whose slot range no earlier attempt read, so the
-    /// rows show whether the producer pays the storage reads once or on every attempt.
-    /// </summary>
-    /// <remarks>
-    /// This is the crux for the campaign. If attempt two costs what attempt one costs, storage amplifies
-    /// across production retries exactly as CPU does. If it collapses to the warm cost, the producer pays
-    /// the reads once per transaction and the concern only survives across distinct pending transactions.
-    ///
-    /// Each ladder runs on a rig built for it, so a fall from attempt one to attempt two could also be the
-    /// processing scope's own cold start rather than storage. Two controls separate them: a
-    /// <c>reused</c> ladder, whose slot range a throwaway rig already read, and a <c>keccak-wide</c> ladder,
-    /// which touches no storage at all. Only a fall that appears in <c>fresh</c> and in neither control is
-    /// the storage read.
-    /// </remarks>
+    /// <summary>Compares cache sensitivity when a synthetic producer rig replays the same block contents.</summary>
+    /// <remarks>This does not model pool eviction or production retries. The real retry behavior is measured by
+    /// <see cref="FrameTxProducerRetryMeasurement"/>; this diagnostic contrasts distinct and reused slot ranges.</remarks>
     [TestCaseSource(nameof(ArmCeilingCases))]
-    public async Task Storage_reads_repeat_per_production_attempt(StorageArm arm, ulong ceiling)
+    public async Task Synthetic_replay_cache_sensitivity(StorageArm arm, ulong ceiling)
     {
         Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         ColdSloadStorageFixture.SkipUnlessLinux();
@@ -209,21 +191,21 @@ public class FrameTxStorageProducerMeasurement
         for (int attempt = 0; attempt < LadderAttempts; attempt++)
         {
             double p50 = Percentile(byAttempt[attempt], 0.50);
-            Emit($"case=producer_attempt_ladder shape={shape} range={range} "
+            Emit($"case=producer_replay_ladder shape={shape} range={range} eviction_model=synthetic_replay "
                  + $"storage_backend={_chain.StorageBackend} ceiling={_ceiling} cold_sloads={ColdSloadsFor(shape)} attempt={attempt + 1} "
                  + $"repeats={LadderRepeats} "
                  + $"build_p50_us={p50:F1} build_p90_us={Percentile(byAttempt[attempt], 0.90):F1} "
                  + $"build_min_us={Min(byAttempt[attempt]):F1} "
                  + $"ratio_to_first_attempt={p50 / firstAttempt:F3} "
-                 + $"read_bytes_total={readBytesByAttempt[attempt]} {_chain.TrieCacheFields} "
+                 + $"process_read_bytes_total={readBytesByAttempt[attempt]} {_chain.TrieCacheFields} "
                  + $"{_chain.DbFileFields} {RowEnvironment}");
         }
 
-        Emit($"case=producer_attempt_summary shape={shape} range={range} "
+        Emit($"case=producer_replay_summary shape={shape} range={range} eviction_model=synthetic_replay "
              + $"storage_backend={_chain.StorageBackend} ceiling={_ceiling} cold_sloads={ColdSloadsFor(shape)} first_attempt_p50_us={firstAttempt:F1} "
              + $"later_attempt_p50_us={secondAttempt:F1} "
              + $"later_over_first={secondAttempt / firstAttempt:F3} "
-             + $"work_repeats_per_attempt={(secondAttempt >= firstAttempt * ReadsRepeatFloor ? "yes" : "no")} "
+             + $"later_cost_ratio_ge_0_90={(secondAttempt >= firstAttempt * ReplayCostFloor ? "yes" : "no")} "
              + $"{_chain.DbFileFields} {_chain.TrieCacheFields} {RowEnvironment}");
     }
 
@@ -238,12 +220,11 @@ public class FrameTxStorageProducerMeasurement
     /// against keccak-wide and signature stuffing without carrying CI absolutes onto other hardware.
     /// </summary>
     /// <remarks>
-    /// The <c>sload-cold</c> shape appears three times. <c>fixed</c> re-executes one transaction, which is
-    /// what a producer retrying a single pending transaction does. <c>distinct</c> gives every attempt its
-    /// own never-read range, which is what a producer walking a pool full of attacker transactions does.
-    /// <c>distinct-fadvise</c> is the same with the database's clean pages dropped before each attempt, and
-    /// is the rung the campaign's headline ratio rests on. Whether it is colder than <c>distinct</c> at all
-    /// is what the arms decide, so its rows carry that verdict instead of assuming it.
+    /// The <c>sload-cold</c> shape appears three times. <c>fixed</c> replays one transaction in the same
+    /// synthetic block. <c>distinct</c> places distinct slot ranges in that block; repeated builds then replay
+    /// those same ranges. <c>distinct-fadvise</c> also requests page-cache eviction before each build. These
+    /// variants compare steady-state costs under requested cache conditions, not fresh pool retries or
+    /// verified per-SLOAD device reads.
     /// </remarks>
     [TestCaseSource(nameof(ArmCeilingCases))]
     public async Task Production_cost_by_shape(StorageArm arm, ulong ceiling)
@@ -292,15 +273,15 @@ public class FrameTxStorageProducerMeasurement
              + $"keccak_us_per_kgas={StorageRepetition.Median(keccak):F3} "
              + $"signature_us_per_kgas={signatureMedian:F3} "
              + $"storage_fixed_us_per_kgas={StorageRepetition.Median(storageFixed):F3} "
-             + $"storage_warm_us_per_kgas={warmMedian:F3} storage_cold_us_per_kgas={coldMedian:F3} "
-             + $"cold_over_signature={coldMedian / signatureMedian:F3} "
+             + $"storage_warm_us_per_kgas={warmMedian:F3} storage_page_cache_drop_us_per_kgas={coldMedian:F3} "
+             + $"page_cache_drop_over_signature={coldMedian / signatureMedian:F3} "
              + $"warm_over_signature={warmMedian / signatureMedian:F3} "
-             + $"cold_read_bytes_per_sample_min={coldReadBytesMin} "
-             + $"{ColdRung.Fields(coldReadBytesMin, fileSystem, coldMedian / warmMedian)} "
+             + $"cold_process_read_bytes_per_sample_min={coldReadBytesMin} "
+             + $"{ColdRung.Fields(coldReadBytesMin, coldMedian / warmMedian)} "
              + $"{StorageRepetition.SpreadFields("keccak_us_per_kgas", keccak)} "
              + $"{StorageRepetition.SpreadFields("signature_us_per_kgas", signature)} "
              + $"{StorageRepetition.SpreadFields("warm_us_per_kgas", storageWarm)} "
-             + $"{StorageRepetition.SpreadFields("cold_us_per_kgas", storageCold)} "
+             + $"{StorageRepetition.SpreadFields("page_cache_drop_us_per_kgas", storageCold)} "
              + $"{_chain.DbFileFields} {_chain.TrieCacheFields} {RowEnvironment}");
     }
 
@@ -359,21 +340,17 @@ public class FrameTxStorageProducerMeasurement
 
         string coldFields = double.IsNaN(warmUsPerKgas)
             ? string.Empty
-            : $" {ColdRung.Fields(readBytesPerSample, fileSystem, usPerKgas / warmUsPerKgas)}";
+            : $" {ColdRung.Fields(readBytesPerSample, usPerKgas / warmUsPerKgas)}";
 
         Emit($"case=production_cost shape={shape} rotation={rotation} storage_backend={_chain.StorageBackend} "
              + $"ceiling={_ceiling} cold_sloads={ColdSloadsFor(shape)} samples={Samples} "
              + $"build_p50_us={p50:F1} build_p90_us={Percentile(micros, 0.90):F1} "
              + $"build_p99_us={Percentile(micros, 0.99):F1} build_min_us={Min(micros):F1} "
              + $"us_per_kgas={usPerKgas:F3} us_per_Mgas_basis=declared "
-             + $"read_bytes_total={readBytes} read_bytes_per_sample={readBytesPerSample} "
-             + $"fadvised_files={fadvisedFiles} db_bytes_on_disk={StorageResidency.BytesOnDisk(_dbDirectory.Path)} "
+             + $"process_read_bytes_total={readBytes} process_read_bytes_per_sample={readBytesPerSample} "
+             + $"fadvise_calls_accepted={fadvisedFiles} db_bytes_on_disk={StorageResidency.BytesOnDisk(_dbDirectory.Path)} "
              + $"db_fs={fileSystem} {_chain.TrieCacheFields} "
-             + $"repeat={repeat} fadvised_files_total={fadvisedFilesTotal}{coldFields} {RowEnvironment}");
-
-        // Emitted first: an arm that claims a device and did not reach one is a failure worth stopping for,
-        // but the row that proves it has to survive the stop.
-        if (dropPageCache) ColdRung.AssertReachedDevice(_arm, rotation, readBytesPerSample, fileSystem);
+             + $"repeat={repeat} fadvise_calls_accepted_total={fadvisedFilesTotal}{coldFields} {RowEnvironment}");
 
         return new ShapeSample(usPerKgas, readBytesPerSample, fileSystem);
     }
@@ -388,9 +365,8 @@ public class FrameTxStorageProducerMeasurement
     }
 
     /// <summary>
-    /// Slots seeded beyond the ones the samples read, so that the database outgrows RocksDB's block cache
-    /// and dropping the page cache can put a read on the device. Without it the whole fixture is a couple
-    /// of megabytes, every rung is served from memory, and <c>read_bytes</c> never moves.
+    /// Extra seeded slots to make the synthetic database exceed the configured RocksDB block cache. This
+    /// creates cache pressure but does not prove that a measured lookup reaches a device.
     /// </summary>
     private const int PaddingSlots = 1_500_000;
 

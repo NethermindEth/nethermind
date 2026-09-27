@@ -32,6 +32,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Blockchain.Test.MeasurementStatistics;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -632,15 +633,6 @@ public class FrameTxProducerRetryMeasurement
             .WithBaseFeePerGas(UInt256.Zero)
             .WithGasLimit(BlockGasLimit)
             .TestObject;
-
-    private static double Percentile(List<double> values, double quantile)
-    {
-        if (values.Count == 0) return double.NaN;
-        List<double> sorted = [.. values];
-        sorted.Sort();
-        int rank = (int)Math.Ceiling(quantile * sorted.Count);
-        return sorted[Math.Clamp(rank, 1, sorted.Count) - 1];
-    }
 
     /// <summary>The pool's chain head, advanced by the sweep and by nothing else.</summary>
     private sealed class PoolHeadTree : BlockTreeTestDouble

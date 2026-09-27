@@ -194,7 +194,7 @@ jobs:
           # FrameTxStorageIoMeasurement and FrameTxStorageProducerMeasurement put their RocksDB under
           # TempPath.GetTempDirectory(), i.e. .NET's Path.GetTempPath(), which honours TMPDIR. Left unset
           # that resolves to /tmp, tmpfs on some hosts, which would measure RAM and call it storage I/O.
-          # /mnt/sda is the runner's real disk (see AGENTS.md's reproducible-benchmarks snapshot paths);
+          # /mnt/sda is the benchmark runner's snapshot mount (see .agents/skills/expb-benchmark/SKILL.md);
           # detect rather than assume, since a self-hosted runner's layout can change under this workflow.
           if [[ "${HARNESS}" == "storage" ]]; then
             storage_tmpdir=""
@@ -211,6 +211,12 @@ jobs:
               echo "::error::no writable directory found to host the storage harness's RocksDB (tried /mnt/sda and RUNNER_TEMP)."
               exit 1
             fi
+            cleanup_storage_tmpdir() {
+              if [[ -n "${storage_tmpdir}" && -d "${storage_tmpdir}" ]]; then
+                rm -rf -- "${storage_tmpdir}" || echo "::warning::could not remove ${storage_tmpdir}"
+              fi
+            }
+            trap cleanup_storage_tmpdir EXIT
             export TMPDIR="${storage_tmpdir}"
             if command -v findmnt >/dev/null; then
               storage_tmpdir_fstype=$(findmnt -no FSTYPE --target "${TMPDIR}" 2>/dev/null || echo unknown)
@@ -299,6 +305,13 @@ jobs:
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]]; then
             run_harness Nethermind.Blockchain.Test FrameTxFloodMeasurement "${flood_markers[@]}" || status=1
+            flood_results="${OUTPUT_DIR}/FrameTxFloodMeasurement-results.txt"
+            for ceiling in 100000 235800 250000 300000 400000 500000; do
+              if ! grep -Eq "^RESULT .*case=matched_declared_verify_gas_rate .*ceiling=${ceiling} .*valid=yes([[:space:]]|$)" "${flood_results}" 2>/dev/null; then
+                echo "::error::FrameTxFloodMeasurement has no valid matched-gas/s result for ceiling ${ceiling}; inspect its RESULT rows and rerun invalid cells."
+                status=1
+              fi
+            done
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "producer-retry" ]]; then
             producer_retry_markers=('case=k_retry_sweep')
@@ -310,7 +323,7 @@ jobs:
           if [[ "${HARNESS}" == "storage" ]]; then
             storage_io_markers=('case=frame_reject' 'shape=sload-cold')
             run_harness Nethermind.Blockchain.Test FrameTxStorageIoMeasurement "${storage_io_markers[@]}" || status=1
-            storage_producer_markers=('case=producer_attempt_summary' 'case=production_cost')
+            storage_producer_markers=('case=producer_replay_summary' 'case=production_cost')
             run_harness Nethermind.Blockchain.Test FrameTxStorageProducerMeasurement "${storage_producer_markers[@]}" || status=1
           fi
 

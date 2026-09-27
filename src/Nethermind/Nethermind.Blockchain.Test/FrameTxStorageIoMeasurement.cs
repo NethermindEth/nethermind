@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Test;
 
 /// <summary>
 /// Measures mempool rejection latency for an EIP-8141 validation prefix that spends its whole budget on
-/// cold <c>SLOAD</c>s, against a real RocksDB-backed state database rather than the in-memory one every
+/// scattered <c>SLOAD</c>s, against a RocksDB-backed synthetic state database rather than the in-memory one every
 /// other frame-tx harness uses.
 /// </summary>
 /// <remarks>
@@ -33,20 +33,19 @@ namespace Nethermind.Blockchain.Test;
 ///
 /// A single number would be meaningless here, because the answer depends entirely on where the slot is
 /// resident. Each ceiling therefore emits one row per rung of a cache-residency ladder; the rungs are
-/// described on <see cref="Rungs"/>. Every row carries the bytes this process actually pulled from the
-/// storage layer during its timed window (<c>read_bytes</c> from <c>/proc/self/io</c>), so a row that
-/// silently measured a warm cache is visible as such rather than being mistaken for a device read.
+/// described on <see cref="Rungs"/>. Rows report process-wide read bytes from <c>/proc/self/io</c> as a
+/// diagnostic. That counter includes RocksDB background work and does not prove that a particular SLOAD read
+/// reached a device.
 ///
-/// Every ceiling is swept on every <see cref="StorageArm"/>, because the ladder is a property of the caches
-/// above the database rather than of the prefix: a rung is only cold while nothing between the prefix and the
-/// device is large enough to hold the slot. An arm on which the coldest rung stops reaching the device says
-/// so on its rows (<c>cold_rung=COLLAPSED</c>), which is the answer to that question rather than a failure.
+/// Every ceiling is swept on every <see cref="StorageArm"/>. The rung names describe requested cache
+/// conditions, not a verified cache miss or device read. This synthetic fixture does not establish per-slot
+/// residency.
 ///
 /// Every row also names the environment it ran in rather than the one it asked for: the resolved backend,
 /// cache sizes, pruning mode, file system and database size
 /// (<see cref="ColdSloadTestBlockchain.ResolvedConfigFields"/>), and the CPU set the process was allowed to run
-/// on. Each repeat seeds a fresh database of one pass's size, so repetition never changes what a rung reads. A run whose temp directory is <c>tmpfs</c> has no block device under it, so no rung can reach one
-/// whatever the caches do; a run whose trie cache is smaller than the seeded state has no warm rung.
+/// on. Each repeat seeds a fresh database of one pass's size, so repetition never changes the fixture's scale.
+/// The mount type is context only; it does not establish whether an individual storage lookup missed cache.
 ///
 /// Results are appended as <c>RESULT key=value</c> lines to <c>FRAME_STORAGE_IO_OUT</c>, or
 /// <c>frame-tx-storage-io.txt</c> in the temp directory. The <c>case=frame_reject</c> rows carry the same
@@ -81,25 +80,20 @@ public class FrameTxStorageIoMeasurement
         [100_000ul, 235_800ul, 250_000ul, 300_000ul, 400_000ul, 500_000ul];
 
     /// <summary>
-    /// The cache-residency ladder, coldest last. Each rung names what is cold at the moment a slot is read
-    /// for the first time in a timed sample.
+    /// The requested cache conditions, with page-cache eviction last.
     /// </summary>
     /// <remarks>
-    /// <c>all-warm</c> replays one slot range for every sample, so every read after the first is served by
-    /// the trie store's node cache. It is the in-memory floor and the closest thing here to what the
-    /// MemDb-backed harnesses measure.
+    /// <c>all-warm</c> reuses one slot range as an expected-warm comparator. Cache hits are not observed, and
+    /// the active backend may be flat or trie.
     ///
-    /// <c>cold-node-cache</c> gives each sample its own never-read slot range, so no Nethermind-level cache
-    /// can hold it, but the pages were written by this same process moments earlier and the operating
-    /// system still has them. This is the page-cache-hit rung.
+    /// <c>distinct-slot-range</c> gives each sample a distinct slot range not read by an earlier timed sample.
+    /// The fixture does not verify that initialization left that range absent from Nethermind's caches.
     ///
-    /// <c>cold-page-cache</c> is the same, with <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> applied over the
-    /// database directory before each timed sample, so the read cannot be served by the page cache either.
-    /// Whether it then reaches a device is a property of the run, not of this rung: it does if the database
-    /// sits on a block-backed file system, and it does not on <c>tmpfs</c>, where there is nothing below the
-    /// page cache. The row's <c>db_fs</c> and <c>read_bytes</c> say which happened. Linux only.
+    /// <c>distinct-slot-range-page-cache-drop</c> applies <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> over the
+    /// database directory before each timed sample. This requests page-cache eviction; it does not prove that
+    /// the relevant pages were evicted or that a particular SLOAD reached the device. Linux only.
     /// </remarks>
-    private static readonly string[] Rungs = ["all-warm", "cold-node-cache", "cold-page-cache"];
+    private static readonly string[] Rungs = ["all-warm", "distinct-slot-range", "distinct-slot-range-page-cache-drop"];
 
     private ColdSloadTestBlockchain _chain = null!;
     private TempPath _dbDirectory = null!;
@@ -194,7 +188,7 @@ public class FrameTxStorageIoMeasurement
                 byRung[rung].Add(sample.UsPerKgas);
 
                 // The page-cache-hit rung is what the coldest rung has to beat to be a rung at all.
-                if (rung == "cold-node-cache") pageCacheWarm = sample.UsPerKgas;
+                if (rung == "distinct-slot-range") pageCacheWarm = sample.UsPerKgas;
                 if (rung == Rungs[^1])
                 {
                     coldestReadBytesMin = Math.Min(coldestReadBytesMin, sample.ReadBytesPerSample);
@@ -205,18 +199,19 @@ public class FrameTxStorageIoMeasurement
             if (repeat < repeats) DisposeChain();
         }
 
-        double nodeCold = StorageRepetition.Median(byRung["cold-node-cache"]);
+        double distinctSlot = StorageRepetition.Median(byRung["distinct-slot-range"]);
         double pageCold = StorageRepetition.Median(byRung[Rungs[^1]]);
 
         Emit($"case=storage_arm_verdict shape=sload-cold storage_backend={_chain.StorageBackend} "
              + $"verify_gas={_ceiling} cold_sloads={observedSloads} repeats={repeats} samples={Samples} "
              + $"all_warm_us_per_kgas={StorageRepetition.Median(byRung["all-warm"]):F3} "
-             + $"cold_node_cache_us_per_kgas={nodeCold:F3} cold_page_cache_us_per_kgas={pageCold:F3} "
-             + $"cold_read_bytes_per_sample_min={coldestReadBytesMin} "
-             + $"{ColdRung.Fields(coldestReadBytesMin, fileSystem, pageCold / nodeCold)} "
+             + $"distinct_slot_range_us_per_kgas={distinctSlot:F3} "
+             + $"page_cache_drop_us_per_kgas={pageCold:F3} "
+             + $"page_cache_drop_process_read_bytes_per_sample_min={coldestReadBytesMin} "
+             + $"{ColdRung.Fields(coldestReadBytesMin, pageCold / distinctSlot)} "
              + $"{StorageRepetition.SpreadFields("all_warm_us_per_kgas", byRung["all-warm"])} "
-             + $"{StorageRepetition.SpreadFields("cold_node_cache_us_per_kgas", byRung["cold-node-cache"])} "
-             + $"{StorageRepetition.SpreadFields("cold_page_cache_us_per_kgas", byRung[Rungs[^1]])} "
+             + $"{StorageRepetition.SpreadFields("distinct_slot_range_us_per_kgas", byRung["distinct-slot-range"])} "
+             + $"{StorageRepetition.SpreadFields("page_cache_drop_us_per_kgas", byRung[Rungs[^1]])} "
              + $"{_chain.DbFileFields} {_chain.TrieCacheFields} {RowEnvironment}");
     }
 
@@ -233,7 +228,7 @@ public class FrameTxStorageIoMeasurement
     private RungSample MeasureRung(string rung, int sloadsPerTx, int repeat, double pageCacheWarmUsPerKgas)
     {
         bool coldSlots = rung != "all-warm";
-        bool dropPageCache = rung == "cold-page-cache";
+        bool dropPageCache = rung == "distinct-slot-range-page-cache-drop";
 
         // Salt 0 is the probe's; warm-up and timed samples take disjoint ranges above it so no timed sample
         // can be served by a range an earlier one already pulled in.
@@ -283,7 +278,7 @@ public class FrameTxStorageIoMeasurement
 
         string coldFields = double.IsNaN(pageCacheWarmUsPerKgas)
             ? string.Empty
-            : $" {ColdRung.Fields(readBytesPerSample, fileSystem, usPerKgas / pageCacheWarmUsPerKgas)}";
+            : $" {ColdRung.Fields(readBytesPerSample, usPerKgas / pageCacheWarmUsPerKgas)}";
 
         Emit($"case=frame_reject shape=sload-cold storage_backend={_chain.StorageBackend} rung={rung} "
              + $"verify_gas={_ceiling} frame_gas_available={_ceiling} frame_gas_burned={_ceiling} "
@@ -296,15 +291,11 @@ public class FrameTxStorageIoMeasurement
              + $"us_per_kgas={usPerKgas:F3} "
              + $"us_per_sload={p50 / sloadsPerTx:F3} "
              + $"us_per_Mgas_basis=offered "
-             + $"read_bytes_total={readBytes} read_bytes_per_sample={readBytesPerSample} "
-             + $"db_bytes_on_disk={StorageResidency.BytesOnDisk(_dbDirectory.Path)} fadvised_files={fadvisedFiles} "
+             + $"process_read_bytes_total={readBytes} process_read_bytes_per_sample={readBytesPerSample} "
+             + $"db_bytes_on_disk={StorageResidency.BytesOnDisk(_dbDirectory.Path)} fadvise_calls_accepted={fadvisedFiles} "
              + $"db_fs={fileSystem} {_chain.TrieCacheFields} "
              + $"reject_reason=\"FrameSimulationFailed\" "
-             + $"repeat={repeat} fadvised_files_total={fadvisedFilesTotal}{coldFields} {RowEnvironment}");
-
-        // Emitted first: an arm that claims a device and did not reach one is a failure worth stopping for,
-        // but the row that proves it has to survive the stop.
-        if (dropPageCache) ColdRung.AssertReachedDevice(_arm, rung, readBytesPerSample, fileSystem);
+             + $"repeat={repeat} fadvise_calls_accepted_total={fadvisedFilesTotal}{coldFields} {RowEnvironment}");
 
         return new RungSample(usPerKgas, readBytesPerSample, fileSystem);
     }
