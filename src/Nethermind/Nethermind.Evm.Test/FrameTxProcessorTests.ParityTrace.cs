@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -30,7 +31,7 @@ public partial class FrameTxProcessorTests
     private static readonly Address ParityTailCaller = TestItem.Addresses[10];
 
     /// <summary>Frame transactions covering nested calls, a skipped frame, a frame that never enters the VM, a
-    /// sponsored payer, a frame ending on a CALL, and a reverted POST_TX frame. <see cref="Observer"/> calls <see cref="Recipient"/>, so its frame has a subtrace.</summary>
+    /// sponsored payer, a frame ending on a CALL, a reverted POST_TX frame, and a static frame calling a precompile. <see cref="Observer"/> calls <see cref="Recipient"/>, so its frame has a subtrace.</summary>
     private Transaction ParityScenarioTx(string scenario)
     {
         DeployContract(Recipient, LogEmitter(7));
@@ -75,6 +76,15 @@ public partial class FrameTxProcessorTests
                     Frame(FrameMode.PostTx, target: Observer, stateGasLimit: 0)
                 ];
                 break;
+            case "precompileFrame":
+                DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+                frames =
+                [
+                    SelfVerifyFrame(),
+                    Frame(FrameMode.Sender, target: Observer),
+                    Frame(FrameMode.PostTx, target: IdentityPrecompile.Address, stateGasLimit: 0)
+                ];
+                break;
             case "undispatched":
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
                 frames = [SelfVerifyFrame(), UndispatchedFrame(PreDispatchExit.EntryAccessCharge, out _), Frame(FrameMode.Default, target: Observer)];
@@ -104,6 +114,7 @@ public partial class FrameTxProcessorTests
     [TestCase("sponsored", new[] { 0, 1, 2 }, new[] { 2, 0 })]
     [TestCase("tailCall", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     [TestCase("postTxReverted", new[] { 0, 1, 2 }, new[] { 1, 0 })]
+    [TestCase("precompileFrame", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     public void ParityTrace_FrameTx_RootsEveryFrameAtItsIndex(string scenario, int[] framesInVm, int[] nestedCall)
     {
         Transaction tx = ParityScenarioTx(scenario);
@@ -159,18 +170,20 @@ public partial class FrameTxProcessorTests
                 }
             }
 
+            Assert.That(flat.Count(static t => t.TraceAddress.Length == 1), Is.EqualTo(frames.Length), "every frame is rendered");
             Assert.That(flat.Count(t => t.TraceAddress.ToArray().SequenceEqual(nestedCall) && t.Action.To == Recipient), Is.EqualTo(1), "nested call");
             Assert.That(trace.VmTrace!.Code ?? [], Is.Empty, "root code");
             Assert.That(trace.VmTrace.Operations.Select(static o => o.Pc), Is.EqualTo(framesInVm), "one root operation per frame that entered the VM");
-            Assert.That(trace.VmTrace.Operations.All(static o => o.Sub?.Operations.Count > 0), Is.True, "every root operation carries its frame");
+            Assert.That(trace.VmTrace.Operations.All(static o => o.Sub is not null), Is.True, "every root operation carries its frame");
             // Every frame's code opens with a PUSH, which a gas carry-over from the previous frame would misprice.
-            Assert.That(trace.VmTrace.Operations.Select(static o => o.Sub!.Operations[0].Cost), Is.All.EqualTo(GasCostOf.VeryLow), "first operation of each frame");
+            Assert.That(trace.VmTrace.Operations.Where(static o => o.Sub.Operations.Count > 0).Select(static o => o.Sub.Operations[0].Cost),
+                Is.All.EqualTo(GasCostOf.VeryLow), "first operation of each frame");
         }
     }
 
     [Test]
     public void ParityTrace_FrameTx_StreamedMatchesBuffered(
-        [Values("nested", "skipped", "undispatched", "sponsored", "tailCall", "postTxReverted")] string scenario, [Values] ParityTraceStreamMode mode)
+        [Values("nested", "skipped", "undispatched", "sponsored", "tailCall", "postTxReverted", "precompileFrame")] string scenario, [Values] ParityTraceStreamMode mode)
     {
         string buffered = BufferedParityJson(scenario, mode);
         TearDown();
