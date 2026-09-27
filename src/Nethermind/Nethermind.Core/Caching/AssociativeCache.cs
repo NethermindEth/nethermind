@@ -157,7 +157,12 @@ public sealed class AssociativeCache<TKey, TValue>
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e.Header);
+#if ZK_EVM
+            // Guests run single-threaded, so no entry is seen mid-write and the retry would only cost steps.
+            if (h1 != h2) continue;
+#else
             if (((h1 & LockMarker) != 0 || h1 != h2) && !TryReadSettled(ref e, expectedTag, out storedKey, out storedValue)) continue;
+#endif
 
             if (storedKey.Equals(in key))
             {
