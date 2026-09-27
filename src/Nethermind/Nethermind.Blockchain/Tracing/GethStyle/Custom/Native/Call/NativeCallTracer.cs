@@ -47,12 +47,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly Transaction? _frameTx;
     private readonly IReleaseSpec? _frameTxSpec;
     private readonly NativeCallTracerConfig _config;
+    private readonly BlockLogIndex? _blockLogIndex;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
     private readonly ArrayPoolList<ulong> _logIndexAtEntry = new(1024);
     private readonly CompositeDisposable _disposables = [];
 
     private EvmExceptionType? _error;
     private ulong _remainingGas;
+    private ulong _logIndexStart;
     private ulong _logIndex;
     private bool _framesCollapsed = false;
     private NativeCallTracerCallFrame?[]? _frameRoots;
@@ -83,7 +85,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         if (_config.WithLog)
         {
             IsTracingLogs = true;
-            _logIndex = (ulong)(options.LogIndexStart?.Invoke() ?? 0);
+            _blockLogIndex = options.LogIndex;
+            _logIndexStart = (ulong)(_blockLogIndex?.Next ?? 0);
+            _logIndex = _logIndexStart;
         }
     }
 
@@ -224,6 +228,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+        _blockLogIndex?.Next = (int)_logIndexStart + logs.Length;
 
         CollapseFrameRoots();
         if (_callStack.Count == 0) return;
