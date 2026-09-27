@@ -14,6 +14,10 @@
     <Compile Include="..\Nethermind.Core.Test\Threading\ParallelUnbalancedWorkTests.cs" Link="Threading\ParallelUnbalancedWorkTests.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\Nethermind.Stateless.ZiskGuest\substitutions.xml" Link="ZiskGuest.substitutions.xml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Target Name="RequireZkEvm" BeforeTargets="PrepareForBuild" Condition="'$(EnableZkEvm)' != 'true'">
     <Error Text="Build this project with EnableZkEvm=true." />
   </Target>

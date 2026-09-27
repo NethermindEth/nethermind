@@ -19,7 +19,7 @@ public static partial class ZkEvmBitOperations
     /// <see cref="BinaryPrimitives.ReverseEndianness(ulong)"/> is one <c>rev8</c> with Zbb and a slower
     /// software sequence than <see cref="Swap"/> without it.
     /// </remarks>
-    public static bool HasByteReverse => false;
+    internal static bool HasByteReverse => false;
 
     // Without Zbb, RISC-V has no byte-swap instruction and this all-64-bit form beats the BCL's ReverseEndianness.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
