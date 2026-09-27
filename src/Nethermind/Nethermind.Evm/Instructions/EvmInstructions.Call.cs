@@ -148,7 +148,8 @@ public static partial class EvmInstructions
 
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
-        ulong initialGas = TGasPolicy.GetRemainingGas(in gas);
+        bool traceNewAccountCharge = false;
+        ulong initialGas = vm.IsTracingActions ? TGasPolicy.GetRemainingGas(in gas) : 0;
         ulong traceMemorySize = vm.IsTracingActions ? vm.VmState.Memory.Size : 0;
         bool traceColdAccess = vm.IsTracingActions && TSpec.UseHotAndColdStorage &&
             vm.VmState.AccessTracker.IsCold(codeSource) && !spec.IsPrecompile(codeSource);
@@ -162,8 +163,7 @@ public static partial class EvmInstructions
                 : !TGasPolicy.TryConsumeCallValueTransfer(ref gas);
             if (valueOutOfGas)
             {
-                TraceCallGasError<TGasPolicy, TOpCall>(vm, initialGas, traceColdAccess, hasValueTransfer, in gasLimit, traceMemorySize, in dataOffset, in dataLength, in outputOffset, in outputLength);
-                goto OutOfGas;
+                goto OutOfGasTraced;
             }
         }
 
@@ -172,16 +172,14 @@ public static partial class EvmInstructions
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, ref vm.VmState.Memory) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, ref vm.VmState.Memory))
         {
-            TraceCallGasError<TGasPolicy, TOpCall>(vm, initialGas, traceColdAccess, hasValueTransfer, in gasLimit, traceMemorySize, in dataOffset, in dataLength, in outputOffset, in outputLength);
-            goto OutOfGas;
+            goto OutOfGasTraced;
         }
 
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.IsTracingAccess, codeSource))
         {
-            TraceCallGasError<TGasPolicy, TOpCall>(vm, initialGas, traceColdAccess, hasValueTransfer, in gasLimit, traceMemorySize, in dataOffset, in dataLength, in outputOffset, in outputLength);
-            goto OutOfGas;
+            goto OutOfGasTraced;
         }
 
         // EIP-8279: the account enters the block access list on the transaction's first touch.
@@ -192,10 +190,7 @@ public static partial class EvmInstructions
         if (TSpec.UseHotAndColdStorage && delegated is not null)
         {
             if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
-            {
-                TraceCallGasError<TGasPolicy, TOpCall>(vm, initialGas, traceColdAccess, hasValueTransfer, in gasLimit, traceMemorySize, in dataOffset, in dataLength, in outputOffset, in outputLength);
-                goto OutOfGas;
-            }
+                goto OutOfGasTraced;
 
             // EIP-8279: the delegation target enters the block access list on the transaction's first touch.
             if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(delegated)) goto OutOfGas;
@@ -207,8 +202,8 @@ public static partial class EvmInstructions
 
         if (newAccountOutOfGas)
         {
-            TraceCallGasError<TGasPolicy, TOpCall>(vm, initialGas, traceColdAccess, hasValueTransfer, in gasLimit, traceMemorySize, in dataOffset, in dataLength, in outputOffset, in outputLength, newAccountCharge: true);
-            goto OutOfGas;
+            traceNewAccountCharge = true;
+            goto OutOfGasTraced;
         }
 
         // EIP-8279: a CALL moving value to another account puts the caller's and the recipient's post balances in the
@@ -309,6 +304,10 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    OutOfGasTraced:
+        if (vm.IsTracingActions)
+            TraceCallGasError<TGasPolicy, TOpCall>(vm, initialGas, traceColdAccess, hasValueTransfer, in gasLimit, traceMemorySize,
+                in dataOffset, in dataLength, in outputOffset, in outputLength, traceNewAccountCharge);
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     }
