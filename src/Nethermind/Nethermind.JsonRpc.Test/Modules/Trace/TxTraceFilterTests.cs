@@ -127,7 +127,7 @@ public class TxTraceFilterTests
     [TestCase(0, 0, true, TestName = "ZeroCount")]
     public void IsExhausted_WhenMatchesAreConsumed_ReportsWhetherAnotherTraceCanBeAccepted(int? count, int matches, bool expected)
     {
-        TxTraceFilter traceFilter = new(null, null, 1, count);
+        TxTraceFilter traceFilter = new(null, null, 1, count, TraceFilterMode.Intersection);
         ParityTraceAction action = new() { From = TestItem.AddressA };
         for (int i = 0; i < matches; i++)
         {
