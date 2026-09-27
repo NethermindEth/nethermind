@@ -71,7 +71,16 @@ public class ShutterApiSimulator(
     public void InsertShutterReceipts(Block block, in LogEntry[] logs)
     {
         TxReceipt[] receipts = new TxReceipt[logs.Length];
-        block.Header.Bloom = new(logs);
+        Bloom bloom = new(logs);
+        block.Header.Bloom = bloom;
+        // The block tree can hold other instances of this header, e.g. one decoded again by a lookup that missed
+        // the cache during a concurrent write, and the log finder checks the bloom of whichever instance it gets.
+        // FindBlock re-caches its header, so it runs before the cached header is read.
+        if (block.Hash is not null)
+        {
+            _readOnlyBlockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None)?.Header.Bloom = bloom;
+            _readOnlyBlockTree.FindHeader(block.Hash, BlockTreeLookupOptions.None)?.Bloom = bloom;
+        }
         // one log per receipt
         for (int i = 0; i < logs.Length; i++)
         {
