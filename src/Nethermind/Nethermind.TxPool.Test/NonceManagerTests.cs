@@ -32,6 +32,7 @@ public class NonceManagerTests
     private readonly ConcurrentDictionary<Hash256, Transaction> _pending = new();
     private readonly ConcurrentDictionary<Hash256, Transaction> _broadcastOnly = new();
     private int _hashSeed;
+    private long _removals;
 
     [SetUp]
     public void Setup()
@@ -53,6 +54,7 @@ public class NonceManagerTests
             .Returns(ci => _pending.ContainsKey(ci.ArgAt<Hash256>(0)) || _broadcastOnly.ContainsKey(ci.ArgAt<Hash256>(0)));
         _pendingTxs.GetPendingTransactionsBySender(Arg.Any<Address>()).Returns(ci => Pending(ci.ArgAt<Address>(0), blobs: false));
         _pendingTxs.GetPendingLightBlobTransactionsBySender(Arg.Any<Address>()).Returns(ci => Pending(ci.ArgAt<Address>(0), blobs: true));
+        _pendingTxs.GetRemovalGeneration(Arg.Any<Address>()).Returns(_ => Interlocked.Read(ref _removals));
     }
 
     [Test]
@@ -215,6 +217,7 @@ public class NonceManagerTests
         }
 
         _pending.Clear();
+        Interlocked.Increment(ref _removals);
 
         Transaction[] pending = pendingNonces.Select(static n => Build.A.Transaction.WithNonce(n).TestObject).ToArray();
         if (blobPool)
@@ -264,7 +267,7 @@ public class NonceManagerTests
 
         if (!stillPending)
         {
-            _pending.TryRemove(raw.Hash!, out _);
+            Remove(raw);
         }
 
         using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
@@ -288,7 +291,7 @@ public class NonceManagerTests
             accepted = Accept(locker, TestItem.AddressA, 0);
         }
 
-        _pending.TryRemove(accepted.Hash!, out _);
+        Remove(accepted);
 
         using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
@@ -306,7 +309,7 @@ public class NonceManagerTests
             accepted[i] = Accept(locker, TestItem.AddressA, nonce);
         }
 
-        _pending.TryRemove(accepted[1].Hash!, out _);
+        Remove(accepted[1]);
 
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
@@ -321,6 +324,26 @@ public class NonceManagerTests
     }
 
     [Test]
+    public void ReserveNonce_should_resume_at_the_last_free_nonce_while_nothing_left_the_pool()
+    {
+        const int sends = 8;
+        for (int i = 0; i < sends; i++)
+        {
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
+            Accept(locker, TestItem.AddressA, nonce);
+        }
+
+        _pendingTxs.ClearReceivedCalls();
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo((ulong)sends));
+        }
+
+        _pendingTxs.ReceivedWithAnyArgs(1).ContainsTx(default!, default);
+        _pendingTxs.DidNotReceiveWithAnyArgs().GetPendingTransactionsBySender(default!);
+    }
+
+    [Test]
     public void ReserveNonce_should_skip_nonce_held_only_by_persistent_broadcast()
     {
         Transaction accepted;
@@ -329,7 +352,7 @@ public class NonceManagerTests
             accepted = Accept(locker, TestItem.AddressA, nonce);
         }
 
-        _pending.TryRemove(accepted.Hash!, out _);
+        Remove(accepted);
         _broadcastOnly[accepted.Hash!] = accepted;
 
         using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
@@ -347,7 +370,7 @@ public class NonceManagerTests
             accepted = Accept(locker, TestItem.AddressA, nonce);
         }
 
-        _pending.TryRemove(accepted.Hash!, out _);
+        Remove(accepted);
         Transaction replacement = BuildTx(TestItem.AddressA, accepted.Nonce, blobPool ? TxType.Blob : TxType.Legacy);
         _pending[replacement.Hash!] = replacement;
 
@@ -438,7 +461,7 @@ public class NonceManagerTests
                 Is.True, "precondition: the reservation is waiting on the account lock");
 
             accountStateProvider.GetNonce(TestItem.AddressA).Returns(6UL);
-            _pending.TryRemove(mined.Hash!, out _);
+            Remove(mined);
             Accept(locker, TestItem.AddressA, nonce);
         }
         finally
@@ -510,6 +533,12 @@ public class NonceManagerTests
         _pending[transaction.Hash!] = transaction;
         locker.Accept(transaction);
         return transaction;
+    }
+
+    private void Remove(Transaction transaction)
+    {
+        _pending.TryRemove(transaction.Hash!, out _);
+        Interlocked.Increment(ref _removals);
     }
 
     private Transaction BuildTx(Address sender, ulong nonce, TxType type) =>
