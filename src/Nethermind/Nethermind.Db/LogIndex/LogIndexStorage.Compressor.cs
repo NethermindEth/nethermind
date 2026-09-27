@@ -35,7 +35,7 @@ partial class LogIndexStorage
     /// </para>
     /// Last 2 operations are done via a single <see cref="IWriteBatch"/> to maintain data consistency.
     /// </remarks>
-    private class Compressor : ICompressor
+    internal class Compressor : ICompressor
     {
         private readonly int _minLengthToCompress;
 
@@ -44,10 +44,11 @@ partial class LogIndexStorage
         private readonly ConcurrentDictionary<byte[], bool>.AlternateLookup<ReadOnlySpan<byte>> _compressQueueLookup;
         private readonly LogIndexStorage _storage;
         private readonly ActionBlock<(int?, byte[])> _processing;
-        private readonly ManualResetEventSlim _startEvent = new(false);
-        private readonly ManualResetEventSlim _queueEmptyEvent = new(true);
+        private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly Lock _queueLock = new();
+        private TaskCompletionSource? _queueEmpty;
 
-        private int _processingCount;
+        private int _pendingCount;
         private PostMergeProcessingStats _stats = new();
 
         public PostMergeProcessingStats GetAndResetStats()
@@ -64,7 +65,18 @@ partial class LogIndexStorage
             _minLengthToCompress = compressionDistance * BlockNumberSize;
 
             if (parallelism < 1) throw new ArgumentException("Compression parallelism degree must be a positive value.", nameof(parallelism));
-            _processing = new(x => CompressValue(x.Item1, x.Item2), new() { MaxDegreeOfParallelism = parallelism, BoundedCapacity = 10_000 });
+            _processing = new(x =>
+            {
+                if (!_started.Task.IsCompletedSuccessfully) return CompressAfterStartAsync(x.Item1, x.Item2);
+                CompressValue(x.Item1, x.Item2);
+                return Task.CompletedTask;
+            }, new() { MaxDegreeOfParallelism = parallelism, BoundedCapacity = 10_000 });
+        }
+
+        private async Task CompressAfterStartAsync(int? topicIndex, byte[] dbKey)
+        {
+            await _started.Task.ConfigureAwait(false);
+            CompressValue(topicIndex, dbKey);
         }
 
         public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue)
@@ -79,33 +91,67 @@ partial class LogIndexStorage
             if (!_compressQueue.TryAdd(dbKeyArr, true))
                 return false;
 
+            AddPending();
             if (_processing.Post((topicIndex, dbKeyArr)))
                 return true;
 
+            CompletePending();
             _compressQueue.TryRemove(dbKeyArr, out _);
             return false;
         }
 
         public async Task EnqueueAsync(int? topicIndex, byte[] dbKey)
         {
-            await _processing.SendAsync((topicIndex, dbKey));
-            _queueEmptyEvent.Reset();
+            AddPending();
+            bool accepted = false;
+            try
+            {
+                accepted = await _processing.SendAsync((topicIndex, dbKey)).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (!accepted) CompletePending();
+            }
         }
 
-        public Task WaitUntilEmptyAsync(TimeSpan waitTime, CancellationToken cancellationToken) =>
-            _queueEmptyEvent.WaitHandle.WaitOneAsync(waitTime, cancellationToken);
+        public async Task WaitUntilEmptyAsync(TimeSpan waitTime, CancellationToken cancellationToken)
+        {
+            Task empty;
+            lock (_queueLock)
+            {
+                empty = Volatile.Read(ref _pendingCount) == 0
+                    ? Task.CompletedTask
+                    : (_queueEmpty ??= new(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+            }
+            try
+            {
+                await empty.WaitAsync(waitTime, cancellationToken).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                // Compaction may continue after its bounded wait for compression expires.
+            }
+        }
+
+        private void AddPending() => Interlocked.Increment(ref _pendingCount);
+
+        private void CompletePending()
+        {
+            if (Interlocked.Decrement(ref _pendingCount) != 0) return;
+
+            lock (_queueLock)
+            {
+                if (Volatile.Read(ref _pendingCount) != 0) return;
+
+                _queueEmpty?.TrySetResult();
+                _queueEmpty = null;
+            }
+        }
 
         private void CompressValue(int? topicIndex, byte[] dbKey)
         {
-            if (_storage.HasBackgroundError)
-                return;
-
-            Interlocked.Increment(ref _processingCount);
-
             try
             {
-                _startEvent.Wait();
-
                 if (_storage.HasBackgroundError)
                     return;
 
@@ -160,14 +206,11 @@ partial class LogIndexStorage
             {
                 _compressQueue.TryRemove(dbKey, out _);
 
-                int processingCount = Interlocked.Decrement(ref _processingCount);
-
-                if (_processing.InputCount == 0 && processingCount == 0)
-                    _queueEmptyEvent.Set();
+                CompletePending();
             }
         }
 
-        public void Start() => _startEvent.Set();
+        public void Start() => _started.TrySetResult();
 
         public Task StopAsync()
         {
@@ -175,11 +218,7 @@ partial class LogIndexStorage
             return _processing.Completion; // Wait for the compression queue to finish
         }
 
-        public void Dispose()
-        {
-            _startEvent.Dispose();
-            _queueEmptyEvent.Dispose();
-        }
+        public void Dispose() { }
     }
 
     public sealed class NoOpCompressor : ICompressor

@@ -735,8 +735,13 @@ public class BlockTreeTests
         BlockTree blockTree = BuildBlockTree();
         Block block = Build.A.Block.TestObject;
         blockTree.SuggestBlock(block);
+        Assert.That(blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
         Block? found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
-        Assert.That(found, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.Null);
+            Assert.That(blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2467,10 +2472,10 @@ public class BlockTreeTests
     public async Task Visitor_can_block_adding_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-        ManualResetEvent manualResetEvent = new(false);
+        TaskCompletionSource manualResetEvent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task acceptTask = blockTree.Accept(new TestBlockTreeVisitor(manualResetEvent), CancellationToken.None);
         Assert.That(blockTree.CanAcceptNewBlocks, Is.False);
-        manualResetEvent.Set();
+        manualResetEvent.SetResult();
         await acceptTask;
     }
 
@@ -2708,9 +2713,9 @@ public class BlockTreeTests
         }
     }
 
-    private class TestBlockTreeVisitor(ManualResetEvent manualResetEvent) : IBlockTreeVisitor
+    private class TestBlockTreeVisitor(TaskCompletionSource manualResetEvent) : IBlockTreeVisitor
     {
-        private readonly ManualResetEvent _manualResetEvent = manualResetEvent;
+        private readonly TaskCompletionSource _manualResetEvent = manualResetEvent;
         private bool _wait = true;
 
         public bool PreventsAcceptingNewBlocks => true;
@@ -2720,7 +2725,7 @@ public class BlockTreeTests
         {
             if (_wait)
             {
-                await _manualResetEvent.WaitOneAsync(cancellationToken);
+                await _manualResetEvent.Task.WaitAsync(cancellationToken);
                 _wait = false;
             }
 
@@ -2931,6 +2936,8 @@ public class BlockTreeTests
 
         Block blockC = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 3 }).TestObject;
         blockTree.SuggestBlock(blockC);
+        Assert.That(blockTree.FindHeader(blockA.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+        Assert.That(blockTree.FindHeader(blockB.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
         blockTree.TryUpdateMainChain(blockC.Header, true, preloadedBlocks: new[] { blockC });
 
         using (Assert.EnterMultipleScope())
@@ -2943,6 +2950,9 @@ public class BlockTreeTests
             // A and B must not be canonical
             Assert.That(blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, "A must not be canonical after C was set");
             Assert.That(blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, "B must not be canonical after C was set");
+            Assert.That(blockTree.FindHeader(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+            Assert.That(blockTree.FindHeader(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+            Assert.That(blockTree.FindHeader(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical)?.Hash, Is.EqualTo(blockC.Hash));
 
             // All three are still findable by hash (non-canonical lookup)
             Assert.That(blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.None), Is.Not.Null, "A findable by hash");

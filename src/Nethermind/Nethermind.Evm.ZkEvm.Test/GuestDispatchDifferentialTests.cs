@@ -280,6 +280,7 @@ public class GuestDispatchDifferentialTests
         fixed (nint* table = handlers)
         {
             EvmStack stack = new(head, vm.Tracer, ref stackBytes[start], codeInfo.CodeSpan, codeInfo);
+            stack.HoistInputData(inputData);
             VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm };
             exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 table[codeInfo.CodeSpan[0]])(ref stack, gas, ref state, 0, stack.Head, table, ref stack.Code, stack.CodeLength);

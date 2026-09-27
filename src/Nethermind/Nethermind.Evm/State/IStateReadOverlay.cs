@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -37,6 +38,15 @@ public interface IStateReadOverlay
     /// <summary>Whether the overlay holds any slot of the account, so a read of its storage must reach the overlay
     /// even where the underlying account has none.</summary>
     bool HasStorage(Address address);
+
+    /// <summary>The bytes of code the overlay itself carries, for a code hash an overlaid account points at that the
+    /// code database need not hold: code a prefix deployed and replaced within one block may never have been
+    /// written there. Asked only when the code database misses.</summary>
+    bool TryGetCode(in ValueHash256 codeHash, [NotNullWhen(true)] out byte[]? code)
+    {
+        code = null;
+        return false;
+    }
 }
 
 /// <summary>The overlay armed for the scope in flight, if any. One per read-only processing environment.</summary>

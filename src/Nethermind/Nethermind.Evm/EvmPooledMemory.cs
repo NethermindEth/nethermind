@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -506,15 +505,13 @@ public struct EvmPooledMemory
         ulong sourceEnd = source.u0 + length;
         ulong destinationEnd = destination.u0 + length;
         ulong initializedSize = _initializedSize;
-        byte[]? memory = _memory;
-        if (memory is not null
-            && sourceEnd <= initializedSize
-            && destinationEnd <= (ulong)memory.Length
+        if (sourceEnd <= initializedSize
+            && destinationEnd <= GetBackingCapacity()
             && destination.u0 <= initializedSize)
         {
             int intLength = TruncateToInt32(length);
-            memory.AsSpan(TruncateToInt32(source.u0), intLength)
-                .CopyTo(memory.AsSpan(TruncateToInt32(destination.u0), intLength));
+            GetBackingSpan(TruncateToInt32(source.u0), intLength)
+                .CopyTo(GetBackingSpan(TruncateToInt32(destination.u0), intLength));
             if (destinationEnd > initializedSize)
             {
                 _initializedSize = destinationEnd;
@@ -732,6 +729,7 @@ public struct EvmPooledMemory
     }
 
     private const int MinRentSize = 1_024;
+    private const int InlineZeroChunk = 256;
     // Above this, a cache miss rents from the shared pool instead of allocating (pow2 sizes from
     // here up are LOH-sized).
     private const int MaxNewAllocLength = 1 << 16;
@@ -861,8 +859,11 @@ public struct EvmPooledMemory
             ulong initializedSize = _initializedSize;
             if (requiredEnd > initializedSize)
             {
-                GetInlineSpan().Slice((int)initializedSize).Clear();
-                _initializedSize = InlineCapacity;
+                // Zero to the next chunk boundary rather than the whole inline tier, so a spill copies only
+                // the prefix the frame touched; InlineCapacity is a multiple of the chunk.
+                ulong target = (requiredEnd + (InlineZeroChunk - 1)) & ~(InlineZeroChunk - 1UL);
+                GetInlineSpan().Slice((int)initializedSize, (int)(target - initializedSize)).Clear();
+                _initializedSize = target;
             }
 
             return;
@@ -881,8 +882,11 @@ public struct EvmPooledMemory
         {
             // Over-zero to a chunk boundary so sequential MSTORE growth stays amortized; size the window from
             // requiredEnd rather than the expansion delta to limit wasted clearing for small frames.
-            ulong zeroChunk = Math.Min(4 * 1024UL, Math.Max(256UL, BitOperations.RoundUpToPowerOf2(requiredEnd) >> 3));
-            ulong target = Math.Min((ulong)memory.Length, (requiredEnd + (zeroChunk - 1)) & ~(zeroChunk - 1));
+            // requiredEnd fits in the backing array. Shifting 61 set bits by clz(end - 1) gives chunk - 1;
+            // forcing bit 10 and masking to 12 bits implements the 256–4096 byte clamp.
+            ulong value = (requiredEnd - 1) | 1024UL;
+            ulong zeroMask = (0x1fff_ffff_ffff_ffffUL >> Bytes.LeadingZeroBits(value)) & 0xfffUL;
+            ulong target = Math.Min((ulong)memory.Length, (requiredEnd + zeroMask) & ~zeroMask);
             Array.Clear(memory, (int)initializedSize, (int)(target - initializedSize));
             initializedSize = target;
         }
