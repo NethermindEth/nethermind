@@ -133,16 +133,23 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
         }
     }
 
+    /// <remarks>
+    /// Re-caching the stored instance never locks the entry, so readers cannot miss. Replacing the value locks it;
+    /// readers spin through the write, but a writer preempted mid-write can still cost them a miss, so only the
+    /// values they return are checked.
+    /// </remarks>
     [Test]
-    public void TryGet_never_misses_a_present_key_while_it_is_rewritten([Values] bool sameInstance)
+    public void TryGet_returns_stored_values_while_a_key_is_rewritten([Values] bool sameInstance)
     {
         const int readsPerReader = 200_000;
+        TimeSpan joinTimeout = TimeSpan.FromSeconds(30);
         AddressAsKey key = _keys[0];
         Account first = _accounts[0];
         Account second = sameInstance ? first : _accounts[1];
         _cache.Set(in key, first);
 
         int misses = 0;
+        int wrongValues = 0;
         bool readersDone = false;
         Task writer = Task.Factory.StartNew(() =>
         {
@@ -157,21 +164,32 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
             {
                 for (int i = 0; i < readsPerReader; i++)
                 {
-                    if (!_cache.TryGet(in key, out Account? value) || (value != first && value != second))
+                    if (!_cache.TryGet(in key, out Account? value))
                         Interlocked.Increment(ref misses);
+                    else if (value != first && value != second)
+                        Interlocked.Increment(ref wrongValues);
                 }
             }, TaskCreationOptions.LongRunning);
         }
 
-        // Reads wait for in-flight writes, so a lock that is never released would otherwise hang the run.
-        bool readersFinished = Task.WaitAll(readers, TimeSpan.FromSeconds(30));
-        Volatile.Write(ref readersDone, true);
-        writer.Wait();
+        bool readersFinished;
+        bool writerFinished;
+        try
+        {
+            readersFinished = Task.WaitAll(readers, joinTimeout);
+        }
+        finally
+        {
+            Volatile.Write(ref readersDone, true);
+            writerFinished = writer.Wait(joinTimeout);
+        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(readersFinished, Is.True);
-            Assert.That(misses, Is.Zero);
+            Assert.That(writerFinished, Is.True);
+            Assert.That(wrongValues, Is.Zero);
+            if (sameInstance) Assert.That(misses, Is.Zero);
         }
     }
 

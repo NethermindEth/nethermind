@@ -14,7 +14,7 @@ using static Nethermind.Core.Caching.SeqlockHeader;
 namespace Nethermind.Core.Caching;
 
 /// <summary>
-/// High-throughput 8-way set-associative cache with seqlock reads that take no lock and
+/// High-throughput 8-way set-associative cache with lock-free reads and
 /// 3-random eviction within a set.
 ///
 /// <para>Choose a cache based on tradeoffs:</para>
@@ -45,7 +45,7 @@ namespace Nethermind.Core.Caching;
 ///     <description>LruCache / ClockCache / AssociativeCache</description>
 ///   </listheader>
 ///   <item><term>Eviction scope</term><description>Global / Global / Within one 8-way set</description></item>
-///   <item><term>Read path</term><description>McsLock / bitmap update / seqlock read, waiting only for an in-flight write of a key with the same tag</description></item>
+///   <item><term>Read path</term><description>McsLock / bitmap update / lock-free seqlock read, spinning briefly on an in-flight write of a key with the same tag</description></item>
 ///   <item><term>Write path</term><description>McsLock / global lock / set-local gate</description></item>
 ///   <item><term>Capacity</term><description>Exact / Exact / Rounded to setCount × 8</description></item>
 ///   <item><term>Clear</term><description>O(n) zeroing / O(n) zeroing / O(1) epoch bump + optional O(n) reference release</description></item>
@@ -438,8 +438,8 @@ public sealed partial class AssociativeCache<TKey, TValue>
 
     /// <summary>
     /// Re-reads an entry carrying <paramref name="expectedTag"/> that was locked or changed while its key and value
-    /// were copied, setting <paramref name="settled"/> once <paramref name="key"/> and <paramref name="value"/> hold a
-    /// consistent copy.
+    /// were copied, setting <paramref name="settled"/> when <paramref name="key"/> and <paramref name="value"/> then
+    /// hold a consistent copy.
     /// </summary>
     /// <remarks>
     /// Implemented only for the host. The zkEVM guest runs single-threaded, so no entry is seen mid-write there, and
