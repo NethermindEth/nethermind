@@ -30,18 +30,23 @@ public partial class BeaconSyncOrchestratorTests
     // Epoch 412,500 on mainnet: past FuluForkEpoch 411,392.
     private const ulong FuluAnchorSlot = 13_200_000;
     private const ulong FuluHeadOffset = 64;
-    private const ulong FuluWallSlot = FuluAnchorSlot + 100;
+    // A node that has followed the chain for a while: the wall clock is 4,196 epochs past the anchor, so the 4,096-epoch
+    // data_column_serve_range starts 100 epochs (3,200 slots) above it and the node holds every block of that range.
+    private const ulong ServeRangeStart = FuluAnchorSlot + 100 * 32;
+    private const ulong FuluWallSlot = FuluAnchorSlot + (4096 + 100) * 32 + 5;
+    // A node that started recently: the anchor is inside the serve range, so some blocks of it are not held.
+    private const ulong YoungWallSlot = FuluAnchorSlot + 100;
 
-    /// <summary>fulu/p2p-interface.md Status v2: a peer that trusts an advertised slot below the held columns asks for sidecars this node answers ResourceUnavailable.</summary>
-    [TestCase(new long[] { -5 }, 0L, TestName = "Columns held from below the anchor advertise the anchor")]
-    [TestCase(new long[] { 10 }, 10L, TestName = "Columns held only from above the anchor advertise their first slot")]
+    /// <summary>fulu/p2p-interface.md Status v2: a node holding every block of the sidecar retention period advertises the earliest slot from which it can serve all sidecars.</summary>
+    [TestCase(new long[] { -5 }, 0L, TestName = "Columns held from below the serve range advertise the anchor")]
+    [TestCase(new long[] { 10 }, 3200L + 10L, TestName = "Columns held only from inside the serve range advertise their first slot")]
     [TestCase(new long[0], (long)(FuluWallSlot - FuluAnchorSlot + 1), TestName = "No columns held advertise the slot after the current one")]
     public async Task Status_advertises_the_earliest_slot_with_every_column_held(long[] columnSlotOffsets, long expectedOffset)
     {
         DataColumnSidecarPool pool = new();
         foreach (long offset in columnSlotOffsets)
         {
-            AddColumn(pool, (ulong)((long)FuluAnchorSlot + offset));
+            AddColumn(pool, (ulong)((long)ServeRangeStart + offset));
         }
 
         (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, FuluAnchorSlot, FuluWallSlot);
@@ -51,38 +56,54 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo((ulong)((long)FuluAnchorSlot + expectedOffset)));
     }
 
+    /// <summary>fulu/p2p-interface.md Status v2: the sidecar exception needs every block of the retention period; a node whose anchor is inside it advertises the anchor.</summary>
+    [Test]
+    public async Task A_node_missing_blocks_of_the_serve_range_advertises_its_anchor()
+    {
+        DataColumnSidecarPool pool = new();
+        AddColumn(pool, FuluAnchorSlot + 10);
+        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, FuluAnchorSlot, YoungWallSlot);
+
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(FuluAnchorSlot));
+    }
+
     [Test]
     public async Task Status_earliest_slot_rises_when_the_pool_evicts_below_it()
     {
         DataColumnSidecarPool pool = new(1);
         (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, FuluAnchorSlot, FuluWallSlot);
-        AddColumn(pool, FuluAnchorSlot + 1);
+        AddColumn(pool, ServeRangeStart + 1);
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
         ulong before = statusHolder.CurrentStatus.EarliestAvailableSlot;
 
-        AddColumn(pool, FuluAnchorSlot + 2);
+        AddColumn(pool, ServeRangeStart + 2);
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(before, Is.EqualTo(FuluAnchorSlot + 1));
-            Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(FuluAnchorSlot + 2), "slot anchor+1 lost its column");
+            Assert.That(before, Is.EqualTo(ServeRangeStart + 1));
+            Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 2), "the first slot of the range lost its column");
         }
     }
 
-    /// <summary>Before Fulu no peer asks for columns, so the anchor is still the earliest available block; from the first Fulu slot the held columns bound it.</summary>
+    /// <summary>
+    /// Before Fulu no peer asks for columns, so the anchor is still the earliest available block. From Fulu the serve range
+    /// starts at the fork, so an anchor below it holds every block of the range and the held columns bound the slot.
+    /// </summary>
     [Test]
-    public async Task Status_earliest_slot_follows_the_column_pool_from_the_first_fulu_slot([Values] bool atFirstFuluSlot)
+    public async Task Status_earliest_slot_follows_the_column_pool_from_fulu([Values] bool pastFulu)
     {
         ulong fuluStart = Spec.FuluForkEpoch * Spec.SlotsPerEpoch;
         ulong anchorSlot = fuluStart - 40;
         DataColumnSidecarPool pool = new();
-        AddColumn(pool, anchorSlot + 5);
-        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, anchorSlot, atFirstFuluSlot ? fuluStart : fuluStart - 1);
+        AddColumn(pool, fuluStart + 5);
+        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, anchorSlot, pastFulu ? fuluStart + 10 : fuluStart - 1);
 
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
 
-        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(atFirstFuluSlot ? anchorSlot + 5 : anchorSlot));
+        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(pastFulu ? fuluStart + 5 : anchorSlot));
     }
 
     /// <summary>fulu/p2p-interface.md Status v2: a by-range request from the advertised slot must not be refused, whether sent at startup or after a head step.</summary>
@@ -93,7 +114,7 @@ public partial class BeaconSyncOrchestratorTests
         DataColumnSidecarPool pool = new();
         foreach (long offset in columnSlotOffsets)
         {
-            AddColumn(pool, (ulong)((long)FuluAnchorSlot + offset));
+            AddColumn(pool, (ulong)((long)ServeRangeStart + offset));
         }
 
         (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, SlotClock slotClock) = CreateStatusHarness(pool, FuluAnchorSlot, FuluWallSlot, headOffset);
@@ -114,12 +135,12 @@ public partial class BeaconSyncOrchestratorTests
             .Build();
         BeaconSyncOrchestrator orchestrator = container.Resolve<BeaconSyncOrchestrator>();
         BeaconChainStatusHolder statusHolder = container.Resolve<BeaconChainStatusHolder>();
-        AddColumn(container.Resolve<DataColumnSidecarPool>(), FuluAnchorSlot + 10);
+        AddColumn(container.Resolve<DataColumnSidecarPool>(), ServeRangeStart + 10);
         Initialize(orchestrator, ImporterWithHead(FuluAnchorSlot, FuluHeadOffset), FuluAnchorSlot);
 
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
 
-        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(FuluAnchorSlot + 10), "the orchestrator must read the pool the column protocols serve from");
+        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 10), "the orchestrator must read the pool the column protocols serve from");
     }
 
     private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset)
