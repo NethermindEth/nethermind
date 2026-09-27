@@ -330,6 +330,11 @@
     "hash": "sha256-st6V0S7j+FyK7r9X6uObpuhSoac/z5QOF1DUPnhffgE="
   },
   {
+    "pname": "Microsoft.Extensions.AI.Abstractions",
+    "version": "10.8.3",
+    "hash": "sha256-e+fhDQZj77lN2+1gXVwDzP6Au2hSykTNuh3R547nynY="
+  },
+  {
     "pname": "Microsoft.Extensions.Caching.Abstractions",
     "version": "10.0.12",
     "hash": "sha256-7pROPFkS/8YZNiSqtuddKKRJ8dRhfLyShg2ywFjGFrw="
@@ -648,6 +653,21 @@
     "pname": "Microsoft.VisualStudio.Azure.Containers.Tools.Targets",
     "version": "1.23.0",
     "hash": "sha256-9XfEk8iYkrOpuxBVLECcirUt/xVlVtuE6sou7G1UuQE="
+  },
+  {
+    "pname": "ModelContextProtocol",
+    "version": "2.2.0",
+    "hash": "sha256-2XBOEtVBLJcUfHTdiVJEELuthuCbyWRyE02ccmnVxvw="
+  },
+  {
+    "pname": "ModelContextProtocol.AspNetCore",
+    "version": "2.2.0",
+    "hash": "sha256-cbhnDzAoE/N2XkuoaFJK6n8I5tIlKQ5oXNwjE+m9jic="
+  },
+  {
+    "pname": "ModelContextProtocol.Core",
+    "version": "2.2.0",
+    "hash": "sha256-FGsoB511LOIWZR9IKH9YRukGHhUlwIGBw4VP7xobero="
   },
   {
     "pname": "Mono.TextTemplating",
