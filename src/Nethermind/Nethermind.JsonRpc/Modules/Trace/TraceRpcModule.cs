@@ -169,9 +169,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         /// <summary>
-        /// A <c>chainId</c> for another chain is invalid regardless of state, so it is rejected before the block
-        /// lookup and the other call checks.
+        /// Returns an error message when <paramref name="call"/> sets a <c>chainId</c> for another chain, otherwise <see langword="null"/>.
         /// </summary>
+        /// <remarks>
+        /// A <c>chainId</c> for another chain is invalid regardless of state, so it is checked before the block lookup and the other call checks.
+        /// </remarks>
         private string? GetOtherChainError(TransactionForRpc call)
         {
             ulong chainId = blockchainBridge.GetChainId();
