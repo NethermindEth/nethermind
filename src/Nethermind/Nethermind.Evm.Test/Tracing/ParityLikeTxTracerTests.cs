@@ -442,17 +442,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     [Test]
     public void Call_or_create_failing_the_balance_precheck_has_a_failed_frame([Values] bool isCreate)
     {
-        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
-
-        byte[] code = (isCreate
-                ? Prepare.EvmCode.Create(initCode, 1000.Ether).Op(Instruction.POP).Create(initCode, 0)
-                : Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50000, 1000.Ether).Op(Instruction.POP).Call(TestItem.AddressC, 50000))
-            .Op(Instruction.POP)
-            .Op(Instruction.STOP)
-            .Done;
-
+        byte[] code = BalancePrecheckCode(isCreate);
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(Activation, 1_000_000, code);
 
         ParityTraceAction rejected = trace.Action!.Subtraces[0];
@@ -478,6 +468,23 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             Assert.That(next.TraceAddress.ToArray(), Is.EqualTo(new[] { 1 }), "[1] address");
             Assert.That(frameOperations.Select(static operation => operation.Sub is not null), Is.EqualTo(new[] { false, true }), "vmTrace subs");
         }
+    }
+
+    /// <summary>
+    /// Returns code that makes a call or creation with more value than it holds, then a zero-value one that succeeds.
+    /// </summary>
+    private byte[] BalancePrecheckCode(bool isCreate)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+
+        return (isCreate
+                ? Prepare.EvmCode.Create(initCode, 1000.Ether).Op(Instruction.POP).Create(initCode, 0)
+                : Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50000, 1000.Ether).Op(Instruction.POP).Call(TestItem.AddressC, 50000))
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
     }
 
     [Test]
@@ -518,9 +525,9 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     [Test]
     public void Call_and_create_at_max_depth_have_failed_frames()
     {
-        // Calls itself with all but 512 gas, then, once the call fails, creates. Before EIP-150 a call forwards what
-        // it asks for, so 2M gas reaches the depth limit.
-        byte[] code = Bytes.FromHexString("0x60006000600060006000306102005a03f1601c57600060006000f0505b00");
+        // Calls itself with all but 512 gas, then, once the call fails, calls the identity precompile with no value and
+        // with 1 wei, and creates. Before EIP-150 a call forwards what it asks for, so 2M gas reaches the depth limit.
+        byte[] code = Bytes.FromHexString("0x60006000600060006000306102005a03f1603c576000600060006000600060046000f1506000600060006000600160046000f150600060006000f0505b00");
 
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall((ForkActivation)MainnetSpecProvider.HomesteadBlockNumber, 2_000_000, code);
 
@@ -536,35 +543,28 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             deepestVmTrace = entered.Sub!;
         }
 
-        ParityVmOperationTrace create = deepestVmTrace.Operations.Single(static operation => operation.Pc == 26);
+        ParityVmOperationTrace create = deepestVmTrace.Operations.Single(static operation => operation.Pc == 58);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(deepest.TraceAddress.Length, Is.EqualTo(VirtualMachineStatics.MaxCallDepth), "deepest frame depth");
-            Assert.That(deepest.Subtraces.Select(static action => action.Type), Is.EqualTo(new[] { "call", "create" }), "attempts");
+            // Like one that entered its frame, the zero-value precompile call is left out and takes no trace address.
+            Assert.That(deepest.Subtraces.Select(static action => action.Type), Is.EqualTo(new[] { "call", "call", "create" }), "attempts");
+            Assert.That(deepest.Subtraces.Select(static action => action.TraceAddress.ToArray()[^1]), Is.EqualTo(new[] { 0, 1, 2 }), "indices");
             Assert.That(deepest.Subtraces.Select(static action => action.Error), Is.All.EqualTo("Max call depth exceeded"), "errors");
             Assert.That(deepest.Subtraces.Select(static action => action.Result), Is.All.Null, "results");
             Assert.That(deepest.Subtraces.Select(static action => action.Subtraces.Count), Is.All.Zero, "subtraces");
-            Assert.That(deepest.Subtraces[1].TraceAddress.ToArray()[^1], Is.EqualTo(1), "create index");
+            Assert.That(deepest.Subtraces[1].To, Is.EqualTo(IdentityPrecompile.Address), "precompile call to");
+            Assert.That(deepest.Subtraces[1].Value, Is.EqualTo(UInt256.One), "precompile call value");
             // Before EIP-150 a creation would have received all the gas left after its own cost.
-            Assert.That(deepest.Subtraces[1].Gas, Is.EqualTo(create.Used), "create gas");
+            Assert.That(deepest.Subtraces[2].Gas, Is.EqualTo(create.Used), "create gas");
         }
     }
 
     [Test]
-    public void Create_failing_its_precheck_has_no_frame_from_eip_8037([Values] bool isCreate)
+    public void Only_a_call_failing_the_balance_precheck_has_a_failed_frame_from_eip_8037([Values] bool isCreate)
     {
-        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
-        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
-
-        byte[] code = (isCreate
-                ? Prepare.EvmCode.Create(initCode, 1000.Ether).Op(Instruction.POP).Create(initCode, 0)
-                : Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50000, 1000.Ether).Op(Instruction.POP).Call(TestItem.AddressC, 50000))
-            .Op(Instruction.POP)
-            .Op(Instruction.STOP)
-            .Done;
-
+        byte[] code = BalancePrecheckCode(isCreate);
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.AmsterdamActivation, 5_000_000, code);
 
         List<ParityTraceAction> subtraces = trace.Action!.Subtraces;
