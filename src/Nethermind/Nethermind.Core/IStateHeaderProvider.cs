@@ -7,7 +7,7 @@ namespace Nethermind.Core;
 /// <summary>
 /// The state system's single integration point with the block tree: resolves a target block's
 /// parent header, and exposes the state-pruning finality boundary and the canonical header at
-/// finalized heights.
+/// finalized heights. The finalized header also serves as the reorg-safe point for txpool nonce eviction.
 /// </summary>
 public interface IStateHeaderProvider
 {
