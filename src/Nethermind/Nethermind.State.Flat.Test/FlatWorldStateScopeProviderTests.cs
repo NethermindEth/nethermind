@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -1162,6 +1163,97 @@ public class FlatWorldStateScopeProviderTests
 
         await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(disposeCompleted, Is.True, "Dispose should complete after the outstanding warmup finishes");
+    }
+
+    /// <summary>A job still queued when the scope is disposed must skip its walk, so the wait covers only walks in flight.</summary>
+    [Test]
+    public async Task Dispose_QueuedWarmup_SkipsItsWalk()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        // A job queued before disposal carries the sequence id it was queued under.
+        int queuedSequenceId = scope.HintSequenceId;
+        scope.IncrementOutstandingWarmups();
+        using ManualResetEventSlim waitEntered = new(false);
+        // Holds dispose before its wait, so the bundle is still live when the job runs.
+        using ManualResetEventSlim jobRan = new(false);
+        scope.OnWaitingForWarmups = () =>
+        {
+            waitEntered.Set();
+            jobRan.Wait();
+        };
+
+        Task disposeTask = Task.Run(() => scope.Dispose());
+        bool walked;
+        try
+        {
+            Assert.That(waitEntered.Wait(5000), Is.True, "Dispose should enter the wait loop");
+            // The warmer dequeues it only now, as it would behind a backlog.
+            walked = scope.WarmUpStateTrie(TestItem.AddressA, queuedSequenceId);
+        }
+        finally
+        {
+            jobRan.Set();
+        }
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(walked, Is.False, "a job dequeued after disposal began must not walk the trie");
+    }
+
+    /// <summary>Dispose must return when the last warmup completes, not when its timeout expires.</summary>
+    [Test]
+    public async Task Dispose_ReturnsWhenTheLastWarmupCompletes()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        scope.IncrementOutstandingWarmups();
+        long completed = 0;
+        // The last job completes after dispose has re-read the count and just before it blocks.
+        scope.OnBlockingForWarmups = () =>
+        {
+            scope.DecrementOutstandingWarmups();
+            completed = Stopwatch.GetTimestamp();
+        };
+
+        // Measured on the disposing thread, so scheduling of this test's continuations is not counted.
+        TimeSpan blocked = await Task.Run(() =>
+        {
+            scope.Dispose();
+            return Stopwatch.GetElapsedTime(completed);
+        }).WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Without the wake, dispose returns only when its one-second timeout expires.
+        Assert.That(blocked, Is.LessThan(TimeSpan.FromMilliseconds(900)),
+            "the completing job must wake dispose rather than leave it to time out");
+    }
+
+    /// <summary>A wake from a job that reached zero before more were queued must not end the wait while one is still in flight.</summary>
+    [Test]
+    public async Task Dispose_StaleWake_KeepsWaitingForTheJobInFlight()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        scope.IncrementOutstandingWarmups();
+        int blocks = 0;
+        scope.OnBlockingForWarmups = () =>
+        {
+            if (Interlocked.Increment(ref blocks) == 1)
+            {
+                // One job completes to zero and sets the event, then another is counted: the wake is stale.
+                scope.DecrementOutstandingWarmups();
+                scope.IncrementOutstandingWarmups();
+            }
+            else
+            {
+                // Blocking again proves the stale wake did not end the wait; the job in flight completes now.
+                scope.DecrementOutstandingWarmups();
+            }
+        };
+
+        await Task.Run(() => scope.Dispose()).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(Volatile.Read(ref blocks), Is.EqualTo(2), "dispose must wait again after a stale wake instead of returning");
     }
 
     [Test]

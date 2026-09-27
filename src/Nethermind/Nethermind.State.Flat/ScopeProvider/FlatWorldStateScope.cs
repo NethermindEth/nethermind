@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
@@ -42,6 +41,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // tasks within the trie warmer's ring buffer.
     private volatile int _hintSequenceId = 0;
     private int _outstandingWarmups = 0;
+    // Published by dispose before it waits; the job that brings the count to zero sets it.
+    private ManualResetEventSlim? _warmupsDrained;
     private StateId _currentStateId;
     internal volatile bool _pausePrewarmer = false;
 
@@ -87,6 +88,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+        // Nothing reads the warmed paths after this, so queued jobs skip their walk and the wait covers only walks in flight.
+        Interlocked.Increment(ref _hintSequenceId);
         CancelHintBal();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
@@ -123,6 +126,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     // Exposed for tests to observe when the wait loop is entered.
     internal Action? OnWaitingForWarmups;
+    // Exposed for tests to act just before each blocking wait.
+    internal Action? OnBlockingForWarmups;
 
     private void WaitForOutstandingWarmups()
     {
@@ -130,18 +135,29 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         OnWaitingForWarmups?.Invoke();
 
-        SpinWait spinWait = new();
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        while (Volatile.Read(ref _outstandingWarmups) != 0)
+        // Blocking rather than sleeping: a 1 ms sleep can last a whole timer tick (15.6 ms on Windows) past the last walk.
+        ManualResetEventSlim drained = new(initialState: false);
+        Interlocked.Exchange(ref _warmupsDrained, drained);
+        long deadline = Environment.TickCount64 + 1000;
+        while (true)
         {
-            if (stopwatch.ElapsedMilliseconds > 1000)
-            {
-                ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-                if (logger.IsWarn) logger.Warn($"TrieWarmer outstanding jobs ({Volatile.Read(ref _outstandingWarmups)}) did not drain within 1s during scope dispose");
-                return;
-            }
-            spinWait.SpinOnce();
+            // Reset before re-reading the count: a job that reached zero before more were queued can set the event late,
+            // so a wake only means "re-check", and a completion after the re-read still wakes the wait.
+            drained.Reset();
+            if (Volatile.Read(ref _outstandingWarmups) == 0) return;
+            long remaining = deadline - Environment.TickCount64;
+            if (remaining <= 0) break;
+            OnBlockingForWarmups?.Invoke();
+            drained.Wait((int)remaining);
         }
+
+        ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+        if (logger.IsWarn) logger.Warn($"TrieWarmer outstanding jobs ({Volatile.Read(ref _outstandingWarmups)}) did not drain within 1s during scope dispose");
+    }
+
+    private void CompleteWarmup()
+    {
+        if (Interlocked.Decrement(ref _outstandingWarmups) == 0) Volatile.Read(ref _warmupsDrained)?.Set();
     }
 
     private StateTree StateTree => Volatile.Read(ref _stateTree) ?? CreateStateTree();
@@ -378,13 +394,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
         finally
         {
-            Interlocked.Decrement(ref _outstandingWarmups);
+            CompleteWarmup();
         }
     }
 
     internal void IncrementOutstandingWarmups() => Interlocked.Increment(ref _outstandingWarmups);
 
-    internal void DecrementOutstandingWarmups() => Interlocked.Decrement(ref _outstandingWarmups);
+    internal void DecrementOutstandingWarmups() => CompleteWarmup();
 
     public void HintWarmAccount(Address address)
     {
