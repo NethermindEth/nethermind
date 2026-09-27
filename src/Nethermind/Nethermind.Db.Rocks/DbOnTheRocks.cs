@@ -77,8 +77,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private readonly List<OptionsHandle> _doNotGcOptions = [];
 
     private readonly IRocksDbConfig _perTableDbConfig;
-    internal bool VerifyChecksum => _perTableDbConfig.VerifyChecksum ?? true;
-    internal ulong ReadAheadSize => _perTableDbConfig.ReadAheadSize ?? 256UL.KiB;
+    internal bool VerifyChecksum { get; }
+    internal ulong ReadAheadSize { get; }
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
@@ -127,6 +127,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _fileSystem = fileSystem ?? new RealFileSystem();
         _rocksDbConfigFactory = rocksDbConfigFactory;
         _perTableDbConfig = rocksDbConfigFactory.GetForDatabase(Name, null);
+        VerifyChecksum = _perTableDbConfig.VerifyChecksum ?? true;
+        ReadAheadSize = _perTableDbConfig.ReadAheadSize ?? 256UL.KiB;
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
         _iteratorManager = CreateLazyReadAheadIteratorManager(null);
         _seekIteratorManager = CreateLazySeekIteratorManager(null);
