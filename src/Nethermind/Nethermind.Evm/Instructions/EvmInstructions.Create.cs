@@ -162,9 +162,9 @@ public static partial class EvmInstructions
         if (TSpec.UseHotAndColdStorage)
         {
             // EIP-8279: the new address enters the block access list on this first touch.
-            if (vm.VmState.AccessTracker.WarmUp(contractAddress) && TSpec.IsEip8279Enabled
-                && !vm.TryMeterBalData(Eip8279Constants.AddressBytes))
+            if (TSpec.IsEip8279Enabled && !vm.TryMeterColdBalAccess(contractAddress))
                 goto OutOfGas;
+            vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
 
         bool isNonZeroAccount = state.IsNonZeroAccount(contractAddress, out bool accountExists);

@@ -12,8 +12,9 @@ namespace Nethermind.Evm;
 /// </summary>
 /// <remarks>
 /// Every byte is counted before the matching block access list insertion, so an operation that cannot pay for its
-/// bytes aborts first. The count is a deliberate upper bound: it is never rewound when a frame reverts, and only a
-/// storage slot restored to its pre-transaction value gives its value bytes back. Instances are reused across
+/// bytes aborts first. The count is never rewound when a frame reverts, and only a storage slot restored to its
+/// pre-transaction value gives its value bytes back, so it is an upper bound except for the give-backs that are not
+/// journaled (see <see cref="TryMeterStorageValue"/>). Instances are reused across
 /// transactions through <see cref="Reset"/>; not thread safe.
 /// </remarks>
 public sealed class BalDataMeter
