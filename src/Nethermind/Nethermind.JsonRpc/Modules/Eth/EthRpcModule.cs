@@ -398,10 +398,6 @@ public partial class EthRpcModule(
         if (!_rpcConfig.EnableEthSignTransaction)
             return ResultWrapper<SignTransactionResult>.Fail("eth_signTransaction is disabled", ErrorCodes.MethodNotFound);
 
-        Address from = (rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero;
-        if (!_wallet.IsUnlocked(from))
-            return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
-
         // With the signing fields present, fees are checked before the rest of the request; a request carrying
         // blobs has its sidecar checked first.
         if (rpcTx.MissingSigningField() is null
@@ -433,8 +429,14 @@ public partial class EthRpcModule(
                 return ResultWrapper<SignTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
         }
 
+        // The account is looked up only once the request itself is valid.
         if (!_wallet.TrySignTransaction(tx, chainId))
-            return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
+        {
+            string signingError = Array.IndexOf(_wallet.GetAccounts(), tx.SenderAddress) >= 0
+                ? "authentication needed: password or unlock"
+                : "unknown account";
+            return ResultWrapper<SignTransactionResult>.Fail(signingError, ErrorCodes.InvalidInput);
+        }
 
         tx.Hash = tx.CalculateHash();
 

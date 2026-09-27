@@ -4,6 +4,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -61,6 +62,26 @@ public partial class EthRpcModuleTests
             FeeDefaultsRequest("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", ForeignAccount));
 
         Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("maxFeePerGas (10) < maxPriorityFeePerGas (1000000000)"), serialized);
+    }
+
+    [TestCase(ForeignAccount, false, """{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", "maxFeePerGas (0xa) < maxPriorityFeePerGas (0x3b9aca00)", TestName = "Unknown account, fee cap below the priority fee")]
+    [TestCase(HeldAccount, true, """{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", "maxFeePerGas (0xa) < maxPriorityFeePerGas (0x3b9aca00)", TestName = "Locked account, fee cap below the priority fee")]
+    [TestCase(ForeignAccount, false, """{"gasPrice":"0x0"}""", "gasPrice must be non-zero after london fork", TestName = "Unknown account, zero gas price")]
+    [TestCase(HeldAccount, true, """{"gasPrice":"0x0"}""", "gasPrice must be non-zero after london fork", TestName = "Locked account, zero gas price")]
+    [TestCase(ForeignAccount, false, """{"type":"0x2","maxFeePerGas":"0x2d79883d2000","maxPriorityFeePerGas":"0x3b9aca00"}""", "tx fee (1.52 ether) exceeds the configured cap (1.00 ether)", TestName = "Unknown account, fee above the cap")]
+    [TestCase(HeldAccount, true, """{"type":"0x2","maxFeePerGas":"0x2d79883d2000","maxPriorityFeePerGas":"0x3b9aca00"}""", "tx fee (1.52 ether) exceeds the configured cap (1.00 ether)", TestName = "Locked account, fee above the cap")]
+    [TestCase(ForeignAccount, false, """{"gasPrice":"0x9184e72a000"}""", "unknown account", TestName = "Unknown account, valid request")]
+    [TestCase(HeldAccount, true, """{"gasPrice":"0x9184e72a000"}""", "authentication needed: password or unlock", TestName = "Locked account, valid request")]
+    public async Task Sign_checks_the_request_before_the_account(string from, bool locked, string feeFields, string expected)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
+        if (locked)
+            ctx.Test.TestWallet.LockAccount(new Address(from));
+
+        string serialized = await ctx.Test.TestEthRpc("eth_signTransaction", FeeDefaultsRequest(feeFields, from));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(expected), serialized);
     }
 
     private async Task<string?> FeeDefaultsError(string method, string feeFields, bool london)
