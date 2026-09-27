@@ -119,7 +119,8 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
 
         if (error is not null)
         {
-            _frameError = error == EvmExceptionType.None ? EvmExceptionType.Revert : error;
+            // The first failed frame is the one the aggregate status fails on.
+            _frameError ??= error == EvmExceptionType.None ? EvmExceptionType.Revert : error;
             TruncateLogs(_frameLogStarts[frameIndex]);
         }
 
@@ -163,12 +164,9 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         Logs = _hasFrameReceipts ? BuildLogs() : []
     };
 
-    private string FailureMessage(string? error) => _frameError switch
-    {
-        null => error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,
-        EvmExceptionType.Revert => "execution reverted",
-        EvmExceptionType frameError => frameError.GetEvmExceptionDescription() ?? frameError.ToString()
-    };
+    private string FailureMessage(string? error) => _frameError is { } frameError && frameError != EvmExceptionType.Revert
+        ? frameError.GetEvmExceptionDescription() ?? frameError.ToString()
+        : error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error;
 
     private List<Log> BuildLogs() => _logs.Select((entry, i) => new Log
     {

@@ -4874,10 +4874,11 @@ public class FrameTxProcessorTests
         }
     }
 
-    /// <summary>An atomic batch running out of gas fails the transaction without any frame reverting, so
-    /// simulate must report that frame's error rather than a later successful frame's inner revert.</summary>
-    [Test]
-    public void Simulate_BatchOutOfGasBeforeAnInnerRevert_ReportsTheFailedFramesError()
+    /// <summary>A failed frame transaction fails on its first failed frame, so simulate must report that frame's
+    /// error: not a later frame's, and not a later successful frame's inner revert.</summary>
+    [TestCase(false, EvmExceptionType.OutOfGas, TestName = "Simulate_BatchOutOfGasBeforeAnInnerRevert_ReportsTheFailedFramesError")]
+    [TestCase(true, EvmExceptionType.Revert, TestName = "Simulate_RevertBeforeALaterOutOfGasFrame_ReportsTheFirstFailedFramesError")]
+    public void Simulate_FailedFrameTransaction_ReportsTheFirstFailedFramesError(bool revertFirst, EvmExceptionType expected)
     {
         Address afterBatch = TestItem.AddressD;
         Address reverter = TestItem.AddressF;
@@ -4887,24 +4888,63 @@ public class FrameTxProcessorTests
         DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
         DeployContract(afterBatch, Prepare.EvmCode.Call(reverter, 50_000).Op(Instruction.STOP).Done);
 
-        Transaction tx = FrameTx(nonce: 0,
-            SelfVerifyFrame(),
-            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
-            Frame(FrameMode.Sender, target: Observer),
-            Frame(FrameMode.Default, target: afterBatch));
+        Transaction tx = revertFirst
+            ? FrameTx(nonce: 0,
+                SelfVerifyFrame(),
+                Frame(FrameMode.Sender, target: reverter),
+                Frame(FrameMode.Sender, target: Observer))
+            : FrameTx(nonce: 0,
+                SelfVerifyFrame(),
+                Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
+                Frame(FrameMode.Sender, target: Observer),
+                Frame(FrameMode.Default, target: afterBatch));
         tx.Hash = tx.CalculateHash();
 
         SimulateBlockTracer blockTracer = new(isTracingLogs: false, _specProvider);
+        ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(StatusCode.Failure));
+            Assert.That(result.Error!.EvmException, Is.EqualTo(expected));
+            Assert.That(result.Error.Message, Is.EqualTo(expected == EvmExceptionType.Revert
+                ? "execution reverted: frame failed"
+                : expected.GetEvmExceptionDescription()));
+        }
+    }
+
+    /// <summary>A failed <c>POST_TX</c> frame discards the body down to the validation prefix, so simulate keeps
+    /// the prefix's log and drops the body's log and transfer, and names the assertion in its error.</summary>
+    [Test]
+    public void Simulate_PostTxRevertsOverALoggingPrefix_KeepsOnlyThePrefixLogs()
+    {
+        _spec.IsEip7708Enabled = false;
+        Address reverter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, LogEmitter(999));
+        DeployContract(Recipient, LogEmitter(7));
+        DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        // The deploy frame opening the prefix is the one prefix frame that is not static, so it can log.
+        Transaction tx = FrameTx(nonce: 0,
+            Frame(FrameMode.Default, target: Observer),
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, target: Recipient, value: 1),
+            Frame(FrameMode.PostTx, target: reverter));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: true, _specProvider);
         TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
         SimulateCallResult result = blockTracer.BuildResult().Single();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(receipt.FrameReceipts!.Select(static r => r.Status),
-                Is.EqualTo(new[] { TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure, TxFrameReceipt.StatusSuccess }));
-            Assert.That(result.Status, Is.EqualTo(StatusCode.Failure));
-            Assert.That(result.Error!.EvmException, Is.EqualTo(EvmExceptionType.OutOfGas));
-            Assert.That(result.Error.Message, Is.EqualTo(EvmExceptionType.OutOfGas.GetEvmExceptionDescription()));
+            Assert.That(receipt.Logs, Has.Length.EqualTo(1), "only the prefix's log outlives the assertion");
+            Assert.That(result.Logs.Select(static log => log.Address), Is.EqualTo(new[] { Observer }),
+                "the body's log and transfer go with its state");
+            Assert.That(result.Error!.EvmException, Is.EqualTo(EvmExceptionType.Revert));
+            Assert.That(result.Error.Message, Is.EqualTo("execution reverted: POST_TX frame reverted"));
         }
     }
 
