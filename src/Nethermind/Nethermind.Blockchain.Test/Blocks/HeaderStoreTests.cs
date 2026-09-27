@@ -55,7 +55,7 @@ public class HeaderStoreTests
     [Test]
     public void TestCanReadCacheHeader()
     {
-        using TestContext context = new(cached: true);
+        using HeaderStoreFixture context = new(cached: true);
         Assert.That(context.Store.Get(context.Header.Hash!), Is.SameAs(context.Header));
         context.AssertReads(() => Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(100)), numberReads: 1);
     }
@@ -63,7 +63,7 @@ public class HeaderStoreTests
     [Test]
     public void TestCanDeleteHeader([Values] bool cacheBeforeDelete)
     {
-        using TestContext context = new(persisted: true, cached: cacheBeforeDelete);
+        using HeaderStoreFixture context = new(persisted: true, cached: cacheBeforeDelete);
         context.Store.Delete(context.Header.Hash!);
 
         using (Assert.EnterMultipleScope())
@@ -89,7 +89,7 @@ public class HeaderStoreTests
     [Test]
     public void TestClearCache_removes_cached_headers([Values] bool persisted)
     {
-        using TestContext context = new(persisted: persisted, cached: true);
+        using HeaderStoreFixture context = new(persisted: persisted, cached: true);
         Assert.That(context.Store.Get(context.Header.Hash!), Is.SameAs(context.Header));
         ((IClearableCache)context.Store).ClearCache();
 
@@ -105,7 +105,7 @@ public class HeaderStoreTests
     public void Get_on_cache_hit_reads_no_database(
         [Values] bool persisted, [Values] bool shouldCache, [Values(null, 100UL, 999UL)] ulong? blockNumber)
     {
-        using TestContext context = new(persisted: persisted, cached: true);
+        using HeaderStoreFixture context = new(persisted: persisted, cached: true);
         context.AssertReads(() => Assert.That(
             context.Store.Get(context.Header.Hash!, shouldCache, blockNumber), Is.SameAs(context.Header)));
     }
@@ -114,7 +114,7 @@ public class HeaderStoreTests
     public void Get_on_cache_miss_reads_databases_and_fills_cache_only_when_asked(
         [Values] bool legacyKey, [Values] bool shouldCache)
     {
-        using TestContext context = new(persisted: !legacyKey);
+        using HeaderStoreFixture context = new(persisted: !legacyKey);
         if (legacyKey) context.HeaderDb.Set(context.Header.Hash!, new HeaderDecoder().Encode(context.Header).Bytes);
 
         for (int i = 0; i < 2; i++)
@@ -129,7 +129,7 @@ public class HeaderStoreTests
     [Test]
     public void Malformed_block_number_entry([Values] bool cached)
     {
-        using TestContext context = new(persisted: true, cached: cached);
+        using HeaderStoreFixture context = new(persisted: true, cached: cached);
         context.BlockNumberDb.Set(context.Header.Hash!, new byte[7]);
 
         using (Assert.EnterMultipleScope())
@@ -143,7 +143,7 @@ public class HeaderStoreTests
     [Test]
     public void GetBlockNumber_prefers_the_persisted_mapping()
     {
-        using TestContext context = new(persisted: true, cached: true);
+        using HeaderStoreFixture context = new(persisted: true, cached: true);
         context.Store.InsertBlockNumber(context.Header.Hash!, 200);
 
         Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(200));
@@ -151,14 +151,14 @@ public class HeaderStoreTests
         Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(200));
     }
 
-    private sealed class TestContext : IDisposable
+    private sealed class HeaderStoreFixture : IDisposable
     {
         public MemDb HeaderDb { get; } = new();
         public MemDb BlockNumberDb { get; } = new();
         public BlockHeader Header { get; } = Build.A.BlockHeader.WithNumber(100).TestObject;
         public HeaderStore Store { get; }
 
-        public TestContext(bool persisted = false, bool cached = false)
+        public HeaderStoreFixture(bool persisted = false, bool cached = false)
         {
             Store = new(HeaderDb, BlockNumberDb);
             if (persisted) Store.Insert(Header);
