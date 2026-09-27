@@ -12,12 +12,14 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -74,6 +76,7 @@ public class CheckpointSync(
         try
         {
             ForkedBeaconState state = DecodeState(buffer.AsSpan(0, length));
+            ThrowIfInvalidSyncCommitteeKeys(state);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             Hash256 stateRoot = HashTreeRoot(state);
@@ -184,6 +187,46 @@ public class CheckpointSync(
         }
 
         throw new NotSupportedException($"Checkpoint state has unknown fork version {currentVersion.ToHexString(true)}.");
+    }
+
+    /// <summary>Refuses an anchor state whose current or next sync committee holds a pubkey that fails BLS <c>KeyValidate</c>, or an <c>aggregate_pubkey</c> that is not the aggregate of its pubkeys.</summary>
+    /// <remarks>
+    /// Altair <c>eth_aggregate_pubkeys</c> asserts <c>KeyValidate</c> on every member when a committee is built, and
+    /// sync-aggregate verification only decodes the keys, so a committee this node did not compute must be checked here.
+    /// </remarks>
+    /// <exception cref="InvalidDataException">A sync committee pubkey is malformed, the point at infinity, or outside G1, or the committee's <c>aggregate_pubkey</c> does not match.</exception>
+    internal static void ThrowIfInvalidSyncCommitteeKeys(ForkedBeaconState state)
+    {
+        (SyncCommittee current, SyncCommittee next) = state switch
+        {
+            ForkedBeaconState.OfFulu fulu => (fulu.State.CurrentSyncCommittee!, fulu.State.NextSyncCommittee!),
+            ForkedBeaconState.OfGloas gloas => (gloas.State.CurrentSyncCommittee!, gloas.State.NextSyncCommittee!),
+            _ => throw new NotSupportedException($"Unhandled beacon state shape {state.GetType().Name}"),
+        };
+        ThrowIfInvalidSyncCommitteeKeys(current, "current_sync_committee", state.Slot);
+        ThrowIfInvalidSyncCommitteeKeys(next, "next_sync_committee", state.Slot);
+    }
+
+    private static void ThrowIfInvalidSyncCommitteeKeys(SyncCommittee committee, string field, ulong slot)
+    {
+        Bls.P1Affine publicKey = new(stackalloc long[Bls.P1Affine.Sz]);
+        BlsSigner.AggregatedPublicKey aggregate = new(stackalloc long[Bls.P1.Sz]);
+        BlsPublicKey[] pubkeys = committee.Pubkeys!;
+        for (int i = 0; i < pubkeys.Length; i++)
+        {
+            if (!BlsSignatureSet.TryKeyValidate(pubkeys[i].Bytes, publicKey))
+            {
+                throw new InvalidDataException($"Anchor state at slot {slot} is refused: {field} pubkey {i} fails BLS KeyValidate (malformed, infinity or outside G1).");
+            }
+
+            aggregate.Aggregate(publicKey);
+        }
+
+        // Altair get_next_sync_committee: aggregate_pubkey = eth_aggregate_pubkeys(pubkeys).
+        if (!aggregate.PublicKey.Compress().AsSpan().SequenceEqual(committee.AggregatePubkey.Bytes))
+        {
+            throw new InvalidDataException($"Anchor state at slot {slot} is refused: {field} aggregate_pubkey is not the aggregate of its pubkeys.");
+        }
     }
 
     private static void ThrowIfUnsupportedFork(string? consensusVersion)

@@ -7,8 +7,10 @@ using System.Threading.Tasks;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
@@ -41,10 +43,10 @@ public class StartBeaconChainTests
         ExternalClDetector detector = new(new BeaconChainConfig(), new Lazy<IEngineRpcModule>(() => Substitute.For<IEngineRpcModule>()), LimboLogs.Instance);
         EngineDriver engine = new(detector, LimboLogs.Instance);
         // `BeaconChainService`'s other dependencies are never touched here: `Start()` is
-        // fire-and-forget and its run loop NREs immediately on the null store, which its own
+        // fire-and-forget and its run loop NREs immediately on the null config, which its own
         // top-level catch swallows and logs, matching StartBeaconChain's documented contract that
         // exception handling happens inside `Start`.
-        BeaconChainService service = new(null!, null!, null!, null!, null!, null!, detector, LimboLogs.Instance);
+        BeaconChainService service = new(null!, null!, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), null!, null!, null!, detector, LimboLogs.Instance);
         StartBeaconChain step = new(service, engine, LimboLogs.Instance);
 
         Assert.That(() => step.Execute(CancellationToken.None), Throws.Nothing);
