@@ -512,7 +512,7 @@ public class EthereumRunnerTests
         using ManualResetEventSlim release = new();
         TaskCompletionSource reporting = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        bool disposing = false;
+        TaskCompletionSource disposing = new(TaskCreationOptions.RunContinuationsAsynchronously);
         InterfaceLogger slowLogger = Substitute.For<InterfaceLogger>();
         slowLogger.IsWarn.Returns(true);
         slowLogger.When(logger => logger.Warn(Arg.Any<string>())).Do(_ =>
@@ -527,7 +527,7 @@ public class EthereumRunnerTests
         Task warmup = StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(directory.Path), false,
             cancellation.Token, configureContainer: builder =>
             {
-                builder.RegisterBuildCallback(container => container.CurrentScopeEnding += (_, _) => disposing = true);
+                builder.RegisterBuildCallback(container => container.CurrentScopeEnding += (_, _) => disposing.TrySetResult());
                 builder.RegisterType<StartupPipelineWarmer.WarmProcessingStats>().As<IProcessingStats>()
                     .WithParameter("logManager", logs)
                     .WithParameter("blocksConfig", new BlocksConfig { SlowBlockThresholdMs = 0 })
@@ -538,10 +538,11 @@ public class EthereumRunnerTests
         {
             await reporting.Task.WaitAsync(RunnerTimeout);
             await stopped.Task.WaitAsync(RunnerTimeout);
+            Task disposalProbe = await Task.WhenAny(disposing.Task, warmup, Task.Delay(TimeSpan.FromMilliseconds(500), cancellation.Token));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(warmup.IsCompleted, Is.False);
-                Assert.That(disposing, Is.False, "reports still own their storage dependencies");
+                Assert.That(disposalProbe, Is.Not.SameAs(disposing.Task), "reports still own their storage dependencies");
             }
         }
         finally
@@ -549,7 +550,7 @@ public class EthereumRunnerTests
             release.Set();
             await warmup.WaitAsync(RunnerTimeout);
         }
-        Assert.That(disposing, Is.True);
+        Assert.That(disposing.Task.IsCompleted, Is.True);
     }
 
     private sealed class ObservedServiceStopper(IServiceStopper inner, Func<GCKeeper> gcKeeper, TaskCompletionSource stopped) : IServiceStopper
