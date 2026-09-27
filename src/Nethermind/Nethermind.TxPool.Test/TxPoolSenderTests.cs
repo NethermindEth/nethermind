@@ -36,7 +36,7 @@ public class TxPoolSenderTests
         (Hash256 _, AcceptTxResult? result) = sender.SendTransaction(tx, TxHandlingOptions.None).Result;
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the submission must be accepted, or this pins nothing");
 
-        using NonceLocker locker = nonceManager.ReserveNonce(TestItem.AddressA, out ulong reservedNonce);
+        using NonceLocker locker = nonceManager.ReserveNonce(TestItem.AddressA, Substitute.For<ITxPool>(), out ulong reservedNonce);
         Assert.That(reservedNonce, Is.EqualTo(expectedReservation));
     }
 
