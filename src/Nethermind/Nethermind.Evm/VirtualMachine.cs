@@ -586,7 +586,8 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             if (IsTracingActions)
             {
-                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), previousState.Env.ExecutingAccount, ReadOnlyMemory<byte>.Empty);
+                Address createdAccount = previousState.Env.ExecutingAccount;
+                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), createdAccount, _worldState.GetCode(createdAccount));
             }
             return;
         }
@@ -1202,10 +1203,9 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
         bool isCreateSuccess = currentState.ExecutionType.IsAnyCreate() && !callResult.IsException && !callResult.ShouldRevert;
-        // Cache the output bytes for reuse in the tracing reports; adopted code (EIP-8298) makes them empty.
-        ReadOnlyMemory<byte> outputBytes = isCreateSuccess && CodeDepositHandler.HasAdoptedCode(spec, _worldState, currentState.Env.ExecutingAccount)
-            ? ReadOnlyMemory<byte>.Empty
-            : callResult.Output;
+        // Adopted code (EIP-8298) has no return data to deposit, but is reported as the created code.
+        bool hasAdoptedCode = isCreateSuccess && CodeDepositHandler.HasAdoptedCode(spec, _worldState, currentState.Env.ExecutingAccount);
+        ReadOnlyMemory<byte> outputBytes = hasAdoptedCode ? ReadOnlyMemory<byte>.Empty : callResult.Output;
 
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
         ulong codeDepositGasCost = 0;
@@ -1262,7 +1262,8 @@ public partial class VirtualMachine<TGasPolicy>(
             // In the successful contract creation case, deduct the code deposit gas cost and report a normal action end.
             else
             {
-                _txTracer.ReportActionEnd(gasAvailable - codeDepositGasCost, currentState.To, outputBytes);
+                ReadOnlyMemory<byte> createdCode = hasAdoptedCode ? _worldState.GetCode(currentState.Env.ExecutingAccount) : outputBytes;
+                _txTracer.ReportActionEnd(gasAvailable - codeDepositGasCost, currentState.To, createdCode);
             }
         }
         else

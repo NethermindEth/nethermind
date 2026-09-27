@@ -250,7 +250,7 @@ public class Eip8298Tests : VirtualMachineTestsBase
         ParityTraceAction action = tracer.BuildResult().Action!;
         ParityTraceAction creation = kind == CreationKind.Transaction ? action : action.Subtraces[0];
         Assert.That(creation.Error, Is.Null);
-        Assert.That(creation.Result!.Code, Is.Null.Or.Empty);
+        Assert.That(creation.Result!.Code, Is.EqualTo(SourceCode));
     }
 
     // Creation completion only consults EIP-8298 once SETCODEFROM has run, so plain creations must not change.
