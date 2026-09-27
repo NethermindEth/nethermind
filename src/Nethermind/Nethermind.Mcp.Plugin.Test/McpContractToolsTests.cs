@@ -505,6 +505,7 @@ public class McpContractToolsTests
         {
             Assert.That(result.GetProperty("total").GetInt32(), Is.EqualTo(logs.Length));
             Assert.That(result.GetProperty("decoded").GetInt32(), Is.EqualTo(1));
+            Assert.That(result.GetProperty("decodeBudgetExhausted").GetBoolean(), Is.True);
             Assert.That(result.GetProperty("logs")[1].GetProperty("decoded").GetBoolean(), Is.False);
         }
     }

@@ -580,10 +580,10 @@ public class McpTxTokensTests
     [Test]
     public async Task Optional_price_lookup_returns_before_a_stalled_feed_call_finishes()
     {
+        using ManualResetEventSlim release = new();
         await using McpTestNode node = await McpTestNode.Create(
             configureContainer: static builder => builder.AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)),
             start: false);
-        using ManualResetEventSlim release = new();
         TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(),

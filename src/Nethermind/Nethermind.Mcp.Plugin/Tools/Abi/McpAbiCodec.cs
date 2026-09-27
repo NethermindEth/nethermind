@@ -564,12 +564,28 @@ public static class McpAbiCodec
         private int _values;
         private long _bytes;
 
-        public bool TryAddValue() => ++_values <= MaxDecodedValues;
+        public bool Exhausted { get; private set; }
+
+        public bool TryAddValue()
+        {
+            if (++_values <= MaxDecodedValues) return true;
+            Exhausted = true;
+            return false;
+        }
 
         public bool TryAddBytes(int count)
         {
             _bytes += count;
-            return _bytes <= MaxDecodedBytes;
+            if (_bytes <= MaxDecodedBytes) return true;
+            Exhausted = true;
+            return false;
+        }
+
+        public bool CanAddValues(int count)
+        {
+            if (count <= RemainingValues) return true;
+            Exhausted = true;
+            return false;
         }
 
         public int RemainingValues => MaxDecodedValues - _values;
@@ -724,7 +740,7 @@ public static class McpAbiCodec
                 return Fail($"{array.CanonicalName} claims {length} elements, more than the data holds");
             }
 
-            if (length > budget.RemainingValues)
+            if (!budget.CanAddValues(length))
             {
                 return Fail($"the data decodes to more than {MaxDecodedValues} values");
             }

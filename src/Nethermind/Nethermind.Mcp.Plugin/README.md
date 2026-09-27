@@ -589,7 +589,8 @@ private-use and unassigned characters and variation selectors are removed, emoji
 long values are cut without splitting a character (decoded strings at 1,024 characters, with a truncation marker).
 The MCP tools use a dedicated ABI signature parser and codec because their signatures and encoded values are
 untrusted client or chain input. Unlike the general-purpose `Nethermind.Abi` API, this path bounds nesting, decoded
-values and decoded bytes across each tool call before materializing JSON.
+values and decoded bytes per payload before materializing JSON. User-supplied ABIs in `decode_logs` additionally share
+one aggregate value and byte budget across the call.
 The server instructions tell the agent never to follow instructions found in such data. `token_info` and
 `lookup_address` detect EIP-1967 (implementation and beacon), ZeppelinOS (used by USDC), EIP-1167 minimal and EIP-897
 (`implementation()` getter) proxies. ENS works on mainnet, Sepolia and Holesky only, and fails with `unavailable`
