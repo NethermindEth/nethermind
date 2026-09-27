@@ -828,7 +828,12 @@ public sealed class BlockImporter : IBlockImporter
         _lineageBlockStartsEpoch = true;
     }
 
-    /// <summary>Walks the new head's ancestry, rewriting the canonical slot index until it meets an already-canonical entry.</summary>
+    /// <summary>Makes the canonical slot index name exactly the new head's ancestry: each ancestor at its slot, and no entry at a slot the chain skips or above its head.</summary>
+    /// <remarks>
+    /// The walk stops below the first already-canonical ancestor whose empty slots under it hold no entry. So one head change
+    /// costs one write per block and per stale entry above the common ancestor, one read per slot from the common ancestor's
+    /// parent up to the higher of the two heads, and never walks past the fork-choice root.
+    /// </remarks>
     private void UpdateCanonicalIndex(Hash256 head)
     {
         if (head == _canonicalHead)
@@ -836,14 +841,34 @@ public sealed class BlockImporter : IBlockImporter
             return;
         }
 
+        ulong previousHeadSlot = _runner.GetBlockSlot(_canonicalHead) ?? 0;
+        ulong? childSlot = null;
+        bool childWasCanonical = false;
         foreach (ProtoNode node in _runner.EnumerateAncestors(head))
         {
-            if (_store.TryGetCanonicalRoot(node.Slot, out Hash256? existing) && existing == node.Root)
+            // Above the head, clear up to the previous head; below it, the slots between this block and its child.
+            ulong clearTo = childSlot is ulong child ? child - 1 : Math.Max(previousHeadSlot, node.Slot);
+            bool skippedSlotsWereEmpty = true;
+            for (ulong slot = node.Slot + 1; slot <= clearTo; slot++)
+            {
+                if (_store.DeleteCanonicalRoot(slot))
+                {
+                    skippedSlotsWereEmpty = false;
+                }
+            }
+
+            if (childWasCanonical && skippedSlotsWereEmpty)
             {
                 break;
             }
 
-            _store.SetCanonicalRoot(node.Slot, node.Root);
+            childWasCanonical = _store.TryGetCanonicalRoot(node.Slot, out Hash256? existing) && existing == node.Root;
+            if (!childWasCanonical)
+            {
+                _store.SetCanonicalRoot(node.Slot, node.Root);
+            }
+
+            childSlot = node.Slot;
         }
 
         _canonicalHead = head;
