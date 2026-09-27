@@ -44,6 +44,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly bool _isFrameTx;
     private readonly Address? _sender;
     private readonly TxFrame[]? _frames;
+    private readonly Transaction? _frameTx;
+    private readonly IReleaseSpec? _frameTxSpec;
     private readonly NativeCallTracerConfig _config;
     private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
     private readonly CompositeDisposable _disposables = [];
@@ -65,13 +67,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         IsTracingStack = false;
         IsTracingOpLevelStorage = false;
         IsTracingReturnData = false;
-        // A frame transaction's GasLimit carries only its frame limits, short of the intrinsic gas it also spends.
-        _gasLimit = tx!.SupportsFrames && FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas) ? maxGas : tx.GasLimit;
+        _gasLimit = tx!.GasLimit;
         _txHash = tx.Hash;
         _isEip8037Enabled = spec.IsEip8037Enabled;
         _isFrameTx = tx.SupportsFrames;
         _sender = tx.SenderAddress;
         _frames = _isFrameTx ? tx.Frames : null;
+        _frameTx = _isFrameTx ? tx : null;
+        _frameTxSpec = _isFrameTx ? spec : null;
 
         _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
 
@@ -315,7 +318,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             Type = Instruction.CALL,
             From = _sender,
             To = Eip8141Constants.EntryPointAddress,
-            Gas = _gasLimit,
+            // Priced here rather than at construction: the processor measures the calldata the budget counts
+            // only once it runs. GasLimit alone carries just the frame limits, short of the intrinsic gas.
+            Gas = FrameTxValidation.TryCalculateGasBudget(_frameTx!, _frameTxSpec!, out _, out _, out ulong maxGas) ? maxGas : _gasLimit,
             Value = UInt256.Zero
         };
 

@@ -31,7 +31,8 @@ public partial class FrameTxProcessorTests
     private static readonly Address ParityTailCaller = TestItem.Addresses[10];
 
     /// <summary>Frame transactions covering nested calls, a skipped frame, a frame that never enters the VM, a
-    /// sponsored payer, a frame ending on a CALL, a reverted POST_TX frame, and a static frame calling a precompile. <see cref="Observer"/> calls <see cref="Recipient"/>, so its frame has a subtrace.</summary>
+    /// sponsored payer, a frame ending on a CALL, a reverted POST_TX frame, a static frame calling a
+    /// precompile, and keyed nonces whose calldata the processor measures only once it runs. <see cref="Observer"/> calls <see cref="Recipient"/>, so its frame has a subtrace.</summary>
     private Transaction ParityScenarioTx(string scenario)
     {
         DeployContract(Recipient, LogEmitter(7));
@@ -85,6 +86,10 @@ public partial class FrameTxProcessorTests
                     Frame(FrameMode.PostTx, target: IdentityPrecompile.Address, stateGasLimit: 0)
                 ];
                 break;
+            case "keyedNonces":
+                DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+                frames = [KeyedSelfVerifyFrame(freshKeyCount: 2), Frame(FrameMode.Sender, target: Observer)];
+                break;
             case "undispatched":
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
                 frames = [SelfVerifyFrame(), UndispatchedFrame(PreDispatchExit.EntryAccessCharge, out _), Frame(FrameMode.Default, target: Observer)];
@@ -104,6 +109,11 @@ public partial class FrameTxProcessorTests
             tx.GasLimit += frame.GasLimit;
         }
 
+        if (scenario == "keyedNonces")
+        {
+            tx.NonceKeys = [1, 7];
+        }
+
         tx.Hash = Keccak.Compute(scenario);
         return tx;
     }
@@ -115,6 +125,7 @@ public partial class FrameTxProcessorTests
     [TestCase("tailCall", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     [TestCase("postTxReverted", new[] { 0, 1, 2 }, new[] { 1, 0 })]
     [TestCase("precompileFrame", new[] { 0, 1, 2 }, new[] { 1, 0 })]
+    [TestCase("keyedNonces", new[] { 0, 1 }, new[] { 1, 0 })]
     public void ParityTrace_FrameTx_RootsEveryFrameAtItsIndex(string scenario, int[] framesInVm, int[] nestedCall)
     {
         Transaction tx = ParityScenarioTx(scenario);
@@ -183,7 +194,7 @@ public partial class FrameTxProcessorTests
 
     [Test]
     public void ParityTrace_FrameTx_StreamedMatchesBuffered(
-        [Values("nested", "skipped", "undispatched", "sponsored", "tailCall", "postTxReverted", "precompileFrame")] string scenario, [Values] ParityTraceStreamMode mode)
+        [Values("nested", "skipped", "undispatched", "sponsored", "tailCall", "postTxReverted", "precompileFrame", "keyedNonces")] string scenario, [Values] ParityTraceStreamMode mode)
     {
         string buffered = BufferedParityJson(scenario, mode);
         TearDown();
@@ -253,9 +264,12 @@ public partial class FrameTxProcessorTests
     [TestCase("nested")]
     [TestCase("undispatched")]
     [TestCase("postTxReverted")]
+    [TestCase("keyedNonces")]
     public void CallTrace_FrameTx_RootGasIsTheTransactionBudget(string scenario)
     {
         Transaction tx = ParityScenarioTx(scenario);
+        // As debug_traceCall builds it: the processor measures the calldata the budget counts only once it runs.
+        Assert.That(tx.FrameCalldataStats, Is.EqualTo(default((int, int))), "unmeasured when the tracer is built");
         (JsonDocument trace, _) = TraceCall(tx);
         using (trace)
         {
