@@ -55,6 +55,10 @@ namespace Nethermind.Blockchain
         private readonly IStateBoundary _stateBoundary;
         private readonly BlockTreeMutationLock _mutationLock;
 
+        private readonly Lock _forkChoiceLock = new();
+        // Null while unknown; set only after this exact pair was committed. A persisted (null, null) is not unknown.
+        private (Hash256? Finalized, Hash256? Safe)? _persistedForkChoice;
+
         public BlockHeader? Genesis { get; protected set; }
         public Block? Head { get; private set; }
 
@@ -2020,23 +2024,30 @@ namespace Nethermind.Blockchain
 
         public bool IsProcessingBlock { get; set; }
 
+        /// <inheritdoc/>
+        /// <remarks>
+        /// AuRa finalization, era import and XDC can call this concurrently. Deciding whether finality advanced,
+        /// persisting and publishing <see cref="FinalizedHash"/>/<see cref="SafeHash"/> happen under one lock, so calls
+        /// take effect in the order they acquire it and the published pair is never ahead of disk. Events are raised
+        /// outside the lock with this call's own hashes.
+        /// </remarks>
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
-            bool finalizedAdvanced = finalizedBlockHash is not null
-                && finalizedBlockHash != Keccak.Zero
-                && finalizedBlockHash != FinalizedHash;
-            BlockHeader? finalizedHeader = finalizedAdvanced
-                ? FindHeader(finalizedBlockHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
-                : null;
-
-            FinalizedHash = finalizedBlockHash;
-            SafeHash = safeBlockHash;
-            if (finalizedHeader is not null) LastFinalizedBlockLevel = finalizedHeader.Number;
-
-            using (_metadataDb.StartWriteBatch())
+            BlockHeader? finalizedHeader;
+            using (_forkChoiceLock.EnterScope())
             {
-                _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
-                _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
+                bool finalizedAdvanced = finalizedBlockHash is not null
+                    && finalizedBlockHash != Keccak.Zero
+                    && finalizedBlockHash != FinalizedHash;
+                finalizedHeader = finalizedAdvanced
+                    ? FindHeader(finalizedBlockHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                    : null;
+
+                PersistForkChoice(finalizedBlockHash, safeBlockHash);
+
+                FinalizedHash = finalizedBlockHash;
+                SafeHash = safeBlockHash;
+                if (finalizedHeader is not null) LastFinalizedBlockLevel = finalizedHeader.Number;
             }
 
             if (finalizedHeader is not null)
@@ -2051,8 +2062,32 @@ namespace Nethermind.Blockchain
                 new(
                     Head,
                     safeBlockHash is null ? 0UL : _headerStore.GetBlockNumber(safeBlockHash) ?? 0UL,
-                    FinalizedHash is null ? 0UL : _headerStore.GetBlockNumber(FinalizedHash) ?? 0UL)
+                    finalizedBlockHash is null ? 0UL : _headerStore.GetBlockNumber(finalizedBlockHash) ?? 0UL)
                 );
+        }
+
+        /// <summary>
+        /// Commits the finalized and safe hashes as one metadata batch, unless this exact pair was the last one committed.
+        /// </summary>
+        /// <remarks>
+        /// Caller holds <see cref="_forkChoiceLock"/>. The pair is forgotten before each attempt, so a failed or uncertain
+        /// commit is retried on the next call.
+        /// </remarks>
+        private void PersistForkChoice(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
+        {
+            (Hash256? Finalized, Hash256? Safe) requested = (finalizedBlockHash, safeBlockHash);
+            if (_persistedForkChoice == requested) return;
+
+            byte[] finalizedRlp = Rlp.Encode(finalizedBlockHash).Bytes;
+            byte[] safeRlp = Rlp.Encode(safeBlockHash).Bytes;
+            _persistedForkChoice = null;
+            using (IWriteBatch batch = _metadataDb.StartWriteBatch())
+            {
+                batch.Set(MetadataDbKeys.FinalizedBlockHash, finalizedRlp);
+                batch.Set(MetadataDbKeys.SafeBlockHash, safeRlp);
+            }
+
+            _persistedForkChoice = requested;
         }
 
         public ulong GetLowestBlock() => _oldestBlock;
