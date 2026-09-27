@@ -1383,14 +1383,15 @@ public class BlockTreeTests
         (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy();
         BlockTree blockTree = builder.TestObject;
         using ManualResetEventSlim releaseFirstCommit = new(false);
-        metadataDb.GateNextCommit(releaseFirstCommit);
+        using ManualResetEventSlim commitEntered = new(false);
+        metadataDb.GateNextCommit(releaseFirstCommit, commitEntered);
 
         Task first = Task.Factory.StartNew(() => blockTree.ForkChoiceUpdated(TestItem.KeccakA, TestItem.KeccakA), TaskCreationOptions.LongRunning);
         Task second = Task.CompletedTask;
         bool secondFinishedWhileFirstHeld = true;
         try
         {
-            Assert.That(metadataDb.CommitEntered.Wait(TimeSpan.FromSeconds(10)), Is.True, "first commit did not start");
+            Assert.That(commitEntered.Wait(TimeSpan.FromSeconds(10)), Is.True, "first commit did not start");
             second = Task.Factory.StartNew(() => blockTree.ForkChoiceUpdated(TestItem.KeccakB, TestItem.KeccakB), TaskCreationOptions.LongRunning);
             secondFinishedWhileFirstHeld = second.Wait(TimeSpan.FromMilliseconds(300));
         }
@@ -1420,14 +1421,15 @@ public class BlockTreeTests
         BlockTree blockTree = builder.TestObject;
         Hash256? initialFinalized = blockTree.FinalizedHash;
         using ManualResetEventSlim releaseCommit = new(false);
-        metadataDb.GateNextCommit(releaseCommit);
+        using ManualResetEventSlim commitEntered = new(false);
+        metadataDb.GateNextCommit(releaseCommit, commitEntered);
 
         Task update = Task.Factory.StartNew(() => blockTree.ForkChoiceUpdated(TestItem.KeccakA, TestItem.KeccakB), TaskCreationOptions.LongRunning);
         Hash256? finalizedDuringCommit;
         Hash256? safeDuringCommit;
         try
         {
-            Assert.That(metadataDb.CommitEntered.Wait(TimeSpan.FromSeconds(10)), Is.True, "commit did not start");
+            Assert.That(commitEntered.Wait(TimeSpan.FromSeconds(10)), Is.True, "commit did not start");
             finalizedDuringCommit = blockTree.FinalizedHash;
             safeDuringCommit = blockTree.SafeHash;
         }
@@ -1500,16 +1502,17 @@ public class BlockTreeTests
         private int _directForkChoiceWrites;
         private int _commitsInProgress;
         private int _overlappingCommits;
-        private ManualResetEventSlim? _commitGate;
+        private (ManualResetEventSlim Release, ManualResetEventSlim Entered)? _commitGate;
 
         public ForkChoiceCommitFault NextCommitFault { get; set; }
 
-        public ManualResetEventSlim CommitEntered { get; } = new(false);
-
         public int OverlappingCommits => Volatile.Read(ref _overlappingCommits);
 
-        /// <summary>Blocks the next commit, before it applies anything, until <paramref name="gate"/> is set.</summary>
-        public void GateNextCommit(ManualResetEventSlim gate) => Volatile.Write(ref _commitGate, gate);
+        /// <summary>Blocks the next commit, before it applies anything, until <paramref name="release"/> is set; sets <paramref name="entered"/> when it blocks.</summary>
+        public void GateNextCommit(ManualResetEventSlim release, ManualResetEventSlim entered)
+        {
+            lock (_lock) _commitGate = (release, entered);
+        }
 
         public int DirectForkChoiceWrites => Volatile.Read(ref _directForkChoiceWrites);
 
@@ -1553,10 +1556,17 @@ public class BlockTreeTests
             if (Interlocked.Increment(ref _commitsInProgress) > 1) Interlocked.Increment(ref _overlappingCommits);
             try
             {
-                if (Interlocked.Exchange(ref _commitGate, null) is { } gate)
+                (ManualResetEventSlim Release, ManualResetEventSlim Entered)? gate;
+                lock (_lock)
                 {
-                    CommitEntered.Set();
-                    gate.Wait(TimeSpan.FromSeconds(10));
+                    gate = _commitGate;
+                    _commitGate = null;
+                }
+
+                if (gate is { } g)
+                {
+                    g.Entered.Set();
+                    g.Release.Wait(TimeSpan.FromSeconds(10));
                 }
 
                 byte[] keys = [.. writes.Where(w => IsForkChoiceKey(w.Key)).Select(static w => w.Key[0]).Order()];

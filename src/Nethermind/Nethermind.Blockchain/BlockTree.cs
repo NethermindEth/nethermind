@@ -2027,9 +2027,9 @@ namespace Nethermind.Blockchain
         /// <inheritdoc/>
         /// <remarks>
         /// AuRa finalization, era import and XDC can call this concurrently. Deciding whether finality advanced,
-        /// persisting and publishing <see cref="FinalizedHash"/>/<see cref="SafeHash"/> happen under one lock, so the
-        /// published pair is never ahead of disk or overwritten by an older call. Events are raised outside the lock
-        /// with this call's own hashes.
+        /// persisting and publishing <see cref="FinalizedHash"/>/<see cref="SafeHash"/> happen under one lock, so calls
+        /// take effect in the order they acquire it and the published pair is never ahead of disk. Events are raised
+        /// outside the lock with this call's own hashes.
         /// </remarks>
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
