@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;

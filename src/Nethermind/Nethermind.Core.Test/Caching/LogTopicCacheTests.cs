@@ -3,10 +3,11 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Crypto;
+namespace Nethermind.Core.Test.Caching;
 
 [NonParallelizable]
 public class LogTopicCacheTests

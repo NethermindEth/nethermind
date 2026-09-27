@@ -3,8 +3,9 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Core.Crypto;
+namespace Nethermind.Core.Caching;
 
 /// <summary>
 /// zkEVM guest variant of the log topic table: every topic gets its own instance, so the call sites stay
