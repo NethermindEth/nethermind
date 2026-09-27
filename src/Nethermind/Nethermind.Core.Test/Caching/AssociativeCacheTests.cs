@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Caching;
 using NUnit.Framework;
@@ -129,6 +131,37 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
             if (cache.TryGet(in key, out Account? val))
                 Assert.That(val, Is.EqualTo(_accounts[i]));
         }
+    }
+
+    [Test]
+    public void TryGet_never_misses_a_present_key_while_it_is_rewritten([Values] bool sameInstance)
+    {
+        const int readsPerReader = 200_000;
+        AddressAsKey key = _keys[0];
+        Account first = _accounts[0];
+        Account second = sameInstance ? first : _accounts[1];
+        _cache.Set(in key, first);
+
+        int misses = 0;
+        bool readersDone = false;
+        Task writer = Task.Factory.StartNew(() =>
+        {
+            for (int i = 0; !Volatile.Read(ref readersDone); i++)
+                _cache.Set(in key, (i & 1) == 0 ? second : first);
+        }, TaskCreationOptions.LongRunning);
+
+        Parallel.For(0, Math.Max(2, Environment.ProcessorCount - 1), _ =>
+        {
+            for (int i = 0; i < readsPerReader; i++)
+            {
+                if (!_cache.TryGet(in key, out Account? value) || (value != first && value != second))
+                    Interlocked.Increment(ref misses);
+            }
+        });
+        Volatile.Write(ref readersDone, true);
+        writer.Wait();
+
+        Assert.That(misses, Is.Zero);
     }
 
     [Test]

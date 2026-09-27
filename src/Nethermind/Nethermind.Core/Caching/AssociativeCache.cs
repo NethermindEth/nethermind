@@ -145,9 +145,19 @@ public sealed class AssociativeCache<TKey, TValue>
         for (int i = 0; i < Ways; i++)
         {
             ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
+            SpinWait spin = default;
+        retry:
             long h1 = Volatile.Read(ref e.Header);
 
-            if ((h1 & (TagMask | LockMarker)) != expectedTag) continue;
+            if ((h1 & TagMask) != expectedTag) continue;
+
+            // A writer is storing a key with this tag, usually a new value for this key: wait for it rather than
+            // report a miss for a present key, which callers would reload and re-cache as another instance.
+            if ((h1 & LockMarker) != 0)
+            {
+                spin.SpinOnce(sleep1Threshold: -1);
+                goto retry;
+            }
 
             // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
@@ -157,7 +167,13 @@ public sealed class AssociativeCache<TKey, TValue>
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e.Header);
-            if (h1 == h2 && storedKey.Equals(in key))
+            if (h1 != h2)
+            {
+                spin.SpinOnce(sleep1Threshold: -1);
+                goto retry;
+            }
+
+            if (storedKey.Equals(in key))
             {
                 // JIT eliminates this branch entirely per TRefreshTicker instantiation.
                 // Eviction age uses the high-resolution clock rather than a shared counter: a
@@ -233,7 +249,12 @@ public sealed class AssociativeCache<TKey, TValue>
                 {
                     if ((h & HashMask) == hashPart && e.Key.Equals(in key))
                     {
-                        WriteEntry(ref e, h, in key, val, tagToStore, Stopwatch.GetTimestamp());
+                        // Re-caching the stored instance, as lookups that cache every hit do, only refreshes the
+                        // ticker: locking the entry would make concurrent readers wait for an unchanged value.
+                        if (ReferenceEquals(e.Value, val))
+                            e.Ticker = Stopwatch.GetTimestamp();
+                        else
+                            WriteEntry(ref e, h, in key, val, tagToStore, Stopwatch.GetTimestamp());
                         return false;
                     }
                 }
