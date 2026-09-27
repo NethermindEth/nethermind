@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using CkzgLib;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.Merge.Plugin.SszRest;
@@ -27,7 +28,12 @@ internal static class DataColumnKzgFixture
 
     public readonly record struct BlobFixture(byte[] Commitment, byte[] Cells, byte[] Proofs);
 
-    public static BlobFixture BuildBlob(byte seed)
+    // compute_cells_and_kzg_proofs dominates the DAS tests' run time, and a seed always yields the same blob; callers only read the arrays.
+    private static readonly ConcurrentDictionary<byte, BlobFixture> Built = new();
+
+    public static BlobFixture BuildBlob(byte seed) => Built.GetOrAdd(seed, Compute);
+
+    private static BlobFixture Compute(byte seed)
     {
         byte[] blob = MakeBlob(seed);
         byte[] commitment = new byte[Ckzg.BytesPerCommitment];
