@@ -83,6 +83,25 @@ public class FrameTxWidthConcurrencyTests
     }
 
     [Test]
+    public void FullLedger_EvictsTheSmallestBalance()
+    {
+        Address small = new(new byte[20] { 0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        Address newcomer = new(new byte[20] { 0xa3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        SenderWidthCache cache = new(maxSenders: 2);
+        cache.Earn(Sender, 2 * Cost);
+        cache.Earn(small, Cost);
+
+        cache.Earn(newcomer, Cost);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Count, Is.EqualTo(2));
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)(2 * Cost)));
+            Assert.That(cache.GetWidth(small), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
     public void SpentWidth_IsNeverReturned()
     {
         SenderWidthCache cache = new();

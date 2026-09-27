@@ -18,7 +18,9 @@ namespace Nethermind.TxPool.Filters;
 /// Sender-keyed only: the sender pays whether or not a paymaster sponsors the transaction, and the charge scales
 /// with the transaction's admission gas. A replacement displaces a pending entry rather than adding one, so it is judged against the count
 /// without the incumbent. Spent width is never returned, which is what bounds repeated mass invalidation, so a fee
-/// bump beyond the baseline spends width like any admission: its rerun is real work. Only the sender's pending
+/// bump beyond the baseline spends width like any admission: its rerun is real work. Width is spent when this filter
+/// accepts, so a transaction that a later pool check rejects, such as a disallowed replacement or a fee too low to
+/// compete, still spends it. Only the sender's pending
 /// keyed-nonce frame transactions count toward the baseline, since other pending types add no revalidation work.
 /// Filters run under the head read lock, so two concurrent admissions from one sender can both see the baseline
 /// free; the bound moves by that one transaction, not per head. Inert unless

@@ -51,6 +51,7 @@ namespace Nethermind.TxPool
         private readonly IIncomingTxFilter[] _preHashFilters;
         private readonly IIncomingTxFilter[] _hashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
+        private int _missingReceiptsWarned;
 
         private readonly HashCache _hashCache = new();
         private readonly TxBroadcaster _broadcaster;
@@ -1104,7 +1105,15 @@ namespace Nethermind.TxPool
             Transaction[] blockTransactions = finalizedBlock.Transactions;
             if (receipts.Length != blockTransactions.Length)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipped MATCHA width for finalized block {finalizedBlock.Number}: {receipts.Length} receipts for {blockTransactions.Length} transactions");
+                if (Interlocked.Exchange(ref _missingReceiptsWarned, 1) == 0)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Skipped MATCHA width for finalized block {finalizedBlock.Number}: {receipts.Length} receipts for {blockTransactions.Length} transactions. Further skips are logged at debug level.");
+                }
+                else if (_logger.IsDebug)
+                {
+                    _logger.Debug($"Skipped MATCHA width for finalized block {finalizedBlock.Number}: {receipts.Length} receipts for {blockTransactions.Length} transactions");
+                }
+
                 return;
             }
 
@@ -1349,7 +1358,6 @@ namespace Nethermind.TxPool
 
             foreach (Transaction tx in ordered)
             {
-
                 Interlocked.Increment(ref Metrics.FrameTxRevalidations);
                 if (!TryRevalidateFrameTransaction(tx, state, baselineExempt))
                 {

@@ -63,6 +63,30 @@ public class FrameTxWidthFinalizerTests
     }
 
     [Test]
+    public void Long_gap_credits_only_its_latest_blocks()
+    {
+        const ulong firstNumber = 5;
+        ulong lastNumber = firstNumber + 4 * FrameTxWidthFinalizer.MaxBlocksPerFinalization;
+        Block first = FrameBlock(number: firstNumber);
+        Block skipped = FrameBlock(number: lastNumber - FrameTxWidthFinalizer.MaxBlocksPerFinalization);
+        Block oldestCredited = FrameBlock(number: skipped.Number + 1);
+        Block last = FrameBlock(number: lastNumber);
+        (IBlockTree blockTree, IReceiptFinder receiptFinder, IFrameTxWidthLedger ledger, ITxPool txPool) = Wire(first, skipped, oldestCredited, last);
+        FrameTxWidthFinalizer finalizer = new(blockTree, receiptFinder, txPool, Enabled(), LimboLogs.Instance);
+
+        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(first.Header));
+        blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(last.Header));
+
+        using (Assert.EnterMultipleScope())
+        {
+            ledger.DidNotReceive().EarnWidthOnFinalization(skipped, Arg.Any<TxReceipt[]>());
+            ledger.Received(1).EarnWidthOnFinalization(oldestCredited, Arg.Any<TxReceipt[]>());
+            ledger.Received(1).EarnWidthOnFinalization(last, Arg.Any<TxReceipt[]>());
+        }
+        finalizer.Dispose();
+    }
+
+    [Test]
     public void Reorged_out_block_earns_nothing()
     {
         Block canonical = FrameBlock(number: 5);

@@ -17,18 +17,20 @@ namespace Nethermind.TxPool;
 /// Spent width is never returned: inclusion, invalidation, removal, expiry, or reorg do not credit it back,
 /// which is what bounds repeated mass invalidation (EIP-8141 MATCHA policy). A sender leaves the ledger when
 /// its width drains to zero. Finalized senders that never spend would otherwise accumulate for the life of
-/// the process, so the ledger holds at most <c>maxSenders</c> and evicts an arbitrary sender to admit a new
-/// earner. Eviction only ever removes width, never grants it, so the bound fails safe: an evicted sender
+/// the process, so the ledger holds at most <c>maxSenders</c> and, to admit a new earner, evicts the smallest
+/// balance among a bounded sample, so flooding the ledger with cheap senders displaces cheap senders first. Eviction only ever removes width, never grants it, so the bound fails safe: an evicted sender
 /// falls back to its free baseline. New earnings stop at the caller's cap and otherwise saturate at
 /// <see cref="UInt256.MaxValue"/> rather than wrapping; a cap lowered later never shrinks a balance already earned.
 /// </remarks>
 internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.DefaultMaxSenders)
 {
     public const int DefaultMaxSenders = 1 << 16;
+    private const int EvictionSample = 32;
 
     private readonly ConcurrentDictionary<AddressAsKey, UInt256> _width = new();
+    private int _count;
 
-    public int Count => _width.Count;
+    public int Count => Volatile.Read(ref _count);
 
     public UInt256 GetWidth(AddressAsKey sender) => _width.TryGetValue(sender, out UInt256 width) ? width : UInt256.Zero;
 
@@ -71,7 +73,7 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
         {
             if (_width.TryRemove(entry.Key, out _))
             {
-                Interlocked.Decrement(ref Metrics.FrameTxSendersWithWidth);
+                Untrack();
             }
         }
     }
@@ -97,9 +99,10 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
             else
             {
                 UInt256 seeded = capped && amount > widthCap ? widthCap : amount;
-                if (_width.Count >= maxSenders) EvictOne();
+                if (Count >= maxSenders) EvictSmallestSampled();
                 if (_width.TryAdd(sender, seeded))
                 {
+                    Interlocked.Increment(ref _count);
                     Interlocked.Increment(ref Metrics.FrameTxSendersWithWidth);
                     return;
                 }
@@ -107,16 +110,38 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
         }
     }
 
-    private void EvictOne()
+    private void EvictSmallestSampled()
     {
+        KeyValuePair<AddressAsKey, UInt256> victim = default;
+        bool found = false;
+        int sampled = 0;
+        foreach (KeyValuePair<AddressAsKey, UInt256> entry in _width)
+        {
+            if (!found || entry.Value < victim.Value)
+            {
+                victim = entry;
+                found = true;
+            }
+
+            if (++sampled == EvictionSample) break;
+        }
+
+        if (found && RemoveTracked(victim.Key, victim.Value)) return;
+
         foreach (KeyValuePair<AddressAsKey, UInt256> entry in _width)
         {
             if (_width.TryRemove(entry.Key, out _))
             {
-                Interlocked.Decrement(ref Metrics.FrameTxSendersWithWidth);
+                Untrack();
                 return;
             }
         }
+    }
+
+    private void Untrack()
+    {
+        Interlocked.Decrement(ref _count);
+        Interlocked.Decrement(ref Metrics.FrameTxSendersWithWidth);
     }
 
     /// <summary>Removes <paramref name="sender"/> only while its width is still <paramref name="expected"/>, so a racing credit is never dropped.</summary>
@@ -128,7 +153,7 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
             return false;
         }
 
-        Interlocked.Decrement(ref Metrics.FrameTxSendersWithWidth);
+        Untrack();
         return true;
     }
 }
