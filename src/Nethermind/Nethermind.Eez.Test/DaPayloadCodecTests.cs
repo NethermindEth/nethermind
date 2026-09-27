@@ -21,8 +21,7 @@ public class DaPayloadCodecTests
     [Test]
     public void Decode_RecordedPayload_ReencodesToTheSameBytes()
     {
-        byte[] payload = EezCalldata.DecodePostAndVerifyBatch(
-            Bytes.FromHexString(File.ReadAllText(StatelessFixtures.PathOf("captured-devnet-window-84", "postbatch.hex")).Trim())).CallData;
+        byte[] payload = EezCalldata.DecodePostAndVerifyBatch(StatelessFixtures.ReadPostBatch(StatelessFixtures.Window84)).CallData;
 
         DaPayload decoded = DaPayloadCodec.Decode(payload);
 
@@ -35,11 +34,11 @@ public class DaPayloadCodecTests
     [Test]
     public void EncodeDecode_SpanAndActions_RoundTrip()
     {
-        (Address, byte[], IReadOnlyList<byte[]>)[] blocks =
+        DaBlock[] blocks =
         [
-            (Beneficiary, [], [[0x02, 0xf8, 0x6c]]),
-            (Beneficiary, [], []),
-            (Address.Zero, Enumerable.Repeat((byte)0xff, DaPayloadCodec.MaxExtraData).ToArray(), [new byte[200], [0x01]]),
+            new DaBlock(Beneficiary, [], [[0x02, 0xf8, 0x6c]]),
+            new DaBlock(Beneficiary, [], []),
+            new DaBlock(Address.Zero, Enumerable.Repeat((byte)0xff, DaPayloadCodec.MaxExtraData).ToArray(), [new byte[200], [0x01]]),
         ];
         DaAction[] actions = [Action(true), Action(false)];
 
@@ -47,15 +46,15 @@ public class DaPayloadCodecTests
 
         Assert.That(decoded.Span.TransactionCounts, Is.EqualTo(new[] { 1, 0, 2 }), "a zero count keeps an empty block in place");
         Assert.That(decoded.Span.Beneficiaries, Is.EqualTo(new[] { Beneficiary, Beneficiary, Address.Zero }));
-        Assert.That(decoded.Span.ExtraData.Select(static e => e.ToArray()), Is.EqualTo(blocks.Select(static b => b.Item2)));
-        Assert.That(decoded.Span.Transactions.Select(static t => t.ToArray()), Is.EqualTo(blocks.SelectMany(static b => b.Item3)));
+        Assert.That(decoded.Span.ExtraData.Select(static e => e.ToArray()), Is.EqualTo(blocks.Select(static b => b.ExtraData)));
+        Assert.That(decoded.Span.Transactions.Select(static t => t.ToArray()), Is.EqualTo(blocks.SelectMany(static b => b.Transactions)));
         Assert.That(decoded.Actions.Select(Describe), Is.EqualTo(actions.Select(Describe)));
     }
 
     [Test]
     public void Encode_RepeatedValues_CollapseIntoOneRun()
     {
-        (Address, byte[], IReadOnlyList<byte[]>)[] blocks = Enumerable.Range(0, 64).Select(static _ => (Beneficiary, "eez"u8.ToArray(), (IReadOnlyList<byte[]>)[])).ToArray();
+        DaBlock[] blocks = Enumerable.Range(0, 64).Select(static _ => new DaBlock(Beneficiary, "eez"u8.ToArray(), [])).ToArray();
 
         byte[] encoded = DaPayloadCodec.Encode(RollupId, blocks, []);
 
@@ -66,7 +65,7 @@ public class DaPayloadCodecTests
     [Test]
     public void Decode_PaddedStreamLength_IsAccepted()
     {
-        byte[] canonical = DaPayloadCodec.Encode(RollupId, [(Beneficiary, [], [])], []);
+        byte[] canonical = DaPayloadCodec.Encode(RollupId, [new DaBlock(Beneficiary, [], [])], []);
         byte[] padded = [.. canonical[..10], (byte)(canonical[10] | 0x80), 0x00, .. canonical[11..]];
 
         Assert.That(DaPayloadCodec.Decode(padded).Span.BlockCount, Is.EqualTo(1), "stream byte lengths may use a padded varint");
@@ -76,13 +75,17 @@ public class DaPayloadCodecTests
     public void Decode_MalformedPayload_Throws(byte[] payload, string rule) =>
         Assert.That(Assert.Throws<EezSettlementException>(() => DaPayloadCodec.Decode(payload))!.Message, Does.Contain(rule));
 
+    [TestCaseSource(nameof(NonCanonicalSpans))]
+    public void Decode_NonCanonicalSpan_Throws(byte[] payload) =>
+        Assert.That(Assert.Throws<EezSettlementException>(() => DaPayloadCodec.Decode(payload))!.Message, Does.Contain("padded varint").Or.Contain("repeat a value"));
+
     [Test]
     public void Encode_EmptySpan_Throws() =>
         Assert.Throws<EezSettlementException>(() => DaPayloadCodec.Encode(RollupId, [], []));
 
     [Test]
     public void Encode_ExtraDataTooLong_Throws() =>
-        Assert.Throws<EezSettlementException>(() => DaPayloadCodec.Encode(RollupId, [(Beneficiary, new byte[DaPayloadCodec.MaxExtraData + 1], [])], []));
+        Assert.Throws<EezSettlementException>(() => DaPayloadCodec.Encode(RollupId, [new DaBlock(Beneficiary, new byte[DaPayloadCodec.MaxExtraData + 1], [])], []));
 
     [TestCase(0UL, RollupId, TestName = "Inbound")]
     [TestCase(RollupId, 0UL, TestName = "Outbound")]
@@ -109,12 +112,26 @@ public class DaPayloadCodecTests
         Assert.Throws<EezSettlementException>(() => (Action(true) with { SourceRollupId = 2, TargetRollupId = 3 }).ToEntry(RollupId));
 
     [Test]
-    public void FromEntry_EntryWithoutACall_Throws() =>
-        Assert.Throws<EezSettlementException>(() => DaAction.FromEntry(Action(true).ToEntry(RollupId) with { Calls = [] }, RollupId));
+    public void ToEntry_OutboundToAnotherRollup_Throws() =>
+        Assert.Throws<EezSettlementException>(() => (Action(true) with { SourceRollupId = RollupId, TargetRollupId = 3 }).ToEntry(RollupId));
+
+    [TestCaseSource(nameof(UnpublishableEntries))]
+    public void FromEntry_EntryThatNoActionPublishes_Throws(Func<ExecutionEntry, ExecutionEntry> mutate) =>
+        Assert.Throws<EezSettlementException>(() => DaAction.FromEntry(mutate(Action(true).ToEntry(RollupId)), RollupId));
+
+    private static TestCaseData[] UnpublishableEntries() =>
+    [
+        new((Func<ExecutionEntry, ExecutionEntry>)(static e => e with { Calls = [] })) { TestName = "NoCall" },
+        new((Func<ExecutionEntry, ExecutionEntry>)(static e => e with { Calls = [e.Calls[0], e.Calls[0]] })) { TestName = "TwoCalls" },
+        new((Func<ExecutionEntry, ExecutionEntry>)(static e => e with { Calls = [e.Calls[0] with { IsStatic = true }] })) { TestName = "StaticCall" },
+        new((Func<ExecutionEntry, ExecutionEntry>)(static e => e with { Calls = [e.Calls[0] with { RevertNextNCalls = 1 }] })) { TestName = "RevertSpan" },
+        new((Func<ExecutionEntry, ExecutionEntry>)(static e => e with { ExpectedCalls = [new ExpectedCall(default, [], default, true, [])] })) { TestName = "ExpectedCalls" },
+        new((Func<ExecutionEntry, ExecutionEntry>)(static e => e with { DestinationRollupId = RollupId + 1 })) { TestName = "InboundForAnotherRollup" },
+    ];
 
     private static TestCaseData[] MalformedPayloads()
     {
-        byte[] valid = DaPayloadCodec.Encode(RollupId, [(Beneficiary, [1], [[0x01, 0x02]])], [Action(true)]);
+        byte[] valid = DaPayloadCodec.Encode(RollupId, [new DaBlock(Beneficiary, [1], [[0x01, 0x02]])], [Action(true)]);
         return
         [
             new(Array.Empty<byte>(), "the payload is empty") { TestName = "Empty" },
@@ -131,6 +148,9 @@ public class DaPayloadCodecTests
             new(Stream([0x00, 0x01, 0x01, 0x01, .. new byte[20], 0x01, 0x00, 0x02, 0x01]), "declare 2 bytes") { TestName = "TransactionBytesShort" },
             new(Stream([0x00, 0x01, 0x01, 0x01, .. new byte[20], 0x01, 0x00, 0x01, 0x01, 0x02]), "declare 1 bytes") { TestName = "TransactionBytesLong" },
             new(Stream([0x00, 0xff, 0xff, 0xff, 0xff, 0x07]), "remaining bytes can encode") { TestName = "ImplausibleBlockCount" },
+            new(Stream([0x00, 0xff, 0xff, 0xff, 0xff, 0x0f]), "out of range") { TestName = "VarintBeyondInt" },
+            new(Stream([0x00, 0x01, 0xff, 0xff, 0xff, 0xff, 0x07, 0x01, .. new byte[20], 0x01, 0x00]), "transaction count") { TestName = "ImplausibleTransactionCount" },
+            new(Set(valid, valid.Length - 4 - 1 - 4 - 1 - 8 - 32 - 20 - 20 - 8 - 1, 0x05), "expected message type 4") { TestName = "NoCallMessage" },
             new(Stream([0x00, 0x01, 0x00, 0x01, .. new byte[20], 0x01, 0x00], [0x05]), "expected message type 3") { TestName = "UnknownActionMessage" },
             new(Set(valid, valid.Length - 1, 0x09), "expected message type 10") { TestName = "UnfinishedAction" },
             new(valid[..^1], "truncated") { TestName = "TruncatedAction" },
@@ -138,6 +158,14 @@ public class DaPayloadCodecTests
             new(Stream([0x00, 0x01, 0x00, 0x01, .. new byte[20], 0x01, 0x00], [], lengthPrefix: [0xff, 0xff, 0xff, 0xff, 0x1f]), "varint out of range") { TestName = "LengthVarintOutOfRange" },
         ];
     }
+
+    private static TestCaseData[] NonCanonicalSpans() =>
+    [
+        new(Stream([0x00, 0x01, 0x81, 0x00, 0x01, .. new byte[20], 0x01, 0x00, 0x01, 0x01])) { TestName = "PaddedTransactionCount" },
+        new(Stream([0x00, 0x01, 0x00, 0x81, 0x00, .. new byte[20], 0x01, 0x00])) { TestName = "PaddedRunLength" },
+        new(Stream([0x00, 0x01, 0x01, 0x01, .. new byte[20], 0x01, 0x00, 0x81, 0x00, 0x01])) { TestName = "PaddedTransactionLength" },
+        new(Stream([0x00, 0x02, 0x00, 0x00, 0x02, .. new byte[20], 0x01, 0x01, 0x07, 0x01, 0x01, 0x07])) { TestName = "NonMaximalExtraDataRun" },
+    ];
 
     private static byte[] Stream(byte[] span, byte[]? tail = null, byte[]? lengthPrefix = null) =>
         [DaPayloadCodec.StreamVersion, 0x02, .. BitConverter.GetBytes(RollupId), .. lengthPrefix ?? [(byte)span.Length], .. span, .. tail ?? []];
@@ -155,15 +183,15 @@ public class DaPayloadCodecTests
     private static string Describe(DaAction action) =>
         $"{action.SourceRollupId}|{action.TargetRollupId}|{action.SourceAddress}|{action.TargetAddress}|{action.Value}|{action.Gas}|{action.Data.ToHexString()}|{action.Success}|{action.ReturnData.ToHexString()}";
 
-    private static (Address, byte[], IReadOnlyList<byte[]>)[] Blocks(DaSpan span)
+    private static DaBlock[] Blocks(DaSpan span)
     {
-        (Address, byte[], IReadOnlyList<byte[]>)[] blocks = new (Address, byte[], IReadOnlyList<byte[]>)[span.BlockCount];
+        DaBlock[] blocks = new DaBlock[span.BlockCount];
         int next = 0;
         for (int i = 0; i < blocks.Length; i++)
         {
             byte[][] transactions = span.Transactions[next..(next + span.TransactionCounts[i])].Select(static t => t.ToArray()).ToArray();
             next += span.TransactionCounts[i];
-            blocks[i] = (span.Beneficiaries[i], span.ExtraData[i].ToArray(), transactions);
+            blocks[i] = new DaBlock(span.Beneficiaries[i], span.ExtraData[i].ToArray(), transactions);
         }
 
         return blocks;

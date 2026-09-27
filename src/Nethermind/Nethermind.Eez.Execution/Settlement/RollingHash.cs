@@ -39,6 +39,14 @@ public static class RollingHash
         return Concat(statesHash, proxyEntryHash);
     }
 
+    /// <summary>The L1 seed of an entry whose single state update is <paramref name="update"/>.</summary>
+    public static ValueHash256 SeedL1(StateUpdate update, in ValueHash256 proxyEntryHash) =>
+        SeedL1([new StateCommitment(update.RollupId, update.CurrentState)], proxyEntryHash);
+
+    /// <summary>The L2 rolling hash of an entry that delivers one call and records its result.</summary>
+    public static ValueHash256 SingleL2Call(in ValueHash256 callHash, bool success, ReadOnlySpan<byte> returnData) =>
+        CallEnd(CallBegin(SeedL2(callHash), callHash), success, returnData);
+
     public static ValueHash256 SeedL2(in ValueHash256 proxyEntryHash) => Concat(default, proxyEntryHash);
 
     public static ValueHash256 CallBegin(in ValueHash256 previous, in ValueHash256 callHash) => Tagged(previous, CallBeginTag, callHash);

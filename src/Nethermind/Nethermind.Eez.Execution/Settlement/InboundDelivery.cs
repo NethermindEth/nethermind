@@ -14,8 +14,6 @@ namespace Nethermind.Eez.Execution.Settlement;
 /// </summary>
 public static class InboundDelivery
 {
-    public const ulong MainnetRollupId = 0;
-
     /// <exception cref="EezSettlementException">The delivery is not a single, flat, successful L1-to-L2 call.</exception>
     public static InboundObservation Inspect(in UInt256 transactionValue, ReadOnlySpan<byte> calldata, bool transactionSucceeded, ulong rollupId)
     {
@@ -31,7 +29,7 @@ public static class InboundDelivery
         }
 
         Require(transactionValue == call.Value, "the native value differs from the delivered value");
-        Require(call.SourceRollup == MainnetRollupId, "the call does not come from L1");
+        Require(call.SourceRollup == EezConstants.L1RollupId, "the call does not come from L1");
         Require(call.Entries.Length == 1, "the delivery must load exactly one entry");
         Require(call.StaticEntries.Length == 0, "the delivery must load no static entries");
         L2ExecutionEntry entry = call.Entries[0];
@@ -44,10 +42,10 @@ public static class InboundDelivery
             "the delivered call differs from the call in its entry");
         Require(inner is { RevertNextNCalls: 0, IsStatic: false, Gas: 0 }, "the incoming call must be flat, mutable and without gas");
 
-        ValueHash256 callHash = CrossChainCallHash.Compute(false, call.SourceAddress, MainnetRollupId, call.Destination, rollupId, call.Value, 0, call.Data);
+        ValueHash256 callHash = CrossChainCallHash.Compute(false, call.SourceAddress, EezConstants.L1RollupId, call.Destination, rollupId, call.Value, 0, call.Data);
         Require(callHash != default, "the call hash is zero");
         Require(entry.ProxyEntryHash == callHash, "the entry's proxy entry hash is not the delivered call's hash");
-        ValueHash256 rollingHash = RollingHash.CallEnd(RollingHash.CallBegin(RollingHash.SeedL2(callHash), callHash), entry.Success, entry.ReturnData);
+        ValueHash256 rollingHash = RollingHash.SingleL2Call(callHash, entry.Success, entry.ReturnData);
         Require(entry.RollingHash == rollingHash, "the entry's rolling hash does not record the delivered call");
 
         ExecutionEntry derived = new([], callHash, [inner], [], entry.RollingHash, rollupId, entry.Success, entry.ReturnData);
@@ -92,7 +90,7 @@ public static class InboundDelivery
         Require(entry.DestinationRollupId == rollupId, $"the entry must target rollup {rollupId}");
         Require(entry.ProxyEntryHash == observation.CallHash, "the entry claims a different call");
         Require(entry.ReturnData.AsSpan().SequenceEqual(observation.ReturnData), "the entry claims a different result");
-        Require(entry.RollingHash == RollingHash.SeedL1([new StateCommitment(update.RollupId, update.CurrentState)], entry.ProxyEntryHash),
+        Require(entry.RollingHash == RollingHash.SeedL1(update, entry.ProxyEntryHash),
             "the entry's rolling hash is not its L1 seed");
         Require(update.EtherDelta == EtherDelta.Credit(observation.Value), "the rollup must be credited the delivered value");
     }

@@ -82,8 +82,8 @@ public sealed class SyncSettlementFixture
     public byte[] Payload(DaAction[]? actions = null, byte[][]? settlingPublished = null, byte[]? settlingExtraData = null) =>
         DaPayloadCodec.Encode(RollupId,
         [
-            (Beneficiary, [], [PrecedingTransaction]),
-            (Beneficiary, settlingExtraData ?? [9], settlingPublished ?? [UserTransaction]),
+            new DaBlock(Beneficiary, [], [PrecedingTransaction]),
+            new DaBlock(Beneficiary, settlingExtraData ?? [9], settlingPublished ?? [UserTransaction]),
         ], actions ?? Actions);
 
     public TxReceipt[] SettlingReceipts(byte loadStatus = StatusCode.Success, byte deliveryStatus = StatusCode.Success, LogEntry? userLog = null) =>

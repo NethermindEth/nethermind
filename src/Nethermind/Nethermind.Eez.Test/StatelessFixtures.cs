@@ -40,6 +40,11 @@ internal static class StatelessFixtures
         };
     }
 
+    public const string Window84 = "captured-devnet-window-84";
+
+    /// <summary>The recorded <c>postAndVerifyBatch</c> calldata of a fixture.</summary>
+    public static byte[] ReadPostBatch(string fixture) => ReadBlock(fixture, "postbatch.hex");
+
     public static JsonElement ReadJson(string fixture, string file)
     {
         using JsonDocument json = JsonDocument.Parse(File.ReadAllText(PathOf(fixture, file)));

@@ -24,7 +24,7 @@ public static class EntryShapes
 
         return entry.DestinationRollupId == rollupId
             && entry.ReturnData.Length == 0
-            && entry.RollingHash == RollingHash.SeedL1([new StateCommitment(update.RollupId, update.CurrentState)], default)
+            && entry.RollingHash == RollingHash.SeedL1(update, default)
                 ? EntryShape.Anchor
                 : EntryShape.Invalid;
     }

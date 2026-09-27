@@ -27,6 +27,10 @@ public static class SyncBlock
         foreach (ExecutionEntry entry in inbound)
         {
             EnsureLowerable(entry, "inbound");
+            if (entry.DestinationRollupId != rollupId || entry.Calls.Length != 1)
+            {
+                throw new EezSettlementException($"An inbound entry must deliver exactly one call to rollup {rollupId}.");
+            }
         }
 
         List<byte[]> transactions = new(2 * outbound.Count + inbound.Count);
@@ -39,7 +43,7 @@ public static class SyncBlock
                 throw new EezSettlementException("An outbound entry must carry exactly one call.");
             }
 
-            ValueHash256 proxy = CrossChainCallHash.Compute(false, call.SourceAddress, rollupId, call.TargetAddress, InboundDelivery.MainnetRollupId,
+            ValueHash256 proxy = CrossChainCallHash.Compute(false, call.SourceAddress, rollupId, call.TargetAddress, EezConstants.L1RollupId,
                 call.Value, 0, call.Data);
             L2ExecutionEntry table = new(proxy, [], [], RollingHash.SeedL2(proxy), true, entry.ReturnData);
             transactions.Add(Encode(chainId, NextNonce(ref nonce), UInt256.Zero, EezCalldata.EncodeLoadExecutionTable(new ExecutionTable([table], []))));
@@ -48,15 +52,10 @@ public static class SyncBlock
 
         foreach (ExecutionEntry entry in inbound)
         {
-            if (entry.DestinationRollupId != rollupId || entry.Calls.Length == 0)
-            {
-                continue;
-            }
-
             CrossChainCall outer = entry.Calls[0];
             ValueHash256 callHash = CrossChainCallHash.Compute(false, outer.SourceAddress, outer.SourceRollupId, outer.TargetAddress, rollupId,
                 outer.Value, 0, outer.Data);
-            ValueHash256 rollingHash = RollingHash.CallEnd(RollingHash.CallBegin(RollingHash.SeedL2(callHash), callHash), true, entry.ReturnData);
+            ValueHash256 rollingHash = RollingHash.SingleL2Call(callHash, true, entry.ReturnData);
             CrossChainCall incoming = new(0, false, 0, outer.SourceAddress, outer.SourceRollupId, outer.TargetAddress, outer.Value, outer.Data);
             L2ExecutionEntry delivery = new(callHash, [incoming], [], rollingHash, true, entry.ReturnData);
             IncomingCrossChainCall call = new(outer.TargetAddress, outer.Value, outer.Data, outer.SourceAddress, outer.SourceRollupId, [delivery], []);

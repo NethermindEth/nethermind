@@ -13,21 +13,20 @@ using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Int256;
 using NUnit.Framework;
+using static Nethermind.Eez.Test.SyncSettlementFixture;
+using static Nethermind.Eez.Test.TestWords;
 
 namespace Nethermind.Eez.Test;
 
 public class SettlementChecksTests
 {
-    private const string Window84 = "captured-devnet-window-84";
     private const ulong RollupId = 1;
-    private static readonly Address L1Sender = new("0x00000000000000000000000000000000000000aa");
-    private static readonly Address L2Contract = new("0x00000000000000000000000000000000000000bb");
     private static readonly Address ProofSystem = new("0xd0e17aefa018030e7a9652da302d4317f30f95b0");
 
     [Test]
     public void RecordedBatch_PassesEveryCheckAsOneAnchorWithoutEffects()
     {
-        JsonElement oracle = StatelessFixtures.ReadJson(Window84, "oracle.json");
+        JsonElement oracle = StatelessFixtures.ReadJson(StatelessFixtures.Window84, "oracle.json");
         PostBatch batch = RecordedBatch();
         ValueHash256 pre = new(oracle.GetProperty("window_pre_block_hash").GetString()!);
         ValueHash256 post = new(oracle.GetProperty("window_post_block_hash").GetString()!);
@@ -59,12 +58,12 @@ public class SettlementChecksTests
     }
 
     [TestCaseSource(nameof(BrokenChains))]
-    public void Verify_UpdatesThatDoNotChainTheWindow_Throw(StateUpdate[][] updates)
+    public void Verify_UpdatesThatDoNotChainTheWindow_Throw(StateUpdate[][] updates, string rule)
     {
         ExecutionEntry template = RecordedBatch().Entries[0];
         PostBatch batch = RecordedBatch() with { Entries = Array.ConvertAll(updates, u => template with { StateUpdates = u }) };
 
-        Assert.Throws<EezSettlementException>(() => StateUpdateChain.Verify(batch, RollupId, Word(1), Word(3)));
+        Assert.That(Assert.Throws<EezSettlementException>(() => StateUpdateChain.Verify(batch, RollupId, Word(1), Word(3)))!.Message, Does.Contain(rule));
     }
 
     [Test]
@@ -79,7 +78,7 @@ public class SettlementChecksTests
     }
 
     [TestCaseSource(nameof(Shapes))]
-    public EntryShape Classify(ExecutionEntry entry) => EntryShapes.Classify(entry, Update(1, 2), RollupId);
+    public EntryShape Classify_Entry_ReturnsItsShape(ExecutionEntry entry) => EntryShapes.Classify(entry, Update(1, 2), RollupId);
 
     [Test]
     public void InspectInbound_Delivery_ObservesTheCallAndDerivesItsDaEntry()
@@ -96,46 +95,34 @@ public class SettlementChecksTests
     }
 
     [TestCaseSource(nameof(BadDeliveries))]
-    public void InspectInbound_BadDelivery_Throws(Func<IncomingCrossChainCall, IncomingCrossChainCall> mutate, UInt256 transactionValue, bool succeeded) =>
-        Assert.Throws<EezSettlementException>(() =>
-            InboundDelivery.Inspect(transactionValue, EezCalldata.EncodeExecuteIncomingCrossChainCall(mutate(Delivery(7, [0xab]).Call)), succeeded, RollupId));
+    public void InspectInbound_BadDelivery_Throws(Func<IncomingCrossChainCall, IncomingCrossChainCall> mutate, UInt256 transactionValue, bool succeeded, string rule) =>
+        Assert.That(Assert.Throws<EezSettlementException>(() =>
+            InboundDelivery.Inspect(transactionValue, EezCalldata.EncodeExecuteIncomingCrossChainCall(mutate(Delivery(7, [0xab]).Call)), succeeded, RollupId))!.Message,
+            Does.Contain(rule));
 
     [Test]
     public void InspectInbound_UndecodableCalldata_Throws() =>
         Assert.Throws<EezSettlementException>(() => InboundDelivery.Inspect(0, [1, 2, 3], true, RollupId));
 
     [TestCaseSource(nameof(InboundClaims))]
-    public bool AuthorizeInbound(Func<ExecutionEntry, StateUpdate, (ExecutionEntry, StateUpdate)> mutate)
+    public void Authorize_InboundClaim_AcceptsOnlyTheObservedDelivery(Func<ExecutionEntry, StateUpdate, (ExecutionEntry, StateUpdate)> mutate, string? rule)
     {
         (IncomingCrossChainCall call, _) = Delivery(7, [0xab]);
         InboundObservation observation = InboundDelivery.Inspect(7, EezCalldata.EncodeExecuteIncomingCrossChainCall(call), true, RollupId);
         (ExecutionEntry entry, StateUpdate update) = mutate(InboundEntry(observation, out StateUpdate valid), valid);
-        try
-        {
-            InboundDelivery.Authorize(entry, update, observation, RollupId);
-            return true;
-        }
-        catch (EezSettlementException)
-        {
-            return false;
-        }
+
+        AssertRule(() => InboundDelivery.Authorize(entry, update, observation, RollupId), rule);
     }
 
     [TestCaseSource(nameof(OutboundClaims))]
-    public bool AuthorizeOutbound(Func<ExecutionEntry, StateUpdate, (ExecutionEntry, StateUpdate)> mutate, ulong eventCallGas)
+    public void Authorize_OutboundClaim_AcceptsOnlyTheObservedCall(Func<ExecutionEntry, StateUpdate, (ExecutionEntry, StateUpdate)> mutate, ulong eventCallGas, string? rule)
     {
-        (ExecutionEntry entry, StateUpdate update) = mutate(OutboundEntry(L2Contract, out StateUpdate valid, out _), valid);
-        CrossChainCall call = OutboundEntry(L2Contract, out _, out _).Calls[0];
-        ValueHash256 eventHash = CrossChainCallHash.Compute(false, call.SourceAddress, RollupId, call.TargetAddress, 0, call.Value, 0, call.Data);
-        try
-        {
-            OutboundCall.Authorize(entry, update, eventHash, eventCallGas, RollupId);
-            return true;
-        }
-        catch (EezSettlementException)
-        {
-            return false;
-        }
+        ExecutionEntry valid = OutboundEntry(L2Contract, out StateUpdate validUpdate, out _);
+        (ExecutionEntry entry, StateUpdate update) = mutate(valid, validUpdate);
+        CrossChainCall call = valid.Calls[0];
+        ValueHash256 eventHash = CrossChainCallHash.Compute(false, call.SourceAddress, RollupId, call.TargetAddress, 0, call.Value, eventCallGas, call.Data);
+
+        AssertRule(() => OutboundCall.Authorize(entry, update, eventHash, eventCallGas, RollupId), rule);
     }
 
     [Test]
@@ -153,8 +140,16 @@ public class SettlementChecksTests
     {
         ExecutionEntry entry = OutboundEntry(EezConstants.SystemAddress, out StateUpdate update, out ValueHash256 callHash);
 
-        Assert.Throws<EezSettlementException>(() => OutboundCall.Authorize(entry, update, callHash, 0, RollupId));
+        Assert.That(Assert.Throws<EezSettlementException>(() => OutboundCall.Authorize(entry, update, callHash, 0, RollupId))!.Message, Does.Contain("system address"));
     }
+
+    [Test]
+    public void Credit_ValueBeyondInt256_Throws() =>
+        Assert.Throws<EezSettlementException>(() => EtherDelta.Credit(UInt256.One << 255));
+
+    [Test]
+    public void Debit_LargestInt256_IsItsNegation() =>
+        Assert.That(EtherDelta.Debit((UInt256.One << 255) - 1), Is.EqualTo(new Int256.Int256((UInt256.One << 255) + 1)));
 
     [Test]
     public void Bind_AnchorThenEffects_BindsEachEntryToItsTransaction()
@@ -172,11 +167,12 @@ public class SettlementChecksTests
 
     [TestCaseSource(nameof(BadBindings))]
     public void Bind_ClaimsThatDoNotMatchTheSettlingBlock_Throw(Func<(PostBatch, StateUpdate[], EezTransactionCheckpoint[]), (PostBatch, StateUpdate[], EezTransactionCheckpoint[])> mutate,
-        int[] effectTransactions, bool[] systemTransactions, ulong preSettling)
+        int[] effectTransactions, bool[] systemTransactions, ulong preSettling, string rule)
     {
         (PostBatch batch, StateUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = mutate(EffectBatch());
 
-        Assert.Throws<EezSettlementException>(() => EffectBinding.Bind(batch, updates, RollupId, Word(preSettling), checkpoints, effectTransactions, systemTransactions));
+        Assert.That(Assert.Throws<EezSettlementException>(() =>
+            EffectBinding.Bind(batch, updates, RollupId, Word(preSettling), checkpoints, effectTransactions, systemTransactions))!.Message, Does.Contain(rule));
     }
 
     [Test]
@@ -208,12 +204,14 @@ public class SettlementChecksTests
 
     private static TestCaseData[] BrokenChains() =>
     [
-        new((object)new[] { new[] { Update(1, 2), Update(2, 3) } }) { TestName = "TwoUpdatesInOneEntry" },
-        new((object)new[] { Array.Empty<StateUpdate>() }) { TestName = "NoUpdate" },
-        new((object)new[] { new[] { Update(9, 3) } }) { TestName = "WrongStart" },
-        new((object)new[] { new[] { Update(1, 2) } }) { TestName = "WrongEnd" },
-        new((object)new[] { new[] { Update(1, 2) }, new[] { Update(9, 3) } }) { TestName = "BrokenLink" },
-        new((object)new[] { new[] { Update(1, 3) with { RollupId = 2 } } }) { TestName = "OtherRollup" },
+        new(new[] { new[] { Update(1, 2), Update(2, 3) } }, "exactly one state update") { TestName = "TwoUpdatesInOneEntry" },
+        new(new[] { new[] { Update(1, 3), Update(1, 3) with { RollupId = 2 } } }, "exactly one state update") { TestName = "ExtraUpdateAfterTheChain" },
+        new(new[] { Array.Empty<StateUpdate>() }, "exactly one state update") { TestName = "NoUpdate" },
+        new(Array.Empty<StateUpdate[]>(), "no execution entries") { TestName = "NoEntries" },
+        new(new[] { new[] { Update(9, 3) } }, "starts from") { TestName = "WrongStart" },
+        new(new[] { new[] { Update(1, 2) } }, "not at the window's last block") { TestName = "WrongEnd" },
+        new(new[] { new[] { Update(1, 2) }, new[] { Update(9, 3) } }, "starts from") { TestName = "BrokenLink" },
+        new(new[] { new[] { Update(1, 3) with { RollupId = 2 } } }, "updates rollup 2") { TestName = "OtherRollup" },
     ];
 
     private static TestCaseData[] Shapes()
@@ -240,63 +238,75 @@ public class SettlementChecksTests
 
     private static TestCaseData[] BadDeliveries() =>
     [
-        new((Func<IncomingCrossChainCall, IncomingCrossChainCall>)(static c => c), (UInt256)7, false) { TestName = "Reverted" },
-        new((Func<IncomingCrossChainCall, IncomingCrossChainCall>)(static c => c), (UInt256)8, true) { TestName = "NativeValueDiffers" },
-        Delivery(static c => c with { SourceRollup = 2 }, "SourceNotL1"),
-        Delivery(static c => c with { Entries = [] }, "NoEntry"),
-        Delivery(static c => c with { Entries = [c.Entries[0], c.Entries[0]] }, "TwoEntries"),
-        Delivery(static c => c with { StaticEntries = [new L2StaticExecutionEntry(Word(1), [], Word(2), true, [])] }, "StaticEntry"),
-        Delivery(static c => c with { Entries = [c.Entries[0] with { IncomingCalls = [] }] }, "NoIncomingCall"),
-        Delivery(static c => c with { Entries = [c.Entries[0] with { Success = false }] }, "EntryFailed"),
-        Delivery(static c => c with { Entries = [c.Entries[0] with { ExpectedOutgoingCalls = [new ExpectedCall(Word(1), [], Word(2), true, [])] }] }, "ExpectsOutgoingCalls"),
-        Delivery(static c => c with { Destination = L1Sender }, "DestinationDiffers"),
-        Delivery(static c => c with { Data = [9] }, "DataDiffers"),
-        Delivery(static c => c with { SourceAddress = L2Contract }, "SourceAddressDiffers"),
-        Delivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { Gas = 1 }), "InnerWithGas"),
-        Delivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { IsStatic = true }), "InnerStatic"),
-        Delivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { RevertNextNCalls = 1 }), "InnerRevertingNext"),
-        Delivery(static c => c with { Entries = [c.Entries[0] with { ProxyEntryHash = Word(1) }] }, "ProxyIsNotTheCallHash"),
-        Delivery(static c => c with { Entries = [c.Entries[0] with { RollingHash = Word(1) }] }, "RollingHashDiffers"),
-        Delivery(static c => c with { Entries = [c.Entries[0] with { ReturnData = [0xcd] }] }, "ReturnDataNotInRollingHash"),
+        new((Func<IncomingCrossChainCall, IncomingCrossChainCall>)(static c => c), (UInt256)7, false, "reverted") { TestName = "Reverted" },
+        new((Func<IncomingCrossChainCall, IncomingCrossChainCall>)(static c => c), (UInt256)8, true, "native value") { TestName = "NativeValueDiffers" },
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { SourceRollupId = 2 }) with { SourceRollup = 2 }, "does not come from L1", "SourceNotL1"),
+        BadDelivery(static c => c with { Entries = [] }, "exactly one entry", "NoEntry"),
+        BadDelivery(static c => c with { Entries = [c.Entries[0], c.Entries[0]] }, "exactly one entry", "TwoEntries"),
+        BadDelivery(static c => c with { StaticEntries = [new L2StaticExecutionEntry(Word(1), [], Word(2), true, [])] }, "no static entries", "StaticEntry"),
+        BadDelivery(static c => c with { Entries = [c.Entries[0] with { IncomingCalls = [] }] }, "exactly one incoming call", "NoIncomingCall"),
+        BadDelivery(static c => c with { Entries = [c.Entries[0] with { IncomingCalls = [c.Entries[0].IncomingCalls[0], c.Entries[0].IncomingCalls[0]] }] },
+            "exactly one incoming call", "TwoIncomingCalls"),
+        BadDelivery(static c => c with { Entries = [c.Entries[0] with { Success = false }] }, "must succeed", "EntryFailed"),
+        BadDelivery(static c => c with { Entries = [c.Entries[0] with { ExpectedOutgoingCalls = [new ExpectedCall(Word(1), [], Word(2), true, [])] }] },
+            "no outgoing calls", "ExpectsOutgoingCalls"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { TargetAddress = L1Sender }), "differs from the call in its entry", "DestinationDiffers"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { Value = 8 }), "differs from the call in its entry", "ValueDiffers"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { Data = [9] }), "differs from the call in its entry", "DataDiffers"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { SourceAddress = L2Contract }), "differs from the call in its entry", "SourceAddressDiffers"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { SourceRollupId = 2 }), "differs from the call in its entry", "SourceRollupDiffers"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { Gas = 1 }), "flat, mutable", "InnerWithGas"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { IsStatic = true }), "flat, mutable", "InnerStatic"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { RevertNextNCalls = 1 }), "flat, mutable", "InnerRevertingNext"),
+        BadDelivery(static c => c with { Entries = [c.Entries[0] with { ProxyEntryHash = Word(1) }] }, "proxy entry hash", "ProxyIsNotTheCallHash"),
+        BadDelivery(static c => c with { Entries = [c.Entries[0] with { RollingHash = Word(1) }] }, "rolling hash", "RollingHashDiffers"),
+        BadDelivery(static c => c with { Entries = [c.Entries[0] with { ReturnData = [0xcd] }] }, "rolling hash", "ReturnDataNotInRollingHash"),
     ];
 
     private static TestCaseData[] InboundClaims() =>
     [
-        Claim(static (e, u) => (e, u), true, "Valid"),
-        Claim(static (e, u) => (e with { DestinationRollupId = 2 }, u), false, "OtherRollup"),
-        Claim(static (e, u) => (e with { ProxyEntryHash = Word(1) }, u), false, "OtherCall"),
-        Claim(static (e, u) => (e with { ReturnData = [0xcd] }, u), false, "OtherResult"),
-        Claim(static (e, u) => (e with { RollingHash = Word(1) }, u), false, "RollingHashNotTheL1Seed"),
-        Claim(static (e, u) => (e, u with { EtherDelta = Int256.Int256.Zero }), false, "NotCredited"),
-        Claim(static (e, u) => (e, u with { EtherDelta = new Int256.Int256(-7) }), false, "Debited"),
+        Claim(static (e, u) => (e, u), null, "Valid"),
+        Claim(static (e, u) => (e with { DestinationRollupId = 2 }, u), "must target rollup", "OtherRollup"),
+        Claim(static (e, u) => (e with { ProxyEntryHash = Word(1), RollingHash = RollingHash.SeedL1(u, Word(1)) }, u), "different call", "OtherCall"),
+        Claim(static (e, u) => (e with { ReturnData = [0xcd] }, u), "different result", "OtherResult"),
+        Claim(static (e, u) => (e with { RollingHash = Word(1) }, u), "L1 seed", "RollingHashNotTheL1Seed"),
+        Claim(static (e, u) => (e, u with { EtherDelta = Int256.Int256.Zero }), "credited", "NotCredited"),
+        Claim(static (e, u) => (e, u with { EtherDelta = new Int256.Int256(-7) }), "credited", "Debited"),
     ];
 
     private static TestCaseData[] OutboundClaims() =>
     [
-        Outbound(static (e, u) => (e, u), 0, true, "Valid"),
-        Outbound(static (e, u) => (e, u), 1, false, "EventWithGas"),
-        Outbound(static (e, u) => (e with { DestinationRollupId = 2 }, u), 0, false, "OtherRollup"),
-        Outbound(static (e, u) => (e with { Calls = [e.Calls[0] with { SourceRollupId = 2 }] }, u), 0, false, "CallFromOtherRollup"),
-        Outbound(static (e, u) => (e with { Calls = [e.Calls[0] with { Data = [9] }] }, u), 0, false, "OtherCall"),
-        Outbound(static (e, u) => (e with { Calls = [] }, u), 0, false, "NoCall"),
-        Outbound(static (e, u) => (e with { ReturnData = [0xcd] }, u), 0, false, "ResultNotInRollingHash"),
-        Outbound(static (e, u) => (e, u with { EtherDelta = new Int256.Int256(3) }), 0, false, "CreditedInsteadOfDebited"),
-        Outbound(static (e, u) => (e, u with { EtherDelta = Int256.Int256.Zero }), 0, false, "NotDebited"),
+        OutboundClaim(static (e, u) => (e, u), 0, null, "Valid"),
+        OutboundClaim(static (e, u) => (e, u), 1, "without gas", "EventWithGas"),
+        OutboundClaim(static (e, u) => (e with { DestinationRollupId = 2 }, u), 0, "must target rollup", "OtherRollup"),
+        OutboundClaim(static (e, u) => (e with { Calls = [e.Calls[0] with { SourceRollupId = 2 }] }, u), 0, "must come from rollup", "CallFromOtherRollup"),
+        OutboundClaim(static (e, u) => (e with { Calls = [e.Calls[0] with { Data = [9] }] }, u), 0, "different call", "OtherCall"),
+        OutboundClaim(static (e, u) => (e with { Calls = [] }, u), 0, "exactly one call", "NoCall"),
+        OutboundClaim(static (e, u) => (e with { ReturnData = [0xcd] }, u), 0, "rolling hash", "ResultNotInRollingHash"),
+        OutboundClaim(static (e, u) => (e, u with { EtherDelta = new Int256.Int256(3) }), 0, "debited", "CreditedInsteadOfDebited"),
+        OutboundClaim(static (e, u) => (e, u with { EtherDelta = Int256.Int256.Zero }), 0, "debited", "NotDebited"),
     ];
 
     private static TestCaseData[] BadBindings() =>
     [
-        Binding(static s => s, [1], [true, false, true, true], 2, "FewerEffectTransactions"),
-        Binding(static s => s, [1, 3], [true, true, true, true], 2, "OutboundEntryAtSystemTransaction"),
-        Binding(static s => s, [1, 3], [true, false, true, false], 2, "InboundEntryAtUserTransaction"),
-        Binding(static s => s, [1, 3], [true, false, true, true], 9, "AnchorDoesNotEndAtTheParent"),
-        Binding(static s => (s.Item1, s.Item2, s.Item3[..1]), [1, 3], [true, false, true, true], 2, "MissingCheckpoint"),
-        Binding(static s => (s.Item1, s.Item2, [s.Item3[0], s.Item3[1] with { TransactionIndex = 2 }]), [1, 3], [true, false, true, true], 2, "CheckpointAtOtherTransaction"),
-        Binding(static s => (s.Item1, s.Item2, [s.Item3[0], s.Item3[1] with { BlockHash = Keccak.Zero }]), [1, 3], [true, false, true, true], 2, "ClaimsOtherCandidateBlock"),
-        Binding(static s => (s.Item1 with { Entries = [s.Item1.Entries[1], s.Item1.Entries[1], s.Item1.Entries[2]] }, s.Item2, s.Item3), [1, 3], [true, false, true, true], 2, "LeadingEntryNotAnchor"),
-        Binding(static s => (s.Item1 with { Entries = [s.Item1.Entries[0], s.Item1.Entries[0], s.Item1.Entries[2]] }, s.Item2, s.Item3), [1, 3], [true, false, true, true], 2, "SecondAnchor"),
-        Binding(static s => (s.Item1 with { Entries = [s.Item1.Entries[0], s.Item1.Entries[1] with { Success = false }, s.Item1.Entries[2]] }, s.Item2, s.Item3), [1, 3], [true, false, true, true], 2, "InvalidEffect"),
-        Binding(static s => (s.Item1, [s.Item2[0] with { EtherDelta = Int256.Int256.One }, s.Item2[1], s.Item2[2]], s.Item3), [1, 3], [true, false, true, true], 2, "AnchorMovesEther"),
+        Binding(static s => s, [1], [true, false, true, true], 2, "claims 2 effects", "FewerEffectTransactions"),
+        Binding(static s => s, [1, 3, 4], [true, false, true, true, false], 2, "claims 2 effects", "MoreEffectTransactions"),
+        Binding(static s => s, [1, 3], [true, true, true, true], 2, "is Outbound, but transaction 1 is Inbound", "OutboundEntryAtSystemTransaction"),
+        Binding(static s => s, [1, 3], [true, false, true, false], 2, "is Inbound, but transaction 3 is Outbound", "InboundEntryAtUserTransaction"),
+        Binding(static s => s, [1, 3], [true, false, true, true], 9, "settling block's parent", "AnchorDoesNotEndAtTheParent"),
+        Binding(static s => (s.Item1, s.Item2, s.Item3[..1]), [1, 3], [true, false, true, true], 2, "needs 2 transaction checkpoints", "MissingCheckpoint"),
+        Binding(static s => (s.Item1, s.Item2, [s.Item3[0], s.Item3[1] with { TransactionIndex = 2 }]), [1, 3], [true, false, true, true], 2,
+            "is at transaction 2", "CheckpointAtOtherTransaction"),
+        Binding(static s => (s.Item1, s.Item2, [s.Item3[0], s.Item3[1] with { BlockHash = Keccak.Zero }]), [1, 3], [true, false, true, true], 2,
+            "claims block", "ClaimsOtherCandidateBlock"),
+        Binding(static s => (s.Item1 with { Entries = [s.Item1.Entries[1], s.Item1.Entries[1], s.Item1.Entries[2]] }, s.Item2, s.Item3), [1, 3], [true, false, true, true], 2,
+            "leading entry", "LeadingEntryNotAnchor"),
+        Binding(static s => (s.Item1 with { Entries = [s.Item1.Entries[0], Anchor(s.Item2[1]), s.Item1.Entries[2]] }, s.Item2, s.Item3), [1, 3], [true, false, true, true], 2,
+            "second anchor", "SecondAnchor"),
+        Binding(static s => (s.Item1 with { Entries = [s.Item1.Entries[0], s.Item1.Entries[1] with { Success = false }, s.Item1.Entries[2]] }, s.Item2, s.Item3), [1, 3],
+            [true, false, true, true], 2, "not a valid effect", "InvalidEffect"),
+        Binding(static s => (s.Item1, [s.Item2[0] with { EtherDelta = Int256.Int256.One }, s.Item2[1], s.Item2[2]], s.Item3), [1, 3], [true, false, true, true], 2,
+            "moves", "AnchorMovesEther"),
     ];
 
     private static (PostBatch Batch, StateUpdate[] Updates, EezTransactionCheckpoint[] Checkpoints) EffectBatch()
@@ -314,7 +324,7 @@ public class SettlementChecksTests
         byte[] data = [1, 2, 3];
         CrossChainCall inner = new(0, false, 0, L1Sender, 0, L2Contract, value, data);
         ValueHash256 callHash = CrossChainCallHash.Compute(false, L1Sender, 0, L2Contract, RollupId, value, 0, data);
-        ValueHash256 rolling = RollingHash.CallEnd(RollingHash.CallBegin(RollingHash.SeedL2(callHash), callHash), true, returnData);
+        ValueHash256 rolling = RollingHash.SingleL2Call(callHash, true, returnData);
         L2ExecutionEntry entry = new(callHash, [inner], [], rolling, true, returnData);
         return (new IncomingCrossChainCall(L2Contract, value, data, L1Sender, 0, [entry], []), callHash);
     }
@@ -322,7 +332,7 @@ public class SettlementChecksTests
     private static ExecutionEntry InboundEntry(InboundObservation observation, out StateUpdate update)
     {
         update = Update(1, 2) with { EtherDelta = new Int256.Int256(7) };
-        ValueHash256 rolling = RollingHash.SeedL1([new StateCommitment(RollupId, update.CurrentState)], observation.CallHash);
+        ValueHash256 rolling = RollingHash.SeedL1(update, observation.CallHash);
         return new ExecutionEntry([update], observation.CallHash, [], [], rolling, RollupId, true, observation.ReturnData);
     }
 
@@ -333,7 +343,7 @@ public class SettlementChecksTests
         callHash = CrossChainCallHash.Compute(false, source, RollupId, L1Sender, 0, 3, 0, call.Data);
         byte[] returnData = [0xee];
         ValueHash256 rolling = RollingHash.CallEnd(
-            RollingHash.CallBegin(RollingHash.SeedL1([new StateCommitment(RollupId, update.CurrentState)], default), callHash), true, returnData);
+            RollingHash.CallBegin(RollingHash.SeedL1(update, default), callHash), true, returnData);
         return new ExecutionEntry([update], default, [call], [], rolling, RollupId, true, returnData);
     }
 
@@ -342,29 +352,36 @@ public class SettlementChecksTests
 
     private static TestCaseData Case(Func<PostBatch, PostBatch> mutate, string name) => new(mutate) { TestName = name };
 
-    private static TestCaseData Delivery(Func<IncomingCrossChainCall, IncomingCrossChainCall> mutate, string name) =>
-        new(mutate, (UInt256)7, true) { TestName = name };
+    private static TestCaseData BadDelivery(Func<IncomingCrossChainCall, IncomingCrossChainCall> mutate, string rule, string name) =>
+        new(mutate, (UInt256)7, true, rule) { TestName = name };
 
-    private static TestCaseData Claim(Func<ExecutionEntry, StateUpdate, (ExecutionEntry, StateUpdate)> mutate, bool authorized, string name) =>
-        new(mutate) { ExpectedResult = authorized, TestName = name };
+    private static TestCaseData Claim(Func<ExecutionEntry, StateUpdate, (ExecutionEntry, StateUpdate)> mutate, string? rule, string name) =>
+        new(mutate, rule) { TestName = name };
 
-    private static TestCaseData Outbound(Func<ExecutionEntry, StateUpdate, (ExecutionEntry, StateUpdate)> mutate, ulong eventCallGas, bool authorized, string name) =>
-        new(mutate, eventCallGas) { ExpectedResult = authorized, TestName = name };
+    private static TestCaseData OutboundClaim(Func<ExecutionEntry, StateUpdate, (ExecutionEntry, StateUpdate)> mutate, ulong eventCallGas, string? rule, string name) =>
+        new(mutate, eventCallGas, rule) { TestName = name };
+
+    private static void AssertRule(Action check, string? rule)
+    {
+        if (rule is null)
+        {
+            Assert.DoesNotThrow(check);
+        }
+        else
+        {
+            Assert.That(Assert.Throws<EezSettlementException>(check)!.Message, Does.Contain(rule));
+        }
+    }
 
     private static TestCaseData Binding(
         Func<(PostBatch, StateUpdate[], EezTransactionCheckpoint[]), (PostBatch, StateUpdate[], EezTransactionCheckpoint[])> mutate,
-        int[] effectTransactions, bool[] systemTransactions, ulong preSettling, string name) =>
-        new(mutate, effectTransactions, systemTransactions, preSettling) { TestName = name };
+        int[] effectTransactions, bool[] systemTransactions, ulong preSettling, string rule, string name) =>
+        new(mutate, effectTransactions, systemTransactions, preSettling, rule) { TestName = name };
+
+    private static ExecutionEntry Anchor(StateUpdate update) => new([update], default, [], [], RollingHash.SeedL1(update, default), RollupId, true, []);
 
     private static StateUpdate Update(ulong from, ulong to) => new(RollupId, Word(from), Word(to), Int256.Int256.Zero);
 
-    private static PostBatch RecordedBatch() =>
-        EezCalldata.DecodePostAndVerifyBatch(Bytes.FromHexString(File.ReadAllText(StatelessFixtures.PathOf(Window84, "postbatch.hex")).Trim()));
+    private static PostBatch RecordedBatch() => EezCalldata.DecodePostAndVerifyBatch(StatelessFixtures.ReadPostBatch(StatelessFixtures.Window84));
 
-    private static ValueHash256 Word(ulong value)
-    {
-        byte[] bytes = new byte[32];
-        BinaryPrimitives.WriteUInt64BigEndian(bytes.AsSpan(24), value);
-        return new ValueHash256(bytes);
-    }
 }

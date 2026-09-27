@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Nethermind.Eez.Execution.Settlement;
@@ -14,6 +15,9 @@ public sealed record DaSpan(int[] TransactionCounts, Address[] Beneficiaries, Re
 {
     public int BlockCount => TransactionCounts.Length;
 }
+
+/// <summary>One block as a composer publishes it: its beneficiary, its extra data and its transactions not derived from L1.</summary>
+public readonly record struct DaBlock(Address Beneficiary, byte[] ExtraData, IReadOnlyList<byte[]> Transactions);
 
 /// <summary>The DA stream of one batch: the rollup it belongs to, its block span and one action per effect entry.</summary>
 public sealed record DaPayload(ulong RollupId, DaSpan Span, DaAction[] Actions);

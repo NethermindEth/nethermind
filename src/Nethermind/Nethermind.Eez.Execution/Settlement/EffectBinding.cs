@@ -33,9 +33,14 @@ public static class EffectBinding
         for (int i = 1; i < entries.Length; i++)
         {
             shapes[i] = EntryShapes.Classify(entries[i], updates[i], rollupId);
-            if (shapes[i] is EntryShape.Anchor or EntryShape.Invalid)
+            if (shapes[i] == EntryShape.Anchor)
             {
-                throw new EezSettlementException($"Entry {i} is {(shapes[i] == EntryShape.Anchor ? "a second anchor" : "not a valid effect")}.");
+                throw new EezSettlementException($"Entry {i} is a second anchor.");
+            }
+
+            if (shapes[i] == EntryShape.Invalid)
+            {
+                throw new EezSettlementException($"Entry {i} is not a valid effect.");
             }
         }
 

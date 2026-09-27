@@ -33,11 +33,12 @@ public static class DaPayloadCodec
     /// <exception cref="EezSettlementException">The stream or its span is malformed.</exception>
     public static DaPayload Decode(ReadOnlyMemory<byte> payload)
     {
-        Reader reader = new(payload);
         if (payload.Length == 0)
         {
             throw Invalid("the payload is empty");
         }
+
+        Reader reader = new(payload);
 
         if (reader.Byte("stream version") != StreamVersion)
         {
@@ -58,7 +59,7 @@ public static class DaPayloadCodec
     }
 
     /// <exception cref="EezSettlementException">The span is empty or a field exceeds its limit.</exception>
-    public static byte[] Encode(ulong rollupId, IReadOnlyList<(Address Beneficiary, byte[] ExtraData, IReadOnlyList<byte[]> Transactions)> blocks,
+    public static byte[] Encode(ulong rollupId, IReadOnlyList<DaBlock> blocks,
         IReadOnlyList<DaAction> actions)
     {
         List<byte> spanBytes = EncodeSpan(blocks);
@@ -210,7 +211,7 @@ public static class DaPayloadCodec
         _ => EqualityComparer<T>.Default.Equals(left, right),
     };
 
-    private static List<byte> EncodeSpan(IReadOnlyList<(Address Beneficiary, byte[] ExtraData, IReadOnlyList<byte[]> Transactions)> blocks)
+    private static List<byte> EncodeSpan(IReadOnlyList<DaBlock> blocks)
     {
         if (blocks.Count == 0)
         {
@@ -219,9 +220,9 @@ public static class DaPayloadCodec
 
         List<byte> span = [SpanVersion];
         AddVarint(span, blocks.Count);
-        foreach ((_, _, IReadOnlyList<byte[]> transactions) in blocks)
+        foreach (DaBlock block in blocks)
         {
-            AddVarint(span, transactions.Count);
+            AddVarint(span, block.Transactions.Count);
         }
 
         for (int start = 0; start < blocks.Count;)
@@ -257,17 +258,17 @@ public static class DaPayloadCodec
             start = end;
         }
 
-        foreach ((_, _, IReadOnlyList<byte[]> transactions) in blocks)
+        foreach (DaBlock block in blocks)
         {
-            foreach (byte[] transaction in transactions)
+            foreach (byte[] transaction in block.Transactions)
             {
                 AddVarint(span, transaction.Length);
             }
         }
 
-        foreach ((_, _, IReadOnlyList<byte[]> transactions) in blocks)
+        foreach (DaBlock block in blocks)
         {
-            foreach (byte[] transaction in transactions)
+            foreach (byte[] transaction in block.Transactions)
             {
                 span.AddRange(transaction);
             }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,7 +15,7 @@ namespace Nethermind.Eez.Execution.Settlement;
 /// </summary>
 public readonly record struct OutboundEvent(int TransactionIndex, int LogIndex, bool IsCanonical, ValueHash256 CallHash, ulong CallGas)
 {
-    public static readonly Hash256 Signature = Keccak.Compute(Encoding.ASCII.GetBytes("CrossChainCallExecuted(bytes32,address,address,bytes,uint256,uint64)"));
+    public static readonly Hash256 Signature = Keccak.Compute("CrossChainCallExecuted(bytes32,address,address,bytes,uint256,uint64)");
 
     private const int Word = AbiWord.Size;
     private const int Head = 4 * Word;
@@ -52,6 +51,7 @@ public readonly record struct OutboundEvent(int TransactionIndex, int LogIndex, 
         try
         {
             AbiReader reader = new(log.Data);
+            // The source address and value are read only to reject non-canonical words.
             reader.ReadAddress(0);
             reader.ExpectOffset(Word, 0, Head);
             reader.ReadUInt256(2 * Word);

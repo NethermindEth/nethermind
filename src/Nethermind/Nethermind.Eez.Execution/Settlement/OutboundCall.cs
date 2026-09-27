@@ -71,11 +71,11 @@ public static class OutboundCall
         Require(entry.DestinationRollupId == rollupId, $"the entry must target rollup {rollupId}");
         Require(call.SourceRollupId == rollupId, $"the call must come from rollup {rollupId}");
         Require(eventCallGas == 0, "only calls without gas are supported");
-        ValueHash256 callHash = CrossChainCallHash.Compute(false, call.SourceAddress, rollupId, call.TargetAddress, InboundDelivery.MainnetRollupId,
+        ValueHash256 callHash = CrossChainCallHash.Compute(false, call.SourceAddress, rollupId, call.TargetAddress, EezConstants.L1RollupId,
             call.Value, eventCallGas, call.Data);
         Require(callHash == eventCallHash, "the entry executes a different call than the one emitted");
         ValueHash256 rollingHash = RollingHash.CallEnd(
-            RollingHash.CallBegin(RollingHash.SeedL1([new StateCommitment(update.RollupId, update.CurrentState)], entry.ProxyEntryHash), callHash),
+            RollingHash.CallBegin(RollingHash.SeedL1(update, entry.ProxyEntryHash), callHash),
             entry.Success, entry.ReturnData);
         Require(entry.RollingHash == rollingHash, "the entry's rolling hash does not record the call");
         Require(call.SourceAddress != EezConstants.SystemAddress, "the system address cannot make outbound calls");

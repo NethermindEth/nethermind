@@ -26,7 +26,7 @@ public sealed record DaAction(
     /// <exception cref="EezSettlementException">The action neither leaves nor enters <paramref name="rollupId"/>.</exception>
     public ExecutionEntry ToEntry(ulong rollupId)
     {
-        bool outbound = SourceRollupId == rollupId && TargetRollupId == InboundDelivery.MainnetRollupId;
+        bool outbound = SourceRollupId == rollupId && TargetRollupId == EezConstants.L1RollupId;
         bool inbound = TargetRollupId == rollupId;
         if (!outbound && !inbound)
         {
@@ -40,7 +40,7 @@ public sealed record DaAction(
         }
 
         ValueHash256 callHash = CrossChainCallHash.Compute(false, SourceAddress, SourceRollupId, TargetAddress, TargetRollupId, Value, 0, Data);
-        ValueHash256 rollingHash = RollingHash.CallEnd(RollingHash.CallBegin(RollingHash.SeedL2(callHash), callHash), Success, ReturnData);
+        ValueHash256 rollingHash = RollingHash.SingleL2Call(callHash, Success, ReturnData);
         return new ExecutionEntry([], callHash, [call], [], rollingHash, rollupId, Success, ReturnData);
     }
 
@@ -58,7 +58,7 @@ public sealed record DaAction(
             throw new EezSettlementException("A DA action needs a flat, mutable call without expected calls.");
         }
 
-        ulong targetRollupId = call.SourceRollupId == rollupId ? InboundDelivery.MainnetRollupId : rollupId;
+        ulong targetRollupId = call.SourceRollupId == rollupId ? EezConstants.L1RollupId : rollupId;
         if (call.SourceRollupId != rollupId && entry.DestinationRollupId != rollupId)
         {
             throw new EezSettlementException($"A DA action's inbound entry targets rollup {entry.DestinationRollupId}, not {rollupId}.");

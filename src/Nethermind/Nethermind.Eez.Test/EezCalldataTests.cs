@@ -13,6 +13,7 @@ using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Int256;
 using NUnit.Framework;
+using static Nethermind.Eez.Test.TestWords;
 
 namespace Nethermind.Eez.Test;
 
@@ -148,13 +149,6 @@ public class EezCalldataTests
         return copy;
     }
 
-    private static byte[] RecordedBatch() =>
-        Bytes.FromHexString(File.ReadAllText(StatelessFixtures.PathOf(Window84, "postbatch.hex")).Trim());
+    private static byte[] RecordedBatch() => StatelessFixtures.ReadPostBatch(Window84);
 
-    private static ValueHash256 Word(ulong value)
-    {
-        byte[] bytes = new byte[32];
-        BinaryPrimitives.WriteUInt64BigEndian(bytes.AsSpan(24), value);
-        return new ValueHash256(bytes);
-    }
 }

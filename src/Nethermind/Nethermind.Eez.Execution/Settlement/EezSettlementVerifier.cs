@@ -22,8 +22,10 @@ public static class EezSettlementVerifier
     /// </param>
     /// <returns>The public inputs hash to sign.</returns>
     /// <exception cref="EezSettlementException">The batch claims something the window does not show.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The context names rollup 0, which is L1.</exception>
     public static ValueHash256 Verify(ReadOnlySpan<byte> postBatchCalldata, IReadOnlyList<EezStatelessBlockResult> window, EezSettlementContext context)
     {
+        ArgumentOutOfRangeException.ThrowIfEqual(context.RollupId, EezConstants.L1RollupId);
         if (window.Count == 0)
         {
             throw new EezSettlementException("The window has no blocks.");

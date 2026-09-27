@@ -63,9 +63,35 @@ public class EezSettlementVerifierTests
     }
 
     [TestCaseSource(nameof(TamperedBatches))]
-    public void Verify_TamperedBatch_Throws(Func<PostBatch, PostBatch> tamper) =>
-        Assert.Throws<EezSettlementException>(() =>
-            EezSettlementVerifier.Verify(EezCalldata.EncodePostAndVerifyBatch(tamper(EezCalldata.DecodePostAndVerifyBatch(RecordedBatch()))), Window.Value, Context()));
+    public void Verify_TamperedBatch_Throws(Func<PostBatch, PostBatch> tamper, string rule) =>
+        Assert.That(Assert.Throws<EezSettlementException>(() =>
+            EezSettlementVerifier.Verify(EezCalldata.EncodePostAndVerifyBatch(tamper(EezCalldata.DecodePostAndVerifyBatch(RecordedBatch()))), Window.Value, Context()))!.Message,
+            Does.Contain(rule));
+
+    [Test]
+    public void Verify_EmptyWindow_Throws() =>
+        Assert.Throws<EezSettlementException>(() => EezSettlementVerifier.Verify(RecordedBatch(), [], Context()));
+
+    [Test]
+    public void Verify_ContextForL1_Throws() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => EezSettlementVerifier.Verify(RecordedBatch(), Window.Value, Context() with { RollupId = 0 }));
+
+    [Test]
+    public void Verify_EffectBeforeTheSettlingBlock_Throws()
+    {
+        SyncSettlementFixture fixture = new();
+        EezStatelessBlockResult[] window =
+        [
+            new(fixture.Settling, Keccak.Zero, fixture.SettlingReceipts(), []),
+            new(fixture.PrecedingBlock, Keccak.Zero, [new TxReceipt { StatusCode = 1, Logs = [] }], []),
+        ];
+        PostBatch recorded = EezCalldata.DecodePostAndVerifyBatch(RecordedBatch());
+        StateUpdate chain = new(1, fixture.Settling.ParentHash!.ValueHash256, fixture.PrecedingBlock.Hash!.ValueHash256, Int256.Int256.Zero);
+        PostBatch batch = recorded with { Entries = [recorded.Entries[0] with { StateUpdates = [chain] }] };
+
+        Assert.That(Assert.Throws<EezSettlementException>(() => EezSettlementVerifier.Verify(EezCalldata.EncodePostAndVerifyBatch(batch), window, Context()))!.Message,
+            Does.Contain("only the settling block"));
+    }
 
     [Test]
     public void Verify_WindowMissingItsFirstBlock_Throws() =>
@@ -78,24 +104,31 @@ public class EezSettlementVerifierTests
 
     private static TestCaseData[] TamperedBatches() =>
     [
-        Case(static b => b with { CallData = DaWithBeneficiary(b.CallData, 0xff) }, "DaClaimsAnotherBeneficiary"),
-        Case(static b => b with { CallData = [.. b.CallData, 0x03] }, "DaWithTrailingBytes"),
-        Case(static b => b with { BlockNumber = 1 }, "OutsideTheProfile"),
-        Case(static b => b with { Entries = [b.Entries[0] with { StateUpdates = [b.Entries[0].StateUpdates[0] with { NewState = default }] }] }, "ClaimsAnotherEnd"),
+        Case(static b => b with { CallData = DaWithBeneficiary(b.CallData, 0xff) }, "another beneficiary", "DaClaimsAnotherBeneficiary"),
+        Case(static b => b with { CallData = [.. b.CallData, 0x03] }, "truncated", "DaWithTrailingBytes"),
+        Case(static b => b with { BlockNumber = 1 }, "block number", "OutsideTheProfile"),
+        Case(static b => b with { Entries = [b.Entries[0] with { StateUpdates = [b.Entries[0].StateUpdates[0] with { NewState = default }] }] }, "window's last block",
+            "ClaimsAnotherEnd"),
     ];
 
     private static byte[] DaWithBeneficiary(byte[] payload, byte value)
     {
         DaPayload decoded = DaPayloadCodec.Decode(payload);
         DaSpan span = decoded.Span;
-        (Address, byte[], System.Collections.Generic.IReadOnlyList<byte[]>)[] blocks = Enumerable.Range(0, span.BlockCount)
-            .Select(i => (new Address(Enumerable.Repeat(value, Address.Size).ToArray()), span.ExtraData[i].ToArray(),
-                (System.Collections.Generic.IReadOnlyList<byte[]>)Array.Empty<byte[]>()))
-            .ToArray();
+        Address beneficiary = new(Enumerable.Repeat(value, Address.Size).ToArray());
+        DaBlock[] blocks = new DaBlock[span.BlockCount];
+        int next = 0;
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            byte[][] transactions = span.Transactions[next..(next + span.TransactionCounts[i])].Select(static t => t.ToArray()).ToArray();
+            next += span.TransactionCounts[i];
+            blocks[i] = new DaBlock(i == 0 ? beneficiary : span.Beneficiaries[i], span.ExtraData[i].ToArray(), transactions);
+        }
+
         return DaPayloadCodec.Encode(decoded.RollupId, blocks, decoded.Actions);
     }
 
-    private static TestCaseData Case(Func<PostBatch, PostBatch> tamper, string name) => new(tamper) { TestName = name };
+    private static TestCaseData Case(Func<PostBatch, PostBatch> tamper, string rule, string name) => new(tamper, rule) { TestName = name };
 
     private static EezSettlementContext Context()
     {
@@ -110,6 +143,5 @@ public class EezSettlementVerifierTests
 
     private static JsonElement Oracle() => StatelessFixtures.ReadJson(Window84, "oracle.json");
 
-    private static byte[] RecordedBatch() =>
-        Bytes.FromHexString(File.ReadAllText(StatelessFixtures.PathOf(Window84, "postbatch.hex")).Trim());
+    private static byte[] RecordedBatch() => StatelessFixtures.ReadPostBatch(Window84);
 }

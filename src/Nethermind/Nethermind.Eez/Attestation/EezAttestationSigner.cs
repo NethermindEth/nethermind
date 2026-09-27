@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -22,6 +23,11 @@ public sealed class EezAttestationSigner(PrivateKey key)
     public byte[] Sign(in ValueHash256 publicInputsHash)
     {
         Signature signature = Ecdsa.Sign(key, publicInputsHash);
+        if (signature.V is not (27 or 28))
+        {
+            throw new InvalidOperationException($"Signature recovery id {signature.RecoveryId} has no ECDSAProofSystem encoding.");
+        }
+
         byte[] packed = new byte[SignatureLength];
         signature.Bytes.CopyTo(packed);
         packed[^1] = (byte)signature.V;

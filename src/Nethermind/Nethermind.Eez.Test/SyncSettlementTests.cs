@@ -13,6 +13,7 @@ using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using NUnit.Framework;
+using static Nethermind.Eez.Test.TestWords;
 using static Nethermind.Eez.Test.SyncSettlementFixture;
 
 namespace Nethermind.Eez.Test;
@@ -41,6 +42,10 @@ public class SyncSettlementTests
         Assert.That(table.Entries, Has.Length.EqualTo(1), "one load stages one entry");
         Assert.That((table.Entries[0].ProxyEntryHash, table.Entries[0].RollingHash), Is.EqualTo((proxy, RollingHash.SeedL2(proxy))),
             "the staged entry is keyed by the outbound call");
+        Assert.That((table.Entries[0].Success, table.Entries[0].ReturnData), Is.EqualTo((true, fixture.OutboundDaEntry.ReturnData)),
+            "the staged entry returns the L1 result to the user transaction");
+        Assert.That((table.Entries[0].IncomingCalls, table.Entries[0].ExpectedOutgoingCalls, table.StaticEntries), Is.EqualTo((Array.Empty<CrossChainCall>(),
+            Array.Empty<ExpectedCall>(), Array.Empty<L2StaticExecutionEntry>())), "the staged entry re-executes nothing on L2");
         Assert.That(EezCalldata.EncodeEntry(fixture.Observation.DerivedDaEntry), Is.EqualTo(EezCalldata.EncodeEntry(fixture.InboundAction.ToEntry(RollupId))),
             "the delivery re-inspects to the entry derivation rebuilds from its action");
     }
@@ -53,6 +58,17 @@ public class SyncSettlementTests
 
         Assert.Throws<EezSettlementException>(() => SyncBlock.BuildTransactions(asOutbound ? [(entry, fixture.UserTransaction)] : [], asOutbound ? [] : [entry],
             ChainId, RollupId, 0));
+    }
+
+    [TestCase(RollupId + 1, 1, TestName = "InboundForAnotherRollup")]
+    [TestCase(RollupId, 0, TestName = "InboundWithoutACall")]
+    public void BuildTransactions_InboundEntryItCannotDeliver_Throws(ulong destination, int calls)
+    {
+        ExecutionEntry entry = new SyncSettlementFixture().InboundAction.ToEntry(RollupId);
+        entry = entry with { DestinationRollupId = destination, Calls = entry.Calls[..calls] };
+
+        Assert.That(Assert.Throws<EezSettlementException>(() => SyncBlock.BuildTransactions([], [entry], ChainId, RollupId, 0))!.Message,
+            Does.Contain("deliver exactly one call"));
     }
 
     [TestCase(ulong.MaxValue - 1, false, TestName = "LastNonceIsUsable")]
@@ -103,8 +119,24 @@ public class SyncSettlementTests
     }
 
     [Test]
-    public void Inspect_RevertedLoad_Throws() =>
-        Assert.Throws<EezSettlementException>(() => SettlingBlock.Inspect(new SyncSettlementFixture().Settling, new SyncSettlementFixture().SettlingReceipts(StatusCode.Failure), RollupId));
+    public void Inspect_RevertedLoad_Throws()
+    {
+        SyncSettlementFixture fixture = new();
+
+        Assert.That(Assert.Throws<EezSettlementException>(() => SettlingBlock.Inspect(fixture.Settling, fixture.SettlingReceipts(StatusCode.Failure), RollupId))!.Message,
+            Does.Contain("reverted"));
+    }
+
+    [Test]
+    public void Inspect_SystemTransactionToAnotherTarget_Throws()
+    {
+        Transaction misdirected = SystemTransactions.Create(ChainId);
+        misdirected.To = L1Target;
+        Block block = Build.A.Block.WithTransactions(misdirected).TestObject;
+
+        Assert.That(Assert.Throws<EezSettlementException>(() => SettlingBlock.Inspect(block, [new TxReceipt { StatusCode = StatusCode.Success }], RollupId))!.Message,
+            Does.Contain("without being a system transaction to EEZL2"));
+    }
 
     [Test]
     public void Inspect_RevertedDelivery_KeepsItAsAnInvalidCandidate()
@@ -125,7 +157,8 @@ public class SyncSettlementTests
         impostor.SenderAddress = EezConstants.SystemAddress;
         Block block = Build.A.Block.WithTransactions(impostor).TestObject;
 
-        Assert.Throws<EezSettlementException>(() => SettlingBlock.Inspect(block, [new TxReceipt { StatusCode = StatusCode.Success }], RollupId));
+        Assert.That(Assert.Throws<EezSettlementException>(() => SettlingBlock.Inspect(block, [new TxReceipt { StatusCode = StatusCode.Success }], RollupId))!.Message,
+            Does.Contain("without being a system transaction to EEZL2"));
     }
 
     [Test]
@@ -135,6 +168,24 @@ public class SyncSettlementTests
     [Test]
     public void EnsureNoEffects_BlockWithASystemTransaction_Throws() =>
         Assert.Throws<EezSettlementException>(() => SettlingBlock.EnsureNoEffects(new SyncSettlementFixture().Settling, []));
+
+    [Test]
+    public void EnsureNoEffects_SystemTypeWithoutTheSystemSender_Throws()
+    {
+        Transaction system = SystemTransactions.Create(ChainId);
+        system.SenderAddress = null;
+
+        Assert.Throws<EezSettlementException>(() => SettlingBlock.EnsureNoEffects(Build.A.Block.WithTransactions(system).TestObject, []));
+    }
+
+    [Test]
+    public void EnsureNoEffects_SystemSenderOnAnOrdinaryTransaction_Throws()
+    {
+        Transaction impostor = Build.A.Transaction.TestObject;
+        impostor.SenderAddress = EezConstants.SystemAddress;
+
+        Assert.Throws<EezSettlementException>(() => SettlingBlock.EnsureNoEffects(Build.A.Block.WithTransactions(impostor).TestObject, []));
+    }
 
     [Test]
     public void EnsureNoEffects_BlockWithAnOutboundEvent_Throws()
@@ -194,10 +245,21 @@ public class SyncSettlementTests
     }
 
     [Test]
+    public void Verify_SyncBlockWithATransactionItsEffectsDoNotRebuild_Throws()
+    {
+        SyncSettlementFixture fixture = new();
+        Transaction extra = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block settling = Build.A.Block.WithNumber(2).WithBeneficiary(Beneficiary).WithExtraData([9]).WithTransactions([.. fixture.Settling.Transactions, extra]).TestObject;
+
+        Assert.That(Assert.Throws<EezSettlementException>(() => DaVerification.Verify(fixture.Payload(settlingPublished: [fixture.UserTransaction, Encode(extra)]),
+            [fixture.PrecedingBlock, settling], fixture.Outbound, fixture.Inbound, ChainId, RollupId))!.Message, Does.Contain("but its effects rebuild 3"));
+    }
+
+    [Test]
     public void Verify_WindowWithoutEffects_PublishesTheSettlingBlockWhole()
     {
         SyncSettlementFixture fixture = new();
-        byte[] payload = DaPayloadCodec.Encode(RollupId, [(Beneficiary, [], [fixture.PrecedingTransaction])], []);
+        byte[] payload = DaPayloadCodec.Encode(RollupId, [new DaBlock(Beneficiary, [], [fixture.PrecedingTransaction])], []);
 
         Assert.DoesNotThrow(() => DaVerification.Verify(payload, [fixture.PrecedingBlock], [], [], ChainId, RollupId));
     }
@@ -218,6 +280,38 @@ public class SyncSettlementTests
         Assert.That(EezCalldata.EncodeEntry(outbound[0].DerivedDaEntry), Is.EqualTo(EezCalldata.EncodeEntry(fixture.OutboundDaEntry)));
         Assert.DoesNotThrow(() => DaVerification.Verify(fixture.Payload(), fixture.Window, outbound, inbound, ChainId, RollupId),
             "the authorized effects are exactly what the DA check consumes");
+    }
+
+    [Test]
+    public void AuthorizeAll_InboundClaimWithOtherResult_Throws()
+    {
+        SyncSettlementFixture fixture = new();
+        (BoundEffect[] effects, SettlingBlock observed) = Bound(fixture);
+        BoundEffect[] tampered = [effects[0], effects[1] with { Entry = effects[1].Entry with { ReturnData = [0xcd] } }];
+
+        Assert.That(Assert.Throws<EezSettlementException>(() => InboundDelivery.AuthorizeAll(tampered, observed.InboundCandidates, RollupId))!.Message,
+            Does.Contain("different result"));
+    }
+
+    [Test]
+    public void AuthorizeAll_OutboundClaimForAnotherCall_Throws()
+    {
+        SyncSettlementFixture fixture = new();
+        (BoundEffect[] effects, SettlingBlock observed) = Bound(fixture);
+        BoundEffect tampered = effects[0] with { Entry = effects[0].Entry with { Calls = [fixture.OutboundCall with { Data = [9] }] } };
+
+        Assert.That(Assert.Throws<EezSettlementException>(() =>
+            OutboundCall.AuthorizeAll([tampered, effects[1]], observed.OutboundEvents, observed.SystemTransactions, RollupId))!.Message, Does.Contain("different call"));
+    }
+
+    [Test]
+    public void AuthorizeAll_OutboundEffectAtTheFirstTransaction_HasNoLoad()
+    {
+        (BoundEffect[] effects, _) = Bound(new SyncSettlementFixture());
+
+        Assert.That(Assert.Throws<EezSettlementException>(() =>
+            OutboundCall.AuthorizeAll([effects[0] with { TransactionIndex = 0 }], [new OutboundEvent(0, 0, true, EventCallHash, 0)], [false], RollupId))!.Message,
+            Does.Contain("no system load"));
     }
 
     [Test]
@@ -258,11 +352,11 @@ public class SyncSettlementTests
     }
 
     [TestCaseSource(nameof(BadEvents))]
-    public void AuthorizeAll_EventsThatDoNotMatchTheOutboundEntry_Throw(OutboundEvent[] events, bool[] system)
+    public void AuthorizeAll_EventsThatDoNotMatchTheOutboundEntry_Throw(OutboundEvent[] events, bool[] system, string rule)
     {
         (BoundEffect[] effects, _) = Bound(new SyncSettlementFixture());
 
-        Assert.Throws<EezSettlementException>(() => OutboundCall.AuthorizeAll(effects, events, system, RollupId));
+        Assert.That(Assert.Throws<EezSettlementException>(() => OutboundCall.AuthorizeAll(effects, events, system, RollupId))!.Message, Does.Contain(rule));
     }
 
     [Test]
@@ -311,6 +405,7 @@ public class SyncSettlementTests
             new(EventLog(default, data: dirtyPadding)) { ExpectedResult = false, TestName = "DirtyPadding" },
             new(EventLog(default, data: offCanonicalOffset)) { ExpectedResult = false, TestName = "NonCanonicalOffset" },
             new(proxyWithHighBits) { ExpectedResult = false, TestName = "ProxyWithHighBits" },
+            new(new LogEntry(EezConstants.Eezl2Address, EventData(0), [.. EventLog(default).Topics, Keccak.Zero])) { ExpectedResult = false, TestName = "ExtraTopic" },
         ];
     }
 
@@ -323,9 +418,9 @@ public class SyncSettlementTests
         new((Func<SyncSettlementFixture, byte[]>)(static f => f.Payload(settlingPublished: f.SyncTransactions)), "publishes 3 transactions") { TestName = "SystemTransactionsPublished" },
         new((Func<SyncSettlementFixture, byte[]>)(static f => f.Payload(settlingPublished: [f.PrecedingTransaction])), "does not publish transaction 1") { TestName = "OtherUserTransaction" },
         new((Func<SyncSettlementFixture, byte[]>)(static f => f.Payload(settlingExtraData: [8])), "other extra data") { TestName = "OtherExtraData" },
-        new((Func<SyncSettlementFixture, byte[]>)(static f => DaPayloadCodec.Encode(RollupId + 1, [(Beneficiary, [], [])], [])), "carries rollup 2") { TestName = "OtherRollup" },
-        new((Func<SyncSettlementFixture, byte[]>)(static f => DaPayloadCodec.Encode(RollupId, [(Beneficiary, [9], [f.UserTransaction])], f.Actions)), "covers 1 blocks") { TestName = "MissingBlock" },
-        new((Func<SyncSettlementFixture, byte[]>)(static f => DaPayloadCodec.Encode(RollupId, [(Address.Zero, [], [f.PrecedingTransaction]), (Beneficiary, [9], [f.UserTransaction])], f.Actions)),
+        new((Func<SyncSettlementFixture, byte[]>)(static f => DaPayloadCodec.Encode(RollupId + 1, [new DaBlock(Beneficiary, [], [])], [])), "carries rollup 2") { TestName = "OtherRollup" },
+        new((Func<SyncSettlementFixture, byte[]>)(static f => DaPayloadCodec.Encode(RollupId, [new DaBlock(Beneficiary, [9], [f.UserTransaction])], f.Actions)), "covers 1 blocks") { TestName = "MissingBlock" },
+        new((Func<SyncSettlementFixture, byte[]>)(static f => DaPayloadCodec.Encode(RollupId, [new DaBlock(Address.Zero, [], [f.PrecedingTransaction]), new DaBlock(Beneficiary, [9], [f.UserTransaction])], f.Actions)),
             "another beneficiary") { TestName = "OtherBeneficiary" },
     ];
 
@@ -335,14 +430,15 @@ public class SyncSettlementTests
         OutboundEvent valid = new(1, 0, true, EventCallHash, 0);
         return
         [
-            new(Array.Empty<OutboundEvent>(), system) { TestName = "NoEvent" },
-            new(new[] { valid, valid with { LogIndex = 1 } }, system) { TestName = "TwoEventsInOneTransaction" },
-            new(new[] { valid with { TransactionIndex = 0 }, valid }, system) { TestName = "EventBeforeTheEffect" },
-            new(new[] { valid, valid with { TransactionIndex = 2 } }, system) { TestName = "EventAtTheDelivery" },
-            new(new[] { valid with { IsCanonical = false } }, system) { TestName = "MalformedEvent" },
-            new(new[] { valid with { CallHash = Keccak.Zero.ValueHash256 } }, system) { TestName = "OtherCall" },
-            new(new[] { valid with { CallGas = 1 } }, system) { TestName = "EventWithGas" },
-            new(new[] { valid }, new[] { false, false, true }) { TestName = "NoLoadBeforeTheUser" },
+            new(Array.Empty<OutboundEvent>(), system, "no event at transaction 1") { TestName = "NoEvent" },
+            new(new[] { valid, valid with { LogIndex = 1 } }, system, "claimed by no outbound entry") { TestName = "TwoEventsInOneTransaction" },
+            new(new[] { valid with { TransactionIndex = 0 }, valid }, system, "no event at transaction 1") { TestName = "EventBeforeTheEffect" },
+            new(new[] { valid, valid with { TransactionIndex = 2 } }, system, "claimed by no outbound entry") { TestName = "EventAtTheDelivery" },
+            new(new[] { valid with { TransactionIndex = 2 } }, system, "no event at transaction 1") { TestName = "OnlyEventIsAtTheDelivery" },
+            new(new[] { valid with { IsCanonical = false } }, system, "malformed") { TestName = "MalformedEvent" },
+            new(new[] { valid with { CallHash = Keccak.Zero.ValueHash256 } }, system, "different call") { TestName = "OtherCall" },
+            new(new[] { valid with { CallGas = 1 } }, system, "without gas") { TestName = "EventWithGas" },
+            new(new[] { valid }, new[] { false, false, true }, "no system load") { TestName = "NoLoadBeforeTheUser" },
         ];
     }
 
@@ -350,10 +446,4 @@ public class SyncSettlementTests
         x.TransactionIndex == y.TransactionIndex && x.Error == y.Error && (x.Observation is null) == (y.Observation is null)
         && (x.Observation is null || x.Observation.CallHash == y.Observation!.CallHash);
 
-    private static ValueHash256 Word(ulong value)
-    {
-        byte[] bytes = new byte[32];
-        BinaryPrimitives.WriteUInt64BigEndian(bytes.AsSpan(24), value);
-        return new ValueHash256(bytes);
-    }
 }

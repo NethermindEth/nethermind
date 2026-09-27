@@ -16,6 +16,9 @@ public static class EezConstants
     /// <summary>The codeless sender of every system transaction, distinct from the Ethereum system caller.</summary>
     public static readonly Address SystemAddress = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0076");
 
+    /// <summary>The EEZ rollup id of Ethereum itself, the source of inbound and the target of outbound calls.</summary>
+    public const ulong L1RollupId = 0;
+
     /// <summary>The L2 execution manager predeploy, the only permitted target of a system transaction.</summary>
     public static readonly Address Eezl2Address = new("0x4200000000000000000000000000000000000007");
 }
