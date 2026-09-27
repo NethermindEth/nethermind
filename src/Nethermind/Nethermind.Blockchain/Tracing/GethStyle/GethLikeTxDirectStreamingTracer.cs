@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// a large memory or storage dump, so a slow reader holds execution back instead of letting the response
 /// buffer grow with the size of each entry.
 /// </remarks>
-public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceActionErrorDetails, ITraceOperationGasCost
+public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOperationGasCost
 {
     internal const int DefaultFlushThresholdBytes = 1024 * 1024;
     private const int EvmWordSize = EvmPooledMemory.WordSize;
@@ -173,7 +173,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceAc
     }
 
     /// <inheritdoc/>
-    public void ReportActionErrorDetails(string error)
+    public override void ReportActionErrorDetails(string error)
     {
         if (_hasPendingOpcode)
             _pendingError = error;
