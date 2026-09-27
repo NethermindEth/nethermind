@@ -292,10 +292,13 @@ public class NonceManagerTests
         Transaction replacement = BuildTx(TestItem.AddressA, accepted.Nonce, blobPool ? TxType.Blob : TxType.Legacy);
         _pending[replacement.Hash!] = replacement;
 
-        using (_nonceManager.ReserveNonce(TestItem.AddressA, _txPool, out ulong nonce))
+        for (int i = 0; i < 2; i++)
         {
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _txPool, out ulong nonce);
             Assert.That(nonce, Is.EqualTo(1UL));
         }
+
+        _txPool.Received(1).GetPendingTransactionsBySender(TestItem.AddressA);
     }
 
     [Test]
@@ -327,21 +330,59 @@ public class NonceManagerTests
     [Test]
     public void ReserveNonce_should_not_hand_an_in_flight_nonce_to_a_concurrent_reservation()
     {
+        using ManualResetEventSlim reserving = new();
         Task<ulong> concurrent;
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _txPool, out ulong nonce))
         {
             concurrent = Task.Run(() =>
             {
+                reserving.Set();
                 using NonceLocker concurrentLocker = _nonceManager.ReserveNonce(TestItem.AddressA, _txPool, out ulong concurrentNonce);
                 Accept(concurrentLocker, TestItem.AddressA, concurrentNonce);
                 return concurrentNonce;
             });
+            Assert.That(reserving.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the concurrent reservation has started");
+            Assert.That(concurrent.Wait(100), Is.False, "the concurrent reservation must wait for the in-flight one");
             Assert.That(nonce, Is.EqualTo(0UL));
             Accept(locker, TestItem.AddressA, nonce);
         }
 
         Assert.That(concurrent.Wait(TimeSpan.FromSeconds(10)), Is.True);
         Assert.That(concurrent.Result, Is.EqualTo(1UL));
+    }
+
+    [Test]
+    public void ReserveNonce_should_read_account_nonce_after_waiting_for_the_account_lock()
+    {
+        IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns(5UL);
+        _nonceManager = new NonceManager(accountStateProvider);
+
+        Transaction mined;
+        using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 5))
+        {
+            mined = Accept(locker, TestItem.AddressA, 5);
+        }
+
+        ulong waitingNonce = 0;
+        Thread waiting = new(() =>
+        {
+            using NonceLocker waitingLocker = _nonceManager.ReserveNonce(TestItem.AddressA, _txPool, out waitingNonce);
+        });
+
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _txPool, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo(6UL), "precondition: nonce 5 is still pending");
+            waiting.Start();
+            SpinWait.SpinUntil(() => waiting.ThreadState == ThreadState.WaitSleepJoin, TimeSpan.FromSeconds(10));
+
+            accountStateProvider.GetNonce(TestItem.AddressA).Returns(6UL);
+            _pending.TryRemove(mined.Hash!, out _);
+            Accept(locker, TestItem.AddressA, nonce);
+        }
+
+        Assert.That(waiting.Join(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(waitingNonce, Is.EqualTo(7UL));
     }
 
     [Test]
