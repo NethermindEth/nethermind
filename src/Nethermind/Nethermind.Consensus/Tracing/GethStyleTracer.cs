@@ -84,16 +84,11 @@ public class GethStyleTracer(
         CancellationToken cancellationToken, Utf8JsonWriter? writer, PipeWriter? pipeWriter)
     {
         Block replay = CreateCallReplay(block, call, index);
-        BlockHeader callHeader = block.Header.Clone();
-        options.BlockOverrides?.ApplyOverrides(callHeader);
-        if (options.NoBaseFee) callHeader.BaseFeePerGas = UInt256.Zero;
-        IReleaseSpec callSpec = specProvider.GetSpec(callHeader);
+        (BlockHeader callHeader, IReleaseSpec callSpec) = PrepareCallHeader(block, options);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(FindParent(block));
         IWorldState state = scope.Component.WorldState;
-        GethTraceOptions filtered = options with { TxHash = call.Hash };
-        IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(callHeader, filtered, state, specProvider)
-            : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, (long)callSpec.GasCosts.DestroyRefund);
+        IBlockTracer<GethLikeTxTrace> tracer = CreateIndexedCallTracer(callHeader, call, options, state, callSpec,
+            cancellationToken, writer, pipeWriter);
         TransactionProcessorAdapterFactory previous = transactionProcessorAdapter.CurrentAdapterFactory;
         try
         {
@@ -114,6 +109,24 @@ public class GethStyleTracer(
         {
             transactionProcessorAdapter.CurrentAdapterFactory = previous;
         }
+    }
+
+    private (BlockHeader Header, IReleaseSpec Spec) PrepareCallHeader(Block block, GethTraceOptions options)
+    {
+        BlockHeader header = block.Header.Clone();
+        options.BlockOverrides?.ApplyOverrides(header);
+        if (options.NoBaseFee) header.BaseFeePerGas = UInt256.Zero;
+        return (header, specProvider.GetSpec(header));
+    }
+
+    private IBlockTracer<GethLikeTxTrace> CreateIndexedCallTracer(BlockHeader header, Transaction call,
+        GethTraceOptions options, IWorldState state, IReleaseSpec spec, CancellationToken cancellationToken,
+        Utf8JsonWriter? writer, PipeWriter? pipeWriter)
+    {
+        GethTraceOptions filtered = options with { TxHash = call.Hash };
+        return writer is null
+            ? CreateOptionsTracer(header, filtered, state, specProvider)
+            : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, (long)spec.GasCosts.DestroyRefund);
     }
 
     private static Block CreateCallReplay(Block block, Transaction call, ulong index)
