@@ -114,13 +114,16 @@ public static class EezCalldata
     }
 
     /// <summary><c>keccak256(abi.encode(entry))</c>, the commitment the public inputs hash binds per entry.</summary>
-    public static ValueHash256 EntryHash(ExecutionEntry entry)
+    public static ValueHash256 EntryHash(ExecutionEntry entry) => ValueKeccak.Compute(EncodeEntry(entry));
+
+    /// <summary><c>abi.encode(entry)</c>.</summary>
+    public static byte[] EncodeEntry(ExecutionEntry entry)
     {
         byte[] encoded = new byte[Word + EezAbi.Size(entry)];
         AbiWriter writer = new(encoded);
         writer.WriteOffset(Word);
         EezAbi.Write(ref writer, entry);
-        return ValueKeccak.Compute(encoded);
+        return encoded;
     }
 
     /// <summary><c>keccak256(abi.encode(entry))</c> for a static entry.</summary>

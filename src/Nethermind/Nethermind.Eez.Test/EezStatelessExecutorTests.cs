@@ -77,7 +77,7 @@ public class EezStatelessExecutorTests
         Assert.That(results[0].Block.ParentHash, Is.EqualTo(new Hash256(oracle.GetProperty("window_pre_block_hash").GetString()!)),
             "the window starts on the recorded parent");
         Assert.That(results[^1].Hash, Is.EqualTo(new Hash256(oracle.GetProperty("window_post_block_hash").GetString()!)),
-            "absent request predeploys are called as empty accounts, so every block re-executes to its recorded hash");
+            "codeless request predeploys produce no requests, so every block re-executes to its recorded hash");
     }
 
     [Test]

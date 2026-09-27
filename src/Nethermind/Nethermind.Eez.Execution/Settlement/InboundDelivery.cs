@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -53,6 +54,38 @@ public static class InboundDelivery
         return new InboundObservation(callHash, call.Value, entry.ReturnData, derived);
     }
 
+    /// <summary>
+    /// Binds every inbound effect to the delivery at its transaction, and every delivery to an inbound effect.
+    /// </summary>
+    /// <param name="effects">The bound effects, ascending by transaction.</param>
+    /// <param name="candidates">The settling block's deliveries, ascending by transaction.</param>
+    /// <exception cref="EezSettlementException">A delivery is missing, unclaimed, invalid or claimed differently.</exception>
+    public static AuthorizedInbound[] AuthorizeAll(BoundEffect[] effects, InboundCandidate[] candidates, ulong rollupId)
+    {
+        List<AuthorizedInbound> authorized = new(candidates.Length);
+        int next = 0;
+        foreach (BoundEffect effect in effects)
+        {
+            if (effect.Shape != EntryShape.Inbound)
+            {
+                continue;
+            }
+
+            if (next == candidates.Length || candidates[next].TransactionIndex != effect.TransactionIndex)
+            {
+                throw new EezSettlementException($"Inbound entry {effect.EntryIndex} has no delivery at transaction {effect.TransactionIndex}.");
+            }
+
+            InboundCandidate candidate = candidates[next++];
+            InboundObservation observation = candidate.Observation
+                ?? throw new EezSettlementException($"Inbound entry {effect.EntryIndex} claims an invalid delivery: {candidate.Error}");
+            Authorize(effect.Entry, effect.Update, observation, rollupId);
+            authorized.Add(new AuthorizedInbound(effect.TransactionIndex, observation));
+        }
+
+        return next < candidates.Length ? throw Unclaimed(candidates[next]) : authorized.ToArray();
+    }
+
     /// <exception cref="EezSettlementException">The L1 entry does not claim exactly the observed delivery.</exception>
     public static void Authorize(ExecutionEntry entry, StateUpdate update, InboundObservation observation, ulong rollupId)
     {
@@ -63,6 +96,9 @@ public static class InboundDelivery
             "the entry's rolling hash is not its L1 seed");
         Require(update.EtherDelta == EtherDelta.Credit(observation.Value), "the rollup must be credited the delivered value");
     }
+
+    private static EezSettlementException Unclaimed(InboundCandidate candidate) =>
+        new($"The delivery at transaction {candidate.TransactionIndex} is claimed by no inbound entry.");
 
     private static void Require(bool condition, string rule)
     {
