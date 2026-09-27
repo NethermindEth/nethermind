@@ -1169,7 +1169,8 @@ public static partial class EvmInstructions
         for (int i = 0; i < topics.Length; i++)
         {
             if (!stack.PopWord256(out Span<byte> topic)) goto StackUnderflow;
-            topics[i] = new Hash256(topic);
+            // Topic 0 is the event signature, which repeats across logs, so its instance is shared.
+            topics[i] = i == 0 ? LogTopicCache.Get(topic) : new Hash256(topic);
         }
 
         // Create a new log entry with the executing account, log data, and topics.
