@@ -165,7 +165,7 @@ jobs:
           "custom_machine_type": "${{ needs.verify_correctness_of_setup.outputs.custom_machine_type }}"
         }
       non_validator_mode: true
-      additional_nethermind_flags: Sync.SnapSync=true JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
+      additional_nethermind_flags: Sync.SnapSync=true JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 JsonRpc.GasCap=50000000 JsonRpc.EnableEthSignTransaction=true log=INFO
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
       network: ${{ inputs.network }}
@@ -644,6 +644,10 @@ jobs:
           rc=${PIPESTATUS[0]}
           set -e
           echo "rpc_int exit code: $rc"
+
+          # rpc_int wipes integration/<network>/results at the start of every run.
+          mkdir -p rpc-results/results-default
+          cp -r integration/*/results rpc-results/results-default/ 2>/dev/null || true
 
           # Latest-block pass (-L): head-dependent tests (eth_baseFee, eth_gasPrice,
           # eth_blockNumber, eth_maxPriorityFeePerGas, ...). rpc_int first waits until the node
