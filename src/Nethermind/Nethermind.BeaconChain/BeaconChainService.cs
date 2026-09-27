@@ -42,8 +42,12 @@ public sealed class BeaconChainService(
     private bool _disposed;
     private Task? _runTask;
 
+    /// <summary>Checks the database schema version, then runs the driver in the background.</summary>
+    /// <exception cref="InvalidOperationException">The database cannot be brought to the current schema version (see <see cref="BeaconChainStore.EnsureSchemaVersion"/>); thrown before the run starts, so node startup fails.</exception>
     public Task Start()
     {
+        // A database this build cannot read leaves the execution layer without a driver, so it fails startup instead of the background run.
+        store.EnsureSchemaVersion();
         _runTask = RunAsync();
         return _runTask;
     }
@@ -61,7 +65,6 @@ public sealed class BeaconChainService(
             }
 
             if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {checkpointSync.EffectiveCheckpointSyncUrl}");
-            store.EnsureSchemaVersion();
             (ForkedBeaconState forkedState, ForkedSignedBeaconBlock? forkedBlock, Hash256 blockRoot) = await InitializeAnchorAsync(_cancellationTokenSource.Token);
             if (forkedState is not ForkedBeaconState.OfFulu { State: BeaconStateFulu state } || forkedBlock is ForkedSignedBeaconBlock.OfGloas)
             {
@@ -102,6 +105,7 @@ public sealed class BeaconChainService(
             }
 
             state = BeaconStateCodec.DecodeForked(stateSsz, spec);
+            CheckpointSync.ThrowIfInvalidSyncCommitteeKeys(state);
             blockRoot = anchorRoot;
             store.TryGetForkedBlock(anchorRoot, out block);
         }
