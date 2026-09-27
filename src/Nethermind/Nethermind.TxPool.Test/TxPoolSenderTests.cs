@@ -36,9 +36,9 @@ public class TxPoolSenderTests
         (Hash256 _, AcceptTxResult? result) = sender.SendTransaction(tx, TxHandlingOptions.None).Result;
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the submission must be accepted, or this pins nothing");
 
-        ITxPool pool = Substitute.For<ITxPool>();
-        pool.ContainsTx(tx.Hash!, tx.Type).Returns(true);
-        using NonceLocker locker = nonceManager.ReserveNonce(TestItem.AddressA, pool, out ulong reservedNonce);
+        IPendingTxsBySender pendingTxs = Substitute.For<IPendingTxsBySender>();
+        pendingTxs.ContainsTx(tx.Hash!, tx.Type).Returns(true);
+        using NonceLocker locker = nonceManager.ReserveNonce(TestItem.AddressA, pendingTxs, out ulong reservedNonce);
         Assert.That(reservedNonce, Is.EqualTo(expectedReservation));
     }
 

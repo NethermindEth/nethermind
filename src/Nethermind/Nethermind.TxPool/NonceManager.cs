@@ -15,11 +15,11 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
     private readonly ConcurrentDictionary<AddressAsKey, AddressNonceManager> _addressNonceManagers = new();
     private readonly IAccountStateProvider _accounts = accounts;
 
-    public NonceLocker ReserveNonce(Address address, ITxPool txPool, out ulong reservedNonce)
+    public NonceLocker ReserveNonce(Address address, IPendingTxsBySender pendingTxs, out ulong reservedNonce)
     {
         AddressNonceManager addressNonceManager =
             _addressNonceManagers.GetOrAdd(address, static _ => new AddressNonceManager());
-        return addressNonceManager.ReserveNonce(address, _accounts, txPool, out reservedNonce);
+        return addressNonceManager.ReserveNonce(address, _accounts, pendingTxs, out reservedNonce);
     }
 
     public NonceLocker TxWithNonceReceived(Address address, ulong nonce)
@@ -44,14 +44,14 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
         /// reservation in flight and an accepted one is recorded before the next starts. The account nonce is read
         /// only once the lock is held, since a block may consume the previous floor while this call waits for it.
         /// </remarks>
-        public NonceLocker ReserveNonce(Address address, IAccountStateProvider accounts, ITxPool txPool, out ulong reservedNonce)
+        public NonceLocker ReserveNonce(Address address, IAccountStateProvider accounts, IPendingTxsBySender pendingTxs, out ulong reservedNonce)
         {
             NonceLocker locker = new(_accountLock, TxAccepted);
             try
             {
                 ulong accountNonce = accounts.GetNonce(address);
                 ReleaseNonces(accountNonce);
-                _reservedNonce = FindFreeNonce(address, accountNonce, txPool);
+                _reservedNonce = FindFreeNonce(address, accountNonce, pendingTxs);
             }
             catch
             {
@@ -76,7 +76,7 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
         /// replacements and transactions returned to the pool by a reorg. The pool snapshots are taken only when
         /// the recorded transaction is gone, and the holder found there becomes the recorded one.
         /// </remarks>
-        private ulong FindFreeNonce(Address address, ulong accountNonce, ITxPool txPool)
+        private ulong FindFreeNonce(Address address, ulong accountNonce, IPendingTxsBySender pendingTxs)
         {
             Transaction[]? pending = null;
             Transaction[]? pendingBlobs = null;
@@ -84,13 +84,13 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
             for (; nonce < _nextUnusedNonce; nonce++)
             {
                 bool recorded = _usedNonces.TryGetValue(nonce, out (Hash256 Hash, TxType Type) used);
-                if (recorded && txPool.ContainsTx(used.Hash, used.Type))
+                if (recorded && pendingTxs.ContainsTx(used.Hash, used.Type))
                 {
                     continue;
                 }
 
-                pending ??= txPool.GetPendingTransactionsBySender(address);
-                pendingBlobs ??= txPool.GetPendingLightBlobTransactionsBySender(address);
+                pending ??= pendingTxs.GetPendingTransactionsBySender(address);
+                pendingBlobs ??= pendingTxs.GetPendingLightBlobTransactionsBySender(address);
                 Transaction? holder = FindAccountNonceHolder(pending, nonce) ?? FindAccountNonceHolder(pendingBlobs, nonce);
                 if (holder is null)
                 {
