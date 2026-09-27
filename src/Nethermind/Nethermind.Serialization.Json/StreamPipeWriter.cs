@@ -117,6 +117,10 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     /// </summary>
     public Stream InnerStream { get; }
 
+    /// <summary>Gets whether bytes may have reached <see cref="InnerStream"/>.</summary>
+    /// <remarks>Set when a write to the stream starts: a write that fails may already have written part of its data.</remarks>
+    public bool MayHaveWrittenToStream { get; private set; }
+
     /// <inheritdoc />
     public override void Advance(int bytes)
     {
@@ -342,7 +346,11 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     /// <inheritdoc />
     public override long UnflushedBytes => _bytesBuffered;
 
-    public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default) => FlushAsyncInternal(writeToStream: true, data: source, cancellationToken);
+    public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default)
+    {
+        WrittenCount += source.Length;
+        return FlushAsyncInternal(writeToStream: true, data: source, cancellationToken);
+    }
 
     private void Cancel() => InternalTokenSource.Cancel();
 
@@ -378,6 +386,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
                     if (returnSegment.Length > 0 && writeToStream)
                     {
+                        MayHaveWrittenToStream = true;
                         await InnerStream.WriteAsync(returnSegment.Memory, localToken).ConfigureAwait(false);
                     }
 
@@ -392,6 +401,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
                     // Write data after the buffered data
                     if (data.Length > 0)
                     {
+                        MayHaveWrittenToStream = true;
                         await InnerStream.WriteAsync(data, localToken).ConfigureAwait(false);
                     }
 
@@ -450,6 +460,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
             if (returnSegment.Length > 0 && writeToStream)
             {
+                MayHaveWrittenToStream = true;
                 InnerStream.Write(returnSegment.Memory.Span);
             }
 

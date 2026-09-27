@@ -5,11 +5,11 @@ using System;
 using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Json;
@@ -26,7 +26,8 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private readonly long? _maxBatchResponseBodySize;
     private readonly JsonRpcContext _jsonRpcContext;
 
-    private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
+    private readonly SocketSendLock _sendLock = new();
+    private readonly CancellationTokenSource _sendFailure = new();
     private readonly Channel<ProcessRequest> _processChannel;
 
     private sealed record ProcessRequest(Memory<byte> Buffer, IMemoryOwner<byte> BufferOwner) : IAsyncDisposable
@@ -72,7 +73,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
         base.Dispose();
-        _sendSemaphore.Dispose();
+        _sendLock.Dispose();
+        lock (_sendFailure)
+        {
+            _sendFailure.Dispose();
+        }
         _jsonRpcContext.Dispose();
         Closed?.Invoke(this, EventArgs.Empty);
     }
@@ -90,7 +95,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     public override async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
-        using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
+        using AutoCancelTokenSource cts = new(CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _sendFailure.Token));
 
         using ArrayPoolList<Task> allTasks = new(_workerTaskCount + 1);
         allTasks.Add(Task.Run(async () =>
@@ -110,7 +115,17 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             allTasks.Add(Task.Run(() => WorkerLoop(cts.Token)));
         }
 
-        await cts.WhenAllSucceed(allTasks);
+        try
+        {
+            await cts.WhenAllSucceed(allTasks);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested && _sendLock.Failure is { } failure
+            && (ex is OperationCanceledException || ex.InnerException == failure))
+        {
+            // Surface the failed send itself: the cancellation it caused, or a later sender's rejection wrapping it,
+            // would hide a client reset from disconnect filters.
+            ExceptionDispatchInfo.Throw(failure);
+        }
     }
 
     private async Task WorkerLoop(CancellationToken cancellationToken)
@@ -129,7 +144,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             _stream,
             _jsonRpcLocalStats,
             _maxBatchResponseBodySize,
-            _sendSemaphore,
+            _sendLock,
             _jsonRpcContext);
 
         await _jsonRpcProcessor.ProcessAsync(
@@ -156,16 +171,31 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken = default)
     {
-        await _sendSemaphore.WaitAsync(cancellationToken);
+        JsonRpcResponse response = result.Response ?? throw new InvalidOperationException("JSON-RPC result does not contain a response.");
+        await _sendLock.WaitAsync(cancellationToken);
+        bool faulted = false;
         try
         {
-            JsonRpcResponse response = result.Response ?? throw new InvalidOperationException("JSON-RPC result does not contain a response.");
-            long responseSize = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, response, cancellationToken);
+            long responseSize = await SocketJsonRpcResponseWriter.WriteMessageAsync(_stream, _sendLock, response, cancellationToken);
             return (int)responseSize;
+        }
+        catch
+        {
+            // Only a failure that left part of the message on the stream faults the lock.
+            faulted = _sendLock.IsFaulted;
+            throw;
         }
         finally
         {
-            _sendSemaphore.Release();
+            _sendLock.Release();
+            // A notification has no worker to fail, so an incomplete message ends the receive loop here.
+            if (faulted)
+            {
+                lock (_sendFailure)
+                {
+                    if (_disposed == 0) _sendFailure.Cancel();
+                }
+            }
         }
     }
 }
