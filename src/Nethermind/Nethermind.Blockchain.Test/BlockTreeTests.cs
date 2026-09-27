@@ -1282,6 +1282,131 @@ public class BlockTreeTests
         }
     }
 
+    // Only the first commit of a pair may reach the db; notifications and pivot updates still run on every call.
+    [TestCaseSource(nameof(ForkChoicePairs))]
+    public void ForkChoiceUpdated_skips_commit_for_persisted_pair(Hash256? finalizedHash, Hash256? safeHash)
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy();
+        BlockTree blockTree = builder.TestObject;
+        int notifications = 0;
+        blockTree.OnForkChoiceUpdated += (_, _) => notifications++;
+
+        blockTree.ForkChoiceUpdated(finalizedHash, safeHash);
+        blockTree.ForkChoiceUpdated(finalizedHash, safeHash);
+
+        BlockTree reloaded = Build.A.BlockTree().WithDatabaseFrom(builder).TestObject;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadataDb.ForkChoiceCommits, Has.Count.EqualTo(1));
+            Assert.That(notifications, Is.EqualTo(2));
+            Assert.That(reloaded.FinalizedHash, Is.EqualTo(finalizedHash));
+            Assert.That(reloaded.SafeHash, Is.EqualTo(safeHash));
+        }
+    }
+
+    // A failed commit may or may not have reached disk, so the next call must write whichever pair it gets.
+    [Test]
+    public void ForkChoiceUpdated_rewrites_after_failed_commit(
+        [Values(ForkChoiceCommitFault.ThrowBeforeApply, ForkChoiceCommitFault.ThrowAfterApply)] ForkChoiceCommitFault fault,
+        [Values] bool retryFailedPair)
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy();
+        BlockTree blockTree = builder.TestObject;
+        Hash256 retried = retryFailedPair ? TestItem.KeccakB : TestItem.KeccakA;
+
+        blockTree.ForkChoiceUpdated(TestItem.KeccakA, TestItem.KeccakA);
+        metadataDb.NextCommitFault = fault;
+        Assert.That(() => blockTree.ForkChoiceUpdated(TestItem.KeccakB, TestItem.KeccakB), Throws.TypeOf<System.IO.IOException>());
+        int commitsBeforeRetry = metadataDb.ForkChoiceCommits.Count;
+
+        blockTree.ForkChoiceUpdated(retried, retried);
+
+        BlockTree reloaded = Build.A.BlockTree().WithDatabaseFrom(builder).TestObject;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadataDb.ForkChoiceCommits, Has.Count.EqualTo(commitsBeforeRetry + 1));
+            Assert.That(reloaded.FinalizedHash, Is.EqualTo(retried));
+            Assert.That(reloaded.SafeHash, Is.EqualTo(retried));
+        }
+    }
+
+    [Test]
+    public void ForkChoiceUpdated_keeps_pair_when_subscriber_throws()
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy();
+        BlockTree blockTree = builder.TestObject;
+        bool throwFromSubscriber = true;
+        blockTree.OnForkChoiceUpdated += (_, _) =>
+        {
+            if (throwFromSubscriber) throw new InvalidOperationException("subscriber failure");
+        };
+
+        Assert.That(() => blockTree.ForkChoiceUpdated(TestItem.KeccakA, TestItem.KeccakB), Throws.InvalidOperationException);
+        throwFromSubscriber = false;
+        blockTree.ForkChoiceUpdated(TestItem.KeccakA, TestItem.KeccakB);
+
+        Assert.That(metadataDb.ForkChoiceCommits, Has.Count.EqualTo(1));
+    }
+
+    // Persisted state can advance while the forkchoice pair stays the same; the pivot must still follow it.
+    [Test]
+    public void ForkChoiceUpdated_advances_pivot_for_repeated_pair()
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy(chainLength: 10);
+        BlockTree blockTree = builder.TestObject;
+        Hash256 finalizedHash = blockTree.FindHeader(8, BlockTreeLookupOptions.None)!.Hash!;
+
+        builder.StateBoundary.BestPersistedState = 5ul;
+        blockTree.ForkChoiceUpdated(finalizedHash, finalizedHash);
+        ulong pivotBefore = blockTree.SyncPivot.BlockNumber;
+
+        builder.StateBoundary.BestPersistedState = 7ul;
+        blockTree.ForkChoiceUpdated(finalizedHash, finalizedHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pivotBefore, Is.EqualTo(5ul));
+            Assert.That(blockTree.SyncPivot.BlockNumber, Is.EqualTo(7ul));
+            Assert.That(metadataDb.ForkChoiceCommits, Has.Count.EqualTo(1));
+        }
+    }
+
+    // Callers on different threads (AuRa finalization, era import, XDC) must not interleave compare and commit.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ForkChoiceUpdated_serializes_pair_persistence()
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy();
+        BlockTree blockTree = builder.TestObject;
+        using ManualResetEventSlim releaseFirstCommit = new(false);
+        metadataDb.GateNextCommit(releaseFirstCommit);
+
+        Task first = Task.Factory.StartNew(() => blockTree.ForkChoiceUpdated(TestItem.KeccakA, TestItem.KeccakA), TaskCreationOptions.LongRunning);
+        Task second = Task.CompletedTask;
+        bool secondFinishedWhileFirstHeld = true;
+        try
+        {
+            Assert.That(metadataDb.CommitEntered.Wait(TimeSpan.FromSeconds(10)), Is.True, "first commit did not start");
+            second = Task.Factory.StartNew(() => blockTree.ForkChoiceUpdated(TestItem.KeccakB, TestItem.KeccakB), TaskCreationOptions.LongRunning);
+            secondFinishedWhileFirstHeld = second.Wait(TimeSpan.FromMilliseconds(300));
+        }
+        finally
+        {
+            releaseFirstCommit.Set();
+        }
+
+        Assert.That(Task.WaitAll([first, second], TimeSpan.FromSeconds(10)), Is.True, "updates did not finish");
+        blockTree.ForkChoiceUpdated(TestItem.KeccakB, TestItem.KeccakB);
+
+        BlockTree reloaded = Build.A.BlockTree().WithDatabaseFrom(builder).TestObject;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondFinishedWhileFirstHeld, Is.False);
+            Assert.That(metadataDb.OverlappingCommits, Is.Zero);
+            Assert.That(metadataDb.ForkChoiceCommits, Has.Count.EqualTo(2));
+            Assert.That(reloaded.FinalizedHash, Is.EqualTo(TestItem.KeccakB));
+        }
+    }
+
     public enum ForkChoiceCommitFault { None, ThrowBeforeApply, ThrowAfterApply }
 
     private static (BlockTreeBuilder Builder, ForkChoiceMetadataSpyDb MetadataDb) BuildWithForkChoiceSpy(int chainLength = 1)
@@ -1304,8 +1429,18 @@ public class BlockTreeTests
         private readonly Lock _lock = new();
         private readonly List<byte[]> _forkChoiceCommits = [];
         private int _directForkChoiceWrites;
+        private int _commitsInProgress;
+        private int _overlappingCommits;
+        private ManualResetEventSlim? _commitGate;
 
         public ForkChoiceCommitFault NextCommitFault { get; set; }
+
+        public ManualResetEventSlim CommitEntered { get; } = new(false);
+
+        public int OverlappingCommits => Volatile.Read(ref _overlappingCommits);
+
+        /// <summary>Blocks the next commit, before it applies anything, until <paramref name="gate"/> is set.</summary>
+        public void GateNextCommit(ManualResetEventSlim gate) => Volatile.Write(ref _commitGate, gate);
 
         public int DirectForkChoiceWrites => Volatile.Read(ref _directForkChoiceWrites);
 
@@ -1346,15 +1481,29 @@ public class BlockTreeTests
 
             if (fault == ForkChoiceCommitFault.ThrowBeforeApply) throw new System.IO.IOException("Injected failure before commit");
 
-            byte[] keys = [.. writes.Where(w => IsForkChoiceKey(w.Key)).Select(static w => w.Key[0]).Order()];
-            foreach ((byte[] key, byte[]? value, WriteFlags flags) in writes)
+            if (Interlocked.Increment(ref _commitsInProgress) > 1) Interlocked.Increment(ref _overlappingCommits);
+            try
             {
-                base.Set(key, value, flags);
-            }
+                if (Interlocked.Exchange(ref _commitGate, null) is { } gate)
+                {
+                    CommitEntered.Set();
+                    gate.Wait(TimeSpan.FromSeconds(10));
+                }
 
-            if (keys.Length > 0)
+                byte[] keys = [.. writes.Where(w => IsForkChoiceKey(w.Key)).Select(static w => w.Key[0]).Order()];
+                foreach ((byte[] key, byte[]? value, WriteFlags flags) in writes)
+                {
+                    base.Set(key, value, flags);
+                }
+
+                if (keys.Length > 0)
+                {
+                    lock (_lock) _forkChoiceCommits.Add(keys);
+                }
+            }
+            finally
             {
-                lock (_lock) _forkChoiceCommits.Add(keys);
+                Interlocked.Decrement(ref _commitsInProgress);
             }
 
             if (fault == ForkChoiceCommitFault.ThrowAfterApply) throw new System.IO.IOException("Injected failure after commit");

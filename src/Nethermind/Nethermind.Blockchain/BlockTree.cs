@@ -55,6 +55,10 @@ namespace Nethermind.Blockchain
         private readonly IStateBoundary _stateBoundary;
         private readonly BlockTreeMutationLock _mutationLock;
 
+        private readonly Lock _forkChoicePersistenceLock = new();
+        // Null while unknown; set only after this exact pair was committed. A persisted (null, null) is not unknown.
+        private (Hash256? Finalized, Hash256? Safe)? _persistedForkChoice;
+
         public BlockHeader? Genesis { get; protected set; }
         public Block? Head { get; private set; }
 
@@ -2033,13 +2037,7 @@ namespace Nethermind.Blockchain
             SafeHash = safeBlockHash;
             if (finalizedHeader is not null) LastFinalizedBlockLevel = finalizedHeader.Number;
 
-            byte[] finalizedRlp = Rlp.Encode(finalizedBlockHash).Bytes;
-            byte[] safeRlp = Rlp.Encode(safeBlockHash).Bytes;
-            using (IWriteBatch batch = _metadataDb.StartWriteBatch())
-            {
-                batch.Set(MetadataDbKeys.FinalizedBlockHash, finalizedRlp);
-                batch.Set(MetadataDbKeys.SafeBlockHash, safeRlp);
-            }
+            PersistForkChoice(finalizedBlockHash, safeBlockHash);
 
             if (finalizedHeader is not null)
             {
@@ -2055,6 +2053,33 @@ namespace Nethermind.Blockchain
                     safeBlockHash is null ? 0UL : _headerStore.GetBlockNumber(safeBlockHash) ?? 0UL,
                     FinalizedHash is null ? 0UL : _headerStore.GetBlockNumber(FinalizedHash) ?? 0UL)
                 );
+        }
+
+        /// <summary>
+        /// Commits the finalized and safe hashes as one metadata batch, unless this exact pair was the last one committed.
+        /// </summary>
+        /// <remarks>
+        /// The comparison uses the last successful commit, not <see cref="FinalizedHash"/>/<see cref="SafeHash"/>, which are
+        /// assigned before persisting. The pair is forgotten before each attempt, so a failed or uncertain commit is retried
+        /// on the next call. The lock is needed because AuRa finalization, era import and XDC can call
+        /// <see cref="ForkChoiceUpdated"/> concurrently.
+        /// </remarks>
+        private void PersistForkChoice(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
+        {
+            (Hash256? Finalized, Hash256? Safe) requested = (finalizedBlockHash, safeBlockHash);
+            using Lock.Scope _ = _forkChoicePersistenceLock.EnterScope();
+            if (_persistedForkChoice == requested) return;
+
+            byte[] finalizedRlp = Rlp.Encode(finalizedBlockHash).Bytes;
+            byte[] safeRlp = Rlp.Encode(safeBlockHash).Bytes;
+            _persistedForkChoice = null;
+            using (IWriteBatch batch = _metadataDb.StartWriteBatch())
+            {
+                batch.Set(MetadataDbKeys.FinalizedBlockHash, finalizedRlp);
+                batch.Set(MetadataDbKeys.SafeBlockHash, safeRlp);
+            }
+
+            _persistedForkChoice = requested;
         }
 
         public ulong GetLowestBlock() => _oldestBlock;
