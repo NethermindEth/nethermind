@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -16,8 +15,9 @@ namespace Nethermind.Consensus.Processing;
 /// <remarks>Scoped per processing environment, so it resolves parents through that environment's header finder.</remarks>
 public sealed class ZeroNonceStorageAccountsTransition(ISpecProvider specProvider, IHeaderFinder headerFinder)
 {
-    // Hash of the last processed block with EIP-8253 enabled: a child of it cannot be the fork block.
-    private Hash256? _lastEnabledBlockHash;
+    // Last processed block with EIP-8253 enabled: a child of it cannot be the fork block. Held by reference because
+    // a block being built only gets its hash once processing ends.
+    private BlockHeader? _lastEnabledHeader;
 
     /// <summary>Bumps the listed accounts in <paramref name="state"/> if <paramref name="header"/> is the fork block.</summary>
     /// <param name="header">The header of the block being processed.</param>
@@ -42,12 +42,12 @@ public sealed class ZeroNonceStorageAccountsTransition(ISpecProvider specProvide
             return;
         }
 
-        if (header.ParentHash != _lastEnabledBlockHash && IsForkBlock(header))
+        if ((header.ParentHash is null || header.ParentHash != _lastEnabledHeader?.Hash) && IsForkBlock(header))
         {
             Apply(state, accounts);
         }
 
-        _lastEnabledBlockHash = header.Hash;
+        _lastEnabledHeader = header;
     }
 
     private bool IsForkBlock(BlockHeader header)

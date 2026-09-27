@@ -128,7 +128,7 @@ public class Eip8253TransitionTests
     }
 
     [Test]
-    public void Parent_is_looked_up_only_until_a_processed_block_shows_the_fork_is_active()
+    public void Parent_is_looked_up_only_until_a_processed_block_shows_the_fork_is_active([Values] bool producing)
     {
         IReleaseSpec eip8253 = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8253Enabled = true };
         TestSpecProvider specProvider = new(eip8253) { NextForkSpec = eip8253, AllowTestChainOverride = false };
@@ -143,7 +143,14 @@ public class Eip8253TransitionTests
         IWorldState state = Substitute.For<IWorldState>();
         ZeroNonceStorageAccountsTransition transition = new(specProvider, headerFinder);
 
-        for (int i = 1; i < chain.Length; i++) transition.ApplyIfForkBlock(chain[i], eip8253, state);
+        for (int i = 1; i < chain.Length; i++)
+        {
+            // A block being built only gets its hash once processing ends.
+            Hash256 hash = chain[i].Hash!;
+            if (producing) chain[i].Hash = null;
+            transition.ApplyIfForkBlock(chain[i], eip8253, state);
+            chain[i].Hash = hash;
+        }
 
         headerFinder.ReceivedWithAnyArgs(1).Get(default!, default);
         state.DidNotReceiveWithAnyArgs().SetNonce(default!, default);
