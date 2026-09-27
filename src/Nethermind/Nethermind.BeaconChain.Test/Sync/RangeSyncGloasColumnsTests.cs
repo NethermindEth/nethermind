@@ -404,7 +404,7 @@ public class RangeSyncGloasColumnsTests
     }
 
     private static RangeSync CreateSync(DataColumnSidecarPool pool, BeaconDiscovery? discovery, SlotClock? clock, params IBeaconSyncPeer[] peers) =>
-        new(new RangeSyncTests.StubPool(peers), LimboLogs.Instance, pool, Spec, discovery, clock);
+        new(new RangeSyncTests.StubPool(peers), LimboLogs.Instance, pool, Spec, clock ?? RangeSyncTests.ClockAtGenesis(Spec), discovery);
 
     /// <summary>Resolves the identity and local custody exactly as Start does, without binding a socket.</summary>
     private static BeaconDiscovery CreateDiscovery()

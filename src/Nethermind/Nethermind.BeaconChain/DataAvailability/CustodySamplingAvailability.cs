@@ -18,7 +18,9 @@ namespace Nethermind.BeaconChain.DataAvailability;
 /// columns"). The sample already contains the custody columns by construction; both are still
 /// checked by name so the rule does not silently rest on that derivation staying true. Blocks
 /// older than the <see cref="DataAvailabilityBoundary"/> are available without any column: the
-/// network no longer guarantees to serve them (fork-choice.md <c>is_data_available</c>).
+/// network no longer guarantees to serve them (fork-choice.md <c>is_data_available</c>). A pre-Fulu block
+/// with blobs is never available inside the blob sidecar retention window: deneb/fork-choice.md
+/// <c>is_data_available</c> needs its blob sidecars, and this node has no blob sidecar source.
 /// </summary>
 /// <remarks>
 /// Every sidecar is re-verified here rather than trusted because it sits in <paramref name="columns"/>:
@@ -36,7 +38,10 @@ public sealed class CustodySamplingAvailability(INodeColumnCustodySource custody
         SszKzgCommitment[] blobCommitments = block.Body?.BlobKzgCommitments ?? [];
         if (blobCommitments.Length == 0) return true;
 
-        if (spec.GetEpoch(block.Slot) < DataAvailabilityBoundary.Compute(clock.CurrentEpoch, spec)) return true;
+        ulong blockEpoch = spec.GetEpoch(block.Slot);
+        if (blockEpoch < spec.FuluForkEpoch) return !DataAvailabilityBoundary.IsInBlobSidecarWindow(blockEpoch, clock.CurrentEpoch);
+
+        if (blockEpoch < DataAvailabilityBoundary.Compute(clock.CurrentEpoch, spec)) return true;
 
         if (custodySource.Current is not { } custody) return false;
 

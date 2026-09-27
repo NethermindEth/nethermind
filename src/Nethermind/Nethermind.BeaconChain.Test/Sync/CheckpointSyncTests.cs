@@ -16,6 +16,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.ForkChoice;
+using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Test.Types;
 using Nethermind.BeaconChain.Types;
@@ -179,10 +180,10 @@ public class CheckpointSyncTests
             config,
             BeaconChainSpec.Mainnet,
             store,
-            new BlockImporterFactory(BeaconChainSpec.Mainnet, store, new PubkeyCache(), engine, config, logManager, new DataColumnSidecarPool()),
+            new BlockImporterFactory(BeaconChainSpec.Mainnet, store, new PubkeyCache(), engine, config, logManager, new DataColumnSidecarPool(), new SlotClock(BeaconChainSpec.Mainnet, Timestamper.Default)),
             engine,
             pool,
-            new RangeSync(pool, logManager, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet),
+            new RangeSync(pool, logManager, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, RangeSyncTests.ClockAtGenesis(BeaconChainSpec.Mainnet)),
             slotClock,
             new GossipRouter(BeaconChainSpec.Mainnet, slotClock, logManager),
             new BeaconChainStatusHolder(BeaconChainSpec.Mainnet, Timestamper.Default),

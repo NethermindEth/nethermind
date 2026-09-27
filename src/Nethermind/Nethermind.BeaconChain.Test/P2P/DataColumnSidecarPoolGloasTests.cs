@@ -48,7 +48,7 @@ public class DataColumnSidecarPoolGloasTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out DataColumnSidecarGloas? gloasByRoot) ? gloasByRoot : null, Is.SameAs(gloas));
-            Assert.That(pool.TryGet(Slot, Column, out DataColumnSidecar? fuluBySlot) ? fuluBySlot : null, Is.SameAs(fulu));
+            Assert.That(pool.TryGet(fuluRoot, Column, out DataColumnSidecar? fuluByRoot) ? fuluByRoot : null, Is.SameAs(fulu));
             Assert.That(pool.TryGet(DataColumnSidecarGloasTestFixture.BlockRoot, Column, out _), Is.False);
             Assert.That(pool.TryGetGloas(fuluRoot, Column, out _), Is.False);
         }

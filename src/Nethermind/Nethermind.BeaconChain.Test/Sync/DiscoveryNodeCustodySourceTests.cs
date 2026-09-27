@@ -45,6 +45,8 @@ public class DiscoveryNodeCustodySourceTests
     public async Task Custody_is_re_derived_when_discovery_advertises_a_different_identity()
     {
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        // Fixed identities on both sides, so the two custody sets are known to differ rather than differ by chance.
+        store.PutMetadata(BeaconDiscovery.IdentityMetadataKey, TestItem.PrivateKeyA.KeyBytes);
         await using BeaconDiscovery discovery = NewDiscovery(store);
         DiscoveryNodeCustodySource source = new(discovery);
         discovery.CreateDiscv5Services(IPAddress.Loopback);

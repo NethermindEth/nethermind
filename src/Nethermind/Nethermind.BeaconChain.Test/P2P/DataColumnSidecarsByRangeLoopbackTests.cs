@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -8,8 +9,10 @@ using System.Threading.Tasks;
 using Multiformats.Address;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -46,8 +49,35 @@ public class DataColumnSidecarsByRangeLoopbackTests
         Assert.That(served.Select(static s => (s.SignedBlockHeader!.Message!.Slot, s.Index)), Is.EqualTo(new[] { (slot, column) }));
     }
 
-    private static BeaconP2P CreateHost(BeaconChainStore store, DataColumnSidecarPool pool) =>
-        new(new BeaconChainConfig { P2PPort = 0 }, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default), new LocalMetadataSource(), pool, new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
+    /// <summary>The host's clock must reach its by-range protocol, or it serves an incomplete range as if it were whole.</summary>
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task A_host_with_a_clock_answers_resource_unavailable_below_the_columns_it_holds_completely(CancellationToken token)
+    {
+        const ulong slot = 13_410_304;
+        const ulong column = 5;
+        Hash256 root = Keccak.Compute("canonical");
+        DataColumnSidecarPool serverPool = new();
+        serverPool.Add(root, slot, DataColumnSidecarTestFixture.BuildValidSidecar(column, slot, blobCount: 1));
+        BeaconChainStore serverStore = new(new MemColumnsDb<BeaconChainDbColumns>());
+        serverStore.SetCanonicalRoot(slot, root);
+        SlotClock clock = new(Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + (slot + 1) * Spec.SecondsPerSlot)).UtcDateTime));
+
+        await using BeaconP2P server = CreateHost(serverStore, serverPool, clock);
+        await using BeaconP2P client = CreateHost(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new DataColumnSidecarPool());
+        await server.StartAsync(token);
+        await client.StartAsync(token);
+
+        ISession toServer = await client.DialPeerAsync(LoopbackAddress(server), token);
+
+        Exception? error = Assert.CatchAsync(async () => await client.RequestDataColumnSidecarsByRangeAsync(toServer, slot - 1, 2, [column], token));
+
+        Eth2ReqRespException? reqResp = error is AggregateException aggregate ? aggregate.InnerExceptions.OfType<Eth2ReqRespException>().SingleOrDefault() : error as Eth2ReqRespException;
+        Assert.That(reqResp?.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable));
+    }
+
+    private static BeaconP2P CreateHost(BeaconChainStore store, DataColumnSidecarPool pool, SlotClock? clock = null) =>
+        new(new BeaconChainConfig { P2PPort = 0 }, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default), new LocalMetadataSource(), pool, new ExecutionPayloadEnvelopePool(), LimboLogs.Instance, clock: clock);
 
     private static Multiaddress LoopbackAddress(BeaconP2P node)
     {
