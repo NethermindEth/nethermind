@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using Collections.Pooled;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Evm;
@@ -19,7 +19,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     private readonly long _limit;
     private long _resultSize;
     private Utf8JsonWriter? _sizeWriter;
-    private readonly Dictionary<AddressAsKey, Dictionary<UInt256, UInt256>>? _sizeStorageByAddress;
+    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>>? _sizeStorageByAddress;
 
     private bool LimitReached => _limit != 0 && _resultSize > _limit;
 
@@ -28,7 +28,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         _transaction = transaction;
         _limit = options.Limit;
         if (_limit > 0 && !options.DisableStorage)
-            _sizeStorageByAddress = [];
+            _sizeStorageByAddress = new(4);
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -48,11 +48,11 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         base.AddTraceEntry(entry);
         if (_limit <= 0) return;
 
-        Dictionary<UInt256, UInt256>? storage = null;
+        PooledDictionary<UInt256, UInt256>? storage = null;
         if (_sizeStorageByAddress is not null && entry.StorageDelta is { } delta)
         {
             if (!_sizeStorageByAddress.TryGetValue(delta.Address, out storage))
-                _sizeStorageByAddress[delta.Address] = storage = [];
+                _sizeStorageByAddress[delta.Address] = storage = new(4);
             storage[delta.Key] = delta.Value;
         }
 
@@ -116,7 +116,14 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 
     public override void Dispose()
     {
+        if (_sizeStorageByAddress is not null)
+        {
+            foreach (PooledDictionary<UInt256, UInt256> storage in _sizeStorageByAddress.Values)
+                storage.Dispose();
+            _sizeStorageByAddress.Dispose();
+        }
         _sizeWriter?.Dispose();
         base.Dispose();
     }
+
 }
