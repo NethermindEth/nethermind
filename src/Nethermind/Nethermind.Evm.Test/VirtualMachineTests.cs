@@ -139,10 +139,13 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     [Test]
     public void Named_opcode_handlers_are_emitted([Values] Instruction opcode)
     {
-        Type vmType = typeof(VirtualMachine<EthereumGasPolicy>);
-        MethodInfo template = vmType.GetMethod(opcode == Instruction.JUMPI ? "ExecuteJumpIfOpcode" : "ExecuteOpcode",
+        // The handlers must stay in a type named RawCalliHelper: that name is what exempts their table calls
+        // from NativeAOT's fat-pointer guard.
+        Type dispatchType = typeof(VirtualMachine<EthereumGasPolicy>).GetNestedType("RawCalliHelper", BindingFlags.NonPublic)!
+            .MakeGenericType(typeof(EthereumGasPolicy));
+        MethodInfo template = dispatchType.GetMethod(opcode == Instruction.JUMPI ? "ExecuteJumpIfOpcode" : "ExecuteOpcode",
             BindingFlags.Static | BindingFlags.NonPublic)!;
-        MethodInfo handler = Array.Find(vmType.GetMethods(BindingFlags.Static | BindingFlags.NonPublic), method =>
+        MethodInfo handler = Array.Find(dispatchType.GetMethods(BindingFlags.Static | BindingFlags.NonPublic), method =>
             method.Name.Equals("Op" + opcode, StringComparison.OrdinalIgnoreCase)
             && method.GetGenericArguments().Length == template.GetGenericArguments().Length
             && method.GetParameters().Length == template.GetParameters().Length);
@@ -155,6 +158,14 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(handler.GetMethodImplementationFlags(), Is.EqualTo(template.GetMethodImplementationFlags()));
             Assert.That(handler.GetCustomAttributesData().Select(a => a.AttributeType), Is.EquivalentTo(template.GetCustomAttributesData().Select(a => a.AttributeType)));
         }
+    }
+
+    [TestCase(0x1000, false, TestName = "Thin handler is accepted")]
+    [TestCase(0x1002, true, TestName = "Fat handler is rejected")]
+    public void Opcode_table_rejects_fat_handlers(long handler, bool rejected)
+    {
+        Action ensure = () => VirtualMachine<EthereumGasPolicy>.EnsureThinHandler((nint)handler);
+        Assert.That(ensure, rejected ? Throws.TypeOf<NotSupportedException>() : Throws.Nothing);
     }
 
     [Test]

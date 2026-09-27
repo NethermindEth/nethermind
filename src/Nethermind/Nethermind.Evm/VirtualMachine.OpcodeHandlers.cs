@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -45,20 +48,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        &ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OnFlag>;
+        &RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OnFlag>;
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
         TerminatingOpcodeHandler<TOpcode, TTracingInst, TCancelable>()
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        &ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OffFlag>;
+        &RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OffFlag>;
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
         JumpIfOpcodeHandler<TTracingInst, TCancelable>()
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
-        &ExecuteJumpIfOpcode<TTracingInst, TCancelable>;
+        &RawCalliHelper.ExecuteJumpIfOpcode<TTracingInst, TCancelable>;
 
     /// <summary>Whether <paramref name="spec"/> assigns <paramref name="opcode"/> an operation.</summary>
     /// <remarks>Builds a dispatch table, so it is for diagnostics after a failure, not for execution.</remarks>
@@ -309,7 +312,33 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         lookup[(int)Instruction.INVALID] = TerminatingOpcodeHandler<InvalidOpcode, TTracingInst, TCancelable>();
 
+        // Only NativeAOT has fat function pointers.
+        if (!RuntimeFeature.IsDynamicCodeSupported)
+        {
+            for (int i = 0; i < lookup.Length; i++)
+                EnsureThinHandler((nint)lookup[i]);
+        }
+
         return lookup;
+    }
+
+    /// <summary>NativeAOT's tag on a fat function pointer (its <c>FatFunctionPointerConstants.Offset</c>).</summary>
+    private const nint FatFunctionPointerTag = 2;
+
+    /// <summary>Rejects a handler that <see cref="RawCalliHelper"/> could not call.</summary>
+    /// <exception cref="NotSupportedException">
+    /// <paramref name="handler"/> is a fat pointer: <typeparamref name="TGasPolicy"/> has a reference-type
+    /// generic argument, so NativeAOT shares the handlers' code and they need a generic context the raw
+    /// tail calls do not pass.
+    /// </exception>
+    internal static void EnsureThinHandler(nint handler)
+    {
+        if ((handler & FatFunctionPointerTag) != 0)
+            ThrowSharedGasPolicy();
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowSharedGasPolicy() => throw new NotSupportedException(
+            $"{typeof(TGasPolicy)} compiles to shared generic code under NativeAOT, which the opcode dispatch cannot call. Use a gas policy without reference-type generic arguments.");
     }
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
