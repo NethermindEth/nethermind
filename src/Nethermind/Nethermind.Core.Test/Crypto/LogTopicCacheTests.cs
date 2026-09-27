@@ -6,7 +6,7 @@ using System.Threading;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test;
+namespace Nethermind.Core.Test.Crypto;
 
 [NonParallelizable]
 public class LogTopicCacheTests
@@ -65,7 +65,7 @@ public class LogTopicCacheTests
         Assert.That(mismatches, Is.Zero);
     }
 
-    private static (byte[] A, byte[] B) CollidingPair()
+    internal static (byte[] A, byte[] B) CollidingPair()
     {
         byte[] a = TopicWithSeed(2);
         int slot = SlotOf(a);
