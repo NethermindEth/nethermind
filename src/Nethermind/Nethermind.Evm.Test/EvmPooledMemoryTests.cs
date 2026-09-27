@@ -401,7 +401,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     [Test]
-    public void Inline_read_past_initialized_prefix_zeroes_a_bounded_window_and_spills_cleanly([Values(0, 200, 480, 700)] int readOffset)
+    public void Inline_read_past_initialized_prefix_zeroes_a_bounded_window_and_spills_cleanly([Values(0, 200, 480, 700, 992)] int readOffset)
     {
         using ThreadCacheReservation cacheReservation = PrimeDirtyBuffer();
         using EvmFrameMemory frameMemory = new();
@@ -424,8 +424,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
                 Assert.That(GetBackingMemory(ref memory), Is.Null, "a read inside the inline tier must not spill");
                 Assert.That(GetInitializedSize(ref memory), Is.EqualTo((ulong)expectedInitializedSize),
                     "only the chunk covering the read is zeroed");
-                Assert.That(frameMemory.GetSpan()[expectedInitializedSize], Is.EqualTo(0xa7),
-                    "the inline tail beyond the zeroed chunk must remain lazy");
+                if (expectedInitializedSize < EvmPooledMemory.InlineCapacity)
+                {
+                    Assert.That(frameMemory.GetSpan()[expectedInitializedSize], Is.EqualTo(0xa7),
+                        "the inline tail beyond the zeroed chunk must remain lazy");
+                }
             }
 
             Assert.That(memory.TrySaveWord(UInt256.Zero, word), Is.True);
