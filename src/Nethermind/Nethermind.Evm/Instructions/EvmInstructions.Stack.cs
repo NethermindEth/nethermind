@@ -138,6 +138,13 @@ public static partial class EvmInstructions
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
             ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
             destination = BinaryPrimitives.ReverseEndianness(destination);
+            // With lazy analysis the destination may not be analyzed yet, and analyzing it here would put a call into
+            // this handler, so the push and the jump run unfused and the jump handler does the analysis. Either way
+            // the gas, the stack and the outcome are the same. A JUMPI that is not taken never looks at its
+            // destination, so it stays fused; the condition is only peeked, leaving the stack intact for the fallback.
+            if (EvmStack.AnalyzesJumpDestinationsLazily && !stack.IsKnownJumpDestination(destination)
+                && (nextInstruction == Instruction.JUMP || !stack.EnsureDepth(1) || !EvmStack.IsSlotZero(ref stack.PeekBytesByRefUnchecked())))
+                goto Unfused;
 
             if (nextInstruction == Instruction.JUMP)
             {
@@ -158,7 +165,8 @@ public static partial class EvmInstructions
             }
 
             // Validate the jump destination and update the program counter if valid.
-            nint jumpTarget = JumpDestination((int)destination, ref stack);
+            // With lazy analysis it was validated before fusing.
+            nint jumpTarget = EvmStack.AnalyzesJumpDestinationsLazily ? destination : JumpDestination((int)destination, ref stack);
             if (jumpTarget < 0)
                 goto InvalidJumpDestination;
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
@@ -170,6 +178,7 @@ public static partial class EvmInstructions
             goto Success;
         }
 
+    Unfused:
         ref byte start = ref Unsafe.Add(ref bytes, programCounter);
         EvmExceptionType result;
         if (!TTracingInst.IsActive || remainingCode >= Size)
