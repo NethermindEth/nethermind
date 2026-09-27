@@ -56,11 +56,9 @@ public class Eip8151Tests : VirtualMachineTestsBase
     private static readonly byte[] Sentinel = Bytes.FromHexString("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
     private static readonly byte[] ContractCode = Prepare.EvmCode.PushData(0).Op(Instruction.STOP).Done;
 
-    private readonly OverridableReleaseSpec _spec = new(Prague.Instance);
-    private readonly ISpecProvider _specProvider;
+    private OverridableReleaseSpec _spec = null!;
+    private ISpecProvider _specProvider = null!;
     private TracedAccessWorldState _tracedState = null!;
-
-    public Eip8151Tests() => _specProvider = new TestSpecProvider(_spec);
 
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.PragueBlockTimestamp;
@@ -69,6 +67,9 @@ public class Eip8151Tests : VirtualMachineTestsBase
     [SetUp]
     public override void Setup()
     {
+        // Opcode tables are cached per spec instance, so a test that flips a repricing flag needs its own.
+        _spec = new OverridableReleaseSpec(Prague.Instance);
+        _specProvider = new TestSpecProvider(_spec);
         base.Setup();
         _spec.IsEip8151Enabled = true;
         CreateProcessor(parallel: false);
@@ -140,9 +141,12 @@ public class Eip8151Tests : VirtualMachineTestsBase
     [Test]
     public void Recovery_warms_the_recovered_address_for_the_rest_of_the_transaction(
         [Values] bool eip8151Enabled,
-        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode)
+        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode,
+        [Values] bool eip8038Enabled)
     {
         _spec.IsEip8151Enabled = eip8151Enabled;
+        _spec.IsEip8038Enabled = eip8038Enabled;
+        ulong coldAccountAccess = eip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
         Prepare code = MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, PrecompileGasLimit, ValidInput);
         code = MeasureEcRecover(code, 1, callOpcode, PrecompileGasLimit, ValidInput);
 
@@ -152,9 +156,9 @@ public class Eip8151Tests : VirtualMachineTestsBase
         {
             Assert.That(Read(0).Output, Is.EqualTo(AsWord(Signer)), "first output");
             Assert.That(Read(1).Output, Is.EqualTo(AsWord(Signer)), "second output");
-            Assert.That(PrecompileCost(Read(0), callOpcode), Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + GasCostOf.ColdAccountAccess : EcRecoverBaseCost), "first recovery gas");
+            Assert.That(PrecompileCost(Read(0), callOpcode), Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + coldAccountAccess : EcRecoverBaseCost), "first recovery gas");
             Assert.That(PrecompileCost(Read(1), callOpcode), Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + GasCostOf.WarmStateRead : EcRecoverBaseCost), "second recovery gas");
-            Assert.That(BalanceCost(Read(2)), Is.EqualTo(eip8151Enabled ? GasCostOf.WarmStateRead : GasCostOf.ColdAccountAccess), "later BALANCE gas");
+            Assert.That(BalanceCost(Read(2)), Is.EqualTo(eip8151Enabled ? GasCostOf.WarmStateRead : coldAccountAccess), "later BALANCE gas");
         }
     }
 
