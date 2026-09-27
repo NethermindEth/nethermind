@@ -244,8 +244,6 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private sealed class InvalidatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IWriteBatch inner, StateId to)
         : IPersistence.IWriteBatch
     {
-        private readonly int _maxTrackedWrites = parent._maxEntriesPerKind * 2;
-
         private HashSet<Address>? _writtenAccounts;
         private HashSet<(Address, UInt256)>? _writtenSlots;
         private bool _clearAll;
@@ -270,8 +268,11 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         private void TrackWrite<TKey>(HashSet<TKey> written, TKey key)
         {
-            written.Add(key);
-            if (written.Count <= _maxTrackedWrites) return;
+            if (written.Count < parent._maxEntriesPerKind || written.Contains(key))
+            {
+                written.Add(key);
+                return;
+            }
 
             _clearAll = true;
             parent.ReturnWrittenSets(_writtenAccounts, _writtenSlots);
