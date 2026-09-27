@@ -337,6 +337,21 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         _blockIndex.PutSpan(key, root.Bytes);
     }
 
+    /// <summary>Removes the canonical index entry of <paramref name="slot"/>, if there is one.</summary>
+    /// <returns><c>true</c> when an entry was removed; an absent entry costs a read and no write.</returns>
+    public bool DeleteCanonicalRoot(ulong slot)
+    {
+        Span<byte> key = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(key, slot);
+        if (!_blockIndex.KeyExists(key))
+        {
+            return false;
+        }
+
+        _blockIndex.Remove(key);
+        return true;
+    }
+
     public bool TryGetCanonicalRoot(ulong slot, [NotNullWhen(true)] out Hash256? root)
     {
         Span<byte> key = stackalloc byte[sizeof(ulong)];
