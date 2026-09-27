@@ -150,7 +150,7 @@ public class TransactionForRpcDeserializationTests
     [TestCase("""{"data":"0x602a","input":"0x"}""", ExpectedResult = "0x")]
     [TestCase("""{"data":"0x602a","input":""}""", ExpectedResult = "0x")]
     [TestCase("""{"input":"","data":"0x602a"}""", ExpectedResult = "0x602a")]
-    public string Test_NullInputOrData_IsOmitted(string txJson) =>
+    public string Test_InputDataAliasResolution(string txJson) =>
         _serializer.Deserialize<TransactionForRpc>(txJson)!.ToTransaction().Data!.Data.ToArray().ToHexString(true);
 
     [TestCaseSource(nameof(DefaultedTypeResolutionCases))]

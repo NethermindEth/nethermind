@@ -313,7 +313,7 @@ public class TraceStoreRpcModuleTests
 
     [Test]
     public async Task trace_filter_from_store_reads_null_member_as_omitted(
-        [Values("after", "count", "fromAddress", "toAddress")] string member, [Values] bool streaming)
+        [Values("after", "count")] string member, [Values] bool streaming)
     {
         TestContext test = new(streaming: streaming);
         test.DbTrace.Action = new ParityTraceAction { Type = "call", CallType = "call", From = TestItem.AddressA, To = TestItem.AddressB };

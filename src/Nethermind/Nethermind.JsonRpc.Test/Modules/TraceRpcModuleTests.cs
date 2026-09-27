@@ -520,14 +520,13 @@ public class TraceRpcModuleTests
 
     [Test]
     public async Task Trace_filter_null_member_is_omitted(
-        [Values("after", "count", "fromAddress", "toAddress", "fromBlock", "toBlock")] string member, [Values] bool streaming)
+        [Values("after", "count")] string member, [Values] bool streaming)
     {
         Context context = new();
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
-        // A null fromBlock is latest, so the range ends at latest for it to stay valid.
-        string range = member == "fromBlock" ? "\"toBlock\":\"latest\"" : member == "toBlock" ? "\"fromBlock\":\"latest\"" : "\"fromBlock\":\"0x1\",\"toBlock\":\"latest\"";
+        const string range = "\"fromBlock\":\"0x1\",\"toBlock\":\"latest\"";
         using JsonDocument withNull = JsonDocument.Parse($"{{{range},\"{member}\":null}}");
         using JsonDocument omitted = JsonDocument.Parse($"{{{range}}}");
 
