@@ -156,7 +156,7 @@ jobs:
           fi
 
           if [ "$CONVERT_TO_PAPRIKA" == "true" ] && { [ "$NODE_TYPE" != "pruned" ] || [ -n "$NETHERMIND_IP" ]; }; then
-            echo "Error: 'convert_to_paprika' only applies when node_type is 'pruned' (a node is spawned)."
+            echo "Error: 'convert_to_paprika' requires node_type 'pruned' and no nethermind_ip (a newly spawned node)."
             exit 1
           fi
 
@@ -642,7 +642,7 @@ jobs:
             curl --fail-with-body --silent --show-error --max-time 30 \
               -H 'Content-Type: application/json' \
               --data '{"jsonrpc":"2.0","id":1,"method":"web3_clientVersion","params":[]}' \
-              "$url" > "rpc-results/$name-version.json"
+              "$url" > "rpc-results/$name-version.json" || echo "::warning::Could not capture $name client version; continuing to RPC tests."
           done
 
       - name: Setup Go environment
@@ -701,11 +701,6 @@ jobs:
           set -e
           echo "rpc_int exit code: $rc"
 
-          # rpc_int clears its results directory at the start of each pass.
-          if [ -d "integration/$NETWORK/results" ]; then
-            cp -a "integration/$NETWORK/results" rpc-results/default-responses
-          fi
-
           # Latest-block pass (-L): head-dependent tests (eth_baseFee, eth_gasPrice,
           # eth_blockNumber, eth_maxPriorityFeePerGas, ...). rpc_int first waits until the node
           # under test and the reference agree on the latest block (GetConsistentLatestBlock),
@@ -714,6 +709,10 @@ jobs:
           # skipped in regression mode (no REFERENCE_URL; latest fixtures carry no expected result).
           rc_latest=0
           if [ -n "$REFERENCE_URL" ]; then
+            # Preserve the first pass before rpc_int clears its results directory.
+            if [ -d "integration/$NETWORK/results" ]; then
+              cp -a "integration/$NETWORK/results" rpc-results/default-responses
+            fi
             set +e
             ./build/bin/rpc_int -b "$NETWORK" -H "$host" -p "$port" $RPC_FLAG "${ext[@]}" \
               "${include[@]}" "${exclude[@]}" "${err_opt[@]}" -L -M "$MAX_FAILURES" -c -f -R rpc-results/report-latest.csv | tee rpc-results/output-latest.txt
@@ -722,16 +721,17 @@ jobs:
             echo "rpc_int (latest) exit code: $rc_latest"
           fi
 
+          if [ "$rc" -ne 0 ] || [ "$rc_latest" -ne 0 ]; then
+            echo "rpc_int failed (default=$rc, latest=$rc_latest)"
+            exit 1
+          fi
+
           executed=$(awk '/^Number of executed tests:/ { total += $NF } END { print total + 0 }' rpc-results/output*.txt)
           if [ "$executed" -eq 0 ]; then
             echo "No tests executed; check the API filters and node-type fixture tags."
             exit 1
           fi
 
-          if [ "$rc" -ne 0 ] || [ "$rc_latest" -ne 0 ]; then
-            echo "rpc_int failed (default=$rc, latest=$rc_latest)"
-            exit 1
-          fi
 
       - name: Upload rpc_int results
         if: always()
