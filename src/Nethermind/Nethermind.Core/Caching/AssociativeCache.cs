@@ -145,7 +145,21 @@ public sealed class AssociativeCache<TKey, TValue>
         for (int i = 0; i < Ways; i++)
         {
             ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
-            if (TryReadSettled(ref e, expectedTag, out TKey storedKey, out TValue? storedValue) && storedKey.Equals(in key))
+            long h1 = Volatile.Read(ref e.Header);
+
+            if ((h1 & TagMask) != expectedTag) continue;
+
+            // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            TKey storedKey = e.Key;
+            TValue? storedValue = e.Value;
+            // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+
+            long h2 = Volatile.Read(ref e.Header);
+            if (((h1 & LockMarker) != 0 || h1 != h2) && !TryReadSettled(ref e, expectedTag, out storedKey, out storedValue)) continue;
+
+            if (storedKey.Equals(in key))
             {
                 // JIT eliminates this branch entirely per TRefreshTicker instantiation.
                 // Eviction age uses the high-resolution clock rather than a shared counter: a
@@ -420,19 +434,22 @@ public sealed class AssociativeCache<TKey, TValue>
         return Pick3RandomEvict(ta, tb, tc, a, b, c);
     }
 
-    /// <summary>Reads the key and value of an entry carrying <paramref name="expectedTag"/>.</summary>
-    /// <returns><see langword="false"/> when the entry does not carry the tag.</returns>
+    /// <summary>
+    /// Waits for an entry found locked or changed mid-read to settle, then reads its key and value.
+    /// </summary>
+    /// <returns><see langword="false"/> when the entry no longer carries <paramref name="expectedTag"/>.</returns>
     /// <remarks>
-    /// An entry that is locked or changes during the read is being written with a key of this tag, usually a new
-    /// value for the key looked up. It is read again once the write completes, rather than reported as a miss for a
-    /// present key, which callers would reload and re-cache as another instance.
+    /// Such an entry is being written with a key of this tag, usually a new value for the key looked up. Reporting a
+    /// miss for a present key would make callers reload and re-cache it as another instance. Kept out of line so the
+    /// uncontended read path stays as small as before.
     /// </remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool TryReadSettled(ref Entry entry, long expectedTag, out TKey key, out TValue? value)
     {
         SpinWait spin = default;
         while (true)
         {
+            spin.SpinOnce(sleep1Threshold: -1);
             long h1 = Volatile.Read(ref entry.Header);
             if ((h1 & TagMask) != expectedTag)
             {
@@ -452,8 +469,6 @@ public sealed class AssociativeCache<TKey, TValue>
 
                 if (Volatile.Read(ref entry.Header) == h1) return true;
             }
-
-            spin.SpinOnce(sleep1Threshold: -1);
         }
     }
 
