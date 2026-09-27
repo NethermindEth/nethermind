@@ -203,7 +203,14 @@ public static partial class EvmInstructions
                 vm.TxTracer.ReportRejectedAction(callGas, 0, value, env.ExecutingAccount, contractAddress, initCode, TOpCreate.ExecutionType, EvmExceptionType.TransactionCollision);
 
             vm.ReturnDataBuffer = default;
-            return stack.PushZero<TTracingInst, OnFlag>();
+            EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
+
+            // The instruction trace ended before the creation's gas was reserved and the 0 was pushed, and the
+            // collision consumed that gas.
+            if (TTracingInst.IsActive)
+                vm.TxTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGas(in gas));
+
+            return pushResult;
         }
 
         state.ClearStorage(contractAddress);

@@ -410,6 +410,15 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
     }
 
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+        ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    {
+        // Mirrors the base tracer, which adds the gas made available to a rejected creation to the operation's cost.
+        if (_streamVmTrace && _hasPendingOp && callType.IsAnyCreate()) _pendingCost += gas;
+
+        base.ReportRejectedAction(gas, gasLeft, value, from, to, input, callType, error, isPrecompileCall);
+    }
+
     protected override void OnEnterVmFrame(ParityTraceAction action)
     {
         if (!_streamVmTrace) { base.OnEnterVmFrame(action); return; }

@@ -617,6 +617,107 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         }
     }
 
+    public enum RejectedCreate { FailedPrecheck, FailedPrecheckBeforeEip150, Collision, FailedPrecheckFromEip8037 }
+
+    /// <summary>
+    /// A CREATE that enters no frame charges, like one that does, the gas it makes available to the creation: a failed
+    /// precheck returns it at once and a collision consumes it. From EIP-8037 the precheck runs before any gas is made
+    /// available, so nothing is added.
+    /// </summary>
+    [Test]
+    public void Create_entering_no_frame_includes_the_gas_made_available_in_its_cost([Values] RejectedCreate scenario, [Values] bool streaming)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        byte[] salt = [1];
+        byte[] code = (scenario == RejectedCreate.Collision
+                ? Prepare.EvmCode.Create2(initCode, salt, 0).Op(Instruction.POP).Create2(initCode, salt, 0)
+                : Prepare.EvmCode.Create(initCode, 1000.Ether))
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+        ForkActivation activation = scenario switch
+        {
+            RejectedCreate.FailedPrecheckBeforeEip150 => (ForkActivation)MainnetSpecProvider.HomesteadBlockNumber,
+            RejectedCreate.FailedPrecheckFromEip8037 => MainnetSpecProvider.AmsterdamActivation,
+            _ => MainnetSpecProvider.PragueActivation,
+        };
+
+        IReadOnlyList<(int Pc, ulong Cost, ulong Used, bool HasSubtrace, int Pushes)> operations = TraceVmOperations(activation, code, streaming);
+
+        int index = 0;
+        while ((Instruction)code[operations[index].Pc] is not (Instruction.CREATE or Instruction.CREATE2) || operations[index].HasSubtrace)
+        {
+            index++;
+        }
+
+        (_, ulong cost, ulong used, _, int pushes) = operations[index];
+        ulong gasBefore = operations[index - 1].Used;
+        // After a failed precheck the caller's remaining gas is what it had before the creation's gas was set aside:
+        // all but 1/64 of it from EIP-150, all of it before.
+        ulong returned = scenario switch
+        {
+            RejectedCreate.FailedPrecheck => used - used / 64,
+            RejectedCreate.FailedPrecheckBeforeEip150 => used,
+            _ => 0,
+        };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cost, Is.EqualTo(gasBefore - used + returned), "cost");
+            Assert.That(operations[index + 1].Used + operations[index + 1].Cost, Is.EqualTo(used), "gas after the operation");
+            Assert.That(pushes, Is.EqualTo(1), "pushed 0");
+            if (scenario == RejectedCreate.Collision)
+            {
+                Assert.That(used, Is.LessThan(cost / 63), "the collision consumes all but 1/64");
+            }
+        }
+    }
+
+    private IReadOnlyList<(int Pc, ulong Cost, ulong Used, bool HasSubtrace, int Pushes)> TraceVmOperations(ForkActivation activation, byte[] code, bool streaming)
+    {
+        (Block block, Transaction transaction) = PrepareTx(activation, 1_000_000, code);
+        BlockExecutionContext context = new(block.Header, SpecProvider.GetSpec(block.Header));
+        List<(int, ulong, ulong, bool, int)> operations = [];
+        if (!streaming)
+        {
+            ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace);
+            _processor.Execute(transaction, context, tracer);
+            foreach (ParityVmOperationTrace operation in tracer.BuildResult().VmTrace!.Operations)
+            {
+                operations.Add((operation.Pc, operation.Cost, operation.Used, operation.Sub is not null, operation.Push?.Length ?? 0));
+            }
+
+            return operations;
+        }
+
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
+        StreamingParityLikeTxTracer streamingTracer = new(
+            block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace,
+            writer, pipeWriter: null, CancellationToken.None, fillVmTraceSlot: true);
+        try
+        {
+            _processor.Execute(transaction, context, streamingTracer);
+            streamingTracer.BuildResult();
+        }
+        finally
+        {
+            streamingTracer.ReleaseResources();
+        }
+
+        writer.Flush();
+        using JsonDocument document = JsonDocument.Parse(sink.WrittenMemory);
+        foreach (JsonElement operation in document.RootElement.GetProperty("ops").EnumerateArray())
+        {
+            operations.Add((operation.GetProperty("pc").GetInt32(),
+                operation.GetProperty("cost").GetUInt64(),
+                operation.GetProperty("ex").GetProperty("used").GetUInt64(),
+                operation.GetProperty("sub").ValueKind is not JsonValueKind.Null,
+                operation.GetProperty("ex").GetProperty("push").GetArrayLength()));
+        }
+
+        return operations;
+    }
+
     private IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> CollectVmTraceOperations(byte[] code)
     {
         (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
