@@ -232,6 +232,11 @@ public class ResourcePool : IResourcePool
 
     public record PooledResourceLabel(string Category, string ResourceType) : IMetricLabels
     {
+        // Every rent and return keys a metric by this label on the block processing thread; hash its fixed strings once.
+        private readonly int _hashCode = HashCode.Combine(Category, ResourceType);
+
         public string[] Labels => [Category, ResourceType];
+
+        public override int GetHashCode() => _hashCode;
     }
 }
