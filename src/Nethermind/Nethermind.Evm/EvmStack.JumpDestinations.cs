@@ -17,8 +17,9 @@ public ref partial struct EvmStack
     /// analyzer and a write barrier into every handler that validates a jump (JUMP, JUMPI and the fused
     /// PUSH2+JUMP), and the JIT then saved and restored the callee-saved registers on every execution of
     /// those handlers. Only a stack built over no code may omit the code info; the empty bitmap then
-    /// rejects every destination. See <c>EvmStack.zkevm.cs</c> for the guest form, which analyzes the
-    /// code only as far as it jumps into it.
+    /// rejects every destination. The zkEVM guest resolves it the same way. It used to scan the code only
+    /// as far as each jump reached, which kept that call, and the register saves, in the same handlers:
+    /// on mainnet blocks the scan it saved was worth less than half the saves it cost.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool IsJumpDestination(int destination)

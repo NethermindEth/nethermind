@@ -74,10 +74,11 @@ public class GuestJumpDestinationTests
     }
 
     [Test]
-    public void Stack_without_code_info_has_no_jump_destinations()
+    public void Stack_without_code_has_no_jump_destinations()
     {
+        // Only a stack over no code may omit its CodeInfo; EvmStack asserts that in Debug builds.
         byte stackMemory = 0;
-        EvmStack stack = new(0, ref stackMemory, new byte[] { JUMPDEST }, null);
+        EvmStack stack = new(0, ref stackMemory, ReadOnlySpan<byte>.Empty, null);
         Assert.That(stack.IsJumpDestination(0), Is.False);
     }
 
@@ -149,18 +150,17 @@ public class GuestJumpDestinationTests
 
         Assert.That(actual, Is.EqualTo(expected), () => Describe(code, expected, actual));
         if (code[0] == (byte)Instruction.STOP) expected = JumpDestinationAnalyzer.EmptyBitmap;
-        CodeInfo incremental = new(code);
+        CodeInfo codeInfo = new(code);
         byte stackMemory = 0;
-        EvmStack stack = new(0, ref stackMemory, code, incremental);
+        EvmStack stack = new(0, ref stackMemory, code, codeInfo);
         for (int i = 0; i < code.Length; i++)
         {
             Assert.That(stack.IsJumpDestination(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"stack forward {i}");
-            Assert.That(incremental.AnalyzeJump(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"forward {i}");
+            Assert.That(codeInfo.ValidateJump(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"code info {i}");
         }
         for (int i = code.Length - 1; i >= 0; i--)
         {
             Assert.That(stack.IsJumpDestination(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"stack backward {i}");
-            Assert.That(incremental.AnalyzeJump(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"backward {i}");
         }
     }
 
