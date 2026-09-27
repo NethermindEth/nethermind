@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -98,11 +97,4 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 
         CurrentTraceEntry.StorageDelta = (address, storageIndex, new UInt256(value, isBigEndian: true));
     }
-
-    public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
-    {
-        if (CurrentTraceEntry is not null && !returnData.IsEmpty)
-            CurrentTraceEntry.ReturnData = returnData.Span.ToHexString(true);
-    }
-
 }

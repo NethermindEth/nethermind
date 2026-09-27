@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -158,6 +159,13 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     {
         if (IsTracingFullMemory && CurrentTraceEntry is not null)
             CurrentTraceEntry.Memory = memoryTrace.ToRawWordBytes();
+    }
+
+    /// <inheritdoc/>
+    public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    {
+        if (CurrentTraceEntry is not null && !returnData.IsEmpty)
+            CurrentTraceEntry.ReturnData = returnData.Span.ToHexString(true);
     }
 
     public override GethLikeTxTrace BuildResult()
