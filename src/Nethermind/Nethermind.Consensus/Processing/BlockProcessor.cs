@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -10,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
@@ -45,8 +43,7 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager,
-    IHeaderFinder headerFinder)
+    IBlockAccessListManager balManager)
     : IBlockProcessor
 {
     private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
@@ -168,12 +165,7 @@ public partial class BlockProcessor(
         _balManager.Setup(block);
 
         // EIP-8253: the fork-block nonce bump precedes every pre-execution system call.
-        IReadOnlyList<Address> zeroNonceStorageAccounts = ZeroNonceStorageAccountsTransition.GetAccountsToBump(header, spec, _specProvider, headerFinder);
-        if (zeroNonceStorageAccounts.Count != 0)
-        {
-            _systemContractHandler.ApplyZeroNonceStorageAccountsTransition(zeroNonceStorageAccounts);
-        }
-
+        _balManager.ApplyZeroNonceStorageAccountsTransition(header, spec);
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec))

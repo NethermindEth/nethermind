@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
@@ -23,9 +22,6 @@ public partial class BlockProcessor
         /// <summary>Installs every predeploy <paramref name="spec"/> activates, so their code and nonce are
         /// captured in the computed state root and, on the BAL path, the block-level access list.</summary>
         void InstallPredeploys(IReleaseSpec spec);
-
-        /// <summary>Applies the EIP-8253 nonce bump to <paramref name="accounts"/>, on the BAL path at block access index 0.</summary>
-        void ApplyZeroNonceStorageAccountsTransition(IReadOnlyList<Address> accounts);
     }
 
     public sealed class SystemContractHandler(
@@ -58,8 +54,5 @@ public partial class BlockProcessor
 
         public void InstallPredeploys(IReleaseSpec spec)
             => PredeployInstaller.Install(stateProvider, stateProvider, spec);
-
-        public void ApplyZeroNonceStorageAccountsTransition(IReadOnlyList<Address> accounts)
-            => ZeroNonceStorageAccountsTransition.Apply(stateProvider, accounts);
     }
 }

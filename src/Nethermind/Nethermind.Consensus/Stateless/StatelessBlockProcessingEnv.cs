@@ -82,7 +82,8 @@ public class StatelessBlockProcessingEnv(
             new WithdrawalProcessorFactory(logManager),
             new BalTxProcessorFactory(blockhashProvider, specProvider, logManager,
                 codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache)),
-            executionRequestsProcessorFactory: ExecutionRequestsProcessorFactory
+            executionRequestsProcessorFactory: ExecutionRequestsProcessorFactory,
+            zeroNonceStorageAccountsTransition: new ZeroNonceStorageAccountsTransition(specProvider, statelessBlockTree)
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -116,8 +117,7 @@ public class StatelessBlockProcessingEnv(
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
             ExecutionRequestsProcessorFactory.Create(txProcessor),
-            blockAccessListManager,
-            statelessBlockTree
+            blockAccessListManager
         );
     }
 

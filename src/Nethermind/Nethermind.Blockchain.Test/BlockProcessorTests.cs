@@ -8,7 +8,6 @@ using Nethermind.Core.Container;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus.ExecutionRequests;
@@ -1830,8 +1829,7 @@ public partial class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager,
-            Substitute.For<IHeaderFinder>());
+            balManager);
 
         BranchProcessor branchProcessor = new(
             processor,
@@ -2062,8 +2060,7 @@ public partial class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager,
-            Substitute.For<IHeaderFinder>());
+            balManager);
 
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
         BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure = new(block.Header, "invalid BAL");
@@ -3382,8 +3379,7 @@ public partial class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager,
-            Substitute.For<IHeaderFinder>());
+            balManager);
         BranchProcessor branchProcessor = new(
             processor,
             specProvider,
@@ -3687,7 +3683,7 @@ public partial class BlockProcessorTests
         {
         }
 
-        public void ApplyZeroNonceStorageAccountsTransition(IReadOnlyList<Address> accounts)
+        public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec)
         {
         }
 

@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Config;
@@ -27,6 +28,7 @@ using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -123,6 +125,28 @@ public class Eip8253TransitionTests
             Assert.That(chain.StateReader.TryGetAccount(block.Header, AbsentTarget, out _), Is.False);
             Assert.That(GetBlockAccessList(chain, block).GetAccountChanges(Target), Is.Null);
         }
+    }
+
+    [Test]
+    public void Parent_is_looked_up_only_until_a_processed_block_shows_the_fork_is_active()
+    {
+        IReleaseSpec eip8253 = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8253Enabled = true };
+        TestSpecProvider specProvider = new(eip8253) { NextForkSpec = eip8253, AllowTestChainOverride = false };
+        BlockHeader[] chain = new BlockHeader[4];
+        for (int i = 0; i < chain.Length; i++)
+        {
+            chain[i] = (i == 0 ? Build.A.BlockHeader.WithNumber(0) : Build.A.BlockHeader.WithParent(chain[i - 1])).TestObject;
+        }
+
+        IHeaderFinder headerFinder = Substitute.For<IHeaderFinder>();
+        headerFinder.Get(chain[0].Hash!, 0).Returns(chain[0]);
+        IWorldState state = Substitute.For<IWorldState>();
+        ZeroNonceStorageAccountsTransition transition = new(specProvider, headerFinder);
+
+        for (int i = 1; i < chain.Length; i++) transition.ApplyIfForkBlock(chain[i], eip8253, state);
+
+        headerFinder.ReceivedWithAnyArgs(1).Get(default!, default);
+        state.DidNotReceiveWithAnyArgs().SetNonce(default!, default);
     }
 
     /// <remarks>The asset lists 28 accounts ordered by address hash, so a mistyped address breaks the order.</remarks>
