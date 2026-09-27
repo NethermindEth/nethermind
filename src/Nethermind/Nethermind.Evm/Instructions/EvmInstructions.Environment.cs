@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using static Nethermind.Evm.VirtualMachineStatics;
@@ -679,10 +680,12 @@ public static partial class EvmInstructions
         if (!state.AccountExists(source)) goto InvalidSource;
         ValueHash256 codeHash = state.GetCodeHash(source);
         if (codeHash == ValueKeccak.OfAnEmptyString) goto InvalidSource;
-        // The repository resolves a precompile address to the precompile rather than to the code held in state.
-        ReadOnlyMemory<byte> code = spec.IsPrecompile(source)
+        // The repository resolves a precompile address, including one moved there by an override, to the precompile
+        // rather than to the code held in state.
+        CodeInfo? sourceCode = spec.IsPrecompile(source) ? null : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(source, spec);
+        ReadOnlyMemory<byte> code = sourceCode is null || sourceCode.IsPrecompile
             ? CodeInfoRepository.GetCodeInfo(state, source, in codeHash).Code
-            : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(source, spec).Code;
+            : sourceCode.Code;
         if (CodeDepositHandler.CodeIsInvalid(spec, code)) goto InvalidSource;
 
         // The current account access is charged before the hash comparison, ACCOUNT_WRITE before the write.
