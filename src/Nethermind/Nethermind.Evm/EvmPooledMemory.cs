@@ -496,7 +496,15 @@ public struct EvmPooledMemory
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal Span<byte> LoadSpanAfterGas(in UInt256 location, in UInt256 length)
-        => length.IsZero ? [] : LoadSpanAfterGas(in location, length.u0);
+    {
+        if (length.IsZero)
+        {
+            return [];
+        }
+
+        Debug.Assert(length.IsUint64);
+        return LoadSpanAfterGas(in location, length.u0);
+    }
 
     /// <summary>
     /// Variant of <see cref="TryLoad"/> requiring the caller to have already charged memory expansion for exactly
