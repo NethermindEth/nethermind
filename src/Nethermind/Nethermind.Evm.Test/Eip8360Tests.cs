@@ -423,9 +423,8 @@ public class Eip8360Tests : VirtualMachineTestsBase
         Assert.That(withValue - withoutValue, Is.EqualTo(Eip8038Constants.AccountWrite));
     }
 
-    [TestCase(0)]
-    [TestCase(33)]
-    public void Charges_base_cost_and_target_access_instead_of_create_costs(int deployedLength)
+    [Test]
+    public void Charges_base_cost_and_target_access_instead_of_create_costs([Values(0, 33)] int deployedLength)
     {
         byte[] init = Prepare.EvmCode.Return(deployedLength, 0).Done;
         InstallCode(Factory, Prepare.EvmCode.Create2(init, Salt, 0).Op(Instruction.POP).STOP().Done);
