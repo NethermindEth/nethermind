@@ -119,7 +119,7 @@ public sealed class ColumnGossipRouter(
     private readonly int _maxGloasSidecarSize = (int)Math.Min(DataColumnSidecarGloasSize.ComputeMax(spec), (ulong)Eth2MessageId.MaxGossipSize);
     private readonly long[] _dropCounts = new long[Enum.GetValues<ColumnGossipDropReason>().Length];
     private readonly Lock _subscriptionLock = new();
-    private readonly List<(ulong Subnet, ITopic Topic)> _subscriptions = [];
+    private readonly Dictionary<string, List<(ulong Subnet, ITopic Topic)>> _subscriptions = [];
 
     // Per-block-root accumulation of held columns, purely to decide when to attempt reconstruction
     // (das-core.md "SHOULD reconstruct" at 50%+); keyed by the full header's hash tree root rather
@@ -130,7 +130,6 @@ public sealed class ColumnGossipRouter(
     private readonly Lock _reconstructionLock = new();
 
     private Func<string, ITopic>? _getTopic;
-    private byte[] _currentForkDigest = [];
     private IReadOnlyList<ulong> _subnets = [];
 
     /// <summary>
@@ -141,19 +140,21 @@ public sealed class ColumnGossipRouter(
 
     public long GetDropCount(ColumnGossipDropReason reason) => Interlocked.Read(ref _dropCounts[(int)reason]);
 
-    /// <summary>Subscribes <paramref name="subnets"/> (see <see cref="Discovery.LocalCustody.Subnets"/>) for <paramref name="forkDigest"/>.</summary>
+    /// <summary>Subscribes <paramref name="subnets"/> for <paramref name="forkDigest"/>; every later digest subscribes the same subnets.</summary>
     public void Start(Func<string, ITopic> getTopic, byte[] forkDigest, IReadOnlyList<ulong> subnets)
     {
         lock (_subscriptionLock)
         {
             _getTopic = getTopic;
             _subnets = subnets;
-            SubscribeSubnets(forkDigest);
+            SubscribeDigest(forkDigest);
         }
     }
 
-    /// <summary>Moves all subnet subscriptions to a new fork digest at a fork activation or EIP-7892 BPO boundary.</summary>
-    public void RotateDigest(byte[] newForkDigest)
+    /// <summary>Subscribes the subnets passed to <see cref="Start"/> for <paramref name="forkDigest"/>; does nothing when they are already subscribed.</summary>
+    /// <remarks>Several digests are subscribed at once around a fork digest change (see <see cref="GossipTopics.DigestsAround"/>).</remarks>
+    /// <exception cref="InvalidOperationException"><see cref="Start"/> has not run.</exception>
+    public void SubscribeDigest(byte[] forkDigest)
     {
         lock (_subscriptionLock)
         {
@@ -162,28 +163,62 @@ public sealed class ColumnGossipRouter(
                 throw new InvalidOperationException($"{nameof(ColumnGossipRouter)} is not started");
             }
 
-            foreach ((ulong _, ITopic topic) in _subscriptions)
+            string key = Convert.ToHexStringLower(forkDigest);
+            if (_subscriptions.ContainsKey(key))
+            {
+                return;
+            }
+
+            // The pubsub validator consumes every message (GossipMessageValidator); a topic handler would process an Accepted one twice.
+            List<(ulong Subnet, ITopic Topic)> subscriptions = [];
+            foreach (ulong subnetId in _subnets)
+            {
+                ITopic topic = _getTopic(GossipTopics.Topic(forkDigest, GossipTopics.DataColumnSidecarTopicName(subnetId)));
+                topic.Subscribe();
+                subscriptions.Add((subnetId, topic));
+            }
+
+            _subscriptions[key] = subscriptions;
+            if (_logger.IsInfo) _logger.Info($"Subscribed {_subnets.Count} data column sidecar subnets for fork digest 0x{key}");
+        }
+    }
+
+    /// <summary>Unsubscribes the subnets of <paramref name="forkDigest"/>; does nothing when none are subscribed.</summary>
+    public void UnsubscribeDigest(byte[] forkDigest)
+    {
+        lock (_subscriptionLock)
+        {
+            string key = Convert.ToHexStringLower(forkDigest);
+            if (!_subscriptions.Remove(key, out List<(ulong Subnet, ITopic Topic)>? subscriptions))
+            {
+                return;
+            }
+
+            foreach ((ulong _, ITopic topic) in subscriptions)
             {
                 topic.Unsubscribe();
             }
 
-            _subscriptions.Clear();
-            SubscribeSubnets(newForkDigest);
+            if (_logger.IsInfo) _logger.Info($"Unsubscribed data column sidecar subnets for fork digest 0x{key}");
         }
     }
 
-    private void SubscribeSubnets(byte[] forkDigest)
+    /// <summary>Moves all subnet subscriptions to <paramref name="newForkDigest"/>, unsubscribing every other digest.</summary>
+    /// <exception cref="InvalidOperationException"><see cref="Start"/> has not run.</exception>
+    public void RotateDigest(byte[] newForkDigest)
     {
-        _currentForkDigest = forkDigest;
-        // The pubsub validator consumes every message (GossipMessageValidator); a topic handler would process an Accepted one twice.
-        foreach (ulong subnetId in _subnets)
+        lock (_subscriptionLock)
         {
-            ITopic topic = _getTopic!(GossipTopics.Topic(forkDigest, GossipTopics.DataColumnSidecarTopicName(subnetId)));
-            topic.Subscribe();
-            _subscriptions.Add((subnetId, topic));
+            SubscribeDigest(newForkDigest);
+            string newKey = Convert.ToHexStringLower(newForkDigest);
+            foreach (string key in new List<string>(_subscriptions.Keys))
+            {
+                if (key != newKey)
+                {
+                    UnsubscribeDigest(Convert.FromHexString(key));
+                }
+            }
         }
-
-        if (_logger.IsInfo) _logger.Info($"Subscribed {_subnets.Count} data column sidecar subnets for fork digest 0x{Convert.ToHexStringLower(forkDigest)}");
     }
 
     /// <summary>Validates a raw message from the <c>data_column_sidecar_{subnet_id}</c> topic of a Fulu or Gloas digest and consumes it when it passes.</summary>
@@ -605,18 +640,25 @@ public sealed class ColumnGossipRouter(
         pool?.Add(blockRoot, entry.Slot, entry.Sidecar);
         DataColumnSidecarReceived?.Invoke(entry.Sidecar);
 
-        if (FindSubnetTopic(entry.Subnet) is { } topic)
+        if (FindSubnetTopic(entry.Subnet, entry.Slot) is { } topic)
         {
             topic.Publish(Snappy.CompressToArray(DataColumnSidecar.Encode(entry.Sidecar)));
         }
     }
 
-    /// <summary>The subscribed topic for <paramref name="subnet"/>, or null if this node does not custody it.</summary>
-    private ITopic? FindSubnetTopic(ulong subnet)
+    /// <summary>The subscribed topic for <paramref name="subnet"/> under the digest of <paramref name="slot"/>, or null if this node does not subscribe it.</summary>
+    private ITopic? FindSubnetTopic(ulong subnet, ulong slot)
     {
+        // altair/p2p-interface.md: messages SHOULD NOT be re-broadcast from one fork to the other.
+        string key = Convert.ToHexStringLower(ForkDigest.Compute(spec, spec.GetEpoch(slot)));
         lock (_subscriptionLock)
         {
-            foreach ((ulong subscribedSubnet, ITopic subscribedTopic) in _subscriptions)
+            if (!_subscriptions.TryGetValue(key, out List<(ulong Subnet, ITopic Topic)>? subscriptions))
+            {
+                return null;
+            }
+
+            foreach ((ulong subscribedSubnet, ITopic subscribedTopic) in subscriptions)
             {
                 if (subscribedSubnet == subnet)
                 {

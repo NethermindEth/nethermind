@@ -92,7 +92,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private readonly LruKeyCache<ValueHash256> _seenMessages = new(SeenCacheSize, "beacon gossip seen messages");
     private readonly long[] _dropCounts = new long[Enum.GetValues<GossipDropReason>().Length];
     private readonly Lock _subscriptionLock = new();
-    private readonly List<(ITopic Topic, Action<byte[]> Handler)> _subscriptions = [];
+    private readonly Dictionary<string, List<(ITopic Topic, Action<byte[]> Handler)>> _subscriptions = [];
 
     // Written by the import worker once a block's proposer signature verifies; read on the network thread.
     private readonly LruKeyCache<(ulong Slot, ulong Proposer)> _seenProposals = new(SeenProposalCacheSize, "beacon gossip proposals");
@@ -110,9 +110,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private int _deferredCount;
 
     private Func<string, ITopic>? _getTopic;
-    private byte[] _currentForkDigest = [];
     private bool _gloasDigest;
-    private bool _gloasActive;
 
     /// <summary>Raised with the block decoded as the SSZ shape of its topic's fork.</summary>
     public event Action<ForkedSignedBeaconBlock>? BeaconBlockReceived;
@@ -139,17 +137,21 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     internal void MarkEnvelopeSeen(Hash256 blockRoot, ulong builderIndex) => _seenEnvelopes.Set((blockRoot, builderIndex));
 
     /// <summary>Subscribes all gossip topics for <paramref name="forkDigest"/> with topics obtained from <paramref name="getTopic"/> (see <see cref="BeaconP2P.GetTopic"/>).</summary>
+    /// <remarks><paramref name="forkDigest"/> also fixes the fork of the single-digest <c>Handle*</c> overloads and <see cref="HandlerFor(string)"/>.</remarks>
     public void Start(Func<string, ITopic> getTopic, byte[] forkDigest)
     {
         lock (_subscriptionLock)
         {
             _getTopic = getTopic;
-            SubscribeTopics(forkDigest);
+            _gloasDigest = IsGloasDigest(forkDigest);
+            SubscribeDigest(forkDigest);
         }
     }
 
-    /// <summary>Moves all subscriptions to a new fork digest at a fork activation or EIP-7892 BPO boundary.</summary>
-    public void RotateDigest(byte[] newForkDigest)
+    /// <summary>Subscribes all gossip topics for <paramref name="forkDigest"/>, the Gloas-only ones too when it is a Gloas digest; does nothing when they are already subscribed.</summary>
+    /// <remarks>Several digests are subscribed at once around a fork digest change (see <see cref="GossipTopics.DigestsAround"/>).</remarks>
+    /// <exception cref="InvalidOperationException"><see cref="Start"/> has not run.</exception>
+    public void SubscribeDigest(byte[] forkDigest)
     {
         lock (_subscriptionLock)
         {
@@ -158,73 +160,51 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
                 throw new InvalidOperationException($"{nameof(GossipRouter)} is not started");
             }
 
-            foreach ((ITopic topic, Action<byte[]> handler) in _subscriptions)
+            string key = Convert.ToHexStringLower(forkDigest);
+            if (_subscriptions.ContainsKey(key))
+            {
+                return;
+            }
+
+            bool gloas = IsGloasDigest(forkDigest);
+            List<(ITopic Topic, Action<byte[]> Handler)> subscriptions = [];
+            string[] names = gloas ? [.. GossipTopics.SubscribedTopicNames, .. GossipTopics.GloasTopicNames] : GossipTopics.SubscribedTopicNames;
+            foreach (string name in names)
+            {
+                ITopic topic = _getTopic(GossipTopics.Topic(forkDigest, name));
+                Action<byte[]> handler = HandlerFor(name, gloas);
+                topic.OnMessage += handler;
+                topic.Subscribe();
+                subscriptions.Add((topic, handler));
+            }
+
+            _subscriptions[key] = subscriptions;
+            if (_logger.IsInfo) _logger.Info($"Subscribed beacon gossip topics for fork digest 0x{key}");
+        }
+    }
+
+    /// <summary>Unsubscribes the gossip topics of <paramref name="forkDigest"/> and detaches their handlers; does nothing when none are subscribed.</summary>
+    public void UnsubscribeDigest(byte[] forkDigest)
+    {
+        lock (_subscriptionLock)
+        {
+            string key = Convert.ToHexStringLower(forkDigest);
+            if (!_subscriptions.Remove(key, out List<(ITopic Topic, Action<byte[]> Handler)>? subscriptions))
+            {
+                return;
+            }
+
+            foreach ((ITopic topic, Action<byte[]> handler) in subscriptions)
             {
                 topic.OnMessage -= handler;
                 topic.Unsubscribe();
             }
 
-            _subscriptions.Clear();
-            SubscribeTopics(newForkDigest);
+            if (_logger.IsInfo) _logger.Info($"Unsubscribed beacon gossip topics for fork digest 0x{key}");
         }
     }
 
-    private void SubscribeTopics(byte[] forkDigest)
-    {
-        _currentForkDigest = forkDigest;
-        _gloasDigest = IsGloasDigest(forkDigest);
-        foreach (string name in CurrentTopicNames())
-        {
-            ITopic topic = _getTopic!(GossipTopics.Topic(forkDigest, name));
-            Action<byte[]> handler = HandlerFor(name);
-            topic.OnMessage += handler;
-            topic.Subscribe();
-            _subscriptions.Add((topic, handler));
-        }
-
-        if (_logger.IsInfo) _logger.Info($"Subscribed beacon gossip topics for fork digest 0x{Convert.ToHexStringLower(forkDigest)}");
-    }
-
-    /// <summary>The pre-Gloas topic names, plus the Gloas-only ones once <see cref="ActivateGloasTopics"/> has run.</summary>
-    private IEnumerable<string> CurrentTopicNames() =>
-        _gloasActive ? [.. GossipTopics.SubscribedTopicNames, .. GossipTopics.GloasTopicNames] : GossipTopics.SubscribedTopicNames;
-
-    /// <summary>
-    /// Adds the Gloas-only gossip topics (<see cref="GossipTopics.GloasTopicNames"/>)
-    /// under the currently subscribed fork digest. Call once, at the Gloas fork boundary: a later
-    /// <see cref="RotateDigest"/> (e.g. an EIP-7892 BPO rotation past Gloas) carries them forward
-    /// automatically since <see cref="CurrentTopicNames"/> includes them from then on, rather than the
-    /// subscription set being fixed at <see cref="Start"/> time.
-    /// </summary>
-    public void ActivateGloasTopics()
-    {
-        lock (_subscriptionLock)
-        {
-            if (_getTopic is null)
-            {
-                throw new InvalidOperationException($"{nameof(GossipRouter)} is not started");
-            }
-
-            if (_gloasActive)
-            {
-                return;
-            }
-
-            _gloasActive = true;
-            foreach (string name in GossipTopics.GloasTopicNames)
-            {
-                ITopic topic = _getTopic(GossipTopics.Topic(_currentForkDigest, name));
-                Action<byte[]> handler = HandlerFor(name);
-                topic.OnMessage += handler;
-                topic.Subscribe();
-                _subscriptions.Add((topic, handler));
-            }
-
-            if (_logger.IsInfo) _logger.Info("Activated Gloas beacon gossip topics (execution_payload)");
-        }
-    }
-
-    /// <summary>The raw-payload handler for an eth2 gossip topic name.</summary>
+    /// <summary>The raw-payload handler for an eth2 gossip topic name of the digest passed to <see cref="Start"/>.</summary>
     public Action<byte[]> HandlerFor(string name) => HandlerFor(name, _gloasDigest);
 
     // The fork is bound at subscription, so a message still in flight on a rotated-out topic keeps that topic's type.
@@ -249,7 +229,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown gossip topic name"),
     };
 
-    /// <summary>Handles a <c>beacon_block</c> message on the currently subscribed digest's topic.</summary>
+    /// <summary>Handles a <c>beacon_block</c> message on the topic of the digest passed to <see cref="Start"/>.</summary>
     public MessageValidity HandleBeaconBlock(byte[] message) => HandleBeaconBlock(message, _gloasDigest);
 
     // phase0 p2p: MUST reject messages containing an incorrect type, so the topic's fork fixes the decoded shape.
@@ -259,7 +239,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             block => ValidateBlock(block, gloasTopic),
             block => BeaconBlockReceived?.Invoke(block));
 
-    /// <summary>Handles a <c>beacon_aggregate_and_proof</c> message on the currently subscribed digest's topic.</summary>
+    /// <summary>Handles a <c>beacon_aggregate_and_proof</c> message on the topic of the digest passed to <see cref="Start"/>.</summary>
     public MessageValidity HandleAggregateAndProof(byte[] message) =>
         _gloasDigest ? HandleGloasAggregateAndProof(message) : HandleFuluAggregateAndProof(message);
 
@@ -276,7 +256,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             aggregate => GloasAggregateAndProofReceived?.Invoke(aggregate),
             MaxSignedAggregateAndProofSizeGloas);
 
-    /// <summary>Handles an <c>attester_slashing</c> message on the currently subscribed digest's topic.</summary>
+    /// <summary>Handles an <c>attester_slashing</c> message on the topic of the digest passed to <see cref="Start"/>.</summary>
     public MessageValidity HandleAttesterSlashing(byte[] message) =>
         _gloasDigest ? HandleGloasAttesterSlashing(message) : HandleFuluAttesterSlashing(message);
 
