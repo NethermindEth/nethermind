@@ -203,6 +203,46 @@ public class NonceManagerTests
         }
     }
 
+    [TestCase(false, false, 5UL, TestName = "ReserveNonce_should_reuse_evicted_nonce_after_skip_was_not_accepted")]
+    [TestCase(false, true, 6UL, TestName = "ReserveNonce_should_skip_again_after_skip_was_not_accepted")]
+    [TestCase(true, true, 7UL, TestName = "ReserveNonce_should_commit_skip_once_accepted")]
+    public void ReserveNonce_should_commit_pending_skip_only_on_accept(bool acceptSkip, bool stillPending, ulong expectedNonce)
+    {
+        // 1. A raw tx with nonce 5 is accepted while the account nonce is 0.
+        // 2. The account nonce catches up to 5 while tx 5 is still pending.
+        // 3. A reservation skips 5 and gets 6, then is accepted or disposed.
+        // 4. Tx 5 stays pending or is evicted, and the account nonce stays 5.
+        IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns(0UL);
+        _nonceManager = new NonceManager(accountStateProvider);
+
+        using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 5))
+        {
+            locker.Accept();
+        }
+
+        _pendingTxs.GetPendingTransactionsBySender(TestItem.AddressA).Returns([Build.A.Transaction.WithNonce(5).TestObject]);
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns(5UL);
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong skippedNonce))
+        {
+            Assert.That(skippedNonce, Is.EqualTo(6UL), "precondition: nonce 5 is still pending so the reservation skips it");
+            if (acceptSkip)
+            {
+                locker.Accept();
+            }
+        }
+
+        if (!stillPending)
+        {
+            _pendingTxs.GetPendingTransactionsBySender(TestItem.AddressA).Returns([]);
+        }
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo(expectedNonce), "only an accepted reservation may move the nonce cursor past a pending nonce");
+        }
+    }
+
     [Test]
     public void should_reuse_nonce_if_tx_rejected()
     {

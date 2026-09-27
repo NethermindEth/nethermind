@@ -42,9 +42,8 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
             NonceLocker locker = new(_accountLock, TxAccepted);
             ReleaseNonces(accountNonce);
             _currentNonce = ulong.Max(_currentNonce, accountNonce);
-            SkipPendingNonces(address, pendingTxs);
-            _reservedNonce = _currentNonce;
-            reservedNonce = _currentNonce;
+            _reservedNonce = FirstNonceNotPending(address, pendingTxs);
+            reservedNonce = _reservedNonce;
             return locker;
         }
 
@@ -54,25 +53,28 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
             SkipUsedNonces();
         }
 
-        private void SkipPendingNonces(Address address, IPendingTxsBySender pendingTxs)
+        private ulong FirstNonceNotPending(Address address, IPendingTxsBySender pendingTxs)
         {
-            if (!_usedNonces.Contains(_currentNonce))
+            ulong nonce = _currentNonce;
+            if (!_usedNonces.Contains(nonce))
             {
-                return;
+                return nonce;
             }
 
             Transaction[] pending = pendingTxs.GetPendingTransactionsBySender(address);
             Transaction[] pendingBlobs = pendingTxs.GetPendingLightBlobTransactionsBySender(address);
-            while (_usedNonces.Contains(_currentNonce))
+            while (_usedNonces.Contains(nonce))
             {
-                if (!HoldsAccountNonce(pending, _currentNonce) && !HoldsAccountNonce(pendingBlobs, _currentNonce))
+                if (!HoldsAccountNonce(pending, nonce) && !HoldsAccountNonce(pendingBlobs, nonce))
                 {
-                    _usedNonces.Remove(_currentNonce);
-                    return;
+                    _usedNonces.Remove(nonce);
+                    return nonce;
                 }
 
-                _currentNonce++;
+                nonce++;
             }
+
+            return nonce;
         }
 
         private static bool HoldsAccountNonce(Transaction[] transactions, ulong nonce)
