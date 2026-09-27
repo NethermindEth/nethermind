@@ -1,0 +1,22 @@
+{
+  "network": "kurtosis-devnet",
+  "l2_chain_id": 6290,
+  "rollup_id": 1,
+  "from_block": 79,
+  "to_block": 84,
+  "l1_transaction_hash": "0xcc601428bf01c4065d0b250565eb73dae507249a534772841638b7331a00c71b",
+  "l1_block_number": 25566,
+  "l1_block_hash": "0x29a608083ef5de97ff1a5115126e5e361b608984426e4daf1a666f92e32ff36b",
+  "eez_address": "0xe78b82b3fee32649dae86645e6a0a3b051038730",
+  "proof_system": "0xd0e17aefa018030e7a9652da302d4317f30f95b0",
+  "proof_system_vkey": "0x00000000000000000000000070997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "attester": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "l2_system_address": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0076",
+  "public_inputs_hash": "0x25c074baf52e39639a92471675152e107b106451c58135a4f2b0e1d45956b847",
+  "window_pre_block_hash": "0x5f62964e4debc83590b2a717b27ae1b2583bf0ad5d165feee8d3d24d15e8f29c",
+  "window_post_block_hash": "0x776de0ca48213074c90bf203d968d01611d6abba6b1e232a960a689fd0f288e7",
+  "postbatch_calldata_bytes": 1636,
+  "postbatch_calldata_sha256": "0x03ad99e49bfc901ff6a46dc6954af8e1a7435072899fd0bf335e1086464b5f33",
+  "expected_test_signature": "0x066142eddd3e7750e538a50474228e1ffe9e684962f4c99a5c3a653bc22000c833b552ab27bbe889d5d10b96433ab9cefc4bfac478e86cfd476c1d16f3eabe001c",
+  "captured_at": "2026-09-18T08:40:02Z"
+}

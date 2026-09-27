@@ -132,6 +132,9 @@ public static class BlockErrorMessages
         "InvalidRequestsOrder: Requests are not in the correct order in block.";
 
 
+    public static string CodelessRequestContractWithBlockAccessList(Address contractAddress) =>
+        $"CodelessRequestContract: Request predeploy {contractAddress} has no code, which block access lists do not support.";
+
     public const string WithdrawalsContractEmpty =
         "WithdrawalsEmpty: Contract is not deployed.";
 
