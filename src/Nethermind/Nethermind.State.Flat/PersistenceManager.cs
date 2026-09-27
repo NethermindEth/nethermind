@@ -179,7 +179,7 @@ public class PersistenceManager(
             && snapshotRepository.InMemoryBytes > _maxInMemorySnapshotBytes
             && TryFindByteBudgetPersist(latestSnapshot, currentPersistedState) is { } byteBudgetPersist)
         {
-            if (_logger.IsInfo) _logger.Info(
+            if (_logger.IsDebug) _logger.Debug(
                 $"In-memory snapshot bytes {snapshotRepository.InMemoryBytes} exceeded the byte budget {_maxInMemorySnapshotBytes}; " +
                 $"forcing persistence to bound memory (depth {snapshotsDepth}, finalized block {finalizedBlockNumber}).");
             return (null, byteBudgetPersist, null);
