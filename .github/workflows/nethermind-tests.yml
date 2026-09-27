@@ -79,6 +79,7 @@ jobs:
           - Nethermind.JsonRpc.TraceStore.Test
           - Nethermind.KeyStore.Test
           - Nethermind.Logging.NLog.Test
+          - Nethermind.Mcp.Plugin.Test
           - Nethermind.Merge.AuRa.Test
           - Nethermind.Merge.Plugin.Test
           - Nethermind.Mining.Test
