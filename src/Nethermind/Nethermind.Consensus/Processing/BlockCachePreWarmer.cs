@@ -718,7 +718,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 }
 
                 // Rate-limit every pass so a churning mempool can't keep tx selection continuously in flight.
-                await Task.Delay(delay, token).ConfigureAwait(false);
+                await Task.Delay(delay, token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             }
         }
         catch (OperationCanceledException)

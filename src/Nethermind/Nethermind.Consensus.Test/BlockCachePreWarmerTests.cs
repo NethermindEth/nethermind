@@ -7,6 +7,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -941,8 +942,11 @@ public class BlockCachePreWarmerTests
         using CancellationTokenSource cancellation = new();
         TaskCompletionSource passStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int passes = 0;
-        Task session = preWarmer.StartSpeculativePreWarm(BuildParentHeader(), Osaka.Instance, generation: 1, _ =>
+        int cancellationExceptions = 0;
+        CancellationToken sessionToken = default;
+        Task session = preWarmer.StartSpeculativePreWarm(BuildParentHeader(), Osaka.Instance, generation: 1, token =>
         {
+            sessionToken = token;
             Interlocked.Increment(ref passes);
             passStarted.TrySetResult();
             return null;
@@ -960,11 +964,29 @@ public class BlockCachePreWarmerTests
         }
         finally
         {
-            cancellation.Cancel();
-            await session.WaitAsync(DiscoveryTimeout);
+            void OnException(object? sender, FirstChanceExceptionEventArgs args)
+            {
+                if (sessionToken.CanBeCanceled && args.Exception is OperationCanceledException exception && exception.CancellationToken == sessionToken)
+                    Interlocked.Increment(ref cancellationExceptions);
+            }
+
+            AppDomain.CurrentDomain.FirstChanceException += OnException;
+            try
+            {
+                cancellation.Cancel();
+                await session.WaitAsync(DiscoveryTimeout);
+            }
+            finally
+            {
+                AppDomain.CurrentDomain.FirstChanceException -= OnException;
+            }
         }
 
-        Assert.That(session.IsCompletedSuccessfully, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session.IsCompletedSuccessfully, Is.True);
+            Assert.That(cancellationExceptions, Is.Zero, "cancelling the idle delay must not throw");
+        }
     }
 
     [Test]

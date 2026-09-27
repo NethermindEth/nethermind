@@ -59,7 +59,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
         {
             try
             {
-                if (TryFill(token, delay)) return;
+                if (TryFill(token)) return;
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -80,7 +80,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
         }
     }
 
-    private bool TryFill(CancellationToken token, ManualResetEventSlim delay)
+    private bool TryFill(CancellationToken token)
     {
         ulong first = config.HistoryTransactionIndexRetrofitFromBlock;
         if (!index.TryGetCoverage(out ulong coveredFrom, out _)) return false;
@@ -120,7 +120,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
             Execute(block, checkpoint, session, processor, token);
             checkpoint = block.Header;
             session.CleanStorage(token);
-            sessions.Rest(Stopwatch.GetElapsedTime(startedAt), token, delay);
+            sessions.Rest(Stopwatch.GetElapsedTime(startedAt), token);
             if (Stopwatch.GetElapsedTime(reportedAt) >= TimeSpan.FromSeconds(30))
             {
                 double rate = (session.CurrentState.BlockNumber - reportedBlock) / Stopwatch.GetElapsedTime(reportedAt).TotalSeconds;

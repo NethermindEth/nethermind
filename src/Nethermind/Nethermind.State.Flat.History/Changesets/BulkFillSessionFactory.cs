@@ -21,9 +21,10 @@ public sealed class BulkFillSessionFactory(
     HistoryRowFormat format,
     HistoryScopeGate scopes,
     IFlatDbConfig config,
-    ILogManager logs)
+    ILogManager logs) : IDisposable
 {
     private readonly ILogger _logger = logs.GetClassLogger<BulkFillSessionFactory>();
+    private readonly ManualResetEventSlim _delay = new(false, spinCount: 0);
     private long _lastDiskCheck;
     private BulkFillSession? _lastCheckedSession;
 
@@ -46,8 +47,6 @@ public sealed class BulkFillSessionFactory(
     public void Import(BulkFillSession session, BlockHeader anchor, Action validateCanonical, CancellationToken token)
     {
         if (session.IsReady) return;
-        using ManualResetEventSlim delay = new(false, spinCount: 0);
-        using CancellationTokenRegistration registration = token.UnsafeRegister(static state => ((ManualResetEventSlim)state!).Set(), delay);
         int stage = 0;
         foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears })
         {
@@ -84,7 +83,7 @@ public sealed class BulkFillSessionFactory(
                         fraction, Stopwatch.GetElapsedTime(importStartedAt), complete, session.Size));
                     reportedAt = Stopwatch.GetTimestamp();
                 }
-                Rest(Stopwatch.GetElapsedTime(startedAt), token, delay);
+                Rest(Stopwatch.GetElapsedTime(startedAt), token);
             } while (!complete);
         }
         validateCanonical();
@@ -120,15 +119,17 @@ public sealed class BulkFillSessionFactory(
         _lastDiskCheck = Stopwatch.GetTimestamp();
     }
 
-    public void Rest(TimeSpan worked, CancellationToken token, ManualResetEventSlim delay)
+    public void Rest(TimeSpan worked, CancellationToken token)
     {
         int duty = Math.Clamp(config.HistoryTransactionIndexDutyCyclePercent, 1, 100);
         TimeSpan rest = worked * (100 - duty) / duty;
         while (rest > TimeSpan.Zero)
         {
-            TimeSpan part = rest > TimeSpan.FromMilliseconds(int.MaxValue) ? TimeSpan.FromMilliseconds(int.MaxValue) : rest;
-            if (delay.Wait(part)) token.ThrowIfCancellationRequested();
+            TimeSpan part = rest > TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : rest;
+            _delay.Wait(part, token);
             rest -= part;
         }
     }
+
+    void IDisposable.Dispose() => _delay.Dispose();
 }
