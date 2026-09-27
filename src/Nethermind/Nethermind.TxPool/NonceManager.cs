@@ -14,11 +14,11 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
     private readonly ConcurrentDictionary<AddressAsKey, AddressNonceManager> _addressNonceManagers = new();
     private readonly IAccountStateProvider _accounts = accounts;
 
-    public NonceLocker ReserveNonce(Address address, ITxPool txPool, out ulong reservedNonce)
+    public NonceLocker ReserveNonce(Address address, IPendingTxsBySender pendingTxs, out ulong reservedNonce)
     {
         AddressNonceManager addressNonceManager =
             _addressNonceManagers.GetOrAdd(address, static _ => new AddressNonceManager());
-        return addressNonceManager.ReserveNonce(address, _accounts.GetNonce(address), txPool, out reservedNonce);
+        return addressNonceManager.ReserveNonce(address, _accounts.GetNonce(address), pendingTxs, out reservedNonce);
     }
 
     public NonceLocker TxWithNonceReceived(Address address, ulong nonce)
@@ -37,12 +37,12 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
 
         private readonly SemaphoreSlim _accountLock = new(1);
 
-        public NonceLocker ReserveNonce(Address address, ulong accountNonce, ITxPool txPool, out ulong reservedNonce)
+        public NonceLocker ReserveNonce(Address address, ulong accountNonce, IPendingTxsBySender pendingTxs, out ulong reservedNonce)
         {
             NonceLocker locker = new(_accountLock, TxAccepted);
             ReleaseNonces(accountNonce);
             _currentNonce = ulong.Max(_currentNonce, accountNonce);
-            SkipPendingNonces(address, txPool);
+            SkipPendingNonces(address, pendingTxs);
             _reservedNonce = _currentNonce;
             reservedNonce = _currentNonce;
             return locker;
@@ -54,15 +54,15 @@ public class NonceManager(IAccountStateProvider accounts) : INonceManager
             SkipUsedNonces();
         }
 
-        private void SkipPendingNonces(Address address, ITxPool txPool)
+        private void SkipPendingNonces(Address address, IPendingTxsBySender pendingTxs)
         {
             if (!_usedNonces.Contains(_currentNonce))
             {
                 return;
             }
 
-            Transaction[] pending = txPool.GetPendingTransactionsBySender(address);
-            Transaction[] pendingBlobs = txPool.GetPendingLightBlobTransactionsBySender(address);
+            Transaction[] pending = pendingTxs.GetPendingTransactionsBySender(address);
+            Transaction[] pendingBlobs = pendingTxs.GetPendingLightBlobTransactionsBySender(address);
             while (_usedNonces.Contains(_currentNonce))
             {
                 if (!HoldsAccountNonce(pending, _currentNonce) && !HoldsAccountNonce(pendingBlobs, _currentNonce))
