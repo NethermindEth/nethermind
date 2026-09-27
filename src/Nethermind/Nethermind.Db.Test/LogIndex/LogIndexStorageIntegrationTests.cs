@@ -55,6 +55,50 @@ namespace Nethermind.Db.Test.LogIndex
         private IDbFactory _dbFactory = null!;
         private readonly List<ILogIndexStorage> _createdStorages = [];
 
+        [Test]
+        public async Task Compressor_waits_for_pending_work_and_supports_cancelled_waits([Values] bool enqueueAsync)
+        {
+            LogIndexStorage storage = (LogIndexStorage)CreateLogIndexStorage();
+            using Compressor compressor = new(storage, compressionDistance: 1, parallelism: 2);
+            byte[] key = new byte[24];
+            if (enqueueAsync) await compressor.EnqueueAsync(null, key);
+            else Assert.That(compressor.TryEnqueue(null, key, new byte[8]), Is.True);
+
+            try
+            {
+                using CancellationTokenSource cancellation = new();
+                Task cancelledWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), cancellation.Token);
+                Task completedWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
+                Assert.That(completedWait.IsCompleted, Is.False);
+                cancellation.Cancel();
+                Assert.That(async () => await cancelledWait, Throws.InstanceOf<OperationCanceledException>());
+
+                await compressor.WaitUntilEmptyAsync(TimeSpan.Zero, CancellationToken.None);
+                Assert.That(completedWait.IsCompleted, Is.False, "a timeout or cancellation must not signal queue completion");
+                compressor.Start();
+                await completedWait.WaitAsync(TimeSpan.FromSeconds(5));
+
+                await Task.WhenAll(Enumerable.Range(0, 4).Select(async _ =>
+                {
+                    for (int i = 0; i < 20; i++)
+                    {
+                        await compressor.EnqueueAsync(null, key);
+                        await compressor.WaitUntilEmptyAsync(Timeout.InfiniteTimeSpan, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+                    }
+                }));
+            }
+            finally
+            {
+                compressor.Start();
+                await compressor.StopAsync();
+            }
+
+            if (enqueueAsync) await compressor.EnqueueAsync(null, key);
+            else Assert.That(compressor.TryEnqueue(null, key, new byte[8]), Is.False);
+            await compressor.WaitUntilEmptyAsync(Timeout.InfiniteTimeSpan, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(storage.HasBackgroundError, Is.False);
+        }
+
         private ILogIndexStorage CreateLogIndexStorage(
             int compactionDistance = 262_144, int compressionParallelism = 16, ulong maxReorgDepth = 64, IDbFactory? dbFactory = null,
             string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null, bool failOnMerge = false

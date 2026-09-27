@@ -2467,10 +2467,10 @@ public class BlockTreeTests
     public async Task Visitor_can_block_adding_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-        ManualResetEvent manualResetEvent = new(false);
+        TaskCompletionSource manualResetEvent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task acceptTask = blockTree.Accept(new TestBlockTreeVisitor(manualResetEvent), CancellationToken.None);
         Assert.That(blockTree.CanAcceptNewBlocks, Is.False);
-        manualResetEvent.Set();
+        manualResetEvent.SetResult();
         await acceptTask;
     }
 
@@ -2708,9 +2708,9 @@ public class BlockTreeTests
         }
     }
 
-    private class TestBlockTreeVisitor(ManualResetEvent manualResetEvent) : IBlockTreeVisitor
+    private class TestBlockTreeVisitor(TaskCompletionSource manualResetEvent) : IBlockTreeVisitor
     {
-        private readonly ManualResetEvent _manualResetEvent = manualResetEvent;
+        private readonly TaskCompletionSource _manualResetEvent = manualResetEvent;
         private bool _wait = true;
 
         public bool PreventsAcceptingNewBlocks => true;
@@ -2720,7 +2720,7 @@ public class BlockTreeTests
         {
             if (_wait)
             {
-                await _manualResetEvent.WaitOneAsync(cancellationToken);
+                await _manualResetEvent.Task.WaitAsync(cancellationToken);
                 _wait = false;
             }
 
