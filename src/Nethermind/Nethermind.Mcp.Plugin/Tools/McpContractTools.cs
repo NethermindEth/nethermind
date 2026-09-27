@@ -970,7 +970,8 @@ internal sealed class McpContractTools(
             Address? resolver = ReadAddress(data[32..64]);
             Address? resolved = resultHex.Length == 2 + 64 ? ReadAddress(Convert.FromHexString(resultHex.AsSpan(2))) : null;
             return new EnsResolution(node, owner, resolver, resolved, ViaUniversal,
-                resolved is null ? "The name's resolver has no address record for it." : null) { UniversalResolver = universalResolver };
+                resolved is null ? "The name's resolver has no address record for it." : null)
+            { UniversalResolver = universalResolver };
         }
 
         if (outcome.RevertData is not { Length: >= 4 } revert)
@@ -1033,7 +1034,8 @@ internal sealed class McpContractTools(
                 && directRevert.AsSpan(0, 4).SequenceEqual(McpEns.OffchainLookupSelector))
             {
                 return new EnsResolution(node, owner, resolver, null, "resolver",
-                    "The resolver answers via an offchain lookup (EIP-3668 CCIP-Read), which this read-only node tool cannot follow.") { Offchain = true };
+                    "The resolver answers via an offchain lookup (EIP-3668 CCIP-Read), which this read-only node tool cannot follow.")
+                { Offchain = true };
             }
 
             Address? resolved = ReadAddress(addressCall.Data);
@@ -1088,7 +1090,8 @@ internal sealed class McpContractTools(
             if (outcome.RevertData is { Length: >= 4 } revert && revert.AsSpan(0, 4).SequenceEqual(McpEns.OffchainLookupSelector))
             {
                 return new EnsResolution(node, owner, parentResolver, null, $"wildcard (ENSIP-10) via {parent}",
-                    "The resolver answers via an offchain lookup (EIP-3668 CCIP-Read), which this read-only node tool cannot follow.") { Offchain = true };
+                    "The resolver answers via an offchain lookup (EIP-3668 CCIP-Read), which this read-only node tool cannot follow.")
+                { Offchain = true };
             }
 
             Address? resolved = null;

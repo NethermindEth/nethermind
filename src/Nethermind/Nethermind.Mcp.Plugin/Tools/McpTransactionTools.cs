@@ -270,10 +270,18 @@ internal sealed class McpTransactionTools(
         Transaction transaction = converted.Data;
         return new NonLegacyTransactionView(transaction.Type)
         {
-            Hash = original.Hash, BlockNumber = original.BlockNumber, BlockHash = original.BlockHash,
-            TransactionIndex = original.TransactionIndex, BlockTimestamp = original.BlockTimestamp,
-            From = transaction.SenderAddress, To = transaction.To, Nonce = transaction.Nonce,
-            Value = transaction.Value, Gas = transaction.GasLimit, GasPrice = transaction.GasPrice, Input = transaction.Data.ToArray()
+            Hash = original.Hash,
+            BlockNumber = original.BlockNumber,
+            BlockHash = original.BlockHash,
+            TransactionIndex = original.TransactionIndex,
+            BlockTimestamp = original.BlockTimestamp,
+            From = transaction.SenderAddress,
+            To = transaction.To,
+            Nonce = transaction.Nonce,
+            Value = transaction.Value,
+            Gas = transaction.GasLimit,
+            GasPrice = transaction.GasPrice,
+            Input = transaction.Data.ToArray()
         };
     }
 

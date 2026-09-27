@@ -329,36 +329,36 @@ public class McpActivityContentsTests
     {
         List<List<string>> result = [];
         foreach (TxReceipt receipt in receipts)
-        foreach (LogEntry log in receipt.Logs!)
-        {
-            Hash256[] topics = log.Topics;
-            List<string> entries = [];
-            if (topics.Length >= 3 && topics[0] == Transfer)
+            foreach (LogEntry log in receipt.Logs!)
             {
-                if (topics.Length == 3 && log.Data.Length == 32) Add("ERC-20", Account(1), Account(2), Word(log.Data, 0), null);
-                else if (topics.Length == 4 && log.Data.Length == 0) Add("ERC-721", Account(1), Account(2), UInt256.One, new UInt256(topics[3].Bytes, true));
-            }
-            else if (topics.Length == 4 && topics[0] == Single)
-                Add("ERC-1155", Account(2), Account(3), Word(log.Data, 1), Word(log.Data, 0));
-            else if (topics.Length == 4 && topics[0] == BatchTopic)
-            {
-                int ids = (int)Word(log.Data, 0) / 32;
-                int values = (int)Word(log.Data, 1) / 32;
-                for (int i = 0; i < (int)Word(log.Data, ids); i++)
-                    Add("ERC-1155", Account(2), Account(3), Word(log.Data, values + 1 + i), Word(log.Data, ids + 1 + i));
-            }
-            else if (log.Address == Wrapped && topics.Length == 2 && (topics[0] == Deposit || topics[0] == Withdrawal))
-                Add("WETH", topics[0] == Deposit ? Address.Zero : Account(1), topics[0] == Deposit ? Account(1) : Address.Zero, Word(log.Data, 0), null);
-            if (entries.Count > 0) result.Add(entries);
+                Hash256[] topics = log.Topics;
+                List<string> entries = [];
+                if (topics.Length >= 3 && topics[0] == Transfer)
+                {
+                    if (topics.Length == 3 && log.Data.Length == 32) Add("ERC-20", Account(1), Account(2), Word(log.Data, 0), null);
+                    else if (topics.Length == 4 && log.Data.Length == 0) Add("ERC-721", Account(1), Account(2), UInt256.One, new UInt256(topics[3].Bytes, true));
+                }
+                else if (topics.Length == 4 && topics[0] == Single)
+                    Add("ERC-1155", Account(2), Account(3), Word(log.Data, 1), Word(log.Data, 0));
+                else if (topics.Length == 4 && topics[0] == BatchTopic)
+                {
+                    int ids = (int)Word(log.Data, 0) / 32;
+                    int values = (int)Word(log.Data, 1) / 32;
+                    for (int i = 0; i < (int)Word(log.Data, ids); i++)
+                        Add("ERC-1155", Account(2), Account(3), Word(log.Data, values + 1 + i), Word(log.Data, ids + 1 + i));
+                }
+                else if (log.Address == Wrapped && topics.Length == 2 && (topics[0] == Deposit || topics[0] == Withdrawal))
+                    Add("WETH", topics[0] == Deposit ? Address.Zero : Account(1), topics[0] == Deposit ? Account(1) : Address.Zero, Word(log.Data, 0), null);
+                if (entries.Count > 0) result.Add(entries);
 
-            Address Account(int index) => new(topics[index].Bytes[12..]);
-            void Add(string standard, Address from, Address to, UInt256 amount, UInt256? id)
-            {
-                if (from != TestItem.AddressB && to != TestItem.AddressB) return;
-                string direction = from == to ? "self" : to == TestItem.AddressB ? "in" : "out";
-                entries.Add(string.Join('|', receipt.TxHash!.ToString(), log.Address.ToString(), standard, amount.ToString(), id?.ToString() ?? "", direction));
+                Address Account(int index) => new(topics[index].Bytes[12..]);
+                void Add(string standard, Address from, Address to, UInt256 amount, UInt256? id)
+                {
+                    if (from != TestItem.AddressB && to != TestItem.AddressB) return;
+                    string direction = from == to ? "self" : to == TestItem.AddressB ? "in" : "out";
+                    entries.Add(string.Join('|', receipt.TxHash!.ToString(), log.Address.ToString(), standard, amount.ToString(), id?.ToString() ?? "", direction));
+                }
             }
-        }
         return result;
     }
 

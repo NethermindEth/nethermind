@@ -315,10 +315,16 @@ internal sealed class McpPriceTools(McpToolExecutor executor, McpPriceReader pri
 
             JsonObject result = new()
             {
-                ["token"] = token, ["priceUsd"] = quote!.PriceUsd, ["decimals"] = quote.Decimals,
-                ["feed"] = McpEthHelpers.Checksum(quote.Feed.Address), ["updatedAt"] = (long)quote.UpdatedAt,
-                ["ageSeconds"] = (long)quote.AgeSeconds, ["roundId"] = quote.RoundId.ToString(),
-                ["stale"] = quote.Stale, ["heartbeatSeconds"] = quote.Feed.HeartbeatSeconds, ["pricedVia"] = quote.PricedVia
+                ["token"] = token,
+                ["priceUsd"] = quote!.PriceUsd,
+                ["decimals"] = quote.Decimals,
+                ["feed"] = McpEthHelpers.Checksum(quote.Feed.Address),
+                ["updatedAt"] = (long)quote.UpdatedAt,
+                ["ageSeconds"] = (long)quote.AgeSeconds,
+                ["roundId"] = quote.RoundId.ToString(),
+                ["stale"] = quote.Stale,
+                ["heartbeatSeconds"] = quote.Feed.HeartbeatSeconds,
+                ["pricedVia"] = quote.PricedVia
             };
             return Task.FromResult(executor.Success(result));
         }, cancellationToken);

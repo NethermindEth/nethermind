@@ -610,8 +610,17 @@ public class McpTransactionToolsTests
         eth.eth_getTransactionByHash(Arg.Any<Hash256>()).Returns(ResultWrapper<TransactionForRpc?>.Success(
             new LegacyTransactionForRpc
             {
-                Hash = TestItem.KeccakA, BlockNumber = block.Number, BlockHash = block.Hash, TransactionIndex = 0,
-                From = SwapAccount(1), To = SwapAccount(4), Nonce = 0, Value = value, Gas = 100_000, GasPrice = 1, Input = []
+                Hash = TestItem.KeccakA,
+                BlockNumber = block.Number,
+                BlockHash = block.Hash,
+                TransactionIndex = 0,
+                From = SwapAccount(1),
+                To = SwapAccount(4),
+                Nonce = 0,
+                Value = value,
+                Gas = 100_000,
+                GasPrice = 1,
+                Input = []
             }));
         eth.eth_getTransactionReceipt(Arg.Any<Hash256>()).Returns(ResultWrapper<ReceiptForRpc?>.Success(
             new ReceiptForRpc { Status = status, GasUsed = 50_000, EffectiveGasPrice = 1, Logs = movements.Select(MovementLog).ToArray() }));
@@ -849,8 +858,16 @@ public class McpTransactionToolsTests
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_getTransactionByHash(Arg.Any<Hash256>()).Returns(ResultWrapper<TransactionForRpc?>.Success(new LegacyTransactionForRpc
         {
-            Hash = scenario.Transfer.Hash, From = TestItem.AddressB, To = TestItem.AddressC, Nonce = 0,
-            Gas = 21_000, GasPrice = 1, Value = 1, BlockNumber = scenario.Block.Number, BlockHash = scenario.Block.Hash, TransactionIndex = 0
+            Hash = scenario.Transfer.Hash,
+            From = TestItem.AddressB,
+            To = TestItem.AddressC,
+            Nonce = 0,
+            Gas = 21_000,
+            GasPrice = 1,
+            Value = 1,
+            BlockNumber = scenario.Block.Number,
+            BlockHash = scenario.Block.Hash,
+            TransactionIndex = 0
         }));
         eth.eth_getHeaderByNumber(Arg.Any<BlockParameter>()).Returns(ResultWrapper<BlockHeaderForRpc?>.Success(null));
         eth.eth_getTransactionReceipt(Arg.Any<Hash256>()).Returns(ResultWrapper<ReceiptForRpc?>.Success(null));
@@ -971,9 +988,15 @@ public class McpTransactionToolsTests
 
     private static Transaction DiagnosisPoolTransaction(ulong nonce, bool blob = true) => new()
     {
-        Nonce = nonce, SenderAddress = TestItem.AddressB, To = TestItem.AddressC,
-        Hash = Keccak.Compute($"diagnosis-{nonce}-{blob}"), Type = blob ? TxType.Blob : TxType.EIP1559,
-        GasPrice = 2, DecodedMaxFeePerGas = 20, MaxFeePerBlobGas = 10, GasLimit = 21_000
+        Nonce = nonce,
+        SenderAddress = TestItem.AddressB,
+        To = TestItem.AddressC,
+        Hash = Keccak.Compute($"diagnosis-{nonce}-{blob}"),
+        Type = blob ? TxType.Blob : TxType.EIP1559,
+        GasPrice = 2,
+        DecodedMaxFeePerGas = 20,
+        MaxFeePerBlobGas = 10,
+        GasLimit = 21_000
     };
 
     private static async Task<McpTestNode> DiagnosisPoolNode(Transaction[] transactions, ulong latest = 5, Transaction? lookup = null, Action<IEthRpcModule>? configureEth = null)
@@ -1000,8 +1023,11 @@ public class McpTransactionToolsTests
         eth.eth_blobBaseFee().Returns(ResultWrapper<UInt256?>.Success(1));
         TransactionForRpc? rpc = lookup is null ? null : new BlobTransactionForRpc
         {
-            Hash = lookup.Hash, From = lookup.SenderAddress, Nonce = lookup.Nonce,
-            MaxFeePerGas = lookup.MaxFeePerGas, MaxPriorityFeePerGas = lookup.MaxPriorityFeePerGas,
+            Hash = lookup.Hash,
+            From = lookup.SenderAddress,
+            Nonce = lookup.Nonce,
+            MaxFeePerGas = lookup.MaxFeePerGas,
+            MaxPriorityFeePerGas = lookup.MaxPriorityFeePerGas,
             MaxFeePerBlobGas = lookup.MaxFeePerBlobGas
         };
         eth.eth_getTransactionByHash(Arg.Any<Hash256>()).Returns(ResultWrapper<TransactionForRpc?>.Success(rpc));

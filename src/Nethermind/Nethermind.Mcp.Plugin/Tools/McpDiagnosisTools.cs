@@ -389,7 +389,9 @@ internal sealed class McpDiagnosisTools(McpToolExecutor executor, IMcpConfig con
         result["type"] = (int)(tx.Type ?? TxType.Legacy);
         if (status == "pending_blocked") result["blockedBy"] = new JsonObject
         {
-            ["nonce"] = blockedBy!.Nonce.ToString(), ["hash"] = blockedBy.Hash?.ToString(), ["reason"] = blockedBy.Reason
+            ["nonce"] = blockedBy!.Nonce.ToString(),
+            ["hash"] = blockedBy.Hash?.ToString(),
+            ["reason"] = blockedBy.Reason
         };
         result["fees"] = fees;
         result["recentTips"] = Tips(snapshot);
@@ -493,7 +495,9 @@ internal sealed class McpDiagnosisTools(McpToolExecutor executor, IMcpConfig con
 
     private static JsonObject NewResult(string status, string summary) => new()
     {
-        ["status"] = status, ["summary"] = summary, ["canSend"] = false,
+        ["status"] = status,
+        ["summary"] = summary,
+        ["canSend"] = false,
         ["recommendations"] = new JsonArray("This read-only tool cannot sign or send transactions; use a wallet or your own transaction sender to act.")
     };
 
@@ -507,7 +511,9 @@ internal sealed class McpDiagnosisTools(McpToolExecutor executor, IMcpConfig con
     }
     private static JsonObject Tips(FeeSnapshot snapshot) => new()
     {
-        ["p25"] = Tip(snapshot.P25), ["p50"] = Tip(snapshot.P50), ["p75"] = Tip(snapshot.P75)
+        ["p25"] = Tip(snapshot.P25),
+        ["p50"] = Tip(snapshot.P50),
+        ["p75"] = Tip(snapshot.P75)
     };
     private static JsonObject Tip(UInt256? amount) => new() { ["wei"] = amount?.ToString(), ["gwei"] = amount is null ? null : Gwei(Number(amount)) };
     private static JsonArray Strings(IEnumerable<string>? values)

@@ -13,7 +13,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Filters;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -150,9 +149,15 @@ internal sealed partial class McpEthTools
                 }
                 if (fromBlock is null && indexAtEnd && start < (ulong)logIndexStorage.MinBlockNumber!.Value)
                     start = (ulong)logIndexStorage.MinBlockNumber.Value;
-                state = new McpActivityCursor { From = start, RequestedFrom = requestedFrom, To = end, Window = Math.Min(1000, _maxLogBlockRange),
+                state = new McpActivityCursor
+                {
+                    From = start,
+                    RequestedFrom = requestedFrom,
+                    To = end,
+                    Window = Math.Min(1000, _maxLogBlockRange),
                     FilterHash = ActivityFilterHash(owner, tokenAddress, requestedFrom, end, order, fromBlock is null ? "default" : from.Type.ToString(), to.Type.ToString()),
-                    ReceiptFloor = receiptFloor };
+                    ReceiptFloor = receiptFloor
+                };
                 PlanActivityWindow(state, descending, descending ? end : start, filters.Count);
             }
 
@@ -451,10 +456,17 @@ internal sealed partial class McpEthTools
                 ["address"] = McpEthHelpers.Checksum(owner),
                 ["fromBlock"] = coveredTo is null ? null : (long)(descending ? coveredTo.Value : frontier),
                 ["toBlock"] = coveredTo is null ? null : (long)(descending ? frontier : coveredTo.Value),
-                ["scannedFrom"] = (long)startBlock, ["scannedTo"] = (long)scanTo, ["coveredTo"] = (long?)coveredTo,
-                ["order"] = order, ["indexed"] = indexed,
-                ["movements"] = movementsJson, ["pageNetFlows"] = flows, ["pageTransactions"] = hashes.Count,
-                ["truncated"] = truncated, ["nativeTransfersIncluded"] = false, ["undecodableLogs"] = tally.Undecodable,
+                ["scannedFrom"] = (long)startBlock,
+                ["scannedTo"] = (long)scanTo,
+                ["coveredTo"] = (long?)coveredTo,
+                ["order"] = order,
+                ["indexed"] = indexed,
+                ["movements"] = movementsJson,
+                ["pageNetFlows"] = flows,
+                ["pageTransactions"] = hashes.Count,
+                ["truncated"] = truncated,
+                ["nativeTransfersIncluded"] = false,
+                ["undecodableLogs"] = tally.Undecodable,
                 ["note"] = "Native ETH/xDAI value transfers are not included because plain sends emit no logs; use explain_transaction for a transaction."
             };
             if (scanFailure is not null)
@@ -572,8 +584,10 @@ internal sealed partial class McpEthTools
             cancellation.ThrowIfCancellationRequested();
             using ResultWrapper<IEnumerable<FilterLog>> result = eth.eth_getLogs(new Filter
             {
-                FromBlock = new BlockParameter(low), ToBlock = new BlockParameter(high),
-                Address = stream.Filter.Addresses, Topics = stream.Filter.Topics
+                FromBlock = new BlockParameter(low),
+                ToBlock = new BlockParameter(high),
+                Address = stream.Filter.Addresses,
+                Topics = stream.Filter.Topics
             });
             if (result.Result.ResultType != ResultType.Success)
             {
