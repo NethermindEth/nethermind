@@ -98,8 +98,11 @@ namespace Nethermind.JsonRpc.Modules
             {
                 SearchResult<BlockHeader> finalBlockHeader = SearchForHeader(blockFinder, toBlock);
                 if (finalBlockHeader.IsError || finalBlockHeader.Object is null)
+                {
                     yield return new SearchResult<Block>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
-                bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object!);
+                    yield break;
+                }
+                bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object);
                 bool isStartingBlockOnMainChain = blockFinder.IsMainChain(startingBlock.Object.Header);
                 if (!isFinalBlockOnMainChain || !isStartingBlockOnMainChain)
                 {

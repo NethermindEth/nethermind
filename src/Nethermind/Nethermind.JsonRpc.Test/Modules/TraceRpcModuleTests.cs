@@ -504,7 +504,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_filter", request);
         Assert.That(
-            serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32602,\"message\":\"From block number: {from} is greater than to block number {toBlock}\"}},\"id\":67}}"), serialized.Replace("\"", "\\\""));
+            serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.InvalidParams},\"message\":\"From block number: {from} is greater than to block number {toBlock}\"}},\"id\":67}}"), serialized.Replace("\"", "\\\""));
     }
 
     [Test]
