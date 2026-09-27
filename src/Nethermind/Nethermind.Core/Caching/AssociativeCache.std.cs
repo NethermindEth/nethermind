@@ -10,15 +10,15 @@ namespace Nethermind.Core.Caching;
 
 public sealed partial class AssociativeCache<TKey, TValue>
 {
-    /// <inheritdoc cref="TrySettleRead"/>
     /// <remarks>
-    /// An entry that is locked or changed during the read is being written with a key of this tag, usually a new
-    /// value for the key looked up. It is read again once the write completes, rather than reported as a miss for a
-    /// present key, which callers would reload and re-cache as another instance.
+    /// Such an entry is being written with a key of this tag, usually a new value for the key looked up. Reporting a
+    /// miss for a present key would make callers reload and re-cache it as another instance.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static partial bool TrySettleRead(ref Entry entry, long h1, long h2, long expectedTag, ref TKey key, ref TValue? value) =>
-        ((h1 & LockMarker) == 0 && h1 == h2) || TryReadSettled(ref entry, expectedTag, out key, out value);
+    static partial void SettleRead(ref Entry entry, long expectedTag, ref bool settled, ref TKey key, ref TValue? value)
+    {
+        if (!settled) settled = TryReadSettled(ref entry, expectedTag, out key, out value);
+    }
 
     /// <summary>Waits for an entry found locked or changed mid-read to settle, then reads its key and value.</summary>
     /// <returns><see langword="false"/> when the entry no longer carries <paramref name="expectedTag"/>.</returns>

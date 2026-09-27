@@ -157,7 +157,9 @@ public sealed partial class AssociativeCache<TKey, TValue>
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e.Header);
-            if (!TrySettleRead(ref e, h1, h2, expectedTag, ref storedKey, ref storedValue)) continue;
+            bool settled = (h1 & LockMarker) == 0 && h1 == h2;
+            SettleRead(ref e, expectedTag, ref settled, ref storedKey, ref storedValue);
+            if (!settled) continue;
 
             if (storedKey.Equals(in key))
             {
@@ -435,14 +437,15 @@ public sealed partial class AssociativeCache<TKey, TValue>
     }
 
     /// <summary>
-    /// Validates a read of an entry carrying <paramref name="expectedTag"/> whose header was
-    /// <paramref name="h1"/> before the key and value were copied and <paramref name="h2"/> after.
+    /// Re-reads an entry carrying <paramref name="expectedTag"/> that was locked or changed while its key and value
+    /// were copied, setting <paramref name="settled"/> once <paramref name="key"/> and <paramref name="value"/> hold a
+    /// consistent copy.
     /// </summary>
-    /// <returns>
-    /// <see langword="true"/> when <paramref name="key"/> and <paramref name="value"/> hold a consistent copy of the
-    /// entry; <see langword="false"/> when the entry cannot be used for this lookup.
-    /// </returns>
-    private static partial bool TrySettleRead(ref Entry entry, long h1, long h2, long expectedTag, ref TKey key, ref TValue? value);
+    /// <remarks>
+    /// Implemented only for the host. The zkEVM guest runs single-threaded, so no entry is seen mid-write there, and
+    /// without an implementation the compiler drops the call along with its arguments.
+    /// </remarks>
+    static partial void SettleRead(ref Entry entry, long expectedTag, ref bool settled, ref TKey key, ref TValue? value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteEntry(ref Entry entry, long existing, in TKey key, TValue? value, long tagToStore, long ticker)
