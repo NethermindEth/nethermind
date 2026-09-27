@@ -141,9 +141,9 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
         bool traceNewAccountCharge = false;
-        ulong initialGas = vm.IsTracingActions ? TGasPolicy.GetRemainingGas(in gas) : 0;
-        ulong traceMemorySize = vm.IsTracingActions ? vm.VmState.Memory.Size : 0;
-        bool traceColdAccess = vm.IsTracingActions && TSpec.UseHotAndColdStorage &&
+        ulong initialGas = DispatchFlags.ConstTracing && vm.IsTracingActions ? TGasPolicy.GetRemainingGas(in gas) : 0;
+        ulong traceMemorySize = DispatchFlags.ConstTracing && vm.IsTracingActions ? vm.VmState.Memory.Size : 0;
+        bool traceColdAccess = DispatchFlags.ConstTracing && vm.IsTracingActions && TSpec.UseHotAndColdStorage &&
             vm.VmState.AccessTracker.IsCold(codeSource) && !spec.IsPrecompile(codeSource);
 
         if (hasValueTransfer)
@@ -295,7 +295,7 @@ public static partial class EvmInstructions
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     OutOfGasTraced:
-        if (vm.IsTracingActions)
+        if (DispatchFlags.ConstTracing && vm.IsTracingActions)
             TraceCallGasError<TGasPolicy, TOpCall>(vm, initialGas, traceColdAccess, hasValueTransfer, in gasLimit, traceMemorySize,
                 in dataOffset, in dataLength, in outputOffset, in outputLength, traceNewAccountCharge);
     OutOfGas:
@@ -332,7 +332,7 @@ public static partial class EvmInstructions
         where TOpCall : struct, IOpCall
     {
         IReleaseSpec spec = vm.Spec;
-        if (!vm.IsTracingActions || spec.IsEip2780Enabled || spec.IsEip8038Enabled) return;
+        if (!DispatchFlags.ConstTracing || !vm.IsTracingActions || spec.IsEip2780Enabled || spec.IsEip8038Enabled) return;
 
         ulong constantCost = spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : spec.GasCosts.CallCost;
         if (initialGas < constantCost)
