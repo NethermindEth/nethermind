@@ -504,10 +504,13 @@ public static partial class EvmInstructions
         bool currentIsZero = currentValue.IsZero;
 
         // EIP-8279: the post-value bytes are metered before the write is charged.
+        UInt256 originalValue = default;
+        bool originalRead = false;
         if (Eip8279.IsActive && vm.TxExecutionContext.BalDataMeter is { } balDataMeter)
         {
-            vm.WorldState.GetOriginal(in storageCell, out UInt256 original);
-            if (!balDataMeter.TryMeterStorageValue(in storageCell, differsFromOriginal: original != newValue))
+            vm.WorldState.GetOriginal(in storageCell, out originalValue);
+            originalRead = true;
+            if (!balDataMeter.TryMeterStorageValue(in storageCell, differsFromOriginal: originalValue != newValue))
                 goto OutOfGas;
         }
 
@@ -525,7 +528,7 @@ public static partial class EvmInstructions
         else
         {
             // Retrieve the original storage value to determine if this is a reversal.
-            vm.WorldState.GetOriginal(in storageCell, out UInt256 originalValue);
+            if (!originalRead) vm.WorldState.GetOriginal(in storageCell, out originalValue);
             bool originalIsZero = originalValue.IsZero;
             bool currentSameAsOriginal = originalValue == currentValue;
 

@@ -42,6 +42,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
     private static readonly Address ColdAccount = TestItem.AddressC;
     private static readonly Address Callee = TestItem.AddressE;
     private static readonly Address RevertingWriter = TestItem.AddressF;
+    private static readonly Address RevertingRestorer = new("0x00000000000000000000000000000000000c0de5");
     private static readonly Address Precompile = new("0x0000000000000000000000000000000000000004");
 
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
@@ -78,6 +79,9 @@ public class Eip8279Tests : VirtualMachineTestsBase
         // re-meters its key; restoring the original value then gives the value bytes back.
         yield return Case("Restoring a slot refunds value bytes metered in a reverted frame",
             Prepare.EvmCode.DelegateCall(RevertingWriter, 50_000).PushData(5).PushData(1).Op(Instruction.SSTORE), 20 + 32 + 32 + 32 - 32);
+        // Not journaled, as in the reference: a restore in a reverted frame gives the value bytes back although the slot stays 7.
+        yield return Case("Give-back in a reverted frame is not undone",
+            SStore(1, 7).DelegateCall(RevertingRestorer, 50_000), 32 + 32 + 20 - 32);
         yield return Case("SELFDESTRUCT sweeping to another account", Prepare.EvmCode.PushData(ColdAccount).Op(Instruction.SELFDESTRUCT), 20 + 32);
         yield return Case("SELFDESTRUCT to itself", Prepare.EvmCode.PushData(Executing).Op(Instruction.SELFDESTRUCT), 0);
         yield return Case("CREATE", Prepare.EvmCode.Create([], 0), 20 + 8);
@@ -177,6 +181,8 @@ public class Eip8279Tests : VirtualMachineTestsBase
         TestState.CreateAccount(Callee, 0);
         // Callee reads a cold slot, then reverts.
         TestState.InsertCode(Callee, Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD).Revert(0, 0).Done, Spec8279);
+        TestState.CreateAccount(RevertingRestorer, 0);
+        TestState.InsertCode(RevertingRestorer, SStore(1, 5).Revert(0, 0).Done, Spec8279);
         TestState.CreateAccount(RevertingWriter, 0);
         TestState.InsertCode(RevertingWriter, SStore(1, 7).Revert(0, 0).Done, Spec8279);
         TestState.CreateAccount(Executing, 1.Ether);

@@ -65,7 +65,9 @@ public sealed class BalDataMeter
     /// The block access list records one post value per changed slot and drops a slot restored to its original value
     /// to a read, so the value bytes are counted once on the first write away from the original and given back by a
     /// write that restores it. Tracking which slots are counted, rather than inferring it from the current value, keeps
-    /// the count right when a frame that restored a slot reverts.
+    /// a slot dirtied in a reverted frame counted until a committed write restores it.
+    /// Like the execution-specs reference, the set is not journaled: a give-back made in a frame that later reverts, or
+    /// by an SSTORE that then runs out of gas on its own charge, stays given back even though the slot remains changed.
     /// </remarks>
     public bool TryMeterStorageValue(in StorageCell cell, bool differsFromOriginal)
     {
