@@ -58,7 +58,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private bool MatchAddresses(Address? fromAddress, Address? toAddress)
         {
-            // null when the list is omitted, null or empty, so it does not restrict the match
             bool? fromMatch = _fromAddresses?.Contains(fromAddress);
             bool? toMatch = _toAddresses?.Contains(toAddress);
             return _mode == TraceFilterMode.Union && (fromMatch.HasValue || toMatch.HasValue)
