@@ -432,9 +432,148 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(0), "subtraces count");
+            Assert.That(trace.Action.Subtraces.Count, Is.EqualTo(1), "subtraces count");
+            Assert.That(trace.Action.Subtraces[0].Error, Is.EqualTo("Insufficient balance for transfer"));
             Assert.That(trace.VmTrace.Operations.Last().Cost, Is.EqualTo(59700));
             Assert.That(trace.VmTrace.Operations.Last().Used, Is.EqualTo(71579));
+        }
+    }
+
+    [Test]
+    public void Call_or_create_failing_the_balance_precheck_has_a_failed_frame([Values] bool isCreate)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+
+        byte[] code = (isCreate
+                ? Prepare.EvmCode.Create(initCode, 1000.Ether).Op(Instruction.POP).Create(initCode, 0)
+                : Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50000, 1000.Ether).Op(Instruction.POP).Call(TestItem.AddressC, 50000))
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(Activation, 1_000_000, code);
+
+        ParityTraceAction rejected = trace.Action!.Subtraces[0];
+        ParityTraceAction next = trace.Action.Subtraces[1];
+        ParityVmOperationTrace[] frameOperations = trace.VmTrace!.Operations
+            .Where(static operation => operation.Cost > GasCostOf.CallStipend).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Subtraces, Has.Count.EqualTo(2), "root subtraces");
+            Assert.That(rejected.Type, Is.EqualTo(isCreate ? "create" : "call"), "[0] type");
+            Assert.That(rejected.Error, Is.EqualTo("Insufficient balance for transfer"), "[0] error");
+            Assert.That(rejected.Result, Is.Null, "[0] result");
+            Assert.That(rejected.Subtraces, Is.Empty, "[0] subtraces");
+            Assert.That(rejected.TraceAddress.ToArray(), Is.EqualTo(new[] { 0 }), "[0] address");
+            Assert.That(rejected.Value, Is.EqualTo(1000.Ether), "[0] value");
+            Assert.That(rejected.From, Is.EqualTo(TestItem.AddressB), "[0] from");
+            // A creation would have received all but 1/64 of the gas left after its own cost, which returns at once.
+            Assert.That(rejected.Gas, Is.EqualTo(isCreate
+                ? frameOperations[0].Used - frameOperations[0].Used / 64
+                : 50000UL + GasCostOf.CallStipend), "[0] gas");
+            Assert.That(next.Error, Is.Null, "[1] error");
+            Assert.That(next.Result, Is.Not.Null, "[1] result");
+            Assert.That(next.TraceAddress.ToArray(), Is.EqualTo(new[] { 1 }), "[1] address");
+            Assert.That(frameOperations.Select(static operation => operation.Sub is not null), Is.EqualTo(new[] { false, true }), "vmTrace subs");
+        }
+    }
+
+    [Test]
+    public void Create2_address_collision_has_a_failed_create_frame()
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        byte[] salt = [1];
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Create2(initCode, salt, 0).Op(Instruction.POP)
+            .Create2(initCode, salt, 0).Op(Instruction.POP)
+            .Call(TestItem.AddressC, 50000).Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.PragueActivation, 1_000_000, code);
+
+        List<ParityTraceAction> subtraces = trace.Action!.Subtraces;
+        ParityTraceAction collided = subtraces[1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(subtraces, Has.Count.EqualTo(3), "root subtraces");
+            Assert.That(subtraces[0].Error, Is.Null, "[0] error");
+            Assert.That(collided.Type, Is.EqualTo("create"), "[1] type");
+            Assert.That(collided.CreationMethod, Is.EqualTo("create2"), "[1] creation method");
+            Assert.That(collided.Error, Is.EqualTo("Contract address collision"), "[1] error");
+            Assert.That(collided.Result, Is.Null, "[1] result");
+            Assert.That(collided.Subtraces, Is.Empty, "[1] subtraces");
+            Assert.That(collided.Gas, Is.GreaterThan(0UL), "[1] gas");
+            Assert.That(collided.TraceAddress.ToArray(), Is.EqualTo(new[] { 1 }), "[1] address");
+            Assert.That(subtraces[2].Type, Is.EqualTo("call"), "[2] type");
+            Assert.That(subtraces[2].TraceAddress.ToArray(), Is.EqualTo(new[] { 2 }), "[2] address");
+        }
+    }
+
+    [Test]
+    public void Call_and_create_at_max_depth_have_failed_frames()
+    {
+        // Calls itself with all but 512 gas, then, once the call fails, creates. Before EIP-150 a call forwards what
+        // it asks for, so 2M gas reaches the depth limit.
+        byte[] code = Bytes.FromHexString("0x60006000600060006000306102005a03f1601c57600060006000f0505b00");
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall((ForkActivation)MainnetSpecProvider.HomesteadBlockNumber, 2_000_000, code);
+
+        ParityTraceAction deepest = trace.Action!;
+        while (deepest.Subtraces.Count == 1 && deepest.Subtraces[0].Error is null)
+        {
+            deepest = deepest.Subtraces[0];
+        }
+
+        ParityVmTrace deepestVmTrace = trace.VmTrace!;
+        while (deepestVmTrace.Operations.FirstOrDefault(static operation => operation.Sub is not null) is { } entered)
+        {
+            deepestVmTrace = entered.Sub!;
+        }
+
+        ParityVmOperationTrace create = deepestVmTrace.Operations.Single(static operation => operation.Pc == 26);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deepest.TraceAddress.Length, Is.EqualTo(VirtualMachineStatics.MaxCallDepth), "deepest frame depth");
+            Assert.That(deepest.Subtraces.Select(static action => action.Type), Is.EqualTo(new[] { "call", "create" }), "attempts");
+            Assert.That(deepest.Subtraces.Select(static action => action.Error), Is.All.EqualTo("Max call depth exceeded"), "errors");
+            Assert.That(deepest.Subtraces.Select(static action => action.Result), Is.All.Null, "results");
+            Assert.That(deepest.Subtraces.Select(static action => action.Subtraces.Count), Is.All.Zero, "subtraces");
+            Assert.That(deepest.Subtraces[1].TraceAddress.ToArray()[^1], Is.EqualTo(1), "create index");
+            // Before EIP-150 a creation would have received all the gas left after its own cost.
+            Assert.That(deepest.Subtraces[1].Gas, Is.EqualTo(create.Used), "create gas");
+        }
+    }
+
+    [Test]
+    public void Create_failing_its_precheck_has_no_frame_from_eip_8037([Values] bool isCreate)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+
+        byte[] code = (isCreate
+                ? Prepare.EvmCode.Create(initCode, 1000.Ether).Op(Instruction.POP).Create(initCode, 0)
+                : Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50000, 1000.Ether).Op(Instruction.POP).Call(TestItem.AddressC, 50000))
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.AmsterdamActivation, 5_000_000, code);
+
+        List<ParityTraceAction> subtraces = trace.Action!.Subtraces;
+        using (Assert.EnterMultipleScope())
+        {
+            // The creation's precheck runs in the creating operation, so only the CALL keeps its failed frame.
+            Assert.That(subtraces, Has.Count.EqualTo(isCreate ? 1 : 2), "root subtraces");
+            Assert.That(subtraces[0].Error, isCreate ? Is.Null : Is.EqualTo("Insufficient balance for transfer"), "[0] error");
+            Assert.That(subtraces[^1].Error, Is.Null, "last error");
         }
     }
 

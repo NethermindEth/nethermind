@@ -106,6 +106,9 @@ public partial class ParityLikeTxTracer : TxTracer
         EvmExceptionType.InvalidJumpDestination => "Bad jump destination",
         EvmExceptionType.AccessViolation => "Access violation",
         EvmExceptionType.StaticCallViolation => "Static call violation",
+        EvmExceptionType.TransactionCollision => "Contract address collision",
+        EvmExceptionType.NotEnoughBalance => "Insufficient balance for transfer",
+        EvmExceptionType.CallDepthExceeded => "Max call depth exceeded",
         EvmExceptionType.Revert => "Reverted",
         _ => "Error",
     };
@@ -170,6 +173,18 @@ public partial class ParityLikeTxTracer : TxTracer
 
     private void PushAction(ParityTraceAction action)
     {
+        AttachAction(action);
+        _actionStack.Push(action);
+        _currentAction = action;
+
+        OnEnterVmFrame(action);
+    }
+
+    /// <summary>
+    /// Makes the action the root, or the next subtrace of the current action, numbered after its earlier ones.
+    /// </summary>
+    private void AttachAction(ParityTraceAction action)
+    {
         if (_currentAction is not null)
         {
             int parentLen = _currentAction.TraceAddress.Length;
@@ -190,11 +205,6 @@ public partial class ParityLikeTxTracer : TxTracer
             _trace.Action = action;
             action.TraceAddress = CappedArray<int>.Empty;
         }
-
-        _actionStack.Push(action);
-        _currentAction = action;
-
-        OnEnterVmFrame(action);
     }
 
     protected virtual void OnEnterVmFrame(ParityTraceAction action)
@@ -436,6 +446,35 @@ public partial class ParityLikeTxTracer : TxTracer
     {
         _frameTx?.EnsureRoot();
 
+        ParityTraceAction action = CreateAction(gas, value, from, to, input, callType, isPrecompileCall);
+
+        if (_currentOperation is not null && callType.IsAnyCreate())
+        {
+            _currentOperation.Cost += gas;
+        }
+
+        PushAction(action);
+    }
+
+    /// <summary>
+    /// A call or creation that failed its precheck or collided entered no frame, so its action is complete: it has an
+    /// error, no result, no subtraces and no <c>vmTrace</c> sub-trace.
+    /// </summary>
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+        ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    {
+        // Like one that entered its frame, a nested zero-value precompile call is left out of the trace.
+        if (isPrecompileCall && value.IsZero) return;
+
+        ParityTraceAction action = CreateAction(gas, value, from, to, input, callType, isPrecompileCall);
+        action.Result = null;
+        action.Error = GetErrorDescription(error);
+        AttachAction(action);
+    }
+
+    private ParityTraceAction CreateAction(ulong gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, bool isPrecompileCall)
+    {
         ParityTraceAction action = RentAction();
         action.IsPrecompiled = isPrecompileCall;
         // ignore pre compile calls with Zero value that originates from contracts
@@ -448,13 +487,7 @@ public partial class ParityLikeTxTracer : TxTracer
         action.CallType = GetCallType(callType);
         action.Type = GetActionType(callType);
         action.CreationMethod = GetCreateMethod(callType);
-
-        if (_currentOperation is not null && callType.IsAnyCreate())
-        {
-            _currentOperation.Cost += gas;
-        }
-
-        PushAction(action);
+        return action;
     }
 
     private static string? GetCreateMethod(ExecutionType callType) => callType switch

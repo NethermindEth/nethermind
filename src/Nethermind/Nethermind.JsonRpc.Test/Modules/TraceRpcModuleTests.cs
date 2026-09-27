@@ -1455,6 +1455,48 @@ public class TraceRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Trace_call_reports_a_call_failing_its_balance_precheck_as_a_failed_frame([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Prague.Instance));
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        Address contract = new("0xc200000000000000000000000000000000000000");
+        byte[] code = Prepare.EvmCode
+            .CallWithValue(TestItem.AddressD, 50000, 1.Ether)
+            .Op(Instruction.POP)
+            .Call(TestItem.AddressD, 50000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+        object transaction = new { from = TestItem.AddressA, to = contract, gas = "0xf4240" };
+        Dictionary<string, object> stateOverride = new() { [contract.ToString()] = new { code = code.ToHexString(true) } };
+
+        string response = await RpcTest.TestSerializedRequest(
+            context.TraceRpcModule, "trace_call", transaction, new[] { "trace", "vmTrace" }, "latest", stateOverride);
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement result = document.RootElement.GetProperty("result");
+        JsonElement[] traces = result.GetProperty("trace").EnumerateArray().ToArray();
+        JsonElement[] calls = result.GetProperty("vmTrace").GetProperty("ops").EnumerateArray()
+            .Where(static op => op.GetProperty("cost").GetUInt64() > GasCostOf.CallStipend).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces, Has.Length.EqualTo(3), response);
+            Assert.That(traces[0].GetProperty("subtraces").GetInt32(), Is.EqualTo(2), "root subtraces");
+            Assert.That(traces[1].GetProperty("error").GetString(), Is.EqualTo("Insufficient balance for transfer"), "[0] error");
+            Assert.That(traces[1].TryGetProperty("result", out _), Is.False, "[0] result");
+            Assert.That(traces[1].GetProperty("subtraces").GetInt32(), Is.Zero, "[0] subtraces");
+            Assert.That(traces[1].GetProperty("traceAddress").EnumerateArray().Select(static a => a.GetInt32()), Is.EqualTo(new[] { 0 }), "[0] address");
+            Assert.That(traces[1].GetProperty("action").GetProperty("value").GetString(), Is.EqualTo("0xde0b6b3a7640000"), "[0] value");
+            Assert.That(traces[2].TryGetProperty("error", out _), Is.False, "[1] error");
+            Assert.That(traces[2].GetProperty("traceAddress").EnumerateArray().Select(static a => a.GetInt32()), Is.EqualTo(new[] { 1 }), "[1] address");
+            Assert.That(calls.Select(static op => op.GetProperty("sub").ValueKind), Is.EqualTo(new[] { JsonValueKind.Null, JsonValueKind.Object }), "vmTrace subs");
+        }
+    }
+
     [TestCase(
         "Nonce increments from state override",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000","gas":"0xf4240"}""",
