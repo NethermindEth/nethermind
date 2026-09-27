@@ -43,7 +43,7 @@ namespace Nethermind.Evm.Test;
 /// <remarks>A frame transaction found invalid mid-loop is rolled back to the executor's transaction
 /// snapshot, so post-rejection assertions see the state the transaction started from.</remarks>
 [TestFixture]
-public class FrameTxProcessorTests
+public partial class FrameTxProcessorTests
 {
     private ISpecProvider _specProvider;
     private OverridableReleaseSpec _spec;

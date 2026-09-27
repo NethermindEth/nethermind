@@ -421,6 +421,24 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             return;
         }
 
+        if (IsFrameLevel(action))
+        {
+            // Each frame hangs off a synthetic operation of the root, as a callee hangs off its CALL.
+            FinalizePendingOp(closeWithNullSub: true);
+            VmFrame root = PeekLast(_streamingFrames);
+            if (!root.JsonObjectOpened)
+            {
+                OpenFrameJson(root);
+            }
+
+            ReleaseOpBuffers();
+            _hasPendingOp = true;
+            _pushAssigned = false;
+            _pendingPc = action.TraceAddress.AsSpan()[0];
+            _pendingCost = action.Gas;
+            _pendingUsed = 0;
+        }
+
         if (_hasPendingOp)
         {
             _writer.WriteStartObject();
@@ -461,6 +479,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         bool hadPendingParent = frame.HasPendingParentOpToClose;
         int outerPc = frame.OuterPendingPc;
         ulong outerCost = frame.OuterPendingCost;
+        bool isFrameLevel = IsFrameLevel(action);
         ReturnFrame(frame);
 
         if (hadPendingParent)
@@ -473,12 +492,27 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             _gasAlreadySetForCurrentOp = false;
             _hasPendingOp = true;
             _outerOpHasSubWritten = true;
+            if (isFrameLevel)
+            {
+                _pendingUsed = _actionGasLeft;
+            }
         }
 
         _gasAlreadySetForCurrentOp = false;
-        _treatGasParityStyle = true;
+        _treatGasParityStyle = !isFrameLevel;
 
         MaybeFlushToWire();
+    }
+
+    private protected override void OnFrameEnd(int frameIndex)
+    {
+        if (!_streamVmTrace) { base.OnFrameEnd(frameIndex); return; }
+
+        if (_hasPendingOp && _outerOpHasSubWritten)
+        {
+            _pendingPc = frameIndex;
+            FinalizePendingOp(closeWithNullSub: true);
+        }
     }
 
     public override ParityLikeTxTrace BuildResult()
