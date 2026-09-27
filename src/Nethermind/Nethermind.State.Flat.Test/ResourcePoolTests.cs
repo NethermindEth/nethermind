@@ -102,15 +102,14 @@ public class ResourcePoolTests
     }
 
     [Test]
-    public void ShouldPrewarm_AddressOverloadsUseSameHash([Values] bool includeSlot)
+    public void ShouldPrewarm_SecondRequestForTheSameKey_IsDeduplicated([Values] bool includeSlot)
     {
         using TransientResource resource = new(new TransientResource.Size(1024, 1));
         Address address = new("0x1234567890123456789012345678901234567890");
-        ValueAddress valueAddress = new(address.Bytes);
         UInt256? slot = includeSlot ? (UInt256)1 : null;
 
         Assert.That(resource.ShouldPrewarm(address, slot), Is.True);
-        Assert.That(resource.ShouldPrewarm(in valueAddress, slot), Is.False);
+        Assert.That(resource.ShouldPrewarm(address, slot), Is.False);
     }
 
     [Test]

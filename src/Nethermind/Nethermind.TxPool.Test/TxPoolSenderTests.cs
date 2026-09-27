@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -62,9 +63,9 @@ public class TxPoolSenderTests
         TxSealer sealer = new(Substitute.For<ITxSigner>(), Timestamper.Default);
 
         // NonceLocker is a ref struct, so INonceManager cannot be substituted; use the real one.
-        IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
-        accountStateProvider.GetNonce(TestItem.AddressA).Returns(0UL);
-        nonceManager = new NonceManager(accountStateProvider);
+        IChainHeadInfoProvider chainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        chainHeadInfoProvider.ReadOnlyStateProvider.GetNonce(TestItem.AddressA).Returns(0UL);
+        nonceManager = new NonceManager(chainHeadInfoProvider, Substitute.For<IStateHeaderProvider>(), Substitute.For<IStateReader>());
 
         return new TxPoolSender(txPool, sealer, nonceManager, Substitute.For<IEthereumEcdsa>());
     }
