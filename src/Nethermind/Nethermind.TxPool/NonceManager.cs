@@ -175,7 +175,6 @@ public class NonceManager(
             {
                 if (!HoldsAccountNonce(pending, nonce) && !HoldsAccountNonce(pendingBlobs, nonce))
                 {
-                    _usedNonces.Remove(nonce);
                     return nonce;
                 }
 
