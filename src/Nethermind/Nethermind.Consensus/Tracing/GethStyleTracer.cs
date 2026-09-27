@@ -204,10 +204,11 @@ public class GethStyleTracer(
             block.Header.BaseFeePerGas = UInt256.Zero;
         }
 
-        GethTraceOptions filtered = options with { TxHash = txHash };
+        bool tracePreceding = !useBlockAsBase && TracesPrecedingForLogIndex(options, allowIndexed);
+        GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : txHash };
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, useBlockAsBase ? null : StoredLogIndex)
+            ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, useBlockAsBase ? null : ReplayLogIndex(filtered))
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
@@ -216,7 +217,7 @@ public class GethStyleTracer(
             IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
                 tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash, unaltered ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, executionTracer, cancellationToken);
-            return tracer.BuildResult().SingleOrDefault();
+            return (tracePreceding ? KeepTrace(tracer.BuildResult(), txHash) : tracer.BuildResult()).SingleOrDefault();
         }
         finally
         {
@@ -237,9 +238,7 @@ public class GethStyleTracer(
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        // A supplied body has no receipts of its own, so its callTracer log indexes can only come from tracing the
-        // transactions before the requested one.
-        Hash256? keptTxHash = !allowIndexed && options.Tracer == NativeCallTracer.CallTracer ? options.TxHash : null;
+        Hash256? keptTxHash = TracesPrecedingForLogIndex(options, allowIndexed) ? options.TxHash : null;
         if (keptTxHash is not null)
         {
             options = options with { TxHash = null };
@@ -285,6 +284,11 @@ public class GethStyleTracer(
             tracer.TryDispose();
         }
     }
+
+    /// <summary>A supplied body has no receipts of its own, so its callTracer log indexes can only come from tracing
+    /// the transactions before the requested one.</summary>
+    private static bool TracesPrecedingForLogIndex(GethTraceOptions options, bool allowIndexed) =>
+        !allowIndexed && options.Tracer == NativeCallTracer.CallTracer;
 
     private static List<GethLikeTxTrace> KeepTrace(IReadOnlyCollection<GethLikeTxTrace> traces, Hash256 txHash)
     {

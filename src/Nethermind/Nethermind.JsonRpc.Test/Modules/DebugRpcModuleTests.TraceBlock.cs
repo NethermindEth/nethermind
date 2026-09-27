@@ -131,6 +131,12 @@ public partial class DebugRpcModuleTests
             TxHash = filterToSecond ? supplied.Transactions[1].Hash : null
         };
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", Rlp.Encode(supplied).ToString(), options);
+        if (filterToSecond)
+        {
+            string single = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash",
+                Rlp.Encode(supplied).ToString(), supplied.Transactions[1].Hash, options with { TxHash = null });
+            Assert.That((string)JToken.Parse(single)["result"]!["logs"]![0]!["index"]!, Is.EqualTo("0x2"), single);
+        }
 
         JToken result = JToken.Parse(response)["result"]!;
         if (filterToSecond)
