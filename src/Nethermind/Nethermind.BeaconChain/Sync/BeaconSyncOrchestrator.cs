@@ -52,7 +52,8 @@ public sealed class BeaconSyncOrchestrator(
     BeaconP2P? p2p = null,
     PeerManager? peerManager = null,
     BeaconDiscovery? discovery = null,
-    ColumnGossipRouter? columnRouter = null)
+    ColumnGossipRouter? columnRouter = null,
+    DataColumnSidecarPool? columnPool = null)
 {
     /// <summary>Maximum parent-chain depth fetched by root for a gossip block with an unknown parent.</summary>
     private const int MaxBackfillDepth = 32;
@@ -213,9 +214,20 @@ public sealed class BeaconSyncOrchestrator(
             FinalizedEpoch = spec.GetEpoch(_anchorSlot),
             HeadRoot = anchorRoot,
             HeadSlot = _anchorSlot,
-            EarliestAvailableSlot = _anchorSlot,
+            EarliestAvailableSlot = EarliestAvailableSlot(),
         };
     }
+
+    /// <summary>The <c>earliest_available_slot</c> to advertise in Status v2: the anchor, raised once past Fulu to the first slot whose columns are all held.</summary>
+    /// <remarks>
+    /// fulu/p2p-interface.md Status v2: a node unable to serve all sidecars advertises the earliest slot from which it can.
+    /// <c>data_column_serve_range</c> ends at the current slot, so the slot after it is servable even with no columns held;
+    /// a request from the advertised slot is never answered <c>ResourceUnavailable</c> at the time the Status is sent.
+    /// </remarks>
+    private ulong EarliestAvailableSlot() =>
+        columnPool is null || slotClock.CurrentEpoch < spec.FuluForkEpoch
+            ? _anchorSlot
+            : Math.Max(_anchorSlot, Math.Min(columnPool.EarliestCompletelyServableSlot, slotClock.CurrentSlot + 1));
 
     /// <summary>
     /// Re-imports the canonical blocks already persisted between the anchor and the wall clock, so
@@ -741,7 +753,7 @@ public sealed class BeaconSyncOrchestrator(
             FinalizedEpoch = head.Finalized.Epoch,
             HeadRoot = head.HeadRoot,
             HeadSlot = head.HeadSlot,
-            EarliestAvailableSlot = _anchorSlot,
+            EarliestAvailableSlot = EarliestAvailableSlot(),
         };
 
         if (!GossipStarted && head.HeadSlot + GossipStartDistanceSlots >= slotClock.CurrentSlot)
