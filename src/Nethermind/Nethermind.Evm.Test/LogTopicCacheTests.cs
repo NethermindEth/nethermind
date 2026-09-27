@@ -8,6 +8,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
+[NonParallelizable]
 public class LogTopicCacheTests
 {
     [Test]
