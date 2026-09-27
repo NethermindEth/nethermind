@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain
         private readonly IStateBoundary _stateBoundary;
         private readonly BlockTreeMutationLock _mutationLock;
 
-        private readonly Lock _forkChoicePersistenceLock = new();
+        private readonly Lock _forkChoiceLock = new();
         // Null while unknown; set only after this exact pair was committed. A persisted (null, null) is not unknown.
         private (Hash256? Finalized, Hash256? Safe)? _persistedForkChoice;
 
@@ -2024,20 +2024,31 @@ namespace Nethermind.Blockchain
 
         public bool IsProcessingBlock { get; set; }
 
+        /// <inheritdoc/>
+        /// <remarks>
+        /// AuRa finalization, era import and XDC can call this concurrently. Deciding whether finality advanced,
+        /// persisting and publishing <see cref="FinalizedHash"/>/<see cref="SafeHash"/> happen under one lock, so the
+        /// published pair is never ahead of disk or overwritten by an older call. Events are raised outside the lock
+        /// with this call's own hashes.
+        /// </remarks>
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
-            bool finalizedAdvanced = finalizedBlockHash is not null
-                && finalizedBlockHash != Keccak.Zero
-                && finalizedBlockHash != FinalizedHash;
-            BlockHeader? finalizedHeader = finalizedAdvanced
-                ? FindHeader(finalizedBlockHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
-                : null;
+            BlockHeader? finalizedHeader;
+            using (_forkChoiceLock.EnterScope())
+            {
+                bool finalizedAdvanced = finalizedBlockHash is not null
+                    && finalizedBlockHash != Keccak.Zero
+                    && finalizedBlockHash != FinalizedHash;
+                finalizedHeader = finalizedAdvanced
+                    ? FindHeader(finalizedBlockHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                    : null;
 
-            FinalizedHash = finalizedBlockHash;
-            SafeHash = safeBlockHash;
-            if (finalizedHeader is not null) LastFinalizedBlockLevel = finalizedHeader.Number;
+                PersistForkChoice(finalizedBlockHash, safeBlockHash);
 
-            PersistForkChoice(finalizedBlockHash, safeBlockHash);
+                FinalizedHash = finalizedBlockHash;
+                SafeHash = safeBlockHash;
+                if (finalizedHeader is not null) LastFinalizedBlockLevel = finalizedHeader.Number;
+            }
 
             if (finalizedHeader is not null)
             {
@@ -2051,7 +2062,7 @@ namespace Nethermind.Blockchain
                 new(
                     Head,
                     safeBlockHash is null ? 0UL : _headerStore.GetBlockNumber(safeBlockHash) ?? 0UL,
-                    FinalizedHash is null ? 0UL : _headerStore.GetBlockNumber(FinalizedHash) ?? 0UL)
+                    finalizedBlockHash is null ? 0UL : _headerStore.GetBlockNumber(finalizedBlockHash) ?? 0UL)
                 );
         }
 
@@ -2059,15 +2070,12 @@ namespace Nethermind.Blockchain
         /// Commits the finalized and safe hashes as one metadata batch, unless this exact pair was the last one committed.
         /// </summary>
         /// <remarks>
-        /// The comparison uses the last successful commit, not <see cref="FinalizedHash"/>/<see cref="SafeHash"/>, which are
-        /// assigned before persisting. The pair is forgotten before each attempt, so a failed or uncertain commit is retried
-        /// on the next call. The lock is needed because AuRa finalization, era import and XDC can call
-        /// <see cref="ForkChoiceUpdated"/> concurrently.
+        /// Caller holds <see cref="_forkChoiceLock"/>. The pair is forgotten before each attempt, so a failed or uncertain
+        /// commit is retried on the next call.
         /// </remarks>
         private void PersistForkChoice(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
             (Hash256? Finalized, Hash256? Safe) requested = (finalizedBlockHash, safeBlockHash);
-            using Lock.Scope _ = _forkChoicePersistenceLock.EnterScope();
             if (_persistedForkChoice == requested) return;
 
             byte[] finalizedRlp = Rlp.Encode(finalizedBlockHash).Bytes;
