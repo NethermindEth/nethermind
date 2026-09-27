@@ -267,6 +267,7 @@ public class VmState<TGasPolicy> : IDisposable
         }
 
         stack = new(DataStackHead, ref As32AlignedRef(dataStack), codeSpan, Env.CodeInfo);
+        stack.HoistInputData(Env.InputData.Span);
     }
 
     public void InitializeStacks(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
@@ -279,6 +280,7 @@ public class VmState<TGasPolicy> : IDisposable
         }
 
         stack = new(DataStackHead, txTracer, ref As32AlignedRef(dataStack), codeSpan, Env.CodeInfo);
+        stack.HoistInputData(Env.InputData.Span);
     }
 
     internal void RestoreStack<TTracingInst>(ITxTracer txTracer, ReadOnlySpan<byte> codeSpan, out EvmStack stack)
@@ -290,6 +292,7 @@ public class VmState<TGasPolicy> : IDisposable
         stack = TTracingInst.IsActive
             ? new(DataStackHead, txTracer, ref dataStack, codeSpan, Env.CodeInfo)
             : new(DataStackHead, ref dataStack, codeSpan, Env.CodeInfo);
+        stack.HoistInputData(Env.InputData.Span);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
