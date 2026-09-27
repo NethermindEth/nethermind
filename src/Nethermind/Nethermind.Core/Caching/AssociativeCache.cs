@@ -14,7 +14,7 @@ using static Nethermind.Core.Caching.SeqlockHeader;
 namespace Nethermind.Core.Caching;
 
 /// <summary>
-/// High-throughput 8-way set-associative cache with lock-free reads and
+/// High-throughput 8-way set-associative cache with seqlock reads that take no lock and
 /// 3-random eviction within a set.
 ///
 /// <para>Choose a cache based on tradeoffs:</para>
@@ -45,7 +45,7 @@ namespace Nethermind.Core.Caching;
 ///     <description>LruCache / ClockCache / AssociativeCache</description>
 ///   </listheader>
 ///   <item><term>Eviction scope</term><description>Global / Global / Within one 8-way set</description></item>
-///   <item><term>Read path</term><description>McsLock / bitmap update / lock-free seqlock read</description></item>
+///   <item><term>Read path</term><description>McsLock / bitmap update / seqlock read, waiting only for an in-flight write of a key with the same tag</description></item>
 ///   <item><term>Write path</term><description>McsLock / global lock / set-local gate</description></item>
 ///   <item><term>Capacity</term><description>Exact / Exact / Rounded to setCount × 8</description></item>
 ///   <item><term>Clear</term><description>O(n) zeroing / O(n) zeroing / O(1) epoch bump + optional O(n) reference release</description></item>
@@ -145,35 +145,7 @@ public sealed class AssociativeCache<TKey, TValue>
         for (int i = 0; i < Ways; i++)
         {
             ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
-            SpinWait spin = default;
-        retry:
-            long h1 = Volatile.Read(ref e.Header);
-
-            if ((h1 & TagMask) != expectedTag) continue;
-
-            // A writer is storing a key with this tag, usually a new value for this key: wait for it rather than
-            // report a miss for a present key, which callers would reload and re-cache as another instance.
-            if ((h1 & LockMarker) != 0)
-            {
-                spin.SpinOnce(sleep1Threshold: -1);
-                goto retry;
-            }
-
-            // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
-            TKey storedKey = e.Key;
-            TValue? storedValue = e.Value;
-            // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
-
-            long h2 = Volatile.Read(ref e.Header);
-            if (h1 != h2)
-            {
-                spin.SpinOnce(sleep1Threshold: -1);
-                goto retry;
-            }
-
-            if (storedKey.Equals(in key))
+            if (TryReadSettled(ref e, expectedTag, out TKey storedKey, out TValue? storedValue) && storedKey.Equals(in key))
             {
                 // JIT eliminates this branch entirely per TRefreshTicker instantiation.
                 // Eviction age uses the high-resolution clock rather than a shared counter: a
@@ -446,6 +418,43 @@ public sealed class AssociativeCache<TKey, TValue>
         long tc = Unsafe.Add(ref entries, baseIdx + c).Ticker;
 
         return Pick3RandomEvict(ta, tb, tc, a, b, c);
+    }
+
+    /// <summary>Reads the key and value of an entry carrying <paramref name="expectedTag"/>.</summary>
+    /// <returns><see langword="false"/> when the entry does not carry the tag.</returns>
+    /// <remarks>
+    /// An entry that is locked or changes during the read is being written with a key of this tag, usually a new
+    /// value for the key looked up. It is read again once the write completes, rather than reported as a miss for a
+    /// present key, which callers would reload and re-cache as another instance.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryReadSettled(ref Entry entry, long expectedTag, out TKey key, out TValue? value)
+    {
+        SpinWait spin = default;
+        while (true)
+        {
+            long h1 = Volatile.Read(ref entry.Header);
+            if ((h1 & TagMask) != expectedTag)
+            {
+                key = default;
+                value = null;
+                return false;
+            }
+
+            if ((h1 & LockMarker) == 0)
+            {
+                // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
+                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+                key = entry.Key;
+                value = entry.Value;
+                // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
+                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+
+                if (Volatile.Read(ref entry.Header) == h1) return true;
+            }
+
+            spin.SpinOnce(sleep1Threshold: -1);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

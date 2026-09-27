@@ -150,18 +150,29 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
                 _cache.Set(in key, (i & 1) == 0 ? second : first);
         }, TaskCreationOptions.LongRunning);
 
-        Parallel.For(0, Math.Max(2, Environment.ProcessorCount - 1), _ =>
+        Task[] readers = new Task[Math.Max(2, Environment.ProcessorCount - 1)];
+        for (int r = 0; r < readers.Length; r++)
         {
-            for (int i = 0; i < readsPerReader; i++)
+            readers[r] = Task.Factory.StartNew(() =>
             {
-                if (!_cache.TryGet(in key, out Account? value) || (value != first && value != second))
-                    Interlocked.Increment(ref misses);
-            }
-        });
+                for (int i = 0; i < readsPerReader; i++)
+                {
+                    if (!_cache.TryGet(in key, out Account? value) || (value != first && value != second))
+                        Interlocked.Increment(ref misses);
+                }
+            }, TaskCreationOptions.LongRunning);
+        }
+
+        // Reads wait for in-flight writes, so a lock that is never released would otherwise hang the run.
+        bool readersFinished = Task.WaitAll(readers, TimeSpan.FromSeconds(30));
         Volatile.Write(ref readersDone, true);
         writer.Wait();
 
-        Assert.That(misses, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readersFinished, Is.True);
+            Assert.That(misses, Is.Zero);
+        }
     }
 
     [Test]
