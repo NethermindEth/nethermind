@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
@@ -43,6 +45,15 @@ internal static class GloasTestFixtures
     private static readonly byte[] MasterSkBytes = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
     private static readonly byte[] GloasVersion = Bytes.FromHexString("0x07000000");
 
+    private const int BuilderKeyIndex = 200;
+    private const ulong BuilderStartingBalance = 40 * Gwei;
+
+    // Built once per process and only ever handed out through FixtureCopier, so no test can reach another's state.
+    private static readonly ConcurrentDictionary<int, Lazy<BeaconStateFulu>> FuluStatesAtBoundary = new();
+    private static readonly Lazy<BeaconStateGloas> GloasStateAtBoundary = new(BuildGloasState);
+    private static readonly ConcurrentDictionary<int, byte[]> DerivedKeys = new();
+    private static readonly ConcurrentDictionary<int, BlsPublicKey> ValidatorPubkeys = new();
+
     /// <summary>The spec whose <c>GLOAS_FORK_EPOCH</c> is the epoch <see cref="CreateGloasState"/> upgrades at.</summary>
     public static BeaconChainSpec UpgradeEpochSpec() => SyntheticSpec(BoundarySlot / Presets.SlotsPerEpoch);
 
@@ -70,17 +81,22 @@ internal static class GloasTestFixtures
     /// </summary>
     public static BeaconStateGloas CreateGloasState(out Bls.SecretKey builderSk, out ulong builderStartingBalance)
     {
+        builderSk = DeriveKey(BuilderKeyIndex);
+        builderStartingBalance = BuilderStartingBalance;
+        return FixtureCopier.Copy(GloasStateAtBoundary.Value);
+    }
+
+    private static BeaconStateGloas BuildGloasState()
+    {
         BeaconStateGloas state = GloasForkTransition.UpgradeToGloas(CreateFuluStateAtBoundary(ValidatorCount), SyntheticSpec());
 
-        builderSk = DeriveKey(200);
-        BlsPublicKey builderPubkey = new(new Bls.P1(builderSk).Compress());
-        builderStartingBalance = 40 * Gwei;
+        BlsPublicKey builderPubkey = new(new Bls.P1(DeriveKey(BuilderKeyIndex)).Compress());
         state.Builders = [new Builder
         {
             Pubkey = builderPubkey,
             Version = Presets.PayloadBuilderVersion,
             ExecutionAddress = new Address(BuilderWithdrawalCredentials(0xC0).Bytes[12..]),
-            Balance = builderStartingBalance,
+            Balance = BuilderStartingBalance,
             DepositEpoch = 0,
             WithdrawableEpoch = Presets.FarFutureEpoch,
         }];
@@ -92,7 +108,10 @@ internal static class GloasTestFixtures
     /// The Fulu state <see cref="CreateGloasState"/> upgrades, advanced from slot 0 to the boundary
     /// under the unmodified Fulu pipeline. Deterministic: two calls yield equal states.
     /// </summary>
-    public static BeaconStateFulu CreateFuluStateAtBoundary(int validatorCount)
+    public static BeaconStateFulu CreateFuluStateAtBoundary(int validatorCount) =>
+        FixtureCopier.Copy(FuluStatesAtBoundary.GetOrAdd(validatorCount, static count => new Lazy<BeaconStateFulu>(() => BuildFuluStateAtBoundary(count))).Value);
+
+    private static BeaconStateFulu BuildFuluStateAtBoundary(int validatorCount)
     {
         BeaconStateFulu state = CreateFuluState(validatorCount);
         SlotProcessing.ProcessSlots(state, BoundarySlot, new EpochCache());
@@ -182,7 +201,7 @@ internal static class GloasTestFixtures
         for (int i = 0; i < validators.Length; i++)
         {
             Validator updated = validators[i].Clone();
-            updated.Pubkey = new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress());
+            updated.Pubkey = ValidatorPubkeys.GetOrAdd(i, static index => new BlsPublicKey(new Bls.P1(ValidatorKey(index)).Compress()));
             validators[i] = updated;
         }
         state.CurrentSyncCommittee = new SyncCommittee { Pubkeys = FillCommittee(validators[0].Pubkey), AggregatePubkey = Pubkey(0x60) };
@@ -525,7 +544,8 @@ internal static class GloasTestFixtures
         return new Hash256(bytes);
     }
 
-    public static Bls.SecretKey DeriveKey(int index) => new(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), unchecked((uint)index));
+    public static Bls.SecretKey DeriveKey(int index) =>
+        new(DerivedKeys.GetOrAdd(index, static i => new Bls.SecretKey(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), unchecked((uint)i)).ToLendian()), Bls.ByteOrder.LittleEndian);
 
     public static Hash256 Hash(byte value)
     {
@@ -547,6 +567,81 @@ internal static class GloasTestFixtures
         byte[] bytes = new byte[BlsSignature.Length];
         bytes[0] = 0xc0;
         return bytes;
+    }
+
+    /// <summary>Deep copies a cached fixture so the copy shares no mutable object with it.</summary>
+    /// <remarks>
+    /// Unlike <see cref="GloasStateClone"/>, which shares elements the state transition never writes
+    /// in place, this also copies every element object, because tests do write them in place. Nulls
+    /// and aliasing inside the graph are kept; a struct holding a mutable reference is refused.
+    /// </remarks>
+    private static class FixtureCopier
+    {
+        private static readonly Func<object, object> ShallowCopy =
+            typeof(object).GetMethod(nameof(MemberwiseClone), BindingFlags.Instance | BindingFlags.NonPublic)!.CreateDelegate<Func<object, object>>();
+
+        private static readonly ConcurrentDictionary<Type, bool> Leaves = new();
+        private static readonly ConcurrentDictionary<Type, FieldInfo[]> MutableFields = new();
+
+        public static T Copy<T>(T value) where T : class =>
+            (T)Copy(value, new Dictionary<object, object>(ReferenceEqualityComparer.Instance))!;
+
+        private static object? Copy(object? value, Dictionary<object, object> copies)
+        {
+            if (value is null || IsLeaf(value.GetType()))
+                return value;
+            if (copies.TryGetValue(value, out object? existing))
+                return existing;
+
+            switch (value)
+            {
+                case BitArray bits:
+                    BitArray bitsCopy = new(bits);
+                    copies.Add(value, bitsCopy);
+                    return bitsCopy;
+                case Array array:
+                    Array arrayCopy = (Array)array.Clone();
+                    copies.Add(value, arrayCopy);
+                    if (!IsLeaf(array.GetType().GetElementType()!))
+                    {
+                        for (int i = 0; i < array.Length; i++)
+                            arrayCopy.SetValue(Copy(array.GetValue(i), copies), i);
+                    }
+                    return arrayCopy;
+            }
+
+            Type type = value.GetType();
+            if (type.IsValueType)
+                throw new NotSupportedException($"{type} holds a reference that a copy would share");
+
+            object copy = ShallowCopy(value);
+            copies.Add(value, copy);
+            foreach (FieldInfo field in MutableFields.GetOrAdd(type, FindMutableFields))
+                field.SetValue(copy, Copy(field.GetValue(value), copies));
+            return copy;
+        }
+
+        private static FieldInfo[] FindMutableFields(Type type)
+        {
+            List<FieldInfo> fields = [];
+            for (Type? t = type; t is not null; t = t.BaseType)
+            {
+                foreach (FieldInfo field in t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                {
+                    if (IsLeaf(field.FieldType))
+                        continue;
+                    if (field.FieldType.IsValueType)
+                        throw new NotSupportedException($"{type}.{field.Name} is a {field.FieldType} holding a reference that a copy would share");
+                    fields.Add(field);
+                }
+            }
+            return [.. fields];
+        }
+
+        // Hash256 and Address are immutable by convention; a struct is a leaf only if all its fields are.
+        private static bool IsLeaf(Type type) => Leaves.GetOrAdd(type, static t =>
+            t.IsPrimitive || t.IsEnum || t == typeof(string) || t == typeof(Hash256) || t == typeof(Address) ||
+            t.IsValueType && t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).All(static f => IsLeaf(f.FieldType)));
     }
 
     public sealed class AcceptingNotifier : INewPayloadNotifier
