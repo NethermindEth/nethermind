@@ -95,9 +95,10 @@ public sealed class FlatStorageTree(
         if (_bundle.ShouldQueuePrewarm(_address, index))
         {
             // ShouldQueuePrewarm already marked the slot in the dedupe bloom, so a rejected push loses the hint for good.
-            if (_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId)
-                || _trieCacheWarmer.PushSlotJobMpmc(this, index, _scope.HintSequenceId))
-                _scope.IncrementOutstandingWarmups();
+            _scope.IncrementOutstandingWarmups();
+            if (!_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId)
+                && !_trieCacheWarmer.PushSlotJobMpmc(this, index, _scope.HintSequenceId))
+                _scope.DecrementOutstandingWarmups();
         }
     }
 
