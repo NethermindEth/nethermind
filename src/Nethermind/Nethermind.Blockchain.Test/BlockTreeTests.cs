@@ -1211,6 +1211,169 @@ public class BlockTreeTests
         }
     }
 
+    private static IEnumerable<TestCaseData> ForkChoicePairs()
+    {
+        yield return new TestCaseData(TestItem.KeccakA, TestItem.KeccakB).SetArgDisplayNames("finalized", "safe");
+        yield return new TestCaseData(null, null).SetArgDisplayNames("null", "null");
+        yield return new TestCaseData(Keccak.Zero, Keccak.Zero).SetArgDisplayNames("zero", "zero");
+        yield return new TestCaseData(null, TestItem.KeccakB).SetArgDisplayNames("null", "safe");
+        yield return new TestCaseData(TestItem.KeccakA, null).SetArgDisplayNames("finalized", "null");
+    }
+
+    // Both hashes must reach disk as one write so a restart never sees finalized from one update and safe from another.
+    [TestCaseSource(nameof(ForkChoicePairs))]
+    public void ForkChoiceUpdated_persists_pair_in_one_batch(Hash256? finalizedHash, Hash256? safeHash)
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy();
+
+        builder.TestObject.ForkChoiceUpdated(finalizedHash, safeHash);
+
+        BlockTree reloaded = Build.A.BlockTree().WithDatabaseFrom(builder).TestObject;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadataDb.DirectForkChoiceWrites, Is.Zero);
+            Assert.That(metadataDb.ForkChoiceCommits, Is.EqualTo(new[] { ForkChoiceMetadataSpyDb.BothKeys }));
+            Assert.That(reloaded.FinalizedHash, Is.EqualTo(finalizedHash));
+            Assert.That(reloaded.SafeHash, Is.EqualTo(safeHash));
+        }
+    }
+
+    // Subscribers may read the metadata db, so the pair must be committed before either event fires.
+    [Test]
+    public void ForkChoiceUpdated_commits_before_notifying([Values] bool observeInBlocksFinalized)
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy(chainLength: 3);
+        BlockTree blockTree = builder.TestObject;
+        Hash256 finalizedHash = blockTree.FindHeader(1, BlockTreeLookupOptions.None)!.Hash!;
+
+        int? commitsSeen = null;
+        if (observeInBlocksFinalized)
+            blockTree.BlocksFinalized += (_, _) => commitsSeen = metadataDb.ForkChoiceCommits.Count;
+        else
+            blockTree.OnForkChoiceUpdated += (_, _) => commitsSeen = metadataDb.ForkChoiceCommits.Count;
+
+        blockTree.ForkChoiceUpdated(finalizedHash, finalizedHash);
+
+        Assert.That(commitsSeen, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void ForkChoiceUpdated_propagates_commit_failure(
+        [Values(ForkChoiceCommitFault.ThrowBeforeApply, ForkChoiceCommitFault.ThrowAfterApply)] ForkChoiceCommitFault fault)
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy(chainLength: 3);
+        BlockTree blockTree = builder.TestObject;
+        Hash256 finalizedHash = blockTree.FindHeader(1, BlockTreeLookupOptions.None)!.Hash!;
+        int notifications = 0;
+        blockTree.BlocksFinalized += (_, _) => notifications++;
+        blockTree.OnForkChoiceUpdated += (_, _) => notifications++;
+
+        metadataDb.NextCommitFault = fault;
+        Assert.That(() => blockTree.ForkChoiceUpdated(finalizedHash, finalizedHash), Throws.TypeOf<System.IO.IOException>());
+        int commitsAfterFailure = metadataDb.ForkChoiceCommits.Count;
+        int notificationsAfterFailure = notifications;
+
+        blockTree.ForkChoiceUpdated(finalizedHash, finalizedHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(notificationsAfterFailure, Is.Zero);
+            Assert.That(metadataDb.ForkChoiceCommits.Count, Is.EqualTo(commitsAfterFailure + 1));
+        }
+    }
+
+    public enum ForkChoiceCommitFault { None, ThrowBeforeApply, ThrowAfterApply }
+
+    private static (BlockTreeBuilder Builder, ForkChoiceMetadataSpyDb MetadataDb) BuildWithForkChoiceSpy(int chainLength = 1)
+    {
+        ForkChoiceMetadataSpyDb metadataDb = new();
+        BlockTreeBuilder builder = Build.A.BlockTree().WithMetadataDb(metadataDb).OfChainLength(chainLength);
+        _ = builder.TestObject;
+        metadataDb.ResetCommits();
+        return (builder, metadataDb);
+    }
+
+    /// <summary>
+    /// Metadata db that tells direct writes of the finalized/safe keys apart from batched ones, which
+    /// <see cref="TestMemDb"/> cannot, and can fail the next batch commit.
+    /// </summary>
+    private sealed class ForkChoiceMetadataSpyDb : TestMemDb
+    {
+        public static readonly byte[] BothKeys = [MetadataDbKeys.FinalizedBlockHash, MetadataDbKeys.SafeBlockHash];
+
+        private readonly Lock _lock = new();
+        private readonly List<byte[]> _forkChoiceCommits = [];
+        private int _directForkChoiceWrites;
+
+        public ForkChoiceCommitFault NextCommitFault { get; set; }
+
+        public int DirectForkChoiceWrites => Volatile.Read(ref _directForkChoiceWrites);
+
+        /// <summary>The finalized/safe keys contained in each commit that contained any of them.</summary>
+        public IReadOnlyList<byte[]> ForkChoiceCommits
+        {
+            get
+            {
+                lock (_lock) return [.. _forkChoiceCommits];
+            }
+        }
+
+        public void ResetCommits()
+        {
+            lock (_lock) _forkChoiceCommits.Clear();
+            Volatile.Write(ref _directForkChoiceWrites, 0);
+        }
+
+        public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (IsForkChoiceKey(key)) Interlocked.Increment(ref _directForkChoiceWrites);
+            base.Set(key, value, flags);
+        }
+
+        public override IWriteBatch StartWriteBatch() => new SpyBatch(this);
+
+        private static bool IsForkChoiceKey(ReadOnlySpan<byte> key) =>
+            key.Length == 1 && key[0] is MetadataDbKeys.FinalizedBlockHash or MetadataDbKeys.SafeBlockHash;
+
+        private void Commit(List<(byte[] Key, byte[]? Value, WriteFlags Flags)> writes)
+        {
+            ForkChoiceCommitFault fault;
+            lock (_lock)
+            {
+                fault = NextCommitFault;
+                NextCommitFault = ForkChoiceCommitFault.None;
+            }
+
+            if (fault == ForkChoiceCommitFault.ThrowBeforeApply) throw new System.IO.IOException("Injected failure before commit");
+
+            byte[] keys = [.. writes.Where(w => IsForkChoiceKey(w.Key)).Select(static w => w.Key[0]).Order()];
+            foreach ((byte[] key, byte[]? value, WriteFlags flags) in writes)
+            {
+                base.Set(key, value, flags);
+            }
+
+            if (keys.Length > 0)
+            {
+                lock (_lock) _forkChoiceCommits.Add(keys);
+            }
+
+            if (fault == ForkChoiceCommitFault.ThrowAfterApply) throw new System.IO.IOException("Injected failure after commit");
+        }
+
+        private sealed class SpyBatch(ForkChoiceMetadataSpyDb db) : IWriteBatch
+        {
+            private readonly List<(byte[] Key, byte[]? Value, WriteFlags Flags)> _writes = [];
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _writes.Add((key.ToArray(), value, flags));
+
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => throw new NotSupportedException();
+
+            public void Clear() => _writes.Clear();
+
+            public void Dispose() => db.Commit(_writes);
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Stores_multiple_blocks_per_level()
     {

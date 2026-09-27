@@ -2033,10 +2033,12 @@ namespace Nethermind.Blockchain
             SafeHash = safeBlockHash;
             if (finalizedHeader is not null) LastFinalizedBlockLevel = finalizedHeader.Number;
 
-            using (_metadataDb.StartWriteBatch())
+            byte[] finalizedRlp = Rlp.Encode(finalizedBlockHash).Bytes;
+            byte[] safeRlp = Rlp.Encode(safeBlockHash).Bytes;
+            using (IWriteBatch batch = _metadataDb.StartWriteBatch())
             {
-                _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
-                _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
+                batch.Set(MetadataDbKeys.FinalizedBlockHash, finalizedRlp);
+                batch.Set(MetadataDbKeys.SafeBlockHash, safeRlp);
             }
 
             if (finalizedHeader is not null)
