@@ -61,8 +61,13 @@ public class InstructionTracingFilterTests : VirtualMachineTestsBase
     [Test]
     public void Execute_WhenCancellationModeChanges_UsesCurrentDispatch([Values] bool cancelableFirst)
     {
-        byte[] code = new byte[2049];
+        // 2048 JUMPDESTs, then a taken jump to a final JUMPDEST and STOP: cancelable dispatch polls at a taken jump.
+        byte[] code = new byte[2054];
         Array.Fill(code, (byte)Instruction.JUMPDEST);
+        code[2048] = (byte)Instruction.PUSH2;
+        code[2049] = 2052 >> 8;
+        code[2050] = 2052 & 0xff;
+        code[2051] = (byte)Instruction.JUMP;
         code[^1] = (byte)Instruction.STOP;
         using FilteredTracer warmup = new(Instruction.JUMPDEST, cancelableFirst);
         Execute(warmup, code, MainnetSpecProvider.CancunActivation);
@@ -74,7 +79,7 @@ public class InstructionTracingFilterTests : VirtualMachineTestsBase
         {
             Execute(next, code, MainnetSpecProvider.CancunActivation);
             Assert.That(next.StatusCode, Is.EqualTo(StatusCode.Success), "noncancelable dispatch must not retain cancellation handlers");
-            Assert.That(next.Operations.Count, Is.EqualTo(2048), "a stale cancelable handler must not truncate execution at its batch boundary");
+            Assert.That(next.Operations.Count, Is.EqualTo(2049), "a stale cancelable handler must not truncate execution at its poll point");
         }
         else
         {
