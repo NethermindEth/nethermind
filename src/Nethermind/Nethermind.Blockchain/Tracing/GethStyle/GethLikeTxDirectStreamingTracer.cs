@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// stack/memory plus, when storage tracing is enabled, the cumulative per-address storage map for the
 /// transaction.
 /// </summary>
-public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceActionErrorDetails, ITraceOperationGasCost
+public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOperationGasCost
 {
     private const int DefaultFlushIntervalEntries = 8192;
     private const int EvmWordSize = EvmPooledMemory.WordSize;
@@ -168,7 +168,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceAc
     }
 
     /// <inheritdoc/>
-    public void ReportActionErrorDetails(string error)
+    public override void ReportActionErrorDetails(string error)
     {
         if (_hasPendingOpcode)
             _pendingError = error;

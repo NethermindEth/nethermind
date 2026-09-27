@@ -124,7 +124,7 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     public virtual GethLikeTxTrace BuildResult() => Trace;
 }
 
-public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? destroyRefund = null) : GethLikeTxTracer(options, destroyRefund), ITraceActionErrorDetails, ITraceOperationGasCost where TEntry : GethTxTraceEntry, new()
+public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? destroyRefund = null) : GethLikeTxTracer(options, destroyRefund), ITraceOperationGasCost where TEntry : GethTxTraceEntry, new()
 {
     protected TEntry? CurrentTraceEntry { get; set; }
 
@@ -157,7 +157,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     }
 
     /// <inheritdoc/>
-    public void ReportActionErrorDetails(string error)
+    public override void ReportActionErrorDetails(string error)
     {
         if (CurrentTraceEntry is not null)
             CurrentTraceEntry.Error = error;
