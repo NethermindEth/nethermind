@@ -46,6 +46,8 @@ public static class GossipTopics
     private const string TopicSuffix = "/ssz_snappy";
     private const int DigestHexLength = 8;
     private const string DataColumnSidecarPrefix = "data_column_sidecar_";
+    private const ulong EpochsKeptAfterFork = 2;
+    private const ulong EpochsJoinedBeforeFork = 1;
 
     // The fixed global topic names of every fork up to Gloas (the p2p-interface.md "Global topics" tables).
     private static readonly HashSet<string> GlobalTopicNames =
@@ -163,6 +165,35 @@ public static class GossipTopics
         }
 
         return epochs;
+    }
+
+    /// <summary>The distinct fork digests whose topics are subscribed and handled at <paramref name="epoch"/>, oldest first, each with whether it is a Gloas digest.</summary>
+    /// <remarks>
+    /// altair/p2p-interface.md "Transitioning the gossip": post-fork topics SHOULD be subscribed in advance of the fork, and
+    /// "Two epochs after the fork, pre-fork topics SHOULD be unsubscribed from". Every fork digest change counts, EIP-7892 BPO
+    /// boundaries included. The spec gives no lead time; this node joins the next digest one epoch before it takes effect.
+    /// </remarks>
+    public static (byte[] Digest, bool Gloas)[] DigestsAround(BeaconChainSpec spec, ulong epoch)
+    {
+        ulong first = epoch > EpochsKeptAfterFork ? epoch - EpochsKeptAfterFork : 0;
+        // Saturates, so the loop ends without wrapping at the far-future epoch.
+        ulong last = epoch > ulong.MaxValue - EpochsJoinedBeforeFork ? ulong.MaxValue : epoch + EpochsJoinedBeforeFork;
+        List<(byte[] Digest, bool Gloas)> digests = [];
+        for (ulong e = first; ; e++)
+        {
+            byte[] digest = ForkDigest.Compute(spec, e);
+            if (digests.Count == 0 || !digests[^1].Digest.AsSpan().SequenceEqual(digest))
+            {
+                digests.Add((digest, e >= spec.GloasForkEpoch));
+            }
+
+            if (e == last)
+            {
+                break;
+            }
+        }
+
+        return [.. digests];
     }
 
     /// <summary>The next digest rotation strictly after <paramref name="epoch"/>, or <c>null</c> when none is scheduled.</summary>

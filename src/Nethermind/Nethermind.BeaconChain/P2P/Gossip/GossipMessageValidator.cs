@@ -30,10 +30,6 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
 {
     private const string UnhandledTopicLabel = "unhandled";
 
-    // altair p2p "Transitioning the gossip": pre-fork topics stay live for 2 epochs after a fork and post-fork topics are joined before it.
-    private const ulong EpochsBeforeCurrent = 2;
-    private const ulong EpochsAfterCurrent = 1;
-
     private volatile DigestWindow? _window;
 
     /// <summary>Validates <paramref name="message"/> and consumes it when it passes.</summary>
@@ -112,18 +108,9 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
         return validity;
     }
 
+    // Acceptance uses the subscription window, so a topic this node subscribes is never ignored as unknown.
     private sealed record DigestWindow(ulong Epoch, (byte[] Digest, bool Gloas)[] Digests)
     {
-        public static DigestWindow Create(BeaconChainSpec spec, ulong epoch)
-        {
-            ulong first = epoch > EpochsBeforeCurrent ? epoch - EpochsBeforeCurrent : 0;
-            (byte[] Digest, bool Gloas)[] digests = new (byte[], bool)[epoch + EpochsAfterCurrent - first + 1];
-            for (ulong e = first; e <= epoch + EpochsAfterCurrent; e++)
-            {
-                digests[e - first] = (ForkDigest.Compute(spec, e), e >= spec.GloasForkEpoch);
-            }
-
-            return new DigestWindow(epoch, digests);
-        }
+        public static DigestWindow Create(BeaconChainSpec spec, ulong epoch) => new(epoch, GossipTopics.DigestsAround(spec, epoch));
     }
 }

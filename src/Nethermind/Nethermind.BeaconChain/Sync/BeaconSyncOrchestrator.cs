@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
@@ -17,6 +18,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 
@@ -49,7 +51,8 @@ public sealed class BeaconSyncOrchestrator(
     ILogManager logManager,
     BeaconP2P? p2p = null,
     PeerManager? peerManager = null,
-    BeaconDiscovery? discovery = null)
+    BeaconDiscovery? discovery = null,
+    ColumnGossipRouter? columnRouter = null)
 {
     /// <summary>Maximum parent-chain depth fetched by root for a gossip block with an unknown parent.</summary>
     private const int MaxBackfillDepth = 32;
@@ -100,6 +103,10 @@ public sealed class BeaconSyncOrchestrator(
     private int _pendingCount;
     private byte[] _currentDigest = [];
     private (ulong Epoch, byte[] Digest)? _nextRotation;
+    private (byte[] Digest, bool Gloas)[] _gossipDigests = [];
+    private bool _columnGossipStarted;
+    private Func<string, ITopic>? _getTopic;
+    private readonly DiscoveryNodeCustodySource _custody = new(discovery);
     private ulong _nextProgressLogSlot;
     private long _blocksSinceProgressLog;
 
@@ -114,7 +121,7 @@ public sealed class BeaconSyncOrchestrator(
     internal sealed record GossipGloasAttesterSlashingItem(AttesterSlashingGloas Slashing) : WorkItem;
     internal sealed record SlotTickItem(ulong Slot) : WorkItem;
 
-    /// <summary>Whether gossip topics are subscribed; settable by tests to exercise the rotation path.</summary>
+    /// <summary>Whether gossip has started; settable by tests to keep it from starting.</summary>
     internal bool GossipStarted { get; set; }
 
     internal byte[] CurrentGossipDigest => _currentDigest;
@@ -775,13 +782,15 @@ public sealed class BeaconSyncOrchestrator(
         {
             _currentDigest = rotation.Digest;
             _nextRotation = GossipTopics.NextRotation(spec, rotation.Epoch);
-            if (GossipStarted)
-            {
-                gossipRouter.RotateDigest(rotation.Digest);
-            }
-
             discovery?.UpdateLocalEnr();
             if (_logger.IsInfo) _logger.Info($"Rotated beacon gossip fork digest to 0x{Convert.ToHexStringLower(rotation.Digest)} at epoch {epoch}");
+        }
+
+        // Empty until StartGossip has started the routers.
+        if (_gossipDigests.Length > 0)
+        {
+            TryStartColumnGossip();
+            ReconcileGossipDigests(epoch);
         }
 
         if (slot % spec.SlotsPerEpoch == 0 && _lastHead is { } head && _logger.IsInfo)
@@ -800,13 +809,78 @@ public sealed class BeaconSyncOrchestrator(
         gossipRouter.GloasAttesterSlashingReceived += slashing => _work.Writer.TryWrite(new GossipGloasAttesterSlashingItem(slashing));
     }
 
-    /// <summary>Subscribes the gossip topics and routes their events into the work channel; gossip overflow is droppable.</summary>
-    private void StartGossip()
+    private void StartGossip() => StartGossip(p2p!.GetTopic);
+
+    /// <summary>
+    /// Subscribes the gossip topics of every digest <see cref="GossipTopics.DigestsAround"/> names for the wall-clock epoch, and the
+    /// column subnets this node samples, then routes the events into the work channel; gossip overflow is droppable.
+    /// </summary>
+    /// <remarks>Column subnets need the custody discovery advertises; until discovery has one, every slot tick retries them.</remarks>
+    internal void StartGossip(Func<string, ITopic> getTopic)
     {
         GossipStarted = true;
+        _getTopic = getTopic;
         RouteGossipEvents();
-        gossipRouter.Start(p2p!.GetTopic, _currentDigest);
+        gossipRouter.Start(getTopic, _currentDigest);
+        if (!TryStartColumnGossip() && columnRouter is not null && _logger.IsWarn)
+        {
+            _logger.Warn("No local column custody yet; data column sidecar subnets are subscribed once discovery has one");
+        }
+
+        ReconcileGossipDigests(slotClock.CurrentEpoch);
         if (_logger.IsInfo) _logger.Info($"Within {GossipStartDistanceSlots} slots of the wall clock — gossip following started");
+    }
+
+    private bool TryStartColumnGossip()
+    {
+        if (_columnGossipStarted)
+        {
+            return true;
+        }
+
+        if (columnRouter is null || _custody.Current is not { } custody)
+        {
+            return false;
+        }
+
+        // fulu/das-core.md custody sampling: availability needs every sampled column, so its subnet is subscribed, not only the custodied ones.
+        SortedSet<ulong> subnets = [];
+        foreach (ulong column in custody.SampledColumns)
+        {
+            subnets.Add(CustodyGroups.ComputeSubnetForDataColumnSidecar(column));
+        }
+
+        columnRouter.Start(_getTopic!, _currentDigest, [.. subnets]);
+        _columnGossipStarted = true;
+        return true;
+    }
+
+    /// <summary>Subscribes both gossip routers to the digests of <see cref="GossipTopics.DigestsAround"/> at <paramref name="epoch"/> and unsubscribes the rest.</summary>
+    internal void ReconcileGossipDigests(ulong epoch)
+    {
+        (byte[] Digest, bool Gloas)[] wanted = GossipTopics.DigestsAround(spec, epoch);
+        foreach ((byte[] digest, bool _) in _gossipDigests)
+        {
+            if (!Array.Exists(wanted, w => w.Digest.AsSpan().SequenceEqual(digest)))
+            {
+                gossipRouter.UnsubscribeDigest(digest);
+                if (_columnGossipStarted)
+                {
+                    columnRouter!.UnsubscribeDigest(digest);
+                }
+            }
+        }
+
+        foreach ((byte[] digest, bool _) in wanted)
+        {
+            gossipRouter.SubscribeDigest(digest);
+            if (_columnGossipStarted)
+            {
+                columnRouter!.SubscribeDigest(digest);
+            }
+        }
+
+        _gossipDigests = wanted;
     }
 
     private async Task PumpSlotTicksAsync(CancellationToken token)
