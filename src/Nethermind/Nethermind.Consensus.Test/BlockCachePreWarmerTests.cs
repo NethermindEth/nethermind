@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -49,6 +50,9 @@ public class BlockCachePreWarmerTests
 {
     private static readonly TimeSpan PendingProbe = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan DiscoveryTimeout = TimeSpan.FromSeconds(30);
+    private static readonly Address LongLoopContract = new("0x00000000000000000000000000000000000010ad");
+    private static readonly StorageCell LongLoopEntered = new(LongLoopContract, 1);
+    private static readonly StorageCell LongLoopFinished = new(LongLoopContract, 2);
 
     private IContainer _container;
     private ILifetimeScope _processingScope;
@@ -96,6 +100,11 @@ public class BlockCachePreWarmerTests
             worldState.InsertCode(TestItem.AddressF, Keccak.Compute(sloadManyCode), sloadManyCode, Osaka.Instance);
             // Non-empty storage root, or reads short-circuit to defaults without touching the tree
             worldState.Set(new StorageCell(TestItem.AddressF, 0), (UInt256)1);
+            byte[] longLoopCode = BuildLongLoopCode();
+            worldState.CreateAccount(LongLoopContract, 0);
+            worldState.InsertCode(LongLoopContract, Keccak.Compute(longLoopCode), longLoopCode, Osaka.Instance);
+            worldState.Set(LongLoopEntered, (UInt256)1);
+            worldState.Set(LongLoopFinished, (UInt256)1);
             // The EIP-4788 ring buffer: BeaconBlockRootHandler hints nothing unless the account exists, an empty one is
             // dropped on commit, and the cells are only read through the tree while the storage root is non-empty.
             byte[] beaconRootsCode = [0x00];
@@ -462,6 +471,80 @@ public class BlockCachePreWarmerTests
 
         Assert.That(preBlockCaches.StorageCache.TryGetValue(in declaredSlot, out _), Is.True,
             "declared access-list slots are warmed for the main thread");
+    }
+
+    /// <summary>
+    /// Ending a pass must interrupt a warm transaction mid-execution: block processing waits on the join, so a
+    /// warm that runs to completion puts its whole length on the block.
+    /// </summary>
+    [Test]
+    public void PreWarmCaches_Dispose_InterruptsATransactionMidExecution()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        using (preWarmer)
+        {
+            // Over the block gas limit, so storage discovery never admits it and only the warm pass runs the loop.
+            Transaction[] txs =
+            [
+                Build.A.Transaction.WithNonce(0).WithTo(LongLoopContract).WithGasLimit(200_000_000_000)
+                    .SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+                Build.A.Transaction.WithNonce(1).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            ];
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+            BlockHeader parent = BuildParentHeader();
+
+            IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+            using (mainWorldState.BeginScope(parent))
+            {
+                IDisposable? session = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+                Assert.That(session, Is.Not.Null, "precondition: the block must get a reactive pass");
+
+                bool entered = SpinWait.SpinUntil(() => preBlockCaches.StorageCache.TryGetValue(in LongLoopEntered, out _), DiscoveryTimeout);
+                long started = Stopwatch.GetTimestamp();
+                session!.Dispose();
+                TimeSpan joined = Stopwatch.GetElapsedTime(started);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(entered, Is.True, "precondition: the warm transaction must be running when the pass ends");
+                    Assert.That(preBlockCaches.StorageCache.TryGetValue(in LongLoopFinished, out _), Is.False,
+                        "the transaction must stop inside the loop, before the read that follows it");
+                    Assert.That(joined, Is.LessThan(TimeSpan.FromSeconds(5)), "the join must not wait out the loop");
+                }
+            }
+        }
+    }
+
+    /// <summary>Cancelling storage discovery must interrupt a candidate mid-execution, not wait for it to finish.</summary>
+    [Test]
+    public void DiscoverAndWarmStorage_Cancellation_InterruptsACandidateMidExecution()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            const ulong gasLimit = 200_000_000_000;
+            Transaction loop = Build.A.Transaction.WithGasLimit(gasLimit).WithTo(LongLoopContract)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(loop).WithGasLimit(gasLimit).TestObject;
+            using CancellationTokenSource cancellation = new();
+
+            Assert.That(preBlockCaches.StateCache.TryGetValue(LongLoopContract, out _), Is.False, "precondition: the contract starts cold");
+
+            Task discovery = Task.Run(() => preWarmer.DiscoverAndWarmStorage([(0, loop)], block, Osaka.Instance, null, cancellation.Token));
+            // Discovery reads the contract account on entering the call, past every check between transactions.
+            bool entered = SpinWait.SpinUntil(() => preBlockCaches.StateCache.TryGetValue(LongLoopContract, out _), DiscoveryTimeout);
+            cancellation.Cancel();
+            bool stopped = discovery.Wait(TimeSpan.FromSeconds(5));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entered, Is.True, "precondition: the candidate must have entered its call when cancelled");
+                Assert.That(stopped, Is.True, "cancellation must not wait out the loop");
+            }
+        }
     }
 
     /// <summary>A cancelled token stops the access-list warm (storage-key dimension): live warms the tail slot, cancelled does not.</summary>
@@ -2087,6 +2170,19 @@ public class BlockCachePreWarmerTests
     }
 
     private const int SloadManySlotCount = BlockCachePreWarmer.MaxDiscoveredCells + 808;
+
+    /// <summary>Reads slot 1, counts down from 2^32 - 1 (minutes of execution), then reads slot 2.</summary>
+    private static byte[] BuildLongLoopCode() =>
+    [
+        0x60, 0x01, 0x54, 0x50,             // PUSH1 1 SLOAD POP
+        0x63, 0xFF, 0xFF, 0xFF, 0xFF,       // PUSH4 counter
+        0x5B,                               // 9: JUMPDEST
+        0x60, 0x01, 0x90, 0x03,             // PUSH1 1 SWAP1 SUB
+        0x80, 0x60, 0x09, 0x57,             // DUP1 PUSH1 9 JUMPI
+        0x50,                               // POP
+        0x60, 0x02, 0x54, 0x50,             // PUSH1 2 SLOAD POP
+        0x00,                               // STOP
+    ];
 
     /// <summary>Bytecode SLOADing slots 0..<paramref name="slotCount"/>-1 (unrolled PUSH2/SLOAD/POP per slot).</summary>
     private static byte[] BuildSloadManyCode(int slotCount)
