@@ -4,6 +4,7 @@
 using System.Threading;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
@@ -36,6 +37,7 @@ public class AuRaMergeBlockProcessor(
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager,
+    IHeaderFinder headerFinder,
     IAuRaValidator? validator,
     ITxFilter? txFilter = null,
     AuRaContractGasLimitOverride? gasLimitOverride = null,
@@ -53,6 +55,7 @@ public class AuRaMergeBlockProcessor(
         withdrawalProcessor,
         executionRequestsProcessor,
         balManager,
+        headerFinder,
         validator,
         txFilter,
         gasLimitOverride,

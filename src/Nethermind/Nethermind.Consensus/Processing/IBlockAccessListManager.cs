@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -58,6 +59,9 @@ public interface IBlockAccessListManager
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
     void InstallPredeploys(IReleaseSpec spec);
+
+    /// <summary>Applies the EIP-8253 nonce bump to <paramref name="accounts"/> at block access index 0.</summary>
+    void ApplyZeroNonceStorageAccountsTransition(IReadOnlyList<Address> accounts);
     void ProcessWithdrawals(Block block, IReleaseSpec spec);
     void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec);
 }

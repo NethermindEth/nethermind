@@ -116,7 +116,8 @@ public class StatelessBlockProcessingEnv(
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
             ExecutionRequestsProcessorFactory.Create(txProcessor),
-            blockAccessListManager
+            blockAccessListManager,
+            statelessBlockTree
         );
     }
 

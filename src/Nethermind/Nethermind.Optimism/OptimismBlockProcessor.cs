@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -42,6 +43,7 @@ public class OptimismBlockProcessor : BlockProcessor
         IWithdrawalProcessor withdrawalProcessor,
         IExecutionRequestsProcessor executionRequestsProcessor,
         IBlockAccessListManager balManager,
+        IHeaderFinder headerFinder,
         ICostHelper costHelper)
         : base(
             specProvider,
@@ -55,7 +57,8 @@ public class OptimismBlockProcessor : BlockProcessor
             logManager,
             withdrawalProcessor,
             executionRequestsProcessor,
-            balManager)
+            balManager,
+            headerFinder)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _opSpecHelper = opSpecHelper;

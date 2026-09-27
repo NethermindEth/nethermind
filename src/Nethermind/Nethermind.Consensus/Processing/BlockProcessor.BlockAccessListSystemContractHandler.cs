@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
@@ -43,5 +44,8 @@ public partial class BlockProcessor
 
         public void InstallPredeploys(IReleaseSpec spec)
             => balManager.InstallPredeploys(spec);
+
+        public void ApplyZeroNonceStorageAccountsTransition(IReadOnlyList<Address> accounts)
+            => balManager.ApplyZeroNonceStorageAccountsTransition(accounts);
     }
 }

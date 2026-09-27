@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
@@ -227,6 +228,7 @@ namespace Nethermind.AuRa.Test
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 new ExecutionRequestsProcessor(transactionProcessor),
                 balManager,
+                Substitute.For<IHeaderFinder>(),
                 auRaValidator: null,
                 txFilter,
                 contractRewriter: contractRewriter);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
@@ -61,6 +62,14 @@ public partial class BlockAccessListManager
         // change through the pre-execution (index 0) traced world state so it is captured there.
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
         PredeployInstaller.Install(stateProvider, preExecution.WorldState, spec);
+    }
+
+    public void ApplyZeroNonceStorageAccountsTransition(IReadOnlyList<Address> accounts)
+    {
+        CheckInitialized();
+
+        TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
+        ZeroNonceStorageAccountsTransition.Apply(preExecution.WorldState, accounts);
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)

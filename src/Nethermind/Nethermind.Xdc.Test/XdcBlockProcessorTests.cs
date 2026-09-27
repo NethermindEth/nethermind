@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
@@ -103,7 +104,8 @@ internal class XdcBlockProcessorTests
         NullLogManager.Instance,
         Substitute.For<IWithdrawalProcessor>(),
         Substitute.For<IExecutionRequestsProcessor>(),
-        Substitute.For<IBlockAccessListManager>())
+        Substitute.For<IBlockAccessListManager>(),
+        Substitute.For<IHeaderFinder>())
     {
         public new BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec)
             => base.CreateBlockExecutionContext(header, spec);
