@@ -1694,9 +1694,7 @@ public partial class VirtualMachine<TGasPolicy>(
     internal void TraceActionErrorDetails(string error)
     {
         if (IsTracingActions)
-            _txTracer.ForEach<ITraceActionErrorDetails, string>(
-                static tracer => tracer.IsTracingActions, error,
-                static (tracer, message) => tracer.ReportActionErrorDetails(message));
+            _txTracer.ReportActionErrorDetails(error);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

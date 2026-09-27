@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 // `calls`. Two deliberate divergences follow: onlyTopCall still returns that root with its frames as
 // children, and a frame that never entered the VM is rendered from the transaction's frame list. Every
 // frame's gas and gasUsed are its declared limit and its receipt's spend, so siblings read alike.
-public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTracer, ITraceActionErrorDetails
+public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTracer
 {
     public const string CallTracer = "callTracer";
 
@@ -187,7 +187,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     }
 
     /// <inheritdoc/>
-    public void ReportActionErrorDetails(string error)
+    public override void ReportActionErrorDetails(string error)
     {
         if (_callStack.Count != 0 && (!_config.OnlyTopCall || Depth == 0))
             _callStack[^1].Error = error;
