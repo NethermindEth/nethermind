@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 // TracerConfig options:
 // onlyTopCall (default = false): Only the main (top-level) call will be processed to avoid any extra processing if only the main call info is required.
 // withLog (default = false): Logs emitted during each call will also be collected and included in the result.
-public sealed class NativeCallTracer : GethLikeNativeTxTracer, ITraceActionErrorDetails
+public sealed class NativeCallTracer : GethLikeNativeTxTracer, ITraceActionErrorDetails, ITraceRejectedCall
 {
     public const string CallTracer = "callTracer";
 
@@ -119,6 +119,24 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, ITraceActionError
             Input = input.Span.ToPooledList()
         };
         _callStack.Add(callFrame);
+    }
+
+    /// <inheritdoc/>
+    public void ReportRejectedCall(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error)
+    {
+        if (_config.OnlyTopCall || _callStack.Count == 0) return;
+
+        _callStack[^1].Calls.Add(new NativeCallTracerCallFrame
+        {
+            Type = callType.ToInstruction(),
+            From = from,
+            To = to,
+            Gas = gas,
+            GasUsed = 0,
+            Value = value,
+            Input = input.Span.ToPooledList(),
+            Error = error.GetEvmExceptionDescription()
+        });
     }
 
     public override void ReportLog(LogEntry log)

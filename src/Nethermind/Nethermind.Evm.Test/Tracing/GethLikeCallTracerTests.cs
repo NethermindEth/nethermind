@@ -34,11 +34,13 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     internal const string? OnlyTopCall = """{"onlyTopCall":true}""";
     internal const string? WithLogAndOnlyTopCall = """{"withLog":true,"onlyTopCall":true}""";
 
-    private string ExecuteCallTrace(byte[] code, string? tracerConfig = null)
+    private string ExecuteCallTrace(byte[] code, string? tracerConfig = null, bool wrapped = false)
     {
         (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
         using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(tracerConfig));
-        using GethLikeTxTrace callTrace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
+        ITxTracer executionTracer = wrapped ? new CompositeTxTracer(NullTxTracer.Instance, tracer.WithCancellation(CancellationToken.None)) : tracer;
+        Execute(executionTracer, code, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace callTrace = tracer.BuildResult();
         return JsonSerializer.Serialize(callTrace.CustomTracerResult?.Value, SerializerOptions);
     }
 
@@ -47,6 +49,56 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Tracer = NativeCallTracer.CallTracer,
         TracerConfig = config is not null ? JsonSerializer.Deserialize<JsonElement>(config) : null
     };
+
+    [Test]
+    public void Call_tracer_records_insufficient_balance_attempt(
+        [Values(null, WithLog, OnlyTopCall)] string? config,
+        [Values(Instruction.CALL, Instruction.CALLCODE)] Instruction opcode,
+        [Values] bool withInput)
+    {
+        string memorySetup = withInput ? "63deadbeef600052600060006004601c" : "6000600060006000";
+        byte[] code = Bytes.FromHexString(memorySetup + "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff73000000000000000000000000000000000000beef61ffff" + ((byte)opcode).ToString("x2") + "00");
+        using JsonDocument result = JsonDocument.Parse(ExecuteCallTrace(code, config));
+        JsonElement root = result.RootElement;
+        Assert.That(root.TryGetProperty("error", out _), Is.False);
+        bool hasCalls = root.TryGetProperty("calls", out JsonElement calls);
+        Assert.That(hasCalls, Is.EqualTo(config != OnlyTopCall));
+        if (!hasCalls) return;
+
+        Assert.That(calls.GetArrayLength(), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].GetProperty("error").GetString(), Is.EqualTo("insufficient balance for transfer"));
+            Assert.That(calls[0].GetProperty("gasUsed").GetString(), Is.EqualTo("0x0"));
+            Assert.That(calls[0].GetProperty("type").GetString(), Is.EqualTo(opcode.ToString()));
+            Assert.That(calls[0].GetProperty("input").GetString(), Is.EqualTo(withInput ? "0xdeadbeef" : "0x"));
+            Assert.That(calls[0].GetProperty("to").GetString(), Is.EqualTo("0x000000000000000000000000000000000000beef"));
+        }
+    }
+
+    [Test]
+    public void Rejected_call_preserves_parent_logs_and_following_sibling([Values] bool nested, [Values] bool wrapped)
+    {
+        byte[] rejectedCall = Bytes.FromHexString("60006000600060007fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff73000000000000000000000000000000000000beef61fffff150");
+        byte[] body = [.. Prepare.EvmCode.Log(0, 0).Done, .. rejectedCall,
+            .. Prepare.EvmCode.Log(0, 0).Call(TestItem.AddressD, 1000).STOP().Done];
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, body, Spec);
+        byte[] code = nested ? Prepare.EvmCode.Call(TestItem.AddressC, 70000).STOP().Done : body;
+
+        using JsonDocument result = JsonDocument.Parse(ExecuteCallTrace(code, WithLog, wrapped));
+        JsonElement parent = nested ? result.RootElement.GetProperty("calls")[0] : result.RootElement;
+        JsonElement calls = parent.GetProperty("calls");
+        Assert.That(calls.GetArrayLength(), Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parent.TryGetProperty("error", out _), Is.False);
+            Assert.That(calls[0].GetProperty("error").GetString(), Is.EqualTo("insufficient balance for transfer"));
+            Assert.That(calls[1].TryGetProperty("error", out _), Is.False);
+            Assert.That(parent.GetProperty("logs")[0].GetProperty("position").GetString(), Is.EqualTo("0x0"));
+            Assert.That(parent.GetProperty("logs")[1].GetProperty("position").GetString(), Is.EqualTo("0x1"));
+        }
+    }
 
     [Test]
     public void Call_tracer_does_not_request_opcode_capture([Values] bool enableCapture)
