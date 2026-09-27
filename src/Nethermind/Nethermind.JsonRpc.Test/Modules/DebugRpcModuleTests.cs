@@ -151,6 +151,70 @@ public partial class DebugRpcModuleTests
         { TestName = "InsufficientFundsForGasPriceValue" };
     }
 
+    [TestCase(false, "60006000fd", 21006)]
+    [TestCase(true, "60006000fd", 21006)]
+    [TestCase(false, "fe", 100000)]
+    [TestCase(true, "fe", 100000)]
+    public async Task Debug_traceCall_failed_opcode_trace_reports_consumed_gas(bool streamMode, string code, long expectedGas)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        object? stateOverrides = JsonSerializer.Deserialize<object>(
+            $$$"""{"{{{TestItem.AddressC}}}":{"code":"0x{{{code}}}"}}""");
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest", new { streamMode, stateOverrides });
+
+        JToken result = JToken.Parse(response)["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool?)result["failed"], Is.True);
+            Assert.That((long?)result["gas"], Is.EqualTo(expectedGas));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Debug_traceCall_omits_empty_memory(bool streamMode)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        object? stateOverrides = JsonSerializer.Deserialize<object>(
+            $$$"""{"{{{TestItem.AddressC}}}":{"code":"0x602a60005200"}}""");
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest",
+            new { streamMode, enableMemory = true, stateOverrides });
+
+        JArray entries = (JArray)JToken.Parse(response)["result"]!["structLogs"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries[0]["memory"], Is.Null);
+            Assert.That(entries[1]["memory"], Is.Null);
+            Assert.That(entries[2]["memory"], Is.Null);
+            Assert.That((string?)entries[3]["memory"]?[0], Is.EqualTo("0x" + new string('0', 62) + "2a"));
+        }
+    }
+
+    [TestCase(false, null)]
+    [TestCase(true, null)]
+    [TestCase(false, "callTracer")]
+    [TestCase(true, "callTracer")]
+    public async Task Debug_traceCall_rejects_pending(bool useBlockObject, string? tracer)
+    {
+        using Context ctx = await Context.Create();
+        object blockParameter = useBlockObject ? new { blockNumber = "pending" } : "pending";
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, blockParameter, new { tracer });
+
+        JToken result = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["result"], Is.Null);
+            Assert.That((int?)result["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That((string?)result["error"]?["message"], Is.EqualTo("tracing on top of pending is not supported"));
+        }
+    }
+
     [Test]
     public async Task Debug_traceCall_runs_on_top_of_specified_block()
     {

@@ -178,7 +178,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
             writer.WriteEndArray();
         }
 
-        if (entry.Memory is { } memory)
+        if (entry.Memory is { IsEmpty: false } memory)
         {
             writer.WriteStartArray("memory"u8);
             ReadOnlySpan<byte> memSpan = memory.Span;
