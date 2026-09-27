@@ -1261,6 +1261,8 @@ public class FlatWorldStateScopeProviderTests
         Account,
         BalAccount,
         StorageSlot,
+        HintSlot,
+        BalSlot,
     }
 
     /// <summary>
@@ -1272,6 +1274,8 @@ public class FlatWorldStateScopeProviderTests
     {
         InlineTrieWarmer warmer = new();
         using TestContext ctx = new(trieWarmer: warmer);
+        // The slot hints warm only an account whose storage trie is not empty.
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(new Account(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString));
         FlatWorldStateScope scope = ctx.Scope;
         warmer.Scope = scope;
 
@@ -1286,11 +1290,18 @@ public class FlatWorldStateScopeProviderTests
             case WarmupHint.StorageSlot:
                 scope.CreateStorageTree(TestItem.AddressA).HintSet((UInt256)1);
                 break;
+            case WarmupHint.HintSlot:
+                scope.HintWarmSlot(TestItem.AddressA, (UInt256)1);
+                break;
+            case WarmupHint.BalSlot:
+                await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, BalWriteKind.Storage)));
+                break;
         }
 
+        int expectedJobs = hint is WarmupHint.Account or WarmupHint.BalAccount ? warmer.AddressJobs : warmer.SlotJobs;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(warmer.Completed, Is.EqualTo(1), "precondition: the hint must have run a job inside its push");
+            Assert.That(expectedJobs, Is.EqualTo(1), "precondition: the hint must have run its job inside its push");
             Assert.That(warmer.LowestCountAfterCompletion, Is.GreaterThanOrEqualTo(0));
             Assert.That(scope.OutstandingWarmups, Is.Zero);
         }
@@ -1588,30 +1599,32 @@ public class FlatWorldStateScopeProviderTests
     private sealed class InlineTrieWarmer : ITrieWarmer
     {
         public FlatWorldStateScope? Scope { get; set; }
-        public int Completed { get; private set; }
+        public int AddressJobs { get; private set; }
+        public int SlotJobs { get; private set; }
         public int LowestCountAfterCompletion { get; private set; } = int.MaxValue;
 
         public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
-        {
-            storageTree.WarmUpStorageTrie(index, sequenceId);
-            return Record();
-        }
+            => PushSlotJobMpmc(storageTree, index, sequenceId);
 
         public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
         {
-            storageTree.WarmUpStorageTrie(index, sequenceId);
+            // The mocked persistence holds no trie nodes; the real warmer drops the same exception.
+            try { storageTree.WarmUpStorageTrie(index, sequenceId); }
+            catch (TrieNodeException) { }
+            SlotJobs++;
             return Record();
         }
 
         public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
         {
-            scope.WarmUpStateTrie(path!, sequenceId);
+            try { scope.WarmUpStateTrie(path!, sequenceId); }
+            catch (TrieNodeException) { }
+            AddressJobs++;
             return Record();
         }
 
         private bool Record()
         {
-            Completed++;
             LowestCountAfterCompletion = Math.Min(LowestCountAfterCompletion, Scope!.OutstandingWarmups);
             return true;
         }
