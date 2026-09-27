@@ -178,10 +178,10 @@ public partial class VirtualMachine<TGasPolicy>(
     private byte[] _tracedStackWords = [];
     private bool _isInstructionTraceActive;
 
-    /// <summary>Scratch holding the output of the ID precompile on the inline call path.</summary>
+    /// <summary>Scratch holding the output of the ID precompile on the inline call path and for nested ID frames.</summary>
     /// <remarks>Only guaranteed until the next ID call served this way. That is safe because
-    /// <see cref="ReturnDataBuffer"/> is replaced by every call, and that path already refuses to run when a
-    /// tracer is attached, so nothing can retain the previous contents.</remarks>
+    /// <see cref="ReturnDataBuffer"/> is replaced by every call, and both paths refuse to run when an action or
+    /// instruction tracer is attached, so nothing can retain the previous contents.</remarks>
     private byte[] _precompileScratch = [];
 
     /// <summary>Pooled scratch for an ID output too large to hold on the VM between transactions.</summary>
@@ -1097,7 +1097,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// rather than kept per VM — of which a node holds tens. The pool-grow path replaces the retained buffer via
     /// <see cref="ReleasePooledPrecompileScratch"/>, which clears <see cref="ReturnDataBuffer"/> as a side
     /// effect, so the caller must reassign it before any later read.</remarks>
-    internal Memory<byte> RentPrecompileScratch(int length)
+    private Memory<byte> RentPrecompileScratch(int length)
     {
         byte[] buffer = _precompileScratch;
         if (buffer.Length >= length) return buffer.AsMemory(0, length);
@@ -1117,6 +1117,14 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         return pooled.AsMemory(0, length);
+    }
+
+    /// <summary>Copies the ID precompile's input into the reusable scratch and returns it as the output.</summary>
+    internal Memory<byte> CopyToPrecompileScratch(ReadOnlySpan<byte> input)
+    {
+        Memory<byte> scratch = RentPrecompileScratch(input.Length);
+        input.CopyTo(scratch.Span);
+        return scratch;
     }
 
     /// <summary>Hands the pooled ID scratch back, if this instance is holding one.</summary>
@@ -1314,6 +1322,11 @@ public partial class VirtualMachine<TGasPolicy>(
         ReadOnlyMemory<byte> callData,
         IReleaseSpec spec)
     {
+        if (precompile is IdentityPrecompile && CanReturnIdentityOutputInScratch(state))
+        {
+            return new(CopyToPrecompileScratch(callData.Span), precompileSuccess: true);
+        }
+
         try
         {
             Result<byte[]> output = precompile.Run(callData, spec);
@@ -1340,6 +1353,9 @@ public partial class VirtualMachine<TGasPolicy>(
             return new(default, precompileSuccess: false, shouldRevert: true);
         }
     }
+
+    private bool CanReturnIdentityOutputInScratch(VmState<TGasPolicy> state) =>
+        !state.IsTopLevel && !IsTracingActions && !_txTracer.IsTracingInstructions;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected void LogExecutionException(IPrecompile precompile, Exception exception)
