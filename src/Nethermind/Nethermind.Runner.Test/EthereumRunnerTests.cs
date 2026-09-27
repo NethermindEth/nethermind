@@ -513,8 +513,6 @@ public class EthereumRunnerTests
         TaskCompletionSource reporting = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
         bool disposing = false;
-        ConcurrentExclusiveSchedulerPair scheduler = new(TaskScheduler.Default, maxConcurrencyLevel: 1);
-        TaskFactory cleanup = new(CancellationToken.None, TaskCreationOptions.None, TaskContinuationOptions.None, scheduler.ExclusiveScheduler);
         InterfaceLogger slowLogger = Substitute.For<InterfaceLogger>();
         slowLogger.IsWarn.Returns(true);
         slowLogger.When(logger => logger.Warn(Arg.Any<string>())).Do(_ =>
@@ -526,7 +524,7 @@ public class EthereumRunnerTests
         ILogger slowBlocks = new(slowLogger);
         logs.GetLogger("SlowBlocks").Returns(slowBlocks);
         logs.GetClassLogger<ProcessingStats>().Returns(LimboLogs.Instance.GetClassLogger<ProcessingStats>());
-        Task warmup = cleanup.StartNew(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(directory.Path), false,
+        Task warmup = StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(), WarmupConfig(directory.Path), false,
             cancellation.Token, configureContainer: builder =>
             {
                 builder.RegisterBuildCallback(container => container.CurrentScopeEnding += (_, _) => disposing = true);
@@ -535,27 +533,21 @@ public class EthereumRunnerTests
                     .WithParameter("blocksConfig", new BlocksConfig { SlowBlockThresholdMs = 0 })
                     .InstancePerLifetimeScope();
                 builder.AddDecorator<IServiceStopper>((context, inner) => new ObservedServiceStopper(inner, context.Resolve<Func<GCKeeper>>(), stopped));
-            })).Unwrap();
+            });
         try
         {
             await reporting.Task.WaitAsync(RunnerTimeout);
             await stopped.Task.WaitAsync(RunnerTimeout);
-            // On the same serial scheduler, cleanup reaches either the report drain or disposal before this probe runs.
-            await cleanup.StartNew(() =>
+            using (Assert.EnterMultipleScope())
             {
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(warmup.IsCompleted, Is.False);
-                    Assert.That(disposing, Is.False, "reports still own their storage dependencies");
-                }
-            });
+                Assert.That(warmup.IsCompleted, Is.False);
+                Assert.That(disposing, Is.False, "reports still own their storage dependencies");
+            }
         }
         finally
         {
             release.Set();
             await warmup.WaitAsync(RunnerTimeout);
-            scheduler.Complete();
-            await scheduler.Completion.WaitAsync(RunnerTimeout);
         }
         Assert.That(disposing, Is.True);
     }
