@@ -17,7 +17,7 @@ namespace Nethermind.Evm;
 /// sees either the old or the new instance. A hit is confirmed by comparing all 32 bytes, never by the
 /// slot alone, so a reader returns an instance equal to the topic or allocates a fresh one.
 /// </remarks>
-internal static class LogTopicCache
+internal static partial class LogTopicCache
 {
     public const int Count = 1024;
     private const int Mask = Count - 1;
