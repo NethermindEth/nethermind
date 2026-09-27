@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -13,6 +14,7 @@ using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -22,6 +24,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -47,6 +50,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
     private static readonly PrivateKey SignerKey = TestItem.PrivateKeyC;
     private static readonly Address Signer = SignerKey.Address;
     private static readonly Address Helper = TestItem.AddressE;
+    private static readonly Address MovedPrecompileTarget = TestItem.AddressF;
     private static readonly byte[] ValidInput = CreateInput(SignerKey);
     private static readonly byte[] UnrecoverableInput = CreateUnrecoverableInput();
     private static readonly byte[] Sentinel = Bytes.FromHexString("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
@@ -261,7 +265,42 @@ public class Eip8151Tests : VirtualMachineTestsBase
         }
     }
 
-    private void CreateProcessor(bool parallel)
+    [Test]
+    public void Ecrecover_moved_by_a_state_override_keeps_the_restriction(
+        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode)
+    {
+        CreateProcessor(parallel: false, (PrecompiledAddresses.ECRecover.Value, MovedPrecompileTarget));
+        DeploySigner(ContractCode);
+
+        Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, PrecompileGasLimit, ValidInput, MovedPrecompileTarget).Done);
+
+        Measurement call = Read(0);
+        ulong coldTargetAccess = GasCostOf.ColdAccountAccess - GasCostOf.WarmStateRead;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Result, Is.EqualTo(UInt256.One), "success");
+            Assert.That(call.Output, Is.EqualTo(UInt256.Zero), "output");
+            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(coldTargetAccess + EcRecoverBaseCost + GasCostOf.ColdAccountAccess), "gas");
+        }
+    }
+
+    [Test]
+    public void Precompile_moved_to_the_ecrecover_address_is_not_restricted(
+        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction callOpcode)
+    {
+        CreateProcessor(parallel: false, (Sha256Precompile.Address, PrecompiledAddresses.ECRecover.Value));
+
+        Run(MeasureEcRecover(Prepare.EvmCode, 0, callOpcode, PrecompileGasLimit, ValidInput).Done);
+
+        Measurement call = Read(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Output, Is.EqualTo(new UInt256(SHA256.HashData(ValidInput), isBigEndian: true)), "output");
+            Assert.That(PrecompileCost(call, callOpcode), Is.EqualTo(Sha256Precompile.Instance.BaseGasCost(_spec) + Sha256Precompile.Instance.DataGasCost(ValidInput, _spec)), "gas");
+        }
+    }
+
+    private void CreateProcessor(bool parallel, (Address From, Address To)? movedPrecompile = null)
     {
         _tracedState = new TracedAccessWorldState(TestState, parallel);
         _tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
@@ -269,6 +308,13 @@ public class Eip8151Tests : VirtualMachineTestsBase
         PrecompileCaches precompileCaches = new(precompileProvider, new PreBlockCachesConfig(), new BlocksConfig());
         ICodeInfoRepository codeInfoRepository = new PrecompileCachedCodeInfoRepository(
             _tracedState, precompileProvider, new EthereumCodeInfoRepository(_tracedState), precompileCaches);
+        if (movedPrecompile is var (from, to))
+        {
+            OverridableCodeInfoRepository overridable = new(codeInfoRepository, _tracedState);
+            overridable.MovePrecompile(_spec, from, to);
+            codeInfoRepository = overridable;
+        }
+
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, _tracedState, Machine, codeInfoRepository, LimboLogs.Instance);
     }
 
@@ -287,7 +333,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
         Assert.That(result.TransactionExecuted, Is.True, "transaction executed");
     }
 
-    private static Prepare MeasureEcRecover(Prepare code, int index, Instruction callOpcode, long gasLimit, byte[] input)
+    private static Prepare MeasureEcRecover(Prepare code, int index, Instruction callOpcode, long gasLimit, byte[] input, Address? target = null)
     {
         code.StoreDataInMemory(0, input)
             .StoreDataInMemory(OutputOffset, Sentinel)
@@ -297,7 +343,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
             .PushData(input.Length)
             .PushData(0);
         if (HasValueArgument(callOpcode)) code.PushData(0);
-        code.PushData(PrecompiledAddresses.ECRecover.Value)
+        code.PushData(target ?? PrecompiledAddresses.ECRecover.Value)
             .PushData(gasLimit)
             .Op(callOpcode)
             .Op(Instruction.GAS);

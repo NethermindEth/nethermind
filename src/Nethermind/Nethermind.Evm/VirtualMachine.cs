@@ -10,7 +10,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
@@ -79,6 +78,7 @@ public static class VirtualMachineStatics
     public static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     public static readonly OutOfGasException PrecompileOutOfGasException = new();
     internal static readonly Address Ripemd160Address = Address.FromNumber(3);
+    internal const string EcRecoverPrecompileName = "ECREC";
 
     /// <summary>
     /// Restores the RIPEMD-160 empty-account touch after a world-state snapshot rollback.
@@ -1091,7 +1091,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// because its account warming must roll back with a frame that runs out of gas.
     /// </remarks>
     protected internal virtual bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource) =>
-        !codeSource.Equals(Ripemd160Address) && !IsEip8151EcRecover(codeSource, Spec);
+        !codeSource.Equals(Ripemd160Address) && !IsEip8151EcRecover(precompile, Spec);
 
     /// <summary>Returns a buffer of <paramref name="length"/> bytes for the ID precompile to copy its input into.</summary>
     /// <remarks>Buffers up to <see cref="VirtualMachineStatics.MaxRetainedPrecompileScratch"/> live on this
@@ -1335,7 +1335,7 @@ public partial class VirtualMachine<TGasPolicy>(
             Result<byte[]> output = precompile.Run(callData, spec);
             bool success = output;
             byte[] data = success ? output.Data! : [];
-            if (success && IsEip8151EcRecover(state.Env.CodeSource, spec) && !TryRestrictEcRecoverOutput(state, spec, ref data))
+            if (success && IsEip8151EcRecover(precompile, spec) && !TryRestrictEcRecoverOutput(state, spec, ref data))
             {
                 return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
             }
@@ -1366,8 +1366,9 @@ public partial class VirtualMachine<TGasPolicy>(
     private bool CanReturnIdentityOutputInScratch(VmState<TGasPolicy> state) =>
         !state.IsTopLevel && !IsTracingActions && !_txTracer.IsTracingInstructions;
 
-    private static bool IsEip8151EcRecover(Address? codeSource, IReleaseSpec spec) =>
-        spec.IsEip8151Enabled && PrecompiledAddresses.ECRecover.Value.Equals(codeSource);
+    /// <remarks>Matched by precompile rather than address, so a precompile moved by a state override keeps its own rules.</remarks>
+    private static bool IsEip8151EcRecover(IPrecompile precompile, IReleaseSpec spec) =>
+        spec.IsEip8151Enabled && precompile.Name == EcRecoverPrecompileName;
 
     /// <summary>Applies the EIP-8151 account-code restriction to a successful ecRecover output.</summary>
     /// <remarks>
