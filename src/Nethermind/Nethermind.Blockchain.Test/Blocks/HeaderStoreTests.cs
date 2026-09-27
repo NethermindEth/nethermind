@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.IO;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -53,22 +55,22 @@ public class HeaderStoreTests
     [Test]
     public void TestCanReadCacheHeader()
     {
-        HeaderStore store = new(new MemDb(), new MemDb());
-
-        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
-        store.Cache(header);
-        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+        using TestContext context = new(cached: true);
+        Assert.That(context.Store.Get(context.Header.Hash!), Is.SameAs(context.Header));
+        context.AssertReads(() => Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(100)), numberReads: 1);
     }
 
     [Test]
-    public void TestCanDeleteHeader()
+    public void TestCanDeleteHeader([Values] bool cacheBeforeDelete)
     {
-        HeaderStore store = new(new MemDb(), new MemDb());
-        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
-        store.Insert(header);
-        store.Delete(header.Hash!);
+        using TestContext context = new(persisted: true, cached: cacheBeforeDelete);
+        context.Store.Delete(context.Header.Hash!);
 
-        Assert.That(store.Get(header.Hash!), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Store.Get(context.Header.Hash!), Is.Null);
+            Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.Null);
+        }
     }
 
     [Test]
@@ -85,19 +87,101 @@ public class HeaderStoreTests
     }
 
     [Test]
-    public void TestClearCache_removes_cached_headers()
+    public void TestClearCache_removes_cached_headers([Values] bool persisted)
     {
-        HeaderStore store = new(new MemDb(), new MemDb());
+        using TestContext context = new(persisted: persisted, cached: true);
+        Assert.That(context.Store.Get(context.Header.Hash!), Is.SameAs(context.Header));
+        ((IClearableCache)context.Store).ClearCache();
 
-        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        context.AssertReads(() =>
+        {
+            BlockHeader? result = context.Store.Get(context.Header.Hash!);
+            Assert.That(result?.Hash, Is.EqualTo(persisted ? context.Header.Hash : null));
+            Assert.That(result, Is.Not.SameAs(context.Header));
+        }, numberReads: 1, headerReads: 1);
+    }
 
-        // Cache the header (not inserted to DB)
-        store.Cache(header);
-        Assert.That(store.Get(header.Hash!)!.Hash, Is.EqualTo(header.Hash!));
+    [Test]
+    public void Get_on_cache_hit_reads_no_database(
+        [Values] bool persisted, [Values] bool shouldCache, [Values(null, 100UL, 999UL)] ulong? blockNumber)
+    {
+        using TestContext context = new(persisted: persisted, cached: true);
+        context.AssertReads(() => Assert.That(
+            context.Store.Get(context.Header.Hash!, shouldCache, blockNumber), Is.SameAs(context.Header)));
+    }
 
-        // Clear the cache - header should no longer be retrievable
-        (store as IClearableCache)?.ClearCache();
-        Assert.That(store.Get(header.Hash!), Is.Null);
+    [Test]
+    public void Get_on_cache_miss_reads_databases_and_fills_cache_only_when_asked(
+        [Values] bool legacyKey, [Values] bool shouldCache)
+    {
+        using TestContext context = new(persisted: !legacyKey);
+        if (legacyKey) context.HeaderDb.Set(context.Header.Hash!, new HeaderDecoder().Encode(context.Header).Bytes);
+
+        for (int i = 0; i < 2; i++)
+        {
+            int expectedReads = i == 1 && shouldCache ? 0 : 1;
+            context.AssertReads(() => Assert.That(
+                context.Store.Get(context.Header.Hash!, shouldCache)?.Hash, Is.EqualTo(context.Header.Hash)),
+                numberReads: expectedReads, headerReads: expectedReads);
+        }
+    }
+
+    [Test]
+    public void Malformed_block_number_entry([Values] bool cached)
+    {
+        using TestContext context = new(persisted: true, cached: cached);
+        context.BlockNumberDb.Set(context.Header.Hash!, new byte[7]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (cached) Assert.That(context.Store.Get(context.Header.Hash!), Is.SameAs(context.Header));
+            else Assert.Throws<InvalidDataException>(() => context.Store.Get(context.Header.Hash!));
+            Assert.Throws<InvalidDataException>(() => context.Store.GetBlockNumber(context.Header.Hash!));
+        }
+    }
+
+    [Test]
+    public void GetBlockNumber_prefers_the_persisted_mapping()
+    {
+        using TestContext context = new(persisted: true, cached: true);
+        context.Store.InsertBlockNumber(context.Header.Hash!, 200);
+
+        Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(200));
+        context.Header.Number = 300;
+        Assert.That(context.Store.GetBlockNumber(context.Header.Hash!), Is.EqualTo(200));
+    }
+
+    private sealed class TestContext : IDisposable
+    {
+        public MemDb HeaderDb { get; } = new();
+        public MemDb BlockNumberDb { get; } = new();
+        public BlockHeader Header { get; } = Build.A.BlockHeader.WithNumber(100).TestObject;
+        public HeaderStore Store { get; }
+
+        public TestContext(bool persisted = false, bool cached = false)
+        {
+            Store = new(HeaderDb, BlockNumberDb);
+            if (persisted) Store.Insert(Header);
+            if (cached) Store.Cache(Header);
+        }
+
+        public void AssertReads(Action action, long numberReads = 0, long headerReads = 0)
+        {
+            long numbersBefore = BlockNumberDb.ReadsCount;
+            long headersBefore = HeaderDb.ReadsCount;
+            using (Assert.EnterMultipleScope())
+            {
+                action();
+                Assert.That(BlockNumberDb.ReadsCount - numbersBefore, Is.EqualTo(numberReads), "block number reads");
+                Assert.That(HeaderDb.ReadsCount - headersBefore, Is.EqualTo(headerReads), "header reads");
+            }
+        }
+
+        public void Dispose()
+        {
+            HeaderDb.Dispose();
+            BlockNumberDb.Dispose();
+        }
     }
 
     // Parameterized: true = iterator-capable backend (TestMemDb), false = plain MemDb fallback
