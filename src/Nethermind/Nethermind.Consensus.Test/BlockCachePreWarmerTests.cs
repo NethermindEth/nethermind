@@ -7,6 +7,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -931,6 +932,60 @@ public class BlockCachePreWarmerTests
         using (mainWorldState.BeginScope(head))
         {
             Assert.That(session.IsCompleted, Is.True, "registering a consumer scope must join the session");
+        }
+    }
+
+    [Test]
+    public async Task StartSpeculativePreWarm_CancellationInterruptsIdleDelay()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
+        using CancellationTokenSource cancellation = new();
+        TaskCompletionSource passStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int passes = 0;
+        int cancellationExceptions = 0;
+        CancellationToken sessionToken = default;
+        Task session = preWarmer.StartSpeculativePreWarm(BuildParentHeader(), Osaka.Instance, generation: 1, token =>
+        {
+            sessionToken = token;
+            Interlocked.Increment(ref passes);
+            passStarted.TrySetResult();
+            return null;
+        }, idlePassDelayMs: 60_000, cancellation.Token);
+
+        try
+        {
+            await passStarted.Task.WaitAsync(DiscoveryTimeout);
+            await Task.Delay(PendingProbe);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session.IsCompleted, Is.False, "the session must remain active during the idle delay");
+                Assert.That(Volatile.Read(ref passes), Is.EqualTo(1), "the idle delay must throttle subsequent passes");
+            }
+        }
+        finally
+        {
+            void OnException(object? sender, FirstChanceExceptionEventArgs args)
+            {
+                if (sessionToken.CanBeCanceled && args.Exception is OperationCanceledException exception && exception.CancellationToken == sessionToken)
+                    Interlocked.Increment(ref cancellationExceptions);
+            }
+
+            AppDomain.CurrentDomain.FirstChanceException += OnException;
+            try
+            {
+                cancellation.Cancel();
+                await session.WaitAsync(DiscoveryTimeout);
+            }
+            finally
+            {
+                AppDomain.CurrentDomain.FirstChanceException -= OnException;
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session.IsCompletedSuccessfully, Is.True);
+            Assert.That(cancellationExceptions, Is.Zero, "cancelling the idle delay must not throw");
         }
     }
 
