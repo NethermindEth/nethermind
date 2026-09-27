@@ -15,6 +15,7 @@ namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     [DebuggerDisplay("{ToString()}")]
+    [StructLayout(LayoutKind.Sequential, Pack = 8)]
     public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>, IHash64bit<ValueHash256>
     {
         public static GenericEqualityComparer<ValueHash256> EqualityComparer { get; } = new();

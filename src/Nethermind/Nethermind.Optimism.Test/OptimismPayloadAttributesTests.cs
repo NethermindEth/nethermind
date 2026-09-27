@@ -66,17 +66,7 @@ public class OptimismPayloadAttributesTests
         [ValueSource(typeof(Fork), nameof(Fork.AllAndNextToGenesis))] Fork fork
     )
     {
-        OptimismPayloadAttributes payloadAttributes = new()
-        {
-            GasLimit = 1,
-            Transactions = [],
-            PrevRandao = Hash256.Zero,
-            SuggestedFeeRecipient = TestItem.AddressA,
-            Timestamp = fork.Timestamp,
-            EIP1559Params = testCase.length is { } length ? new byte[length] : null,
-            ParentBeaconBlockRoot = Hash256.Zero,
-            Withdrawals = []
-        };
+        OptimismPayloadAttributes payloadAttributes = CreateForValidation(fork.Timestamp, testCase.length is { } length ? new byte[length] : null);
 
         ISpecProvider spec = Spec.BuildFor(fork.Timestamp);
 
@@ -88,4 +78,27 @@ public class OptimismPayloadAttributesTests
             () => error!
         );
     }
+
+    [TestCase("0x0000000800000000", Spec.HoloceneTimeStamp)]
+    [TestCase("0x00000008000000000000000000000001", Spec.JovianTimeStamp)]
+    public void Validate_EIP1559Params_rejects_zero_elasticity_with_non_zero_denominator(string eip1559Params, ulong timestamp)
+    {
+        OptimismPayloadAttributes payloadAttributes = CreateForValidation(timestamp, Bytes.FromHexString(eip1559Params));
+
+        Assert.That(
+            payloadAttributes.Validate(Spec.BuildFor(timestamp), EngineApiVersions.Fcu.V3, out _),
+            Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes));
+    }
+
+    private static OptimismPayloadAttributes CreateForValidation(ulong timestamp, byte[]? eip1559Params) => new()
+    {
+        GasLimit = 1,
+        Transactions = [],
+        PrevRandao = Hash256.Zero,
+        SuggestedFeeRecipient = TestItem.AddressA,
+        Timestamp = timestamp,
+        EIP1559Params = eip1559Params,
+        ParentBeaconBlockRoot = Hash256.Zero,
+        Withdrawals = []
+    };
 }

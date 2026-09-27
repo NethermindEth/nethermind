@@ -47,7 +47,9 @@ public class ForkchoiceUpdatedHandler(
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
-    ILogManager logManager) : IForkchoiceUpdatedHandler
+    ILogManager logManager,
+    IBlockProcessingPauseControl pauseControl,
+    BlockTreeMutationLock mutationLock) : IForkchoiceUpdatedHandler
 {
     /// <summary>How long a forkchoice update gives the head block's commit after its verdict before answering SYNCING.</summary>
     /// <remarks>
@@ -282,6 +284,12 @@ public class ForkchoiceUpdatedHandler(
         {
             return result;
         }
+
+        if (pauseControl.IsPaused) return ForkchoiceUpdatedV1Result.Syncing;
+
+        if (!mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) return ForkchoiceUpdatedV1Result.Syncing;
+        using BlockTreeMutationLock.Scope mutationScope = mutation;
+        if (pauseControl.IsPaused) return ForkchoiceUpdatedV1Result.Syncing;
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadHeader.Hash;
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead;

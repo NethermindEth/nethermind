@@ -383,6 +383,22 @@ public class FlatDbManagerTests
         Assert.That(manager.HasStateForBlock(historicalBlock), Is.EqualTo(expected));
     }
 
+    [Test]
+    public async Task HasStateForBlock_history_is_available_only_for_reading()
+    {
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
+        StateId historicalBlock = CreateStateId(10, rootByte: 10);
+        MarkHistoryAvailable(0, (ulong)HistoryBarrier, block => CreateStateId(block, (byte)block));
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = WrapHistory(inner);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.HasStateForBlock(historicalBlock, ResourcePool.Usage.ReadOnlyProcessingEnv), Is.True);
+            Assert.That(manager.HasStateForBlock(historicalBlock, ResourcePool.Usage.MainBlockProcessing), Is.False);
+            Assert.That(manager.HasStateForBlock(historicalBlock, ResourcePool.Usage.PostMainBlockProcessing), Is.False);
+        }
+    }
+
     // History serves strictly below the persisted barrier; the barrier block itself and anything above route to
     // the live manager even when availability markers exist at those heights.
     [TestCase(99ul, true)]

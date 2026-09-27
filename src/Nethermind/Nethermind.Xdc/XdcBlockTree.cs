@@ -30,7 +30,8 @@ internal class XdcBlockTree(
     ISyncConfig? syncConfig,
     IStateBoundary? stateBoundary,
     ILogManager? logManager,
-    ulong genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, syncConfig, stateBoundary, logManager, genesisBlockNumber)
+    BlockTreeMutationLock mutationLock,
+    ulong genesisBlockNumber = 0) : BlockTree(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, syncConfig, stateBoundary, logManager, mutationLock, genesisBlockNumber)
 {
     private readonly IXdcConsensusContext _xdcConsensus = xdcConsensus;
 

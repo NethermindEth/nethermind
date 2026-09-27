@@ -365,7 +365,9 @@ public class DataFeed
         // No subscribers, no need to prepare event data
         if (!HaveSubscribers(EntryType.forkChoice)) return;
 
-        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously));
+        // Swapped at raise time so subscribers see updates in raise order even when a slower preparation finishes later.
+        DataCompletion next = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, next);
         Task.Run(() =>
         {
             try
@@ -375,6 +377,11 @@ public class DataFeed
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error("UI Forkchoice data preparation failed", e);
+                // Subscribers awaiting this update get the next one that succeeds instead of waiting forever.
+                _ = next.Task.ContinueWith(
+                    static (completed, state) => ((DataCompletion)state!).TrySetResult(completed.Result),
+                    forkChoice,
+                    TaskContinuationOptions.OnlyOnRanToCompletion);
             }
         });
     }
@@ -388,61 +395,68 @@ public class DataFeed
         ReceiptForRpc[] receipts = _receiptFinder.Get(head)
             .Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header)))
             .ToArray();
-        forkChoice.TrySetResult(
-            JsonSerializer.SerializeToUtf8Bytes(
-                new ForkData
-                {
-                    Head = new BlockForWeb
+        try
+        {
+            forkChoice.TrySetResult(
+                JsonSerializer.SerializeToUtf8Bytes(
+                    new ForkData
                     {
-                        ExtraData = head.ExtraData ?? [],
-                        GasLimit = head.GasLimit,
-                        GasUsed = head.GasUsed,
-                        Hash = head.Hash ?? Hash256.Zero,
-                        Beneficiary = head.Beneficiary ?? Address.Zero,
-                        Number = head.Number,
-                        Size = _blockDecoder.GetLength(head, RlpBehaviors.None),
-                        Timestamp = head.Timestamp,
-                        BaseFeePerGas = head.BaseFeePerGas,
-                        BlobGasUsed = head.BlobGasUsed ?? 0,
-                        ExcessBlobGas = head.ExcessBlobGas ?? 0,
-                        Tx = [.. head.Transactions.Select(t => new TransactionForWeb
+                        Head = new BlockForWeb
                         {
-                            Hash = t.Hash,
-                            From = t.SenderAddress,
-                            To = t.To,
-                            TxType = (int)t.Type,
-                            MaxPriorityFeePerGas = t.MaxPriorityFeePerGas,
-                            MaxFeePerGas = t.MaxFeePerGas,
-                            GasPrice = t.GasPrice,
-                            GasLimit = t.GasLimit,
-                            Nonce = t.Nonce,
-                            Value = t.Value,
-                            DataLength = t.DataLength,
-                            Blobs = t.BlobVersionedHashes?.Length ?? 0,
-                            Method = t.DataLength >= 4 ? [.. t.Data.Span[..4]] : []
-                        })],
-                        Receipts = [.. receipts.Select(r => new ReceiptForWeb
-                        {
-                            GasUsed = r.GasUsed,
-                            EffectiveGasPrice = r.EffectiveGasPrice ?? UInt256.Zero,
-                            ContractAddress = r.ContractAddress,
-                            Logs = [.. r.Logs.Select(l => new LogEntryForWeb
+                            ExtraData = head.ExtraData ?? [],
+                            GasLimit = head.GasLimit,
+                            GasUsed = head.GasUsed,
+                            Hash = head.Hash ?? Hash256.Zero,
+                            Beneficiary = head.Beneficiary ?? Address.Zero,
+                            Number = head.Number,
+                            Size = _blockDecoder.GetLength(head, RlpBehaviors.None),
+                            Timestamp = head.Timestamp,
+                            BaseFeePerGas = head.BaseFeePerGas,
+                            BlobGasUsed = head.BlobGasUsed ?? 0,
+                            ExcessBlobGas = head.ExcessBlobGas ?? 0,
+                            Tx = [.. head.Transactions.Select(t => new TransactionForWeb
                             {
-                                Address = l.Address,
-                                Data = l.Data,
-                                Topics = l.Topics
+                                Hash = t.Hash,
+                                From = t.SenderAddress,
+                                To = t.To,
+                                TxType = (int)t.Type,
+                                MaxPriorityFeePerGas = t.MaxPriorityFeePerGas,
+                                MaxFeePerGas = t.MaxFeePerGas,
+                                GasPrice = t.GasPrice,
+                                GasLimit = t.GasLimit,
+                                Nonce = t.Nonce,
+                                Value = t.Value,
+                                DataLength = t.DataLength,
+                                Blobs = t.BlobVersionedHashes?.Length ?? 0,
+                                Method = t.DataLength >= 4 ? [.. t.Data.Span[..4]] : []
                             })],
-                            Status = r.Status,
-                            BlobGasPrice = r.BlobGasPrice ?? UInt256.Zero,
-                            BlobGasUsed = r.BlobGasUsed ?? 0,
-                        })]
+                            Receipts = [.. receipts.Select(r => new ReceiptForWeb
+                            {
+                                GasUsed = r.GasUsed,
+                                EffectiveGasPrice = r.EffectiveGasPrice ?? UInt256.Zero,
+                                ContractAddress = r.ContractAddress,
+                                Logs = [.. r.Logs.Select(l => new LogEntryForWeb
+                                {
+                                    Address = l.Address,
+                                    Data = l.Data,
+                                    Topics = l.Topics
+                                })],
+                                Status = r.Status,
+                                BlobGasPrice = r.BlobGasPrice ?? UInt256.Zero,
+                                BlobGasUsed = r.BlobGasUsed ?? 0,
+                            })]
+                        },
+                        Safe = choice.Safe,
+                        Finalized = choice.Finalized
                     },
-                    Safe = choice.Safe,
-                    Finalized = choice.Finalized
-                },
-                EthereumJsonSerializer.JsonOptions
-             )
-        );
+                    EthereumJsonSerializer.JsonOptions
+                 )
+            );
+        }
+        finally
+        {
+            receipts.DisposeItems();
+        }
     }
 
     private class ForkData

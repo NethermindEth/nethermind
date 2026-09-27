@@ -94,6 +94,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
     private readonly BlockProcessingPauseGate _pauseGate = new();
+    private readonly BlockTreeMutationLock _mutationLock;
 
     /// <summary>
     ///
@@ -107,6 +108,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// <param name="options"></param>
     /// <param name="processingStats"></param>
     /// <param name="blockTracers">Tracers seeded into the processor's composite tracer at construction.</param>
+    /// <param name="mutationLock">The node's shared chain-maintenance lock.</param>
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
@@ -116,10 +118,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         ILogManager logManager,
         Options options,
         IProcessingStats processingStats,
+        BlockTreeMutationLock mutationLock,
         IEnumerable<IBlockTracer>? blockTracers = null)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
+        _mutationLock = mutationLock;
         _branchProcessor = branchProcessor;
         _specProvider = specProvider;
         _options = options;
@@ -441,6 +445,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public void Resume()
     {
+        using BlockTreeMutationLock.Scope mutation = _mutationLock.Enter();
         if (_pauseGate.Resume() && _logger.IsInfo) _logger.Info("Block processing resumed.");
     }
 
@@ -592,25 +597,27 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
             // Released within the iteration, before the loop awaits and the thread can go back to the pool.
             using PerformanceCores.Scope performanceCores = PerformanceCores.NarrowCurrentThread(_options.ProcessingCores, _logger);
-            // Have block, switch off background GC timer
-            GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
-            IsProcessingBlock = true;
+            using (BlockTreeMutationLock.Scope mutation = _mutationLock.Enter())
+            {
+                if (_pauseGate.IsPaused) continue;
+                IsProcessingBlock = true;
+            }
             bool previousMainThread = IsBlockProcessingThread;
             IsBlockProcessingThread = true;
             try
             {
+                GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
                 ProcessBlocks();
             }
             finally
             {
                 IsBlockProcessingThread = previousMainThread;
                 IsProcessingBlock = false;
+                GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
             }
 
             if (_logger.IsTrace) Trace();
             FireProcessingQueueEmpty();
-
-            GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
         }
 
         if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
@@ -776,8 +783,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
             // Pass the just-processed blocks as a cache; TryUpdateMainChain walks the rest of the branch
             // (any deeper blocks that already had state) on its own, loading them one at a time.
-            if (!_blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, preloadedBlocks: processingBranch.Blocks.AsSpan()) && _logger.IsWarn)
-                _logger.Warn($"Failed to update main chain to {suggestedBlock.ToString(Block.Format.Short)}; a branch predecessor is missing.");
+            if (!_blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, preloadedBlocks: processingBranch.Blocks.AsSpan()))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to update main chain to {suggestedBlock.ToString(Block.Format.Short)}; a branch predecessor is missing or chain maintenance overlapped.");
+            }
         }
 
         if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
