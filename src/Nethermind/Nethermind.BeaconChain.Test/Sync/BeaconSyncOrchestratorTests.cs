@@ -120,8 +120,7 @@ public partial class BeaconSyncOrchestratorTests
         byte[] bpo2Digest = ForkDigest.Compute(Spec, Bpo2Epoch);
 
         Dictionary<string, FakeTopic> topics = [];
-        harness.Router.Start(id => topics[id] = new FakeTopic(), harness.Orchestrator.CurrentGossipDigest);
-        harness.Orchestrator.GossipStarted = true;
+        harness.Orchestrator.StartGossip(id => topics[id] = new FakeTopic());
 
         await harness.Orchestrator.ProcessSlotAsync(preRotationSlot, CancellationToken.None);
         byte[] digestBeforeBoundary = harness.Orchestrator.CurrentGossipDigest;
