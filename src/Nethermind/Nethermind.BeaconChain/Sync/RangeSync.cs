@@ -46,11 +46,12 @@ namespace Nethermind.BeaconChain.Sync;
 /// advances past a successfully imported block.
 /// </para>
 /// <para>
-/// With a <see cref="SlotClock"/>, Gloas blocks before the <see cref="DataAvailabilityBoundary"/> get no
-/// column request (fulu/fork-choice.md <c>is_data_available</c> demands none); without one, no window applies.
+/// Fulu and Gloas blocks before the <see cref="DataAvailabilityBoundary"/> of <paramref name="clock"/> get no
+/// column request (fulu/fork-choice.md <c>is_data_available</c> demands none).
 /// </para>
 /// </remarks>
-public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, DataColumnSidecarPool sidecarPool, BeaconChainSpec spec, BeaconDiscovery? discovery = null, SlotClock? clock = null)
+/// <param name="clock">The one wall clock the importer's availability gate also reads, so both agree on the window.</param>
+public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, DataColumnSidecarPool sidecarPool, BeaconChainSpec spec, SlotClock clock, BeaconDiscovery? discovery = null)
 {
     /// <summary>
     /// Half an epoch per request. Larger batches trip peers' response rate limits, time out, and
@@ -182,17 +183,19 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// parent-linkage handling.
     /// </summary>
     /// <remarks>
-    /// Only Fulu-shaped blocks are considered and the request window spans only them: a Gloas block's
+    /// Only Fulu-shaped blocks inside the data availability window are considered and the request window spans only them: a Gloas block's
     /// commitments are in its bid and its sidecars have the Gloas shape, so it has no part in a Fulu request.
     /// </remarks>
     private async Task FetchColumnsForBatchAsync(IBeaconSyncPeer peer, IReadOnlyList<ForkedSignedBeaconBlock> blocks, CancellationToken token)
     {
+        ulong windowStartEpoch = DataAvailabilityStartEpoch();
         Dictionary<Hash256, BeaconBlock> blobBlocksByRoot = [];
         ulong startSlot = ulong.MaxValue;
         ulong endSlot = 0;
         foreach (ForkedSignedBeaconBlock block in blocks)
         {
-            if (block is not ForkedSignedBeaconBlock.OfFulu { Block.Message: { } message })
+            if (block is not ForkedSignedBeaconBlock.OfFulu { Block.Message: { } message }
+                || !IsInDataAvailabilityWindow(message.Slot, windowStartEpoch))
             {
                 continue;
             }
@@ -403,8 +406,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         return [.. missing];
     }
 
-    /// <summary>The first epoch whose columns are demanded; 0 without a clock. The window moves every epoch, so callers recompute it per use.</summary>
-    private ulong DataAvailabilityStartEpoch() => clock is null ? 0 : DataAvailabilityBoundary.Compute(clock.CurrentEpoch, spec);
+    /// <summary>The first epoch whose columns are demanded. The window moves every epoch, so callers recompute it per use.</summary>
+    private ulong DataAvailabilityStartEpoch() => DataAvailabilityBoundary.Compute(clock.CurrentEpoch, spec);
 
     private bool IsInDataAvailabilityWindow(ulong slot, ulong windowStartEpoch) => spec.GetEpoch(slot) >= windowStartEpoch;
 }

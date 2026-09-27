@@ -357,7 +357,7 @@ public partial class BeaconSyncOrchestratorTests
             new ScriptedFactory(importer),
             engine,
             pool,
-            new RangeSync(pool, LimboLogs.Instance, new DataColumnSidecarPool(), Spec),
+            new RangeSync(pool, LimboLogs.Instance, new DataColumnSidecarPool(), Spec, RangeSyncTests.ClockAtGenesis(Spec)),
             slotClock,
             router,
             statusHolder,

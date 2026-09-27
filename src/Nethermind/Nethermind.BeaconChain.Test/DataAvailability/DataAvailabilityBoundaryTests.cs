@@ -16,6 +16,7 @@ namespace Nethermind.BeaconChain.Test.DataAvailability;
 public class DataAvailabilityBoundaryTests
 {
     private const ulong Window = Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests;
+    private const ulong BlobWindow = DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests;
 
     [TestCase(0ul, 0ul, 0ul, TestName = "an_unfilled_window_saturates_at_epoch_zero")]
     [TestCase(Window - 1, 0ul, 0ul, TestName = "one_epoch_short_of_a_full_window_still_saturates")]
@@ -27,6 +28,22 @@ public class DataAvailabilityBoundaryTests
     [TestCase(Window + 301, 300ul, 301ul, TestName = "past_the_fork_the_window_start_wins")]
     public void Compute_is_the_window_start_floored_at_the_fulu_fork_epoch(ulong currentEpoch, ulong fuluForkEpoch, ulong expected) =>
         Assert.That(DataAvailabilityBoundary.Compute(currentEpoch, SpecWithFulu(fuluForkEpoch)), Is.EqualTo(expected));
+
+    /// <summary>A start slot past the last representable one saturates instead of wrapping to a low slot that would shrink the serve range.</summary>
+    [TestCase(ulong.MaxValue / 32 - 1, ulong.MaxValue / 32 * 32 - 32, TestName = "the_last_whole_epoch_below_the_limit_is_not_saturated")]
+    [TestCase(ulong.MaxValue / 32 + 1, ulong.MaxValue, TestName = "a_start_slot_past_the_limit_saturates")]
+    [TestCase(Presets.FarFutureEpoch, ulong.MaxValue, TestName = "a_far_future_fulu_fork_saturates")]
+    public void Compute_start_slot_saturates_instead_of_wrapping(ulong fuluForkEpoch, ulong expected) =>
+        Assert.That(DataAvailabilityBoundary.ComputeStartSlot(0, SpecWithFulu(fuluForkEpoch)), Is.EqualTo(expected));
+
+    /// <summary>deneb/p2p-interface.md: on a chain younger than the window every epoch is inside it, so the lower edge must not underflow.</summary>
+    [TestCase(5ul, 10ul, true, TestName = "a_chain_younger_than_the_blob_window_holds_every_epoch_inside_it")]
+    [TestCase(0ul, BlobWindow - 1, true, TestName = "one_epoch_short_of_a_full_blob_window_holds_epoch_zero")]
+    [TestCase(0ul, BlobWindow, true, TestName = "a_full_blob_window_starts_at_epoch_zero")]
+    [TestCase(0ul, BlobWindow + 1, false, TestName = "the_blob_window_start_advances_with_the_clock")]
+    [TestCase(1ul, BlobWindow + 1, true, TestName = "the_blob_window_start_is_inside_it")]
+    public void Is_in_blob_sidecar_window_is_the_last_min_epochs_for_blob_sidecars_requests(ulong blockEpoch, ulong currentEpoch, bool expected) =>
+        Assert.That(DataAvailabilityBoundary.IsInBlobSidecarWindow(blockEpoch, currentEpoch), Is.EqualTo(expected));
 
     [Test]
     public void On_mainnet_the_boundary_never_precedes_the_fulu_fork()

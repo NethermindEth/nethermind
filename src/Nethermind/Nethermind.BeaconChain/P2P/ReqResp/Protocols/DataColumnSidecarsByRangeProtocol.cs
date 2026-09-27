@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Core;
@@ -24,8 +25,11 @@ namespace Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 /// The dial side validates per-chunk fork-digest context
 /// bytes (in the shared base) and that every returned sidecar's slot and column were actually asked for.
 /// A Gloas dial's window must lie wholly in Gloas epochs.
+/// With a <see cref="SlotClock"/>, a request whose part inside <c>data_column_serve_range</c> starts below
+/// <see cref="DataColumnSidecarPool.EarliestCompletelyServableSlot"/> is answered <c>ResourceUnavailable</c>,
+/// as fulu/p2p-interface.md asks of a peer unable to reply within that range; without one, no range is checked.
 /// </remarks>
-public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, DataColumnSidecarPool pool, BeaconChainStore store) : DataColumnSidecarsProtocolBase(spec),
+public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, DataColumnSidecarPool pool, BeaconChainStore store, SlotClock? clock = null) : DataColumnSidecarsProtocolBase(spec),
     ISessionProtocol<DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>
 {
     /// <summary>Fixed part (2 x Uint64 + a 4-byte list offset) plus the variable columns list, bounded by NUMBER_OF_COLUMNS: an upper bound for framing, not an exact length (the columns list may be shorter).</summary>
@@ -142,6 +146,11 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
             // fulu/p2p-interface.md: sidecars MUST be sent in (slot, column_index) order.
             ulong[] orderedColumns = [.. new SortedSet<ulong>(columns)];
             ulong count = Math.Min(request.Count, BlocksProtocolBase.MaxRequestBlocks);
+            if (clock is not null && StartsBelowCompleteColumns(request.StartSlot, count, clock))
+            {
+                throw new Eth2ReqRespException("Requested range reaches below the earliest slot whose columns are all held", ReqRespFraming.ResponseCode.ResourceUnavailable);
+            }
+
             for (ulong slot = request.StartSlot; slot < request.StartSlot + count; slot++)
             {
                 if (!store.TryGetCanonicalRoot(slot, out Hash256? root))
@@ -164,12 +173,25 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         }
         catch (Eth2ReqRespException e)
         {
-            RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            if (e.ResponseCode != ReqRespFraming.ResponseCode.ResourceUnavailable)
+            {
+                RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            }
+
             await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
         }
         catch (OperationCanceledException)
         {
             RecordFailure(Id, ReqRespFailureReason.Timeout);
         }
+    }
+
+    // Below data_column_serve_range the columns MAY be served as held, so only the part inside it is checked.
+    private bool StartsBelowCompleteColumns(ulong startSlot, ulong count, SlotClock slotClock)
+    {
+        ulong lastSlot = count - 1 > ulong.MaxValue - startSlot ? ulong.MaxValue : startSlot + count - 1;
+        ulong serveFrom = Math.Max(startSlot, DataAvailabilityBoundary.ComputeStartSlot(slotClock.CurrentEpoch, Spec));
+        ulong serveTo = Math.Min(lastSlot, slotClock.CurrentSlot);
+        return serveFrom <= serveTo && serveFrom < pool.EarliestCompletelyServableSlot;
     }
 }
