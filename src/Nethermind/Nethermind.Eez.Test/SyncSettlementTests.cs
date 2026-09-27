@@ -114,7 +114,7 @@ public class SyncSettlementTests
 
         Assert.That(observed.SystemTransactions, Is.EqualTo(new[] { true, false, true }));
         Assert.That(observed.EffectTransactions, Is.EqualTo(new[] { 1, 2 }));
-        Assert.That(observed.InboundCandidates, Is.EqualTo(new[] { new InboundCandidate(2, fixture.Observation, null) }).Using<InboundCandidate>(SameCandidate));
+        Assert.That(observed.InboundCandidates, Is.EqualTo(new[] { new InboundCandidate(2, fixture.Observation, null, false) }).Using<InboundCandidate>(SameCandidate));
         Assert.That(observed.OutboundEvents, Is.EqualTo(new[] { new OutboundEvent(1, 0, true, EventCallHash, 0) }));
     }
 
@@ -123,9 +123,28 @@ public class SyncSettlementTests
     {
         SyncSettlementFixture fixture = new();
 
-        Assert.That(Assert.Throws<EezSettlementException>(() => SettlingBlock.Inspect(fixture.Settling, fixture.SettlingReceipts(StatusCode.Failure), RollupId))!.Message,
-            Does.Contain("reverted"));
+        EezSettlementException e = Assert.Throws<EezSettlementException>(() => SettlingBlock.Inspect(fixture.Settling, fixture.SettlingReceipts(StatusCode.Failure), RollupId))!;
+
+        Assert.That((e.Message.Contains("reverted"), e.PoisonedTransactionIndex), Is.EqualTo((true, (int?)1)), "the user transaction the load stages can be evicted");
     }
+
+    [Test]
+    public void Inspect_RevertedSystemTransactionThatIsNotALoad_PoisonsNothing()
+    {
+        Transaction other = SystemTransactions.Create(ChainId, data: [1, 2, 3, 4]);
+        Transaction user = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithTransactions(other, user).TestObject;
+
+        EezSettlementException e = Assert.Throws<EezSettlementException>(() => SettlingBlock.Inspect(block,
+            [new TxReceipt { StatusCode = StatusCode.Failure, Logs = [] }, new TxReceipt { StatusCode = StatusCode.Success, Logs = [] }], RollupId))!;
+
+        Assert.That(e.PoisonedTransactionIndex, Is.Null);
+    }
+
+    [Test]
+    public void Inspect_ReceiptCountDiffers_IsTheCallersFault() =>
+        Assert.That(Assert.Throws<EezSettlementException>(() => SettlingBlock.Inspect(new SyncSettlementFixture().Settling, [], RollupId))!.Failure,
+            Is.EqualTo(EezSettlementFailure.InternalInvariant));
 
     [Test]
     public void Inspect_SystemTransactionToAnotherTarget_Throws()
@@ -161,9 +180,6 @@ public class SyncSettlementTests
             Does.Contain("without being a system transaction to EEZL2"));
     }
 
-    [Test]
-    public void Inspect_ReceiptCountDiffers_Throws() =>
-        Assert.Throws<EezSettlementException>(() => SettlingBlock.Inspect(new SyncSettlementFixture().Settling, [], RollupId));
 
     [Test]
     public void EnsureNoEffects_BlockWithASystemTransaction_Throws() =>
@@ -338,8 +354,22 @@ public class SyncSettlementTests
         SyncSettlementFixture fixture = new();
         (BoundEffect[] effects, _) = Bound(fixture);
 
-        Assert.That(Assert.Throws<EezSettlementException>(() => InboundDelivery.AuthorizeAll(effects, [new InboundCandidate(2, null, "reverted")], RollupId))!.Message,
-            Does.Contain("reverted"));
+        EezSettlementException e = Assert.Throws<EezSettlementException>(() =>
+            InboundDelivery.AuthorizeAll(effects, [new InboundCandidate(2, null, "malformed", false)], RollupId))!;
+
+        Assert.That((e.Message.Contains("malformed"), e.PoisonedEntryIndex), Is.EqualTo((true, (int?)null)), "only a reverted delivery can be evicted");
+    }
+
+    [Test]
+    public void AuthorizeAll_RevertedDelivery_PoisonsItsEntry()
+    {
+        SyncSettlementFixture fixture = new();
+        (BoundEffect[] effects, _) = Bound(fixture);
+        SettlingBlock observed = SettlingBlock.Inspect(fixture.Settling, fixture.SettlingReceipts(deliveryStatus: StatusCode.Failure), RollupId);
+
+        EezSettlementException e = Assert.Throws<EezSettlementException>(() => InboundDelivery.AuthorizeAll(effects, observed.InboundCandidates, RollupId))!;
+
+        Assert.That((e.Failure, e.PoisonedEntryIndex, e.PoisonedTransactionIndex), Is.EqualTo((EezSettlementFailure.Rejected, (int?)2, (int?)null)));
     }
 
     [Test]
@@ -348,15 +378,50 @@ public class SyncSettlementTests
         SyncSettlementFixture fixture = new();
         (BoundEffect[] effects, _) = Bound(fixture);
 
-        Assert.Throws<EezSettlementException>(() => InboundDelivery.AuthorizeAll(effects, [new InboundCandidate(1, fixture.Observation, null)], RollupId));
+        Assert.Throws<EezSettlementException>(() => InboundDelivery.AuthorizeAll(effects, [new InboundCandidate(1, fixture.Observation, null, false)], RollupId));
     }
 
     [TestCaseSource(nameof(BadEvents))]
-    public void AuthorizeAll_EventsThatDoNotMatchTheOutboundEntry_Throw(OutboundEvent[] events, bool[] system, string rule)
+    public void AuthorizeAll_EventsThatDoNotMatchTheOutboundEntry_Throw(OutboundEvent[] events, bool[] system, string rule, int? poisoned)
     {
         (BoundEffect[] effects, _) = Bound(new SyncSettlementFixture());
 
-        Assert.That(Assert.Throws<EezSettlementException>(() => OutboundCall.AuthorizeAll(effects, events, system, RollupId))!.Message, Does.Contain(rule));
+        EezSettlementException e = Assert.Throws<EezSettlementException>(() => OutboundCall.AuthorizeAll(effects, events, system, RollupId))!;
+
+        Assert.That(e.Message, Does.Contain(rule));
+        Assert.That(e.PoisonedTransactionIndex, Is.EqualTo(poisoned), "only a missing, malformed or gas-carrying event lets the composer evict the call");
+    }
+
+    [Test]
+    public void Verify_EffectsTheSettlingBlockCannotHold_IsTheCallersFault()
+    {
+        SyncSettlementFixture fixture = new();
+        Block empty = Build.A.Block.WithNumber(2).WithBeneficiary(Beneficiary).WithExtraData([9]).TestObject;
+
+        Assert.That(Assert.Throws<EezSettlementException>(() =>
+            DaVerification.Verify(fixture.Payload(), [fixture.PrecedingBlock, empty], fixture.Outbound, fixture.Inbound, ChainId, RollupId))!.Failure,
+            Is.EqualTo(EezSettlementFailure.InternalInvariant));
+    }
+
+    [Test]
+    public void Verify_AuthorizedEffectsThatCannotBeRebuilt_IsTheCallersFault()
+    {
+        SyncSettlementFixture fixture = new();
+        AuthorizedOutbound[] outbound = [fixture.Outbound[0] with { DerivedDaEntry = fixture.OutboundDaEntry with { Success = false } }];
+        byte[] payload = fixture.Payload(actions: [DaAction.FromEntry(outbound[0].DerivedDaEntry, RollupId), fixture.InboundAction]);
+
+        Assert.That(Assert.Throws<EezSettlementException>(() => DaVerification.Verify(payload, fixture.Window, outbound, fixture.Inbound, ChainId, RollupId))!.Failure,
+            Is.EqualTo(EezSettlementFailure.InternalInvariant));
+    }
+
+    [Test]
+    public void Verify_DaForAnotherRollup_IsInvalidCalldata()
+    {
+        SyncSettlementFixture fixture = new();
+        byte[] payload = DaPayloadCodec.Encode(RollupId + 1, [new DaBlock(Beneficiary, [], [])], []);
+
+        Assert.That(Assert.Throws<EezSettlementException>(() => DaVerification.Verify(payload, fixture.Window, fixture.Outbound, fixture.Inbound, ChainId, RollupId))!.Failure,
+            Is.EqualTo(EezSettlementFailure.InvalidCalldata));
     }
 
     [Test]
@@ -430,15 +495,15 @@ public class SyncSettlementTests
         OutboundEvent valid = new(1, 0, true, EventCallHash, 0);
         return
         [
-            new(Array.Empty<OutboundEvent>(), system, "no event at transaction 1") { TestName = "NoEvent" },
-            new(new[] { valid, valid with { LogIndex = 1 } }, system, "claimed by no outbound entry") { TestName = "TwoEventsInOneTransaction" },
-            new(new[] { valid with { TransactionIndex = 0 }, valid }, system, "no event at transaction 1") { TestName = "EventBeforeTheEffect" },
-            new(new[] { valid, valid with { TransactionIndex = 2 } }, system, "claimed by no outbound entry") { TestName = "EventAtTheDelivery" },
-            new(new[] { valid with { TransactionIndex = 2 } }, system, "no event at transaction 1") { TestName = "OnlyEventIsAtTheDelivery" },
-            new(new[] { valid with { IsCanonical = false } }, system, "malformed") { TestName = "MalformedEvent" },
-            new(new[] { valid with { CallHash = Keccak.Zero.ValueHash256 } }, system, "different call") { TestName = "OtherCall" },
-            new(new[] { valid with { CallGas = 1 } }, system, "without gas") { TestName = "EventWithGas" },
-            new(new[] { valid }, new[] { false, false, true }, "no system load") { TestName = "NoLoadBeforeTheUser" },
+            new(Array.Empty<OutboundEvent>(), system, "no event at transaction 1", 1) { TestName = "NoEvent" },
+            new(new[] { valid, valid with { LogIndex = 1 } }, system, "claimed by no outbound entry", null) { TestName = "TwoEventsInOneTransaction" },
+            new(new[] { valid with { TransactionIndex = 0 }, valid }, system, "no event at transaction 1", 1) { TestName = "EventBeforeTheEffect" },
+            new(new[] { valid, valid with { TransactionIndex = 2 } }, system, "claimed by no outbound entry", null) { TestName = "EventAtTheDelivery" },
+            new(new[] { valid with { TransactionIndex = 2 } }, system, "no event at transaction 1", 1) { TestName = "OnlyEventIsAtTheDelivery" },
+            new(new[] { valid with { IsCanonical = false } }, system, "malformed", 1) { TestName = "MalformedEvent" },
+            new(new[] { valid with { CallHash = Keccak.Zero.ValueHash256 } }, system, "different call", null) { TestName = "OtherCall" },
+            new(new[] { valid with { CallGas = 1 } }, system, "call with gas", 1) { TestName = "EventWithGas" },
+            new(new[] { valid }, new[] { false, false, true }, "no system load", null) { TestName = "NoLoadBeforeTheUser" },
         ];
     }
 

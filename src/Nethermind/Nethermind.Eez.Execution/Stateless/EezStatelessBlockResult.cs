@@ -8,11 +8,13 @@ namespace Nethermind.Eez.Execution.Stateless;
 
 public sealed record EezStatelessBlockResult(
     Block Block,
-    Hash256 PreStateRoot,
+    BlockHeader Parent,
     TxReceipt[] Receipts,
     EezTransactionCheckpoint[] Checkpoints)
 {
     public Hash256 Hash => Block.Hash!;
+
+    public Hash256 PreStateRoot => Parent.StateRoot!;
 
     public Hash256 PostStateRoot => Block.Header.StateRoot!;
 }

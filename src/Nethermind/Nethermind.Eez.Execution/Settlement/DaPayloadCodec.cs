@@ -302,7 +302,7 @@ public static class DaPayloadCodec
         output.Add((byte)remaining);
     }
 
-    private static EezSettlementException Invalid(string reason) => new($"Invalid DA payload: {reason}.");
+    private static EezSettlementException Invalid(string reason) => new(EezSettlementFailure.InvalidCalldata, $"Invalid DA payload: {reason}.");
 
     private struct Reader(ReadOnlyMemory<byte> data)
     {

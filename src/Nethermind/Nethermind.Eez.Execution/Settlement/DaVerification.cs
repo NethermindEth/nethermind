@@ -23,7 +23,7 @@ public static class DaVerification
         DaPayload decoded = DaPayloadCodec.Decode(payload);
         if (decoded.RollupId != rollupId)
         {
-            throw new EezSettlementException($"The DA payload carries rollup {decoded.RollupId}, not rollup {rollupId}.");
+            throw new EezSettlementException(EezSettlementFailure.InvalidCalldata, $"The DA payload carries rollup {decoded.RollupId}, not rollup {rollupId}.");
         }
 
         DaSpan span = decoded.Span;
@@ -42,7 +42,12 @@ public static class DaVerification
             bool settling = blockIndex == window.Count - 1;
             EnsureHeaderInputs(span, blockIndex, block);
             int expected = block.Transactions.Length - (settling ? omitted : 0);
-            if (expected < 0 || span.TransactionCounts[blockIndex] != expected)
+            if (expected < 0)
+            {
+                throw new EezSettlementException(EezSettlementFailure.InternalInvariant, "The settling block has fewer transactions than effects.");
+            }
+
+            if (span.TransactionCounts[blockIndex] != expected)
             {
                 throw new EezSettlementException($"The DA payload publishes {span.TransactionCounts[blockIndex]} transactions of block {block.Number}, not {expected}.");
             }
@@ -67,7 +72,7 @@ public static class DaVerification
             {
                 if (nextOmitted != omittedPositions.Length)
                 {
-                    throw new EezSettlementException("The effect transactions lie outside the settling block.");
+                    throw new EezSettlementException(EezSettlementFailure.InternalInvariant, "The effect transactions lie outside the settling block.");
                 }
 
                 settlingTransactions = encoded;
@@ -148,7 +153,15 @@ public static class DaVerification
             inboundEntries[i] = inbound[i].Observation.DerivedDaEntry;
         }
 
-        byte[][] rebuilt = SyncBlock.BuildTransactions(outboundInputs, inboundEntries, chainId, rollupId, block.Transactions[firstSystem].Nonce);
+        byte[][] rebuilt;
+        try
+        {
+            rebuilt = SyncBlock.BuildTransactions(outboundInputs, inboundEntries, chainId, rollupId, block.Transactions[firstSystem].Nonce);
+        }
+        catch (EezSettlementException e)
+        {
+            throw new EezSettlementException(EezSettlementFailure.InternalInvariant, $"Authorized effects cannot be rebuilt into a Sync block: {e.Message}");
+        }
         if (rebuilt.Length != encoded.Length)
         {
             throw new EezSettlementException($"The Sync block has {encoded.Length} transactions, but its effects rebuild {rebuilt.Length}.");

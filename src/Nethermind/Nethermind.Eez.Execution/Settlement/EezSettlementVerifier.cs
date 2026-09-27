@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution.Stateless;
 
 namespace Nethermind.Eez.Execution.Settlement;
@@ -23,12 +24,13 @@ public static class EezSettlementVerifier
     /// <returns>The public inputs hash to sign.</returns>
     /// <exception cref="EezSettlementException">The batch claims something the window does not show.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The context names rollup 0, which is L1.</exception>
-    public static ValueHash256 Verify(ReadOnlySpan<byte> postBatchCalldata, IReadOnlyList<EezStatelessBlockResult> window, EezSettlementContext context)
+    public static ValueHash256 Verify(ReadOnlySpan<byte> postBatchCalldata, IReadOnlyList<EezStatelessBlockResult> window, EezSettlementContext context,
+        ISpecProvider specProvider)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(context.RollupId, EezConstants.L1RollupId);
         if (window.Count == 0)
         {
-            throw new EezSettlementException("The window has no blocks.");
+            throw new EezSettlementException(EezSettlementFailure.InternalInvariant, "The window has no blocks.");
         }
 
         PostBatch batch = Decode(postBatchCalldata);
@@ -45,6 +47,8 @@ public static class EezSettlementVerifier
             {
                 SettlingBlock.EnsureNoEffects(window[i].Block, window[i].Receipts);
             }
+
+            DerivedHeader.Ensure(window[i].Block, window[i].Parent, specProvider.GetSpec(window[i].Block.Header), context);
         }
 
         BoundEffect[] effects = EffectBinding.Bind(batch, updates, context.RollupId, settling.Block.Header.ParentHash!.ValueHash256,
@@ -63,7 +67,7 @@ public static class EezSettlementVerifier
         }
         catch (EezAbiException e)
         {
-            throw new EezSettlementException($"Invalid postAndVerifyBatch calldata: {e.Message}");
+            throw new EezSettlementException(EezSettlementFailure.InvalidCalldata, $"Invalid postAndVerifyBatch calldata: {e.Message}");
         }
     }
 }

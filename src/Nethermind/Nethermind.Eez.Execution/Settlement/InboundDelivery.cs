@@ -76,7 +76,10 @@ public static class InboundDelivery
 
             InboundCandidate candidate = candidates[next++];
             InboundObservation observation = candidate.Observation
-                ?? throw new EezSettlementException($"Inbound entry {effect.EntryIndex} claims an invalid delivery: {candidate.Error}");
+                ?? throw new EezSettlementException($"Inbound entry {effect.EntryIndex} claims an invalid delivery: {candidate.Error}")
+                {
+                    PoisonedEntryIndex = candidate.Reverted ? effect.EntryIndex : null,
+                };
             Authorize(effect.Entry, effect.Update, observation, rollupId);
             authorized.Add(new AuthorizedInbound(effect.TransactionIndex, observation));
         }

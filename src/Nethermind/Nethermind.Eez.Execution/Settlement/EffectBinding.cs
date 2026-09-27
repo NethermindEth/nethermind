@@ -84,7 +84,8 @@ public static class EffectBinding
 
             if (checkpoints[i].TransactionIndex != transactionIndex)
             {
-                throw new EezSettlementException($"Checkpoint {i} is at transaction {checkpoints[i].TransactionIndex}, not at effect transaction {transactionIndex}.");
+                throw new EezSettlementException(EezSettlementFailure.InternalInvariant,
+                    $"Checkpoint {i} is at transaction {checkpoints[i].TransactionIndex}, not at effect transaction {transactionIndex}.");
             }
 
             if (updates[entryIndex].NewState != checkpoints[i].BlockHash.ValueHash256)
@@ -100,5 +101,5 @@ public static class EffectBinding
     }
 
     private static EezSettlementException CheckpointCount(int expected, int actual) =>
-        new($"The settlement needs {expected} transaction checkpoints, but {actual} were computed.");
+        new(EezSettlementFailure.InternalInvariant, $"The settlement needs {expected} transaction checkpoints, but {actual} were computed.");
 }

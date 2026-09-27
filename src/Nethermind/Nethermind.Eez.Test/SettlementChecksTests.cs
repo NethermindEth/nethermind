@@ -176,6 +176,26 @@ public class SettlementChecksTests
     }
 
     [Test]
+    public void Bind_CheckpointsThatDoNotMatchTheEffects_IsTheCallersFault()
+    {
+        (PostBatch batch, StateUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = EffectBatch();
+
+        Assert.That(Assert.Throws<EezSettlementException>(() =>
+            EffectBinding.Bind(batch, updates, RollupId, Word(2), [checkpoints[0], checkpoints[1] with { TransactionIndex = 2 }], [1, 3], [true, false, true, true]))!.Failure,
+            Is.EqualTo(EezSettlementFailure.InternalInvariant));
+    }
+
+    [Test]
+    public void Bind_FewerCheckpointsThanEffects_IsTheCallersFault()
+    {
+        (PostBatch batch, StateUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = EffectBatch();
+
+        Assert.That(Assert.Throws<EezSettlementException>(() =>
+            EffectBinding.Bind(batch, updates, RollupId, Word(2), checkpoints[..1], [1, 3], [true, false, true, true]))!.Failure,
+            Is.EqualTo(EezSettlementFailure.InternalInvariant));
+    }
+
+    [Test]
     public void Bind_NoEffectsButCheckpoints_Throws()
     {
         PostBatch batch = RecordedBatch();

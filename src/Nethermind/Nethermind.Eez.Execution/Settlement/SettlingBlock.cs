@@ -37,7 +37,8 @@ public sealed class SettlingBlock
         Transaction[] transactions = block.Transactions;
         if (receipts.Count != transactions.Length)
         {
-            throw new EezSettlementException($"The settling block has {transactions.Length} transactions but {receipts.Count} receipts.");
+            throw new EezSettlementException(EezSettlementFailure.InternalInvariant,
+                $"The settling block has {transactions.Length} transactions but {receipts.Count} receipts.");
         }
 
         bool[] system = SystemTransactionsOf(block);
@@ -62,7 +63,7 @@ public sealed class SettlingBlock
             }
             else if (!succeeded)
             {
-                throw new EezSettlementException($"Settling system transaction {i} reverted.");
+                throw new EezSettlementException($"Settling system transaction {i} reverted.") { PoisonedTransactionIndex = PairedUser(transactions, system, i) };
             }
         }
 
@@ -121,6 +122,25 @@ public sealed class SettlingBlock
         return system;
     }
 
+    /// <summary>The user transaction a reverted outbound load stages, if the load is one.</summary>
+    private static int? PairedUser(Transaction[] transactions, bool[] system, int load)
+    {
+        int user = load + 1;
+        if (user == transactions.Length || system[user] || !transactions[load].Value.IsZero)
+        {
+            return null;
+        }
+
+        try
+        {
+            return EezCalldata.DecodeLoadExecutionTable(transactions[load].Data.Span) is { Entries.Length: 1, StaticEntries.Length: 0 } ? user : null;
+        }
+        catch (EezAbiException)
+        {
+            return null;
+        }
+    }
+
     private static bool IsDelivery(Transaction transaction) =>
         transaction.Data.Length >= sizeof(uint)
         && BinaryPrimitives.ReadUInt32BigEndian(transaction.Data.Span) == EezCalldata.ExecuteIncomingCrossChainCallSelector;
@@ -129,11 +149,11 @@ public sealed class SettlingBlock
     {
         try
         {
-            return new InboundCandidate(transactionIndex, InboundDelivery.Inspect(transaction.Value, transaction.Data.Span, succeeded, rollupId), null);
+            return new InboundCandidate(transactionIndex, InboundDelivery.Inspect(transaction.Value, transaction.Data.Span, succeeded, rollupId), null, false);
         }
         catch (EezSettlementException e)
         {
-            return new InboundCandidate(transactionIndex, null, e.Message);
+            return new InboundCandidate(transactionIndex, null, e.Message, !succeeded);
         }
     }
 }

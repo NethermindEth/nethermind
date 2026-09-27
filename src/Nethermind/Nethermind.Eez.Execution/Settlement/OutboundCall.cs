@@ -44,13 +44,20 @@ public static class OutboundCall
 
             if (next == events.Length || events[next].TransactionIndex != effect.TransactionIndex)
             {
-                throw new EezSettlementException($"Outbound entry {effect.EntryIndex} has no event at transaction {effect.TransactionIndex}.");
+                throw new EezSettlementException($"Outbound entry {effect.EntryIndex} has no event at transaction {effect.TransactionIndex}.")
+                {
+                    PoisonedTransactionIndex = effect.TransactionIndex,
+                };
             }
 
             OutboundEvent observed = events[next++];
-            if (!observed.IsCanonical)
+            if (!observed.IsCanonical || observed.CallGas != 0)
             {
-                throw new EezSettlementException($"The outbound event at transaction {observed.TransactionIndex} log {observed.LogIndex} is malformed.");
+                throw new EezSettlementException(
+                    $"The outbound event at transaction {observed.TransactionIndex} log {observed.LogIndex} is {(observed.IsCanonical ? "a call with gas, which is not supported" : "malformed")}.")
+                {
+                    PoisonedTransactionIndex = observed.TransactionIndex,
+                };
             }
 
             ExecutionEntry derived = Authorize(effect.Entry, effect.Update, observed.CallHash, observed.CallGas, rollupId);

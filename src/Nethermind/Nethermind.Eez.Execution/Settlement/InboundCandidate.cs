@@ -7,4 +7,5 @@ namespace Nethermind.Eez.Execution.Settlement;
 /// A system transaction of the settling block that calls <c>executeIncomingCrossChainCall</c>. An invalid delivery
 /// keeps its position and its reason, so it fails when an entry claims it rather than disappearing.
 /// </summary>
-public sealed record InboundCandidate(int TransactionIndex, InboundObservation? Observation, string? Error);
+/// <param name="Reverted">Whether the delivery reverted, the one failure a composer can repair by evicting the entry.</param>
+public sealed record InboundCandidate(int TransactionIndex, InboundObservation? Observation, string? Error, bool Reverted);

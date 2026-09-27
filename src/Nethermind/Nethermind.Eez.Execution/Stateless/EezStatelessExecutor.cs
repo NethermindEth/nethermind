@@ -83,7 +83,7 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
         EezTransactionCheckpoint[] transactionCheckpoints = recorder is null
             ? []
             : CreateCheckpoints(result.ProcessedBlock!, result.Receipts, checkpoints, recorder.StateRoots);
-        return new EezStatelessBlockResult(result.ProcessedBlock!, result.Parent!.StateRoot!, result.Receipts, transactionCheckpoints);
+        return new EezStatelessBlockResult(result.ProcessedBlock!, result.Parent!, result.Receipts, transactionCheckpoints);
     }
 
     private static Block Decode(byte[] rlp)
