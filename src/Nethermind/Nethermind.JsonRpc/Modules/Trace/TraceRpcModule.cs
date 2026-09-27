@@ -94,7 +94,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (headerSearch.IsError)
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
 
-            Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(headerSearch.Object!));
+            Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(headerSearch.Object!));
             return !txResult.Success(out Transaction? transaction, out string? error)
                 ? ResultWrapper<ParityTxTraceFromReplay>.Fail(error, ErrorCodes.InvalidInput)
                 : TraceTx(transaction, traceTypes, blockParameter, stateOverride);
@@ -125,7 +125,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Transaction[] txs = new Transaction[calls.Count];
             for (int i = 0; i < calls.Count; i++)
             {
-                Result<Transaction> txResult = calls[i].Transaction.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header));
+                Result<Transaction> txResult = calls[i].Transaction.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header));
                 if (!txResult.Success(out Transaction? tx, out string? error))
                 {
                     return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(error, ErrorCodes.InvalidInput);
@@ -387,6 +387,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                             writer, pipeWriter, ct, storeFilter: filter);
                         foreach ((Block block, BlockHeader? parentHeader) in blocks)
                         {
+                            if (filter.IsExhausted) break;
                             if (!TryStreamBlockInParallel(parentHeader!, block, types, streamingTracer, ct))
                                 ExecuteBlockStreaming(parentHeader!, block, streamingTracer, ct);
                         }
@@ -402,13 +403,24 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IEnumerable<ParityTxTraceFromStore> RunBufferedTraceFilter(List<(Block Block, BlockHeader? Parent)> blocks, TxTraceFilter filter, CancellationToken cancellationToken)
         {
-            List<ParityLikeTxTrace> txTraces = [];
-            foreach ((Block block, BlockHeader? parentHeader) in blocks)
+            ArrayPoolList<ParityTxTraceFromStore> result = new(blocks.Count);
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                txTraces.AddRange(ExecuteBlockParallelOrReplay(parentHeader!, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, cancellationToken));
+                foreach ((Block block, BlockHeader? parentHeader) in blocks)
+                {
+                    if (filter.IsExhausted) break;
+                    cancellationToken.ThrowIfCancellationRequested();
+                    IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlockParallelOrReplay(parentHeader!, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, cancellationToken);
+                    result.AddRange(filter.FilterTxTraces(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
+                }
             }
-            return filter.FilterTxTraces(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
+            catch
+            {
+                result.Dispose();
+                throw;
+            }
+
+            return result;
         }
 
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)

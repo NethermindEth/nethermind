@@ -71,11 +71,11 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => Pushes.Add(stackItem.ToArray());
     }
 
-    private sealed class CountingCancellationTracer(int cancelAtPoll = int.MaxValue) : TestAllTracerWithOutput, ITxTracer
+    private sealed class CountingCancellationTracer(int cancelAtPoll = int.MaxValue, bool traceInstructions = false) : TestAllTracerWithOutput, ITxTracer
     {
         public int PollCount { get; private set; }
 
-        public override bool IsTracingInstructions => false;
+        public override bool IsTracingInstructions => traceInstructions;
 
         bool ITxTracer.IsCancelable => true;
 
@@ -332,18 +332,17 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(1023, true, 1, Instruction.JUMPDEST)]
-    [TestCase(1024, false, 1, Instruction.JUMPDEST)]
-    [TestCase(1024, true, 2, Instruction.JUMPDEST)]
-    [TestCase(2048, true, 3, Instruction.JUMPDEST)]
-    [TestCase(1023, true, 1, Instruction.RETURNDATASIZE)]
-    [TestCase(1024, false, 1, Instruction.RETURNDATASIZE)]
-    [TestCase(1024, true, 2, Instruction.RETURNDATASIZE)]
-    [TestCase(2048, true, 3, Instruction.RETURNDATASIZE)]
-    public void Cancellation_is_polled_before_the_first_opcode_and_each_complete_1024_opcode_batch(
+    [TestCase(1023, true, Instruction.JUMPDEST)]
+    [TestCase(1024, false, Instruction.JUMPDEST)]
+    [TestCase(1024, true, Instruction.JUMPDEST)]
+    [TestCase(2048, true, Instruction.JUMPDEST)]
+    [TestCase(1023, true, Instruction.RETURNDATASIZE)]
+    [TestCase(1024, false, Instruction.RETURNDATASIZE)]
+    [TestCase(1024, true, Instruction.RETURNDATASIZE)]
+    [TestCase(2048, true, Instruction.RETURNDATASIZE)]
+    public void Cancellation_is_polled_only_before_the_first_opcode_when_code_takes_no_jump(
         int continuingOpcodeCount,
         bool appendStop,
-        int expectedPollCount,
         Instruction opcode)
     {
         byte[] code = CreateCancellationCode(continuingOpcodeCount, appendStop, opcode);
@@ -353,21 +352,44 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tracer.Error, Is.Null);
-            Assert.That(tracer.PollCount, Is.EqualTo(expectedPollCount));
-            Assert.That(Machine.OpCodeCount, Is.EqualTo(continuingOpcodeCount + (appendStop ? 1 : 0)));
+            Assert.That(tracer.Error, Is.Null, "straight-line code runs to its end");
+            Assert.That(tracer.PollCount, Is.EqualTo(1), "code without a jump only moves forward, so the entry poll bounds it");
+            Assert.That(Machine.OpCodeCount, Is.EqualTo(continuingOpcodeCount + (appendStop ? 1 : 0)), "every opcode ran");
         }
     }
 
-    [TestCase(Instruction.JUMPDEST)]
-    [TestCase(Instruction.RETURNDATASIZE)]
-    public void Cancellation_at_a_1024_opcode_boundary_stops_before_the_next_opcode(Instruction opcode)
-    {
-        byte[] code = CreateCancellationCode(1024, true, opcode);
-        CountingCancellationTracer tracer = new(cancelAtPoll: 2);
+    private static readonly string[] EndlessLoops =
+    [
+        "5b600056",         // JUMPDEST PUSH1 0 JUMP
+        "5b6001600057",     // JUMPDEST PUSH1 1 PUSH1 0 JUMPI
+        "5b61000056",       // JUMPDEST PUSH2 0 JUMP
+        "5b600161000057",   // JUMPDEST PUSH1 1 PUSH2 0 JUMPI
+    ];
 
-        Assert.Throws<OperationCanceledException>(() => Execute(tracer, code));
-        Assert.That(tracer.PollCount, Is.EqualTo(2));
+    [Test]
+    public void Cancellation_is_polled_at_a_taken_jump_once_the_loop_passes_the_interval(
+        [ValueSource(nameof(EndlessLoops))] string loop, [Values] bool traceInstructions)
+    {
+        CountingCancellationTracer tracer = new(cancelAtPoll: 2, traceInstructions);
+
+        Assert.Throws<OperationCanceledException>(() => Execute(tracer, Bytes.FromHexString(loop)), "an endless loop must reach a cancellation poll");
+        Assert.That(tracer.PollCount, Is.EqualTo(2), "the first poll is at frame entry and the second at a taken jump");
+    }
+
+    [Test]
+    public void Cancellation_is_polled_at_most_once_per_interval_in_an_uncancelled_loop(
+        [ValueSource(nameof(EndlessLoops))] string loop, [Values] bool traceInstructions)
+    {
+        CountingCancellationTracer tracer = new(traceInstructions: traceInstructions);
+
+        Execute(tracer, Bytes.FromHexString(loop));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)), "precondition: the loop only ends by running out of gas");
+            Assert.That(tracer.PollCount, Is.GreaterThan(1), "a loop past the interval is polled at a taken jump");
+            Assert.That(tracer.PollCount, Is.LessThanOrEqualTo(Machine.OpCodeCount / 1024 + 1), "taken jumps poll only once the interval has elapsed");
+        }
     }
 
     private static byte[] CreateCancellationCode(int continuingOpcodeCount, bool appendStop, Instruction opcode)
@@ -389,10 +411,10 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             (Instruction.ADD, 2, 3), (Instruction.MUL, 2, 5), (Instruction.SUB, 2, 3),
             (Instruction.ADDMOD, 3, 8), (Instruction.MULMOD, 3, 8),
             (Instruction.DIV, 2, 5), (Instruction.SDIV, 2, 5), (Instruction.MOD, 2, 5),
-            (Instruction.SMOD, 2, 5), (Instruction.LT, 2, 3), (Instruction.GT, 2, 3),
+            (Instruction.SMOD, 2, 5), (Instruction.SIGNEXTEND, 2, 5), (Instruction.LT, 2, 3), (Instruction.GT, 2, 3),
             (Instruction.SLT, 2, 3), (Instruction.SGT, 2, 3), (Instruction.EQ, 2, 3),
             (Instruction.ISZERO, 1, 3), (Instruction.NOT, 1, 3),
-            (Instruction.POP, 1, 2),
+            (Instruction.POP, 1, 2), (Instruction.JUMPDEST, 0, 1),
             (Instruction.CALLDATALOAD, 1, 3),
             (Instruction.BYTE, 2, 3), (Instruction.CLZ, 1, 5),
             (Instruction.SHL, 2, 3), (Instruction.SHR, 2, 3), (Instruction.SAR, 2, 3),
@@ -416,7 +438,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
                                 .SetName($"Fixed_cost_full_stack_{opcode}_tracer_{tracerMode}_depth_{fullDepth}_gas_{sufficientGas}");
             foreach (int tracerMode in new[] { 0, 1, 2 })
             {
-                foreach (bool sufficientStack in new[] { false, true })
+                foreach (bool sufficientStack in depth == 0 ? new[] { true } : new[] { false, true })
                 {
                     foreach (bool sufficientGas in new[] { false, true })
                     {
@@ -481,6 +503,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             ["Math1Opcode"] = [Instruction.ISZERO, Instruction.NOT],
             ["BitwiseOpcode"] = [Instruction.EQ, Instruction.AND, Instruction.OR, Instruction.XOR],
             ["CountLeadingZerosOpcode"] = [Instruction.CLZ],
+            ["SignExtendOpcode"] = [Instruction.SIGNEXTEND],
             ["ByteOpcode"] = [Instruction.BYTE],
             ["ShiftOpcode"] = [Instruction.SHL, Instruction.SHR],
             ["SarOpcode"] = [Instruction.SAR],
@@ -499,6 +522,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             ["SelfBalanceOpcode"] = [Instruction.SELFBALANCE],
             ["PopOpcode"] = [Instruction.POP],
             ["ProgramCounterOpcode"] = [Instruction.PC],
+            ["JumpDestOpcode"] = [Instruction.JUMPDEST],
             ["GasOpcode"] = [Instruction.GAS],
             ["Push0Opcode"] = [Instruction.PUSH0],
             ["PushOpcode"] = OpcodeRange(Instruction.PUSH1, Instruction.PUSH32),

@@ -17,15 +17,15 @@ using Nethermind.State;
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 public class TraceModuleFactory(
-    IOverridableEnvFactory overridableEnvFactory,
+    ITraceEnvFactory overridableEnvFactory,
     ILifetimeScope rootLifetimeScope,
     IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules,
     IPrefixStateSeedSource prefixSeeds,
-    ParallelTraceBudget parallelBudget,
+    ParallelTraceBudgets parallelBudgets,
     ILogManager logManager
 ) : ModuleFactoryBase<ITraceRpcModule>
 {
-    private readonly SharedParallelBlockTracer _parallelTracer = new(overridableEnvFactory, rootLifetimeScope, prefixSeeds, parallelBudget, logManager,
+    private readonly SharedParallelBlockTracer _parallelTracer = new(overridableEnvFactory, rootLifetimeScope, prefixSeeds, parallelBudgets, logManager,
         builder => ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules));
 
     private static ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder, TransactionProcessorAdapterFactory adapterFactory, IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules) =>
@@ -40,7 +40,7 @@ public class TraceModuleFactory(
 
     public override ITraceRpcModule Create()
     {
-        IOverridableEnv env = overridableEnvFactory.Create();
+        IOverridableEnv env = overridableEnvFactory.CreateForTracing();
 
         // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
         // world state and code info repository is used.
