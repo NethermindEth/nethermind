@@ -531,12 +531,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             SearchResult<BlockHeader> parentSearch = blockFinder.SearchForHeader(new BlockParameter(block.Header.ParentHash));
             if (parentSearch.IsError)
             {
-                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(parentSearch);
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Fail(parentSearch);
             }
 
             if (!blockchainBridge.HasStateForBlock(parentSearch.Object))
             {
-                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>?>(parentSearch.Object);
             }
 
             BlockHeader parentHeader = parentSearch.Object!;

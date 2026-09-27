@@ -27,6 +27,7 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -390,33 +391,57 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task Trace_transaction_and_get_keep_errors_for_unavailable_history([Values] bool missingParent)
+    public async Task Trace_transaction_and_get_keep_errors_for_unavailable_history([Values] UnavailableHistory unavailable)
     {
         Context context = new();
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         Transaction transaction = Build.A.Transaction.WithNonce(blockchain.ReadOnlyState.GetNonce(TestItem.AddressB))
             .WithTo(TestItem.AddressC).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        Block block = await blockchain.AddBlock(transaction);
-        using ILifetimeScope scope = missingParent
-            ? WithStateAvailability(blockchain, _ => true, new MissingHeaderBlockTree(blockchain.BlockTree, block.ParentHash!))
-            : WithStateAvailability(blockchain, _ => false);
-        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
-
-        foreach (string response in new[]
+        await blockchain.AddBlock(transaction);
+        Block block = blockchain.BlockTree.Head!;
+        await blockchain.AddBlock();
+        using ILifetimeScope scope = unavailable switch
         {
-            await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!),
-            await RpcTest.TestSerializedRequest(module, "trace_get", transaction.Hash!, Array.Empty<string>()),
+            UnavailableHistory.State => WithStateAvailability(blockchain, _ => false),
+            UnavailableHistory.ParentHeader => WithStateAvailability(blockchain, _ => true, new MissingHeaderBlockTree(blockchain.BlockTree, block.ParentHash!)),
+            _ => WithStateAvailability(blockchain, _ => true, new PrunedBodyBlockTree(blockchain.BlockTree, block)),
+        };
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+        (int Code, IResolveConstraint Message) expected = unavailable switch
+        {
+            UnavailableHistory.State => (ErrorCodes.ResourceUnavailable, Does.StartWith("No state available for block")),
+            UnavailableHistory.ParentHeader => (ErrorCodes.ResourceNotFound, Is.EqualTo(BlockFinderExtensions.HeaderNotFound)),
+            _ => (ErrorCodes.PrunedHistoryUnavailable, Does.StartWith(ErrorMessages.PrunedHistoryUnavailable)),
+        };
+
+        foreach ((string response, bool requireCanonical) in new[]
+        {
+            (await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!), true),
+            (await RpcTest.TestSerializedRequest(module, "trace_get", transaction.Hash!, Array.Empty<string>()), true),
+            (await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!, true), false),
         })
         {
             using JsonDocument document = JsonDocument.Parse(response);
             Assert.That(document.RootElement.TryGetProperty("error", out JsonElement error), Is.True, response);
+            // The canonical lookup reports a pruned body as a non-canonical block, so only the error itself is pinned there.
+            if (unavailable is UnavailableHistory.PrunedBody && requireCanonical) continue;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(missingParent ? ErrorCodes.ResourceNotFound : ErrorCodes.ResourceUnavailable), response);
-                Assert.That(error.GetProperty("message").GetString(), missingParent ? Is.EqualTo(BlockFinderExtensions.HeaderNotFound) : Does.StartWith("No state available for block"), response);
+                Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(expected.Code), response);
+                Assert.That(error.GetProperty("message").GetString(), expected.Message, response);
             }
         }
+    }
+
+    public enum UnavailableHistory { State, ParentHeader, PrunedBody }
+
+    private sealed class PrunedBodyBlockTree(IBlockTree inner, Block prunedBlock) : BlockTreeTestDouble(inner)
+    {
+        public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+            blockHash == prunedBlock.Hash ? null : base.FindBlock(blockHash, options, blockNumber);
+
+        public override ulong GetLowestBlock() => prunedBlock.Number + 1;
     }
 
     [Test]
