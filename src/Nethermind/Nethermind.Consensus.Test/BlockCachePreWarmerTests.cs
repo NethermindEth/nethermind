@@ -935,6 +935,39 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
+    public async Task StartSpeculativePreWarm_CancellationInterruptsIdleDelay()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
+        using CancellationTokenSource cancellation = new();
+        TaskCompletionSource passStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int passes = 0;
+        Task session = preWarmer.StartSpeculativePreWarm(BuildParentHeader(), Osaka.Instance, generation: 1, _ =>
+        {
+            Interlocked.Increment(ref passes);
+            passStarted.TrySetResult();
+            return null;
+        }, idlePassDelayMs: 60_000, cancellation.Token);
+
+        try
+        {
+            await passStarted.Task.WaitAsync(DiscoveryTimeout);
+            await Task.Delay(PendingProbe);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session.IsCompleted, Is.False, "the session must remain active during the idle delay");
+                Assert.That(Volatile.Read(ref passes), Is.EqualTo(1), "the idle delay must throttle subsequent passes");
+            }
+        }
+        finally
+        {
+            cancellation.Cancel();
+            await session.WaitAsync(DiscoveryTimeout);
+        }
+
+        Assert.That(session.IsCompletedSuccessfully, Is.True);
+    }
+
+    [Test]
     public void StartSpeculativePreWarm_WhileABlockExecutes_DoesNotTouchTheCaches()
     {
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();

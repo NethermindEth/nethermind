@@ -672,7 +672,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private void RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken token)
+    private async Task RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken token)
     {
         // _warmedTxHashes is reused across sessions (cleared at session start); only the small marker is per-session.
         WarmMarker marker = new(headHash, spec, _warmedTxHashes);
@@ -718,7 +718,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 }
 
                 // Rate-limit every pass so a churning mempool can't keep tx selection continuously in flight.
-                if (token.WaitHandle.WaitOne(delay)) break;
+                await Task.Delay(delay, token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
