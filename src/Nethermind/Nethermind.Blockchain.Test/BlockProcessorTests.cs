@@ -163,6 +163,25 @@ public partial class BlockProcessorTests
         artifacts.AssertUntouched(block);
     }
 
+    [TestCase(TraceProcessingOptions.ReadOnlyReplay, false, TestName = "ReadOnlyReplay_SkipsCommitments")]
+    [TestCase(ProcessingOptions.None, true, TestName = "Validated_ComputesCommitments")]
+    public async Task TransactionTraceBlockProcessor_ComputesCommitmentsOnlyWhenTheyAreRead(ProcessingOptions options, bool expectStateRoot)
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+
+        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+        (Block processed, TxReceipt[] _) = chain.BlockProcessor.ProcessOne(block, options, NullBlockTracer.Instance, Prague.Instance, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed.Header.StateRoot, expectStateRoot ? Is.EqualTo(block.Header.StateRoot) : Is.Null,
+                "only a validated or persisted block needs its state root derived");
+            Assert.That(processed.Hash, Is.EqualTo(block.Hash), "the processed header must keep the canonical hash either way");
+        }
+    }
+
     [Test]
     public async Task HistoryBlockExecutor_WhenReplaying_LeavesCachedArtifactsUntouched([Values] bool amsterdam)
     {
