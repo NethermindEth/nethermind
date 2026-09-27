@@ -146,6 +146,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _callStack.Add(callFrame);
     }
 
+    /// <inheritdoc/>
     public override void ReportLog(LogEntry log)
     {
         base.ReportLog(log);
