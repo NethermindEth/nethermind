@@ -139,13 +139,20 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private async ValueTask<EvmAdmissionGate.Lease> AdmitBatchItemAsync(JsonRpcRequest request, StrongBox<TimeSpan> batchQueueWait, bool priority)
     {
         long queuedAt = Stopwatch.GetTimestamp();
+        bool timedOut = false;
         try
         {
             return await EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget - batchQueueWait.Value, priority, request.CancellationToken);
         }
+        catch (EvmAdmissionGate.WaitTimeoutException)
+        {
+            timedOut = true;
+            throw;
+        }
         finally
         {
-            batchQueueWait.Value += Stopwatch.GetElapsedTime(queuedAt);
+            // A wait timer may fire a little early, but an item whose wait timed out has spent what was left all the same.
+            batchQueueWait.Value = timedOut ? EvmGate.Budget : batchQueueWait.Value + Stopwatch.GetElapsedTime(queuedAt);
         }
     }
 

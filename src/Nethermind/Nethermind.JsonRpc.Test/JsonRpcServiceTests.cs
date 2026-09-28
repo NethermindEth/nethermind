@@ -1333,6 +1333,38 @@ public class JsonRpcServiceTests
         }
     }
 
+    [TestCase(false, TestName = "Public")]
+    [TestCase(true, TestName = "Authenticated")]
+    public async Task Batch_item_whose_wait_timed_out_leaves_nothing_for_later_items(bool authenticated)
+    {
+        JsonRpcService service = CreateGatedService(Substitute.For<IEthRpcModule>(), maxQueueWaitMs: 1_000);
+        using JsonRpcContext context = authenticated ? CreateTrustedContext(RpcEndpoint.Http, true) : new JsonRpcContext(RpcEndpoint.Http);
+        // Less is left than the timer resolution, so the wait times out at once, usually before that much time has passed.
+        StrongBox<TimeSpan> batchQueueWait = new(service.EvmGate.Budget - TimeSpan.FromMilliseconds(0.5));
+
+        using (await HoldSlot(service))
+        using (authenticated ? await HoldSlot(service, priority: true) : default)
+        {
+            using (JsonRpcResponse timedOut = await service.SendRequestAsync(BatchItem(), context).AsTask().WaitAsync(TestTimeout))
+            {
+                AssertJsonRpcError(timedOut, ErrorCodes.LimitExceeded);
+            }
+
+            Assert.That(batchQueueWait.Value, Is.EqualTo(service.EvmGate.Budget), "a timed-out item spends what was left");
+            using JsonRpcResponse rejected = await service.SendRequestAsync(BatchItem(), context);
+            AssertJsonRpcError(rejected, ErrorCodes.LimitExceeded);
+        }
+
+        Assert.That((service.EvmGate.WaitTimeoutRejections, service.EvmGate.NotQueueableRejections), Is.EqualTo((1L, 1L)), "so the next item is rejected without queueing");
+
+        JsonRpcRequest BatchItem()
+        {
+            JsonRpcRequest request = EthCall();
+            request.BatchQueueWait = batchQueueWait;
+            return request;
+        }
+    }
+
     [Test]
     public async Task Batch_items_add_their_granted_waits_and_later_items_may_wait_only_what_is_left()
     {

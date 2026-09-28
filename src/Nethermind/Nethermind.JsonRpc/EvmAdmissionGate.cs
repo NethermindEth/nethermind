@@ -91,7 +91,8 @@ internal sealed class EvmAdmissionGate
     /// <see cref="Permits"/> and lets it queue past the queue limit.</param>
     /// <param name="cancellationToken">Abandons the wait.</param>
     /// <returns>A lease to dispose exactly once, after the execution, including any task it returned, has completed.</returns>
-    /// <exception cref="LimitExceededException">No slot was free and the request could not queue, or none was granted within <paramref name="maxWait"/>.</exception>
+    /// <exception cref="LimitExceededException">No slot was free and the request could not queue.</exception>
+    /// <exception cref="WaitTimeoutException">No slot was granted within <paramref name="maxWait"/>.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled before a slot was granted.</exception>
     internal async ValueTask<Lease> AdmitAsync(int paramsUtf8Length, TimeSpan maxWait, bool priority, CancellationToken cancellationToken)
     {
@@ -137,7 +138,7 @@ internal sealed class EvmAdmissionGate
         {
             if (TryRemove(waiter, ex))
             {
-                if (ex is TimeoutException) throw new LimitExceededException(WaitTimeoutMessage);
+                if (ex is TimeoutException) throw new WaitTimeoutException();
                 throw;
             }
 
@@ -145,7 +146,7 @@ internal sealed class EvmAdmissionGate
             lease = await waiter.Task;
         }
 
-        return lease.IsGranted ? lease : throw new LimitExceededException(WaitTimeoutMessage);
+        return lease.IsGranted ? lease : throw new WaitTimeoutException();
     }
 
     // Capped at half the waiter's own wait: a batch item may wait less than half the budget, so it could never age to the
@@ -243,6 +244,9 @@ internal sealed class EvmAdmissionGate
         _arrivals.Remove(next.Arrival!);
         return true;
     }
+
+    /// <summary>A queued request got no slot within its wait.</summary>
+    internal sealed class WaitTimeoutException() : LimitExceededException(WaitTimeoutMessage);
 
     /// <summary>An execution slot; disposing it passes the slot to the next waiter or frees it.</summary>
     /// <remarks>Dispose it exactly once: a second release would permanently raise the number of concurrent executions.</remarks>

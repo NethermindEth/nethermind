@@ -49,7 +49,7 @@ public class EvmAdmissionGateTests
         Assert.That((third.IsCompleted, gate.InFlight, gate.Queued), Is.EqualTo((false, 2, 1)));
 
         first.Dispose();
-        Assert.That(async () => await Admit(gate, maxWait: TimeSpan.Zero), Throws.InstanceOf<LimitExceededException>(),
+        Assert.That(async () => await Admit(gate, maxWait: TimeSpan.Zero), Throws.TypeOf<LimitExceededException>(),
             "a request that may not queue never gets a slot released while others wait");
         Lease granted = await third.AsTask().WaitAsync(TestTimeout);
         Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((2, 0)));
@@ -105,7 +105,7 @@ public class EvmAdmissionGateTests
         if (rejected)
         {
             Assert.That(admission.IsCompleted, Is.True, "rejected without waiting");
-            Assert.That(async () => await admission, Throws.InstanceOf<LimitExceededException>());
+            Assert.That(async () => await admission, Throws.TypeOf<LimitExceededException>(), "not a wait timeout");
         }
 
         Assert.That(
@@ -120,7 +120,7 @@ public class EvmAdmissionGateTests
         Lease held = await Admit(gate);
         Lease above = await Admit(gate, priority: true);
         List<(string Name, Task<Lease> Admission)> waiters = [("public 1", Admit(gate).AsTask()), ("public 2", Admit(gate).AsTask())];
-        Assert.That(async () => await Admit(gate), Throws.InstanceOf<LimitExceededException>(), "the queue is full");
+        Assert.That(async () => await Admit(gate), Throws.TypeOf<LimitExceededException>(), "the queue is full");
 
         waiters.Add(("priority", Admit(gate, priority: true).AsTask()));
         Assert.That((gate.Queued, gate.QueueFullRejections), Is.EqualTo((3, 1)), "a priority request queues all the same");
@@ -264,7 +264,7 @@ public class EvmAdmissionGateTests
             held.Dispose();
         }
 
-        Assert.That(async () => await waiter.WaitAsync(TestTimeout), Throws.InstanceOf<LimitExceededException>());
+        Assert.That(async () => await waiter.WaitAsync(TestTimeout), Throws.TypeOf<WaitTimeoutException>());
         if (timerFires)
         {
             held.Dispose();
