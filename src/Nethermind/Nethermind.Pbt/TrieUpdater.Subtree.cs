@@ -90,8 +90,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly ValueHash256 LeafHash => LeftHash;
         internal readonly bool HasLeftLeaf => (LeafChildren & LeftLeaf) != 0;
         internal readonly bool HasRightLeaf => (LeafChildren & RightLeaf) != 0;
-        private readonly int LeftLeafKeyLength => HasLeftLeaf ? LeafKey.Length : 0;
-        private readonly int RightLeafKeyLength => HasRightLeaf ? RightLeafKey.Length : 0;
+        private readonly int LeftLeafKeyLength(int keyOffset) => HasLeftLeaf ? LeafKey.Length - keyOffset : 0;
+        private readonly int RightLeafKeyLength(int keyOffset) => HasRightLeaf ? RightLeafKey.Length - keyOffset : 0;
         [UnscopedRef]
         private readonly CompressedPrefix Prefix => Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(Encoding);
 
@@ -112,9 +112,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>The stored length of this node written at <paramref name="depth"/> when read against <paramref name="cursor"/>; a leaf is only stored as the tree root.</summary>
-        internal readonly int EncodedLength(scoped in PbtTraversalPath cursor, int depth) => IsLeaf
-            ? PbtNodeCodec.LeafLength(LeafKey.Length)
-            : PbtNodeCodec.BranchLength(BranchDepth(cursor) - depth, LeftLeafKeyLength, RightLeafKeyLength);
+        internal readonly int EncodedLength(scoped in PbtTraversalPath cursor, int depth)
+        {
+            if (IsLeaf) return PbtNodeCodec.LeafLength(LeafKey.Length);
+            int keyOffset = PbtNodeCodec.InlineKeyOffset(depth);
+            return PbtNodeCodec.BranchLength(BranchDepth(cursor) - depth, LeftLeafKeyLength(keyOffset), RightLeafKeyLength(keyOffset));
+        }
 
         /// <summary>Writes this node at <paramref name="depth"/> when read against <paramref name="cursor"/>, returning its hash.</summary>
         internal readonly ValueHash256 EncodeAt(scoped in PbtTraversalPath cursor, int depth, Span<byte> encoding)
@@ -128,12 +131,13 @@ internal static partial class TrieUpdater<TKey, TPath>
             int bitCount = BranchDepth(cursor) - depth;
             int preimageLength = WriteBranchPreimage(cursor, depth, bitCount, encoding);
             Span<byte> trailer = encoding[preimageLength..];
-            int leftLength = LeftLeafKeyLength;
-            PbtNodeCodec.WriteBranchTrailer(trailer, leftLength, RightLeafKeyLength);
+            int keyOffset = PbtNodeCodec.InlineKeyOffset(depth);
+            int leftLength = LeftLeafKeyLength(keyOffset);
+            PbtNodeCodec.WriteBranchTrailer(trailer, leftLength, RightLeafKeyLength(keyOffset));
             // Each key is copied in its own statement: the spans borrow defensive copies of the readonly fields, and two
             // such same-typed temporaries in one call would share a slot.
-            if (HasLeftLeaf) LeafKey.Bytes.CopyTo(trailer[PbtNodeCodec.BranchTrailerHeaderLength..]);
-            if (HasRightLeaf) RightLeafKey.Bytes.CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftLength)..]);
+            if (HasLeftLeaf) LeafKey.Bytes[keyOffset..].CopyTo(trailer[PbtNodeCodec.BranchTrailerHeaderLength..]);
+            if (HasRightLeaf) RightLeafKey.Bytes[keyOffset..].CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftLength)..]);
             // An omitted branch rebuilt at its own anchor, or a published group root written into its parent
             // group, is the node already hashed at this prefix length.
             if (KnownHash != default && bitCount == KnownHashBitCount) return KnownHash;

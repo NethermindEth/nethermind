@@ -33,10 +33,10 @@ internal readonly ref struct PbtNodeReader
     internal ReadOnlySpan<byte> Preimage { get { EnsureKind(false); return _encoding[..PreimageLength]; } }
     internal ValueHash256 LeftHash { get { EnsureKind(false); return new(_encoding.Slice(PreimageLength - 64, 32)); } }
     internal ValueHash256 RightHash { get { EnsureKind(false); return new(_encoding.Slice(PreimageLength - 32, 32)); } }
-    /// <summary>The left child's complete key when it is a leaf, otherwise empty.</summary>
-    internal ReadOnlySpan<byte> LeftKey { get { EnsureKind(false); return _encoding.Slice(PreimageLength + PbtNodeCodec.BranchTrailerHeaderLength, _encoding[PreimageLength]); } }
-    /// <summary>The right child's complete key when it is a leaf, otherwise empty.</summary>
-    internal ReadOnlySpan<byte> RightKey { get { EnsureKind(false); return _encoding[(PreimageLength + PbtNodeCodec.BranchTrailerHeaderLength + _encoding[PreimageLength])..]; } }
+    /// <summary>The left child's key past <see cref="PbtNodeCodec.InlineKeyOffset"/> when it is a leaf, otherwise empty.</summary>
+    internal ReadOnlySpan<byte> LeftKeyPostfix { get { EnsureKind(false); return _encoding.Slice(PreimageLength + PbtNodeCodec.BranchTrailerHeaderLength, _encoding[PreimageLength]); } }
+    /// <summary>The right child's key past <see cref="PbtNodeCodec.InlineKeyOffset"/> when it is a leaf, otherwise empty.</summary>
+    internal ReadOnlySpan<byte> RightKeyPostfix { get { EnsureKind(false); return _encoding[(PreimageLength + PbtNodeCodec.BranchTrailerHeaderLength + _encoding[PreimageLength])..]; } }
 
     private int BitCount => BinaryPrimitives.ReadUInt16BigEndian(_encoding[1..]);
     private int PreimageLength => PbtNodeCodec.BranchPreimageLength(BitCount);

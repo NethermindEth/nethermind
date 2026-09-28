@@ -32,7 +32,7 @@ internal sealed class PbtTreeHarness : IDisposable
     public static byte[] EncodeBranch(ReadOnlySpan<byte> prefix, int bitCount, in ValueHash256 left, in ValueHash256 right) =>
         EncodeBranch(prefix, bitCount, left, right, [], []);
 
-    /// <summary>Encodes a branch; a non-empty key inlines that child as a leaf.</summary>
+    /// <summary>Encodes a branch; a non-empty key, past <see cref="PbtNodeCodec.InlineKeyOffset"/>, inlines that child as a leaf.</summary>
     public static byte[] EncodeBranch(ReadOnlySpan<byte> prefix, int bitCount, in ValueHash256 left, in ValueHash256 right,
         ReadOnlySpan<byte> leftKey, ReadOnlySpan<byte> rightKey)
     {
@@ -51,6 +51,8 @@ internal sealed class PbtTreeHarness : IDisposable
     public IReadOnlyList<PbtPhysicalPayload> PhysicalPayloads => _store.ExportPhysicalPayloads();
 
     public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes) => RootHash = _store.Fold(RootHash, writes);
+
+    public ValueHash256 GetLeafHash(byte[] key) => PbtNodeTraverser.GetLeafHash(_store, RootHash, new PbtStorageTreeKey(key), null);
 
     public bool TryGetNode<TPath>(TPath path, out byte[]? encoding) where TPath : struct, IPbtNodePath<TPath>
     {
@@ -191,7 +193,7 @@ internal static class PbtStoreTestExtensions
             }
             int direction = groupKey.GetBit(branchDepth);
             // An inline leaf has no group below it.
-            if (!(direction == 0 ? node.LeftKey : node.RightKey).IsEmpty) return default;
+            if (!(direction == 0 ? node.LeftKeyPostfix : node.RightKeyPostfix).IsEmpty) return default;
             path = path.Append(node.Prefix, direction);
         }
     }
@@ -290,7 +292,7 @@ internal static class PbtStoreTestExtensions
             if (node.IsLeaf || currentPath.BitDepth + node.Prefix.BitCount >= path.BitDepth) return null;
             int directionBit = currentPath.BitDepth + node.Prefix.BitCount;
             int direction = path.GetBit(directionBit);
-            if (!(direction == 0 ? node.LeftKey : node.RightKey).IsEmpty) return null;
+            if (!(direction == 0 ? node.LeftKeyPostfix : node.RightKeyPostfix).IsEmpty) return null;
             currentPath = currentPath.Append(node.Prefix, direction);
             for (int bit = 0; bit < currentPath.BitDepth; bit++)
                 if (currentPath.GetBit(bit) != path.GetBit(bit)) return null;
@@ -368,8 +370,8 @@ internal static class PbtStoreTestExtensions
             records.Add(new PbtNodeRecord(path, encoding));
             PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
             if (node.IsLeaf) continue;
-            if (node.LeftKey.IsEmpty) pending.Push(path.Append(node.Prefix, 0));
-            if (node.RightKey.IsEmpty) pending.Push(path.Append(node.Prefix, 1));
+            if (node.LeftKeyPostfix.IsEmpty) pending.Push(path.Append(node.Prefix, 0));
+            if (node.RightKeyPostfix.IsEmpty) pending.Push(path.Append(node.Prefix, 1));
         }
         records.Sort(static (left, right) => left.Path.CompareTo(right.Path));
         return records;

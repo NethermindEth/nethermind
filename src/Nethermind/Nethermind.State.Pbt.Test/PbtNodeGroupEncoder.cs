@@ -159,10 +159,11 @@ internal static class PbtNodeGroupEncoder
 
     private static bool MatchesInlineLeaves<TPath>(PbtNodeReader node, TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
-        ReadOnlySpan<byte> leftKey = node.LeftKey;
-        ReadOnlySpan<byte> rightKey = node.RightKey;
-        return (leftKey.IsEmpty || StartsWith(leftKey, path))
-            && (rightKey.IsEmpty || StartsWith(rightKey, path));
+        byte[] pathBytes = new byte[PbtBitPrefix.ByteCount(path.BitDepth)];
+        PbtNodePathOperations.CopyTo(path, pathBytes);
+        byte[] keyPrefix = pathBytes[..PbtNodeCodec.InlineKeyOffset(path.BitDepth)];
+        return (node.LeftKeyPostfix.IsEmpty || StartsWith([.. keyPrefix, .. node.LeftKeyPostfix], path))
+            && (node.RightKeyPostfix.IsEmpty || StartsWith([.. keyPrefix, .. node.RightKeyPostfix], path));
     }
 
     private static bool StartsWith<TPath>(ReadOnlySpan<byte> key, TPath path) where TPath : struct, IPbtNodePath<TPath> =>

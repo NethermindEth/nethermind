@@ -73,6 +73,8 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     internal int WrittenCount => _written;
+    /// <summary>The number of leading key bytes inline leaf keys omit in a branch written at <paramref name="position"/>.</summary>
+    internal int KeyOffsetAt(int position) => PbtNodeCodec.InlineKeyOffset(_bitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length);
     internal int LastPosition => _lastPosition;
 
     /// <summary>The size change folded below boundary slot <paramref name="slot"/> since this frame was opened.</summary>

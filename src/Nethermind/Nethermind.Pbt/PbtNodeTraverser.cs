@@ -56,8 +56,9 @@ internal static class PbtNodeTraverser
                     if (branchDepth >= key.BitLength) return default;
                     if (TrieUpdater<TKey, PbtStorageNodePath>.MatchingPrefixBits(node.Prefix, key, path.BitDepth) != node.Prefix.BitCount) return default;
                     int direction = key.GetBit(branchDepth);
-                    ReadOnlySpan<byte> inlineLeafKey = direction == 0 ? node.LeftKey : node.RightKey;
-                    if (!inlineLeafKey.IsEmpty) return inlineLeafKey.SequenceEqual(key.Bytes) ? (direction == 0 ? node.LeftHash : node.RightHash) : default;
+                    ReadOnlySpan<byte> inlineLeafKey = direction == 0 ? node.LeftKeyPostfix : node.RightKeyPostfix;
+                    if (!inlineLeafKey.IsEmpty)
+                        return inlineLeafKey.SequenceEqual(key.Bytes[(groupKey.BitDepth >> 3)..]) ? (direction == 0 ? node.LeftHash : node.RightHash) : default;
                     childPath = path.Append(node.Prefix, direction);
                     location = PbtFourLevelGroupGeometry.Locate(childPath);
                     if (!location.GroupKey.Equals(groupKey))

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt;
 
@@ -34,4 +35,14 @@ internal static class PbtKeyOperations
         return (byteIndex << 3) + BitOperations.LeadingZeroCount((uint)(bytes[byteIndex] ^ other[byteIndex])) - 24;
     }
 
+    /// <summary>Creates a key from a leading path and an inline key postfix.</summary>
+    [SkipLocalsInit]
+    internal static TKey CreateKey<TKey>(scoped ReadOnlySpan<byte> prefix, scoped ReadOnlySpan<byte> postfix) where TKey : struct, IPbtKey<TKey>
+    {
+        if (prefix.IsEmpty) return TKey.Create(postfix);
+        Span<byte> key = stackalloc byte[PbtStorageTreeKey.MaxLength];
+        prefix.CopyTo(key);
+        postfix.CopyTo(key[prefix.Length..]);
+        return TKey.Create(key[..(prefix.Length + postfix.Length)]);
+    }
 }

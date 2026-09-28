@@ -212,7 +212,7 @@ public static partial class TrieUpdater
     {
         BoundaryNode boundary = TakeBoundary(ref zoneReader, ref zoneHashes, zonePath, ref zoneFrontier, worker.Zone & 15);
         if (IsAbsentGroupBelow(boundary, 8)) worker.InheritedDescendantBytes = zoneReader.DescendantBytes(worker.Zone & 15);
-        worker.Current = boundary.Owned();
+        worker.Current = boundary.Owned(zonePath);
     }
 
     /// <summary>Composes and publishes the zone group of <paramref name="zoneReader"/>, returning its size change and leaving its root in <paramref name="zoneRoot"/>.</summary>

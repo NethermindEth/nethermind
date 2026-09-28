@@ -66,7 +66,7 @@ public class PbtRocksDbPersistenceTests
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
-        metadata[SchemaEpochKey] = Epoch(21);
+        metadata[SchemaEpochKey] = Epoch(22);
         if (stamp is not null) metadata[NodeGroupKeyLayoutKey] = stamp;
         metadata[PrefixlessBranchOmissionKey] = [1];
 
@@ -90,7 +90,7 @@ public class PbtRocksDbPersistenceTests
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
-        metadata[SchemaEpochKey] = Epoch(21);
+        metadata[SchemaEpochKey] = Epoch(22);
         metadata[NodeGroupKeyLayoutKey] = [(byte)PbtNodeGroupKeyLayout.Variable];
         if (stamp is not null) metadata[PrefixlessBranchOmissionKey] = stamp;
 
@@ -644,7 +644,7 @@ public class PbtRocksDbPersistenceTests
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(21)));
+            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(22)));
             Assert.That(metadata.Get(CurrentStateKey), Is.Null);
             Assert.That(metadata.Get(ValidStateKey), Is.Null);
         }
@@ -740,11 +740,11 @@ public class PbtRocksDbPersistenceTests
         yield return new TestCaseData(Epoch(9), CurrentState(), new byte[] { 1 }, false).SetName("Rejects_epoch_9");
         yield return new TestCaseData(Epoch(18), CurrentState(), new byte[] { 1 }, false).SetName("Rejects_epoch_18");
         yield return new TestCaseData(new byte[] { 9 }, null, null, false).SetName("Rejects_malformed_epoch");
-        yield return new TestCaseData(Epoch(21), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
-        yield return new TestCaseData(Epoch(21), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
-        yield return new TestCaseData(Epoch(21), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
-        yield return new TestCaseData(Epoch(21), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
-        yield return new TestCaseData(Epoch(21), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
+        yield return new TestCaseData(Epoch(22), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
+        yield return new TestCaseData(Epoch(22), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
+        yield return new TestCaseData(Epoch(22), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
+        yield return new TestCaseData(Epoch(22), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
+        yield return new TestCaseData(Epoch(22), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
         yield return new TestCaseData(null, CurrentState(), null, false).SetName("Rejects_unstamped_current_state");
         yield return new TestCaseData(null, null, null, true).SetName("Rejects_unstamped_populated_store");
     }
@@ -853,7 +853,7 @@ public class PbtRocksDbPersistenceTests
             Assert.That(deletedReader.EnumerateNodeGroupKeys().Drain(), Is.Empty);
             Assert.That(db.GetColumnDb(column).Get(physicalKey), Is.Null);
             Assert.That(ReadNode(olderReader, path), Is.EqualTo(BranchNode(1)));
-            Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(SchemaEpochKey), Is.EqualTo(Epoch(21)));
+            Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(SchemaEpochKey), Is.EqualTo(Epoch(22)));
         }
     }
 
@@ -868,7 +868,7 @@ public class PbtRocksDbPersistenceTests
         db.GetColumnDb(column).Set(key, Bytes.FromHexString("01"));
         if (stamped)
         {
-            db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(21));
+            db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(22));
             db.GetColumnDb(PbtColumns.Metadata).Set(NodeGroupKeyLayoutKey, [(byte)config.NodeGroupKeyLayout]);
             db.GetColumnDb(PbtColumns.Metadata).Set(PrefixlessBranchOmissionKey, [1]);
         }

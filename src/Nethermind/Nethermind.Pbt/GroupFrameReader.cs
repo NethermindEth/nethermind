@@ -135,7 +135,7 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
 
     /// <inheritdoc/>
     public readonly TrieUpdater<TKey, TPath>.BoundaryNode TakeInlineLeaf(int position, bool right) =>
-        new(GetEncoding(position), right);
+        new(GetEncoding(position), BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length, right);
 
     public void Dispose()
     {

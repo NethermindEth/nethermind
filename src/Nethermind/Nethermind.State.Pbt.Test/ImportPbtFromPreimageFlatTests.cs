@@ -417,7 +417,7 @@ public class ImportPbtFromPreimageFlatTests
         IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000015")));
+            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000016")));
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             Assert.That(metadata.Get("currentState"u8), Is.Null);
             Assert.That(metadata.Get("validState"u8), Is.Null);
@@ -513,7 +513,8 @@ public class ImportPbtFromPreimageFlatTests
                 rightKey[node.BitDepth / 8] |= (byte)(0x80 >> (node.BitDepth % 8));
                 expectedLeaves += 2;
             }
-            byte[] encoding = PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, leftKey, rightKey);
+            int keyOffset = inlineLeaves ? PbtNodeCodec.InlineKeyOffset(node.BitDepth) : 0;
+            byte[] encoding = PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, leftKey[keyOffset..], rightKey[keyOffset..]);
             BufferWriter writer = new(new byte[1024]);
             PbtNodeGroupEncoder.Encode(ref writer, group, new[] { new PbtNodeRecord(node, encoding) }, default);
             Add(column, group.ToStorageKey(column, config.NodeGroupKeyLayout), writer.WrittenSpan.ToArray());
