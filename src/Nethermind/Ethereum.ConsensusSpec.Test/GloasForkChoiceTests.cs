@@ -22,11 +22,6 @@ namespace Ethereum.ConsensusSpec.Test;
 /// enumerated and reported not implemented, for the reason <see cref="ForkChoiceTests"/> gives: the Gloas state's SSZ shape
 /// hard-codes mainnet-preset bounds.
 /// </summary>
-/// <remarks>
-/// A vector that needs a payload status, a PTC vote or <c>on_payload_attestation_message</c> is reported not implemented,
-/// but only after every step of it ran and every other check passed. A head root check is waived only for the vectors
-/// in <see cref="HeadNeedsPayloadStatus"/>, and each of them must still diverge.
-/// </remarks>
 [TestFixture]
 public class GloasForkChoiceTests
 {
@@ -43,18 +38,6 @@ public class GloasForkChoiceTests
         [ConsensusPreset.Mainnet] = MainnetHandlers,
     };
 
-    /// <summary>
-    /// Vectors whose expected head is a parent's FULL node chosen over a child that builds on its EMPTY node; the runner's
-    /// block-root head picks the child (specs/gloas/fork-choice.md get_head, get_node_children).
-    /// </summary>
-    private static readonly HashSet<string> HeadNeedsPayloadStatus = new(StringComparer.Ordinal)
-    {
-        "Mainnet/gloas/fork_choice/get_head/pyspec_tests/get_head_full_payload_tiebreak",
-        "Mainnet/gloas/fork_choice/on_attestation/pyspec_tests/validate_on_attestation_beacon_root_payload_check",
-        "Mainnet/gloas/fork_choice/payload_data_availability/pyspec_tests/payload_data_availability_above_threshold_returns_true",
-        "Mainnet/gloas/fork_choice/payload_timeliness/pyspec_tests/payload_timeliness_above_threshold_returns_true",
-    };
-
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(ForkChoiceCase testCase) => Execute(testCase);
 
@@ -69,67 +52,24 @@ public class GloasForkChoiceTests
         Assert.That(cases.Select(HandlerOf).Distinct(), Is.EquivalentTo(HandlersByPreset[preset]));
     }
 
-    // A driver that gives up at the first unsupported check still reports every vector not implemented, and so runs green.
+    // A vector the driver cannot run is reported not implemented, which runs green; each handler must pass one outright.
     [Test]
-    public void Every_handler_runs_every_step_of_a_vector()
+    public void Every_handler_passes_a_vector_outright()
     {
         List<ForkChoiceCase> cases = FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases);
         Assert.That(cases, Is.Not.Empty, "no vectors are enumerated");
         foreach (IGrouping<string, ForkChoiceCase> byHandler in cases.GroupBy(HandlerOf, StringComparer.Ordinal))
         {
             ForkChoiceCase first = byHandler.First();
-            Assert.That(() => RunSteps(first), Throws.Nothing, $"'{byHandler.Key}' does not run every step of {first}");
+            Assert.That(() => GloasForkChoiceStepDriver.Run(first.CasePath), Throws.Nothing, $"'{byHandler.Key}' does not pass {first}");
         }
     }
-
-    /// <summary>The handlers with a vector that needs no PTC vote and no weighing of FULL against EMPTY nodes.</summary>
-    private static readonly string[] DecidedHandlers =
-    [
-        "ex_ante", "get_head", "get_parent_payload_status", "on_attestation", "on_block", "on_execution_payload_envelope",
-    ];
-
-    // A driver that reports a check unsupported when the runner's store decides it runs such vectors green without checking them.
-    [Test]
-    public void Every_handler_the_runner_decides_passes_a_vector_outright()
-    {
-        List<ForkChoiceCase> cases = FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases);
-        IEnumerable<string> decided = cases.Where(static c => !HeadNeedsPayloadStatus.Contains(c.VectorName) && RunSteps(c).Unsupported.Count == 0)
-            .Select(HandlerOf).Distinct();
-        Assert.That(decided, Is.EquivalentTo(DecidedHandlers));
-    }
-
-    // Counting an undecided status as held passes a vector the runner never checked; counting a decided one undecided skips it.
-    [TestCase(GloasForkChoiceStepDriver.PayloadStatusEmpty, false, "Holds")]
-    [TestCase(GloasForkChoiceStepDriver.PayloadStatusEmpty, true, "Undecided")]
-    [TestCase(GloasForkChoiceStepDriver.PayloadStatusFull, true, "Undecided")]
-    [TestCase(GloasForkChoiceStepDriver.PayloadStatusFull, false, "Contradicted")]
-    [TestCase(GloasForkChoiceStepDriver.PayloadStatusPending, false, "Contradicted")]
-    [TestCase(GloasForkChoiceStepDriver.PayloadStatusPending, true, "Contradicted")]
-    public void Head_payload_status_is_decided_only_without_a_full_node(byte expected, bool payloadVerified, string verdict) =>
-        Assert.That(GloasForkChoiceStepDriver.DecideHeadPayloadStatus(expected, payloadVerified).ToString(), Is.EqualTo(verdict));
 
     /// <summary>The mainnet vector whose anchor, slot-1 block and verified payload the tests below reuse.</summary>
     private const string FabricationSource = "on_attestation/pyspec_tests/validate_on_attestation_later_slot_full_vote_valid";
 
     /// <summary>Slot 1, a child of the anchor whose payload envelope the vector delivers.</summary>
     private const string SlotOneBlock = "block_0x76bf14e70fc96a5a3442a46dff3bfb897d5568cdb4dc7e94419f625df2fcd9e5";
-
-    // A waiver that ignores ancestry passes a vector whose expected head is a verified block on another branch or below the runner's head.
-    [TestCaseSource(nameof(MainnetOnly))]
-    public void Head_check_waiver_refuses_a_verified_full_node_that_is_not_an_ancestor(string casePath)
-    {
-        ForkChoiceRunner runner = GloasForkChoiceStepDriver.Run(casePath).Runner;
-        Hash256 anchorRoot = AnchorRoot(casePath);
-        Hash256 slotOne = new(SlotOneBlock["block_".Length..]);
-        Assert.That(runner.IsPayloadVerified(slotOne), Is.True, "fixture bug: the vector delivers the slot-1 envelope");
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(GloasForkChoiceStepDriver.IsWaivedHeadDivergence(runner, expectsFull: true, slotOne, anchorRoot), Is.False, "a descendant of the head is not an ancestor");
-            Assert.That(GloasForkChoiceStepDriver.IsWaivedHeadDivergence(runner, expectsFull: true, slotOne, slotOne), Is.False, "the head is not its own strict ancestor");
-            Assert.That(GloasForkChoiceStepDriver.IsWaivedHeadDivergence(runner, expectsFull: false, anchorRoot, slotOne), Is.False, "only a FULL node is waived");
-        }
-    }
 
     /// <summary>
     /// The pyspec harness's <c>add_block</c> replays a block's body attestations and attester slashings into fork choice
@@ -212,7 +152,7 @@ public class GloasForkChoiceTests
                 File.WriteAllBytes(Path.Combine(casePath.FullName, key + ".ssz_snappy"), Snappy.CompressToArray(ssz));
             File.WriteAllText(Path.Combine(casePath.FullName, "meta.yaml"), "{bls_setting: 2}\n");
             File.WriteAllText(Path.Combine(casePath.FullName, "steps.yaml"), string.Concat(steps.Select(static step => $"- {step}\n")));
-            return GloasForkChoiceStepDriver.Run(casePath.FullName).Runner;
+            return GloasForkChoiceStepDriver.Run(casePath.FullName);
         }
         finally
         {
@@ -231,22 +171,7 @@ public class GloasForkChoiceTests
         if (testCase.Preset == nameof(ConsensusPreset.Minimal))
             throw new NotImplementedInDriverException("BeaconStateGloas's SSZ shape hard-codes mainnet-preset bounds, so it cannot decode a minimal-preset anchor_state.ssz_snappy.");
 
-        GloasForkChoiceRun run = RunSteps(testCase);
-        if (run.Unsupported.Count > 0)
-        {
-            throw new NotImplementedInDriverException(
-                $"every step ran and every other check passed; fork choice has no entry point for {string.Join(", ", run.Unsupported)} (specs/gloas/fork-choice.md).");
-        }
-    }
-
-    /// <summary>Runs every step, and fails a vector listed in <see cref="HeadNeedsPayloadStatus"/> whose head no longer diverges.</summary>
-    private static GloasForkChoiceRun RunSteps(ForkChoiceCase testCase)
-    {
-        bool listed = HeadNeedsPayloadStatus.Contains(testCase.VectorName);
-        GloasForkChoiceRun run = GloasForkChoiceStepDriver.Run(testCase.CasePath, listed);
-        if (listed && run.HeadDivergences.Count == 0)
-            Assert.Fail($"{testCase} no longer diverges from the runner's head; remove it from {nameof(HeadNeedsPayloadStatus)}");
-        return run;
+        GloasForkChoiceStepDriver.Run(testCase.CasePath);
     }
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);

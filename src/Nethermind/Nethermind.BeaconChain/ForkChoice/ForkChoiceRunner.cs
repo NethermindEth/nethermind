@@ -16,13 +16,13 @@ namespace Nethermind.BeaconChain.ForkChoice;
 
 /// <summary>
 /// The spec-level fork-choice handlers (<c>on_tick</c>, <c>on_block</c>, <c>on_attestation</c>,
-/// <c>on_attester_slashing</c>, <c>get_head</c>) over the proto-array implementation, following
+/// <c>on_attester_slashing</c>, <c>on_payload_attestation_message</c>, <c>get_head</c>) over the proto-array implementation, following
 /// the consensus-specs fork-choice document (Electra/Fulu rules), with Gloas blocks registered through
 /// their own <see cref="OnBlock(SignedBeaconBlockGloas, BeaconStateGloas)"/> overload.
 /// </summary>
 /// <remarks>
 /// Owns the spec <c>Store</c> state that is not in the proto-array: wall-clock time, the realized
-/// and unrealized checkpoints (via <see cref="ForkChoiceStore"/>), the proposer boost root,
+/// and unrealized checkpoints (via <see cref="ForkChoiceStore"/>), the proposer boost root, the verified payloads and PTC votes,
 /// equivocating indices, queued current-slot attestations, and the derived checkpoint states and
 /// justified balances (cached per checkpoint). Block post-states come from
 /// <see cref="IForkChoiceStateProvider"/> for Fulu blocks and <see cref="IGloasBlockStateProvider"/> for
@@ -54,8 +54,11 @@ public sealed class ForkChoiceRunner
     private readonly Dictionary<CheckpointRef, ForkedBeaconState> _checkpointStates = [];
     private readonly Dictionary<CheckpointRef, JustifiedBalances> _justifiedBalances = [];
 
-    /// <summary>The spec's <c>store.block_timeliness</c>: whether each block arrived before its slot's attesting interval, keyed by block root.</summary>
-    private readonly Dictionary<Hash256, bool> _blockTimeliness = [];
+    /// <summary>The spec's <c>store.block_timeliness</c>: whether each block arrived before its slot's attestation and PTC deadlines, keyed by block root.</summary>
+    private readonly Dictionary<Hash256, BlockTimeliness> _blockTimeliness = [];
+
+    /// <summary>The spec's <c>store.payload_timeliness_vote</c> and <c>store.payload_data_availability_vote</c>, kept for every Gloas block.</summary>
+    private readonly Dictionary<Hash256, PtcVotes> _ptcVotes = [];
 
     /// <summary>The spec's <c>store.payloads</c>, as roots only: the Gloas blocks whose execution payload envelope was delivered and verified.</summary>
     private readonly HashSet<Hash256> _payloads = [];
@@ -76,6 +79,22 @@ public sealed class ForkChoiceRunner
     private readonly record struct IndexedVote(ulong[] AttestingIndices, AttestationData Data, BlsSignature Signature);
 
     private readonly record struct BlockProposer(ulong Slot, ulong ProposerIndex);
+
+    /// <summary>A <c>store.block_timeliness</c> entry: its <c>ATTESTATION_TIMELINESS_INDEX</c> and <c>PTC_TIMELINESS_INDEX</c> flags.</summary>
+    private readonly record struct BlockTimeliness(bool Attestation, bool Ptc);
+
+    /// <summary>The <c>on_payload_attestation_message</c> writes of one or more validators voting the same data, resolved before any is applied.</summary>
+    private sealed record PtcVoteWrite(PtcVotes Votes, List<int> Seats, bool PayloadPresent, bool BlobDataAvailable)
+    {
+        public void Apply()
+        {
+            foreach (int seat in Seats)
+            {
+                Votes.Timeliness[seat] = PayloadPresent;
+                Votes.DataAvailability[seat] = BlobDataAvailable;
+            }
+        }
+    }
 
     /// <summary>Creates the store from an anchor (the spec's <c>get_forkchoice_store</c>): the anchor becomes the justified and finalized checkpoint at its own epoch.</summary>
     /// <param name="anchorState">The post-state of <paramref name="anchorBlock"/>; also supplies the genesis time.</param>
@@ -151,10 +170,18 @@ public sealed class ForkChoiceRunner
             executionBlockHash: anchor.ExecutionBlockHash,
             slotsPerEpoch: spec.SlotsPerEpoch,
             isGloas: anchor.IsGloas);
+
+        _blockProposers[anchor.Root] = new BlockProposer(anchor.BlockSlot, anchor.ProposerIndex);
+        if (anchor.IsGloas)
+        {
+            // specs/gloas/fork-choice.md get_forkchoice_store: block_timeliness={anchor_root: [True, True]}, and [None] * PTC_SIZE votes (#5545).
+            _blockTimeliness[anchor.Root] = new BlockTimeliness(Attestation: true, Ptc: true);
+            _ptcVotes[anchor.Root] = new PtcVotes();
+        }
     }
 
     /// <summary>The fork-independent parts of an anchor that <c>get_forkchoice_store</c> reads.</summary>
-    private readonly record struct AnchorNode(ulong GenesisTime, ulong StateSlot, ulong Epoch, ulong BlockSlot, Hash256 Root, Hash256 StateRoot, Hash256? ExecutionBlockHash, bool IsGloas);
+    private readonly record struct AnchorNode(ulong GenesisTime, ulong StateSlot, ulong Epoch, ulong BlockSlot, ulong ProposerIndex, Hash256 Root, Hash256 StateRoot, Hash256? ExecutionBlockHash, bool IsGloas);
 
     private static AnchorNode FuluAnchor(BeaconChainSpec spec, BeaconStateFulu anchorState, BeaconBlock anchorBlock)
     {
@@ -169,6 +196,7 @@ public sealed class ForkChoiceRunner
             anchorState.Slot,
             anchorState.GetCurrentEpoch(),
             anchorBlock.Slot,
+            anchorBlock.ProposerIndex,
             SszRoots.HashTreeRoot(anchorBlock),
             anchorBlock.StateRoot!,
             anchorBlock.Body?.ExecutionPayload?.BlockHash,
@@ -188,6 +216,7 @@ public sealed class ForkChoiceRunner
             anchorState.Slot,
             anchorState.GetCurrentEpoch(),
             anchorBlock.Slot,
+            anchorBlock.ProposerIndex,
             SszRoots.HashTreeRoot(anchorBlock),
             anchorBlock.StateRoot!,
             anchorBlock.Body!.SignedExecutionPayloadBid!.Message!.BlockHash!,
@@ -255,6 +284,7 @@ public sealed class ForkChoiceRunner
         PruneUnknownRoots(_blockTimeliness);
         PruneUnknownRoots(_blockProposers);
         PruneUnknownRoots(_parentBlockHashes);
+        PruneUnknownRoots(_ptcVotes);
         _payloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
     }
 
@@ -383,11 +413,15 @@ public sealed class ForkChoiceRunner
     /// the <see cref="AttestationGloas"/> and <see cref="AttesterSlashingGloas"/> overloads.
     /// A block that builds on its parent's full payload (<see cref="IsParentNodeFull"/>) is refused until
     /// that payload is recorded through <see cref="OnExecutionPayloadVerified"/>; the refusal leaves the store untouched.
+    /// The body's payload attestations are applied here, as the spec's <c>notify_ptc_messages</c> does, not by the caller:
+    /// each is resolved against the store before the block is registered and written only once it is.
     /// </remarks>
     /// <exception cref="ForkChoiceException">
     /// The block's slot is before the Gloas fork, this runner has no <see cref="IGloasBlockStateProvider"/>,
-    /// or the block violates an <c>on_block</c> assertion, including a full parent whose payload is not verified.
+    /// or the block violates an <c>on_block</c> assertion, including a full parent whose payload is not verified
+    /// and a body payload attestation that <see cref="OnPayloadAttestationMessage"/> refuses.
     /// </exception>
+    /// <exception cref="BeaconStateException">A body payload attestation's bits do not match its slot's PTC in <paramref name="postState"/>.</exception>
     public void OnBlock(SignedBeaconBlockGloas signedBlock, BeaconStateGloas postState)
     {
         BeaconBlockGloas block = signedBlock.Message!;
@@ -404,6 +438,14 @@ public sealed class ForkChoiceRunner
         // specs/gloas/fork-choice.md on_block: if is_parent_node_full, assert is_payload_verified(parent_root).
         if (IsParentNodeFull(block) && !IsPayloadVerified(parentRoot))
             throw new ForkChoiceException($"Block at slot {block.Slot} builds on the full payload of {parentRoot}, which is not verified");
+
+        List<PtcVoteWrite> blockPtcVotes = [];
+        foreach (PayloadAttestation attestation in block.Body!.PayloadAttestations ?? [])
+        {
+            IndexedPayloadAttestation indexed = postState.GetIndexedPayloadAttestation(attestation, _spec);
+            if (ResolvePtcVote(attestation.Data!, indexed.AttestingIndices!, default, isFromBlock: true, verifySignature: false) is { } write)
+                blockPtcVotes.Add(write);
+        }
 
         ExtendPubkeys(postState.Validators!);
 
@@ -422,7 +464,77 @@ public sealed class ForkChoiceRunner
             isGloas: true,
             parentBlockHash: bid.ParentBlockHash);
         _parentBlockHashes[blockRoot] = bid.ParentBlockHash!;
+        _ptcVotes[blockRoot] = new PtcVotes();
+        foreach (PtcVoteWrite write in blockPtcVotes)
+            write.Apply();
     }
+
+    /// <summary>
+    /// The spec's <c>on_payload_attestation_message</c>: records a PTC member's vote on whether the payload of
+    /// <c>data.beacon_block_root</c> arrived in time and its blob data is available, at every seat the member holds.
+    /// </summary>
+    /// <remarks>
+    /// A vote whose <c>data.slot</c> is not its block's slot is ignored without error, as the spec returns early. The votes
+    /// feed the head's EMPTY-or-FULL choice for a block of the previous slot (<see cref="GetHeadNode"/>). A block's own
+    /// payload attestations reach the store through the Gloas <see cref="OnBlock(SignedBeaconBlockGloas, BeaconStateGloas)"/>,
+    /// which passes <paramref name="isFromBlock"/> for each attester.
+    /// </remarks>
+    /// <param name="isFromBlock">Whether the vote came in a block body, which skips the current-slot and signature checks.</param>
+    /// <param name="verifySignature">Skippable for a gossip message whose signature the caller already verified.</param>
+    /// <exception cref="ForkChoiceException">
+    /// The message has no data or block root, the block is unknown or pre-Gloas, the validator is not in the slot's PTC, or a
+    /// gossip vote is not for the current slot or fails <c>is_valid_indexed_payload_attestation</c>. Nothing is written.
+    /// </exception>
+    public void OnPayloadAttestationMessage(PayloadAttestationMessage message, bool isFromBlock = false, bool verifySignature = true) =>
+        ResolvePtcVote(
+            message.Data ?? throw new ForkChoiceException($"Payload attestation from validator {message.ValidatorIndex} has no data"),
+            [message.ValidatorIndex], message.Signature, isFromBlock, verifySignature)?.Apply();
+
+    /// <summary>
+    /// Every assertion of <c>on_payload_attestation_message</c> for <paramref name="validatorIndices"/> voting <paramref name="data"/>,
+    /// and the seats they hold; <see langword="null"/> when the spec returns early and writes nothing.
+    /// </summary>
+    private PtcVoteWrite? ResolvePtcVote(PayloadAttestationData data, ulong[] validatorIndices, BlsSignature signature, bool isFromBlock, bool verifySignature)
+    {
+        Hash256 root = data.BeaconBlockRoot ?? throw new ForkChoiceException($"Payload attestation at slot {data.Slot} has no block root");
+        ForkedBeaconState state = GetBlockState(root);
+        if (data.Slot != state.Slot)
+            return null;
+        // get_ptc asserts a Gloas epoch, and only Gloas blocks have PTC votes.
+        if (state is not ForkedBeaconState.OfGloas { State: BeaconStateGloas gloasState } || !_ptcVotes.TryGetValue(root, out PtcVotes? votes))
+            throw new ForkChoiceException($"Payload attestation for {root} at slot {data.Slot}: the block is before the Gloas fork and has no PTC");
+
+        HashSet<ulong> voters = [.. validatorIndices];
+        HashSet<ulong> seated = [];
+        List<int> seats = [];
+        ulong[] ptc = gloasState.GetPtc(data.Slot, _spec).Indices!;
+        for (int seat = 0; seat < ptc.Length; seat++)
+        {
+            if (voters.Contains(ptc[seat]))
+            {
+                seats.Add(seat);
+                seated.Add(ptc[seat]);
+            }
+        }
+
+        if (seated.Count != voters.Count)
+            throw new ForkChoiceException($"Payload attestation for {root} at slot {data.Slot} has a validator outside that slot's PTC");
+
+        if (!isFromBlock)
+        {
+            if (data.Slot != _store.CurrentSlot)
+                throw new ForkChoiceException($"Payload attestation for slot {data.Slot} is not for the current slot {_store.CurrentSlot}");
+            IndexedPayloadAttestation indexed = new() { AttestingIndices = validatorIndices, Data = data, Signature = signature };
+            if (!GloasBlockProcessing.IsValidIndexedPayloadAttestation(gloasState, indexed, _pubkeys, verifySignature))
+                throw new ForkChoiceException($"Payload attestation for {root} at slot {data.Slot} has invalid indices or signature");
+        }
+
+        return new PtcVoteWrite(votes, seats, data.PayloadPresent, data.BlobDataAvailable);
+    }
+
+    /// <summary>The PTC votes kept for <paramref name="blockRoot"/>, or <see langword="null"/> for a pre-Gloas or unknown block.</summary>
+    internal (IReadOnlyList<bool?> Timeliness, IReadOnlyList<bool?> DataAvailability)? GetPtcVotes(Hash256 blockRoot) =>
+        _ptcVotes.TryGetValue(blockRoot, out PtcVotes? votes) ? (votes.Timeliness, votes.DataAvailability) : null;
 
     /// <summary>
     /// The spec's <c>is_payload_verified</c>: whether the execution payload of <paramref name="blockRoot"/>
@@ -513,7 +625,10 @@ public sealed class ForkChoiceRunner
         ulong secondsSinceGenesis = Time - GenesisTime;
         ulong timeIntoSlotMs = (secondsSinceGenesis > ulong.MaxValue / 1000 ? ulong.MaxValue : secondsSinceGenesis * 1000) % slotDurationMs;
         ulong attestationDueMs = (IsGloasSlot(slot) ? GloasTiming.AttestationDueBpsGloas : GloasTiming.AttestationDueBps) * slotDurationMs / BasisPoints;
-        bool isTimely = slot == _store.CurrentSlot && timeIntoSlotMs < attestationDueMs;
+        ulong ptcDueMs = GloasTiming.PayloadAttestationDueBps * slotDurationMs / BasisPoints;
+        bool isCurrentSlot = slot == _store.CurrentSlot;
+        BlockTimeliness timeliness = new(isCurrentSlot && timeIntoSlotMs < attestationDueMs, isCurrentSlot && timeIntoSlotMs < ptcDueMs);
+        bool isTimely = timeliness.Attestation;
         // update_proposer_boost_root reads the pre-block get_head only for a timely first block of the slot.
         bool isBoosted = isTimely && _store.ProposerBoostRoot == Hash256.Zero && HasHeadDependentRoot(parentRoot);
 
@@ -545,7 +660,7 @@ public sealed class ForkChoiceRunner
             _store.FinalizedCheckpoint);
 
         // Recorded only once ProcessBlock returns: a block it refuses must neither hold the slot's boost nor count as its proposal.
-        _blockTimeliness[blockRoot] = isTimely;
+        _blockTimeliness[blockRoot] = timeliness;
         if (isBoosted)
             _store.ProposerBoostRoot = blockRoot;
         _blockProposers[blockRoot] = new BlockProposer(slot, proposerIndex);
@@ -659,13 +774,18 @@ public sealed class ForkChoiceRunner
     /// payload status (specs/gloas/fork-choice.md, EIP-7732): 0 or 1, 0 for a vote in the block's own slot,
     /// and 1 only for a block whose payload is verified.
     /// </summary>
+    /// <remarks>
+    /// The last rule is the spec's literal <c>is_payload_verified</c>, <c>root in store.payloads</c>, so an index-1 vote for a
+    /// pre-Gloas block is refused: its payload has no envelope. <see cref="IsPayloadVerified"/> exempts such a block for
+    /// <c>on_block</c> only, where the literal check would refuse every first Gloas block.
+    /// </remarks>
     private void ValidatePayloadStatusVote(AttestationData data, ulong blockSlot)
     {
         if (data.Index > 1)
             throw new ForkChoiceException($"Attestation index {data.Index} is not a payload status (0 or 1)");
         if (blockSlot == data.Slot && data.Index != 0)
             throw new ForkChoiceException($"Attestation for slot {data.Slot} votes for the payload of a block from its own slot");
-        if (data.Index == 1 && !IsPayloadVerified(data.BeaconBlockRoot!))
+        if (data.Index == 1 && !_payloads.Contains(data.BeaconBlockRoot!))
             throw new ForkChoiceException($"Attestation votes for the payload of {data.BeaconBlockRoot}, which is not verified");
     }
 
@@ -750,15 +870,223 @@ public sealed class ForkChoiceRunner
     };
 
     /// <summary>The spec's <c>get_head</c>: LMD-GHOST from the justified checkpoint, weighted by the justified state's balances and the proposer boost.</summary>
+    /// <returns>The head block's root; <see cref="GetHeadNode"/> also says whether its payload is part of the head.</returns>
     /// <exception cref="ForkChoiceException">The justified block has an invalid execution payload.</exception>
-    public Hash256 GetHead()
+    public Hash256 GetHead() => GetHeadNode().Root;
+
+    /// <summary>
+    /// The spec's <c>get_head</c> as a <see cref="ForkChoiceNode"/>: the head block, and whether the head builds on its
+    /// payload (<see cref="ForkChoicePayloadStatus.Full"/>) or on the payload before it (<see cref="ForkChoicePayloadStatus.Empty"/>).
+    /// </summary>
+    /// <remarks>
+    /// While the store's current slot is before the Gloas fork this is the Fulu <c>get_head</c>. From the fork on it is the Gloas
+    /// walk (specs/gloas/fork-choice.md <c>get_head</c>, <c>get_node_children</c>, <c>get_weight</c>,
+    /// <c>get_payload_status_tiebreaker</c>), which never returns a PENDING node. A pre-Gloas head is EMPTY on both sides of the
+    /// fork: it is never in <c>store.payloads</c>, so <c>get_node_children</c> gives it no FULL node, and <c>validate_on_attestation</c>
+    /// refuses an index-1 vote for it. The walk still passes through a pre-Gloas block to the Gloas children that build on its payload.
+    /// </remarks>
+    /// <exception cref="ForkChoiceException">The justified block has an invalid execution payload.</exception>
+    public ForkChoiceNode GetHeadNode()
     {
         // specs/bellatrix/optimistic-sync.md: an INVALIDATED justified checkpoint leaves no valid head; a node MAY exit.
         if (_protoArray.GetBlockExecutionStatus(_store.JustifiedCheckpoint.Root) == ExecutionStatus.Invalid)
             throw new ForkChoiceException($"Justified block {_store.JustifiedCheckpoint.Root} has an invalid execution payload");
         JustifiedBalances balances = GetJustifiedBalances(_store.JustifiedCheckpoint);
         _protoArray.SetProposerBoostRoot(_store.ProposerBoostRoot);
-        return _protoArray.GetHead(_store.JustifiedCheckpoint, _store.FinalizedCheckpoint, balances, _equivocatingIndices, _store.CurrentSlot);
+        Hash256 head = _protoArray.GetHead(_store.JustifiedCheckpoint, _store.FinalizedCheckpoint, balances, _equivocatingIndices, _store.CurrentSlot);
+        return IsGloasSlot(_store.CurrentSlot) ? FindGloasHead(balances) : new ForkChoiceNode(head, ForkChoicePayloadStatus.Empty);
+    }
+
+    /// <summary>The Gloas <c>get_weight</c> of <paramref name="node"/>, after the score update of a <see cref="GetHeadNode"/> call.</summary>
+    /// <exception cref="ForkChoiceException">The block is unknown, or <see cref="GetHeadNode"/> throws.</exception>
+    internal ulong GetWeight(ForkChoiceNode node)
+    {
+        GetHeadNode();
+        int index = _protoArray.IndexOf(node.Root) ?? throw new ForkChoiceException($"Block {node.Root} is unknown to fork choice");
+        return new GloasWeights(this, GetJustifiedBalances(_store.JustifiedCheckpoint)).Of(index, node.PayloadStatus);
+    }
+
+    /// <summary>The Gloas <c>get_head</c> walk from (justified root, PENDING) over the weights the last score update left.</summary>
+    private ForkChoiceNode FindGloasHead(JustifiedBalances balances)
+    {
+        IReadOnlyList<ProtoNode> nodes = _protoArray.Nodes;
+        bool[] filtered = _protoArray.FilterBlockTree(_store.CurrentSlot, _store.JustifiedCheckpoint, _store.FinalizedCheckpoint);
+        GloasWeights weights = new(this, balances);
+        int index = _protoArray.IndexOf(_store.JustifiedCheckpoint.Root)
+            ?? throw new ForkChoiceException($"Justified block {_store.JustifiedCheckpoint.Root} is unknown to fork choice");
+
+        while (true)
+        {
+            ProtoNode node = nodes[index];
+            ForkChoicePayloadStatus status = ChoosePayloadNode(node, index, weights);
+
+            int? best = null;
+            ulong bestWeight = 0;
+            foreach (int child in node.Children)
+            {
+                ProtoNode childNode = nodes[child];
+                if (!filtered[child] || childNode.ParentPayloadStatus != status)
+                    continue;
+
+                // Children are PENDING nodes of distinct roots, so (weight, root) decides and the payload tiebreaker never does.
+                ulong weight = weights.Of(child, ForkChoicePayloadStatus.Pending);
+                if (best is not int current || weight > bestWeight || (weight == bestWeight && childNode.Root.CompareTo(nodes[current].Root) > 0))
+                {
+                    best = child;
+                    bestWeight = weight;
+                }
+            }
+
+            if (best is not int next)
+                return new ForkChoiceNode(node.Root, node.IsGloas ? status : ForkChoicePayloadStatus.Empty);
+            index = next;
+        }
+    }
+
+    /// <summary>
+    /// The child of (<paramref name="node"/>, PENDING) that <c>get_head</c> takes: EMPTY, or FULL when the payload is verified and
+    /// FULL wins on weight, then on <c>get_payload_status_tiebreaker</c> (the roots are equal).
+    /// </summary>
+    private ForkChoicePayloadStatus ChoosePayloadNode(ProtoNode node, int index, GloasWeights weights)
+    {
+        // Gloas children of a pre-Gloas block build on the payload it carried (ProtoArray.GetParentPayloadStatus).
+        if (!node.IsGloas)
+            return ForkChoicePayloadStatus.Full;
+        // specs/gloas/fork-choice.md get_node_children: the FULL node exists only once is_payload_verified.
+        if (!_payloads.Contains(node.Root))
+            return ForkChoicePayloadStatus.Empty;
+
+        ulong empty = weights.Of(index, ForkChoicePayloadStatus.Empty);
+        ulong full = weights.Of(index, ForkChoicePayloadStatus.Full);
+        if (empty != full)
+            return full > empty ? ForkChoicePayloadStatus.Full : ForkChoicePayloadStatus.Empty;
+        return GetPayloadStatusTiebreaker(node, ForkChoicePayloadStatus.Full) > GetPayloadStatusTiebreaker(node, ForkChoicePayloadStatus.Empty)
+            ? ForkChoicePayloadStatus.Full
+            : ForkChoicePayloadStatus.Empty;
+    }
+
+    /// <summary>The spec's <c>is_previous_slot_payload_decision</c>: an EMPTY or FULL node of a block from the slot before the current one.</summary>
+    private bool IsPreviousSlotPayloadDecision(ulong blockSlot, ForkChoicePayloadStatus status) =>
+        status != ForkChoicePayloadStatus.Pending && blockSlot + 1 == _store.CurrentSlot;
+
+    /// <summary>The spec's <c>get_payload_status_tiebreaker</c>.</summary>
+    private byte GetPayloadStatusTiebreaker(ProtoNode node, ForkChoicePayloadStatus status)
+    {
+        if (!IsPreviousSlotPayloadDecision(node.Slot, status))
+            return (byte)status;
+        if (status == ForkChoicePayloadStatus.Empty)
+            return 1;
+        return ShouldExtendPayload(node.Root) ? (byte)2 : (byte)0;
+    }
+
+    /// <summary>
+    /// The spec's <c>should_extend_payload</c> for a block of the previous slot: extend its verified payload when the PTC voted it
+    /// timely and its data available, or unless the boosted block builds on this block's EMPTY node.
+    /// </summary>
+    private bool ShouldExtendPayload(Hash256 root)
+    {
+        if (!_payloads.Contains(root))
+            return false;
+        PtcVotes votes = _ptcVotes[root];
+        if (PtcVotes.HasQuorum(votes.Timeliness, true) && PtcVotes.HasQuorum(votes.DataAvailability, true))
+            return true;
+
+        Hash256 boostRoot = _store.ProposerBoostRoot;
+        if (boostRoot == Hash256.Zero)
+            return true;
+        ProtoNode boost = _protoArray.Nodes[_protoArray.IndexOf(boostRoot) ?? throw new ForkChoiceException($"Proposer boost root {boostRoot} is unknown to fork choice")];
+        return _protoArray.GetParentRoot(boostRoot) != root || boost.ParentPayloadStatus == ForkChoicePayloadStatus.Full;
+    }
+
+    /// <summary>
+    /// The spec's <c>should_apply_proposer_boost</c>: the boost counts unless the boosted block's parent is from the previous slot, is
+    /// weak, and its proposer had another block in that slot that arrived before the PTC deadline.
+    /// </summary>
+    /// <remarks>Valid only right after the score update of a <see cref="GetHeadNode"/> call, which <see cref="IsHeadWeak"/> reads.</remarks>
+    private bool ShouldApplyProposerBoost(JustifiedBalances balances)
+    {
+        Hash256 boostRoot = _store.ProposerBoostRoot;
+        if (boostRoot == Hash256.Zero)
+            return false;
+
+        ulong slot = _protoArray.GetBlockSlot(boostRoot) ?? throw new ForkChoiceException($"Proposer boost root {boostRoot} is unknown to fork choice");
+        Hash256 parentRoot = _protoArray.GetParentRoot(boostRoot) ?? throw new ForkChoiceException($"Parent of the proposer boost root {boostRoot} is unknown to fork choice");
+        ulong parentSlot = _protoArray.GetBlockSlot(parentRoot)!.Value;
+        if (parentSlot + 1 < slot)
+            return true;
+        if (!IsHeadWeak(parentRoot, parentSlot, balances))
+            return true;
+
+        ulong parentProposer = _blockProposers.TryGetValue(parentRoot, out BlockProposer parent)
+            ? parent.ProposerIndex
+            : throw new ForkChoiceException($"Parent {parentRoot} of the proposer boost root has no recorded proposer");
+        foreach ((Hash256 root, BlockProposer proposer) in _blockProposers)
+        {
+            bool ptcTimely = _blockTimeliness.TryGetValue(root, out BlockTimeliness timeliness) && timeliness.Ptc;
+            if (ptcTimely && proposer.ProposerIndex == parentProposer && proposer.Slot + 1 == slot && root != parentRoot)
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The spec's <c>get_weight</c> over the proto-array's per-node weights, which carry the proposer score on every node the
+    /// boosted block descends from whenever it is known and valid (<see cref="ProtoArray.ApplyScoreChanges"/>).
+    /// </summary>
+    /// <remarks>
+    /// The score is taken back off those nodes when <c>should_apply_proposer_boost</c> is false, and an EMPTY or FULL node of a
+    /// previous-slot block weighs zero. The boosted path is the boosted block's PENDING node and, for each ancestor, its PENDING node
+    /// and the payload node the path runs through (the child's <see cref="ProtoNode.ParentPayloadStatus"/>), per <c>is_ancestor</c>.
+    /// </remarks>
+    private sealed class GloasWeights
+    {
+        private readonly ForkChoiceRunner _runner;
+        private readonly Dictionary<int, ForkChoicePayloadStatus?> _boostPath = [];
+        private readonly ulong _unappliedBoost;
+
+        public GloasWeights(ForkChoiceRunner runner, JustifiedBalances balances)
+        {
+            _runner = runner;
+            ProtoArrayForkChoice protoArray = runner._protoArray;
+            Hash256 boostRoot = runner._store.ProposerBoostRoot;
+            if (boostRoot == Hash256.Zero || protoArray.IndexOf(boostRoot) is not int index)
+                return;
+
+            IReadOnlyList<ProtoNode> nodes = protoArray.Nodes;
+            ProtoNode node = nodes[index];
+            if (node.ExecutionStatus == ExecutionStatus.Invalid || runner.ShouldApplyProposerBoost(balances))
+                return;
+
+            // Mirrors where ProtoArray.ApplyProposerBoost added the score.
+            _unappliedBoost = protoArray.CalculateCommitteeFraction(balances, ProtoArrayForkChoice.DefaultProposerScoreBoostPercent);
+            _boostPath[index] = null;
+            while (node.Parent is int parentIndex)
+            {
+                ProtoNode parent = nodes[parentIndex];
+                if (parent.Root == Hash256.Zero || parent.ExecutionStatus == ExecutionStatus.Invalid)
+                    break;
+                _boostPath[parentIndex] = node.ParentPayloadStatus;
+                node = parent;
+            }
+        }
+
+        public ulong Of(int index, ForkChoicePayloadStatus status)
+        {
+            ProtoNode node = _runner._protoArray.Nodes[index];
+            if (_runner.IsPreviousSlotPayloadDecision(node.Slot, status))
+                return 0;
+
+            ulong weight = status switch
+            {
+                ForkChoicePayloadStatus.Empty => node.EmptyWeight,
+                ForkChoicePayloadStatus.Full => node.FullWeight,
+                _ => node.Weight,
+            };
+            bool onBoostPath = _boostPath.TryGetValue(index, out ForkChoicePayloadStatus? pathStatus)
+                && (status == ForkChoicePayloadStatus.Pending || pathStatus == status);
+            return onBoostPath ? checked(weight - _unappliedBoost) : weight;
+        }
     }
 
     /// <summary>Marks the payload of <paramref name="blockRoot"/> (and hence of all its ancestors) execution-valid.</summary>
@@ -816,7 +1144,7 @@ public sealed class ForkChoiceRunner
     }
 
     /// <summary>The spec's <c>is_head_late</c>: a block with no recorded timeliness (unknown to this store) is treated as late, denying a reorg rather than allowing one on missing data.</summary>
-    private bool IsHeadLate(Hash256 headRoot) => !_blockTimeliness.TryGetValue(headRoot, out bool timely) || !timely;
+    private bool IsHeadLate(Hash256 headRoot) => !_blockTimeliness.TryGetValue(headRoot, out BlockTimeliness timeliness) || !timeliness.Attestation;
 
     /// <summary>The spec's <c>is_proposing_on_time</c>: whether the wall clock is at most <c>get_proposer_reorg_cutoff_ms</c> into the slot.</summary>
     private bool IsProposingOnTime()
