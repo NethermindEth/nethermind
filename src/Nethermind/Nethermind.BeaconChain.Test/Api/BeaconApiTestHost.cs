@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -40,26 +41,45 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
 {
     public BeaconChainSpec Spec { get; }
     public BeaconChainStatusHolder StatusHolder { get; }
-    public MemColumnsDb<BeaconChainDbColumns> Db { get; } = new();
+    public IColumnsDb<BeaconChainDbColumns> Db { get; }
     public BeaconChainStore Store { get; }
     public BeaconApiHost Host { get; }
     public HttpClient Client { get; private set; } = null!;
+    /// <summary>A real but unstarted peer manager the node/peers routes read, or <c>null</c> when the host runs without one.</summary>
+    public PeerManager? PeerManager { get; }
 
-    private BeaconApiTestHost(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots)
+    private BeaconApiTestHost(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots, IColumnsDb<BeaconChainDbColumns>? db, BeaconApiConfig? apiConfig, ILogManager? logManager, bool withPeerManager)
     {
         Spec = spec;
+        Db = db ?? new MemColumnsDb<BeaconChainDbColumns>();
         ManualTimestamper timestamper = new(DateTimeOffset.FromUnixTimeSeconds((long)spec.GenesisTime).UtcDateTime);
         StatusHolder = new BeaconChainStatusHolder(spec, timestamper);
         Store = new BeaconChainStore(Db, spec);
-        BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
-        Host = new BeaconApiHost(apiConfig, new BeaconChainConfig(), spec, StatusHolder, new SlotClock(spec, timestamper), Store,
-            new LocalMetadataSource(), new NoOpEngineDriver(), new NoOpProcessExitSource(), LimboLogs.Instance, forkChoiceSnapshots: forkChoiceSnapshots);
+        BeaconChainConfig chainConfig = new();
+        LocalMetadataSource metadataSource = new();
+        if (withPeerManager)
+        {
+            BeaconP2P p2p = new(chainConfig, spec, Store, StatusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
+            PeerManager = new PeerManager(p2p, chainConfig, StatusHolder, LimboLogs.Instance);
+        }
+
+        apiConfig ??= new BeaconApiConfig();
+        apiConfig.Enabled = true;
+        apiConfig.Host = "127.0.0.1";
+        apiConfig.Port = 0;
+        Host = new BeaconApiHost(apiConfig, chainConfig, spec, StatusHolder, new SlotClock(spec, timestamper), Store,
+            metadataSource, new NoOpEngineDriver(), new NoOpProcessExitSource(), logManager ?? LimboLogs.Instance, peerManager: PeerManager, forkChoiceSnapshots: forkChoiceSnapshots);
     }
 
     /// <param name="forkChoiceSnapshots">The holder the debug fork-choice endpoint reads; <c>null</c> runs the host without one, as the driver-less configurations do.</param>
-    public static async Task<BeaconApiTestHost> StartAsync(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null)
+    /// <param name="db">The store's columns; <c>null</c> uses a fresh in-memory set.</param>
+    /// <param name="apiConfig">API limits to run with; the listener fields are always overwritten with a loopback ephemeral port.</param>
+    /// <param name="logManager">Where the host logs; <c>null</c> discards every entry.</param>
+    /// <param name="withPeerManager">Whether to give the host a <see cref="PeerManager"/>, seeded by tests through <see cref="PeerManager.ReserveDialingForTest"/>.</param>
+    public static async Task<BeaconApiTestHost> StartAsync(BeaconChainSpec spec, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
+        IColumnsDb<BeaconChainDbColumns>? db = null, BeaconApiConfig? apiConfig = null, ILogManager? logManager = null, bool withPeerManager = false)
     {
-        BeaconApiTestHost host = new(spec, forkChoiceSnapshots);
+        BeaconApiTestHost host = new(spec, forkChoiceSnapshots, db, apiConfig, logManager, withPeerManager);
         await host.Host.StartAsync(CancellationToken.None);
         host.Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{host.Host.Port}"), Timeout = TimeSpan.FromSeconds(30) };
         return host;
@@ -85,6 +105,15 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     /// <summary>Writes a block exactly as the pre-index store did, bypassing the children index.</summary>
     public void WriteLegacyBlock(Hash256 root, SignedBeaconBlock block) =>
         Db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(SignedBeaconBlock.Encode(block)));
+
+    /// <summary>The fixed part and slot of a signed beacon block with no body after them: its slot reads, but it never decodes.</summary>
+    public static byte[] SlotPrefixOnlyBlockSsz(ulong slot)
+    {
+        byte[] ssz = new byte[sizeof(uint) + BlsSignature.Length + sizeof(ulong)];
+        BinaryPrimitives.WriteUInt32LittleEndian(ssz, sizeof(uint) + BlsSignature.Length);
+        BinaryPrimitives.WriteUInt64LittleEndian(ssz.AsSpan(sizeof(uint) + BlsSignature.Length), slot);
+        return ssz;
+    }
 
     public static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync());
