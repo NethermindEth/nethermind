@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -13,6 +14,7 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.ForkChoice;
 using Nethermind.BeaconChain.Test.Sync;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -58,15 +60,14 @@ public class BeaconChainServiceStartupTests
         Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
     }
 
-    /// <summary>A valid resumed anchor passes validation and reaches the Gloas stop, the first check after it that needs no network.</summary>
+    /// <summary>A valid resumed anchor passes validation: nothing refuses it, and the pubkey cache is built from its registry.</summary>
     [Test]
     public async Task A_resumed_anchor_with_valid_sync_committee_keys_goes_on_to_start([Values] bool gloas)
     {
-        (TestErrorLogManager.Error[] errors, _) = await ResumeAsync(gloas, nextCommittee: false, key: null);
+        (TestErrorLogManager.Error[] errors, int pubkeys) = await ResumeAsync(gloas, nextCommittee: false, key: null);
 
-        Assert.That(errors, Has.Length.EqualTo(1));
-        Assert.That(errors[0].Exception, Is.Null, "a named stop, not a refused anchor");
-        Assert.That(errors[0].Text, Does.Contain(nameof(BeaconFork.Gloas)).And.Contain("BeaconChain.Enabled"));
+        Assert.That(errors.Select(static e => e.Exception), Has.None.TypeOf<InvalidDataException>(), "no anchor refusal");
+        Assert.That(pubkeys, Is.EqualTo(ForkCrossingChain.Instance.AnchorState.Validators!.Length), "the run went on past the pubkey cache");
     }
 
     private static async Task<(TestErrorLogManager.Error[] Errors, int PubkeyCount)> ResumeAsync(bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key)
@@ -74,8 +75,11 @@ public class BeaconChainServiceStartupTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
         byte[] stateSsz = SyncCommitteeKeyAnchors.EncodeState(gloas, nextCommittee, key, out Hash256 blockRoot);
         store.PutState(blockRoot, stateSsz);
-        // A Gloas anchor block stops the driver before the orchestrator, so no test reaches the network.
-        store.PutForkedBlock(blockRoot, new ForkedSignedBeaconBlock.OfGloas(ForkCrossingChain.Instance.First.Block));
+        // The run stops at the orchestrator, which has no network in this container.
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        store.PutForkedBlock(blockRoot, gloas
+            ? new ForkedSignedBeaconBlock.OfGloas(chain.First.Block)
+            : new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain.AnchorBlock, Signature = new BlsSignature(new byte[BlsSignature.Length]) }));
         store.SetAnchor(blockRoot, 0);
 
         using IContainer container = BeaconChainTestContainer.Builder().Build();
