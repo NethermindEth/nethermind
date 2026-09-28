@@ -5,6 +5,7 @@ set -uo pipefail
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fetch-artifacts.sh"
 readonly SCRIPT
 readonly LABELS=(250k 300k 400k 500k soispoke)
+readonly SOISPOKE_COMMIT=6dedda193bf09c9d80cd89b3dc23eccf580d1026
 root=$(mktemp -d)
 trap 'rm -rf "${root}"' EXIT
 mkdir -p "${root}/bin" "${root}/releases" "${root}/runs"
@@ -77,6 +78,7 @@ release() {
     echo "0x$(hex_repeat 00 36)" > "${src}/sweep-${label}/calldata-invalid.hex"
     echo 234190 > "${src}/sweep-${label}/gas.txt"
   done
+  echo "{\"commit\": \"${SOISPOKE_COMMIT}\"}" > "${src}/sweep-soispoke/provenance.json"
   "${pre}" "${src}" "${assets}"
   for label in "${LABELS[@]}"; do
     [[ -e "${assets}/sweep-${label}.tar.gz" ]] || tar -czf "${assets}/sweep-${label}.tar.gz" -C "${src}" "sweep-${label}"
@@ -138,6 +140,8 @@ too_big() { head -c $((16 * 1024 * 1024 + 1)) /dev/zero > "$1/sweep-250k/padding
 no_gas() { rm "$1/sweep-250k/gas.txt"; }
 verifier() { local body=$1; eval "set_verifier() { echo '${body}' > \"\$1/sweep-250k/verifier.hex\"; }"; }
 set_file() { eval "set_${1//-/_}() { printf '%s' '$3' > \"\$1/sweep-250k/$2\"; }"; }
+no_provenance() { rm "$1/sweep-soispoke/provenance.json"; }
+other_commit() { echo '{"commit": "16b88a3"}' > "$1/sweep-soispoke/provenance.json"; }
 
 release v1.0.0 'false false' none none
 release v1.0.1 'false false' dot_root none
@@ -170,6 +174,8 @@ verifier "0x600660076008f"; release v4.0.5 'false false' set_verifier none
 set_file calldata calldata-invalid.hex 0xzz; release v4.0.6 'false false' set_calldata none
 set_file short calldata-invalid.hex 0x0102; release v4.0.7 'false false' set_short none
 set_file gas gas.txt 12a4; release v4.0.8 'false false' set_gas none
+release v5.0.0 'false false' no_provenance none
+release v5.0.1 'false false' other_commit none
 
 expect happy-path v1.0.0 0 'extracted to'
 happy="${LAST_RUN}"
@@ -225,6 +231,8 @@ expect verifier-odd-hex v4.0.5 1 'rejected sweep-250k/verifier.hex \(hex check\)
 expect calldata-not-hex v4.0.6 1 'rejected sweep-250k/calldata-invalid.hex \(hex check\)'
 expect calldata-too-short v4.0.7 1 'rejected sweep-250k/calldata-invalid.hex \(length check\)'
 expect gas-not-integer v4.0.8 1 'rejected sweep-250k/gas.txt \(integer check\)'
+expect soispoke-no-provenance v5.0.0 1 'provenance\.json is missing or unparsable \(FileNotFoundError\)'
+expect soispoke-other-commit v5.0.1 1 "names upstream commit '16b88a3', not ${SOISPOKE_COMMIT}"
 
 echo "pass=${pass} fail=${fail}"
 (( fail == 0 ))
