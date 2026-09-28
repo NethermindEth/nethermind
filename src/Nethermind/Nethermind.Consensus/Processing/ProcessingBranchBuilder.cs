@@ -66,7 +66,7 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
         for (int i = 0; i < blocksToProcess.Count; i++)
         {
             /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
-            Preprocess(blocksToProcess[i]);
+            PreprocessQueued(blocksToProcess[i]);
         }
 
         // Uncommon logging and throws
@@ -269,11 +269,24 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
         }
     }
 
+    /// <summary>Runs the preprocessor steps, leaving every block field they recover ready on return.</summary>
     public void Preprocess(Block block)
     {
         for (int i = 0; i < _preprocessorSteps.Count; i++)
         {
             _preprocessorSteps[i].RecoverData(block);
+        }
+    }
+
+    /// <summary>
+    /// <see cref="Preprocess"/> for the main processing queue, whose block processing tolerates a sender a
+    /// recovery already running has not reached yet.
+    /// </summary>
+    public void PreprocessQueued(Block block)
+    {
+        for (int i = 0; i < _preprocessorSteps.Count; i++)
+        {
+            _preprocessorSteps[i].RecoverDataForQueuedProcessing(block);
         }
     }
 }

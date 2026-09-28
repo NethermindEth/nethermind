@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -18,20 +19,34 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 {
     public bool HasRoot(BlockHeader? baseBlock) => inner.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => new Scope(inner.BeginScope(baseBlock, metrics), slot);
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => inner.HasStateForTargetBlock(targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        Wrap(inner.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope), innerScope, out scope);
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        Wrap(inner.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope), innerScope, out scope);
+
+    private bool Wrap(bool opened, IWorldStateScopeProvider.IScope? innerScope, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        scope = opened ? new Scope(innerScope!, slot) : null;
+        return opened;
+    }
 
     private sealed class Scope(IWorldStateScopeProvider.IScope inner, StateReadOverlaySlot slot) : IWorldStateScopeProvider.IScope
     {
+        private readonly CodeDb _codeDb = new(inner.CodeDb, slot);
+
         public Hash256 RootHash => inner.RootHash;
         public bool StorageRootsAreAuthoritative => inner.StorageRootsAreAuthoritative;
 
-        public IWorldStateScopeProvider.ICodeDb CodeDb => inner.CodeDb;
+        public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb;
 
         public void UpdateRootHash() => inner.UpdateRootHash();
 
-        public void HintWarmAccount(in ValueAddress address) => inner.HintWarmAccount(in address);
+        public void HintWarmAccount(Address address) => inner.HintWarmAccount(address);
 
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => inner.HintWarmSlot(in address, in index);
+        public void HintWarmSlot(Address address, in UInt256 index) => inner.HintWarmSlot(address, in index);
 
         public Account? Get(Address address)
         {
@@ -68,6 +83,20 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => inner.HintBal(bal, sink);
 
         public void Dispose() => inner.Dispose();
+    }
+
+    /// <summary>Falls back to the armed overlay only when the database misses, so a read of code the database holds
+    /// costs what it did.</summary>
+    private sealed class CodeDb(IWorldStateScopeProvider.ICodeDb inner, StateReadOverlaySlot slot) : IWorldStateScopeProvider.ICodeDb
+    {
+        public byte[]? GetCode(in ValueHash256 codeHash) =>
+            inner.GetCode(in codeHash) ?? (slot.Current is { } overlay && overlay.TryGetCode(in codeHash, out byte[]? code) ? code : null);
+
+        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => inner.BeginCodeWrite();
+
+        public bool ContainsCode(in ValueHash256 codeHash) => inner.ContainsCode(in codeHash);
+
+        public void MarkCodePersisted(in ValueHash256 codeHash) => inner.MarkCodePersisted(in codeHash);
     }
 
     private sealed class StorageTree(IWorldStateScopeProvider.IStorageTree inner, Address address, StateReadOverlaySlot slot) : IWorldStateScopeProvider.IStorageTree

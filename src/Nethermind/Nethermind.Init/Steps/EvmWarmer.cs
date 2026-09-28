@@ -34,8 +34,12 @@ public class EvmWarmer(
         if (!initConfig.EvmWarmupEnabled) return Task.CompletedTask;
 
         IOverridableEnv env = envFactory.Create();
-        using IDisposable envScope = env.BuildAndOverride(null, null);
+        if (!env.TryBuildAndOverride(IWorldState.PreGenesis, stateOverride: null, specOverride: null, blockOverride: null, out IDisposable? envScope))
+        {
+            return Task.CompletedTask;
+        }
 
+        using IDisposable _ = envScope;
         using ILifetimeScope childContainerScope = rootScope.BeginLifetimeScope((builder) =>
         {
             builder.AddModule(env);

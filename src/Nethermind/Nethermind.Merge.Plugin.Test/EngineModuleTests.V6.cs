@@ -334,6 +334,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .WithSlotNumber(1)
             .TestObject;
         ExecutionPayloadV4 executionPayload = ExecutionPayloadV4.Create(block);
@@ -348,6 +349,7 @@ public partial class EngineModuleTests
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(response.Result.Error, Does.StartWith("Block access list"));
         }
     }
 
@@ -368,6 +370,7 @@ public partial class EngineModuleTests
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithWithdrawals([])
             .WithSlotNumber(1)
             .TestObject;
         ExecutionPayloadV4 executionPayload = ExecutionPayloadV4.Create(block);

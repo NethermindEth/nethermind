@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -54,9 +55,34 @@ public class PrewarmerScopeProvider(
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => baseProvider.HasStateForTargetBlock(targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
-        IWorldStateScopeProvider.IScope scope = baseProvider.BeginScope(baseBlock, metrics);
+        if (!baseProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = WrapScope(baseScope, metrics, baseScope.RootHash);
+        return true;
+    }
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!baseProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = WrapScope(baseScope, metrics, baseBlock?.StateRoot);
+        return true;
+    }
+
+    private IWorldStateScopeProvider.IScope WrapScope(IWorldStateScopeProvider.IScope scope, LocalMetrics metrics, Hash256? stateRoot)
+    {
         if (!isPrewarmer)
         {
             try
@@ -64,8 +90,8 @@ public class PrewarmerScopeProvider(
                 // Opening joins any speculative session, so the check below and the scope's reads see no other writer.
                 preBlockCaches.BeginConsumerScope();
                 preBlockCaches.MainScope = scope;
-                // The consumer reads the state at baseBlock through the caches, which may still describe another state.
-                preBlockCaches.EnsureNotStaleFor(baseBlock?.StateRoot, logger);
+                // The consumer reads the state at the opened root through the caches, which may still describe another state.
+                preBlockCaches.EnsureNotStaleFor(stateRoot, logger);
             }
             catch
             {
@@ -82,7 +108,7 @@ public class PrewarmerScopeProvider(
             }
         }
         PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
-        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, baseBlock?.StateRoot);
+        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, stateRoot);
     }
 
     private sealed class ScopeWrapper(
@@ -147,9 +173,11 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
             IWorldStateScopeProvider.IStorageTree baseTree = baseScope.CreateStorageTree(address);
+            // Asked once per tree: a tree serves one block, and the set only changes in a write-back between blocks.
+            bool bypassCache = preBlockCaches.BypassesStorageCache(address);
             return storageReadCapture is not null
-                ? new CapturingStorageTreeWrapper(baseTree, storageReadCapture, storageCache, address)
-                : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics);
+                ? new CapturingStorageTreeWrapper(baseTree, storageReadCapture, storageCache, address, bypassCache)
+                : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics, bypassCache);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
@@ -245,25 +273,26 @@ public class PrewarmerScopeProvider(
         // Populator hints target the block's consumer scope (whose commit walks the hinted paths);
         // consumer hints go straight to the backend. Capturing (discovery) scopes execute on placeholder
         // values, so their hinted addresses and slots can be fictitious — never forward them.
-        public void HintWarmAccount(in ValueAddress address)
+        public void HintWarmAccount(Address address)
         {
             if (storageReadCapture is not null) return;
-            (isPrewarmer ? mainScope : baseScope)?.HintWarmAccount(in address);
+            (isPrewarmer ? mainScope : baseScope)?.HintWarmAccount(address);
         }
 
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index)
+        public void HintWarmSlot(Address address, in UInt256 index)
         {
             if (storageReadCapture is not null) return;
-            (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(in address, in index);
+            (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(address, in index);
         }
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
-            sink ??= new CacheSink(preBlockCache, storageCache);
+            sink ??= new CacheSink(preBlockCaches, preBlockCache, storageCache);
             return baseScope.HintBal(bal, sink);
         }
 
         private sealed class CacheSink(
+            PreBlockCaches caches,
             SeqlockCache<AddressAsKey, Account> stateCache,
             SeqlockCache<StorageCell, UInt256> storageCache
         ) : IWorldStateScopeProvider.IAsyncBalReaderSink
@@ -275,7 +304,11 @@ public class PrewarmerScopeProvider(
             }
 
             public void OnStorageRead(in StorageCell storageCell, in UInt256 value)
-                => storageCache.Set(in storageCell, in value);
+            {
+                // A wiped contract's slots are never read from the cache, so caching one would only take room.
+                if (caches.BypassesStorageCache(storageCell.Address)) return;
+                storageCache.Set(in storageCell, in value);
+            }
 
             public bool StillNeeded(Address address, out Account? account)
             {
@@ -283,8 +316,9 @@ public class PrewarmerScopeProvider(
                 return !stateCache.TryGetValue(in key, out account);
             }
 
+            // A cached slot of a wiped contract may be stale, so it does not count as already read.
             public bool StillNeeded(in StorageCell storageCell)
-                => !storageCache.TryGetValue(in storageCell, out _);
+                => caches.BypassesStorageCache(storageCell.Address) || !storageCache.TryGetValue(in storageCell, out _);
         }
 
         private Account? GetFromBaseTree(in AddressAsKey address) => baseScope.Get(address);
@@ -295,7 +329,8 @@ public class PrewarmerScopeProvider(
         SeqlockCache<StorageCell, UInt256> preBlockCache,
         Address address,
         bool isPrewarmer,
-        LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
+        LocalMetrics metrics,
+        bool bypassCache) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, UInt256> preBlockCache = preBlockCache;
@@ -311,6 +346,13 @@ public class PrewarmerScopeProvider(
         public void Get(in UInt256 index, out UInt256 value)
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
+            if (bypassCache)
+            {
+                // The contract wiped its storage after these slots were cached; whatever is cached for it may be stale.
+                LoadFromTreeStorage(in storageCell, out value);
+                return;
+            }
+
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (preBlockCache.TryGetValue(in storageCell, out value))
             {
@@ -344,14 +386,15 @@ public class PrewarmerScopeProvider(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
         PreBlockCaches.StorageReadCapture storageReadCapture,
         SeqlockCache<StorageCell, UInt256> preBlockCache,
-        Address address) : IWorldStateScopeProvider.IStorageTree
+        Address address,
+        bool bypassCache) : IWorldStateScopeProvider.IStorageTree
     {
         public Hash256 RootHash => baseStorageTree.RootHash;
 
         public void Get(in UInt256 index, out UInt256 value)
         {
             StorageCell storageCell = new(address, in index);
-            if (preBlockCache.TryGetValue(in storageCell, out value))
+            if (!bypassCache && preBlockCache.TryGetValue(in storageCell, out value))
             {
                 return;
             }

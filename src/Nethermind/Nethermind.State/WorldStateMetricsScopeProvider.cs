@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -19,13 +20,38 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
     private double _stateMerkleizationTime;
 
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics) => new MetricsScope(_baseProvider.BeginScope(baseBlock, metrics), this);
+
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => _baseProvider.HasStateForTargetBlock(targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!_baseProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = new MetricsScope(baseScope, this);
+        return true;
+    }
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!_baseProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = new MetricsScope(baseScope, this);
+        return true;
+    }
 
     private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
     {
-        public void HintWarmAccount(in ValueAddress address) => baseScope.HintWarmAccount(in address);
+        public void HintWarmAccount(Address address) => baseScope.HintWarmAccount(address);
 
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => baseScope.HintWarmSlot(in address, in index);
+        public void HintWarmSlot(Address address, in UInt256 index) => baseScope.HintWarmSlot(address, in index);
 
         public void Dispose()
         {

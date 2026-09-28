@@ -38,6 +38,8 @@ public class NetworkNode
         {
             _enr = NodeRecord.FromEnrString(nodeString);
         }
+
+        NodeId = IsEnode ? Enode.PublicKey : GetEnrPublicKey();
     }
 
     public static NetworkNode[] ParseNodes(string? nodeRecords, ILogger logger)
@@ -81,13 +83,17 @@ public class NetworkNode
     public NetworkNode(PublicKey publicKey, string ip, int port, long reputation = 0)
         : this(new Enode(publicKey, IPAddress.Parse(ip), port)) => Reputation = reputation;
 
-    public NetworkNode(Enode enode) => _enode = enode;
+    public NetworkNode(Enode enode)
+    {
+        _enode = enode;
+        NodeId = enode.PublicKey;
+    }
 
     public Enode? Enode => _enode;
 
     public NodeRecord? Enr => _enr;
 
-    public PublicKey NodeId => IsEnode ? Enode.PublicKey : GetEnrPublicKey();
+    public PublicKey NodeId { get; }
     public string Host => IsEnode ? Enode.HostIp.ToString() : HostIp.ToString();
     public IPAddress HostIp => IsEnode ? Enode.HostIp : Enr!.Ip ?? IPAddress.None;
     public int Port => IsEnode ? Enode.Port : Enr!.TcpPort ?? 0;

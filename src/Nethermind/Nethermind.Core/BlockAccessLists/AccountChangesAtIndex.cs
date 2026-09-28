@@ -21,6 +21,9 @@ public class AccountChangesAtIndex(Address address)
     public NonceChange? NonceChange { get; internal set; }
     public CodeChange? CodeChange { get; internal set; }
 
+    /// <summary>Physical existence after a mutation at this index, independently of EIP-161 emptiness.</summary>
+    public bool? AccountExists { get; internal set; }
+
     public UInt256? PreTxBalance { get; internal set; }
     public byte[]? PreTxCode { get; internal set; }
     private Dictionary<UInt256, PreTxStorage>? _preTxStorage;
@@ -55,6 +58,19 @@ public class AccountChangesAtIndex(Address address)
         return needsUndo;
     }
 
+    /// <summary>Reads the captured transaction-prestate value for a slot, if one was recorded this transaction.</summary>
+    public bool TryGetPreTxStorage(in UInt256 key, out UInt256 value)
+    {
+        if (_preTxStorage is not null && _preTxStorage.TryGetValue(key, out PreTxStorage slot))
+        {
+            value = slot.Value;
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
     private struct PreTxStorage(in UInt256 value, ulong journalEpoch)
     {
         public readonly UInt256 Value = value;
@@ -67,6 +83,7 @@ public class AccountChangesAtIndex(Address address)
         BalanceChange = null;
         NonceChange = null;
         CodeChange = null;
+        AccountExists = null;
         PreTxBalance = null;
         PreTxCode = null;
         _preTxStorage?.ClearAndTrim();

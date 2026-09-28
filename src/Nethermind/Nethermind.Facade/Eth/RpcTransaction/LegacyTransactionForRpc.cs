@@ -42,9 +42,13 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
     public byte[]? Data { set { Input = value; } private get { return null; } }
 
+    /// <remarks>
+    /// <see cref="Data"/> is an alias when deserializing. An explicit JSON null for either is the same as omitting it,
+    /// so it never clears calldata set by the other.
+    /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
-    public byte[]? Input { get; set; }
+    public byte[]? Input { get; set => field = value ?? field; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public virtual UInt256? GasPrice { get; set; }
@@ -96,7 +100,7 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
-        if (validateUserInput && To is null && Input is null or { Length: 0 })
+        if (validateUserInput && Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 })
             return RpcTransactionErrors.ContractCreationWithoutData;
 
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
@@ -111,12 +115,13 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         tx.ChainId = ChainId;
         tx.SenderAddress = From ?? Address.Zero;
 
-        // null Gas → caller didn't specify, default to gasCap (uncapped if gasCap is unset).
-        // explicit Gas (including 0) → use as-is, capped at gasCap. This matches Geth: gas: 0x0
-        // is a literal request that fails the intrinsic gas check, not a "missing" signal.
+        // Omitted gas falls back to the lower of the RPC gas cap and the processor-enforced cap; an explicit gas
+        // is only lowered to the RPC gas cap, so a request above the processor-enforced cap still fails validation.
+        // Explicit zero is a literal request that fails the intrinsic gas check, not a missing-gas default.
         ulong effectiveCap = gasCap.EffectiveGasCap();
+        ulong processorCap = spec?.GetProcessorEnforcedTxGasLimitCap() ?? ulong.MaxValue;
         tx.GasLimit = Gas is null
-            ? effectiveCap
+            ? Math.Min(effectiveCap, processorCap)
             : Math.Min(Gas.Value, effectiveCap);
 
         if ((R?.IsZero == false || S?.IsZero == false) && (R is not null || S is not null))

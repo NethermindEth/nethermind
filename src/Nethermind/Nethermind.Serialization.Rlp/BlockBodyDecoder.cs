@@ -44,8 +44,11 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     }
 
     public (int Txs, int Uncles, int? Withdrawals) GetBodyComponentLength(BlockBody b) =>
+        GetBodyComponentLength(b, GetTxLength(b.Transactions));
+
+    internal (int Txs, int Uncles, int? Withdrawals) GetBodyComponentLength(BlockBody b, int transactionLength) =>
     (
-        GetTxLength(b.Transactions),
+        transactionLength,
         GetUnclesLength(b.Uncles),
         b.Withdrawals is not null ? GetWithdrawalsLength(b.Withdrawals) : null
     );

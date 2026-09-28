@@ -2,6 +2,7 @@
 // SPDX-License-Identifier:LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,13 +33,29 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAcces
             ? AccessList.ForSingleStorageCell(in blockHashStoreCell)
             : null;
 
-    private bool TryGetParentHashCell(BlockHeader header, IReleaseSpec spec, out StorageCell blockHashStoreCell)
+    /// <summary>
+    /// Resolves the EIP-2935 history contract that must record <paramref name="header"/>'s parent hash.
+    /// </summary>
+    /// <returns><c>false</c> when the block records no parent hash: EIP-2935 is off, the block is genesis, or no contract is deployed.</returns>
+    public bool TryGetHistoryContract(BlockHeader header, IReleaseSpec spec, [NotNullWhen(true)] out Address? historyContract)
     {
-        blockHashStoreCell = default;
+        historyContract = null;
         if (!spec.IsEip2935Enabled || header.IsGenesis || header.ParentHash is null) return false;
 
         Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         if (!worldState.IsContract(eip2935Account)) return false;
+
+        historyContract = eip2935Account;
+        return true;
+    }
+
+    private bool TryGetParentHashCell(BlockHeader header, IReleaseSpec spec, out StorageCell blockHashStoreCell)
+    {
+        if (!TryGetHistoryContract(header, spec, out Address? eip2935Account))
+        {
+            blockHashStoreCell = default;
+            return false;
+        }
 
         blockHashStoreCell = new StorageCell(eip2935Account, new UInt256((ulong)(header.Number - 1) % spec.Eip2935RingBufferSize));
         return true;

@@ -83,7 +83,8 @@ public class HistoryBackedPersistenceReaderTests
         HistoryColumnsWriter.RecordRawAccountRow(_historyColumns, Address, 6, new byte[300]);
 
         Assert.That(() => Reader(10).GetAccount(Address),
-            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.TypeOf<StateUnavailableException>(),
+            "a corrupt row is not state the node legitimately lacks; the exact base type keeps it on the -32000 + WARN path");
     }
 
     [Test]
@@ -95,7 +96,8 @@ public class HistoryBackedPersistenceReaderTests
         {
             UInt256 value = default;
             Reader(10).TryGetSlot(Address, Slot, ref value);
-        }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+        }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.TypeOf<StateUnavailableException>(),
+            "a corrupt row is not state the node legitimately lacks; the exact base type keeps it on the -32000 + WARN path");
     }
 
     [Test]
@@ -123,7 +125,7 @@ public class HistoryBackedPersistenceReaderTests
     {
         HistoryScopeGate gate = new();
 
-        Assert.That(() => Reader(11, gate), Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+        Assert.That(() => Reader(11, gate), Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateNotRetainedException>());
 
         Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
     }
@@ -133,7 +135,7 @@ public class HistoryBackedPersistenceReaderTests
     {
         HistoryScopeGate gate = new();
 
-        Assert.That(() => Reader(10, gate, TestItem.KeccakA), Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+        Assert.That(() => Reader(10, gate, TestItem.KeccakA), Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateNotRetainedException>());
 
         Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
     }
@@ -237,12 +239,12 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
     [Test]
     public void GetAccount_ForAnAddressNotCoveredByAnySliceScope_ThrowsMissingTrieNode() =>
         Assert.That(() => Reader(3).GetAccount(NonSlicedAddress),
-            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateNotRetainedException>());
 
     [Test]
     public void GetAccount_ForAnAddressWhoseSliceFloorIsDeeperThanTheQueriedBlock_ThrowsMissingTrieNode() =>
         Assert.That(() => Reader(3, sliceFloor: 4).GetAccount(SlicedAddress),
-            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>(),
+            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateNotRetainedException>(),
             "the scope's own floor (4) is still above the query (3) - the address is retained only from block 4 onward");
 
     [Test]
@@ -261,7 +263,7 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
         {
             UInt256 value = default;
             Reader(3).TryGetSlot(NonSlicedAddress, Slot, ref value);
-        }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+        }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateNotRetainedException>());
 
     [Test]
     public void Constructor_ForANonCanonicalStateRoot_ThrowsMissingTrieNode_AndReleasesTheScope_EvenBelowTheFloor()
@@ -269,7 +271,7 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
         HistoryScopeGate gate = new();
 
         Assert.That(() => Reader(3, sliceFloor: 0, gate, TestItem.KeccakA),
-            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
+            Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateNotRetainedException>());
 
         Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
     }

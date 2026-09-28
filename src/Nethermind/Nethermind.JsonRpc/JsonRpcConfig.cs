@@ -55,6 +55,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public long? MaxLogsResponseBodySize { get; set; } = null;
     public int? DebugModuleConcurrentInstances { get; set; } = null;
     public int? TraceModuleConcurrentInstances { get; set; } = null;
+    public int TraceBlockParallelism { get; set; } = 4;
     public int? EthModuleConcurrentInstances { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
@@ -88,5 +89,6 @@ public class JsonRpcConfig : IJsonRpcConfig
     public bool StrictHexFormat { get; set; } = true;
     public int RpcTxSyncDefaultTimeoutMs { get; set; } = 20_000;
     public int RpcTxSyncMaxTimeoutMs { get; set; } = 60_000;
+    public int RpcTxSyncMaxConcurrentRequests { get; set; } = 128;
     public string[] AdditionalTrustedNetworks { get; set; } = [];
 };

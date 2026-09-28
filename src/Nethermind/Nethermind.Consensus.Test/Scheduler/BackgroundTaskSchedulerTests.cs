@@ -6,13 +6,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using TaskCompletionSource = DotNetty.Common.Concurrency.TaskCompletionSource;
 
 namespace Nethermind.Consensus.Test.Scheduler;
 
@@ -32,18 +31,33 @@ public class BackgroundTaskSchedulerTests
     }
 
     [Test]
-    public async Task Test_task_will_execute()
+    public async Task Test_task_will_execute([Values(ThreadPriority.AboveNormal, ThreadPriority.Highest, ThreadPriority.Normal)] ThreadPriority priority)
     {
-        TaskCompletionSource tcs = new();
+        System.Threading.Tasks.TaskCompletionSource<(ThreadPriority Before, ThreadPriority Boosted, ThreadPriority After)> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
 
         scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
         {
-            tcs.SetResult(1);
+            Thread thread = Thread.CurrentThread;
+            ThreadPriority before = thread.Priority;
+            ThreadPriority boosted;
+            using (priority switch
+            {
+                ThreadPriority.AboveNormal => thread.BoostPriority(),
+                ThreadPriority.Highest => thread.SetHighestPriority(),
+                _ => thread.SetNormalPriority()
+            }) boosted = thread.Priority;
+            tcs.SetResult((before, boosted, thread.Priority));
             return Task.CompletedTask;
         });
 
-        await tcs.Task;
+        (ThreadPriority before, ThreadPriority boosted, ThreadPriority after) = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.EqualTo(OperatingSystem.IsLinux() ? ThreadPriority.Normal : ThreadPriority.BelowNormal));
+            Assert.That(boosted, Is.EqualTo(OperatingSystem.IsLinux() ? before : priority));
+            Assert.That(after, Is.EqualTo(before));
+        }
     }
 
     [Test]
@@ -158,10 +172,10 @@ public class BackgroundTaskSchedulerTests
 
         bool wasCancelled = false;
 
-        ManualResetEvent waitSignal = new(false);
+        TaskCompletionSource waitSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
         scheduler.TryScheduleTask(default(TestRequest), async (_, token) =>
         {
-            waitSignal.Set();
+            waitSignal.TrySetResult();
             try
             {
                 await Task.Delay(100000, token);
@@ -172,7 +186,7 @@ public class BackgroundTaskSchedulerTests
             }
         });
 
-        await waitSignal.WaitOneAsync(CancellationToken.None);
+        await waitSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
         BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
         await Task.Delay(10);
         RaiseBranchProcessingCompleted(branchProcessing);
@@ -226,18 +240,18 @@ public class BackgroundTaskSchedulerTests
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
         BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
 
-        ManualResetEvent waitSignal = new(false);
+        TaskCompletionSource waitSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Assert.That(scheduler.TryScheduleTask(default(TestRequest), (_, _) =>
         {
-            waitSignal.Set();
+            waitSignal.TrySetResult();
             return Task.CompletedTask;
         }, TimeSpan.FromSeconds(5)), Is.True);
 
         _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
-        Assert.That(waitSignal.WaitOne(TimeSpan.FromMilliseconds(500)), Is.False, "task should remain paused until the whole branch finishes");
+        Assert.That(await Task.WhenAny(waitSignal.Task, Task.Delay(500)), Is.Not.SameAs(waitSignal.Task), "task should remain paused until the whole branch finishes");
 
         RaiseBranchProcessingCompleted(branchProcessing);
-        Assert.That(waitSignal.WaitOne(TimeSpan.FromSeconds(5)), Is.True);
+        await waitSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Test]
@@ -249,15 +263,15 @@ public class BackgroundTaskSchedulerTests
         RaiseBranchProcessingCompleted(branchProcessing);
 
         bool wasCancelled = true;
-        ManualResetEvent waitSignal = new(false);
+        TaskCompletionSource waitSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Assert.That(scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
         {
             wasCancelled = token.IsCancellationRequested;
-            waitSignal.Set();
+            waitSignal.TrySetResult();
             return Task.CompletedTask;
         }), Is.True);
 
-        Assert.That(waitSignal.WaitOne(TimeSpan.FromSeconds(5)), Is.True);
+        await waitSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(wasCancelled, Is.False);
     }
 
@@ -268,27 +282,27 @@ public class BackgroundTaskSchedulerTests
         BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
 
         bool wasCancelled = false;
-        ManualResetEvent waitSignal = new(false);
+        TaskCompletionSource waitSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
         scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
         {
             wasCancelled = token.IsCancellationRequested;
-            waitSignal.Set();
+            waitSignal.TrySetResult();
             return Task.CompletedTask;
         }, TimeSpan.FromMilliseconds(1));
 
-        Assert.That((await waitSignal.WaitOneAsync(CancellationToken.None)), Is.True);
+        await waitSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(wasCancelled, Is.True, "expired task should receive a cancelled token during block processing");
 
         // After block processing, new tasks execute normally
         RaiseBranchProcessingCompleted(branchProcessing);
 
-        ManualResetEvent postBlockSignal = new(false);
+        TaskCompletionSource postBlockSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
         scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
         {
-            postBlockSignal.Set();
+            postBlockSignal.TrySetResult();
             return Task.CompletedTask;
         });
-        Assert.That((await postBlockSignal.WaitOneAsync(CancellationToken.None)), Is.True);
+        await postBlockSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Test]
@@ -492,7 +506,7 @@ public class BackgroundTaskSchedulerTests
     /// </summary>
     private static async Task BlockTheOnlyWorker(BackgroundTaskScheduler scheduler, SemaphoreSlim release)
     {
-        TaskCompletionSource running = new();
+        DotNetty.Common.Concurrency.TaskCompletionSource running = new();
         Assert.That(Schedule(scheduler, async (_, token) =>
         {
             running.TrySetResult(0);

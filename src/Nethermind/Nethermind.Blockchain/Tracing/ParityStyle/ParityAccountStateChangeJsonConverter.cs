@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -34,6 +36,13 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
                 writer.WriteStartObject();
                 writer.WritePropertyName("+"u8);
                 JsonSerializer.Serialize(writer, change.After, options);
+                writer.WriteEndObject();
+            }
+            else if (change.After is null)
+            {
+                writer.WriteStartObject();
+                writer.WritePropertyName("-"u8);
+                JsonSerializer.Serialize(writer, change.Before, options);
                 writer.WriteEndObject();
             }
             else
@@ -64,6 +73,13 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
                 writer.WriteStartObject();
                 writer.WritePropertyName("+"u8);
                 JsonSerializer.Serialize(writer, change.After, options);
+                writer.WriteEndObject();
+            }
+            else if (change.After is null)
+            {
+                writer.WriteStartObject();
+                writer.WritePropertyName("-"u8);
+                JsonSerializer.Serialize(writer, change.Before, options);
                 writer.WriteEndObject();
             }
             else
@@ -128,13 +144,22 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
         }
 
         writer.WritePropertyName("code"u8);
-        if (value.Code is null)
+        if (value.Code is not null)
         {
-            writer.WriteStringValue("="u8);
+            WriteChange(writer, value.Code, options);
+        }
+        else if (value.Balance is { Before: null, After: not null } or { Before: not null, After: null })
+        {
+            // A created or deleted account always reports balance null <-> X, but StateProvider only reports code when
+            // either side is non-empty, so an unreported code change there means empty code was added or removed.
+            writer.WriteStartObject();
+            writer.WritePropertyName(value.Balance.Before is null ? "+"u8 : "-"u8);
+            writer.WriteStringValue("0x"u8);
+            writer.WriteEndObject();
         }
         else
         {
-            WriteChange(writer, value.Code, options);
+            writer.WriteStringValue("="u8);
         }
 
         writer.WritePropertyName("nonce"u8);
@@ -152,18 +177,32 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
         writer.WriteStartObject();
         if (value.Storage is not null)
         {
-            foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> pair in value.Storage.OrderBy(static s => s.Key))
-            {
-                string trimmedKey = pair.Key.ToString("x64");
-                trimmedKey = trimmedKey.Substring(trimmedKey.Length - 64, 64);
-
-                writer.WritePropertyName(string.Concat("0x", trimmedKey));
-                WriteStorageChange(writer, pair.Value, value.Balance?.Before is null && value.Balance?.After is not null, options);
-            }
+            WriteStorage(writer, value.Storage, value.Balance?.Before is null && value.Balance?.After is not null, options);
         }
 
         writer.WriteEndObject();
 
         writer.WriteEndObject();
+    }
+
+    /// <summary>Writes the slots in ascending key order, sorting them in a pooled buffer.</summary>
+    [SkipLocalsInit]
+    private void WriteStorage(Utf8JsonWriter writer, Dictionary<UInt256, ParityStateChange<byte[]>> storage, bool isNew, JsonSerializerOptions options)
+    {
+        Span<byte> keyBytes = stackalloc byte[32];
+        Span<byte> keyName = stackalloc byte[2 + 64];
+        keyName[0] = (byte)'0';
+        keyName[1] = (byte)'x';
+        Span<byte> keyHex = keyName[2..];
+
+        using ArrayPoolListRef<KeyValuePair<UInt256, ParityStateChange<byte[]>>> sorted = new(storage.Count, storage);
+        sorted.Sort(static (x, y) => x.Key.CompareTo(y.Key));
+        foreach ((UInt256 key, ParityStateChange<byte[]> change) in sorted.AsSpan())
+        {
+            key.ToBigEndian(keyBytes);
+            keyBytes.OutputBytesToByteHex(keyHex, false);
+            writer.WritePropertyName(keyName);
+            WriteStorageChange(writer, change, isNew, options);
+        }
     }
 }

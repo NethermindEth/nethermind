@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -49,24 +50,63 @@ public class KeyedNonceManagerTests
         Assert.That(slotB1.Index, Is.Not.EqualTo(slotA1.Index), "distinct senders must yield distinct slots");
     }
 
-    [Test]
-    public void Batched_storage_indices_match_individual_slots([Values(8, Eip8250Constants.MaxNonceKeys)] int count)
+    // Pins the slot preimage (12 zero bytes || sender || big-endian key) byte for byte. The second case
+    // carries a key of 1: its 31 high-order zero bytes are written by ToBigEndian rather than left over
+    // from a cleared buffer, which is the assumption the preimage rests on once it is not zero-initialised.
+    [TestCase("0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+        "0xf1c0fc4a1f82063830799cc3a618c97eddb89121fa2c5f0d8cc821a2ff34f8be")]
+    [TestCase("0x01", "0xfb963365229fce11eaaa8a1ed86facacae3c16c64c5266e477c93281818df6a4")]
+    public void StorageSlot_matches_the_known_preimage_hash(string nonceKeyHex, string expectedHex)
     {
-        UInt256[] keys = StrictlyIncreasing(count);
+        Address sender = new("0x0f1e2d3c4b5a69788796a5b4c3d2e1f001122334");
+        UInt256 nonceKey = new(Bytes.FromHexString(nonceKeyHex), isBigEndian: true);
+
+        StorageCell slot = KeyedNonceManager.StorageSlot(sender, nonceKey);
+
+        UInt256 expected = new(Bytes.FromHexString(expectedHex), isBigEndian: true);
+        Assert.That(slot.Index, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Batched_storage_indices_match_individual_slots(
+        [Range(0, Eip8250Constants.MaxNonceKeys)] int count, [Values] bool wide)
+    {
+        UInt256[] keys = StrictlyIncreasing(count, wide);
         UInt256[] indices = new UInt256[count];
 
         KeyedNonceManager.StorageIndices(TestItem.AddressA, keys, indices);
 
+        byte[] preimage = new byte[64];
+        TestItem.AddressA.Bytes.CopyTo(preimage.AsSpan(12, Address.Size));
         for (int i = 0; i < count; i++)
         {
-            Assert.That(indices[i], Is.EqualTo(KeyedNonceManager.StorageSlot(TestItem.AddressA, keys[i]).Index));
+            keys[i].ToBigEndian(preimage.AsSpan(32));
+            UInt256 expected = new(ValueKeccak.Compute(preimage).Bytes, isBigEndian: true);
+            Assert.That(indices[i], Is.EqualTo(expected));
         }
     }
 
+    // Gas estimation reaches payment approval with nonce validation skipped, so a set part fresh and part
+    // used is observable and the count is not just "all or nothing" on the shared sequence.
     [Test]
-    public void Batched_nonce_set_is_consumed_and_validated()
+    public void FirstUseCount_counts_only_the_unused_keys([Range(2, Eip8250Constants.MaxNonceKeys)] int count)
     {
-        UInt256[] keys = StrictlyIncreasing(Eip8250Constants.MaxNonceKeys);
+        UInt256[] keys = StrictlyIncreasing(count);
+        int used = count / 2;
+        KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, keys.AsSpan(0, used), nonceSeq: 0);
+
+        Assert.That(KeyedNonceManager.FirstUseCount(_state, TestItem.AddressA, keys), Is.EqualTo(count - used));
+    }
+
+    [Test]
+    public void FirstUseCount_for_the_legacy_key_set_is_zero() =>
+        Assert.That(KeyedNonceManager.FirstUseCount(_state, TestItem.AddressA, [UInt256.Zero]), Is.Zero,
+            "key 0 is the account nonce, which needs no NONCE_MANAGER slot");
+
+    [Test]
+    public void Batched_nonce_set_is_consumed_and_validated([Range(2, Eip8250Constants.MaxNonceKeys)] int count)
+    {
+        UInt256[] keys = StrictlyIncreasing(count);
 
         KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, keys, nonceSeq: 41);
 
@@ -186,9 +226,17 @@ public class KeyedNonceManagerTests
     public void IsNonceSetValid_false_for_malformed_sets(UInt256[] nonceKeys) =>
         Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, nonceKeys, nonceSeq: 0), Is.False);
 
+    // The slot has to hold MAX_NONCE_SEQ, or the key mismatches and the case passes without the bound.
+    // It is the bound that keeps the out-of-range clamp from false-matching a transaction at that seq.
     [Test]
-    public void IsNonceSetValid_false_at_max_nonce_seq() =>
+    public void IsNonceSetValid_false_at_max_nonce_seq()
+    {
+        KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue - 1);
+
+        Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)5), Is.EqualTo(ulong.MaxValue),
+            "the slot must sit at MAX_NONCE_SEQ for the bound to be what rejects this");
         Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue), Is.False);
+    }
 
     [Test]
     public void IsNonceSetValid_for_key_zero_matches_the_account_nonce()
@@ -212,12 +260,16 @@ public class KeyedNonceManagerTests
         Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue - 1), Is.True);
     }
 
-    private static UInt256[] StrictlyIncreasing(int count)
+    /// <param name="wide">Fills the upper words too, so a batch lane carries a full 32-byte key rather than
+    /// one whose high bytes a cleared buffer would supply anyway.</param>
+    private static UInt256[] StrictlyIncreasing(int count, bool wide = false)
     {
         UInt256[] keys = new UInt256[count];
         for (int i = 0; i < count; i++)
         {
-            keys[i] = (UInt256)(i + 1);
+            keys[i] = wide
+                ? new UInt256((ulong)(i + 1), 0x0f1e2d3c4b5a6978UL, 0x8796a5b4c3d2e1f0UL, 0x0102030405060708UL)
+                : (UInt256)(i + 1);
         }
         return keys;
     }
