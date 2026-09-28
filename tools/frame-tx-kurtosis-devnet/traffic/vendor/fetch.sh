@@ -18,12 +18,14 @@ set -euo pipefail
 readonly DEST="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
 readonly SOISPOKE_REPO="soispoke/minimal-shielded-pool"
-readonly SOISPOKE_REF="${SOISPOKE_REF:-main}"
+# position-notes-v2, the profile the v2 campaign measures (235,800 declared). A commit rather
+# than a branch, so a rebuild fetches the same bytes the checksum below was taken from.
+readonly SOISPOKE_REF="${SOISPOKE_REF:-6dedda193bf09c9d80cd89b3dc23eccf580d1026}"
 
 # Required file: path -> sha256 of the pinned revision. Set FRAME_TX_VENDOR_ALLOW_DRIFT=1 to
 # accept a different revision (it will be reported), for instance when bumping the pin.
 readonly REQUIRED_PATH="devnet/frametx.py"
-readonly REQUIRED_SHA256="7b59186456e52c9956028cc1ccded61a7ae08684382c8b4f478416cd31bb17c7"
+readonly REQUIRED_SHA256="ac008480a576bae7543287f7488afb93c1b12c1cdf103f95e0f933b68823d459"
 
 readonly OPTIONAL_PATHS=(
   "devnet/pool_frametx.py"

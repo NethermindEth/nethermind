@@ -138,6 +138,38 @@ def _assert_dialect(module, path: str) -> None:
         )
 
 
+def declared_verify_gas(tx) -> int:
+    """The validation-prefix gas Nethermind compares against MAX_VERIFY_GAS at admission.
+
+    Mirrors FrameTxValidation.ValidationWorkGas: the execution limits of the frames up to the
+    end of the recognised prefix, plus signature verification. The prefix starts after an
+    optional leading expiry frame and an optional deploy frame, and is either one self-verify
+    frame approving execution and payment, or a self-verify frame approving execution followed
+    by a VERIFY frame approving payment. An unrecognised layout counts every frame."""
+    frames = tx.frames
+    sender = tx.sender
+
+    def self_targeted(frame, flags):
+        return frame.mode == MODE_VERIFY and frame.flags == flags and frame.target in (None, sender)
+
+    start = 0
+    if (start < len(frames) and frames[start].mode == MODE_VERIFY and frames[start].flags == 0
+            and frames[start].target == EXPIRY_VERIFIER_ADDRESS and frames[start].value == 0
+            and len(frames[start].data) == EXPIRY_DATA_LENGTH):
+        start += 1
+    if start < len(frames) and frames[start].mode == MODE_DEFAULT and frames[start].flags == 0:
+        start += 1
+
+    counted = len(frames)
+    if start < len(frames) and self_targeted(frames[start], APPROVE_EXECUTION_AND_PAYMENT):
+        counted = start + 1
+    elif (start + 1 < len(frames) and self_targeted(frames[start], APPROVE_EXECUTION)
+          and frames[start + 1].mode == MODE_VERIFY and frames[start + 1].flags == APPROVE_PAYMENT):
+        counted = start + 2
+
+    return sum(frame.gas_limit for frame in frames[:counted]) + tx.signature_verification_cost()
+
+
 # ---------------------------------------------------------------------------------------
 # EVM fixtures
 # ---------------------------------------------------------------------------------------
@@ -206,9 +238,9 @@ def _targeted_prefix(module, target: bytes, budget: int, data: bytes):
 
     A single frame cannot both approve execution and target something other than the sender:
     Nethermind rejects that outright with "frames allowed to approve execution must target the
-    sender". The recognized layout for this is the pair the encoder's own `validation_prefix`
-    accepts as `flags == [0x02, 0x01]`: approve execution from the sender, then approve payment
-    from the frame that does the work."""
+    sender". The recognised layout for this is the pair `declared_verify_gas` accepts as
+    `flags == [0x02, 0x01]`: approve execution from the sender, then approve payment from the
+    frame that does the work."""
     return [
         module.Frame(MODE_VERIFY, APPROVE_EXECUTION, None, MINIMAL_FRAME_GAS, 0, b""),
         module.Frame(MODE_VERIFY, APPROVE_PAYMENT, int.from_bytes(target, "big"), budget, 0, data),
@@ -238,8 +270,8 @@ def build_baseline(module, sender, chain_id: int, nonce: int, base_fee: int,
                    deadline_unix: int | None, payload_gas: int = 30_000) -> BuiltTx:
     """A valid self-verifying transfer that must reach a block.
 
-    Prefix is a single VERIFY frame approving both execution and payment, the shape the
-    encoder's own `validation_prefix` recognises as `flags == 0x03`."""
+    Prefix is a single VERIFY frame approving both execution and payment, the shape
+    `declared_verify_gas` recognises as `flags == 0x03`."""
     frames = []
     if deadline_unix is not None:
         frames.append(_expiry_frame(module, deadline_unix))
@@ -259,7 +291,7 @@ def build_baseline(module, sender, chain_id: int, nonce: int, base_fee: int,
         max_fee=max_fee,
     )
     raw = _finalise(module, tx, sender)
-    return BuiltTx(raw, "baseline", tx.public_validation_gas(), len(frames), 1, deadline_unix)
+    return BuiltTx(raw, "baseline", declared_verify_gas(tx), len(frames), 1, deadline_unix)
 
 
 def build_keccak_wide(module, sender, chain_id: int, nonce: int, base_fee: int, ceiling: int,
@@ -293,14 +325,14 @@ def build_keccak_wide(module, sender, chain_id: int, nonce: int, base_fee: int, 
         max_fee=max_fee,
     )
     raw = _finalise(module, tx, sender)
-    return BuiltTx(raw, "keccak-wide", tx.public_validation_gas(), len(frames), 1, deadline_unix)
+    return BuiltTx(raw, "keccak-wide", declared_verify_gas(tx), len(frames), 1, deadline_unix)
 
 
 def stuffed_signature_count(ceiling: int) -> int:
     """Total secp256k1 entries that fit under the ceiling once the VERIFY frame is reserved.
 
     This is the count of *all* entries including the sender's own self-signature, matching the
-    in-process harness: at 322800 it is 115 entries for 322400 declared gas."""
+    in-process harness: at 235800 it is 84 entries for 235600 declared gas."""
     return max(2, (ceiling - MINIMAL_FRAME_GAS) // SECP256K1_VERIFICATION_GAS)
 
 
@@ -356,7 +388,7 @@ def build_signature_stuffed(module, sender, chain_id: int, nonce: int, base_fee:
     )
     raw = _finalise(module, tx, sender)
     return BuiltTx(
-        raw, "signature-stuffed", tx.public_validation_gas(), len(frames), len(signatures), deadline_unix
+        raw, "signature-stuffed", declared_verify_gas(tx), len(frames), len(signatures), deadline_unix
     )
 
 
@@ -392,4 +424,4 @@ def build_groth16(module, sender, chain_id: int, nonce: int, base_fee: int, ceil
         max_fee=max_fee,
     )
     raw = _finalise(module, tx, sender)
-    return BuiltTx(raw, shape, tx.public_validation_gas(), len(frames), 1, deadline_unix)
+    return BuiltTx(raw, shape, declared_verify_gas(tx), len(frames), 1, deadline_unix)

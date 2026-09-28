@@ -15,16 +15,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from frame_traffic import shapes  # noqa: E402
 from frame_traffic.accounts import Sender  # noqa: E402
 
-CEILINGS = [100000, 236285, 300000, 322800, 500000]
+CEILINGS = [100000, 235800, 250000, 300000, 400000, 500000]
 
-# Signature-stuffed shape as the in-process harness measures it, ceiling -> (entries, declared
-# gas). Taken from the campaign's own RESULT rows (case=signature_reject). Pinning them here
-# keeps the devnet generator and the in-process harness measuring the same transaction.
+# Signature-stuffed shape as the in-process harness builds it, ceiling -> (entries, declared
+# gas): FrameTxMeasurementSupport.StuffedSignatureCount on the v2 harness, one 400-gas VERIFY
+# frame plus floor((ceiling - 400) / 2800) secp256k1 entries. Pinning them here keeps the devnet
+# generator and the in-process harness measuring the same transaction.
 HARNESS_SIGNATURE_STUFFED = {
     100000: (35, 98400),
-    236285: (84, 235600),
+    235800: (84, 235600),
+    250000: (89, 249600),
     300000: (107, 300000),
-    322800: (115, 322400),
+    400000: (142, 398000),
     500000: (178, 498800),
 }
 CHAIN_ID = 3151908
@@ -97,14 +99,41 @@ def main() -> int:
         for label, tx in (("keccak-wide", kw), ("signature-stuffed", ss), ("groth16", g16)):
             check("{0} is type 0x06".format(label), tx.raw[:1] == b"\x06")
 
-    print("\nsignature-stuffed detail at 322800")
-    stuffed = shapes.build_signature_stuffed(module, sender, CHAIN_ID, 0, 10**9, 322800,
+    print("\nsignature-stuffed detail at 235800")
+    stuffed = shapes.build_signature_stuffed(module, sender, CHAIN_ID, 0, 10**9, 235800,
                                              b"\x04" * 8, None)
     per_signature = shapes.SECP256K1_VERIFICATION_GAS
     print("  {0} signature entries x {1} gas = {2}".format(
         stuffed.signatures, per_signature, stuffed.signatures * per_signature))
     check("declared verify gas is signature-dominated",
           stuffed.declared_verify_gas >= stuffed.signatures * per_signature)
+
+    print("\ndeclared verify gas follows Nethermind's recognised prefix")
+    frame, sig = module.Frame, module.FrameSig
+    sender_int = int.from_bytes(sender.address_bytes, "big")
+
+    def declared(frames, signatures=1):
+        tx = shapes.frame_tx(
+            module, chain_id=CHAIN_ID, nonce_keys=[], nonce_seq=0, sender=sender_int, frames=frames,
+            signatures=[sig(sig.SECP256K1, sender.address_bytes, b"", b"\x00" * 65)] * signatures,
+            max_priority_fee=0, max_fee=0)
+        return shapes.declared_verify_gas(tx)
+
+    self_verify = frame(shapes.MODE_VERIFY, shapes.APPROVE_EXECUTION_AND_PAYMENT, None, 1_000, 0, b"")
+    payload = frame(shapes.MODE_DEFAULT, 0, sender_int, 50_000, 0, b"")
+    expiry = frame(shapes.MODE_VERIFY, 0, shapes.EXPIRY_VERIFIER_ADDRESS, 400, 0, b"\x00" * 8)
+    check("self-verify prefix stops before the payload frame",
+          declared([self_verify, payload]) == 1_000 + 2_800, str(declared([self_verify, payload])))
+    check("a leading expiry frame is part of the prefix",
+          declared([expiry, self_verify, payload]) == 400 + 1_000 + 2_800)
+    pair = [frame(shapes.MODE_VERIFY, shapes.APPROVE_EXECUTION, None, 400, 0, b""),
+            frame(shapes.MODE_VERIFY, shapes.APPROVE_PAYMENT, 0x22, 90_000, 0, b"")]
+    check("execution-then-payment pair is the prefix",
+          declared(pair + [payload]) == 400 + 90_000 + 2_800)
+    unrecognised = [frame(shapes.MODE_VERIFY, shapes.APPROVE_PAYMENT, 0x22, 7_000, 0, b""), payload]
+    check("an unrecognised layout counts every frame",
+          declared(unrecognised) == 7_000 + 50_000 + 2_800)
+    check("each secp256k1 entry adds 2800", declared([self_verify], 3) == 1_000 + 3 * 2_800)
 
     print("\ndeployment fixture")
     init = shapes.deployment_init_code(shapes.KECCAK_WIDE_RUNTIME)

@@ -9,9 +9,10 @@ from . import shapes
 from .rpc import RpcClient, RpcError
 
 GROTH16_SWEEP_BY_CEILING = {
-    236285: "sweep-236k",
+    235800: "sweep-soispoke",
+    250000: "sweep-250k",
     300000: "sweep-300k",
-    322800: "sweep-soispoke",
+    400000: "sweep-400k",
     500000: "sweep-500k",
 }
 GROTH16_DEFAULT_SWEEP = "sweep-soispoke"
