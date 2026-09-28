@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
@@ -176,7 +177,7 @@ public partial class BeaconSyncOrchestratorTests
     private static void Initialize(BeaconSyncOrchestrator orchestrator, ScriptedImporter importer, ulong anchorSlot)
     {
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
-        orchestrator.Initialize(importer, anchorBlock, anchorRoot);
+        orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot);
         orchestrator.GossipStarted = true;
     }
 

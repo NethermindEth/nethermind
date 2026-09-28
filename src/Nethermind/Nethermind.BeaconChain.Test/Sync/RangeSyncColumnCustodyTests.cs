@@ -161,7 +161,7 @@ public class RangeSyncColumnCustodyTests
             fixture.Sampled = [.. new DiscoveryNodeCustodySource(fixture._discovery).Current!.SampledColumns];
             fixture.Clock = fixture.Chain.ClockAtEpoch(1);
             fixture.Importer = new BlockImporterFactory(fixture.Chain.Spec, fixture._store, fixture.Chain.Pubkeys, new NoOpEngineDriver(), new BeaconChainConfig(), LimboLogs.Instance, fixture.SidecarPool, fixture.Clock, fixture._discovery)
-                .Create(fixture.Chain.AnchorState, fixture.Chain.AnchorBlock, fixture.Chain.AnchorRoot);
+                .Create(new ForkedBeaconState.OfFulu(fixture.Chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.AnchorBlock), fixture.Chain.AnchorRoot);
             return fixture;
         }
 
@@ -213,7 +213,7 @@ public class RangeSyncColumnCustodyTests
                 // Gossip needs a started libp2p host, which is not what these tests are about.
                 GossipStarted = true,
             };
-            orchestrator.Initialize(Importer, Chain.AnchorBlock, Chain.AnchorRoot);
+            orchestrator.Initialize(Importer, new ForkedSignedBeaconBlock.OfFulu(Chain.AnchorBlock), Chain.AnchorRoot);
             return orchestrator;
         }
 
