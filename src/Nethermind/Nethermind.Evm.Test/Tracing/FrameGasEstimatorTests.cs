@@ -31,6 +31,14 @@ public class FrameGasEstimatorTests
     public void EstimateFrameGas_FillsFramesThatFailedTheirReservationAfterTheProbeCap() =>
         AssertFills(static i => (i % 2 == 0 ? 400_000UL : 20_000UL, 0), errorMargin: 0);
 
+    /// <remarks>The first frame needs more than an even split, and the later frames are skipped with its batch, or fail
+    /// only because it did, so none of them measures a reservation there.</remarks>
+    [TestCase(true)]
+    [TestCase(false)]
+    public void EstimateFrameGas_FillsAFrameThatTookDownTheLaterFramesOnTheEvenSplit(bool atomicBatch) =>
+        AssertFills(static i => (i == 0 ? 6_000_000UL : 20_000UL, 0), errorMargin: 150, frameCount: 4,
+            atomicBatch ? FrameFlags.AtomicBatch : default, dependsOnEarlierFrames: !atomicBatch);
+
     [TestCase(0)]
     [TestCase(Eip8141Constants.MaxFrames + 1)]
     public void EstimateFrameGas_FrameCountOutOfRange_Fails(int frameCount)
@@ -53,13 +61,15 @@ public class FrameGasEstimatorTests
         }
     }
 
-    private static void AssertFills(Func<int, (ulong Execution, ulong State)> need, int errorMargin)
+    /// <param name="flags">Flags for every frame but the last, so <see cref="FrameFlags.AtomicBatch"/> batches them all.</param>
+    private static void AssertFills(Func<int, (ulong Execution, ulong State)> need, int errorMargin, int frameCount = Eip8141Constants.MaxFrames,
+        FrameFlags flags = default, bool dependsOnEarlierFrames = false)
     {
-        FixedNeedProcessor processor = new(need);
+        FixedNeedProcessor processor = new(need, dependsOnEarlierFrames);
         GasEstimator estimator = new(processor, Substitute.For<IReadOnlyStateProvider>());
-        TxFrame[] frames = new TxFrame[Eip8141Constants.MaxFrames];
+        TxFrame[] frames = new TxFrame[frameCount];
         for (int i = 0; i < frames.Length; i++)
-            frames[i] = new TxFrame(FrameMode.Sender, default, TestItem.AddressB, 0, 0, UInt256.Zero, default);
+            frames[i] = new TxFrame(FrameMode.Sender, i < frames.Length - 1 ? flags : default, TestItem.AddressB, 0, 0, UInt256.Zero, default);
         Transaction tx = new() { Type = TxType.FrameTx, SenderAddress = TestItem.AddressA, Frames = frames };
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithGasLimit(60_000_000).TestObject;
         bool[] fill = new bool[frames.Length];
@@ -82,7 +92,9 @@ public class FrameGasEstimatorTests
     }
 
     /// <summary>Runs each frame as succeeding only when its limits cover a fixed need, recording the limits it was given.</summary>
-    private sealed class FixedNeedProcessor(Func<int, (ulong Execution, ulong State)> need) : ITransactionProcessor
+    /// <remarks>A failure skips the rest of its atomic batch; with <paramref name="dependsOnEarlierFrames"/>, every
+    /// frame after a failure fails too.</remarks>
+    private sealed class FixedNeedProcessor(Func<int, (ulong Execution, ulong State)> need, bool dependsOnEarlierFrames = false) : ITransactionProcessor
     {
         public ulong MaxExecutionLimits { get; private set; }
         public ulong MaxTotalLimits { get; private set; }
@@ -99,13 +111,23 @@ public class FrameGasEstimatorTests
 
             IFrameTxReceiptTracer tracer = (IFrameTxReceiptTracer)txTracer;
             TxFrameReceipt[] receipts = new TxFrameReceipt[frames.Length];
+            bool failed = false;
+            bool inBatch = false;
             for (int i = 0; i < frames.Length; i++)
             {
                 (ulong execution, ulong state) = need(i);
-                bool ok = frames[i].ExecutionGasLimit >= execution && frames[i].StateGasLimit >= state;
+                inBatch |= frames[i].IsAtomicBatch;
+                bool ok = frames[i].ExecutionGasLimit >= execution && frames[i].StateGasLimit >= state && !(dependsOnEarlierFrames && failed);
+                failed |= !ok;
                 tracer.ReportFrameEnd(i, ok ? null : EvmExceptionType.OutOfGas);
                 receipts[i] = new TxFrameReceipt(ok ? TxFrameReceipt.StatusSuccess : TxFrameReceipt.StatusFailure,
                     ok ? execution : frames[i].ExecutionGasLimit, ok ? state : 0, []);
+                if (inBatch && !ok)
+                {
+                    while (frames[i].IsAtomicBatch && i + 1 < frames.Length)
+                        receipts[++i] = new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, []);
+                }
+                if (!frames[i].IsAtomicBatch) inBatch = false;
             }
 
             tracer.ReportFrameTxReceipt(transaction.SenderAddress!, receipts);

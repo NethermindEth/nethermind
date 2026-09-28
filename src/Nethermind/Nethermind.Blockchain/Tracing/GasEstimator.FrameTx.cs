@@ -206,11 +206,8 @@ public partial class GasEstimator
                 if (!_fillExecution[i] && !_fillState[i]) continue;
                 RaiseToUpperLimits(i);
                 _reservationFailure = default;
-                if (_probes < MaxFrameProbes - 1 && !TryProbe(i, atUpperLimits: true))
-                {
-                    error = ProbeFailure(i);
+                if (_probes < MaxFrameProbes - 1 && !TryProbe(i, atUpperLimits: true) && !TryProbeFreeingOutgrownRoom(i, out error))
                     return false;
-                }
                 if (_fillState[i]) Minimize(i, false, _receipts?[i]);
                 if (_fillExecution[i]) Minimize(i, true, _receipts?[i]);
             }
@@ -235,6 +232,44 @@ public partial class GasEstimator
                 : error);
         }
 
+        /// <summary>Retries the upper probe of frame <paramref name="index"/> with the later frames that failed the
+        /// even split holding nothing, or reports the first probe's failure.</summary>
+        /// <remarks>Such a frame may have failed or been skipped there only because this one did, so its reservation
+        /// measured nothing.</remarks>
+        private bool TryProbeFreeingOutgrownRoom(int index, [NotNullWhen(false)] out string? error)
+        {
+            error = ProbeFailure(index);
+            bool reverted = LastProbeReverted;
+            if (_tracer.FailedFrame == index && _probes < MaxFrameProbes - 1 && HoldsOutgrownRoom(index))
+            {
+                RaiseToUpperLimits(index, freeOutgrown: true);
+                if (TryProbe(index, atUpperLimits: true))
+                {
+                    error = null;
+                    return true;
+                }
+            }
+            LastProbeReverted = reverted;
+            return false;
+        }
+
+        private bool HoldsOutgrownRoom(int index)
+        {
+            for (int i = index + 1; i < _frames.Length; i++)
+                if (Reserved(i, execution: true, freeOutgrown: true) < _reservations[i].Execution
+                    || Reserved(i, execution: false, freeOutgrown: true) < _reservations[i].State)
+                    return true;
+            return false;
+        }
+
+        private ulong Reserved(int index, bool execution, bool freeOutgrown)
+        {
+            FrameReservation reservation = _reservations[index];
+            return freeOutgrown && reservation.OutgrewSplit && (execution ? _fillExecution[index] : _fillState[index])
+                ? 0
+                : execution ? reservation.Execution : reservation.State;
+        }
+
         private bool TryReserveBlockRooms(out ulong execution, out ulong state) =>
             FrameTxValidation.TryCalculateBlockGasReservations(_tx, _spec, out execution, out state, estimateSignatureBytes: true)
             && execution <= _executionCap && state <= _stateCap;
@@ -248,15 +283,15 @@ public partial class GasEstimator
         }
 
         // Frames before index hold their final limits and later frames their reservations; index takes the rest.
-        private void RaiseToUpperLimits(int index)
+        private void RaiseToUpperLimits(int index, bool freeOutgrown = false)
         {
             ulong execution = _executionPool;
             ulong state = _statePool;
             for (int i = 0; i < _frames.Length; i++)
             {
                 if (i == index) continue;
-                ulong otherExecution = i < index ? _frames[i].ExecutionGasLimit : _reservations[i].Execution;
-                ulong otherState = i < index ? _frames[i].StateGasLimit : _reservations[i].State;
+                ulong otherExecution = i < index ? _frames[i].ExecutionGasLimit : Reserved(i, execution: true, freeOutgrown);
+                ulong otherState = i < index ? _frames[i].StateGasLimit : Reserved(i, execution: false, freeOutgrown);
                 if (i > index) _frames[i] = WithGas(_frames[i], otherExecution, otherState);
                 if (_fillExecution[i]) execution = Deduct(execution, otherExecution);
                 if (_fillState[i]) state = Deduct(state, otherState);
