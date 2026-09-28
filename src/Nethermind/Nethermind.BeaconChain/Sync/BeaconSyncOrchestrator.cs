@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -74,6 +73,11 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Head distance (~2 epochs) below which gossip is started while range sync finishes the residual gap.</summary>
     private const ulong GossipStartDistanceSlots = 64;
 
+    // At a slot tick the newest block is usually the previous slot's, and one missed proposal adds another.
+    private const ulong FollowingHeadSlackSlots = 2;
+
+    private const long ProgressLogIntervalMs = 1000;
+
     // Most mainnet dials fail (peers at capacity); high parallelism shortens time-to-first-peer.
     private const int ConcurrentDials = 16;
 
@@ -91,7 +95,6 @@ public sealed class BeaconSyncOrchestrator(
     private readonly HashSet<Hash256> _heldForPayload = [];
 
     private readonly ConcurrentDictionary<string, byte> _dialedPeerIds = new();
-    private readonly Stopwatch _progressStopwatch = new();
 
     private IBlockImporter? _importer;
     private volatile Tip _syncTip = new(Hash256.Zero, 0);
@@ -109,7 +112,8 @@ public sealed class BeaconSyncOrchestrator(
     private bool _columnGossipStarted;
     private Func<string, ITopic>? _getTopic;
     private readonly DiscoveryNodeCustodySource _custody = new(discovery);
-    private ulong _nextProgressLogSlot;
+    private ulong _progressLogSlot;
+    private long _progressLogMs;
     private long _blocksSinceProgressLog;
 
     private sealed record Tip(Hash256 Root, ulong Slot);
@@ -199,8 +203,8 @@ public sealed class BeaconSyncOrchestrator(
         _anchorSlot = anchorBlock.Message!.Slot;
         _anchorExecutionHash = anchorBlock.Message.Body!.ExecutionPayload!.BlockHash!;
         _syncTip = new Tip(anchorRoot, _anchorSlot);
-        _nextProgressLogSlot = _anchorSlot + spec.SlotsPerEpoch;
-        _progressStopwatch.Restart();
+        _progressLogSlot = _anchorSlot;
+        _progressLogMs = slotClock.UnixMilliseconds;
 
         ulong epoch = slotClock.CurrentEpoch;
         _currentDigest = GossipTopics.CurrentDigest(spec, epoch);
@@ -1012,19 +1016,23 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    private void LogSyncProgress(ulong slot)
+    /// <summary>Logs sync progress at most once per second, and only when the sync tip's slot has moved, until the node follows head in sync.</summary>
+    /// <remarks>Once following head with the execution layer in sync, the per-epoch status line is enough.</remarks>
+    internal void LogSyncProgress(ulong slot)
     {
         _blocksSinceProgressLog++;
+        long now = slotClock.UnixMilliseconds;
         ulong wallSlot = slotClock.CurrentSlot;
-        if (slot + GossipStartDistanceSlots >= wallSlot || slot < _nextProgressLogSlot)
+        ulong behind = wallSlot > slot ? wallSlot - slot : 0;
+        if (slot <= _progressLogSlot || now - _progressLogMs < ProgressLogIntervalMs || (_elInSync && behind <= FollowingHeadSlackSlots) || !_logger.IsInfo)
         {
             return;
         }
 
-        double blocksPerSecond = _blocksSinceProgressLog / Math.Max(_progressStopwatch.Elapsed.TotalSeconds, 0.001);
-        if (_logger.IsInfo) _logger.Info($"Beacon sync: slot {slot}/{wallSlot} ({wallSlot - slot} behind), {blocksPerSecond:F1} blocks/s");
-        _nextProgressLogSlot = slot + spec.SlotsPerEpoch;
+        double seconds = (now - _progressLogMs) / 1000.0;
+        _logger.Info($"Beacon sync: slot {slot} (+{slot - _progressLogSlot} slots, {_blocksSinceProgressLog / seconds:F1} blocks/s), {behind} behind wall slot {wallSlot}, finalized epoch {_lastHead?.Finalized.Epoch ?? 0}, peers {peerManager?.PeerCount ?? 0}/{config.TargetPeerCount}, EL {(_elInSync ? "in sync" : "syncing")}");
+        _progressLogSlot = slot;
+        _progressLogMs = now;
         _blocksSinceProgressLog = 0;
-        _progressStopwatch.Restart();
     }
 }
