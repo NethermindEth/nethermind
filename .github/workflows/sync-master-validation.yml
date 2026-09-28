@@ -218,13 +218,15 @@ jobs:
             names=""
           fi
           markers=$(printf '%s\n' "$names" \
-            | sed -nE "s/^(preempted|spot-exhausted)-${RUN_ATTEMPT}-([0-9]+)-(.*)$/\2 \3/p") || markers=""
+            | sed -nE "s/^(preempted|spot-exhausted)-${RUN_ATTEMPT}-([0-9]+)-(.*)$/\1 \2 \3/p") || markers=""
+          # A SPOT-exhausted create explains only its own job, not a later teardown failure.
           reclaims=$(jq -r --arg markers "$markers" \
             '($markers | split("\n") | map(select(length > 0)) | map(split(" "))) as $m
              | . as $matrix
              | $m[] as $one
-             | $matrix[] | select(.runner_label == $one[1])
-             | "\($one[0])\tSync \(.network) (\(.mode))"' <<<"$MATRIX") || reclaims=""
+             | $matrix[] | select(.runner_label == $one[2])
+             | "\($one[1])\tSync \(.network) (\(.mode))"
+               + (if $one[0] == "spot-exhausted" then " / create_runner" else "" end)' <<<"$MATRIX") || reclaims=""
 
           listed=0
           unexplained=""

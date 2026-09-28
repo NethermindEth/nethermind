@@ -136,6 +136,15 @@ class NotifyGatingTest(unittest.TestCase):
         self.assertEqual(out["should_page"], "true")
         self.assertEqual(out["failed_jobs"], "Sync mainnet (Flat) / sync")
 
+    def test_a_spot_exhaustion_does_not_silence_the_teardown_of_the_same_cell(self):
+        out = self.collect(
+            ["Sync gnosis (Flat) / create_runner", "Sync gnosis (Flat) / destroy_runner"],
+            ["f-1-master-gnosis"],
+            marker_kind="spot-exhausted",
+        )
+        self.assertEqual(out["should_page"], "true")
+        self.assertEqual(out["failed_jobs"], "Sync gnosis (Flat) / destroy_runner")
+
     def test_a_spot_exhaustion_marker_from_an_earlier_attempt_does_not_silence_a_rerun(self):
         out = self.collect(
             ["Sync gnosis (Flat) / create_runner"],
