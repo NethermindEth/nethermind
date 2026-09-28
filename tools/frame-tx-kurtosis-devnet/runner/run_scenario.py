@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Runs one scenario end to end: render args, start the enclave, wait, collect, tear down.
 
-    runner/run_scenario.py --ceiling 322800 --attacker-role keccak-wide --k-retry 4
+    runner/run_scenario.py --ceiling 235800 --attacker-role keccak-wide --k-retry 4
 
 Raw output lands under results/<scenario-id>/ with enough provenance to reproduce the run.
 No analysis happens here: this task collects, a later one interprets.
@@ -26,7 +26,7 @@ DEVNET_ROOT = os.path.dirname(HERE)
 REPO_ROOT = os.path.dirname(os.path.dirname(DEVNET_ROOT))
 TRAFFIC_SERVICE = "frame-tx-traffic"
 
-CAMPAIGN_CEILINGS = [100000, 236285, 300000, 322800, 500000]
+CAMPAIGN_CEILINGS = [100000, 235800, 250000, 300000, 400000, 500000]
 K_RETRIES = [1, 2, 4, 8]
 ATTACKER_ROLES = ["keccak-wide", "signature-stuffed", "soispoke-groth16"]
 
@@ -276,7 +276,7 @@ def _git_commit(path: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--ceiling", type=int, default=322800,
+    parser.add_argument("--ceiling", type=int, default=235800,
                         help="MAX_VERIFY_GAS; campaign set: {0}".format(CAMPAIGN_CEILINGS))
     parser.add_argument("--k-retry", type=int, default=1, choices=K_RETRIES)
     parser.add_argument("--attacker-role", default="keccak-wide",

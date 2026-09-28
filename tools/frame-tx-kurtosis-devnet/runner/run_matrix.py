@@ -4,7 +4,7 @@ scenarios.
 
     runner/run_matrix.py --list                        # what would run, and in what order
     runner/run_matrix.py --standard                    # the campaign's full matrix
-    runner/run_matrix.py --ceilings 322800 500000 --roles keccak-wide
+    runner/run_matrix.py --ceilings 235800 500000 --roles keccak-wide
     runner/run_matrix.py --privacy-only                # one privacy-inclusion run per ceiling
 
 The Cartesian product lives here rather than in the Kurtosis package: a scenario is a set of
@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVNET_ROOT = os.path.dirname(HERE)
 
-CEILINGS = [100000, 236285, 300000, 322800, 500000]
+CEILINGS = [100000, 235800, 250000, 300000, 400000, 500000]
 ROLES = ["keccak-wide", "signature-stuffed", "soispoke-groth16"]
 K_RETRIES = [1, 2, 4, 8]
 
@@ -139,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         args.roles = args.roles or ROLES
         args.k_retries = args.k_retries or K_RETRIES
         args.privacy = True
-    args.ceilings = args.ceilings or [322800]
+    args.ceilings = args.ceilings or [235800]
     args.roles = args.roles or ["keccak-wide"]
     args.k_retries = args.k_retries or [1]
 

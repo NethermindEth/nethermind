@@ -21,7 +21,7 @@ COPY traffic/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY traffic/vendor/fetch.sh ./vendor/fetch.sh
-ARG SOISPOKE_REF=main
+ARG SOISPOKE_REF=6dedda193bf09c9d80cd89b3dc23eccf580d1026
 ARG FRAME_TX_VENDOR_ALLOW_DRIFT=0
 RUN SOISPOKE_REF="$SOISPOKE_REF" FRAME_TX_VENDOR_ALLOW_DRIFT="$FRAME_TX_VENDOR_ALLOW_DRIFT" \
   bash ./vendor/fetch.sh /opt/frame-traffic/vendor

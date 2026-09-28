@@ -57,7 +57,7 @@ port_publisher:
 
 frame_tx:
   scenario_id: smoke
-  max_verify_gas: 322800
+  max_verify_gas: 235800
   k_retry: 1
   attacker_role: keccak-wide
   attacker_rate: 5

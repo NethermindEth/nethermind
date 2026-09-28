@@ -1,4 +1,4 @@
-CEILINGS = [100000, 236285, 300000, 322800, 500000]
+CEILINGS = [100000, 235800, 250000, 300000, 400000, 500000]
 K_RETRIES = [1, 2, 4, 8]
 ATTACKER_ROLES = ["keccak-wide", "signature-stuffed", "soispoke-groth16", "none"]
 
@@ -7,7 +7,7 @@ DEFAULT_ETHREX_IMAGE_REPO = "frame-tx-devnet/ethrex"
 DEFAULT_TRAFFIC_IMAGE = "frame-tx-devnet/traffic:local"
 
 DEFAULTS = {
-    "max_verify_gas": 322800,
+    "max_verify_gas": 235800,
     "k_retry": 1,
     "attacker_role": "keccak-wide",
     "attacker_rate": 25,

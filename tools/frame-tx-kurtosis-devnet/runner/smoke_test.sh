@@ -13,7 +13,7 @@ set -uo pipefail
 readonly HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly DEVNET_ROOT="$(cd "${HERE}/.." && pwd)"
 
-CEILING="${SMOKE_CEILING:-322800}"
+CEILING="${SMOKE_CEILING:-235800}"
 SCENARIO_ID="smoke-c${CEILING}"
 BUILD=1
 KEEP=""
