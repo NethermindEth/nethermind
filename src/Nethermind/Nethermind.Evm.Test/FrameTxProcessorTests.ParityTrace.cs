@@ -374,6 +374,31 @@ public partial class FrameTxProcessorTests
             .ToArray();
     }
 
+    /// <summary>A VERIFY frame that reverts invalidates the transaction before any receipt is reported, so its
+    /// operation keeps the frame's gas limit and the gas the VM left.</summary>
+    [Test]
+    public void ParityVmTrace_FrameTxWithoutReceipts_KeepsTheFrameLimitAndTheGasTheVmLeft()
+    {
+        DeploySmartSender(RevertingWithOutput);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(0).WithBeneficiary(Beneficiary)
+            .WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace, Spec);
+
+        TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        ParityTraceAction frame = trace.Action!.Subtraces.Single();
+        ParityVmOperationTrace operation = trace.VmTrace!.Operations.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False, "a reverted VERIFY frame invalidates the transaction");
+            Assert.That(frame.Error, Is.EqualTo("Reverted"));
+            Assert.That(operation.Cost, Is.EqualTo(tx.Frames![0].GasLimit), "cost");
+            Assert.That(operation.Used, Is.EqualTo(frame.Gas - frame.Result!.GasUsed).And.GreaterThan(0UL), "ex.used");
+        }
+    }
+
     private (ParityLikeTxTrace Trace, TxReceipt Receipt) TraceParity(Transaction tx, ParityTraceTypes types)
     {
         ParityLikeBlockTracer blockTracer = new(types, _specProvider);

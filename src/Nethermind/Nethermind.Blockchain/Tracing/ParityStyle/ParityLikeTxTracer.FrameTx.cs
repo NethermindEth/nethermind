@@ -122,6 +122,8 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             if (!IsFrame(action) || !tracer.IsTracingInstructions) return;
             // A frame is not an operation of its caller, so no call's gas carries over to the next frame's first one.
             tracer._treatGasParityStyle = false;
+            // The gas the VM left, until a receipt reports the frame's own spend; an exceptional halt leaves none.
+            _lastFrameOperation?.Used = action.Result is null ? 0 : action.Gas - action.Result.GasUsed;
         }
 
         private bool IsFrame(ParityTraceAction action) => _root is not null && action.TraceAddress.Length == 1;
@@ -145,6 +147,7 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             if (_lastFrameOperation is not null)
             {
                 _lastFrameOperation.Pc = frameIndex;
+                _lastFrameOperation.Cost = _frames[frameIndex].GasLimit;
                 _frameOperations ??= new ParityVmOperationTrace?[_frames.Length];
                 _frameOperations[frameIndex] = _lastFrameOperation;
                 _lastFrameOperation = null;
@@ -169,7 +172,6 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
                 action.Result?.GasUsed = frameReceipts[i].GasUsed;
                 if (_frameOperations?[i] is { } operation)
                 {
-                    operation.Cost = _frames[i].GasLimit;
                     operation.Used = operation.Cost > frameReceipts[i].GasUsed ? operation.Cost - frameReceipts[i].GasUsed : 0;
                 }
 
