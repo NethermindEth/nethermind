@@ -38,6 +38,19 @@ public class PeerBandTests
     public string Peer_id_is_extracted_from_the_p2p_multiaddr_component(string address) =>
         PeerManager.ExtractPeerIdForTest(address);
 
+    /// <summary>
+    /// A peer dropped for timing out is routine, and log watchers treat an exception type name in an Info line as a
+    /// crash, so the drop line names the cause instead.
+    /// </summary>
+    [TestCase(typeof(TaskCanceledException), ExpectedResult = "request timed out")]
+    [TestCase(typeof(OperationCanceledException), ExpectedResult = "request timed out")]
+    [TestCase(typeof(TimeoutException), ExpectedResult = "request timed out")]
+    [TestCase(typeof(InvalidOperationException), ExpectedResult = "the peer sent garbage")]
+    public string A_drop_names_its_cause_rather_than_the_exception_type(Type exceptionType) =>
+        PeerManager.DescribeFailure(exceptionType == typeof(InvalidOperationException)
+            ? new InvalidOperationException("the peer sent garbage")
+            : (Exception)Activator.CreateInstance(exceptionType)!);
+
     [Test]
     public void A_single_fault_disconnect_below_the_threshold_does_not_ban()
     {
