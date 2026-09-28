@@ -1132,7 +1132,7 @@ public class Eth72ProtocolHandlerTests
         Transaction announced = BuildBlobTransaction(fullProvider: false);
         Transaction first = Build.A.Transaction.SignedAndResolved().TestObject;
         Transaction unprocessed = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
-        RecycledTransactionWitness firstWitness = new(first, 1);
+        first.SetPreHashNoLock([1]);
         RecycledTransactionWitness unprocessedWitness = new(unprocessed, 2);
 
         AnnounceBlobTransaction(announced.Hash!, announced.GetLength(shouldCountBlobs: false), TxType.Blob);
@@ -1148,11 +1148,8 @@ public class Eth72ProtocolHandlerTests
             () => HandleZeroMessage(wireResponse, Eth66MessageCode.PooledTransactions),
             Throws.TypeOf<SubprotocolException>());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(firstWitness.WasRecycled, Is.True);
-            Assert.That(unprocessedWitness.WasRecycled, Is.True);
-        }
+        // The request matcher hashes `first`, which releases its pre-hash, so only the unhashed tail witnesses the return.
+        Assert.That(unprocessedWitness.WasRecycled, Is.True);
     }
 
     [Test, NonParallelizable]

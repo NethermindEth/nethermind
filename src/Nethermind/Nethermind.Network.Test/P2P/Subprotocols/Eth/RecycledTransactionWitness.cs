@@ -25,7 +25,9 @@ internal sealed class RecycledTransactionWitness : IMemoryOwner<byte>
         transaction.SetPreHashMemoryNoLock(_preHash, this);
     }
 
-    /// <summary>Whether the transaction has been handed back to the pool.</summary>
+    /// <summary>Whether the transaction's pre-hash has been released, which recycling does.</summary>
+    /// <remarks>Any other pre-hash consumer, notably a <see cref="Transaction.Hash"/> read, releases it too, so assert on
+    /// this only where the path under test cannot hash the transaction first.</remarks>
     public bool WasRecycled { get; private set; }
 
     public Memory<byte> Memory => _preHash;
