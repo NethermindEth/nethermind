@@ -53,6 +53,30 @@ namespace Nethermind.Db.Test
             if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
         }
 
+        [TestCase("State0", true, false, null, false, 262144UL)]
+        [TestCase("State0", false, null, 0UL, false, 0UL)]
+        [TestCase("Flat", true, false, 1048576UL, false, 1048576UL)]
+        [TestCase("Blocks", false, null, null, false, 262144UL)]
+        [TestCase("Blocks", null, null, null, true, 262144UL)]
+        public void Read_settings_follow_table_config(string dbName, bool? generic, bool? prefixed, ulong? readAhead, bool expectedChecksum, ulong expectedReadAhead)
+        {
+            DbConfig config = new()
+            {
+                VerifyChecksum = generic,
+                StateDbVerifyChecksum = prefixed,
+                FlatDbVerifyChecksum = prefixed,
+                ReadAheadSize = readAhead
+            };
+            RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false);
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, dbName), config, factory, LimboLogs.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.VerifyChecksum, Is.EqualTo(expectedChecksum));
+                Assert.That(db.ReadAheadSize, Is.EqualTo(expectedReadAhead));
+            }
+        }
+
         [Test]
         public void WriteOptions_is_correct()
         {
@@ -169,6 +193,16 @@ namespace Nethermind.Db.Test
                 Assert.That(GetValue(reopened, key), Is.EqualTo(value));
                 Assert.That(ReadOptionsFile(DbPath), Does.Contain("avoid_unnecessary_blocking_io=false"));
             }
+        }
+
+        [Test]
+        public void CodeDb_uses_lz4_compression()
+        {
+            using IContainer container = CreateRocksDbContainer(new DbConfig());
+            using IDb db = container.Resolve<IDbFactory>().CreateDb(new DbSettings(DbNames.Code, DbPath));
+            db.Flush();
+
+            Assert.That(ReadOptionsFile(DbPath), Does.Contain("compression=kLZ4Compression"));
         }
 
         [Test]

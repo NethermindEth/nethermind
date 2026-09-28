@@ -39,30 +39,30 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     // The shared table code declares its entries with the host's dispatch signature. The guest's handlers take the
     // wider one of RawCalliHelper below, so these factories cast them in and every guest call site casts them back.
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
         OpcodeHandler<TOpcode, TTracingInst, TCancelable>()
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
         AsTableEntry(&RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OnFlag>);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
         TerminatingOpcodeHandler<TOpcode, TTracingInst, TCancelable>()
         where TOpcode : struct, IOpcodeBody
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
         AsTableEntry(&RawCalliHelper.ExecuteOpcode<TOpcode, TTracingInst, TCancelable, OffFlag>);
 
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
         JumpIfOpcodeHandler<TTracingInst, TCancelable>()
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag =>
         AsTableEntry(&RawCalliHelper.ExecuteJumpIfOpcode<TTracingInst, TCancelable>);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType> AsTableEntry(
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType> AsTableEntry(
         delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType> handler) =>
-        (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>)handler;
+        (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)handler;
 
     /// <summary>Runs the current frame's bytecode until it halts, faults, or yields a child frame.</summary>
     /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
@@ -85,12 +85,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if ((nuint)programCounter >= (nuint)stack.CodeLength)
             return EvmExceptionType.None;
 
-        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] handlers = _opcodeHandlers;
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = _opcodeHandlers;
 
         // Safety: the 256-entry opcode table remains pinned for the complete tail-call chain. Every bytecode read
         // lands in the code or in the padding that follows it (DispatchFlags.PaddedCode), and a byte is a valid
         // table index.
-        fixed (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>* opcodeHandlers = &handlers[0])
+        fixed (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>* opcodeHandlers = &handlers[0])
         {
             nint* table = (nint*)opcodeHandlers;
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
@@ -108,7 +108,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     /// <summary>The guest's dispatch handlers, each of which ends in a tail call through the opcode table.</summary>
     /// <remarks>
-    /// See the host's <c>RawCalliHelper</c> in <c>VirtualMachine.Dispatch.cs</c> for the name. The handlers take eight
+    /// See the host's <c>RawCalliHelper</c> in <c>VirtualMachine.Dispatch.std.cs</c> for the name. The handlers take eight
     /// arguments, all of which RV64 passes in registers: the remaining execution gas, the stack head, the table, the
     /// bytecode and its length ride from handler to handler, so a handler whose body stays inline neither loads nor
     /// stores them. x64 passes only four (Windows) or six (SysV) in registers, which is why the host keeps five.

@@ -12,10 +12,13 @@ namespace Nethermind.Evm.ZkEvm.Test;
 public class GuestCodePaddingTests
 {
     [Test]
-    public void Code_is_followed_by_zero_padding([Values(1, 2, 32, 33, 100)] int length)
+    public void Code_is_followed_by_zero_padding([Values(1, 2, 32, 33, 100, 4096)] int length)
     {
+        // PUSH32 in the last byte reads 32 immediates, and dispatch then reads the next opcode.
+        const int padding = 33;
+
         // The buffer goes on past the code with bytes the padding must not inherit.
-        byte[] buffer = new byte[length + CodeInfo.DispatchPadding + 8];
+        byte[] buffer = new byte[length + padding + 8];
         Array.Fill(buffer, (byte)Instruction.JUMPDEST);
 
         CodeInfo codeInfo = new(buffer.AsMemory(0, length));
@@ -25,8 +28,8 @@ public class GuestCodePaddingTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(codeInfo.CodeSpan.ToArray(), Is.EqualTo(buffer[..length]));
-            Assert.That(afterCode.Length, Is.GreaterThanOrEqualTo(CodeInfo.DispatchPadding));
-            Assert.That(afterCode[..CodeInfo.DispatchPadding].IndexOfAnyExcept((byte)Instruction.STOP), Is.EqualTo(-1));
+            Assert.That(afterCode.Length, Is.GreaterThanOrEqualTo(padding));
+            Assert.That(afterCode[..padding].IndexOfAnyExcept((byte)Instruction.STOP), Is.EqualTo(-1));
         }
     }
 }

@@ -15,8 +15,10 @@ public partial struct EthereumGasPolicy
     /// <inheritdoc/>
     /// <remarks>
     /// Subtracts first and tests the sign, which saves the compare RISC-V has no immediate form for. The sign is
-    /// exact while <see cref="Value"/> is at most 2^63-1: header validation rejects a block gas limit above that, a
-    /// transaction may not exceed its block's gas limit, and a system call runs on a fixed 30M.
+    /// exact while <see cref="Value"/> is at most 2^63-1, which header validation does not enforce: a gas limit may
+    /// reach <see cref="ulong.MaxValue"/>. From Osaka EIP-7825 caps a transaction at 2^24; before it a transaction
+    /// may not exceed its block's gas limit, which moves by at most 1/1024 of its parent's per block, so only a
+    /// chain whose genesis gas limit is already near 2^63 reaches it. A system call runs on a fixed 30M.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateGas<TCost>(ref EthereumGasPolicy gas) where TCost : struct, IGasCost

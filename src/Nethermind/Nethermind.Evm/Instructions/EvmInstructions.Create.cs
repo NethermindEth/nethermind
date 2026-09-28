@@ -184,8 +184,6 @@ public static partial class EvmInstructions
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
 
-        CodeInfo? codeInfo = new(initCode);
-
         // EIP-684: if the account already exists with code or a non-zero nonce, the creation fails.
         // Collision behaves as an immediate exceptional halt - burned callGas counts as block_execution.
         if (isNonZeroAccount)
@@ -207,7 +205,7 @@ public static partial class EvmInstructions
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
-            codeInfo: codeInfo,
+            codeInfo: new CodeInfo(initCode),
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
             codeSource: null,

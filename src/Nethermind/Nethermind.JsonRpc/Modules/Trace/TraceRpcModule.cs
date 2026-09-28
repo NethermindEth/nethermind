@@ -84,17 +84,33 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public static ResultWrapper<T> InvalidTraceTypes<T>() => ResultWrapper<T>.Fail("Invalid trace types", ErrorCodes.InvalidParams);
 
         /// <summary>
+        /// Whether <paramref name="blockParameter"/> is the pending tag, which the trace methods reject.
+        /// </summary>
+        /// <remarks>
+        /// No pending block is built for RPC, so the pending tag resolves to the head block, and a trace at pending
+        /// would silently be a trace at latest.
+        /// </remarks>
+        public static bool IsPending(BlockParameter? blockParameter) => blockParameter?.Type == BlockParameterType.Pending;
+
+        /// <summary>
+        /// The invalid-params failure returned for a pending block tag; see <see cref="IsPending"/>.
+        /// </summary>
+        public static ResultWrapper<T> PendingNotSupported<T>() => ResultWrapper<T>.Fail("Pending block is not supported for tracing", ErrorCodes.InvalidParams);
+
+        /// <summary>
         /// Traces one transaction. Doesn't charge fees.
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null)
         {
             blockParameter ??= BlockParameter.Latest;
+            if (IsPending(blockParameter))
+                return PendingNotSupported<ParityTxTraceFromReplay>();
 
             SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
             if (headerSearch.IsError)
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
 
-            Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(headerSearch.Object!));
+            Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(headerSearch.Object!));
             return !txResult.Success(out Transaction? transaction, out string? error)
                 ? ResultWrapper<ParityTxTraceFromReplay>.Fail(error, ErrorCodes.InvalidInput)
                 : TraceTx(transaction, traceTypes, blockParameter, stateOverride);
@@ -108,6 +124,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             using TraceCallManyRequest _ = request;
             ArrayPoolList<TransactionForRpcWithTraceTypes> calls = request.Calls;
             blockParameter ??= BlockParameter.Latest;
+            if (IsPending(blockParameter))
+            {
+                return PendingNotSupported<IEnumerable<ParityTxTraceFromReplay>>();
+            }
 
             SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
             if (headerSearch.IsError)
@@ -125,7 +145,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Transaction[] txs = new Transaction[calls.Count];
             for (int i = 0; i < calls.Count; i++)
             {
-                Result<Transaction> txResult = calls[i].Transaction.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header));
+                Result<Transaction> txResult = calls[i].Transaction.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header));
                 if (!txResult.Success(out Transaction? tx, out string? error))
                 {
                     return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(error, ErrorCodes.InvalidInput);
@@ -267,6 +287,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlockTransactions(BlockParameter blockParameter, string[] traceTypes)
         {
+            if (IsPending(blockParameter))
+            {
+                return PendingNotSupported<IEnumerable<ParityTxTraceFromReplay>>();
+            }
+
             SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter);
             if (blockSearch.IsError)
             {
@@ -326,6 +351,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 BlockParameter fromBlock = traceFilterForRpc.FromBlock ?? BlockParameter.Latest;
                 BlockParameter toBlock = traceFilterForRpc.ToBlock ?? BlockParameter.Latest;
+                if (IsPending(fromBlock) || IsPending(toBlock))
+                {
+                    return PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
+                }
 
                 // Collect the whole range first so search errors (e.g. from > to) take precedence over state checks.
                 List<(Block Block, BlockHeader? Parent)> blocks = [];
@@ -387,6 +416,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                             writer, pipeWriter, ct, storeFilter: filter);
                         foreach ((Block block, BlockHeader? parentHeader) in blocks)
                         {
+                            if (filter.IsExhausted) break;
                             if (!TryStreamBlockInParallel(parentHeader!, block, types, streamingTracer, ct))
                                 ExecuteBlockStreaming(parentHeader!, block, streamingTracer, ct);
                         }
@@ -402,17 +432,33 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IEnumerable<ParityTxTraceFromStore> RunBufferedTraceFilter(List<(Block Block, BlockHeader? Parent)> blocks, TxTraceFilter filter, CancellationToken cancellationToken)
         {
-            List<ParityLikeTxTrace> txTraces = [];
-            foreach ((Block block, BlockHeader? parentHeader) in blocks)
+            ArrayPoolList<ParityTxTraceFromStore> result = new(blocks.Count);
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                txTraces.AddRange(ExecuteBlockParallelOrReplay(parentHeader!, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, cancellationToken));
+                foreach ((Block block, BlockHeader? parentHeader) in blocks)
+                {
+                    if (filter.IsExhausted) break;
+                    cancellationToken.ThrowIfCancellationRequested();
+                    IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlockParallelOrReplay(parentHeader!, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, cancellationToken);
+                    result.AddRange(filter.FilterTxTraces(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
+                }
             }
-            return filter.FilterTxTraces(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
+            catch
+            {
+                result.Dispose();
+                throw;
+            }
+
+            return result;
         }
 
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
         {
+            if (IsPending(blockParameter))
+            {
+                return PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
+            }
+
             SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter);
             if (blockSearch.IsError)
             {

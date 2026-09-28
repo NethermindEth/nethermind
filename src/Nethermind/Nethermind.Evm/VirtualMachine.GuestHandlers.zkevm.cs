@@ -40,7 +40,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// </para>
     /// </remarks>
     static partial void ConfigureBuildHandlers<TTracingInst, TCancelable>(
-        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] lookup,
+        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] lookup,
         IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
