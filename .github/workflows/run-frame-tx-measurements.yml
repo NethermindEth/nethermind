@@ -245,7 +245,7 @@ jobs:
           mempool_markers=('shape=groth16-250k' 'shape=groth16-300k' 'shape=groth16-soispoke-v2' 'case=signature_reject')
           flood_markers=('case=flood_delay' 'shape=groth16-250k' 'shape=groth16-300k' 'shape=groth16-soispoke-v2' 'shape=signature-stuffed')
           if (( RAISE_VERIFY_GAS >= 400000 )); then
-            mempool_markers+=('shape=groth16-400k')
+            mempool_markers+=('verify_gas=400000' 'shape=groth16-400k')
             flood_markers+=('shape=groth16-400k')
           fi
           if (( RAISE_VERIFY_GAS >= 500000 )); then

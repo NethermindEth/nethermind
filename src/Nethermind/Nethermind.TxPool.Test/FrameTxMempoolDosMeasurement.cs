@@ -828,7 +828,7 @@ public class FrameTxMempoolDosMeasurement
         string path = Environment.GetEnvironmentVariable("FRAME_MEMPOOL_DOS_OUT")
                       ?? Environment.GetEnvironmentVariable("FRAME_RETRY_OUT")
                       ?? Path.Combine(Path.GetTempPath(), "frame-mempool-dos.txt");
-        string record = $"RESULT {line}";
+        string record = $"RESULT {line} max_verify_gas_const={Eip8141Constants.MaxVerifyGas}";
         TestContext.Out.WriteLine(record);
         File.AppendAllText(path, record + Environment.NewLine);
     }

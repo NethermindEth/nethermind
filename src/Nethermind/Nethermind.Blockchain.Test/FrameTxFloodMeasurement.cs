@@ -111,7 +111,7 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> ProductionDelayCases()
     {
-        foreach (ulong ceiling in SweptCeilings)
+        foreach (ulong ceiling in FrameTxPrefixShapes.SweptCeilings)
         {
             yield return new TestCaseData(ceiling, 0);
             yield return new TestCaseData(ceiling, 100);
@@ -120,7 +120,7 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> CeilingRateCases()
     {
-        foreach (ulong ceiling in SweptCeilings)
+        foreach (ulong ceiling in FrameTxPrefixShapes.SweptCeilings)
         {
             foreach (int rate in new int[] { 50, 100, 150, 200 })
             {
@@ -143,7 +143,7 @@ public class FrameTxFloodMeasurement
 
     private static IEnumerable<TestCaseData> CeilingCases()
     {
-        foreach (ulong ceiling in SweptCeilings)
+        foreach (ulong ceiling in FrameTxPrefixShapes.SweptCeilings)
         {
             yield return new TestCaseData(ceiling);
         }
@@ -177,17 +177,6 @@ public class FrameTxFloodMeasurement
     /// <summary>Environment variable naming the target core count for the analytic core-normalized
     /// projection. Unset (the default) means the projected field is omitted entirely, not zero.</summary>
     private const string ProjectCoresVariable = "FRAME_FLOOD_PROJECT_CORES";
-
-    /// <summary>The plain ceiling sweep shared by the keccak-wide budget-burning and signature-stuffed cases.</summary>
-    /// <remarks>235,800 is the current soispoke v2 profile budget; its pool VERIFY frame declares 225,000,
-    /// with recent-root and signature costs accounting for the remaining 10,800. The v2 isolated-verifier
-    /// arm runs its frame at 225,000 while the measured profile point is 235,800. Values above
-    /// <see cref="Eip8141Constants.MaxVerifyGas"/> (300,000) self-ignore unless the workflow raises the
-    /// constant. Signature-stuffed transactions are refused before that cap, so they still exercise each
-    /// ceiling. <see cref="StuffedSignatureCount"/> floors and reserves frame gas, so a stuffed row may use
-    /// up to one fewer signature than the ceiling permits.</remarks>
-    private static readonly ulong[] SweptCeilings =
-        [100_000ul, 235_800ul, 250_000ul, 300_000ul, 400_000ul, 500_000ul];
 
     private static readonly int[] AdmissionRates = [50, 100, 150, 200, 250, 300, 350, 400];
 
@@ -663,6 +652,7 @@ public class FrameTxFloodMeasurement
         }
 
         Emit($"case=flood_delay shape={shape} ceiling={ceiling} frame_gas_limit={_frameExecutionGasLimit} shedding={(_shedding ? "on" : "off")} "
+             + (Groth16Sweeps.ContainsKey(shape) ? "measurement_scope=isolated_verifier " : "")
              + $"cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} "
              + coreNormalizedField
              + $"W0_after_p50_us={w0After:F1} W0_after_p99_us={w0p99After:F1} "
@@ -735,7 +725,7 @@ public class FrameTxFloodMeasurement
 
         Func<long>? rejectionCounter = RejectionCounterFor(shape);
         string extraFields = Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep)
-            ? $"frame_gas_limit={sweep.FrameGasLimit} measurement_scope=single_verify_frame "
+            ? $"frame_gas_limit={sweep.FrameGasLimit} measurement_scope=isolated_verifier "
             : "";
         RunRateRamp(ceiling, shape, "rate_ramp", "capacity", extraFields, baseline,
             () => MeasureBlockProcessing(MeasureWindow, TimeSpan.Zero),

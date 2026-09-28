@@ -223,7 +223,7 @@ public class FrameTxProducerRetryMeasurement
 
     private static IEnumerable<TestCaseData> RetryCases()
     {
-        foreach (ulong verifyGas in new ulong[] { 100_000ul, 235_800ul, 250_000ul, 300_000ul, 400_000ul, 500_000ul })
+        foreach (ulong verifyGas in FrameTxPrefixShapes.SweptCeilings)
         {
             foreach (int kRetry in new int[] { 1, 2, 4, 8 })
             {
@@ -662,6 +662,6 @@ public class FrameTxProducerRetryMeasurement
     {
         string path = Environment.GetEnvironmentVariable("FRAME_RETRY_OUT")
                       ?? Path.Combine(Path.GetTempPath(), "frame-producer-retry.txt");
-        File.AppendAllText(path, $"RESULT {line}{Environment.NewLine}");
+        File.AppendAllText(path, $"RESULT {line} max_verify_gas_const={Eip8141Constants.MaxVerifyGas}{Environment.NewLine}");
     }
 }

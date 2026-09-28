@@ -101,7 +101,6 @@ internal static class MeasurementEnvironment
     }
 }
 
-/// <summary>Skips runs whose requested ceiling would be clamped by the compiled EIP-8141 limit.</summary>
 /// <summary>Summary statistics shared by the frame-transaction measurement harnesses.</summary>
 internal static class MeasurementStatistics
 {
@@ -119,6 +118,7 @@ internal static class MeasurementStatistics
     }
 }
 
+/// <summary>Skips runs whose requested ceiling would be clamped by the compiled EIP-8141 limit.</summary>
 internal static class Eip8141MeasurementGuards
 {
     public static void SkipIfCeilingUnreachable(ulong ceiling)
@@ -339,6 +339,16 @@ internal static class FrameTxPrefixShapes
 {
     /// <summary>Frame execution budget for a shape whose cost lives in the signature list, not the prefix.</summary>
     public const ulong MinimalFrameGas = 400;
+
+    /// <summary>The campaign's ceiling matrix, shared by every harness in this assembly that sweeps it.</summary>
+    /// <remarks>235,800 is the soispoke v2 declared validation budget: its pool VERIFY frame declares 225,000,
+    /// and the recent-root frame and signature account for the remaining 10,800. Values above
+    /// <see cref="Eip8141Constants.MaxVerifyGas"/> (300,000) self-ignore for EVM shapes unless the workflow
+    /// raises the constant; signature-stuffed transactions are refused before that cap, so they exercise
+    /// every ceiling on a stock build. <see cref="StuffedSignatureCount"/> floors and reserves frame gas, so a
+    /// stuffed row may use up to one fewer signature than the ceiling permits.</remarks>
+    public static readonly ulong[] SweptCeilings =
+        [100_000ul, 235_800ul, 250_000ul, 300_000ul, 400_000ul, 500_000ul];
 
     public static int StuffedSignatureCount(ulong ceiling) =>
         (int)((ceiling - MinimalFrameGas) / Eip8141Constants.Secp256k1VerificationGasCost);
