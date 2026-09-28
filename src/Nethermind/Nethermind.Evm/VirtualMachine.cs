@@ -178,10 +178,10 @@ public partial class VirtualMachine<TGasPolicy>(
     private byte[] _tracedStackWords = [];
     private bool _isInstructionTraceActive;
 
-    /// <summary>Scratch holding the output of the ID precompile on the inline call path.</summary>
+    /// <summary>Scratch holding the output of the ID precompile on the inline call path and for nested ID frames.</summary>
     /// <remarks>Only guaranteed until the next ID call served this way. That is safe because
-    /// <see cref="ReturnDataBuffer"/> is replaced by every call, and that path already refuses to run when a
-    /// tracer is attached, so nothing can retain the previous contents.</remarks>
+    /// <see cref="ReturnDataBuffer"/> is replaced by every call, and both paths refuse to run when an action or
+    /// instruction tracer is attached, so nothing can retain the previous contents.</remarks>
     private byte[] _precompileScratch = [];
 
     /// <summary>Pooled scratch for an ID output too large to hold on the VM between transactions.</summary>
@@ -214,14 +214,11 @@ public partial class VirtualMachine<TGasPolicy>(
     internal void StageReturnData(ReadOnlySpan<byte> returnData)
     {
         // Only nested non-create outputs are consumed before this buffer can be reused by a later child call.
-        bool allowReuse = !returnData.IsEmpty
+        bool allowReuse = _tracerAllowsReturnScratch
+            && !returnData.IsEmpty
             && returnData.Length <= ReturnDataScratch.MaxRetainedLength
             && !_currentState.IsTopLevel
-            && !_currentState.ExecutionType.IsAnyCreate()
-            && !_txTracer.IsTracingActions
-            && !_txTracer.IsTracingInstructions
-            && !_txTracer.IsTracingMemory
-            && !_txTracer.IsTracingReturnData;
+            && !_currentState.ExecutionType.IsAnyCreate();
 
         ReturnData = _returnDataScratch.Stage(returnData, allowReuse);
     }
@@ -237,14 +234,21 @@ public partial class VirtualMachine<TGasPolicy>(
     internal bool IsTracingAccess { get => DispatchFlags.Tracing(field); private set; }
     internal bool IsTracingOpLevelStorage { get => DispatchFlags.Tracing(field); private set; }
     private bool IsTracingImplicitStop { get => DispatchFlags.Tracing(field); set; }
+    private bool _tracerAllowsReturnScratch;
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         if (!ReferenceEquals(_blockExecutionContext.Spec, blockExecutionContext.Spec))
+        {
             _executionHandlers = null;
+            ResetSpecCaches();
+        }
         _blockExecutionContext = blockExecutionContext;
     }
+
+    /// <summary>Drops state cached for the previous block's spec.</summary>
+    partial void ResetSpecCaches();
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
     private TxExecutionContext _txExecutionContext;
@@ -291,7 +295,11 @@ public partial class VirtualMachine<TGasPolicy>(
         _isCancelableCached = txTracer.IsCancelable;
         IsTracingAccess = txTracer.IsTracingAccess;
         IsTracingOpLevelStorage = txTracer.IsTracingOpLevelStorage;
-        IsTracingImplicitStop = txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
+        IsTracingImplicitStop = TTracingInst.IsActive && txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
+        _tracerAllowsReturnScratch = !txTracer.IsTracingActions
+            && !txTracer.IsTracingInstructions
+            && !txTracer.IsTracingMemory
+            && !txTracer.IsTracingReturnData;
         DispatchFlags.Validate(txTracer);
         _worldState = worldState;
         _isInstructionTraceActive = false;
@@ -1095,7 +1103,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// rather than kept per VM — of which a node holds tens. The pool-grow path replaces the retained buffer via
     /// <see cref="ReleasePooledPrecompileScratch"/>, which clears <see cref="ReturnDataBuffer"/> as a side
     /// effect, so the caller must reassign it before any later read.</remarks>
-    internal Memory<byte> RentPrecompileScratch(int length)
+    private Memory<byte> RentPrecompileScratch(int length)
     {
         byte[] buffer = _precompileScratch;
         if (buffer.Length >= length) return buffer.AsMemory(0, length);
@@ -1115,6 +1123,14 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         return pooled.AsMemory(0, length);
+    }
+
+    /// <summary>Copies the ID precompile's input into the reusable scratch and returns it as the output.</summary>
+    internal Memory<byte> CopyToPrecompileScratch(ReadOnlySpan<byte> input)
+    {
+        Memory<byte> scratch = RentPrecompileScratch(input.Length);
+        input.CopyTo(scratch.Span);
+        return scratch;
     }
 
     /// <summary>Hands the pooled ID scratch back, if this instance is holding one.</summary>
@@ -1312,6 +1328,11 @@ public partial class VirtualMachine<TGasPolicy>(
         ReadOnlyMemory<byte> callData,
         IReleaseSpec spec)
     {
+        if (precompile is IdentityPrecompile && CanReturnIdentityOutputInScratch(state))
+        {
+            return new(CopyToPrecompileScratch(callData.Span), precompileSuccess: true);
+        }
+
         try
         {
             Result<byte[]> output = precompile.Run(callData, spec);
@@ -1323,7 +1344,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
             )
             {
-                SubstateError = success ? null : GetErrorString(precompile, output.Error)
+                SubstateError = success || !state.IsTopLevel ? null : GetErrorString(precompile, output.Error)
             };
         }
         catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
@@ -1338,6 +1359,9 @@ public partial class VirtualMachine<TGasPolicy>(
             return new(default, precompileSuccess: false, shouldRevert: true);
         }
     }
+
+    private bool CanReturnIdentityOutputInScratch(VmState<TGasPolicy> state) =>
+        !state.IsTopLevel && !IsTracingActions && !_txTracer.IsTracingInstructions;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected void LogExecutionException(IPrecompile precompile, Exception exception)

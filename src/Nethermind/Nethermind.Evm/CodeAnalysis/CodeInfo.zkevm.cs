@@ -7,6 +7,30 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo
 {
+    /// <summary>The number of zero bytes that follow every non-empty code in memory.</summary>
+    /// <remarks>
+    /// A PUSH32 in the last byte reads 32 immediate bytes, and the next opcode read then lands on the last
+    /// padding byte. Zero is STOP, so dispatch that runs off the end halts as the implicit STOP would.
+    /// </remarks>
+    internal const int DispatchPadding = 33;
+
+    /// <remarks>
+    /// Always copies, as a caller's buffer promises nothing about the bytes after the code. This constructor is
+    /// the only way code reaches a <see cref="CodeInfo"/>, so it covers every source: a witness entry, a deployed
+    /// code, a delegation designator, and init code taken from a transaction or from memory.
+    /// See <see cref="DispatchFlags.PaddedCode"/>.
+    /// </remarks>
+    static partial void PadForDispatch(ref ReadOnlyMemory<byte> code)
+    {
+        if (code.IsEmpty)
+            return;
+
+        byte[] padded = GC.AllocateUninitializedArray<byte>(code.Length + DispatchPadding);
+        code.Span.CopyTo(padded);
+        padded.AsSpan(code.Length).Clear();
+        code = padded.AsMemory(0, code.Length);
+    }
+
     // Guest execution is single-threaded; bitmap writes and the resume cursor are not synchronized.
     private long[]? _incrementalJumpBitmap;
     private nint _analyzedUntil;

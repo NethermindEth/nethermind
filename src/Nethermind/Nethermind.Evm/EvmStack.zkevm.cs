@@ -9,6 +9,14 @@ namespace Nethermind.Evm;
 
 public ref partial struct EvmStack
 {
+    /// <summary>A copy of <paramref name="frame"/> with the head and code guest dispatch carries in registers.</summary>
+    internal EvmStack(in EvmStack frame, nint head, ref byte code)
+    {
+        this = frame;
+        Head = head;
+        Code = ref code;
+    }
+
     /// <summary>Reports whether <paramref name="destination"/> is a valid jump destination in <see cref="Code"/>.</summary>
     /// <remarks>
     /// The code info's incremental bitmap holds only the destinations analyzed so far, so a clear bit is not yet
