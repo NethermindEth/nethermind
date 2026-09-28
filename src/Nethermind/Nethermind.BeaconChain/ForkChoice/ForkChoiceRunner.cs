@@ -70,7 +70,7 @@ public sealed class ForkChoiceRunner
     private readonly EpochCache _committees = new();
 
     /// <summary>An attestation for the current slot, validated and indexed, waiting for the next slot tick (the spec only counts attestations from past slots).</summary>
-    private readonly record struct QueuedAttestation(ulong Slot, ulong[] AttestingIndices, Hash256 BlockRoot, ulong TargetEpoch);
+    private readonly record struct QueuedAttestation(ulong Slot, ulong[] AttestingIndices, Hash256 BlockRoot, ulong TargetEpoch, bool? PayloadPresent);
 
     /// <summary>The fields an indexed attestation carries in both the Fulu and the Gloas container.</summary>
     private readonly record struct IndexedVote(ulong[] AttestingIndices, AttestationData Data, BlsSignature Signature);
@@ -629,15 +629,18 @@ public sealed class ForkChoiceRunner
         if (!IsValidIndexedAttestation(targetState, new IndexedVote(attestingIndices, data, signature), verifySignature))
             throw new ForkChoiceException("Attestation indices or aggregate signature are invalid");
 
+        // specs/gloas/fork-choice.md update_latest_messages: payload_present = data.index == 1; a pre-Gloas slot has no payload vote.
+        bool? payloadPresent = IsGloasSlot(data.Slot) ? data.Index == 1 : null;
+
         // Attestations can only affect the fork choice of subsequent slots; current-slot
         // attestations wait in the queue until the next tick.
         if (!isFromBlock && data.Slot == _store.CurrentSlot)
         {
-            _queuedAttestations.Add(new QueuedAttestation(data.Slot, attestingIndices, beaconBlockRoot, target.Epoch));
+            _queuedAttestations.Add(new QueuedAttestation(data.Slot, attestingIndices, beaconBlockRoot, target.Epoch, payloadPresent));
             return;
         }
 
-        ApplyVotes(attestingIndices, beaconBlockRoot, target.Epoch);
+        ApplyVotes(attestingIndices, beaconBlockRoot, data.Slot, target.Epoch, payloadPresent);
     }
 
     /// <summary>
@@ -1029,19 +1032,19 @@ public sealed class ForkChoiceRunner
             QueuedAttestation queued = _queuedAttestations[i];
             if (queued.Slot < _store.CurrentSlot)
             {
-                ApplyVotes(queued.AttestingIndices, queued.BlockRoot, queued.TargetEpoch);
+                ApplyVotes(queued.AttestingIndices, queued.BlockRoot, queued.Slot, queued.TargetEpoch, queued.PayloadPresent);
                 _queuedAttestations.RemoveAt(i);
             }
         }
     }
 
     /// <summary>The spec's <c>update_latest_messages</c>: equivocating validators never vote again.</summary>
-    private void ApplyVotes(ulong[] attestingIndices, Hash256 blockRoot, ulong targetEpoch)
+    private void ApplyVotes(ulong[] attestingIndices, Hash256 blockRoot, ulong slot, ulong targetEpoch, bool? payloadPresent)
     {
         foreach (ulong index in attestingIndices)
         {
             if (!_equivocatingIndices.Contains(index))
-                _protoArray.ProcessAttestation(index, blockRoot, targetEpoch);
+                _protoArray.ProcessAttestation(index, blockRoot, slot, targetEpoch, payloadPresent);
         }
     }
 

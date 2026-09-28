@@ -21,6 +21,7 @@ public sealed class ProtoArrayForkChoice
     public const ulong DefaultProposerScoreBoostPercent = 40;
 
     private readonly ProtoArray _protoArray;
+    private readonly ulong _slotsPerEpoch;
     private readonly VoteTrackerList _votes = new();
     private readonly HashSet<ulong> _equivocatingIndices = [];
     private JustifiedBalances _balances = JustifiedBalances.Empty;
@@ -35,6 +36,7 @@ public sealed class ProtoArrayForkChoice
     /// <param name="executionBlockHash">The anchor's execution payload hash; <c>null</c> if and only if <paramref name="executionStatus"/> is <see cref="ExecutionStatus.Irrelevant"/>.</param>
     /// <param name="slotsPerEpoch">Number of slots per epoch.</param>
     /// <param name="proposerScoreBoostPercent">The proposer boost as a percentage of a single committee's weight.</param>
+    /// <param name="isGloas">Whether the anchor block carries a signed execution payload bid, whose <c>block_hash</c> is then <paramref name="executionBlockHash"/>.</param>
     public ProtoArrayForkChoice(
         ulong currentSlot,
         ulong finalizedBlockSlot,
@@ -44,9 +46,11 @@ public sealed class ProtoArrayForkChoice
         ExecutionStatus executionStatus,
         Hash256? executionBlockHash,
         ulong slotsPerEpoch = DefaultSlotsPerEpoch,
-        ulong proposerScoreBoostPercent = DefaultProposerScoreBoostPercent)
+        ulong proposerScoreBoostPercent = DefaultProposerScoreBoostPercent,
+        bool isGloas = false)
     {
         _protoArray = new ProtoArray(slotsPerEpoch, proposerScoreBoostPercent);
+        _slotsPerEpoch = slotsPerEpoch;
 
         ProtoBlock anchor = new(
             Slot: finalizedBlockSlot,
@@ -58,7 +62,8 @@ public sealed class ProtoArrayForkChoice
             ExecutionStatus: executionStatus,
             ExecutionBlockHash: executionBlockHash,
             UnrealizedJustifiedCheckpoint: justifiedCheckpoint,
-            UnrealizedFinalizedCheckpoint: finalizedCheckpoint);
+            UnrealizedFinalizedCheckpoint: finalizedCheckpoint,
+            IsGloas: isGloas);
 
         _protoArray.OnBlock(anchor, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
     }
@@ -79,18 +84,36 @@ public sealed class ProtoArrayForkChoice
     }
 
     /// <summary>Records the latest message of a validator, keeping only the vote with the highest target epoch.</summary>
-    public void ProcessAttestation(ulong validatorIndex, Hash256 blockRoot, ulong targetEpoch)
+    /// <remarks>A pre-Gloas vote: see <see cref="ProcessAttestation(ulong, Hash256, ulong, ulong, bool?)"/> with no payload presence, at the target epoch's first slot.</remarks>
+    public void ProcessAttestation(ulong validatorIndex, Hash256 blockRoot, ulong targetEpoch) =>
+        ProcessAttestation(validatorIndex, blockRoot, targetEpoch * _slotsPerEpoch, targetEpoch, payloadPresent: null);
+
+    /// <summary>Records the latest message of a validator: the spec's <c>update_latest_messages</c> for one attester.</summary>
+    /// <remarks>
+    /// A Gloas-slot vote replaces the latest message only from a strictly later slot and supports the EMPTY or FULL node
+    /// of a block from an earlier slot, the PENDING node otherwise (specs/gloas/fork-choice.md
+    /// <c>update_latest_messages</c>, <c>get_supported_node</c>). A pre-Gloas-slot vote keeps the phase0 rule, a strictly
+    /// higher target epoch, and supports the PENDING node.
+    /// </remarks>
+    /// <param name="slot">The attestation's <c>data.slot</c>.</param>
+    /// <param name="targetEpoch">The attestation's target epoch.</param>
+    /// <param name="payloadPresent"><c>data.index == 1</c> for a vote in a Gloas slot; <c>null</c> for a vote in a pre-Gloas slot.</param>
+    public void ProcessAttestation(ulong validatorIndex, Hash256 blockRoot, ulong slot, ulong targetEpoch, bool? payloadPresent)
     {
         ref VoteTracker vote = ref _votes.GetMut(validatorIndex);
-        if (targetEpoch > vote.NextEpoch || vote.IsUnset)
-        {
-            vote.NextRoot = blockRoot;
-            vote.NextEpoch = targetEpoch;
-        }
+        bool isLater = payloadPresent is null ? targetEpoch > vote.NextEpoch : slot > vote.NextSlot;
+        if (!isLater && !vote.IsUnset) return;
+
+        vote.NextRoot = blockRoot;
+        vote.NextEpoch = targetEpoch;
+        vote.NextSlot = slot;
+        vote.NextStatus = payloadPresent is bool present && GetBlockSlot(blockRoot) < slot
+            ? present ? ForkChoicePayloadStatus.Full : ForkChoicePayloadStatus.Empty
+            : ForkChoicePayloadStatus.Pending;
     }
 
     /// <summary>Registers a block with the fork choice; see <see cref="ProtoArray.OnBlock"/>.</summary>
-    /// <exception cref="ProtoArrayException">The block has no parent root, or its parent is invalid.</exception>
+    /// <exception cref="ProtoArrayException">The block has no parent root, its parent is invalid, or its payload is valid under an invalid optimistic ancestor; a refused block is not added.</exception>
     public void ProcessBlock(ProtoBlock block, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
     {
         if (block.ParentRoot is null)
@@ -110,7 +133,7 @@ public sealed class ProtoArrayForkChoice
         IReadOnlySet<ulong>? equivocatingIndices,
         ulong currentSlot)
     {
-        long[] deltas = _votes.ComputeDeltas(
+        ScoreDeltas deltas = _votes.ComputeDeltas(
             _protoArray.Indices,
             _balances.EffectiveBalances,
             justifiedBalances.EffectiveBalances,

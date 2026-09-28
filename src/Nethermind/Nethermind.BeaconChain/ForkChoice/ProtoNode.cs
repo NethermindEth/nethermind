@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.ForkChoice;
@@ -38,12 +39,34 @@ public sealed class ProtoNode
     public CheckpointRef? UnrealizedJustifiedCheckpoint { get; init; }
 
     public CheckpointRef? UnrealizedFinalizedCheckpoint { get; init; }
+
+    /// <summary>Whether the block carries a signed execution payload bid (a Gloas block).</summary>
+    public bool IsGloas { get; init; }
+
+    /// <summary>The spec's <c>get_parent_payload_status</c>: which node of the parent this block builds on.</summary>
+    /// <remarks>
+    /// specs/gloas/fork-choice.md: <see cref="ForkChoicePayloadStatus.Full"/> when the bid's <c>parent_block_hash</c> equals the
+    /// parent bid's <c>block_hash</c>. A pre-Gloas parent has no bid; its payload came inside the block, so its
+    /// children build on it full. A tree root has no parent and keeps <see cref="ForkChoicePayloadStatus.Full"/>.
+    /// </remarks>
+    public ForkChoicePayloadStatus ParentPayloadStatus { get; init; } = ForkChoicePayloadStatus.Full;
+
+    /// <summary>Weight in Gwei of the (<see cref="Root"/>, EMPTY) node: votes for it plus the weight of every child built on the empty parent.</summary>
+    public ulong EmptyWeight { get; set; }
+
+    /// <summary>Weight in Gwei of the (<see cref="Root"/>, FULL) node: votes for it plus the weight of every child built on the full parent.</summary>
+    public ulong FullWeight { get; set; }
+
+    /// <summary>Indices in <see cref="ProtoArray.Nodes"/> of the direct children, in insertion order.</summary>
+    public List<int> Children { get; } = [];
 }
 
 /// <summary>Block information to be applied to the fork choice; a simplified beacon block (Lighthouse's <c>Block</c>).</summary>
 /// <remarks>
 /// The unrealized checkpoints are computed by the state-transition layer and passed in; the
-/// proto-array only stores them for viability ("pull-up") decisions.
+/// proto-array only stores them for viability ("pull-up") decisions. A Gloas block sets <c>IsGloas</c> and
+/// passes its bid's <c>parent_block_hash</c> as <c>ParentBlockHash</c>, from which the proto-array derives
+/// <see cref="ProtoNode.ParentPayloadStatus"/>.
 /// </remarks>
 public sealed record ProtoBlock(
     ulong Slot,
@@ -55,4 +78,6 @@ public sealed record ProtoBlock(
     ExecutionStatus ExecutionStatus,
     Hash256? ExecutionBlockHash,
     CheckpointRef? UnrealizedJustifiedCheckpoint,
-    CheckpointRef? UnrealizedFinalizedCheckpoint);
+    CheckpointRef? UnrealizedFinalizedCheckpoint,
+    bool IsGloas = false,
+    Hash256? ParentBlockHash = null);

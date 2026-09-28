@@ -31,26 +31,27 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
     /// best-child/best-descendant links.
     /// </summary>
     /// <remarks>
-    /// Two backward passes over the nodes: the first applies each node's delta (replacing it with a
-    /// weight-zeroing delta for invalid nodes, and adding/removing the proposer boost), then
-    /// back-propagates the delta into the parent's slot of <paramref name="deltas"/>; the second
-    /// updates the parents' best-child/best-descendant once all weights are coherent. Weight
-    /// arithmetic is checked and fails fast, matching Lighthouse's <c>checked_add</c>/<c>checked_sub</c>.
+    /// Two backward passes over the nodes. The first applies each node's vote delta (replacing it
+    /// with a weight-zeroing delta for invalid nodes, and removing the previous proposer boost), then
+    /// back-propagates it into the parent's PENDING delta and into the parent's EMPTY or FULL delta by
+    /// the node's <see cref="ProtoNode.ParentPayloadStatus"/> (specs/gloas/fork-choice.md <c>is_ancestor</c>),
+    /// leaving boost-free weights. The new proposer boost is then added along the boosted block's
+    /// ancestors. The second pass updates the parents' best-child/best-descendant once all weights are
+    /// coherent. Weight arithmetic is checked and fails fast.
     /// </remarks>
     public void ApplyScoreChanges(
-        long[] deltas,
+        ScoreDeltas deltas,
         CheckpointRef newJustifiedCheckpoint,
         CheckpointRef newFinalizedCheckpoint,
         JustifiedBalances newJustifiedBalances,
         Hash256 proposerBoostRoot,
         ulong currentSlot)
     {
-        if (deltas.Length != Indices.Count)
+        (long[] weightDeltas, long[] emptyDeltas, long[] fullDeltas) = deltas;
+        if (weightDeltas.Length != Indices.Count || emptyDeltas.Length != Indices.Count || fullDeltas.Length != Indices.Count)
         {
-            throw new ProtoArrayException($"Invalid delta length: {deltas.Length}, expected {Indices.Count}");
+            throw new ProtoArrayException($"Invalid delta length: {weightDeltas.Length}, expected {Indices.Count}");
         }
-
-        ulong proposerScore = 0;
 
         for (int nodeIndex = Nodes.Count - 1; nodeIndex >= 0; nodeIndex--)
         {
@@ -63,7 +64,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
             bool executionStatusIsInvalid = node.ExecutionStatus == ExecutionStatus.Invalid;
 
             // A node with an invalid execution payload has its weight forced to zero.
-            long nodeDelta = executionStatusIsInvalid ? checked(0 - (long)node.Weight) : deltas[nodeIndex];
+            long nodeDelta = executionStatusIsInvalid ? checked(0 - (long)node.Weight) : weightDeltas[nodeIndex];
 
             // Remove the boost previously applied to this node. Invalid nodes already have a
             // weight-zeroing delta, so there is nothing to subtract.
@@ -72,40 +73,28 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
                 nodeDelta = checked(nodeDelta - (long)_previousProposerBoostScore);
             }
 
-            // Apply the new proposer boost; invalid nodes (and hence their ancestors) never receive it.
-            // https://github.com/ethereum/consensus-specs/blob/dev/specs/phase0/fork-choice.md#get_weight
-            if (proposerBoostRoot != Hash256.Zero && proposerBoostRoot == node.Root && !executionStatusIsInvalid)
-            {
-                proposerScore = CalculateCommitteeFraction(newJustifiedBalances, proposerScoreBoostPercent);
-                nodeDelta = checked(nodeDelta + (long)proposerScore);
-            }
-
             if (executionStatusIsInvalid)
             {
                 node.Weight = 0;
-            }
-            else if (nodeDelta < 0)
-            {
-                // unchecked negation is exact even for long.MinValue: the wrapped value reinterpreted
-                // as ulong is the magnitude.
-                ulong magnitude = unchecked((ulong)(-nodeDelta));
-                node.Weight = magnitude > node.Weight
-                    ? throw new ProtoArrayException($"Delta overflow for node {nodeIndex}: weight {node.Weight}, delta {nodeDelta}")
-                    : node.Weight - magnitude;
+                node.EmptyWeight = 0;
+                node.FullWeight = 0;
             }
             else
             {
-                node.Weight = checked(node.Weight + (ulong)nodeDelta);
+                node.Weight = ApplyDelta(node.Weight, nodeDelta, nodeIndex);
+                node.EmptyWeight = ApplyDelta(node.EmptyWeight, emptyDeltas[nodeIndex], nodeIndex);
+                node.FullWeight = ApplyDelta(node.FullWeight, fullDeltas[nodeIndex], nodeIndex);
             }
 
             if (node.Parent is int parentIndex)
             {
-                deltas[parentIndex] = checked(deltas[parentIndex] + nodeDelta);
+                weightDeltas[parentIndex] = checked(weightDeltas[parentIndex] + nodeDelta);
+                VoteTrackerList.AddToBucket(emptyDeltas, fullDeltas, parentIndex, node.ParentPayloadStatus, nodeDelta);
             }
         }
 
         _previousProposerBoostRoot = proposerBoostRoot;
-        _previousProposerBoostScore = proposerScore;
+        _previousProposerBoostScore = ApplyProposerBoost(proposerBoostRoot, newJustifiedBalances);
 
         // A second backward pass, separate from the weight-updating loop above, so the
         // best-child/best-descendant updates see a fully coherent set of weights.
@@ -118,9 +107,60 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         }
     }
 
+    /// <summary>Adds the proposer score to <paramref name="proposerBoostRoot"/> and its ancestors, returning the score applied.</summary>
+    /// <remarks>
+    /// specs/gloas/fork-choice.md <c>get_weight</c>: the boost reaches a node the boosted block descends from, so an
+    /// ancestor's EMPTY or FULL weight gains it through the child on the path, and the boosted block's own EMPTY
+    /// and FULL nodes never do. An invalid block receives nothing and passes nothing up, like its vote deltas.
+    /// https://github.com/ethereum/consensus-specs/blob/dev/specs/phase0/fork-choice.md#get_weight
+    /// </remarks>
+    private ulong ApplyProposerBoost(Hash256 proposerBoostRoot, JustifiedBalances justifiedBalances)
+    {
+        if (proposerBoostRoot == Hash256.Zero || !Indices.TryGetValue(proposerBoostRoot, out int index)) return 0;
+
+        ProtoNode node = Nodes[index];
+        if (node.ExecutionStatus == ExecutionStatus.Invalid) return 0;
+
+        ulong proposerScore = CalculateCommitteeFraction(justifiedBalances, proposerScoreBoostPercent);
+        node.Weight = checked(node.Weight + proposerScore);
+
+        while (node.Parent is int parentIndex)
+        {
+            ProtoNode parent = Nodes[parentIndex];
+            if (parent.Root == Hash256.Zero || parent.ExecutionStatus == ExecutionStatus.Invalid) break;
+
+            parent.Weight = checked(parent.Weight + proposerScore);
+            switch (node.ParentPayloadStatus)
+            {
+                case ForkChoicePayloadStatus.Empty:
+                    parent.EmptyWeight = checked(parent.EmptyWeight + proposerScore);
+                    break;
+                case ForkChoicePayloadStatus.Full:
+                    parent.FullWeight = checked(parent.FullWeight + proposerScore);
+                    break;
+            }
+
+            node = parent;
+        }
+
+        return proposerScore;
+    }
+
+    private static ulong ApplyDelta(ulong weight, long delta, int nodeIndex)
+    {
+        if (delta >= 0) return checked(weight + (ulong)delta);
+
+        // unchecked negation is exact even for long.MinValue: the wrapped value reinterpreted
+        // as ulong is the magnitude.
+        ulong magnitude = unchecked((ulong)(-delta));
+        return magnitude > weight
+            ? throw new ProtoArrayException($"Delta overflow for node {nodeIndex}: weight {weight}, delta {delta}")
+            : weight - magnitude;
+    }
+
     /// <summary>Registers a block with the fork choice; already-known blocks are ignored.</summary>
     /// <remarks>Only the anchor (root) block may have a <c>null</c> or unknown parent.</remarks>
-    /// <exception cref="ProtoArrayException">The parent has an invalid execution payload.</exception>
+    /// <exception cref="ProtoArrayException">The parent has an invalid execution payload, or the block's payload is valid and an optimistic ancestor's is invalid; the tree is left unchanged.</exception>
     public void OnBlock(ProtoBlock block, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
     {
         if (Indices.ContainsKey(block.Root)) return;
@@ -138,6 +178,12 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
             throw new ProtoArrayException($"Parent {Nodes[checkedParent].Root} of block {block.Root} has an invalid execution payload");
         }
 
+        // A valid payload validates every optimistic ancestor; refuse it before the tree changes if one of them is invalid.
+        if (block.ExecutionStatus == ExecutionStatus.Valid && parentIndex is int validatedParent)
+        {
+            ThrowIfInvalidOptimisticAncestor(validatedParent);
+        }
+
         ProtoNode node = new()
         {
             Slot = block.Slot,
@@ -153,6 +199,8 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
             ExecutionBlockHash = block.ExecutionBlockHash,
             UnrealizedJustifiedCheckpoint = block.UnrealizedJustifiedCheckpoint,
             UnrealizedFinalizedCheckpoint = block.UnrealizedFinalizedCheckpoint,
+            IsGloas = block.IsGloas,
+            ParentPayloadStatus = GetParentPayloadStatus(block, parentIndex),
         };
 
         Indices[node.Root] = nodeIndex;
@@ -160,12 +208,35 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
 
         if (parentIndex is int parentNodeIndex)
         {
+            Nodes[parentNodeIndex].Children.Add(nodeIndex);
             MaybeUpdateBestChildAndDescendant(parentNodeIndex, nodeIndex, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
 
             if (block.ExecutionStatus == ExecutionStatus.Valid)
             {
                 PropagateExecutionValidation(parentNodeIndex);
             }
+        }
+    }
+
+    /// <inheritdoc cref="ProtoNode.ParentPayloadStatus"/>
+    private ForkChoicePayloadStatus GetParentPayloadStatus(ProtoBlock block, int? parentIndex) =>
+        parentIndex is int index && Nodes[index].IsGloas && block.ParentBlockHash != Nodes[index].ExecutionBlockHash
+            ? ForkChoicePayloadStatus.Empty
+            : ForkChoicePayloadStatus.Full;
+
+    /// <summary>Throws what <see cref="PropagateExecutionValidation(int)"/> would, without changing any node.</summary>
+    private void ThrowIfInvalidOptimisticAncestor(int nodeIndex)
+    {
+        int? index = nodeIndex;
+        while (index is int current && Nodes[current].ExecutionStatus == ExecutionStatus.Optimistic)
+        {
+            index = Nodes[current].Parent;
+        }
+
+        if (index is int invalid && Nodes[invalid].ExecutionStatus == ExecutionStatus.Invalid)
+        {
+            ProtoNode node = Nodes[invalid];
+            throw new ProtoArrayException($"Block {node.Root} (payload {node.ExecutionBlockHash}) is an invalid ancestor of a valid payload");
         }
     }
 
@@ -391,6 +462,12 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         {
             // A parent before the finalized block has been pruned away.
             node.Parent = node.Parent is int parent && parent >= finalizedIndex ? parent - finalizedIndex : null;
+
+            // Children always follow their parent, so a kept node keeps every child.
+            for (int i = 0; i < node.Children.Count; i++)
+            {
+                node.Children[i] -= finalizedIndex;
+            }
 
             if (node.BestChild is int bestChild)
             {
