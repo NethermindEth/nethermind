@@ -2,8 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -11,6 +17,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -176,9 +183,62 @@ public class FrameTxBlockReceiptsTests
     [Test]
     public void Execute_PostTxReverts_FailedReceiptKeepsThePrefixLogs()
     {
+        (IDisposable scope, EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec) = PostTxRevertingFrameTx();
+        using IDisposable _ = scope;
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+        receiptsTracer.StartNewTxTrace(tx);
+        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, spec), receiptsTracer);
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+
+        Assert.That(result.TransactionExecuted, Is.True);
+        TxReceipt receipt = receiptsTracer.TxReceipts[0];
+        // Ahead of the scope: the frame receipts are indexed below.
+        Assert.That(receipt.FrameReceipts, Has.Length.EqualTo(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the prefix frame keeps its log");
+            Assert.That(receipt.FrameReceipts[3].Logs, Is.Empty, "the body's log goes with the state that produced it");
+            Assert.That(receipt.Logs, Has.Length.EqualTo(1), "receipt logs must stay the union of frame logs");
+        }
+    }
+
+    // A failed transaction's receipt still carries the prefix log, so the next transaction's callTracer
+    // indexes must continue after it.
+    [Test]
+    public void Execute_PostTxReverts_CallTracerLogIndexCountsThePrefixLogs()
+    {
+        (IDisposable scope, EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec) = PostTxRevertingFrameTx();
+        using IDisposable _ = scope;
+        BlockLogIndex logIndex = new();
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = NativeCallTracer.CallTracer,
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}"""),
+            LogIndex = logIndex
+        };
+        GethLikeBlockNativeTracer callTracer = new(txHash: null, (_, t) => new NativeCallTracer(t, spec, options));
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.SetOtherTracer(callTracer.WithCancellation(CancellationToken.None));
+        receiptsTracer.StartNewBlockTrace(block);
+        receiptsTracer.StartNewTxTrace(tx);
+        processor.Execute(tx, new BlockExecutionContext(block.Header, spec), receiptsTracer);
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+        using GethLikeTxTrace trace = callTracer.BuildResult().Single();
+
+        Assert.That(logIndex.Next, Is.EqualTo(receiptsTracer.TxReceipts[0].Logs!.Length));
+    }
+
+    private static (IDisposable Scope, EthereumTransactionProcessor Processor, Transaction Tx, Block Block, IReleaseSpec Spec) PostTxRevertingFrameTx()
+    {
         ISpecProvider specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true });
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
         EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
@@ -215,24 +275,7 @@ public class FrameTxBlockReceiptsTests
             .WithTransactions(tx)
             .WithGasLimit(30_000_000).TestObject;
 
-        BlockReceiptsTracer receiptsTracer = new();
-        receiptsTracer.StartNewBlockTrace(block);
-        receiptsTracer.StartNewTxTrace(tx);
-        TransactionResult result = processor.Execute(tx, new BlockExecutionContext(block.Header, spec), receiptsTracer);
-        receiptsTracer.EndTxTrace();
-        receiptsTracer.EndBlockTrace();
-
-        Assert.That(result.TransactionExecuted, Is.True);
-        TxReceipt receipt = receiptsTracer.TxReceipts[0];
-        // Ahead of the scope: the frame receipts are indexed below.
-        Assert.That(receipt.FrameReceipts, Has.Length.EqualTo(5));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
-            Assert.That(receipt.FrameReceipts![1].Logs, Has.Length.EqualTo(1), "the prefix frame keeps its log");
-            Assert.That(receipt.FrameReceipts[3].Logs, Is.Empty, "the body's log goes with the state that produced it");
-            Assert.That(receipt.Logs, Has.Length.EqualTo(1), "receipt logs must stay the union of frame logs");
-        }
+        return (scope, processor, tx, block, spec);
     }
 
     private static byte[] Approve(FrameFlags scope) =>

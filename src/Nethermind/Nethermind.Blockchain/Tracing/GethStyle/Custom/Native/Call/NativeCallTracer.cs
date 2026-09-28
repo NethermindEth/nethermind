@@ -246,6 +246,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+        _blockLogIndex?.Next = (int)_logIndexStart + KeptFrameLogCount();
 
         CollapseFrameRoots();
         if (_callStack.Count == 0) return;
@@ -398,6 +399,19 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         TxFrameReceipt.StatusSkipped => SkippedFrameError,
         _ => (_frameErrors?[frameIndex] ?? EvmExceptionType.Revert).GetEvmExceptionDescription()
     };
+
+    /// <summary>The logs a failed transaction's receipt still carries: an EIP-8141 transaction keeps its
+    /// validation prefix's logs, every other failed transaction keeps none.</summary>
+    private int KeptFrameLogCount()
+    {
+        int count = 0;
+        foreach (TxFrameReceipt frameReceipt in _frameReceipts ?? [])
+        {
+            count += frameReceipt.Logs.Length;
+        }
+
+        return count;
+    }
 
     private void ApplyTwoDimensionalGas(NativeCallTracerCallFrame firstCallFrame, in GasConsumed gasSpent)
     {

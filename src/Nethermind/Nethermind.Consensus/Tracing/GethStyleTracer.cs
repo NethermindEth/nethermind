@@ -208,7 +208,7 @@ public class GethStyleTracer(
         GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : txHash };
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, useBlockAsBase ? null : ReplayLogIndex(filtered))
+            ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, useBlockAsBase ? null : ReplayLogIndex(filtered, block))
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
@@ -254,9 +254,10 @@ public class GethStyleTracer(
             return new GethLikeTxTraceCollection(filtered);
         }
 
+        Func<Block, Transaction, BlockLogIndex> storedLogIndex = StoredLogIndex(block);
         if (allowIndexed && writer is null && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
             && parallelTracer.TryTrace(block, FindParent(block),
-                (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, StoredLogIndex),
+                (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, storedLogIndex),
                 afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
         {
             return new GethLikeTxTraceCollection(parallel);
@@ -266,7 +267,7 @@ public class GethStyleTracer(
 
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, ReplayLogIndex(options))
+            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, ReplayLogIndex(options, block))
             : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
@@ -302,17 +303,23 @@ public class GethStyleTracer(
         return kept;
     }
 
-    private BlockLogIndex StoredLogIndex(Block block, Transaction tx) => new(() =>
+    /// <summary>Resolves the block's receipts once for all its transactions: parallel workers share the lookup, so a
+    /// block whose receipts must be regenerated is re-executed once, not once per worker.</summary>
+    private Func<Block, Transaction, BlockLogIndex> StoredLogIndex(Block block)
     {
-        int txIndex = Array.FindIndex(block.Transactions, t => t.Hash == tx.Hash);
-        return txIndex > 0 ? receiptFinder.Get(block).GetBlockLogFirstIndex(txIndex) : 0;
-    });
+        Lazy<TxReceipt[]> receipts = new(() => receiptFinder.Get(block));
+        return (_, tx) => new(() =>
+        {
+            int txIndex = Array.FindIndex(block.Transactions, t => t.Hash == tx.Hash);
+            return txIndex > 0 ? receipts.Value.GetBlockLogFirstIndex(txIndex) : 0;
+        });
+    }
 
     /// <summary>A replay tracing every transaction numbers logs from the body it runs, which a supplied or bad block
     /// shares with no stored receipts even when its hash matches a stored block.</summary>
-    private Func<Block, Transaction, BlockLogIndex> ReplayLogIndex(GethTraceOptions options)
+    private Func<Block, Transaction, BlockLogIndex> ReplayLogIndex(GethTraceOptions options, Block block)
     {
-        if (options.TxHash is not null) return StoredLogIndex;
+        if (options.TxHash is not null) return StoredLogIndex(block);
 
         BlockLogIndex shared = new();
         return (_, _) => shared;
