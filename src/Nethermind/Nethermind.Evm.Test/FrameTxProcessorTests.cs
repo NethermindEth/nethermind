@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Numerics;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain;
@@ -11,6 +13,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -43,7 +46,7 @@ namespace Nethermind.Evm.Test;
 /// <remarks>A frame transaction found invalid mid-loop is rolled back to the executor's transaction
 /// snapshot, so post-rejection assertions see the state the transaction started from.</remarks>
 [TestFixture]
-public class FrameTxProcessorTests
+public partial class FrameTxProcessorTests
 {
     private ISpecProvider _specProvider;
     private OverridableReleaseSpec _spec;
@@ -4589,7 +4592,7 @@ public class FrameTxProcessorTests
             Assert.That(root.GetProperty("to").GetString(), Is.EqualTo(Eip8141Constants.EntryPointAddress.ToString()));
             Assert.That(root.TryGetProperty("value", out JsonElement rootValue) ? rootValue.GetString() : null, Is.EqualTo("0x0"),
                 "the synthetic root must carry the same value field every other transaction's root does");
-            Assert.That(HexValue(root, "gas"), Is.EqualTo(tx.GasLimit),
+            Assert.That(HexValue(root, "gas"), Is.EqualTo(FrameGasBudget(tx)),
                 "the transaction-wide limit belongs to the synthetic root, not to a frame");
             Assert.That(frames.GetArrayLength(), Is.EqualTo(2), "both executed frames belong in the trace");
 
@@ -4814,6 +4817,219 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <summary>A frame transaction has no <c>to</c> and creates nothing: prestateTracer has to record every
+    /// frame target and the payer, whose storage and fee charge it otherwise misses or crashes on.</summary>
+    [Test]
+    public void Execute_FrameTxTracedWithPrestateTracer_RecordsFrameTargetsAndPayer([Values] FramePayer framePayer, [Values] bool diffMode, [Values(0, 1)] int baseFeePerGas)
+    {
+        Address sponsor = TestItem.AddressF;
+        Address storageHelper = TestItem.AddressD;
+        DeployContract(Observer, Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        // CALLER is ENTRY_POINT in a DEFAULT frame, which only an opcode like this BALANCE touches.
+        DeployContract(storageHelper, Prepare.EvmCode
+            .Op(Instruction.CALLER).Op(Instruction.BALANCE).Op(Instruction.POP)
+            .PushData(1).Op(Instruction.SLOAD).Op(Instruction.POP)
+            .PushData(7).PushData(1).Op(Instruction.SSTORE)
+            .Op(Instruction.STOP).Done);
+
+        Transaction tx;
+        if (framePayer != FramePayer.Sender)
+        {
+            DeploySmartSender(ApproveCode(FrameFlags.ApproveExecution));
+            // A codeless sponsor approves through the default code, which never enters the VM.
+            DeployContract(sponsor, framePayer == FramePayer.Sponsor ? ApproveCode(FrameFlags.ApprovePayment) : [], 1.Ether);
+            tx = FrameTx(nonce: 0,
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, sponsor, gasLimit: 200_000, UInt256.Zero, default),
+                Frame(FrameMode.Sender, target: Observer),
+                Frame(FrameMode.Default, target: storageHelper));
+        }
+        else
+        {
+            DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+            tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Default, target: storageHelper));
+        }
+
+        // Leaves a priority fee over the base fee, so the beneficiary is credited in every case.
+        tx.DecodedMaxFeePerGas = 2;
+        if (framePayer == FramePayer.CodelessSponsor)
+        {
+            tx.FrameSignatures =
+            [
+                new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0x01 }),
+                new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, sponsor, default, new byte[TxFrameSignature.Secp256k1SignatureLength]),
+            ];
+            SignCanonicalHash(tx, index: 1, TestItem.PrivateKeyF, sponsor);
+        }
+
+        Address payer = framePayer == FramePayer.Sender ? Sender : sponsor;
+
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode), (UInt256)baseFeePerGas, out TxReceipt receipt);
+        JsonElement root = document.RootElement;
+        JsonElement pre = diffMode ? root.GetProperty("pre") : root;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pre.TryGetProperty(ContractAddress.From(Sender, 0).ToString(), out _), Is.False,
+                "a frame transaction creates no contract");
+            Assert.That(PrestateBalance(pre, payer.ToString()), Is.EqualTo((BigInteger)1.Ether), "the payer's balance before approval charged it");
+
+            if (diffMode)
+            {
+                JsonElement post = root.GetProperty("post");
+                Assert.That(PrestateSlot(post, Observer, 0), Is.EqualTo(StorageWord(42)));
+                Assert.That(PrestateSlot(post, storageHelper, 1), Is.EqualTo(StorageWord(7)));
+
+                BigInteger burnt = (BigInteger)baseFeePerGas * receipt.GasUsed;
+                Assert.That(PrestateBalanceDelta(pre, post), Is.EqualTo(-burnt),
+                    "the payer's debit has to balance the beneficiary's credit and the burn");
+            }
+            else
+            {
+                Assert.That(PrestateSlot(pre, Observer, 0), Is.EqualTo(StorageWord(0)));
+                Assert.That(PrestateSlot(pre, storageHelper, 1), Is.EqualTo(StorageWord(0)));
+                Assert.That(pre.TryGetProperty(Beneficiary.ToString(), out _), Is.True);
+                Assert.That(pre.TryGetProperty(Eip8141Constants.EntryPointAddress.ToString(), out _), Is.True);
+            }
+        }
+    }
+
+    /// <summary>With a keyed nonce set, approval consumes the sender's nonce through <c>NONCE_MANAGER</c> storage
+    /// outside the VM, leaving the account nonce untouched.</summary>
+    [Test]
+    public void Execute_KeyedNonceFrameTxTracedWithPrestateTracer_RecordsTheConsumedSlots([Values] bool diffMode, [Values] bool keysUsedBefore)
+    {
+        UInt256[] keys = [1, 2];
+        ulong nonce = keysUsedBefore ? 1UL : 0UL;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        if (keysUsedBefore)
+        {
+            Transaction first = FrameTx(nonce: 0, KeyedSelfVerifyFrame(keys.Length));
+            first.NonceKeys = keys;
+            Assert.That(Process(first).TransactionExecuted, Is.True);
+        }
+
+        Transaction tx = FrameTx(nonce, KeyedSelfVerifyFrame(keysUsedBefore ? 0 : keys.Length));
+        tx.NonceKeys = keys;
+
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode), baseFeePerGas: 0, out _);
+        JsonElement root = document.RootElement;
+        JsonElement pre = diffMode ? root.GetProperty("pre") : root;
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (UInt256 key in keys)
+            {
+                UInt256 slot = KeyedNonceManager.StorageSlot(Sender, key).Index;
+                // diffMode leaves zero-valued slots out of pre, as for any other storage.
+                if (!diffMode || keysUsedBefore)
+                    Assert.That(PrestateSlot(pre, Eip8250Constants.NonceManagerAddress, slot), Is.EqualTo(StorageWord(nonce)), $"key {key} before");
+                if (diffMode)
+                    Assert.That(PrestateSlot(root.GetProperty("post"), Eip8250Constants.NonceManagerAddress, slot), Is.EqualTo(StorageWord(nonce + 1)), $"key {key} after");
+            }
+
+            if (diffMode)
+            {
+                Assert.That(root.GetProperty("post").TryGetProperty(Sender.ToString(), out JsonElement senderPost)
+                    && senderPost.TryGetProperty("nonce", out _), Is.False, "a keyed nonce set leaves the account nonce alone");
+            }
+        }
+    }
+
+    /// <summary>EIP-8272 references are checked against <c>RECENT_ROOT</c> storage before the first frame, so a
+    /// prestate that omits those cells cannot replay the transaction.</summary>
+    [Test]
+    public void Execute_RecentRootReferencingFrameTxTracedWithPrestateTracer_RecordsTheReferencedCells()
+    {
+        const ulong committedSlot = 1_000;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        StorageCell cell = RecentRootStore.ReferenceCell(sourceId, committedSlot);
+        UInt256 entry = RecentRootStore.EntryHash(sourceId, committedSlot, root).ToUInt256();
+        _stateProvider.Set(cell, entry);
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.RecentRootReferences = [new RecentRootReference(sourceId, committedSlot, root)];
+
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode: false), baseFeePerGas: 0, out _, slotNumber: committedSlot + 1);
+
+        Assert.That(PrestateSlot(document.RootElement, Eip8272Constants.RecentRootAddress, cell.Index), Is.EqualTo(StorageWord(entry)));
+    }
+
+    /// <summary>A deploy frame CREATE2-ing a sender that already holds its funds creates the code, not the account,
+    /// so diffMode has to keep the payer's pre balance for the fee debit to balance.</summary>
+    [Test]
+    public void Execute_DeployFrameCreatingAFundedSenderTracedWithPrestateTracer_KeepsThePayerPrestate([Values(0, 1)] int baseFeePerGas)
+    {
+        Address factory = TestItem.AddressF;
+        byte[] senderInit = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
+        byte[] salt = new byte[32];
+        Address smartSender = ContractAddress.From(factory, salt, senderInit);
+        DeployContract(factory, Prepare.EvmCode.Create2(senderInit, salt, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        _stateProvider.CreateAccount(smartSender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Default, 0, factory, executionGasLimit: 1_000_000,
+                stateGasLimit: (ulong)(GasCostOf.NewAccountState + GasCostOf.CodeDepositState * senderInit.Length), UInt256.Zero, default),
+            SelfVerifyFrame());
+        tx.SenderAddress = smartSender;
+        tx.DecodedMaxFeePerGas = 2;
+
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode: true), (UInt256)baseFeePerGas, out TxReceipt receipt);
+        JsonElement pre = document.RootElement.GetProperty("pre");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pre.TryGetProperty(smartSender.ToString(), out _), Is.True, "the sender existed before the transaction");
+            Assert.That(PrestateBalanceDelta(pre, document.RootElement.GetProperty("post")), Is.EqualTo(-(BigInteger)baseFeePerGas * receipt.GasUsed));
+        }
+    }
+
+    private static GethTraceOptions PrestateOptions(bool diffMode) => GethTraceOptions.Default with
+    {
+        Tracer = NativePrestateTracer.PrestateTracer,
+        TracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"diffMode":{{(diffMode ? "true" : "false")}}}""")
+    };
+
+    private static BigInteger PrestateBalance(JsonElement state, string address) =>
+        BigInteger.Parse("0" + state.GetProperty(address).GetProperty("balance").GetString()![2..], NumberStyles.AllowHexSpecifier);
+
+    private static string? PrestateSlot(JsonElement state, Address address, in UInt256 slot) =>
+        state.GetProperty(address.ToString()).GetProperty("storage").GetProperty(StorageWord(slot)).GetString();
+
+    private static string StorageWord(in UInt256 value) => value.ToBigEndian().ToHexString(true);
+
+    /// <summary>Σ balance changes across a diffMode trace: an account missing from pre was created at zero, and one
+    /// missing from post, or without a post balance, kept its pre balance.</summary>
+    private static BigInteger PrestateBalanceDelta(JsonElement pre, JsonElement post)
+    {
+        BigInteger balanceDelta = 0;
+        foreach (JsonProperty account in pre.EnumerateObject())
+        {
+            if (!post.TryGetProperty(account.Name, out JsonElement after) || !after.TryGetProperty("balance", out _)) continue;
+            balanceDelta += PrestateBalance(post, account.Name) - PrestateBalance(pre, account.Name);
+        }
+
+        foreach (JsonProperty account in post.EnumerateObject())
+        {
+            if (!pre.TryGetProperty(account.Name, out _) && account.Value.TryGetProperty("balance", out _))
+                balanceDelta += PrestateBalance(post, account.Name);
+        }
+
+        return balanceDelta;
+    }
+
+    public enum FramePayer
+    {
+        Sender,
+        Sponsor,
+        CodelessSponsor
+    }
+
     /// <summary>The pre-dispatch exits of <c>ExecuteFrame</c>, each of which ends a frame without entering the VM.</summary>
     public enum PreDispatchExit
     {
@@ -4890,14 +5106,17 @@ public class FrameTxProcessorTests
 
     /// <summary>Runs <paramref name="tx"/> under <c>callTracer</c> through the chain the tracing RPCs build —
     /// the receipts tracer over the cancellable native block tracer — and returns the serialized trace.</summary>
-    private JsonDocument TraceThroughReceiptsTracer(Transaction tx)
+    private JsonDocument TraceThroughReceiptsTracer(Transaction tx) =>
+        TraceThroughReceiptsTracer(tx, GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer }, baseFeePerGas: 0, out _);
+
+    private JsonDocument TraceThroughReceiptsTracer(Transaction tx, GethTraceOptions options, UInt256 baseFeePerGas, out TxReceipt receipt, ulong? slotNumber = null)
     {
-        GethTraceOptions options = GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer };
         (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
         Block block = Build.A.Block.WithNumber(1)
-            .WithBaseFeePerGas(0)
+            .WithBaseFeePerGas(baseFeePerGas)
             .WithBeneficiary(Beneficiary)
             .WithTransactions(tx)
+            .WithSlotNumber(slotNumber)
             .WithGasLimit(30_000_000).TestObject;
 
         GethLikeBlockNativeTracer blockTracer = new(txHash: null,
@@ -4909,6 +5128,7 @@ public class FrameTxProcessorTests
         Assert.That(tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), receiptsTracer).TransactionExecuted, Is.True);
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
+        receipt = receiptsTracer.TxReceipts[0];
 
         using GethLikeTxTrace trace = blockTracer.BuildResult().Single();
         return JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions));

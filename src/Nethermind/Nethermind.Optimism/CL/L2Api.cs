@@ -46,10 +46,12 @@ public class L2Api(
     private PayloadAttributesRef PayloadAttributesFromBlockForRpc(BlockForRpc? block)
     {
         ArgumentNullException.ThrowIfNull(block);
+        (byte[]? eip1559Params, ulong? minBaseFee) = block.ExtraData.Length == 0 ? (null, null) : EIP1559ParametersExtensions.SplitHeaderExtraData(block.ExtraData);
         OptimismPayloadAttributes payloadAttributes = new()
         {
             NoTxPool = true,
-            EIP1559Params = block.ExtraData.Length == 0 ? null : block.ExtraData[1..],
+            EIP1559Params = eip1559Params,
+            MinBaseFee = minBaseFee,
             GasLimit = block.GasLimit,
             ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
             PrevRandao = block.MixHash!,
