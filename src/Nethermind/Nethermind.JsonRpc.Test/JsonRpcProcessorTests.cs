@@ -344,11 +344,14 @@ public class JsonRpcProcessorTests
     public async Task Request_carries_what_evm_admission_needs([Values(RpcEndpoint.Http, RpcEndpoint.Ws)] RpcEndpoint endpoint, [Values] bool inBatch)
     {
         const string paramsJson = "[{\"parentHash\":\"0x0\"},[],null,null]";
+        TimeSpan itemWait = TimeSpan.FromMilliseconds(7);
         using CancellationTokenSource cancellation = new();
-        List<(int ParamsUtf8Length, StrongBox<TimeSpan>? BatchQueueWait, CancellationToken CancellationToken)> seen = [];
+        List<(int ParamsUtf8Length, StrongBox<TimeSpan>? BatchQueueWait, TimeSpan? WaitedBefore, CancellationToken CancellationToken)> seen = [];
         IJsonRpcService service = CreateService(request =>
         {
-            seen.Add((request.ParamsUtf8Length, request.BatchQueueWait, request.CancellationToken));
+            seen.Add((request.ParamsUtf8Length, request.BatchQueueWait, request.BatchQueueWait?.Value, request.CancellationToken));
+            // As the service does when an item waited for a slot.
+            if (request.BatchQueueWait is { } waited) waited.Value += itemWait;
             return new JsonRpcSuccessResponse { Id = request.Id };
         });
         string request = CreateRequest("1", "eth_call", paramsJson);
@@ -360,9 +363,12 @@ public class JsonRpcProcessorTests
             context,
             cancellationToken: cancellation.Token);
 
+        int paramsLength = Encoding.UTF8.GetByteCount(paramsJson);
         StrongBox<TimeSpan>? batchQueueWait = inBatch ? seen[0].BatchQueueWait : null;
-        Assert.That(seen, Is.EqualTo(Enumerable.Repeat((Encoding.UTF8.GetByteCount(paramsJson), batchQueueWait, cancellation.Token), inBatch ? 2 : 1)));
-        if (inBatch) Assert.That(batchQueueWait?.Value, Is.EqualTo(TimeSpan.Zero), "the items of a batch share one wait, which starts at zero");
+        // The items of a batch share one wait, which starts at zero and carries what the earlier items waited.
+        Assert.That(seen, Is.EqualTo(inBatch
+            ? new[] { (paramsLength, batchQueueWait, (TimeSpan?)TimeSpan.Zero, cancellation.Token), (paramsLength, batchQueueWait, itemWait, cancellation.Token) }
+            : new[] { (paramsLength, (StrongBox<TimeSpan>?)null, (TimeSpan?)null, cancellation.Token) }));
     }
 
     [Test]
