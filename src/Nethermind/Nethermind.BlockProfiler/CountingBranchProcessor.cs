@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime;
 using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using FlatMetrics = Nethermind.State.Flat.Metrics;
 
 namespace Nethermind.BlockProfiler;
 
@@ -25,6 +27,12 @@ namespace Nethermind.BlockProfiler;
 /// (<c>DOTNET_PROCESSOR_COUNT=1</c>, prewarming off, <c>NETHERMIND_NO_EARLY_SENDER_RECOVERY=1</c>).
 /// These handlers subscribe first, so the other subscribers' start handlers are inside the windows and their
 /// end handlers outside.
+/// <para>
+/// <c>DOTNET_PROCESSOR_COUNT=1</c> also makes the runtime fall back to workstation GC, which collects on the thread
+/// that allocates, so a collection landing in a window would be counted with the block. Each branch therefore
+/// runs in a no-GC region entered before its window opens, with the scheduler's forced collections held off,
+/// under <c>--Init.DisableGcOnNewPayload=false</c> so the region is this decorator's alone.
+/// </para>
 /// </remarks>
 public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 {
@@ -34,6 +42,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     private readonly ILogger _logger;
     private Window _branch;
     private Window _block;
+    private GCScheduler.ForcedGCExclusionScope? _forcedGCExclusion;
 
     public CountingBranchProcessor(IBranchProcessor inner, ILogManager logManager)
     {
@@ -60,7 +69,13 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token = default)
         => _inner.Process(baseBlock, suggestedBlocks, processingOptions, blockTracer, token);
 
-    private void OnBlocksProcessing(object? sender, BlocksProcessingEventArgs e) => _branch = Window.Start();
+    private void OnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
+    {
+        _forcedGCExclusion = GCScheduler.Instance.ExcludeForcedGC();
+        // The region's own collection runs here, before the window opens.
+        NoGcRegion.TryEnter(_logger);
+        _branch = Window.Start();
+    }
 
     private void OnBlockProcessing(object? sender, BlockEventArgs e) => _block = Window.Start();
 
@@ -73,8 +88,12 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
     private void OnBranchProcessingCompleted(object? sender, BranchProcessingCompletedEventArgs e)
     {
-        if (!_branch.TryStop(out string counts) || e.SuggestedBlocks.Count == 0) return;
-        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT branch={e.SuggestedBlocks[0].Number} blocks={e.ProcessedBlocksCount} {counts}");
+        bool stopped = _branch.TryStop(out string counts);
+        bool regionHeld = NoGcRegion.Exit();
+        _forcedGCExclusion?.Dispose();
+        _forcedGCExclusion = null;
+        if (!stopped || e.SuggestedBlocks.Count == 0) return;
+        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT branch={e.SuggestedBlocks[0].Number} blocks={e.ProcessedBlocksCount} {counts} nogc={(regionHeld ? 1 : 0)}");
     }
 
     private readonly struct Window
@@ -85,6 +104,12 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         private readonly int _gen1;
         private readonly int _gen2;
         private readonly int _threadId;
+        private readonly long _jitMethods;
+        private readonly long _lockContentions;
+        private readonly long _accountHits;
+        private readonly long _accountMisses;
+        private readonly long _slotHits;
+        private readonly long _slotMisses;
 
         private Window(ThreadInstructionCounter.Sample counters)
         {
@@ -94,6 +119,12 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
             _gen1 = GC.CollectionCount(1);
             _gen2 = GC.CollectionCount(2);
             _threadId = Environment.CurrentManagedThreadId;
+            _jitMethods = System.Runtime.JitInfo.GetCompiledMethodCount(currentThread: true);
+            _lockContentions = Monitor.LockContentionCount;
+            _accountHits = FlatMetrics.CarryForwardAccountHits;
+            _accountMisses = FlatMetrics.CarryForwardAccountMisses;
+            _slotHits = FlatMetrics.CarryForwardSlotHits;
+            _slotMisses = FlatMetrics.CarryForwardSlotMisses;
         }
 
         public static Window Start() => ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample counters) ? new Window(counters) : default;
@@ -107,10 +138,69 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
             ThreadInstructionCounter.Sample delta = end - _counters;
             long allocated = GC.GetAllocatedBytesForCurrentThread() - _allocated;
+            // jit: methods compiled on this thread; lockc: lock contentions anywhere; cfa/cfs: carry-forward cache
+            // hits/misses for accounts and slots; bundle/snaps: the flat DB's layering when the window closed.
             counts = $"instr={delta.Instructions} cycles={delta.Cycles} alloc={allocated} " +
                 $"gc={GC.CollectionCount(0) - _gen0}/{GC.CollectionCount(1) - _gen1}/{GC.CollectionCount(2) - _gen2} " +
-                $"tid={_threadId} mux={(delta.Multiplexed ? 1 : 0)}";
+                $"tid={_threadId} mux={(delta.Multiplexed ? 1 : 0)} " +
+                $"jit={System.Runtime.JitInfo.GetCompiledMethodCount(currentThread: true) - _jitMethods} " +
+                $"lockc={Monitor.LockContentionCount - _lockContentions} " +
+                $"cfa={FlatMetrics.CarryForwardAccountHits - _accountHits}/{FlatMetrics.CarryForwardAccountMisses - _accountMisses} " +
+                $"cfs={FlatMetrics.CarryForwardSlotHits - _slotHits}/{FlatMetrics.CarryForwardSlotMisses - _slotMisses} " +
+                $"bundle={FlatMetrics.SnapshotBundleSize} snaps={FlatMetrics.SnapshotCount}";
             return true;
+        }
+    }
+
+    /// <summary>The no-GC region a branch runs in, sized down once if the GC mode refuses the first size.</summary>
+    private static class NoGcRegion
+    {
+        // Nethermind's own newPayload region is 512 MB plus 64 MB of large objects.
+        private static readonly long[] s_sizes = [576L << 20, 256L << 20, 128L << 20];
+        private static int s_sizeIndex;
+        private static int s_sizeLogged;
+        private static bool s_entered;
+
+        public static void TryEnter(ILogger logger)
+        {
+            s_entered = false;
+            if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion) return;
+            while (s_sizeIndex < s_sizes.Length)
+            {
+                long size = s_sizes[s_sizeIndex];
+                try
+                {
+                    s_entered = GC.TryStartNoGCRegion(size, Math.Min(size / 8, 64L << 20), disallowFullBlockingGC: true);
+                    if (s_entered && Interlocked.Exchange(ref s_sizeLogged, 1) == 0 && logger.IsInfo)
+                        logger.Info($"EXPB-COUNT no-GC region per branch: {size >> 20} MB");
+                    return;
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                    s_sizeIndex++;
+                }
+                catch (InvalidOperationException)
+                {
+                    return;
+                }
+            }
+        }
+
+        /// <summary>Ends the region; false when there was none or a collection ended it inside the window.</summary>
+        public static bool Exit()
+        {
+            if (!s_entered) return false;
+            s_entered = false;
+            if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion) return false;
+            try
+            {
+                GC.EndNoGCRegion();
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
         }
     }
 
@@ -150,6 +240,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         _inner.BlockProcessing -= OnBlockProcessing;
         _inner.BlockProcessed -= OnBlockProcessed;
         _inner.BranchProcessingCompleted -= OnBranchProcessingCompleted;
+        _forcedGCExclusion?.Dispose();
         // The container owns the decorated instance; disposing it here would double-dispose.
     }
 }

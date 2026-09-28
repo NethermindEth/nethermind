@@ -33,8 +33,9 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         _logger = logManager.GetClassLogger<CachedReaderPersistence>();
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
-        // Start the background cache clearing task
-        _clearTimerTask = Task.Run(async () =>
+        // Start the background cache clearing task, unless a benchmark keeps the clock out of the read path
+        // (FlatDbManager.NoTimedClears); writes still clear the cache.
+        _clearTimerTask = FlatDbManager.NoTimedClears ? Task.CompletedTask : Task.Run(async () =>
         {
             using PeriodicTimer timer = new(TimeSpan.FromSeconds(5));
 
