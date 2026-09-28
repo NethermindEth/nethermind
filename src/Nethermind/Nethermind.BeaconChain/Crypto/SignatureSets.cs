@@ -44,11 +44,9 @@ public static class SignatureSets
     /// <remarks>The index structure (sorted, unique, in range) must already be validated by the caller.</remarks>
     public static bool VerifyIndexedAttestation(BeaconStateFulu state, IndexedAttestation attestation, PubkeyCache pubkeys)
     {
-        BlsSigner.AggregatedPublicKey aggregate = new(stackalloc long[Bls.P1.Sz]);
-        foreach (ulong index in attestation.AttestingIndices!)
-        {
-            aggregate.Aggregate(pubkeys.GetPublicKey((int)index));
-        }
+        Span<long> sum = stackalloc long[Bls.P1.Sz];
+        pubkeys.SumPublicKeys(attestation.AttestingIndices, sum);
+        BlsSigner.AggregatedPublicKey aggregate = new(sum);
 
         Hash256 domain = state.GetDomain(DomainType.BeaconAttester, attestation.Data!.Target!.Epoch);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(attestation.Data), domain);

@@ -850,19 +850,14 @@ public static class BlockProcessing
         ulong participantReward = maxParticipantRewards / Presets.SyncCommitteeSize;
         ulong proposerReward = participantReward * Presets.ProposerWeight / (Presets.WeightDenominator - Presets.ProposerWeight);
 
-        // Map the committee's (possibly repeated) pubkeys back to validator indices.
-        Dictionary<BlsPublicKey, int> indexByPubkey = new(state.Validators!.Length);
-        for (int i = 0; i < state.Validators.Length; i++)
-        {
-            indexByPubkey.TryAdd(state.Validators[i].Pubkey, i);
-        }
+        // The committee's (possibly repeated) pubkeys mapped back to validator indices.
+        int[] participantIndices = cache.GetSyncCommitteeIndices(state.CurrentSyncCommittee!, state.Validators!);
 
         int proposerIndex = (int)state.GetBeaconProposerIndex();
-        BlsPublicKey[] committee = state.CurrentSyncCommittee!.Pubkeys!;
         BitArray bits = syncAggregate.SyncCommitteeBits!;
-        for (int i = 0; i < committee.Length; i++)
+        for (int i = 0; i < participantIndices.Length; i++)
         {
-            int participantIndex = indexByPubkey[committee[i]];
+            int participantIndex = participantIndices[i];
             if (bits[i])
             {
                 state.IncreaseBalance(participantIndex, participantReward);

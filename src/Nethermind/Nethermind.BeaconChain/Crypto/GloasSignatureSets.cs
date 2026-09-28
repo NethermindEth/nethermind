@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
@@ -32,11 +33,9 @@ public static class GloasSignatureSets
     /// <remarks>The index structure (sorted, unique, in range) must already be validated by the caller.</remarks>
     public static bool VerifyIndexedAttestation(BeaconStateGloas state, IndexedAttestationGloas attestation, PubkeyCache pubkeys)
     {
-        BlsSigner.AggregatedPublicKey aggregate = new(stackalloc long[Bls.P1.Sz]);
-        foreach (ulong index in attestation.AttestingIndices!)
-        {
-            aggregate.Aggregate(pubkeys.GetPublicKey((int)index));
-        }
+        Span<long> sum = stackalloc long[Bls.P1.Sz];
+        pubkeys.SumPublicKeys(attestation.AttestingIndices, sum);
+        BlsSigner.AggregatedPublicKey aggregate = new(sum);
 
         Hash256 domain = state.GetDomain(DomainType.BeaconAttester, attestation.Data!.Target!.Epoch);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(attestation.Data), domain);
