@@ -261,8 +261,8 @@ internal sealed class CanonicalReorgFixture
             static (_, _) => false,
             new SlotClock(chain.Spec, Timestamper.Default),
             // A copy: the importer advances its anchor state in place, and the chain still builds on the original.
-            anchor.AnchorState.Clone(),
-            anchor.AnchorBlock,
+            new ForkedBeaconState.OfFulu(anchor.AnchorState.Clone()),
+            new ForkedSignedBeaconBlock.OfFulu(anchor.AnchorBlock),
             anchor.AnchorRoot);
         // Past every block's slot, so none is timely and proposer boost never decides the head.
         importer.OnSlotTick(8);
