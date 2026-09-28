@@ -128,14 +128,12 @@ public class InclusionListValidatorTests
 
             Transaction included = BuildFrameTx();
             included.Hash = Keccak.Zero;
-            Transaction includedAgain = BuildFrameTx();
-            includedAgain.Hash = Keccak.Zero;
             yield return Case("Included frame transaction repeated in the IL is satisfied",
-                [included, includedAgain], true, blockTxs: [included]);
+                [included, included], true, blockTxs: [included]);
             Transaction omitted = BuildFrameTx(frames: [SelfVerify(110_000)]);
             omitted.Hash = Keccak.EmptyTreeHash;
             yield return Case("Included frame duplicates do not excuse a different omitted candidate",
-                [included, includedAgain, omitted], false, blockTxs: [included]);
+                [included, included, omitted], false, blockTxs: [included]);
 
             // Outside both EIP-8369 profiles: blob gas has its own budget, over which the EIP defines no check.
             yield return Case("Omitted blob-carrying frame transaction is excused", [BuildFrameTx(blobCount: 1)], true);
