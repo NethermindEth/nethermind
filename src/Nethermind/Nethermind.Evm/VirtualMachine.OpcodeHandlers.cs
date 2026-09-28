@@ -1399,10 +1399,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TEip7708 : struct, IFlag
         where TSpec : struct, EvmInstructions.ICallSpec
     {
-        public static ulong? GetSpecTraceGasCost(IReleaseSpec spec) => TOpCall.ExecutionType == ExecutionType.STATICCALL
-            ? spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : spec.GasCosts.CallCost
-            : null;
-        public static int StackInputs => TOpCall.ExecutionType == ExecutionType.STATICCALL ? 6 : 0;
+        public static ulong? GetSpecTraceGasCost(IReleaseSpec spec) => spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : spec.GasCosts.CallCost;
+        public static int StackInputs => TOpCall.ExecutionType is ExecutionType.CALL or ExecutionType.CALLCODE ? 7 : 6;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708, TSpec>(ref stack, ref gas, vm);
     }
