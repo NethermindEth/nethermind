@@ -13,7 +13,7 @@ using static Nethermind.JsonRpc.EvmAdmissionGate;
 namespace Nethermind.JsonRpc.Test;
 
 // Counts are read from the gate under test: the Metrics statics it also writes are shared by every gate in the test
-// run, so asserting them would race with the other tests.
+// run, so only a lower bound on them can be asserted without racing the other tests.
 [Parallelizable(ParallelScope.All)]
 public class EvmAdmissionGateTests
 {
@@ -212,23 +212,36 @@ public class EvmAdmissionGateTests
         }
 
         (await next.WaitAsync(TestTimeout)).Dispose();
-        Assert.That((gate.InFlight, gate.Queued, gate.WaitTimeoutRejections), Is.EqualTo((0, 0, 1)));
+        Assert.That(
+            (gate.InFlight, gate.Queued, gate.WaitTimeoutRejections, gate.QueuedGrants),
+            Is.EqualTo((0, 0, 1L, 1L)), "only the next waiter counts as a grant");
     }
 
-    [Test]
-    public async Task Grant_after_waiting_counts_the_wait()
+    // The waiter's timer is never due, so only the check in Release decides.
+    [TestCase(BudgetMs, 100, TestName = "Well within its budget")]
+    [TestCase(BudgetMs, BudgetMs - 1, TestName = "1 ms before its budget ends")]
+    [TestCase(100, 99, TestName = "1 ms before a shorter wait ends")]
+    public async Task Grant_after_waiting_counts_the_wait(int maxWaitMs, int waitedMs)
     {
+        long grantsBefore = Metrics.RpcAdmissionQueuedGrants;
+        long waitBefore = Metrics.RpcAdmissionQueueWaitMicroseconds;
         ManualClock clock = new();
         EvmAdmissionGate gate = CreateGate(clock);
         Lease held = await Admit(gate);
         Assert.That((gate.QueuedGrants, gate.QueueWaitMicroseconds), Is.EqualTo((0L, 0L)), "a free slot is taken without waiting");
-        Task<Lease> waiter = Admit(gate).AsTask();
+        Task<Lease> waiter = Admit(gate, maxWait: TimeSpan.FromMilliseconds(maxWaitMs)).AsTask();
 
-        clock.Advance(TimeSpan.FromMilliseconds(100));
+        clock.Advance(TimeSpan.FromMilliseconds(waitedMs));
         held.Dispose();
 
         (await waiter.WaitAsync(TestTimeout)).Dispose();
-        Assert.That((gate.QueuedGrants, gate.QueueWaitMicroseconds), Is.EqualTo((1L, 100_000L)));
+        long waitedMicroseconds = waitedMs * 1_000L;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((gate.QueuedGrants, gate.QueueWaitMicroseconds), Is.EqualTo((1L, waitedMicroseconds)));
+            Assert.That(Metrics.RpcAdmissionQueuedGrants, Is.GreaterThanOrEqualTo(grantsBefore + 1), "exported");
+            Assert.That(Metrics.RpcAdmissionQueueWaitMicroseconds, Is.GreaterThanOrEqualTo(waitBefore + waitedMicroseconds), "exported");
+        }
     }
 
     [Test]

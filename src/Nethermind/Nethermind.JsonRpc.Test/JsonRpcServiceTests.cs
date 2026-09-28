@@ -1454,6 +1454,7 @@ public class JsonRpcServiceTests
         held.Dispose();
         cancellation.Cancel();
         continuations.RunUntilCompleted(response, TestTimeout);
+        Assert.That(response.IsCompleted, Is.True, "finished once its continuations ran");
 
         Assert.That(async () => await response, Throws.InstanceOf<OperationCanceledException>());
         ethRpcModule.DidNotReceiveWithAnyArgs().eth_call(null!);
