@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -15,8 +17,17 @@ public class FrameSignatureForRpc
     /// <see cref="Signature"/> is read and verified: <c>0</c> arbitrary, <c>1</c> secp256k1, <c>2</c> P-256.</summary>
     public byte Scheme { get; set; }
 
+    private sealed class FrameSignerConverter : AddressConverter
+    {
+        public override Address? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            reader.TokenType == JsonTokenType.String && reader.ValueTextEquals("0x"u8)
+                ? null
+                : base.Read(ref reader, typeToConvert, options);
+    }
+
     /// <summary>The address the entry is verified against; omitted from the response, and accepted as absent in
     /// a request, when the signer is the transaction sender. Always absent for the arbitrary scheme.</summary>
+    [JsonConverter(typeof(FrameSignerConverter))]
     public Address? Signer { get; set; }
 
     /// <summary>The digest a protocol-verified entry signs, or empty when it signs the transaction's canonical
