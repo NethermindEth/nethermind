@@ -67,6 +67,13 @@ public sealed class BeaconDiscovery(
 
     private static readonly TimeSpan TableSweepInterval = TimeSpan.FromMinutes(2);
 
+    // Bounds how often a custodian request can force a sweep, since each one converts the whole table.
+    private static readonly TimeSpan CustodianSweepMinInterval = TimeSpan.FromSeconds(10);
+
+    private static readonly TimeSpan CustodianSearchLogInterval = TimeSpan.FromMinutes(1);
+
+    private const int CandidateCapacity = 256;
+
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconDiscovery>();
 
     private readonly Lock _digestLock = new();
@@ -87,11 +94,45 @@ public sealed class BeaconDiscovery(
     private Task _runTask = Task.CompletedTask;
     private bool _stopped;
 
+    private ulong[] _wantedColumns = [];
+    private TaskCompletionSource _custodiansRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private long _custodianSearchLoggedAt = long.MinValue / 2;
+
     /// <summary>The local signed ENR, exposed for logging and diagnostics. Only valid once <see cref="Start"/> has returned.</summary>
     public NodeRecord LocalNodeRecord => _localEnr!.Current;
 
     /// <summary>This node's own custody groups and gossip subnets. Only valid once <see cref="Start"/> has returned.</summary>
     public LocalCustody LocalCustody { get; private set; } = null!;
+
+    /// <summary>The sampled columns no connected peer custodies, as last reported to <see cref="RequestColumnCustodians"/>.</summary>
+    internal IReadOnlyList<ulong> WantedColumns => Volatile.Read(ref _wantedColumns);
+
+    /// <summary>
+    /// Makes <see cref="DiscoverPeers"/> offer first the candidates custodying most of <paramref name="columns"/>, and sweeps
+    /// the routing table early when a column is newly wanted; an empty list restores arrival order.
+    /// </summary>
+    /// <remarks>fulu/das-core.md: a node must retrieve every column it samples, and fulu/p2p-interface.md peers serve only the columns they custody.</remarks>
+    internal void RequestColumnCustodians(IReadOnlyList<ulong> columns)
+    {
+        ulong[] wanted = [.. columns];
+        ulong[] previous = Interlocked.Exchange(ref _wantedColumns, wanted);
+        foreach (ulong column in wanted)
+        {
+            if (Array.IndexOf(previous, column) < 0)
+            {
+                long now = timestamper.UtcNow.Ticks;
+                long loggedAt = Interlocked.Read(ref _custodianSearchLoggedAt);
+                // A custodian set that keeps changing would otherwise log on every change.
+                if (now - loggedAt >= CustodianSearchLogInterval.Ticks && Interlocked.CompareExchange(ref _custodianSearchLoggedAt, now, loggedAt) == loggedAt && _logger.IsInfo)
+                {
+                    _logger.Info($"No connected beacon chain peer custodies sampled columns [{string.Join(", ", wanted)}]; looking for custodians");
+                }
+
+                Interlocked.Exchange(ref _custodiansRequested, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+                return;
+            }
+        }
+    }
 
     /// <summary>Binds the discv5 UDP port and starts the Kademlia bootstrap and maintenance loops.</summary>
     public async Task Start(CancellationToken token)
@@ -140,6 +181,7 @@ public sealed class BeaconDiscovery(
     /// whole routing table. The sweep matters: once the table stabilizes, inserts stop, and with the
     /// low dial-success rate against mainnet peers the consumer would otherwise starve — known
     /// candidates must be re-offered so dropped or previously-failed peers get re-dialed.
+    /// Waiting candidates are offered by how many <see cref="WantedColumns"/> they custody (see <see cref="RequestColumnCustodians"/>).
     /// </remarks>
     public async IAsyncEnumerable<BeaconPeerCandidate> DiscoverPeers([EnumeratorCancellation] CancellationToken token)
     {
@@ -154,31 +196,70 @@ public sealed class BeaconDiscovery(
             }
         }
 
-        async Task PumpTableSweepsAsync()
-        {
-            while (!token.IsCancellationRequested)
-            {
-                await Task.Delay(TableSweepInterval, token);
-                foreach (Node node in _kademlia!.IterateNodes())
-                {
-                    nodes.Writer.TryWrite(node);
-                }
-            }
-        }
-
-        Task pumps = Task.WhenAll(PumpInsertsAsync(), PumpTableSweepsAsync())
+        Task pumps = Task.WhenAll(PumpInsertsAsync(), SweepTableAsync(() => _kademlia!.IterateNodes(), nodes.Writer, TableSweepInterval, CustodianSweepMinInterval, token))
             .ContinueWith(t => nodes.Writer.TryComplete(t.Exception?.GetBaseException()), CancellationToken.None);
 
-        await foreach (Node node in nodes.Reader.ReadAllAsync(token))
+        await foreach (BeaconPeerCandidate candidate in OfferByCustodyAsync(nodes.Reader, CreateCandidate, token))
         {
-            BeaconPeerCandidate? candidate = CreateCandidate(node);
-            if (candidate is not null)
-            {
-                yield return candidate;
-            }
+            yield return candidate;
         }
 
         await pumps;
+    }
+
+    /// <summary>Writes every routing-table node to <paramref name="writer"/> each <paramref name="sweepInterval"/>, and early when a column is newly wanted.</summary>
+    /// <remarks>An early sweep is followed by at least <paramref name="minInterval"/> before the next, since each one converts the whole table.</remarks>
+    internal async Task SweepTableAsync(Func<IEnumerable<Node>> iterateNodes, System.Threading.Channels.ChannelWriter<Node> writer, TimeSpan sweepInterval, TimeSpan minInterval, CancellationToken token)
+    {
+        Task requested = Volatile.Read(ref _custodiansRequested).Task;
+        while (!token.IsCancellationRequested)
+        {
+            using (CancellationTokenSource sweepDelay = CancellationTokenSource.CreateLinkedTokenSource(token))
+            {
+                await Task.WhenAny(Task.Delay(sweepInterval, sweepDelay.Token), requested);
+                await sweepDelay.CancelAsync();
+            }
+
+            token.ThrowIfCancellationRequested();
+            bool early = requested.IsCompleted;
+            // Read before the sweep and the pause, so a column newly wanted during either still wakes the next wait.
+            requested = Volatile.Read(ref _custodiansRequested).Task;
+            foreach (Node node in iterateNodes())
+            {
+                writer.TryWrite(node);
+            }
+
+            if (early)
+            {
+                await Task.Delay(minInterval, token);
+            }
+        }
+    }
+
+    /// <summary>Yields the candidates made from <paramref name="nodes"/>, those custodying most of <see cref="WantedColumns"/> first.</summary>
+    internal async IAsyncEnumerable<BeaconPeerCandidate> OfferByCustodyAsync(System.Threading.Channels.ChannelReader<Node> nodes, Func<Node, BeaconPeerCandidate?> createCandidate, [EnumeratorCancellation] CancellationToken token)
+    {
+        CustodyRankedCandidates waiting = new(CandidateCapacity);
+        while (true)
+        {
+            IReadOnlyList<ulong> wanted = WantedColumns;
+            while (nodes.TryRead(out Node? node))
+            {
+                if (createCandidate(node) is { } candidate)
+                {
+                    waiting.Add(candidate, wanted);
+                }
+            }
+
+            if (waiting.TryTake(wanted, out BeaconPeerCandidate? next))
+            {
+                yield return next;
+            }
+            else if (!await nodes.WaitToReadAsync(token))
+            {
+                break;
+            }
+        }
     }
 
     /// <summary>
@@ -264,7 +345,10 @@ public sealed class BeaconDiscovery(
 
         string peerId = DerivePeerId(publicKey);
         string ipProtocol = tcpEndpoint.AddressFamily == AddressFamily.InterNetworkV6 ? "ip6" : "ip4";
-        candidate = new BeaconPeerCandidate($"/{ipProtocol}/{tcpEndpoint.Address}/tcp/{tcpEndpoint.Port}/p2p/{peerId}", peerId, forkId.ForkDigest, record.EnrSequence, record.ToString());
+        candidate = new BeaconPeerCandidate($"/{ipProtocol}/{tcpEndpoint.Address}/tcp/{tcpEndpoint.Port}/p2p/{peerId}", peerId, forkId.ForkDigest, record.EnrSequence, record.ToString())
+        {
+            Custody = PeerColumnCustody.ForRecord(record) ?? PeerColumnCustody.None,
+        };
         return true;
     }
 
