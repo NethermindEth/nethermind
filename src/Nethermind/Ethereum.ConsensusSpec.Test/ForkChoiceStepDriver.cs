@@ -53,7 +53,7 @@ internal static class ForkChoiceStepDriver
     }
 
     /// <summary>An on_payload_info step: the execution layer's answer for one payload, by <c>payloadStatus</c> field.</summary>
-    private sealed record PayloadInfo(string Status, Hash256? LatestValidHash)
+    internal sealed record PayloadInfo(string Status, Hash256? LatestValidHash)
     {
         public bool IsInvalid => Status is "INVALID" or "INVALID_BLOCK_HASH";
 
