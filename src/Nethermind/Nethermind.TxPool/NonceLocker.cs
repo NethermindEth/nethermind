@@ -3,18 +3,19 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core;
 
 namespace Nethermind.TxPool;
 
 public ref struct NonceLocker
 {
     private readonly SemaphoreSlim _accountLock;
-    private readonly Action _acceptAction;
+    private readonly Action<Transaction> _acceptAction;
     private int _disposed;
 
     internal NonceLocker(
         SemaphoreSlim accountLock,
-        Action acceptAction)
+        Action<Transaction> acceptAction)
     {
         _accountLock = accountLock;
         _acceptAction = acceptAction;
@@ -29,5 +30,5 @@ public ref struct NonceLocker
         }
     }
 
-    public readonly void Accept() => _acceptAction();
+    public readonly void Accept(Transaction transaction) => _acceptAction(transaction);
 }

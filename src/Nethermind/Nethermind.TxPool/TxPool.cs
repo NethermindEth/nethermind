@@ -2612,6 +2612,12 @@ namespace Nethermind.TxPool
                 || (txType == TxType.FrameTx && _blobTransactions.ContainsKey(hash))
                 || _broadcaster.ContainsTx(hash);
 
+        /// <remarks>The sum of the three stores <see cref="ContainsTx"/> reads, each of which only counts up.</remarks>
+        public long GetRemovalGeneration(Address sender) =>
+            _transactions.GetRemovalGeneration(sender)
+            + _blobTransactions.GetRemovalGeneration(sender)
+            + _broadcaster.GetRemovalGeneration(sender);
+
         public bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
             _transactions.TryGetValue(hash, out transaction)
             || _blobTransactions.TryGetValue(hash, out transaction)

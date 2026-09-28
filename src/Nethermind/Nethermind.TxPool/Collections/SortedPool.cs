@@ -356,8 +356,7 @@ namespace Nethermind.TxPool.Collections
                         _buckets.Remove(groupMapping);
                         if (last is not null)
                         {
-                            _worstSortedValues.Remove(last);
-                            UpdateWorstValue();
+                            RemoveWorstValueOfBucket(last);
                         }
                     }
                     else
@@ -488,21 +487,24 @@ namespace Nethermind.TxPool.Collections
         {
         TryAgain:
             KeyValuePair<TValue, TKey> worstValue = _worstValue.GetValueOrDefault();
-            TKey? key = worstValue.Value;
-            if (key is not null)
+            if (worstValue.Key is not null)
             {
-                if (TryRemoveNonLocked(key, true, out removed, out _))
+                if (TryRemoveNonLocked(worstValue.Value, true, out removed, out _))
                 {
                     return true;
                 }
 
-                if (worstValue.Key is not null && _worstSortedValues.Remove(worstValue))
+                // No longer pooled: drop what is left of it. The bucket goes first, as dropping it from there updates
+                // the worst values too.
+                if (!RemoveFromBucket(worstValue.Key, out _))
                 {
-                    RemoveFromBucket(worstValue.Key, out _);
-                }
-                else
-                {
+                    bool dropped = _worstSortedValues.Remove(worstValue);
                     UpdateWorstValue();
+                    // Still the maximum, yet the set cannot find it, so it would be retried forever.
+                    if (!dropped && EqualityComparer<TValue>.Default.Equals(_worstValue.GetValueOrDefault().Key, worstValue.Key))
+                    {
+                        RebuildWorstSortedValues();
+                    }
                 }
 
                 goto TryAgain;
@@ -510,6 +512,42 @@ namespace Nethermind.TxPool.Collections
 
             removed = default;
             return false;
+        }
+
+        /// <summary>Drops the last element of a bucket from <see cref="_worstSortedValues"/>, which holds it.</summary>
+        private void RemoveWorstValueOfBucket(TValue last)
+        {
+            if (_worstSortedValues.Remove(last))
+            {
+                UpdateWorstValue();
+            }
+            else
+            {
+                RebuildWorstSortedValues();
+            }
+        }
+
+        /// <summary>Re-sorts <see cref="_worstSortedValues"/> from the current last element of every bucket.</summary>
+        /// <remarks>
+        /// Called when the set cannot find an element it holds, which happens once a field the comparer reads changed
+        /// while the element was in the set: the persistent broadcast pool shares its transactions with the pending
+        /// pool, which rewrites their <c>GasBottleneck</c> without telling it. Left ordered by stale keys, the set can
+        /// neither drop nor evict that element, and <see cref="RemoveLast"/> would retry it forever under the pool lock.
+        /// </remarks>
+        private void RebuildWorstSortedValues()
+        {
+            if (_logger.IsDebug) _logger.Debug($"{ShortPoolName}: worst values are ordered by stale keys, re-sorting them from {_buckets.Count} buckets.");
+
+            _worstSortedValues.Clear();
+            foreach (EnhancedSortedSet<TValue> bucket in _buckets.Values)
+            {
+                if (bucket.Max is TValue last)
+                {
+                    _worstSortedValues.Add(last, GetKey(last));
+                }
+            }
+
+            UpdateWorstValue();
         }
 
         /// <summary>
@@ -556,9 +594,11 @@ namespace Nethermind.TxPool.Collections
             TValue? newLast = bucket.Max;
             if (!Equals(previousLast, newLast))
             {
-                if (previousLast is not null)
+                if (previousLast is not null && !_worstSortedValues.Remove(previousLast))
                 {
-                    _worstSortedValues.Remove(previousLast);
+                    // The bucket's new last element is already among those the rebuild reads.
+                    RebuildWorstSortedValues();
+                    return;
                 }
 
                 if (newLast is not null)

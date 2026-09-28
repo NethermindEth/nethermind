@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
@@ -1017,6 +1018,91 @@ public class TxBroadcasterTests
             Assert.That(_broadcaster.ContainsTx(regularTx.Hash!), Is.True,
                 "a transaction without a frame expiry deadline must never be swept");
         }
+    }
+
+    [Test]
+    public void Persistent_pool_eviction_terminates_after_its_worst_tx_gets_a_higher_gas_bottleneck()
+    {
+        // The Hoodi preset's TxPool.Size, which also caps the persistent (local) broadcast pool.
+        const int capacity = 1024;
+        const int senders = 32;
+        const int noncesPerSender = capacity / senders;
+        _txPoolConfig = new TxPoolConfig { Size = capacity };
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _headInfo.CurrentBaseFee = 0;
+
+        Transaction[] cheapestSenderTxs = new Transaction[noncesPerSender];
+        for (int sender = 0; sender < senders; sender++)
+        {
+            for (int nonce = 0; nonce < noncesPerSender; nonce++)
+            {
+                Transaction tx = LocalTx(TestItem.PrivateKeys[sender], (ulong)nonce, (sender + 1).GWei);
+                if (sender == 0) cheapestSenderTxs[nonce] = tx;
+                Assert.That(_broadcaster.Broadcast(tx, true), Is.True);
+            }
+        }
+
+        Assert.That(_broadcaster.GetSnapshot(), Has.Length.EqualTo(capacity));
+
+        // Replacing the cheapest sender's nonce-0 tx with a better-paying one makes the pending pool raise the gas
+        // bottleneck of every later tx of that sender. The persistent pool holds those same instances, sorted by
+        // that field, and is not told.
+        foreach (Transaction tx in cheapestSenderTxs)
+        {
+            tx.GasBottleneck = 100.GWei;
+        }
+
+        // Each further local tx overflows the persistent pool, which then evicts its worst entry.
+        Transaction[] newcomers =
+        [
+            LocalTx(TestItem.PrivateKeys[senders], 0, 50.GWei),
+            LocalTx(TestItem.PrivateKeys[senders + 1], 0, 50.GWei),
+            LocalTx(TestItem.PrivateKeys[senders + 2], 0, 50.GWei),
+        ];
+
+        bool completed = CompletesWithin(() =>
+        {
+            foreach (Transaction tx in newcomers)
+            {
+                _broadcaster.Broadcast(tx, true);
+            }
+        }, TimeSpan.FromSeconds(10));
+
+        Assert.That(completed, Is.True, "persistent pool eviction livelocked in SortedPool.RemoveLast");
+        Transaction[] snapshot = _broadcaster.GetSnapshot();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot, Has.Length.EqualTo(capacity));
+            Assert.That(snapshot.All(tx => _broadcaster.ContainsTx(tx.Hash!)), Is.True);
+        }
+
+        Transaction LocalTx(PrivateKey key, ulong nonce, UInt256 gasPrice)
+        {
+            Transaction tx = Build.A.Transaction
+                .WithNonce(nonce)
+                .WithGasPrice(gasPrice)
+                .SignedAndResolved(_ethereumEcdsa, key)
+                .TestObject;
+            // TxPool.AddCore sets the gas bottleneck before handing a local tx to the broadcaster.
+            tx.GasBottleneck = gasPrice;
+            return tx;
+        }
+    }
+
+    private static bool CompletesWithin(Action action, TimeSpan timeout)
+    {
+        Exception error = null;
+        // A background thread, so a livelocked run fails the test instead of keeping the test host alive.
+        System.Threading.Thread thread = new(() =>
+        {
+            try { action(); }
+            catch (Exception e) { error = e; }
+        })
+        { IsBackground = true };
+        thread.Start();
+        bool completed = thread.Join(timeout);
+        if (error is not null) ExceptionDispatchInfo.Capture(error).Throw();
+        return completed;
     }
 
     private Transaction FrameTxWithDeadline(ulong deadline, bool carriesBlobs = false)
