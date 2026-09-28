@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.Collections.Generic;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -74,7 +75,7 @@ internal static class TestChain
                     BlockNumber = slot,
                     GasLimit = 30_000_000,
                     GasUsed = 21_000,
-                    Timestamp = 1_750_000_000,
+                    Timestamp = BeaconChainSpec.Mainnet.GenesisTime + slot * BeaconChainSpec.Mainnet.SecondsPerSlot,
                     ExtraData = Bytes.FromHexString("0xc0ffee"),
                     BaseFeePerGas = 7,
                     BlockHash = Hash256.Zero,

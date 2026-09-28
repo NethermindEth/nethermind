@@ -25,7 +25,7 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
 // The pubsub library raises topic events only for Accepted and never redelivers an ignored id, so a message that
-// passes must be consumed by the validator itself; Rejected is only allowed ahead of every store or state check.
+// passes must be consumed by the validator itself; Rejected needs every earlier check passed, or a rule needing no state.
 public class GossipMessageValidatorTests
 {
     private static readonly ulong WallSlot = FirstGloasSlot + 1;
@@ -69,15 +69,15 @@ public class GossipMessageValidatorTests
             MessageValidity.Ignored, null, GossipDropReason.LimitExceeded);
         yield return Case("block at the finalized start slot", Topic(FuluDigest, GossipTopics.BeaconBlock),
             Compress(SignedBeaconBlock.Encode(CreateMinimalBlock(FinalizedEpoch * Sepolia.SlotsPerEpoch))), MessageValidity.Ignored, null, GossipDropReason.BeforeFinalized);
-        yield return Case("blob count over the limit follows store checks, so only drops", Topic(GloasDigest, GossipTopics.BeaconBlock),
+        yield return Case("Gloas blob count over the limit", Topic(GloasDigest, GossipTopics.BeaconBlock),
             Encode(GloasBlock(mutate: static b => b.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlobKzgCommitments = Commitments(100))),
-            MessageValidity.Ignored, null, GossipDropReason.LimitExceeded);
-        yield return Case("bid parent root differing from the block's only drops", Topic(GloasDigest, GossipTopics.BeaconBlock),
+            MessageValidity.Rejected, null, GossipDropReason.LimitExceeded);
+        yield return Case("bid parent root differing from an unseen parent's only drops", Topic(GloasDigest, GossipTopics.BeaconBlock),
             Encode(GloasBlock(mutate: static b => b.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockRoot = Keccak.OfAnEmptyString)),
             MessageValidity.Ignored, null, GossipDropReason.InvalidField);
         yield return Case("Gloas-shaped block at a Fulu slot only drops", Topic(GloasDigest, GossipTopics.BeaconBlock), Encode(GloasBlock(FuluSlot)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
-        yield return Case("Fulu block is consumed", Topic(FuluDigest, GossipTopics.BeaconBlock), Compress(SignedBeaconBlock.Encode(CreateMinimalBlock(FuluSlot))), MessageValidity.Ignored, typeof(ForkedSignedBeaconBlock.OfFulu), null);
-        yield return Case("Fulu blob count over the limit only drops", Topic(FuluDigest, GossipTopics.BeaconBlock), Encode(FuluBlock(blobs: 100)), MessageValidity.Ignored, null, GossipDropReason.LimitExceeded);
+        yield return Case("Fulu block is consumed", Topic(FuluDigest, GossipTopics.BeaconBlock), Encode(FuluBlock(blobs: 0)), MessageValidity.Ignored, typeof(ForkedSignedBeaconBlock.OfFulu), null);
+        yield return Case("Fulu blob count over the limit", Topic(FuluDigest, GossipTopics.BeaconBlock), Encode(FuluBlock(blobs: 100)), MessageValidity.Rejected, null, GossipDropReason.LimitExceeded);
 
         yield return Case("Gloas aggregate is consumed", Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate()), MessageValidity.Ignored, typeof(SignedAggregateAndProofGloas), null);
         yield return Case("Gloas aggregate voting payload present is consumed", Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(index: 1)), MessageValidity.Ignored, typeof(SignedAggregateAndProofGloas), null);
@@ -85,17 +85,17 @@ public class GossipMessageValidatorTests
         yield return Case("Gloas aggregate naming two committees", Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(committees: 2)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
         yield return Case("Gloas aggregate naming no committee", Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(committees: 0)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
         yield return Case("aggregate from two epochs ago", Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(slot: FirstGloasSlot - 2 * Sepolia.SlotsPerEpoch)), MessageValidity.Ignored, null, GossipDropReason.StaleSlot);
-        yield return Case("aggregate target epoch mismatch follows store checks, so only drops", Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(targetEpoch: 1)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
-        yield return Case("aggregate without participants only drops", Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(participants: 0)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
+        yield return Case("aggregate target epoch mismatch", Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(targetEpoch: 1)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
+        yield return Case("aggregate without participants", Topic(GloasDigest, GossipTopics.BeaconAggregateAndProof), Encode(GloasAggregate(participants: 0)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
         yield return Case("Fulu aggregate is consumed", Topic(FuluDigest, GossipTopics.BeaconAggregateAndProof), Encode(FuluAggregate(index: 0)), MessageValidity.Ignored, typeof(SignedAggregateAndProof), null);
         yield return Case("Fulu aggregate with data index 1", Topic(FuluDigest, GossipTopics.BeaconAggregateAndProof), Encode(FuluAggregate(index: 1)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
 
         yield return Case("Gloas attester slashing is consumed", Topic(GloasDigest, GossipTopics.AttesterSlashing), Encode(GloasSlashing([1, 2], [2, 3], secondSource: 2, secondTarget: 3)), MessageValidity.Ignored, typeof(AttesterSlashingGloas), null);
-        yield return Case("attester slashing of non-slashable data is only dropped", Topic(GloasDigest, GossipTopics.AttesterSlashing), Encode(GloasSlashing([1, 2], [2, 3], secondSource: 5, secondTarget: 6)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
+        yield return Case("attester slashing of non-slashable data", Topic(GloasDigest, GossipTopics.AttesterSlashing), Encode(GloasSlashing([1, 2], [2, 3], secondSource: 5, secondTarget: 6)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
         yield return Case("attester slashing with no common index", Topic(GloasDigest, GossipTopics.AttesterSlashing), Encode(GloasSlashing([1, 2], [3, 4], secondSource: 2, secondTarget: 3)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
         yield return Case("no common index is dropped whatever the attestation data", Topic(GloasDigest, GossipTopics.AttesterSlashing), Encode(GloasSlashing([1, 2], [3, 4], secondSource: 5, secondTarget: 6)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
         yield return Case("Fulu attester slashing is consumed", Topic(FuluDigest, GossipTopics.AttesterSlashing), Encode(FuluSlashing([1, 2], [2, 3], secondSource: 2, secondTarget: 3)), MessageValidity.Ignored, typeof(AttesterSlashing), null);
-        yield return Case("Fulu attester slashing of non-slashable data is only dropped", Topic(FuluDigest, GossipTopics.AttesterSlashing), Encode(FuluSlashing([1, 2], [2, 3], secondSource: 5, secondTarget: 6)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
+        yield return Case("Fulu attester slashing of non-slashable data", Topic(FuluDigest, GossipTopics.AttesterSlashing), Encode(FuluSlashing([1, 2], [2, 3], secondSource: 5, secondTarget: 6)), MessageValidity.Rejected, null, GossipDropReason.InvalidField);
         yield return Case("Fulu attester slashing with no common index", Topic(FuluDigest, GossipTopics.AttesterSlashing), Encode(FuluSlashing([1, 2], [3, 4], secondSource: 5, secondTarget: 6)), MessageValidity.Ignored, null, GossipDropReason.InvalidField);
 
         yield return Case("execution payload envelope is consumed", Topic(GloasDigest, GossipTopics.ExecutionPayload), Encode(Envelope()), MessageValidity.Ignored, typeof(SignedExecutionPayloadEnvelope), null);
@@ -244,7 +244,8 @@ public class GossipMessageValidatorTests
     private static SignedBeaconBlock FuluBlock(int blobs)
     {
         SignedBeaconBlock block = CreateMinimalBlock(FuluSlot);
-        block.Message!.Body!.BlobKzgCommitments = Commitments(blobs);
+        block.Message!.Body!.ExecutionPayload!.Timestamp = Sepolia.GenesisTime + FuluSlot * Sepolia.SecondsPerSlot;
+        block.Message.Body.BlobKzgCommitments = Commitments(blobs);
         return block;
     }
 
