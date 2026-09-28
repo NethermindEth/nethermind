@@ -1366,6 +1366,33 @@ public class JsonRpcServiceTests
     }
 
     [Test]
+    public async Task Batch_item_refused_for_a_full_queue_leaves_its_batch_the_budget_it_had()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
+        JsonRpcService service = CreateGatedService(ethRpcModule, queueLimit: 1);
+        JsonRpcRequest item = EthCall();
+        item.BatchQueueWait = new(TimeSpan.FromSeconds(1));
+
+        Task<JsonRpcResponse> queued;
+        using (await HoldSlot(service))
+        {
+            queued = service.SendRequestAsync(EthCall(), _context).AsTask();
+            using JsonRpcResponse refused = await service.SendRequestAsync(item, _context);
+            AssertJsonRpcError(refused, ErrorCodes.LimitExceeded);
+        }
+
+        using (JsonRpcResponse completed = await queued.WaitAsync(TestTimeout))
+        {
+            RpcTest.AssertSuccess<HexBytes>(completed);
+        }
+
+        // Only a wait that timed out spends the rest of the budget.
+        Assert.That(service.EvmGate.QueueFullRejections, Is.EqualTo(1));
+        Assert.That(item.BatchQueueWait.Value, Is.LessThan(TimeSpan.FromSeconds(2)), "charged only what it waited, which is nothing");
+    }
+
+    [Test]
     public async Task Batch_items_add_their_granted_waits_and_later_items_may_wait_only_what_is_left()
     {
         const int budgetMs = 2_000;
