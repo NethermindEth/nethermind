@@ -22,23 +22,41 @@ public static partial class KzgPolynomialCommitments
     public const byte KzgBlobHashVersionV1 = 1;
 
     /// <summary>
-    /// The loaded trusted setup handle, or <see cref="nint.Zero"/> when <see cref="InitializeAsync"/> was never called.
+    /// The loaded trusted setup handle.
     /// </summary>
     /// <remarks>
     /// Blocks until an in-flight <see cref="InitializeAsync"/> completes, so a caller racing node startup
     /// never observes an unloaded setup.
     /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// The load failed. Consumers map <see cref="ArgumentException"/> to an invalid proof, so a failed load
+    /// may not surface as one.
+    /// </exception>
     internal static nint CkzgSetup
     {
         get
         {
             nint setup = Volatile.Read(ref _ckzgSetup);
-            if (setup != nint.Zero)
-                return setup;
-
-            _initializeTask?.GetAwaiter().GetResult();
-            return Volatile.Read(ref _ckzgSetup);
+            return setup != nint.Zero ? setup : AwaitSetup();
         }
+    }
+
+    private static nint AwaitSetup()
+    {
+        Task? initialization = Volatile.Read(ref _initializeTask);
+        if (initialization is null)
+            return nint.Zero;
+
+        try
+        {
+            initialization.GetAwaiter().GetResult();
+        }
+        catch (Exception e)
+        {
+            throw new InvalidOperationException("KZG trusted setup failed to load", e);
+        }
+
+        return Volatile.Read(ref _ckzgSetup);
     }
 
     private static nint _ckzgSetup = nint.Zero;
