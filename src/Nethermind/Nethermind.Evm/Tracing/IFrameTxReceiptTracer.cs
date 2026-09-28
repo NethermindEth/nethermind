@@ -21,4 +21,13 @@ public interface IFrameTxReceiptTracer
     /// enter the VM, so the action callbacks alone do not say which frame produced which observations.</remarks>
     /// <param name="error">The EVM error that ended the frame, or <c>null</c> when it succeeded.</param>
     void ReportFrameEnd(int frameIndex, EvmExceptionType? error) { }
+
+    /// <summary>Reports that the frames from <paramref name="fromFrameIndex"/> up to the failed frame at
+    /// <paramref name="toFrameIndex"/> had their state and logs rolled back, by an atomic batch unroll or a failed
+    /// <c>POST_TX</c> frame.</summary>
+    /// <remarks>The rolled-back frames keep their success status, and where a <c>POST_TX</c> rollback starts
+    /// depends on when the payer was approved, so the receipts alone do not say which frames were discarded.</remarks>
+    /// <param name="fromFrameIndex">The first rolled-back frame.</param>
+    /// <param name="toFrameIndex">The frame whose failure caused the rollback, which already reported its end.</param>
+    void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) { }
 }

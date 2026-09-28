@@ -25,6 +25,9 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     private TxFrameReceipt[]? _frameTxReceipts;
     private IFrameTxReceiptTracer? _currentFrameTxTracer;
 
+    /// <summary>Error reported to tracers for a frame transaction whose derived status is a failure.</summary>
+    private const string FrameTxFailedError = "frame failed";
+
     public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
     {
         _frameTxPayer = payer;
@@ -34,6 +37,9 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     public void ReportFrameEnd(int frameIndex, EvmExceptionType? error) =>
         _currentFrameTxTracer?.ReportFrameEnd(frameIndex, error);
+
+    public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) =>
+        _currentFrameTxTracer?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
 
     /// <summary>The innermost tracer of <paramref name="tracer"/> that takes EIP-8141 frame reports.</summary>
     /// <remarks>The tracing RPCs hand the processor a wrapped tracer, so the capability is reached through
@@ -72,7 +78,8 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
-        _txReceipts.Add(BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot));
+        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot);
+        _txReceipts.Add(receipt);
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
@@ -82,7 +89,16 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
         if (_currentTxTracer.IsTracingReceipt)
         {
-            _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+            // EIP-8141: an included frame transaction is marked successful whatever its frames did, so the
+            // tracer is told the status derived from the frames, which only the built receipt holds.
+            if (receipt.StatusCode == StatusCode.Failure)
+            {
+                _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, FrameTxFailedError, stateRoot);
+            }
+            else
+            {
+                _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+            }
         }
     }
 
