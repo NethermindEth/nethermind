@@ -62,7 +62,7 @@ public sealed class ExternalClDetector(
             return;
         }
 
-        if (_logger.IsWarn) _logger.Warn("External consensus client detected on the engine API — disabling the embedded beacon chain driver");
+        if (_logger.IsWarn) _logger.Warn("External consensus client detected on the engine API - disabling the embedded beacon chain driver");
         ExternalClDetected?.Invoke();
     }
 }
