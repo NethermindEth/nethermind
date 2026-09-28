@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -493,7 +492,7 @@ public class SnapshotBundleWarmerTests
             Assert.That(ReadWarmedChild().TryResolveNode(warmer, ref childPath), Is.False);
         }
 
-        StateTrieStoreAdapter state = new(bundle, new ConcurrencyController(1));
+        StateTrieStoreAdapter state = new(bundle);
         ITrieNodeResolver live = storage ? state.GetStorageTrieNodeResolver(address) : state;
         Assert.That(live.FindCachedOrUnknown(childPath, child.Keccak!), Is.SameAs(child));
         TrieNode liveParent = live.FindCachedOrUnknown(rootPath, branch.Keccak!);

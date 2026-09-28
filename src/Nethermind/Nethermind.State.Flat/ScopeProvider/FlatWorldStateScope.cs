@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -29,7 +28,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly bool _isReadOnly;
     private readonly bool _trieless;
 
-    private readonly ConcurrencyController _concurrencyQuota;
     private PatriciaTree? _warmupStateTree;
     private readonly Hash256 _initialStateRoot;
     private StateTree? _stateTree;
@@ -75,7 +73,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CodeDb = codeDb;
         _commitTarget = commitTarget;
 
-        _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _initialStateRoot = currentStateId.StateRoot.ToCommitment();
 
         _configuration = configuration;
@@ -167,7 +164,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private StateTree CreateStateTree()
     {
-        StateTree tree = new(new StateTrieStoreAdapter(_snapshotBundle, _concurrencyQuota), _logManager)
+        StateTree tree = new(new StateTrieStoreAdapter(_snapshotBundle), _logManager)
         {
             RootHash = _initialStateRoot
         };
@@ -263,7 +260,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                             _warmer,
                             _snapshotBundle,
                             _configuration,
-                            _concurrencyQuota,
                             storageRoot,
                             address,
                             _logManager);
@@ -437,7 +433,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     scope._warmer,
                     scope._snapshotBundle,
                     scope._configuration,
-                    scope._concurrencyQuota,
                     storageRoot,
                     key.Value,
                     scope._logManager);
@@ -470,7 +465,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _warmer,
             _snapshotBundle,
             _configuration,
-            _concurrencyQuota,
             storageRoot,
             address,
             _logManager);

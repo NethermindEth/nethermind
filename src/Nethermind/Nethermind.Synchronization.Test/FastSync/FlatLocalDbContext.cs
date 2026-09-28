@@ -143,8 +143,6 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
             }
 
             public void Dispose() { }
-            public bool TryRequestConcurrentQuota() => false;
-            public void ReturnConcurrencyQuota() { }
         }
     }
 

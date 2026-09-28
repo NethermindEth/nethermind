@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -17,7 +16,6 @@ public sealed class FlatStorageTree(
     ITrieWarmer trieCacheWarmer,
     SnapshotBundle bundle,
     IFlatDbConfig config,
-    ConcurrencyController concurrencyQuota,
     Hash256 storageRoot,
     Address address,
     ILogManager logManager) : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
@@ -27,7 +25,6 @@ public sealed class FlatStorageTree(
     private readonly ITrieWarmer _trieCacheWarmer = trieCacheWarmer;
     private readonly FlatWorldStateScope _scope = scope;
     private readonly SnapshotBundle _bundle = bundle;
-    private readonly ConcurrencyController _concurrencyQuota = concurrencyQuota;
     private readonly ILogManager _logManager = logManager;
     private readonly Hash256 _storageRoot = storageRoot;
     private Hash256? _addressHash;
@@ -51,7 +48,7 @@ public sealed class FlatStorageTree(
     private Trees CreateTrees()
     {
         Hash256 addressHash = AddressHash;
-        StorageTree tree = new(new StorageTrieStoreAdapter(_bundle, _concurrencyQuota, addressHash), _storageRoot, _logManager);
+        StorageTree tree = new(new StorageTrieStoreAdapter(_bundle, addressHash), _storageRoot, _logManager);
 
         // Set the rootref manually. Cut the call to find nodes by about 1/4th.
         StorageTree warmup = new(new StorageTrieStoreWarmerAdapter(_bundle, addressHash), _logManager);

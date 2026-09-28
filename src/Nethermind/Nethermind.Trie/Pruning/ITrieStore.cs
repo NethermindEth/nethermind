@@ -63,11 +63,11 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// A block committer identifies the scope at which a commit for a block should happen.
     /// The commit started via <see cref="IScopedTrieStore.BeginCommit"/> which is called by <see cref="PatriciaTree.Commit"/>
-    /// Depending on <see cref="TryRequestConcurrencyQuota"/>, multiple patricia trie commit may run at the same time.
+    /// When <see cref="SupportsParallelCommit"/> is true, multiple trie commits may run at the same time.
     /// </summary>
     public interface IBlockCommitter : IDisposable
     {
-        bool TryRequestConcurrencyQuota() => false;
-        void ReturnConcurrencyQuota() { }
+        /// <summary>Whether storage tries can be committed concurrently.</summary>
+        bool SupportsParallelCommit => false;
     }
 }

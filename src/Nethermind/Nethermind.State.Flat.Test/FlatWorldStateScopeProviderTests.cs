@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -705,8 +706,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void StorageRootAfterParallelCommitMatchesRawTrie()
+    public void StorageRootAfterParallelCommitMatchesRawTrie([Values(1, 2, 4)] int concurrency)
     {
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
         const int slotsPerCommit = 1024;
         const int commitCount = 2;
         using TestContext ctx = new();
