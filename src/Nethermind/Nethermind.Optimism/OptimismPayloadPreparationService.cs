@@ -50,9 +50,9 @@ public class OptimismPayloadPreparationService(
                     throw new InvalidOperationException($"{nameof(BlockHeader)} was not properly validated: {error}");
                 }
 
-                if (eip1559Parameters.IsZero())
+                if (eip1559Parameters is { Denominator: 0, Elasticity: 0 })
                 {
-                    eip1559Parameters = new EIP1559Parameters(eip1559Parameters.Version, (UInt32)spec.BaseFeeMaxChangeDenominator, (UInt32)spec.ElasticityMultiplier);
+                    eip1559Parameters = new EIP1559Parameters(eip1559Parameters.Version, (UInt32)spec.BaseFeeMaxChangeDenominator, (UInt32)spec.ElasticityMultiplier, eip1559Parameters.MinBaseFee);
                 }
 
                 currentBestBlock.Header.ExtraData = new byte[eip1559Parameters.ByteLength];
