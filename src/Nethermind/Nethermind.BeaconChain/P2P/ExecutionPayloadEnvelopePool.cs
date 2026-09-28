@@ -44,7 +44,7 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
     // so one full walk plus fork entries never evicts the head, which would make every repeat of that walk decode all of it again.
     private readonly LruCache<Hash256, BlockLink> _links = new(2 * MaxCanonicalWalk, "execution payload envelope chain links");
 
-    /// <exception cref="ArgumentException">The envelope has no payload, or names a beacon block other than <paramref name="blockRoot"/>.</exception>
+    /// <exception cref="ArgumentException">The envelope has no payload, names a beacon block other than <paramref name="blockRoot"/>, or, with a store, encodes to more than <c>MAX_PAYLOAD_SIZE</c> bytes.</exception>
     public void Add(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope)
     {
         if (store is null)

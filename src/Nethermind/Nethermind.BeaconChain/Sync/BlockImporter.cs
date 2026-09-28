@@ -712,6 +712,9 @@ public sealed class BlockImporter : IBlockImporter
 
         _runner.Prune();
         PruneStore(finalizedSlot);
+        // Replay after a restart starts from the persisted anchor, which stays behind when the finalized state was not retained;
+        // with no anchor, a finalized block fork choice does not hold has no known slot, and the epoch start could be past it.
+        _store.PruneExecutionPayloadEnvelopes(_clock.CurrentEpoch, _store.TryGetAnchor(out _, out ulong anchorSlot) ? Math.Min(anchorSlot, finalizedSlot) : _runner.GetBlockSlot(finalized.Root) ?? 0);
         // on_block refuses every block at or below the finalized epoch's start slot, even when that slot is empty.
         ulong neverImportable = Math.Max(finalizedSlot, BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch));
         foreach ((Hash256 root, DeferredBlock deferred) in _deferred)
