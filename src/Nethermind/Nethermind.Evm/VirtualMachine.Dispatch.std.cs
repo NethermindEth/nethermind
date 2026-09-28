@@ -58,8 +58,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = _opcodeHandlers;
 
-        // Safety: the 256-entry opcode table remains pinned for the complete tail-call chain. Every
-        // bytecode read is preceded by a program-counter bounds check, and a byte is a valid table index.
+        // Safety: the opcode table remains pinned for the complete tail-call chain. Every bytecode read is
+        // preceded by a program-counter bounds check, and a byte is a valid index into its first 256 entries.
+        // A table that holds a fast path carries the plain handlers its fallbacks read in the 256 entries
+        // from FallbackHandlersOffset; a 256-entry table must hold none.
         fixed (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>* opcodeHandlers = &handlers[0])
         {
             if (!TCancelable.IsActive)
