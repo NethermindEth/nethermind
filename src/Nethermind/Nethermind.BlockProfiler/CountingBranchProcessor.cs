@@ -52,6 +52,8 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     private Window _block;
     private ThreadInstructionCounter.Sample _executed;
     private bool _executedRead;
+    private ThreadInstructionCounter.Sample _judged;
+    private bool _judgedRead;
     private GCScheduler.ForcedGCExclusionScope? _forcedGCExclusion;
     private EventHandler<BlockExecutedEventArgs>? _deferredBlockExecuted;
     private BlockExecutedEventArgs? _pendingVerdict;
@@ -67,7 +69,8 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         _inner.BranchProcessingCompleted += OnBranchProcessingCompleted;
         // Optional: a scope without a block processor still counts, only without the execution split.
         if (_blockProcessor is not null) _blockProcessor.TransactionsExecuted += OnTransactionsExecuted;
-        if (s_deferVerdict) _inner.BlockExecuted += OnInnerBlockExecuted;
+        // Always observed: the verdict splits the post-execution work into roots and commit.
+        _inner.BlockExecuted += OnInnerBlockExecuted;
         // Branch processors are scoped; report whether the counters work once per process.
         if (Interlocked.Exchange(ref s_armedLogged, 1) == 0)
         {
@@ -96,6 +99,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     private void OnBlockProcessing(object? sender, BlockEventArgs e)
     {
         _executedRead = false;
+        _judgedRead = false;
         _block = Window.Start();
     }
 
@@ -107,11 +111,18 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
     {
         if (!_block.TryStop(out string counts, out ulong instructions)) return;
         ulong executed = _executedRead ? _executed.Instructions - _block.StartInstructions : 0;
+        // roots: receipts, blooms and the state root up to the verdict; commit: the tree commit after it.
+        ulong roots = _judgedRead && _executedRead ? _judged.Instructions - _executed.Instructions : 0;
+        ulong commit = _judgedRead ? _block.StartInstructions + instructions - _judged.Instructions : 0;
         Block block = e.Block;
-        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed}");
+        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed} roots={roots} commit={commit}");
     }
 
-    private void OnInnerBlockExecuted(object? sender, BlockExecutedEventArgs e) => _pendingVerdict = e;
+    private void OnInnerBlockExecuted(object? sender, BlockExecutedEventArgs e)
+    {
+        _judgedRead = _block.IsOnCurrentThread && ThreadInstructionCounter.TryRead(out _judged);
+        if (s_deferVerdict) _pendingVerdict = e;
+    }
 
     private void OnBranchProcessingCompleted(object? sender, BranchProcessingCompletedEventArgs e)
     {
@@ -291,7 +302,7 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         _inner.BlockProcessed -= OnBlockProcessed;
         _inner.BranchProcessingCompleted -= OnBranchProcessingCompleted;
         if (_blockProcessor is not null) _blockProcessor.TransactionsExecuted -= OnTransactionsExecuted;
-        if (s_deferVerdict) _inner.BlockExecuted -= OnInnerBlockExecuted;
+        _inner.BlockExecuted -= OnInnerBlockExecuted;
         _forcedGCExclusion?.Dispose();
         // The container owns the decorated instance; disposing it here would double-dispose.
     }
