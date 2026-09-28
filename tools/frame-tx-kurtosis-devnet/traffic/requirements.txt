@@ -1,0 +1,10 @@
+# Signing and hashing only: RPC, RLP and the frame-transaction envelope are handled by the
+# standard library and the vendored soispoke encoder.
+eth-account==0.13.7
+eth-keys==0.6.1
+eth-hash[pycryptodome]==0.7.1
+# Native secp256k1. Without it eth-keys falls back to its pure-Python NativeECCBackend, which
+# signs at ~1 kHz and does not release the GIL, so the whole generator is capped at one core.
+# The signature-stuffed shape needs one signature per 2,800 gas of ceiling, which put that cap
+# below the offered rate and made the generator, not the client, the thing being measured.
+coincurve==20.0.0
