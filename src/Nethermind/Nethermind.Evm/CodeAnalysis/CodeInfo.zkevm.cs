@@ -16,28 +16,24 @@ public sealed partial class CodeInfo
     private byte[] GetExecutionCode() =>
         _code is byte[] code && code.Length != _codeLength ? code : (byte[])(_code = CreatePaddedCode(ViewOf(_code).Span));
 
-    /// <summary>The jump-destination bitmap of this code, populated only as far as the scan has reached.</summary>
+    /// <summary>The jump-destination bitmap of this code, holding only the destinations analyzed so far.</summary>
     /// <remarks>
     /// Sized for the whole code so the shared bit test can index it, but a clear bit only means "not a
-    /// destination, or not scanned yet"; <see cref="AnalyzeJump"/> is what turns that into an answer.
+    /// destination, or not analyzed yet"; <see cref="AnalyzeJump"/> is what turns that into an answer.
     /// </remarks>
     internal long[] IncrementalJumpBitmap => _incrementalJumpBitmap ??= JumpDestinationAnalyzer.CreateBitmap(Code.Length);
 
     /// <summary>Extends the scan far enough to decide <paramref name="destination"/>, and reports whether it is a jump destination.</summary>
     /// <param name="destination">A destination inside the code.</param>
-    /// <param name="code">The bytes of <see cref="Code"/>, as the caller already holds them.</param>
+    /// <param name="bitmap">This code's <see cref="IncrementalJumpBitmap"/>.</param>
+    /// <param name="code">This code.</param>
     /// <remarks>
-    /// The guest pays for every byte it scans, and a frame typically jumps into a prefix of the code, so
-    /// the scan stops at the first instruction boundary beyond the requested destination. A PUSH can
-    /// overshoot it, but the resume cursor never splits an immediate or rewinds for an earlier query.
-    /// Requires <see cref="IncrementalJumpBitmap"/> to have been read already, as building a stack over
-    /// non-empty code does; the field is read directly to keep its lazy getter out of the jump handlers.
+    /// The guest pays for every byte it scans, so most destinations are proven by looking at the 32 bytes before
+    /// them, and the rest are scanned from the nearest instruction start found that way rather than from the
+    /// start of the code (see <see cref="JumpDestinationAnalyzer.AnalyzeJump"/>). The caller passes the bitmap
+    /// and code it already holds.
     /// </remarks>
-    internal bool AnalyzeJump(int destination, ReadOnlySpan<byte> code)
-    {
-        if (code[0] == (byte)Instruction.STOP || code[destination] != (byte)Instruction.JUMPDEST) return false;
-        long[] bitmap = _incrementalJumpBitmap!;
-        _analyzedUntil = (nint)JumpDestinationAnalyzer.ScanUntil((nuint)_analyzedUntil, destination, bitmap, code);
-        return JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination);
-    }
+    internal bool AnalyzeJump(int destination, long[] bitmap, ReadOnlySpan<byte> code) =>
+        code[0] != (byte)Instruction.STOP && code[destination] == (byte)Instruction.JUMPDEST &&
+        JumpDestinationAnalyzer.AnalyzeJump(destination, bitmap, code, ref _analyzedUntil);
 }

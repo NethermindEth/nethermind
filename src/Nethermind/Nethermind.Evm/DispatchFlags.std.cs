@@ -21,6 +21,9 @@ internal static partial class DispatchFlags
     /// <summary>Whether the requested EVM tracing capability is enabled.</summary>
     public static bool Tracing(bool isTracing) => isTracing;
 
+    /// <summary>Whether dispatch counts the opcodes it runs, for the opcode metric and the cancellation poll.</summary>
+    public static bool CountOpcodes => true;
+
     /// <summary>Whether the coming transaction can be cancelled part-way through.</summary>
     public static bool Cancelable(bool tracerIsCancelable) => tracerIsCancelable;
 
