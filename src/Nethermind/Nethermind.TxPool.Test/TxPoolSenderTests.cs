@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -36,7 +37,9 @@ public class TxPoolSenderTests
         (Hash256 _, AcceptTxResult? result) = sender.SendTransaction(tx, TxHandlingOptions.None).Result;
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted), "the submission must be accepted, or this pins nothing");
 
-        using NonceLocker locker = nonceManager.ReserveNonce(TestItem.AddressA, out ulong reservedNonce);
+        IPendingTxsBySender pendingTxs = Substitute.For<IPendingTxsBySender>();
+        pendingTxs.ContainsTx(tx.Hash!, tx.Type).Returns(true);
+        using NonceLocker locker = nonceManager.ReserveNonce(TestItem.AddressA, pendingTxs, out ulong reservedNonce);
         Assert.That(reservedNonce, Is.EqualTo(expectedReservation));
     }
 
@@ -62,9 +65,9 @@ public class TxPoolSenderTests
         TxSealer sealer = new(Substitute.For<ITxSigner>(), Timestamper.Default);
 
         // NonceLocker is a ref struct, so INonceManager cannot be substituted; use the real one.
-        IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
-        accountStateProvider.GetNonce(TestItem.AddressA).Returns(0UL);
-        nonceManager = new NonceManager(accountStateProvider);
+        IChainHeadInfoProvider chainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        chainHeadInfoProvider.ReadOnlyStateProvider.GetNonce(TestItem.AddressA).Returns(0UL);
+        nonceManager = new NonceManager(chainHeadInfoProvider, Substitute.For<IStateHeaderProvider>(), Substitute.For<IStateReader>());
 
         return new TxPoolSender(txPool, sealer, nonceManager, Substitute.For<IEthereumEcdsa>());
     }

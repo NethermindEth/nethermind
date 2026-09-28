@@ -80,9 +80,12 @@ namespace Nethermind.Evm.TransactionProcessing
 
         /// <summary>Whether LOG may skip materialising its entry: a prewarming run nobody observes.</summary>
         /// <remarks>Deliberately narrower than the tracer-requirement test the non-frame path uses: a frame
-        /// transaction reads its own logs from a POST_TX frame (EIP-7906), which no tracer flag describes.</remarks>
+        /// transaction reads its own logs from a POST_TX frame (EIP-7906), which no tracer flag describes.
+        /// A cancellation wrapper that traces nothing of its own is looked through.</remarks>
         private protected static bool ShouldSuppressLogs(ExecutionOptions opts, ITxTracer tracer) =>
-            opts.HasFlag(ExecutionOptions.Warmup) && ReferenceEquals(tracer, NullTxTracer.Instance);
+            opts.HasFlag(ExecutionOptions.Warmup)
+            && (ReferenceEquals(tracer, NullTxTracer.Instance)
+                || tracer is CancellationTxTracer { InnerTracer: NullTxTracer } && !tracer.IsTracing);
 
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
         {
@@ -780,12 +783,8 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple))!;
 
-                AuthorizationTupleResult authorizationResult = IsValidForExecution(authTuple, accessTracker, spec, out bool hasDelegation, out string? error);
-                if (authorizationResult != AuthorizationTupleResult.Valid)
-                {
-                    if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
-                }
-                else
+                AuthorizationTupleResult authorizationResult = IsValidForExecution(authTuple, accessTracker, spec, out bool hasDelegation);
+                if (authorizationResult == AuthorizationTupleResult.Valid)
                 {
                     bool accountExists = WorldState.AccountExists(authority);
                     bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
@@ -864,19 +863,18 @@ namespace Nethermind.Evm.TransactionProcessing
             AuthorizationTuple authorizationTuple,
             in StackAccessTracker accessTracker,
             IReleaseSpec spec,
-            out bool hasDelegation,
-            [NotNullWhen(false)] out string? error)
+            out bool hasDelegation)
         {
             hasDelegation = false;
             if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
             {
-                error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
+                if (Logger.IsDebug) DebugLogInvalidAuthorization(authorizationTuple, $"Chain id ({authorizationTuple.ChainId}) does not match.");
                 return AuthorizationTupleResult.InvalidChainId;
             }
 
             if (authorizationTuple.Nonce == ulong.MaxValue)
             {
-                error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
+                if (Logger.IsDebug) DebugLogInvalidAuthorization(authorizationTuple, $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.");
                 return AuthorizationTupleResult.InvalidNonce;
             }
 
@@ -886,7 +884,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
                 || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
             {
-                error = "Bad signature.";
+                if (Logger.IsDebug) DebugLogInvalidAuthorization(authorizationTuple, "Bad signature.");
                 return AuthorizationTupleResult.InvalidSignature;
             }
 
@@ -897,7 +895,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 hasDelegation = _codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _);
                 if (!hasDelegation)
                 {
-                    error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
+                    if (Logger.IsDebug) DebugLogInvalidAuthorization(authorizationTuple, $"Authority ({authorizationTuple.Authority}) has code deployed.");
                     return AuthorizationTupleResult.InvalidAsCodeDeployed;
                 }
             }
@@ -905,13 +903,15 @@ namespace Nethermind.Evm.TransactionProcessing
             ulong authNonce = WorldState.GetNonce(authorizationTuple.Authority);
             if (authNonce != authorizationTuple.Nonce)
             {
-                error = $"Skipping tuple in authorization_list because nonce is set to {authorizationTuple.Nonce}, but authority ({authorizationTuple.Authority}) has {authNonce}.";
+                if (Logger.IsDebug) DebugLogInvalidAuthorization(authorizationTuple, $"Skipping tuple in authorization_list because nonce is set to {authorizationTuple.Nonce}, but authority ({authorizationTuple.Authority}) has {authNonce}.");
                 return AuthorizationTupleResult.IncorrectNonce;
             }
 
-            error = null;
             return AuthorizationTupleResult.Valid;
         }
+
+        private void DebugLogInvalidAuthorization(AuthorizationTuple authorizationTuple, string error) =>
+            Logger.Debug($"Delegation {authorizationTuple} is invalid with error: {error}");
 
         protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
 
@@ -962,7 +962,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tx.IsAboveInitCode(spec))
             {
-                TraceLogInvalidTx(tx, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {tx.DataLength} > {spec.MaxInitCodeSize}");
+                if (Logger.IsTrace) TraceLogInvalidTx(tx, $"CREATE_TRANSACTION_SIZE_EXCEEDS_MAX_INIT_CODE_SIZE {tx.DataLength} > {spec.MaxInitCodeSize}");
                 return TransactionResult.TransactionSizeOverMaxInitCodeSize;
             }
 
@@ -986,14 +986,14 @@ namespace Nethermind.Evm.TransactionProcessing
             // EIP-8037: tx.gas as a whole (both dimensions) is capped at TX_MAX_TOTAL_GAS_LIMIT.
             if (spec.IsEip8037Enabled && tx.GasLimit > Eip8037Constants.TxMaxTotalGasLimit)
             {
-                TraceLogInvalidTx(tx, $"TX_GAS_LIMIT_EXCEEDS_MAX_TOTAL {tx.GasLimit} > {Eip8037Constants.TxMaxTotalGasLimit}");
+                if (Logger.IsTrace) TraceLogInvalidTx(tx, $"TX_GAS_LIMIT_EXCEEDS_MAX_TOTAL {tx.GasLimit} > {Eip8037Constants.TxMaxTotalGasLimit}");
                 return TransactionResult.ErrorType.GasLimitExceedsMaxTotalCap.WithDetail(
                     TxErrorMessages.TxGasLimitCapExceeded(tx.GasLimit, Eip8037Constants.TxMaxTotalGasLimit));
             }
 
             if (spec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
             {
-                TraceLogInvalidTx(tx, $"TX_INTRINSIC_GAS_EXCEEDS_CAP execution={execution} floor={floor} > {Eip7825Constants.DefaultTxGasLimitCap}");
+                if (Logger.IsTrace) TraceLogInvalidTx(tx, $"TX_INTRINSIC_GAS_EXCEEDS_CAP execution={execution} floor={floor} > {Eip7825Constants.DefaultTxGasLimitCap}");
                 return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail(
                     TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap));
             }
@@ -1006,14 +1006,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tx.GasLimit < standardGasUsed)
             {
-                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {standardGasUsed}");
+                if (Logger.IsTrace) TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {standardGasUsed}");
                 return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail(
                     $"{TxErrorMessages.IntrinsicGasTooLow}: have {tx.GasLimit}, want {standardGasUsed}");
             }
 
             if (tx.GasLimit < floorGasUsed)
             {
-                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_FLOOR_DATA_GAS {tx.GasLimit} < {floorGasUsed}");
+                if (Logger.IsTrace) TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_FLOOR_DATA_GAS {tx.GasLimit} < {floorGasUsed}");
                 return TransactionResult.ErrorType.GasLimitBelowFloorGas.WithDetail(
                     $"{TxErrorMessages.GasBelowFloorDataCost}: have {tx.GasLimit}, want {floorGasUsed}");
             }
@@ -1027,7 +1027,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (tx.GasLimit < minGasRequired)
             {
-                TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
+                if (Logger.IsTrace) TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
                 return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail($"intrinsic gas too low: have {tx.GasLimit}, want {minGasRequired}");
             }
 
@@ -1037,7 +1037,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (tx.GasLimit > header.GasLimit)
                     {
-                        TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit}");
+                        if (Logger.IsTrace) TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit}");
                         return TransactionResult.BlockGasLimitExceeded;
                     }
 
@@ -1054,10 +1054,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 ulong maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
                 if (tx.GasLimit > maxTransactionGasLimit)
                 {
-                    string limitDescription = _parallel
-                        ? $"{header.GasLimit}"
-                        : $"{header.GasLimit} - {gasUsedForAllowance}";
-                    TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
+                    if (Logger.IsTrace)
+                    {
+                        string limitDescription = _parallel
+                            ? $"{header.GasLimit}"
+                            : $"{header.GasLimit} - {gasUsedForAllowance}";
+                        TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
+                    }
                     return TransactionResult.BlockGasLimitExceeded;
                 }
             }
@@ -1089,7 +1092,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    TraceLogInvalidTx(tx, $"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
+                    if (Logger.IsTrace) TraceLogInvalidTx(tx, $"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
                     if (!commit || noValidation || effectiveGasPrice.IsZero)
                     {
                         deleteCallerAccount = !commit || restore;
@@ -1159,7 +1162,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // mgval = gasLimit * effectiveGasPrice.
             if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment))
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
+                if (Logger.IsTrace) TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
                 return RequiredBalanceExceeds256Bits(tx);
             }
 
@@ -1169,7 +1172,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out balanceCheck))
                 {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
+                    if (Logger.IsTrace) TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
                     return RequiredBalanceExceeds256Bits(tx);
                 }
             }
@@ -1181,7 +1184,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // Include tx.Value in the balance requirement.
             if (UInt256.AddOverflow(balanceCheck, tx.ValueRef, out balanceCheck))
             {
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
+                if (Logger.IsTrace) TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
                 return RequiredBalanceExceeds256Bits(tx);
             }
 
@@ -1193,14 +1196,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (UInt256.MultiplyOverflow(blobGas, (UInt256)tx.MaxFeePerBlobGas!, out UInt256 maxBlobGasFee)
                     || UInt256.AddOverflow(balanceCheck, maxBlobGasFee, out balanceCheck))
                 {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
+                    if (Logger.IsTrace) TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
                     return RequiredBalanceExceeds256Bits(tx);
                 }
 
                 // Compute actual blob fee and add to mgval.
                 if (!_blobBaseFeeCalculator.TryCalculateBlobFees(header, tx, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas, out blobBaseFee))
                 {
-                    TraceLogInvalidTx(tx, $"BLOB_BASE_FEE_OVERFLOW: ({tx.SenderAddress})_BALANCE = {balance}");
+                    if (Logger.IsTrace) TraceLogInvalidTx(tx, $"BLOB_BASE_FEE_OVERFLOW: ({tx.SenderAddress})_BALANCE = {balance}");
                     return RequiredBalanceExceeds256Bits(tx);
                 }
 
@@ -1212,7 +1215,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment))
                 {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
+                    if (Logger.IsTrace) TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
                     return RequiredBalanceExceeds256Bits(tx);
                 }
             }
@@ -1229,7 +1232,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     return TransactionResult.Ok;
                 }
 
-                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
+                if (Logger.IsTrace) TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {balance}");
                 return InsufficientFundsForGas(tx, balance, balanceCheck);
             }
 
@@ -1254,7 +1257,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ulong nonce = WorldState.GetNonce(senderAddress);
             if (validate && tx.Nonce != nonce)
             {
-                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {nonce})");
+                if (Logger.IsTrace) TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {nonce})");
                 // Geth core/state_transition.go ErrNonceTooHigh / ErrNonceTooLow.
                 string sender = tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown";
                 return tx.Nonce > nonce
