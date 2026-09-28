@@ -13,10 +13,11 @@ namespace Nethermind.Pbt;
 /// </remarks>
 internal sealed class PbtPinnedGroups : IDisposable
 {
-    internal const int MaxDepth = 2 * PbtFourLevelGroupGeometry.LevelsPerGroup;
+    /// <summary>The deepest group depth within the zone byte.</summary>
+    internal static readonly int MaxDepth = 8 / PbtGroupGeometry.LevelsPerGroup * PbtGroupGeometry.LevelsPerGroup;
 
-    // One slot for the root group, 16 for the depth-four groups and 256 for the depth-eight groups.
-    private readonly RefCountingMemory?[] _groups = new RefCountingMemory?[1 + 16 + 256];
+    // One slot per group at each group depth up to MaxDepth, the deeper depths after the shallower ones.
+    private readonly RefCountingMemory?[] _groups = new RefCountingMemory?[LevelOffset(MaxDepth + PbtGroupGeometry.LevelsPerGroup)];
 
     /// <summary>Returns the pinned payload of <paramref name="groupKey"/>, borrowed for as long as this instance is alive, or null.</summary>
     internal RefCountingMemory? Get(PbtStorageNodePath groupKey) =>
@@ -30,12 +31,11 @@ internal sealed class PbtPinnedGroups : IDisposable
         if (Interlocked.CompareExchange(ref _groups[IndexOf(groupKey)], payload, null) is not null) ((IDisposable)payload).Dispose();
     }
 
-    private static int IndexOf(PbtStorageNodePath groupKey) => groupKey.BitDepth switch
-    {
-        0 => 0,
-        4 => 1 + (groupKey.GetByte(0) >> 4),
-        _ => 17 + groupKey.GetByte(0),
-    };
+    private static int IndexOf(PbtStorageNodePath groupKey) =>
+        groupKey.BitDepth == 0 ? 0 : LevelOffset(groupKey.BitDepth) + (groupKey.GetByte(0) >> (8 - groupKey.BitDepth));
+
+    /// <summary>The number of groups at the group depths shallower than <paramref name="depth"/>, a geometric series over the slots per group.</summary>
+    private static int LevelOffset(int depth) => ((1 << depth) - 1) / (PbtGroupGeometry.BoundarySlots - 1);
 
     /// <remarks>Must not run concurrently with a traversal borrowing the pinned payloads.</remarks>
     public void Dispose()

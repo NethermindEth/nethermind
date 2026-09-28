@@ -180,7 +180,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             return result;
         }
 
-        /// <summary>Takes a node read under a wider key type, which a fold below the zone nibble continues under its own.</summary>
+        /// <summary>Takes a node read under a wider key type, which a fold below the zone byte continues under its own.</summary>
         /// <remarks>Nothing is decoded: the encoding is the stored one either way, and only reading a key off it is typed.</remarks>
         internal static BoundaryNode TakeFrom<TSourceKey, TSourcePath>(ref TrieUpdater<TSourceKey, TSourcePath>.BoundaryNode source)
             where TSourceKey : unmanaged, IPbtKey<TSourceKey>
@@ -211,7 +211,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// </remarks>
         internal readonly void ToFoldResult(scoped in PbtTraversalPath cursor, int anchorDepth, ref FoldResult result)
         {
-            Debug.Assert(anchorDepth % PbtFourLevelGroupGeometry.LevelsPerGroup == 0, "A result is anchored at a group depth.");
+            Debug.Assert(anchorDepth % PbtGroupGeometry.LevelsPerGroup == 0, "A result is anchored at a group depth.");
             if (IsEmpty)
             {
                 result = default;
@@ -225,11 +225,11 @@ internal static partial class TrieUpdater<TKey, TPath>
 
             int splitDepth = BranchDepth;
             Debug.Assert(splitDepth >= anchorDepth, "A result branches at or below the cursor that addresses it.");
-            int localLength = Math.Min(splitDepth - anchorDepth, PbtFourLevelGroupGeometry.LevelsPerGroup);
+            int localLength = Math.Min(splitDepth - anchorDepth, PbtGroupGeometry.LevelsPerGroup);
             int slot = 0;
             for (int bit = anchorDepth; bit < anchorDepth + localLength; bit++) slot = (slot << 1) | PrefixBit(cursor, bit);
             PbtNodeReader reader = Reader;
-            result = new FoldResult(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
+            result = new FoldResult(new NodeGroupPath(slot << (PbtGroupGeometry.LevelsPerGroup - localLength), localLength),
                 reader.LeftHash, reader.RightHash,
                 reader.LeftKeyPostfix.IsEmpty ? default : LeftLeafKey(cursor),
                 reader.RightKeyPostfix.IsEmpty ? default : RightLeafKey(cursor),

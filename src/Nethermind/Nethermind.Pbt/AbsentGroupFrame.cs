@@ -17,7 +17,7 @@ internal readonly struct AbsentGroupFrame<TKey, TPath> : IGroupFrame<TKey, TPath
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
-    private readonly ushort _descendantMask;
+    private readonly int _descendantSlot;
     private readonly long _descendantBytes;
 
     internal AbsentGroupFrame(int bitDepth) => BitDepth = bitDepth;
@@ -26,7 +26,7 @@ internal readonly struct AbsentGroupFrame<TKey, TPath> : IGroupFrame<TKey, TPath
     /// <param name="descendantBytes">The summed payload lengths of the groups stored below <paramref name="slot"/>.</param>
     internal AbsentGroupFrame(int bitDepth, int slot, long descendantBytes) : this(bitDepth)
     {
-        _descendantMask = descendantBytes == 0 ? (ushort)0 : (ushort)(1 << slot);
+        _descendantSlot = slot;
         _descendantBytes = descendantBytes;
     }
 
@@ -34,11 +34,19 @@ internal readonly struct AbsentGroupFrame<TKey, TPath> : IGroupFrame<TKey, TPath
 
     public int PayloadLength => 0;
 
-    public long DescendantBytes(int slot) => (_descendantMask & (1 << slot)) == 0 ? 0 : _descendantBytes;
+    public long DescendantBytes(int slot) => slot == _descendantSlot ? _descendantBytes : 0;
 
-    public ushort DescendantMask => _descendantMask;
+    public PbtBitmap DescendantMask
+    {
+        get
+        {
+            PbtBitmap descendantMask = default;
+            if (_descendantBytes != 0) descendantMask.Set(_descendantSlot);
+            return descendantMask;
+        }
+    }
 
-    public uint StoredPositions => 0;
+    public PbtBitmap StoredPositions => default;
 
     public ReadOnlyMemory<byte> GetEncoding(int position) => throw NoStoredNode();
 

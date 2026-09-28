@@ -207,12 +207,12 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// </remarks>
     internal readonly struct DecompositionEntry
     {
-        private readonly byte _source;
+        private readonly ushort _source;
 
         internal DecompositionEntry(EntrySource source, int sourcePosition)
         {
             Debug.Assert(source != EntrySource.Node, "A decomposed entry names where its node is read from.");
-            _source = (byte)((sourcePosition << 2) | (int)source);
+            _source = (ushort)((sourcePosition << 2) | (int)source);
         }
 
         internal EntrySource Source => (EntrySource)(_source & 3);

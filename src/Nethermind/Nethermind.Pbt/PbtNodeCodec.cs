@@ -33,8 +33,8 @@ internal static class PbtNodeCodec
         BranchPreimageLength(bitCount) + BranchTrailerHeaderLength + leftKeyLength + rightKeyLength;
 
     /// <summary>The number of leading key bytes an inline leaf key omits under a branch anchored at <paramref name="anchorDepth"/>.</summary>
-    /// <remarks>These are the whole bytes of the path of the group holding the branch; an odd-nibble group keeps its last nibble in the key.</remarks>
-    internal static int InlineKeyOffset(int anchorDepth) => PbtFourLevelGroupGeometry.GroupDepthOf(anchorDepth) >> 3;
+    /// <remarks>These are the whole bytes of the path of the group holding the branch; a group not on a byte boundary keeps its last partial byte in the key.</remarks>
+    internal static int InlineKeyOffset(int anchorDepth) => PbtGroupGeometry.GroupDepthOf(anchorDepth) >> 3;
 
     /// <summary>The trailer length of <paramref name="stored"/>'s inline keys once rebased from key offset <paramref name="from"/> to <paramref name="to"/>.</summary>
     internal static int RebasedKeysLength(PbtNodeReader stored, int from, int to) =>

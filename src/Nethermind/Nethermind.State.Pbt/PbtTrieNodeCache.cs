@@ -8,6 +8,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
 
@@ -38,7 +39,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
     internal long EntryCount => _account.EntryCount + _code.EntryCount + _storage.EntryCount;
 
     private static bool IsStorage<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> =>
-        path.BitDepth == 4 && path.GetByte(0) == 0xF0
+        PbtRocksDbPersistence.IsShallowStorageGroup(path)
         || path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.StorageZone;
 
     private static bool IsCode<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> =>

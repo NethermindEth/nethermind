@@ -523,14 +523,14 @@ public class Eip8297CanonicalTreeTests
         PbtStorageNodePath constructed = new(constructorInput, bitDepth);
         constructorInput.AsSpan().Clear();
         source.AsSpan().Clear();
-        PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(constructed);
+        PbtNodeGroupLocation<PbtStorageNodePath> location = PbtGroupGeometry.Locate(constructed);
         byte[] copiedPath = constructed.ToPathArray();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(copiedPath, Is.EqualTo(expected));
             Assert.That(fromKey, Is.EqualTo(constructed));
-            Assert.That(PbtFourLevelGroupGeometry.PathOf(location.GroupKey, location.Position), Is.EqualTo(constructed));
+            Assert.That(PbtGroupGeometry.PathOf(location.GroupKey, location.Position), Is.EqualTo(constructed));
             if (bitDepth > 0)
             {
                 PbtStorageNodePath parent = PbtNodePathOperations.Prefix<PbtStorageNodePath>(key.Bytes, key.BitLength, bitDepth - 1);
@@ -1298,7 +1298,7 @@ public class Eip8297CanonicalTreeTests
         new Random(8297).NextBytes(sharedKey.AsSpan(1));
         List<(byte[] Key, byte[]? Value)> initial = [];
         List<(byte[] Key, byte[]? Value)> deletions = [];
-        for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
+        for (int slot = 0; slot < PbtGroupGeometry.BoundarySlots; slot++)
         {
             byte[] key = (byte[])sharedKey.Clone();
             int shift = 4 - (groupDepth & 4);
@@ -1565,6 +1565,7 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
+    [Category("FourLevelGroups")]
     public void Boundary_crossing_fetches_only_visited_groups_once()
     {
         CountingPbtStore store = new();
@@ -1798,6 +1799,7 @@ public class Eip8297CanonicalTreeTests
     [TestCase(true, 0)]
     [TestCase(true, 4)]
     [TestCase(true, 8)]
+    [Category("FourLevelGroups")]
     public void Owned_node_encodings_are_released_when_worker_or_ancestor_publish_fails(bool parallel, int failedDepth)
     {
         TrackingMemoryProvider memoryProvider = new();
@@ -1832,6 +1834,7 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
+    [Category("FourLevelGroups")]
     public void Promoted_subtree_is_materialized_before_its_frame_is_disposed()
     {
         CountingPbtStore store = new();
@@ -1875,6 +1878,7 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
+    [Category("FourLevelGroups")]
     public void Ordered_group_emission_rents_one_bucket_instead_of_per_node([Values(2, 8)] int leafCount)
     {
         // Every leaf pair is inlined in a stored branch. A single pair is the root, whose prefix spans the zone byte;
@@ -1903,7 +1907,7 @@ public class Eip8297CanonicalTreeTests
         List<PbtNodeRecord> records = [];
         PbtNodeGroupReader.Enumerator nodes = reader.EnumerateNodes();
         while (nodes.MoveNext())
-            records.Add(new(PbtFourLevelGroupGeometry.PathOf(groupKey, nodes.CurrentPosition), nodes.Current));
+            records.Add(new(PbtGroupGeometry.PathOf(groupKey, nodes.CurrentPosition), nodes.Current));
         byte[] expectedPayload = new byte[group.Payload.Length];
         BufferWriter writer = new(expectedPayload);
         PbtNodeGroupEncoder.Encode(ref writer, groupKey, records, default);
@@ -1926,6 +1930,7 @@ public class Eip8297CanonicalTreeTests
 
     [TestCase("00AA00", "00AA80", "00B000", "00AA", 16)]
     [TestCase("00AAC0", "00AAE0", "00B000", "00AAC0", 18)]
+    [Category("FourLevelGroups")]
     public void Ordered_emission_removes_old_branch_position_when_hoisting_to_root(
         string leftHex, string rightHex, string siblingHex, string prefixHex, int prefixBits)
     {
@@ -2091,8 +2096,8 @@ public class Eip8297CanonicalTreeTests
                 List<PbtNodeRecord> records = [];
                 for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
                 {
-                    if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
-                    PbtStorageNodePath path = PbtFourLevelGroupGeometry.PathOf(storageGroupKey, position);
+                    if (position == PbtGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
+                    PbtStorageNodePath path = PbtGroupGeometry.PathOf(storageGroupKey, position);
                     byte[]? encoding = overrideNode(path);
                     if (encoding is not null) records.Add(new PbtNodeRecord(path, encoding));
                 }

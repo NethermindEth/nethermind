@@ -43,11 +43,11 @@ public interface IPbtPersistence
         /// <see cref="IDisposable.Dispose"/> exactly once. Consumers must treat the memory returned by
         /// <see cref="RefCountingMemory.GetSpan"/> as read-only. The reference keeps the payload valid until
         /// released, independently of the reader. A missing group returns <see langword="null"/>. Implementations
-        /// validate that <paramref name="groupKey"/> is at a four-level boundary even when the group is absent.
+        /// validate that <paramref name="groupKey"/> is at a group boundary even when the group is absent.
         /// </remarks>
-        /// <param name="groupKey">The four-level-boundary key identifying the group.</param>
+        /// <param name="groupKey">The group-boundary key identifying the group.</param>
         /// <returns>One caller-owned reference, or <see langword="null"/> when the group is absent.</returns>
-        /// <exception cref="ArgumentException"><paramref name="groupKey"/> is not at a four-level boundary.</exception>
+        /// <exception cref="ArgumentException"><paramref name="groupKey"/> is not at a group boundary.</exception>
         RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>;
 
         /// <summary>Gets a caller-owned iterator over the persisted group keys.</summary>

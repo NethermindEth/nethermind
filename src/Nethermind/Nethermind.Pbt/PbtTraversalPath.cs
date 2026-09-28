@@ -39,15 +39,20 @@ public ref struct PbtTraversalPath
     public int BitDepth { get; private set; }
 
     /// <summary>Appends a four-bit nibble to this cursor.</summary>
-    public void AppendMut(int nibble)
+    public void AppendMut(int nibble) => AppendBits(nibble, 4);
+
+    /// <summary>Appends up to eight right-aligned bits to this cursor.</summary>
+    public void AppendBits(int bits, int bitCount)
     {
-        if ((uint)nibble > 15) throw new ArgumentOutOfRangeException(nameof(nibble));
-        int depth = BitDepth + 4;
-        if (depth > _buffer.Length * 8) throw new ArgumentOutOfRangeException(nameof(nibble));
+        if ((uint)bitCount > 8) throw new ArgumentOutOfRangeException(nameof(bitCount));
+        if ((uint)bits >= (1u << bitCount)) throw new ArgumentOutOfRangeException(nameof(bits));
+        int depth = BitDepth + bitCount;
+        if (depth > _buffer.Length * 8) throw new ArgumentOutOfRangeException(nameof(bitCount));
+        if (bitCount == 0) return;
         int byteIndex = BitDepth >> 3;
-        int shiftedBits = nibble << (12 - (BitDepth & 7));
+        int shiftedBits = bits << (16 - (BitDepth & 7) - bitCount);
         _buffer[byteIndex] |= (byte)(shiftedBits >> 8);
-        if ((BitDepth & 7) > 4) _buffer[byteIndex + 1] = (byte)shiftedBits;
+        if ((BitDepth & 7) + bitCount > 8) _buffer[byteIndex + 1] = (byte)shiftedBits;
         BitDepth = depth;
     }
 

@@ -79,9 +79,14 @@ public class PbtScopeProviderBenchmark
     [Params(1)]
     public int ChainDepth { get; set; }
 
+    // BenchmarkDotNet runs each case in a process of its own, which the group geometry is fixed for.
+    [Params(1, 2, 3, 4, 5, 6, 7, 8)]
+    public int LevelsPerGroup { get; set; }
+
     [GlobalSetup]
     public void GlobalSetup()
     {
+        PbtGroupGeometry.Configure(LevelsPerGroup);
         _provider = StateBackend switch
         {
             Backend.Pbt => CreatePbtProvider(),

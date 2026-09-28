@@ -129,7 +129,9 @@ public class PbtRebuilderTests
             PbtNodeGroupReader group = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
             physicalNodeCount += group.Count;
         }
-        Assert.That(physicalNodeCount, Is.LessThan(incrementalStore.EnumerateRecords().Count));
+        // A single-level group has no interior position to omit.
+        int logicalNodeCount = incrementalStore.EnumerateRecords().Count;
+        Assert.That(physicalNodeCount, PbtGroupGeometry.LevelsPerGroup == 1 ? Is.EqualTo(logicalNodeCount) : Is.LessThan(logicalNodeCount));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");

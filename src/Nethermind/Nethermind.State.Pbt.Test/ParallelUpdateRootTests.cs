@@ -257,9 +257,10 @@ public class ParallelUpdateRootTests
     [TestCase(new[] { 500, 600, 1024, 10 }, 1024, new[] { 2, 4 })]
     [TestCase(new[] { 10, 5000, 10, 5000 }, 1024, new[] { 2, 4 })]
     [TestCase(new[] { 1, 1, 1 }, 0, new[] { 1, 2, 3 })]
+    [Category("FourLevelGroups")]
     public void Bucket_runs_merge_consecutive_buckets_up_to_the_minimum(int[] counts, int minOperations, int[] expectedRunEnds)
     {
-        int[] runEnds = new int[PbtFourLevelGroupGeometry.BoundarySlots];
+        int[] runEnds = new int[PbtGroupGeometry.BoundarySlots];
         // The harness fan-out asks the same minimum whatever is stored, so these cases cover the merging alone.
         int runCount = TrieUpdater.PlanBucketRuns(counts, new long[counts.Length], PbtTreeHarness.FanOut(minOperations), runEnds);
         Assert.That(runEnds.AsSpan(0, runCount).ToArray(), Is.EqualTo(expectedRunEnds));
@@ -272,7 +273,7 @@ public class ParallelUpdateRootTests
     [TestCase(new[] { 20, 20, 20, 140 }, new long[] { 20000, 20000, 20000, 0 }, new[] { 2, 4 }, TestName = "A cut forgets the descendants it already charged")]
     public void Bucket_run_minimum_follows_its_own_descendants(int[] counts, long[] descendantBytes, int[] expectedRunEnds)
     {
-        int[] runEnds = new int[PbtFourLevelGroupGeometry.BoundarySlots];
+        int[] runEnds = new int[PbtGroupGeometry.BoundarySlots];
         int runCount = TrieUpdater.PlanBucketRuns(counts, descendantBytes, PbtTreeHarness.DefaultFanOut, runEnds);
         Assert.That(runEnds.AsSpan(0, runCount).ToArray(), Is.EqualTo(expectedRunEnds));
     }
@@ -289,6 +290,7 @@ public class ParallelUpdateRootTests
     // the bucket groups proves both workers fold at once.
     [TestCase(64, false)]
     [TestCase(20000, true)]
+    [Category("FourLevelGroups")]
     public void Bucket_fan_out_follows_the_stored_descendants(int keys, bool expectParallel)
     {
         (byte[] Key, byte[]? Value)[] initial = RandomZoneEntries(new Random(keys), keys).Where(entry => entry.Key[0] == 0x01).ToArray();
@@ -356,6 +358,7 @@ public class ParallelUpdateRootTests
     // and failure paths cover nested workers. A quota of three has the spare worker the zone fan-out is gated on.
     // The injected failure sits at depth 12, the deepest the 64-key tree reaches.
     [Test]
+    [Category("FourLevelGroups")]
     public void Zone_workers_write_disjoint_groups_and_join_before_returning([Values] bool failWorker, [Values(64, 20000)] int keysPerZone)
     {
         FoldFanOut fanOut = PbtTreeHarness.FanOut(8);

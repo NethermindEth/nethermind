@@ -19,7 +19,7 @@ public static class PbtNodeGroupMemory
     private const int Quantum = 32;
     private const int ClassesPerDoubling = 16;
     private const int MaxGeneratedClass = 64 * 1024;
-    private const int MaxPayloadClass = (PbtNodeGroupCodec.MaxPayloadLength + Quantum - 1) / Quantum * Quantum;
+    private static readonly int MaxPayloadClass = (PbtNodeGroupCodec.MaxPayloadLength + Quantum - 1) / Quantum * Quantum;
 
     public static SlabAllocatorOptions CreateOptions()
     {

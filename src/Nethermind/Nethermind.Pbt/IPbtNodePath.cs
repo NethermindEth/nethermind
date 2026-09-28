@@ -26,7 +26,7 @@ public interface IPbtNodePath<TSelf> : IEquatable<TSelf>, IComparable<TSelf> whe
     /// <param name="nibble">A value from zero to fifteen, appended most significant bit first.</param>
     /// <exception cref="ArgumentOutOfRangeException">The nibble is outside zero to fifteen, or the resulting path exceeds its capacity.</exception>
     TSelf AppendNib(int nibble);
-    /// <summary>Appends zero to four right-aligned bits, preserving the path type and capacity.</summary>
+    /// <summary>Appends zero to eight right-aligned bits, preserving the path type and capacity.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The count, bits, or resulting depth is outside its supported range.</exception>
     TSelf AppendBits(int bits, int bitCount);
     /// <summary>Converts this path to the selected capacity without changing its identity.</summary>

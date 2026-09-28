@@ -24,6 +24,11 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> SchemaEpochKey => "schemaEpoch"u8;
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
     private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
+    /// <summary>The stamp of the variable node-group key layout, the only one left; databases without it are padded.</summary>
+    private const byte VariableLayoutStamp = 1;
+    private static ReadOnlySpan<byte> NodeGroupLevelsKey => "nodeGroupLevels"u8;
+    /// <summary>The levels per group of databases stamped before the levels became configurable.</summary>
+    private const int UnstampedLevelsPerGroup = 4;
     private static ReadOnlySpan<byte> PrefixlessBranchOmissionKey => "prefixlessBranchOmission"u8;
     private const byte InteriorOmissionStamp = 1;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
@@ -35,28 +40,29 @@ public class PbtRocksDbPersistence(
     internal const int StemTopDepth = 260;
     private const byte ValidState = 1;
 
-    private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.NodeGroupKeyLayout, config.ImportFromPreimageFlat);
-    private readonly PbtNodeGroupKeyLayout _layout = config.NodeGroupKeyLayout;
+    private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.ImportFromPreimageFlat);
 
     internal bool IsValid => _db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey) is not null;
 
     /// <summary>Whether a metadata key is one written when the schema is stamped, so an otherwise empty database still counts as empty.</summary>
     internal static bool IsSchemaStamp(ReadOnlySpan<byte> key) =>
-        key.SequenceEqual(SchemaEpochKey) || key.SequenceEqual(NodeGroupKeyLayoutKey) || key.SequenceEqual(PrefixlessBranchOmissionKey);
+        key.SequenceEqual(SchemaEpochKey) || key.SequenceEqual(NodeGroupKeyLayoutKey) || key.SequenceEqual(NodeGroupLevelsKey)
+        || key.SequenceEqual(PrefixlessBranchOmissionKey);
 
-    private static IColumnsDb<PbtColumns> Initialize(IColumnsDb<PbtColumns> db, PbtNodeGroupKeyLayout layout, bool allowInterruptedImport)
+    private static IColumnsDb<PbtColumns> Initialize(IColumnsDb<PbtColumns> db, bool allowInterruptedImport)
     {
-        EnsureSchema(db, layout, allowInterruptedImport);
+        EnsureSchema(db, allowInterruptedImport);
         return db;
     }
 
-    private static void EnsureSchema(IColumnsDb<PbtColumns> db, PbtNodeGroupKeyLayout layout, bool allowInterruptedImport)
+    private static void EnsureSchema(IColumnsDb<PbtColumns> db, bool allowInterruptedImport)
     {
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         byte[]? storedEpoch = metadata.Get(SchemaEpochKey);
         byte[]? storedCurrentState = metadata.Get(CurrentStateKey);
         byte[]? storedValidity = metadata.Get(ValidStateKey);
         byte[]? storedLayout = metadata.Get(NodeGroupKeyLayoutKey);
+        byte[]? storedLevels = metadata.Get(NodeGroupLevelsKey);
         byte[]? storedOmission = metadata.Get(PrefixlessBranchOmissionKey);
 
         if (storedEpoch is not null && storedEpoch.Length != sizeof(int))
@@ -74,7 +80,8 @@ public class PbtRocksDbPersistence(
             Span<byte> value = stackalloc byte[sizeof(int)];
             BinaryPrimitives.WriteInt32BigEndian(value, SchemaEpoch);
             metadata.PutSpan(SchemaEpochKey, value, WriteFlags.None);
-            metadata.PutSpan(NodeGroupKeyLayoutKey, [(byte)layout], WriteFlags.None);
+            metadata.PutSpan(NodeGroupKeyLayoutKey, [VariableLayoutStamp], WriteFlags.None);
+            metadata.PutSpan(NodeGroupLevelsKey, [(byte)PbtGroupGeometry.LevelsPerGroup], WriteFlags.None);
             metadata.PutSpan(PrefixlessBranchOmissionKey, [InteriorOmissionStamp], WriteFlags.None);
             return;
         }
@@ -84,7 +91,8 @@ public class PbtRocksDbPersistence(
         {
             throw new InvalidDataException($"The pbt database uses schema epoch {epoch}, but this build reads epoch {SchemaEpoch}. Rebuild or re-import into a new pbt database.");
         }
-        ValidateLayout(storedLayout, layout);
+        ValidateLayout(storedLayout);
+        ValidateLevels(storedLevels);
         ValidateOmission(storedOmission);
 
         if ((storedCurrentState is null) != (storedValidity is null))
@@ -117,17 +125,17 @@ public class PbtRocksDbPersistence(
         return false;
     }
 
-    public IPbtPersistence.IReader CreateReader() => new Reader(_db.CreateSnapshot(), _layout);
+    public IPbtPersistence.IReader CreateReader() => new Reader(_db.CreateSnapshot());
 
     public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot, WriteFlags flags)
     {
         StateId current = ReadCurrentState(_db.GetColumnDb(PbtColumns.Metadata)).State;
         if (current != from) throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, db state: {current}");
-        return new WriteBatch(_db, _layout, to, treeRoot, flags, publishState: true);
+        return new WriteBatch(_db, to, treeRoot, flags, publishState: true);
     }
 
     public IPbtPersistence.IWriteBatch CreateStagingWriteBatch(WriteFlags flags) =>
-        new WriteBatch(_db, _layout, default, default, flags, publishState: false);
+        new WriteBatch(_db, default, default, flags, publishState: false);
 
     public void Flush() => _db.Flush();
 
@@ -155,14 +163,24 @@ public class PbtRocksDbPersistence(
         }
     }
 
-    /// <remarks>Databases stamped before the layout became configurable carry no stamp and use the padded layout.</remarks>
-    private static void ValidateLayout(byte[]? value, PbtNodeGroupKeyLayout configured)
+    /// <remarks>Databases stamped before the layout became configurable carry no stamp and use the padded layout, which is no longer read.</remarks>
+    private static void ValidateLayout(byte[]? value)
     {
-        if (value is not null && value is not [(byte)PbtNodeGroupKeyLayout.Padded or (byte)PbtNodeGroupKeyLayout.Variable])
-            throw new InvalidDataException("Malformed PBT node-group key layout stamp. Rebuild or re-import into a new pbt database.");
-        PbtNodeGroupKeyLayout stored = value is null ? PbtNodeGroupKeyLayout.Padded : (PbtNodeGroupKeyLayout)value[0];
-        if (stored != configured)
-            throw new InvalidDataException($"The pbt database uses node-group key layout {stored}, but {nameof(IPbtConfig.NodeGroupKeyLayout)} is {configured}. Match the setting, or rebuild or re-import into a new pbt database.");
+        if (value is not [VariableLayoutStamp])
+            throw new InvalidDataException("The pbt database uses the padded or an unknown node-group key layout, which is no longer supported. Rebuild or re-import into a new pbt database.");
+    }
+
+    /// <remarks>Databases stamped before the levels per group became configurable carry no stamp and use four.</remarks>
+    private static void ValidateLevels(byte[]? value)
+    {
+        int stored = value switch
+        {
+            null => UnstampedLevelsPerGroup,
+            [byte levels] => levels,
+            _ => throw new InvalidDataException("Malformed PBT node-group levels stamp. Rebuild or re-import into a new pbt database."),
+        };
+        if (stored != PbtGroupGeometry.LevelsPerGroup)
+            throw new InvalidDataException($"The pbt database uses {stored} levels per node group, but {nameof(IPbtConfig.LevelsPerGroup)} is {PbtGroupGeometry.LevelsPerGroup}. Match the setting, or rebuild or re-import into a new pbt database.");
     }
 
     /// <remarks>
@@ -185,10 +203,14 @@ public class PbtRocksDbPersistence(
         return groupKey.BitDepth <= topDepth ? PbtColumns.TopNodeGroups : partition;
     }
 
-    /// <summary>The partition column of a group keyed below the shared depth-four groups, ignoring the top split.</summary>
+    /// <summary>Whether a group shallower than the zone byte lies under the storage zone, the only zone with high bits set.</summary>
+    internal static bool IsShallowStorageGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> =>
+        groupKey.BitDepth is > 0 and < 8 && groupKey.GetByte(0) == (byte)(0xFF << (8 - groupKey.BitDepth));
+
+    /// <summary>The partition column of a group, ignoring the top split.</summary>
     internal static PbtColumns PartitionColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {
-        if (groupKey.BitDepth == 4 && groupKey.GetByte(0) == 0xF0
+        if (IsShallowStorageGroup(groupKey)
             || groupKey.BitDepth >= 8 && groupKey.GetByte(0) == Eip8297KeyDerivation.StorageZone)
             return PbtColumns.StorageNodeGroups;
         if (groupKey.BitDepth >= 8 && groupKey.GetByte(0) == Eip8297KeyDerivation.CodeZone)
@@ -196,8 +218,8 @@ public class PbtRocksDbPersistence(
         return PbtColumns.AccountNodeGroups;
     }
 
-    private static ReadOnlySpan<byte> NodeGroupStorageKey<TPath>(PbtNodeGroupKeyLayout layout, PbtColumns column, TPath groupKey, Span<byte> destination) where TPath : struct, IPbtNodePath<TPath> =>
-        column == PbtColumns.Metadata ? RootNodeGroupKey : PbtNodeGroupKey.Encode(layout, column, groupKey, destination);
+    private static ReadOnlySpan<byte> NodeGroupStorageKey<TPath>(PbtColumns column, TPath groupKey, Span<byte> destination) where TPath : struct, IPbtNodePath<TPath> =>
+        column == PbtColumns.Metadata ? RootNodeGroupKey : PbtNodeGroupKey.Encode(column, groupKey, destination);
 
     private static ReadOnlySpan<byte> PrefixUpperBound(ReadOnlySpan<byte> prefix, Span<byte> destination)
     {
@@ -212,7 +234,7 @@ public class PbtRocksDbPersistence(
         return maximum;
     }
 
-    private sealed class Reader(IColumnDbSnapshot<PbtColumns> snapshot, PbtNodeGroupKeyLayout layout) : IPbtPersistence.IReader
+    private sealed class Reader(IColumnDbSnapshot<PbtColumns> snapshot) : IPbtPersistence.IReader
     {
         private readonly (StateId State, ValueHash256 Root) _current = ReadCurrentState(snapshot.GetColumn(PbtColumns.Metadata));
         private readonly IReadOnlyKeyValueStore _metadata = snapshot.GetColumn(PbtColumns.Metadata);
@@ -310,7 +332,7 @@ public class PbtRocksDbPersistence(
         {
             PbtColumns column = NodeGroupColumn(groupKey);
             Span<byte> key = stackalloc byte[PbtNodeGroupKey.MaxLength];
-            MemoryManager<byte>? owned = GetNodeGroupColumn(column).GetOwnedMemory(NodeGroupStorageKey(layout, column, groupKey, key));
+            MemoryManager<byte>? owned = GetNodeGroupColumn(column).GetOwnedMemory(NodeGroupStorageKey(column, groupKey, key));
             // The trie node cache leases this memory as-is, so a cached group keeps its RocksDB block-cache block pinned
             // until eviction. That is acceptable: the block cache is budgeted for it and it saves a copy per cached read.
             if (owned is null) return null;
@@ -328,7 +350,7 @@ public class PbtRocksDbPersistence(
 
             using (ISortedView top = OpenGroups(PbtColumns.TopNodeGroups))
                 while (top.MoveNext())
-                    yield return PbtNodeGroupKey.Decode(layout, top.CurrentKey);
+                    yield return PbtNodeGroupKey.Decode(top.CurrentKey);
 
             using ISortedView accounts = OpenGroups(PbtColumns.AccountNodeGroups);
             using ISortedView codes = OpenGroups(PbtColumns.CodeNodeGroups);
@@ -341,7 +363,7 @@ public class PbtRocksDbPersistence(
                 ISortedView next = hasAccount ? accounts : hasCode ? codes : storage;
                 if (hasCode && codes.CurrentKey.SequenceCompareTo(next.CurrentKey) < 0) next = codes;
                 if (hasStorage && storage.CurrentKey.SequenceCompareTo(next.CurrentKey) < 0) next = storage;
-                yield return PbtNodeGroupKey.Decode(layout, next.CurrentKey);
+                yield return PbtNodeGroupKey.Decode(next.CurrentKey);
                 if (ReferenceEquals(next, accounts)) hasAccount = accounts.MoveNext();
                 else if (ReferenceEquals(next, codes)) hasCode = codes.MoveNext();
                 else hasStorage = storage.MoveNext();
@@ -371,7 +393,6 @@ public class PbtRocksDbPersistence(
 
     private sealed class WriteBatch(
         IColumnsDb<PbtColumns> db,
-        PbtNodeGroupKeyLayout layout,
         StateId to,
         ValueHash256 root,
         WriteFlags flags,
@@ -427,7 +448,7 @@ public class PbtRocksDbPersistence(
             PbtColumns column = NodeGroupColumn(groupKey);
             IWriteBatch groups = _batch.GetColumnBatch(column);
             Span<byte> key = stackalloc byte[PbtNodeGroupKey.MaxLength];
-            ReadOnlySpan<byte> storageKey = NodeGroupStorageKey(layout, column, groupKey, key);
+            ReadOnlySpan<byte> storageKey = NodeGroupStorageKey(column, groupKey, key);
             if (payload is null) groups.Set(storageKey, null, flags);
             else groups.PutSpan(storageKey, payload.GetSpan(), flags);
         }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 
@@ -22,26 +21,26 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <see cref="Mask"/> marks the positions that hold a node. Taking one leaves its bit set: <see cref="SetBoundary"/>
     /// rewrites a folded slot's bit, and composition visits each position once.
     /// </remarks>
-    /// <param name="touchedMask">The slots the folds replace, whose results are held by rank in a span sized to them.</param>
-    internal struct Frontier(int touchedMask)
+    /// <param name="touched">The slots the folds replace, whose results are held by rank in a span sized to them.</param>
+    internal struct Frontier(in PbtBitmap touched)
     {
         internal EntryBuffer Entries;
-        internal uint Mask;
+        internal PbtBitmap Mask;
         /// <summary>The stored positions with no touched slot under them, which <see cref="Compose"/> copies straight from the frame.</summary>
-        internal uint Copies;
+        internal PbtBitmap Copies;
         /// <summary>The positions below the group root that the group stores a node at.</summary>
-        internal uint Stored;
+        internal PbtBitmap Stored;
         /// <summary>The touched slots whose entries are resolved only once their fold takes them.</summary>
-        internal int Unresolved;
+        internal PbtBitmap Unresolved;
         /// <summary>The input node, for the slots that resolve to the group's own root instead of a node inside it.</summary>
         internal BoundaryNode Root;
-        private readonly uint _touchedMask = (uint)touchedMask;
+        private readonly PbtBitmap _touched = touched;
 
         /// <summary>Records that <paramref name="slot"/> is read from <paramref name="source"/>, occupying <paramref name="position"/>.</summary>
         internal void Place(int slot, int position, EntrySource source, int sourcePosition)
         {
             Entries[slot] = new DecompositionEntry(source, sourcePosition);
-            Mask |= 1u << position;
+            Mask.Set(position);
         }
 
         /// <summary>Takes the boundary node at <paramref name="slot"/>, resolving it against the frame it was read from.</summary>
@@ -78,13 +77,13 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         private readonly int ResultIndex(int slot)
         {
-            Debug.Assert((_touchedMask >> slot & 1) != 0, "Only a touched slot holds a fold's result.");
-            return BitOperations.PopCount(_touchedMask & ((1u << slot) - 1));
+            Debug.Assert(_touched.IsSet(slot), "Only a touched slot holds a fold's result.");
+            return _touched.PopCountBelow(slot);
         }
     }
 
     /// <summary>The source position standing for <see cref="Frontier.Root"/>, which no group position addresses.</summary>
-    internal const int RootSource = PbtNodeGroupCodec.PositionCount;
+    internal static readonly int RootSource = PbtNodeGroupCodec.PositionCount;
 
     /// <summary>Where a frontier slot reads its node from.</summary>
     internal enum EntrySource : byte
@@ -99,6 +98,6 @@ internal static partial class TrieUpdater<TKey, TPath>
         RightLeafOf,
     }
 
-    [InlineArray(PbtFourLevelGroupGeometry.BoundarySlots)]
+    [InlineArray(PbtGroupGeometry.MaxBoundarySlots)]
     internal struct EntryBuffer { private DecompositionEntry _element; }
 }

@@ -12,33 +12,35 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtNodeGroupKeyTests
 {
-    private static readonly string StorageZeroPadding = new('0', 132);
-    private static readonly string AccountZeroPadding = new('0', 68);
-
-    [TestCase(PbtColumns.TopNodeGroups, "00", 4, "01", "0001")]
-    [TestCase(PbtColumns.TopNodeGroups, "f0", 4, "01", "f001")]
-    [TestCase(PbtColumns.TopNodeGroups, "ff0000000000000000000000000000000000000000000000000000000000000000", 260, "41", "ff000000000000000000000000000000000000000000000000000000000000000001")]
-    [TestCase(PbtColumns.AccountNodeGroups, "80", 8, "02", "8000")]
-    [TestCase(PbtColumns.CodeNodeGroups, "01ab", 16, "04", "01ab00")]
-    [TestCase(PbtColumns.StorageNodeGroups, "f0", 4, "01", "f001")]
-    [TestCase(PbtColumns.StorageNodeGroups, "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0", 524, "83", "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff001")]
-    public void Encode_pads_or_trails_the_path_per_layout(PbtColumns column, string pathHex, int bitDepth, string nibbleCountHex, string variableHex)
+    [TestCase(PbtColumns.TopNodeGroups, "00", 4, "0001")]
+    [TestCase(PbtColumns.TopNodeGroups, "f0", 4, "f001")]
+    [TestCase(PbtColumns.TopNodeGroups, "ff0000000000000000000000000000000000000000000000000000000000000000", 260, "ff000000000000000000000000000000000000000000000000000000000000000001")]
+    [TestCase(PbtColumns.AccountNodeGroups, "80", 8, "8000")]
+    [TestCase(PbtColumns.CodeNodeGroups, "01ab", 16, "01ab00")]
+    [TestCase(PbtColumns.StorageNodeGroups, "f0", 4, "f001")]
+    [TestCase(PbtColumns.StorageNodeGroups, "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0", 524, "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff001")]
+    [TestCase(PbtColumns.TopNodeGroups, "80", 1, "8004")]
+    [TestCase(PbtColumns.TopNodeGroups, "c0", 2, "c002")]
+    [TestCase(PbtColumns.TopNodeGroups, "e0", 3, "e003")]
+    [TestCase(PbtColumns.TopNodeGroups, "f8", 5, "f805")]
+    [TestCase(PbtColumns.TopNodeGroups, "fc", 6, "fc06")]
+    [TestCase(PbtColumns.TopNodeGroups, "fe", 7, "fe07")]
+    [TestCase(PbtColumns.AccountNodeGroups, "ab80", 9, "ab8004")]
+    [TestCase(PbtColumns.StorageNodeGroups, "ff00e0", 21, "ff00e005")]
+    public void Encode_trails_the_path_with_its_last_byte_bit_count(PbtColumns column, string pathHex, int bitDepth, string keyHex)
     {
-        string padding = column == PbtColumns.StorageNodeGroups ? StorageZeroPadding : AccountZeroPadding;
-        byte[] expectedPadded = Bytes.FromHexString((pathHex + padding)[..padding.Length] + nibbleCountHex);
-        byte[] expectedVariable = Bytes.FromHexString(variableHex);
+        byte[] expected = Bytes.FromHexString(keyHex);
         PbtStorageNodePath storagePath = new(Bytes.FromHexString(pathHex), bitDepth);
 
         using (Assert.EnterMultipleScope())
         {
-            foreach ((PbtNodeGroupKeyLayout layout, byte[] expected) in new[] { (PbtNodeGroupKeyLayout.Padded, expectedPadded), (PbtNodeGroupKeyLayout.Variable, expectedVariable) })
-            {
-                byte[] fromStoragePath = storagePath.ToStorageKey(column, layout);
-                Assert.That(fromStoragePath, Is.EqualTo(expected), layout.ToString());
-                if (bitDepth <= PbtNodePath.MaxBitDepth)
-                    Assert.That(new PbtNodePath(Bytes.FromHexString(pathHex), bitDepth).ToStorageKey(column, layout), Is.EqualTo(expected), layout.ToString());
-                Assert.That(PbtNodeGroupKey.Decode(layout, fromStoragePath), Is.EqualTo(storagePath), layout.ToString());
-            }
+            Assert.That(storagePath.ToStorageKey(column), Is.EqualTo(expected));
+            if (bitDepth <= PbtNodePath.MaxBitDepth)
+                Assert.That(new PbtNodePath(Bytes.FromHexString(pathHex), bitDepth).ToStorageKey(column), Is.EqualTo(expected));
+            if (PbtGroupGeometry.IsGroupDepth(bitDepth))
+                Assert.That(PbtNodeGroupKey.Decode(expected), Is.EqualTo(storagePath));
+            else
+                Assert.That(() => PbtNodeGroupKey.Decode(expected), Throws.TypeOf<InvalidDataException>());
         }
     }
 
@@ -48,35 +50,28 @@ public class PbtNodeGroupKeyTests
     [TestCase("a0", 4, "a1", 8, true, TestName = "Nibble_group_precedes_non_zero_nibble_child")]
     [TestCase("a0", 4, "a010", 16, true, TestName = "Nibble_group_precedes_non_zero_byte_descendant")]
     [TestCase("a0", 4, "a000", 16, false, TestName = "Nibble_group_follows_zero_byte_descendant")]
-    public void Variable_sorts_a_group_relative_to_its_descendants(string groupHex, int groupDepth, string descendantHex, int descendantDepth, bool groupFirst)
+    [TestCase("e0", 3, "e4", 6, true, TestName = "Three_bit_group_precedes_its_descendant_past_the_trailer")]
+    [TestCase("e0", 3, "e002", 16, false, TestName = "Three_bit_group_follows_descendant_below_the_trailer")]
+    public void Sorts_a_group_relative_to_its_descendants(string groupHex, int groupDepth, string descendantHex, int descendantDepth, bool groupFirst)
     {
-        byte[] group = new PbtStorageNodePath(Bytes.FromHexString(groupHex), groupDepth).ToStorageKey(PbtColumns.StorageNodeGroups, PbtNodeGroupKeyLayout.Variable);
-        byte[] descendant = new PbtStorageNodePath(Bytes.FromHexString(descendantHex), descendantDepth).ToStorageKey(PbtColumns.StorageNodeGroups, PbtNodeGroupKeyLayout.Variable);
+        byte[] group = new PbtStorageNodePath(Bytes.FromHexString(groupHex), groupDepth).ToStorageKey(PbtColumns.StorageNodeGroups);
+        byte[] descendant = new PbtStorageNodePath(Bytes.FromHexString(descendantHex), descendantDepth).ToStorageKey(PbtColumns.StorageNodeGroups);
         Assert.That(group.AsSpan().SequenceCompareTo(descendant) < 0, Is.EqualTo(groupFirst));
     }
 
     [Test]
-    public void Encode_rejects_a_path_beyond_the_column_capacity([Values] PbtNodeGroupKeyLayout layout) =>
-        Assert.That(() => new PbtStorageNodePath(Bytes.FromHexString("ff" + new string('0', 68)), 280).ToStorageKey(PbtColumns.AccountNodeGroups, layout),
+    public void Encode_rejects_a_path_beyond_the_column_capacity() =>
+        Assert.That(() => new PbtStorageNodePath(Bytes.FromHexString("ff" + new string('0', 68)), 280).ToStorageKey(PbtColumns.AccountNodeGroups),
             Throws.TypeOf<ArgumentOutOfRangeException>());
 
-    [TestCase(PbtNodeGroupKeyLayout.Padded, "", TestName = "Padded_rejects_empty_key")]
-    [TestCase(PbtNodeGroupKeyLayout.Padded, "00000000000000000000000000000000000000000000000000000000000000000001", TestName = "Padded_rejects_34_byte_key")]
-    [TestCase(PbtNodeGroupKeyLayout.Padded, "000000000000000000000000000000000000000000000000000000000000000000000001", TestName = "Padded_rejects_36_byte_key")]
-    [TestCase(PbtNodeGroupKeyLayout.Padded, "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", TestName = "Padded_rejects_66_byte_key")]
-    [TestCase(PbtNodeGroupKeyLayout.Padded, "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", TestName = "Padded_rejects_68_byte_key")]
-    [TestCase(PbtNodeGroupKeyLayout.Padded, "0000000000000000000000000000000000000000000000000000000000000000000000", TestName = "Padded_rejects_root_depth")]
-    [TestCase(PbtNodeGroupKeyLayout.Padded, "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000084", TestName = "Padded_rejects_depth_past_the_maximum_group_depth")]
-    [TestCase(PbtNodeGroupKeyLayout.Padded, "000000000000000000000000000000000000000000000000000000000000000000004b", TestName = "Padded_rejects_depth_past_the_column_capacity")]
-    [TestCase(PbtNodeGroupKeyLayout.Padded, "000000000000000000000000000000000000000000000000000000000000000000ff01", TestName = "Padded_rejects_non_zero_padding")]
-    [TestCase(PbtNodeGroupKeyLayout.Padded, "0f00000000000000000000000000000000000000000000000000000000000000000001", TestName = "Padded_rejects_non_zero_unused_bits")]
-    [TestCase(PbtNodeGroupKeyLayout.Variable, "", TestName = "Variable_rejects_empty_key")]
-    [TestCase(PbtNodeGroupKeyLayout.Variable, "01", TestName = "Variable_rejects_trailer_only_key")]
-    [TestCase(PbtNodeGroupKeyLayout.Variable, "ab02", TestName = "Variable_rejects_unknown_trailer")]
-    [TestCase(PbtNodeGroupKeyLayout.Variable, "ab04", TestName = "Variable_rejects_bit_count_trailer")]
-    [TestCase(PbtNodeGroupKeyLayout.Variable, "0f01", TestName = "Variable_rejects_non_zero_unused_bits")]
-    [TestCase(PbtNodeGroupKeyLayout.Variable, "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", TestName = "Variable_rejects_depth_past_the_maximum_group_depth")]
-    [TestCase(PbtNodeGroupKeyLayout.Variable, "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", TestName = "Variable_rejects_path_past_the_storage_capacity")]
-    public void Decode_rejects_malformed_keys(PbtNodeGroupKeyLayout layout, string keyHex) =>
-        Assert.That(() => PbtNodeGroupKey.Decode(layout, Bytes.FromHexString(keyHex)), Throws.TypeOf<InvalidDataException>());
+    [TestCase("", TestName = "Rejects_empty_key")]
+    [TestCase("01", TestName = "Rejects_trailer_only_key")]
+    [TestCase("ab08", TestName = "Rejects_trailer_past_seven_bits")]
+    [TestCase("ab02", TestName = "Rejects_non_zero_unused_bits_of_a_two_bit_path")]
+    [TestCase("0f01", TestName = "Rejects_non_zero_unused_bits_of_a_nibble_path")]
+    [TestCase("c004", TestName = "Rejects_non_zero_unused_bits_of_a_one_bit_path")]
+    [TestCase("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", TestName = "Rejects_depth_past_the_maximum_group_depth")]
+    [TestCase("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", TestName = "Rejects_path_past_the_storage_capacity")]
+    public void Decode_rejects_malformed_keys(string keyHex) =>
+        Assert.That(() => PbtNodeGroupKey.Decode(Bytes.FromHexString(keyHex)), Throws.TypeOf<InvalidDataException>());
 }

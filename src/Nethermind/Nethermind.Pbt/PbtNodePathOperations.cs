@@ -31,7 +31,7 @@ internal static class PbtNodePathOperations
     internal static TPath AppendBits<TPath>(ReadOnlySpan<byte> source, int bitDepth, int bits, int bitCount)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        if ((uint)bitCount > 4) throw new ArgumentOutOfRangeException(nameof(bitCount));
+        if ((uint)bitCount > 8) throw new ArgumentOutOfRangeException(nameof(bitCount));
         if ((uint)bits >= (1u << bitCount)) throw new ArgumentOutOfRangeException(nameof(bits));
         int depth = bitDepth + bitCount;
         if (depth > TPath.MaxBitDepth) throw new ArgumentOutOfRangeException(nameof(bitCount));

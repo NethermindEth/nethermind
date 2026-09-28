@@ -127,11 +127,12 @@ public class PbtRocksDbConfigAdjusterTests
     }
 
     [Test]
-    public void NodeGroupsReopenFromRocksDbAsCanonicalNodes([Values] PbtNodeGroupKeyLayout layout)
+    [Category("FourLevelGroups")]
+    public void NodeGroupsReopenFromRocksDbAsCanonicalNodes()
     {
         using TempPath dbPath = TempPath.GetTempDirectory();
         DbConfig dbConfig = new();
-        PbtConfig pbtConfig = new() { NodeGroupKeyLayout = layout };
+        PbtConfig pbtConfig = new();
         PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, pbtConfig, Substitute.For<IDisposableStack>(), LimboLogs.Instance);
         byte[] widePath = new byte[35];
         widePath[0] = Eip8297KeyDerivation.StorageZone;
@@ -172,7 +173,7 @@ public class PbtRocksDbConfigAdjusterTests
             {
                 foreach ((PbtStorageNodePath path, PbtColumns _) in groups)
                 {
-                    PbtStorageNodePath nodePath = PbtFourLevelGroupGeometry.PathOf(path, NodePosition(path));
+                    PbtStorageNodePath nodePath = PbtGroupGeometry.PathOf(path, NodePosition(path));
                     PbtNodeGroupEncoder.Encode(ref writer, path, [new PbtNodeRecord(nodePath, encoding)], default);
                     using RefCountingMemory payload = writer.Detach()!;
                     batch.SetNodeGroup(path, payload);
@@ -210,7 +211,7 @@ public class PbtRocksDbConfigAdjusterTests
             {
                 using RefCountingMemory? payload = reader.GetNodeGroup(path);
                 Assert.That(payload, Is.Not.Null, $"group {path.BitDepth}:{Convert.ToHexString(path.ToPathArray())}");
-                byte[] storageKeyBytes = path.ToStorageKey(column, layout);
+                byte[] storageKeyBytes = path.ToStorageKey(column);
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(db.GetColumnDb(column).Get(storageKeyBytes), Is.EqualTo(payload!.GetSpan().ToArray()));
@@ -219,7 +220,7 @@ public class PbtRocksDbConfigAdjusterTests
             }
         }
 
-        static int NodePosition(PbtStorageNodePath path) => path.BitDepth == 0 ? PbtFourLevelGroupGeometry.RootPosition : 0;
+        static int NodePosition(PbtStorageNodePath path) => path.BitDepth == 0 ? PbtGroupGeometry.RootPosition : 0;
 
         ColumnsDb<PbtColumns> NewDb() => new(dbPath.Path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig,
             adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());

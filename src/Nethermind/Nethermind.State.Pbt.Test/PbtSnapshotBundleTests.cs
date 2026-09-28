@@ -157,6 +157,7 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
+    [Category("FourLevelGroups")]
     public void SnapshotContent_DisjointGroupReplacementAndResetPreserveReadLeases([Values(1, 16)] int groupCount, [Values] bool tombstone)
     {
         using PbtSnapshotContent content = new();
@@ -175,13 +176,13 @@ public class PbtSnapshotBundleTests
                     Assert.That(content.TryGetNodeGroup(groupPath, out RefCountingMemory? missing), Is.False);
                     using (missing) Assert.That(missing, Is.Null);
 
-                    byte[] original = EncodeGroup(groupPath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(groupPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding((byte)(round + 1)))]);
+                    byte[] original = EncodeGroup(groupPath, [new PbtNodeRecord(PbtGroupGeometry.PathOf(groupPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding((byte)(round + 1)))]);
                     originalEncodings[index] = original;
                     using (RefCountingMemory payload = Memory(original, memoryProvider)) content.SetNodeGroup(groupPath, payload);
                     Assert.That(content.TryGetNodeGroup(groupPath, out retained[index]), Is.True);
                     Assert.That(retained[index], Is.Not.Null);
 
-                    byte[] replacement = EncodeGroup(groupPath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(groupPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding((byte)(round + 3)))]);
+                    byte[] replacement = EncodeGroup(groupPath, [new PbtNodeRecord(PbtGroupGeometry.PathOf(groupPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding((byte)(round + 3)))]);
                     using (RefCountingMemory? payload = tombstone ? null : Memory(replacement, memoryProvider))
                         content.SetNodeGroup(groupPath, payload);
                     bool found = content.TryGetNodeGroup(groupPath, out RefCountingMemory? current);
@@ -509,6 +510,7 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
+    [Category("FourLevelGroups")]
     public void Trie_cache_reuses_unchanged_descendants_across_roots([Values] bool forkWarms)
     {
         PbtNodePath path = new(Bytes.FromHexString("00"), 4);
@@ -516,7 +518,7 @@ public class PbtSnapshotBundleTests
         byte[] changedNode = BranchEncoding(2);
         ValueHash256 originalHash = PbtNodeCodec.Hash(PbtNodeReader.FromValidated(originalNode));
         ValueHash256 changedHash = PbtNodeCodec.Hash(PbtNodeReader.FromValidated(changedNode));
-        PbtStorageNodePath childPath = PbtFourLevelGroupGeometry.PathOf(path, 0).ToPath<PbtStorageNodePath>();
+        PbtStorageNodePath childPath = PbtGroupGeometry.PathOf(path, 0).ToPath<PbtStorageNodePath>();
         byte[] original = EncodeGroup(path, [new PbtNodeRecord(childPath, originalNode)]);
         byte[] changed = EncodeGroup(path, [new PbtNodeRecord(childPath, changedNode)]);
         using PbtTrieNodeCache cache = new(new PbtConfig());
@@ -559,6 +561,7 @@ public class PbtSnapshotBundleTests
 
     [NonParallelizable]
     [Test]
+    [Category("FourLevelGroups")]
     public void Transient_stages_folded_and_warmed_groups_and_bulk_add_folds_them_into_the_shared_cache([ValueSource(nameof(CachePartitions))] string partition, [Values] bool rocksDbBacked)
     {
         long initialEntries = Metrics.PbtTrieCacheEntries[partition];
@@ -568,9 +571,9 @@ public class PbtSnapshotBundleTests
         RocksDbMemoryProvider rocksDbMemory = new();
         PbtNodePath foldedPath = CachePath(partition);
         PbtNodePath warmedPath = CachePath(partition, 1);
-        byte[] first = EncodeGroup(foldedPath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(foldedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
-        byte[] second = EncodeGroup(foldedPath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(foldedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(2))]);
-        byte[] warmed = EncodeGroup(warmedPath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(warmedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(3))]);
+        byte[] first = EncodeGroup(foldedPath, [new PbtNodeRecord(PbtGroupGeometry.PathOf(foldedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
+        byte[] second = EncodeGroup(foldedPath, [new PbtNodeRecord(PbtGroupGeometry.PathOf(foldedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(2))]);
+        byte[] warmed = EncodeGroup(warmedPath, [new PbtNodeRecord(PbtGroupGeometry.PathOf(warmedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(3))]);
         ValueHash256 firstHash = new(Value(1));
         ValueHash256 secondHash = new(Value(2));
         ValueHash256 warmedHash = new(Value(3));
@@ -1006,12 +1009,13 @@ public class PbtSnapshotBundleTests
     [TestCase(1, true)]
     [TestCase(2, true)]
     [TestCase(3, true)]
+    [Category("FourLevelGroups")]
     public void Node_group_newest_full_replacement_or_tombstone_stops_fallback(int newestTier, bool tombstone)
     {
         PbtNodePath groupKey = new([], 0);
         PbtStorageNodePath wideGroupKey = new([], 0);
         byte[] persisted = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(1)),
-            new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(groupKey, 14).ToPath<PbtStorageNodePath>(), BranchEncoding(2))]);
+            new PbtNodeRecord(PbtGroupGeometry.PathOf(groupKey, 14).ToPath<PbtStorageNodePath>(), BranchEncoding(2))]);
         byte[] shared = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(3))]);
         byte[] local = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(4))]);
         byte[] write = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(5))]);
@@ -1056,6 +1060,7 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
+    [Category("FourLevelGroups")]
     public void Malformed_persisted_group_is_rejected_by_updater_and_lease_is_released_without_mutating_snapshot()
     {
         TrackingMemoryProvider memoryProvider = new();
@@ -1069,7 +1074,7 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         PbtStorageTreeKey originalLeafKey = PbtStateKey.Storage(TestItem.AddressA, 1);
         PbtNodePath originalGroupKey = new([0x80], 4);
-        byte[] originalGroup = EncodeGroup(originalGroupKey, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(originalGroupKey, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
+        byte[] originalGroup = EncodeGroup(originalGroupKey, [new PbtNodeRecord(PbtGroupGeometry.PathOf(originalGroupKey, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
         using RefCountingMemory originalPayload = Memory(originalGroup);
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(Value(2)));
         bundle.SetNodeGroup(originalGroupKey, TestItem.KeccakA.ValueHash256, originalPayload);
@@ -1081,13 +1086,14 @@ public class PbtSnapshotBundleTests
 
 
     [Test]
+    [Category("FourLevelGroups")]
     public void Updater_group_read_failure_preserves_prior_deltas_and_does_not_apply()
     {
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
         PbtStorageTreeKey originalLeafKey = PbtStateKey.Storage(TestItem.AddressA, 1);
         ValueHash256 originalLeafValue = new(Value(2));
         PbtNodePath originalNodePath = new([0x80], 4);
-        byte[] originalNode = EncodeGroup(originalNodePath, [new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(originalNodePath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
+        byte[] originalNode = EncodeGroup(originalNodePath, [new PbtNodeRecord(PbtGroupGeometry.PathOf(originalNodePath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
         Reader reader = new(new PbtStorageTreeKey([0]), null) { GroupReadException = new InvalidDataException("Configured group read failure.") };
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(originalLeafValue.Bytes));
@@ -1461,6 +1467,7 @@ public class PbtSnapshotBundleTests
     [TestCase(0x00)]
     [TestCase(0x01)]
     [TestCase(0xFF)]
+    [Category("FourLevelGroups")]
     public void Failed_partition_fold_keeps_mutations_pending_without_completing_snapshot(int failedZone)
     {
         PbtResourcePool pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);

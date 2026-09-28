@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
-using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
 
@@ -39,7 +38,7 @@ public class PbtConfig : IPbtConfig
     public bool ScanTree { get; set; }
     public int ScanTreeConcurrency { get; set; }
 
-    public PbtNodeGroupKeyLayout NodeGroupKeyLayout { get; set; } = PbtNodeGroupKeyLayout.Variable;
+    public int? LevelsPerGroup { get; set; }
     public bool CarryForwardCache { get; set; } = true;
     public bool NativeNodeGroupMemory { get; set; } = true;
 

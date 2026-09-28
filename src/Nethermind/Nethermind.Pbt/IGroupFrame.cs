@@ -20,10 +20,10 @@ internal interface IGroupFrame<TKey, TPath>
     long DescendantBytes(int slot);
 
     /// <summary>The boundary slots whose <see cref="DescendantBytes"/> may be nonzero; every other slot is zero.</summary>
-    ushort DescendantMask { get; }
+    PbtBitmap DescendantMask { get; }
 
     /// <summary>The positions the group stores an encoding at.</summary>
-    uint StoredPositions { get; }
+    PbtBitmap StoredPositions { get; }
 
     /// <summary>The encoding stored at <paramref name="position"/>, or empty when the group leaves it out.</summary>
     ReadOnlyMemory<byte> GetEncoding(int position);

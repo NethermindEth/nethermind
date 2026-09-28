@@ -41,7 +41,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     /// <summary>Consumes a subtree and applies its sorted mutation range, encoding the canonical replacement.</summary>
     /// <remarks>
-    /// Mutations sharing a prefix share traversal through four-bit groups (16 boundary slots). Shared prefixes skip
+    /// Mutations sharing a prefix share traversal through groups of <see cref="PbtGroupGeometry.LevelsPerGroup"/> levels. Shared prefixes skip
     /// intermediate groups; each group is rebuilt by the in-frame recursion, which folds its touched slots below.
     /// </remarks>
     /// <param name="anchorDepth">The depth the caller places the result at; the range and <paramref name="input"/> share the path down to <paramref name="bitDepth"/>.</param>
@@ -100,7 +100,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             branchDepth = Math.Min(branchDepth, current.LeafKey(path).FirstDifferingBit(firstKey, bitDepth));
         else if (!current.IsEmpty)
             branchDepth = Math.Min(branchDepth, current.FirstDifferingBit(path, firstKey, bitDepth));
-        int groupDepth = branchDepth / PbtFourLevelGroupGeometry.LevelsPerGroup * PbtFourLevelGroupGeometry.LevelsPerGroup;
+        int groupDepth = branchDepth / PbtGroupGeometry.LevelsPerGroup * PbtGroupGeometry.LevelsPerGroup;
         if (groupDepth > bitDepth)
         {
             path.AppendKey(firstKey.Bytes, groupDepth);
@@ -138,26 +138,33 @@ internal static partial class TrieUpdater<TKey, TPath>
     {
         using PbtNodeGroupWriter<TPath> writer = PbtNodeGroupWriter<TPath>.Rent(bitDepth, context.MemoryProvider);
         StoredGroupHashes.Open(out StoredGroupHashes hashes);
-        ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path, default);
-        SlotNode result = default;
-        ValueHash256 groupHash = default;
-        if (!root.IsEmpty)
+        try
         {
-            ReadOnlySpan<byte> node = writer.Entry(root.Offset, root.Length).Span;
-            groupHash = root.Hash != default ? root.Hash : HashBranch(node);
-            result = anchorDepth == bitDepth || PbtNodeReader.FromValidated(node).IsLeaf
-                ? Copy(node, groupHash, encoding)
-                : new SlotNode(EncodeLifted(PbtNodeReader.FromValidated(node), path, anchorDepth, encoding), default);
-            writer.DropLast(PbtFourLevelGroupGeometry.RootPosition);
+            ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path, default);
+            SlotNode result = default;
+            ValueHash256 groupHash = default;
+            if (!root.IsEmpty)
+            {
+                ReadOnlySpan<byte> node = writer.Entry(root.Offset, root.Length).Span;
+                groupHash = root.Hash != default ? root.Hash : HashBranch(node);
+                result = anchorDepth == bitDepth || PbtNodeReader.FromValidated(node).IsLeaf
+                    ? Copy(node, groupHash, encoding)
+                    : new SlotNode(EncodeLifted(PbtNodeReader.FromValidated(node), path, anchorDepth, encoding), default);
+                writer.DropLast(PbtGroupGeometry.RootPosition);
+            }
+            result.SizeDelta = PublishGroup(context.Writer, ref reader, writer, path, groupHash);
+            return result;
         }
-        result.SizeDelta = PublishGroup(context.Writer, ref reader, writer, path, groupHash);
-        return result;
+        finally
+        {
+            hashes.Dispose();
+        }
     }
 
     /// <summary>Rebuilds the open frame's group from <paramref name="input"/> and the range, leaving its root as the last entry, at the root position.</summary>
     /// <param name="shardTable">
-    /// The producer's shard table when the operations are grouped by this frame's slot nibble: the used-slot mask, then
-    /// each used slot's count. Slot ranges are then read from it rather than from the keys. Empty otherwise.
+    /// The producer's shard table when the operations are grouped by this frame's slots, which only four-level groups
+    /// are: the used-slot mask, then each used slot's count. Slot ranges are then read from it rather than from the keys. Empty otherwise.
     /// </param>
     private static ComposedNode WalkFrame<TFrame>(FoldContext context, ref TFrame reader, ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
         scoped in BoundaryNode input, ReadOnlySpan<PbtWriteOperation<TKey>> operations, PbtTraversalPath path, ReadOnlySpan<int> shardTable)
@@ -165,9 +172,12 @@ internal static partial class TrieUpdater<TKey, TPath>
     {
         int bitDepth = path.BitDepth;
         // Only a branch splitting inside the group has anything stored in it; the root position is the input itself.
-        uint stored = !input.IsEmpty && !input.IsLeaf && input.BranchDepth < bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup
-            ? reader.StoredPositions & ~(1u << PbtFourLevelGroupGeometry.RootPosition)
-            : 0;
+        PbtBitmap stored = default;
+        if (!input.IsEmpty && !input.IsLeaf && input.BranchDepth < bitDepth + PbtGroupGeometry.LevelsPerGroup)
+        {
+            stored = reader.StoredPositions;
+            stored.Clear(PbtGroupGeometry.RootPosition);
+        }
         writer.ReserveFirstBuffer(reader.PayloadLength);
         SortedWalk<TFrame> walk = new(context, ref reader, ref hashes, writer, path, input, stored, operations, shardTable);
         try
@@ -175,7 +185,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (context.FoldQuota is not null) TryFoldSlotsInParallel(ref walk);
             ComposedNode root = Walk(ref walk, default, input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource));
             Debug.Assert(walk.Next == operations.Length, "The walk consumes every operation of its frame.");
-            return root.IsEmpty ? default : Land(ref reader, ref hashes, writer, path, root, PbtFourLevelGroupGeometry.RootPosition);
+            return root.IsEmpty ? default : Land(ref reader, ref hashes, writer, path, root, PbtGroupGeometry.RootPosition);
         }
         finally
         {
@@ -204,11 +214,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         ReadOnlySpan<PbtWriteOperation<TKey>> operations = walk.Operations;
         if (operations.Length < 2 * Math.Min(fanOut.MinOperationsPerWorker, fanOut.LargeSubtreeMinOperationsPerWorker)) return;
 
-        Span<int> slots = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        Span<int> starts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        Span<int> counts = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        Span<long> descendantBytes = stackalloc long[PbtFourLevelGroupGeometry.BoundarySlots];
-        Span<Cover> covers = stackalloc Cover[PbtFourLevelGroupGeometry.BoundarySlots];
+        Span<int> slots = stackalloc int[PbtGroupGeometry.BoundarySlots];
+        Span<int> starts = stackalloc int[PbtGroupGeometry.BoundarySlots];
+        Span<int> counts = stackalloc int[PbtGroupGeometry.BoundarySlots];
+        Span<long> descendantBytes = stackalloc long[PbtGroupGeometry.BoundarySlots];
+        Span<Cover> covers = stackalloc Cover[PbtGroupGeometry.BoundarySlots];
         int bitDepth = walk.BitDepth;
         int foldCount = 0;
         for (int index = 0; index < operations.Length;)
@@ -225,7 +235,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             covers[foldCount++] = cover;
         }
 
-        Span<int> runEnds = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        Span<int> runEnds = stackalloc int[PbtGroupGeometry.BoundarySlots];
         int runCount = PlanBucketRuns(counts[..foldCount], descendantBytes[..foldCount], fanOut, runEnds);
         if (runCount < 2) return;
 
@@ -246,15 +256,15 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             folds[fold] = new SortedSlotFold(slots[fold], operationOffset + starts[fold], counts[fold], walk.Boundary(covers[fold]), descendantBytes[fold]);
         }
-        walk.FoldedAhead ??= ArrayPool<byte>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots * MaxNodeLength);
-        walk.FoldedAheadNodes ??= ArrayPool<SlotNode>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots);
+        walk.FoldedAhead ??= ArrayPool<byte>.Shared.Rent(PbtGroupGeometry.BoundarySlots * MaxNodeLength);
+        walk.FoldedAheadNodes ??= ArrayPool<SlotNode>.Shared.Rent(PbtGroupGeometry.BoundarySlots);
         FoldSlotRuns(context, folds, runEnds[..runCount], walk.Path.ToPath<TPath>(), bitDepth, walk.FoldedAhead);
 
         foreach (ref SortedSlotFold fold in folds.AsSpan(0, foldCount))
         {
             walk.Writer.AddDescendantDelta(fold.Slot, fold.Result.SizeDelta);
             walk.FoldedAheadNodes[fold.Slot] = fold.Result;
-            walk.FoldedAheadMask |= 1 << fold.Slot;
+            walk.FoldedAheadMask.Set(fold.Slot);
         }
         // The folds hold boundary encodings; clear so the pool does not keep them alive.
         ArrayPool<SortedSlotFold>.Shared.Return(folds, clearArray: true);
@@ -378,13 +388,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
             PbtTraversalPath path = PbtTraversalPath.FromPath(pathBuffer, groupPath);
-            path.AppendMut(Slot);
+            path.AppendBits(Slot, PbtGroupGeometry.LevelsPerGroup);
             // The fold below only reads its owner's depth and this slot's descendant size, so a stand-in carrying that
             // size replaces the frame, which stays with the calling thread.
             AbsentGroupFrame<TKey, TPath> owner = new(bitDepth, Slot, descendantBytes);
             using IPbtConcurrentWriter writer = context.Store.CreateWriter();
             FoldContext workerContext = new(context.Store, writer, context.MemoryProvider, context.FoldQuota, context.Operations, context.FanOut);
-            int slotDepth = bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
+            int slotDepth = bitDepth + PbtGroupGeometry.LevelsPerGroup;
             Result = FoldSortedRange(workerContext, ref owner, boundary, context.Operations.AsSpan(offset, count), ref path,
                 slotDepth, slotDepth, foldedAhead.AsSpan(Slot * MaxNodeLength, MaxNodeLength));
         }
@@ -531,7 +541,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         if (!walk.Owns(local)) return AppendUntouched(ref walk, local, cover);
-        if (local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup) return FoldSlot(ref walk, local, cover, walk.Take(local));
+        if (local.Length == PbtGroupGeometry.LevelsPerGroup) return FoldSlot(ref walk, local, cover, walk.Take(local));
         if ((cover.IsEmpty || walk.IsLeaf(cover)) && !walk.OwnsFollowing(local)
             && TryWalkSingle(ref walk, local, cover, walk.Operations[walk.Next], out ComposedNode single))
         {
@@ -543,7 +553,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         int position = local.Position;
         // A touched boundary node needs its old hash to key the group below, and an untouched sibling its hash for the
         // branch over them, so both are hashed together.
-        if (local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup - 1 && leftCover.Kind == CoverKind.Stored && rightCover.Kind == CoverKind.Stored)
+        if (local.Length == PbtGroupGeometry.LevelsPerGroup - 1 && leftCover.Kind == CoverKind.Stored && rightCover.Kind == CoverKind.Stored)
             walk.Hashes.GetChildHashesPaired(ref walk.Reader, position - local.Width, position - 1, out _, out _);
         ComposedNode left = Walk(ref walk, local.Left, leftCover);
         // Whatever the cursor still holds under this position lies on the right.
@@ -645,8 +655,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         int position)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        int width = PbtFourLevelGroupGeometry.WidthOf(position);
-        if (width is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
+        int width = PbtGroupGeometry.WidthOf(position);
+        if (width > 1 && width < PbtGroupGeometry.BoundarySlots)
         {
             int offset = writer.WrittenCount;
             int length = PbtNodeCodec.BranchLength(0, 0, 0);
@@ -726,7 +736,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         // A branch anchored above this position, whose compressed prefix passes through it.
         PbtNodeReader node = walk.Node(cover, out int anchorDepth);
         int depth = walk.BitDepth + local.Length;
-        if (anchorDepth + node.Prefix.BitCount < walk.BitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup) CopyDescendants(ref walk, local);
+        if (anchorDepth + node.Prefix.BitCount < walk.BitDepth + PbtGroupGeometry.LevelsPerGroup) CopyDescendants(ref walk, local);
         return AppendReanchoredSorted(walk.Writer, position, anchorDepth, depth, node);
     }
 
@@ -781,9 +791,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         Span<byte> encoding = stackalloc byte[MaxNodeLength];
         SlotNode result;
         scoped ReadOnlySpan<byte> node;
-        if ((walk.FoldedAheadMask >> slot & 1) != 0)
+        if (walk.FoldedAheadMask.IsSet(slot))
         {
-            walk.FoldedAheadMask &= ~(1 << slot);
+            walk.FoldedAheadMask.Clear(slot);
             result = walk.FoldedAheadNodes![slot];
             node = walk.FoldedAhead.AsSpan(slot * MaxNodeLength, result.Length);
         }
@@ -805,9 +815,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         int slot = local.Slot;
         BoundaryNode boundary = walk.Boundary(cover);
         int bitDepth = walk.BitDepth;
-        int slotDepth = bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
+        int slotDepth = bitDepth + PbtGroupGeometry.LevelsPerGroup;
         PbtTraversalPath slotPath = walk.Path;
-        slotPath.AppendMut(slot);
+        slotPath.AppendBits(slot, PbtGroupGeometry.LevelsPerGroup);
         SlotNode result = FoldSortedRange(walk.Context, ref walk.Reader, boundary, operations, ref slotPath, slotDepth, slotDepth, encoding);
         slotPath.Truncate(bitDepth);
         walk.Writer.AddDescendantDelta(slot, result.SizeDelta);
@@ -826,15 +836,15 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (cover.IsEmpty) return false;
         if (operations.IsEmpty) return true;
         if (walk.IsLeaf(cover)) return !Contains(operations, walk.LeafKey(cover));
-        if (local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup)
+        if (local.Length == PbtGroupGeometry.LevelsPerGroup)
         {
             int slot = local.Slot;
-            if ((walk.FoldedAheadMask >> slot & 1) != 0) return !walk.FoldedAheadNodes![slot].IsEmpty;
-            walk.FoldedAhead ??= ArrayPool<byte>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots * MaxNodeLength);
-            walk.FoldedAheadNodes ??= ArrayPool<SlotNode>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots);
+            if (walk.FoldedAheadMask.IsSet(slot)) return !walk.FoldedAheadNodes![slot].IsEmpty;
+            walk.FoldedAhead ??= ArrayPool<byte>.Shared.Rent(PbtGroupGeometry.BoundarySlots * MaxNodeLength);
+            walk.FoldedAheadNodes ??= ArrayPool<SlotNode>.Shared.Rent(PbtGroupGeometry.BoundarySlots);
             SlotNode result = FoldSlotBelow(ref walk, local, cover, operations, walk.FoldedAhead.AsSpan(slot * MaxNodeLength, MaxNodeLength));
             walk.FoldedAheadNodes![slot] = result;
-            walk.FoldedAheadMask |= 1 << slot;
+            walk.FoldedAheadMask.Set(slot);
             return !result.IsEmpty;
         }
 
@@ -876,7 +886,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     private readonly struct Cover(CoverKind kind, int position, bool right = false)
     {
         internal readonly CoverKind Kind = kind;
-        internal readonly byte Position = (byte)position;
+        internal readonly ushort Position = (ushort)position;
         internal readonly bool Right = right;
         internal bool IsEmpty => Kind == CoverKind.Empty;
     }
@@ -892,11 +902,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly PbtTraversalPath Path;
         internal readonly int BitDepth;
         private readonly BoundaryNode _input;
-        private readonly uint _stored;
+        private readonly PbtBitmap _stored;
         /// <summary>The encodings of the slots folded ahead of the walk, <see cref="MaxNodeLength"/> bytes per slot.</summary>
         internal byte[]? FoldedAhead;
         internal SlotNode[]? FoldedAheadNodes;
-        internal int FoldedAheadMask;
+        internal PbtBitmap FoldedAheadMask;
         /// <summary>The frame's operations, in key order.</summary>
         internal readonly ReadOnlySpan<PbtWriteOperation<TKey>> Operations;
         /// <summary>The producer's used-slot mask and per-slot counts when it grouped the operations by this frame's slots, or empty.</summary>
@@ -936,7 +946,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// <remarks>Each key is read once, to find where the slot ends; a frame with a shard table reads none.</remarks>
         internal ReadOnlySpan<PbtWriteOperation<TKey>> Take(NodeGroupPath local)
         {
-            Debug.Assert(local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup && _nextSlot == local.Slot, "Only a touched boundary slot takes its operations.");
+            Debug.Assert(local.Length == PbtGroupGeometry.LevelsPerGroup && _nextSlot == local.Slot, "Only a touched boundary slot takes its operations.");
             int start = Next;
             int end = SlotEnd(start, local.Slot);
             Next = end;
@@ -964,7 +974,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// <summary>The boundary slot of the operation at <paramref name="index"/>, from the shard table when the frame has one.</summary>
         internal readonly int SlotAt(int index)
         {
-            if (index >= Operations.Length) return PbtFourLevelGroupGeometry.BoundarySlots;
+            if (index >= Operations.Length) return PbtGroupGeometry.BoundarySlots;
             if (_shardTable.IsEmpty) return BoundarySlot(Operations[index].Key.Bytes, BitDepth);
             int end = 0;
             int rank = 1;
@@ -973,7 +983,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 end += _shardTable[rank++];
                 if (index < end) return BitOperations.TrailingZeroCount(mask);
             }
-            return PbtFourLevelGroupGeometry.BoundarySlots;
+            return PbtGroupGeometry.BoundarySlots;
         }
 
         /// <summary>The index past the operations from <paramref name="start"/> on in boundary slot <paramref name="slot"/>.</summary>
@@ -993,11 +1003,12 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         /// <summary>Whether a key in boundary slot <paramref name="slot"/> lies under <paramref name="local"/>; no key lies under one past the last slot.</summary>
         private static bool Covers(int slot, NodeGroupPath local) =>
-            ((slot ^ local.Slot) >> (PbtFourLevelGroupGeometry.LevelsPerGroup - local.Length)) == 0;
+            ((slot ^ local.Slot) >> (PbtGroupGeometry.LevelsPerGroup - local.Length)) == 0;
 
         internal SortedWalk(FoldContext context, ref TFrame reader, ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
-            PbtTraversalPath path, in BoundaryNode input, uint stored, ReadOnlySpan<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> shardTable)
+            PbtTraversalPath path, in BoundaryNode input, in PbtBitmap stored, ReadOnlySpan<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> shardTable)
         {
+            Debug.Assert(shardTable.IsEmpty || PbtGroupGeometry.LevelsPerGroup == 4, "Only a four-level group's slots are the producer's nibble shards.");
             Operations = operations;
             _shardTable = shardTable;
             Context = context;
@@ -1054,7 +1065,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 anchorDepth = _input.AnchorDepth;
                 return _input.Reader;
             }
-            anchorDepth = BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(cover.Position).Length;
+            anchorDepth = BitDepth + PbtGroupGeometry.LocalPathOf(cover.Position).Length;
             return PbtNodeReader.FromValidated(Reader.GetEncoding(cover.Position).Span);
         }
 
@@ -1076,7 +1087,10 @@ internal static partial class TrieUpdater<TKey, TPath>
 
             if (IsLeaf(cover))
             {
-                if (GetBit(LeafKeyPostfix(cover, out int keyOffset), depth - (keyOffset << 3)) == 0) left = cover;
+                ReadOnlySpan<byte> keyPostfix = LeafKeyPostfix(cover, out int keyOffset);
+                int bit = depth - (keyOffset << 3);
+                // Past the key's end, inside the last level of a group the key ends in, bits read as zero, as its slot does.
+                if (bit >> 3 >= keyPostfix.Length || GetBit(keyPostfix, bit) == 0) left = cover;
                 else right = cover;
                 return;
             }
@@ -1102,8 +1116,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             int position = local.Position;
             if (linkHash != default) Hashes.Seed(position, linkHash);
-            if ((_stored & (1u << position)) != 0) return new Cover(CoverKind.Stored, position);
-            if (local.Length < PbtFourLevelGroupGeometry.LevelsPerGroup) return new Cover(CoverKind.Implicit, position);
+            if (_stored.IsSet(position)) return new Cover(CoverKind.Stored, position);
+            if (local.Length < PbtGroupGeometry.LevelsPerGroup) return new Cover(CoverKind.Implicit, position);
             throw new InvalidDataException("A referenced PBT node is missing.");
         }
 
@@ -1112,10 +1126,10 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             Cover cover = _input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource);
             NodeGroupPath local = default;
-            for (int level = 0; level < PbtFourLevelGroupGeometry.LevelsPerGroup && !cover.IsEmpty; level++)
+            for (int level = 0; level < PbtGroupGeometry.LevelsPerGroup && !cover.IsEmpty; level++)
             {
                 ChildCovers(local, cover, out Cover left, out Cover right);
-                bool isRight = (slot >> (PbtFourLevelGroupGeometry.LevelsPerGroup - 1 - level) & 1) != 0;
+                bool isRight = (slot >> (PbtGroupGeometry.LevelsPerGroup - 1 - level) & 1) != 0;
                 cover = isRight ? right : left;
                 local = isRight ? local.Right : local.Left;
             }

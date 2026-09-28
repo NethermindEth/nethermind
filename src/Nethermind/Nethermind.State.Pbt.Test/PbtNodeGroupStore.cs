@@ -33,7 +33,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
             foreach (PbtPhysicalPayload payload in payloads)
             {
                 PbtStorageNodePath groupKey = payload.Key;
-                if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+                if (!PbtGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                     throw new InvalidDataException("A PBT node-group key depth must be a four-level boundary.");
                 if (store._groups.ContainsKey(groupKey)) throw new InvalidDataException("Duplicate PBT node group.");
 
@@ -68,7 +68,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         lock (_groupLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+            if (!PbtGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
             if (!_groups.TryGetValue(groupKey.ToPath<PbtStorageNodePath>(), out RefCountingMemory? payload)) return null;
 
@@ -83,7 +83,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         lock (_groupLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+            if (!PbtGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
             if (payload is not null) _ = new PbtNodeGroupReader(groupKey, payload.GetSpan());
             PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();

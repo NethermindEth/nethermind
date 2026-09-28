@@ -25,9 +25,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         scoped ref Frontier frontier, scoped Span<FoldResult> results, int position, in LinkParent parent)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        Debug.Assert((frontier.Mask & (1u << position)) != 0, "Only a held position is taken.");
+        Debug.Assert(frontier.Mask.IsSet(position), "Only a held position is taken.");
         Debug.Assert(position > writer.LastPosition, "Cannot take a PBT node after its output position has passed.");
-        NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
+        NodeGroupPath local = PbtGroupGeometry.LocalPathOf(position);
         int copied = reader.CopyRange(writer, position - 2 * local.Width + 2, position);
         ref readonly DecompositionEntry entry = ref frontier.Entries[local.Slot];
         switch (entry.Source)
@@ -40,7 +40,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 ReadOnlyMemory<byte> stored = reader.GetEncoding(entry.SourcePosition);
                 return stored.IsEmpty
                     ? AppendImplicitBranch(ref reader, ref hashes, writer, parent, position)
-                    : AppendReanchored(writer, position, local.Length - PbtFourLevelGroupGeometry.LocalPathOf(entry.SourcePosition).Length,
+                    : AppendReanchored(writer, position, local.Length - PbtGroupGeometry.LocalPathOf(entry.SourcePosition).Length,
                         PbtNodeReader.FromValidated(stored.Span));
             default:
                 FoldResult boundary = default;
@@ -71,8 +71,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         static ComposedNode AppendImplicitBranch(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
             in LinkParent parent, int position)
         {
-            int width = PbtFourLevelGroupGeometry.WidthOf(position);
-            if (width is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)
+            int width = PbtGroupGeometry.WidthOf(position);
+            if (width > 1 && width < PbtGroupGeometry.BoundarySlots)
             {
                 int offset = writer.WrittenCount;
                 int length = PbtNodeCodec.BranchLength(0, 0, 0);
@@ -110,7 +110,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             return new(offset, leafLength, node.LeafHash);
         }
 
-        Debug.Assert(node.Path.Length == PbtFourLevelGroupGeometry.LocalPathOf(position).Length, "A held result is anchored at the position that holds it.");
+        Debug.Assert(node.Path.Length == PbtGroupGeometry.LocalPathOf(position).Length, "A held result is anchored at the position that holds it.");
         CompressedPrefix prefix = node.Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(node.Encoding);
         TKey rightKey = node.RightLeafKey;
         int keyOffset = writer.KeyOffsetAt(position);
@@ -142,9 +142,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         scoped ref Frontier frontier, scoped Span<FoldResult> results, ref FoldResult result)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        Debug.Assert(frontier.Unresolved == 0, "Every touched slot is taken by its fold before composition.");
-        uint copies = frontier.Copies;
-        uint frontierMask = frontier.Mask;
+        Debug.Assert(frontier.Unresolved.IsEmpty, "Every touched slot is taken by its fold before composition.");
+        ref readonly PbtBitmap copies = ref frontier.Copies;
+        ref readonly PbtBitmap frontierMask = ref frontier.Mask;
+        PbtBitmap held = frontier.Mask;
+        held.Or(frontier.Copies);
         writer.ReserveFirstBuffer(reader.PayloadLength);
         ComposeFrameBuffer frames = default;
         frames[0].Parent = LinkParentAt(ref reader, frontier, -1);
@@ -161,7 +163,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 // or a frontier entry (a boundary node, a fold's result, or an untouched block). Its node is then the
                 // whole subtree, returned up as it is. A node the group stores above a touched slot is never held, so
                 // the walk goes down past it and rebuilds it from its children.
-                if ((copies & (1u << position)) != 0)
+                if (copies.IsSet(position))
                 {
                     // A direct copy is stored with its descendants as one contiguous range, ending at the node itself.
                     int copied = reader.CopyRange(writer, position - 2 * frame.Path.Width + 2, position + 1);
@@ -170,14 +172,14 @@ internal static partial class TrieUpdater<TKey, TPath>
                     frameCount--;
                     continue;
                 }
-                if ((frontierMask & (1u << position)) != 0)
+                if (frontierMask.IsSet(position))
                 {
                     prevSubtree = AppendHeld(ref reader, ref hashes, writer, path, ref frontier, results, position, frame.Parent);
                     frameCount--;
                     continue;
                 }
                 // A boundary slot has no children to go down into, so it returns up empty.
-                if (frame.Path.Length == PbtFourLevelGroupGeometry.LevelsPerGroup)
+                if (frame.Path.Length == PbtGroupGeometry.LevelsPerGroup)
                 {
                     prevSubtree = default;
                     frameCount--;
@@ -186,7 +188,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
                 // Nothing is held here, so keep going down the left child.
                 frame.Stage = ComposeStage.AwaitingLeft;
-                frame.ChildParent = (frontier.Stored & (1u << position)) != 0 ? LinkParentAt(ref reader, frontier, position) : frame.Parent;
+                frame.ChildParent = frontier.Stored.IsSet(position) ? LinkParentAt(ref reader, frontier, position) : frame.Parent;
                 frames[frameCount] = new(frame.Path.Left, frame.ChildParent);
                 frameCount++;
                 continue;
@@ -196,8 +198,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 // Back up from the left child, whose node is in prevSubtree. With no right child, that node rises to
                 // this position. Otherwise the walk goes down the right child, after settling the left node; with no
                 // left node, the right one rises here instead.
-                uint rightMask = ((1u << (frame.Path.Width - 1)) - 1) << (position - frame.Path.Width + 1);
-                bool rightIsEmpty = ((frontierMask | copies) & rightMask) == 0;
+                bool rightIsEmpty = !held.AnyInRange(position - frame.Path.Width + 1, frame.Path.Width - 1);
                 if (rightIsEmpty)
                 {
                     if (!prevSubtree.IsEmpty) prevSubtree = prevSubtree.Rise(position - frame.Path.Width, 0);
@@ -236,7 +237,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 continue;
             }
         }
-        TakeRoot(writer, path, resultDepth, Land(ref reader, ref hashes, writer, path, prevSubtree, PbtFourLevelGroupGeometry.RootPosition), ref result);
+        TakeRoot(writer, path, resultDepth, Land(ref reader, ref hashes, writer, path, prevSubtree, PbtGroupGeometry.RootPosition), ref result);
 
         // Settles the left child at leftPosition into frame, dropping it when the group does not keep it.
         // A leaf is inlined into the branch above it, so only its key and hash are kept. An omitted branch is hashed now,
@@ -352,7 +353,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         ValueHash256 rightHash = stored.RightHash;
         if (node.ChildHashesPending)
         {
-            int width = PbtFourLevelGroupGeometry.WidthOf(childPosition);
+            int width = PbtGroupGeometry.WidthOf(childPosition);
             hashes.GetChildHashes(ref reader, childPosition - width, childPosition - 1, out leftHash, out rightHash);
         }
         CompressedPrefix prefix = stored.Prefix;
@@ -378,8 +379,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
         PbtNodeReader node = PbtNodeReader.FromValidated(writer.Entry(root.Offset, root.Length).Span);
         if (node.IsLeaf) result = new(TKey.Create(node.Key), root.Hash);
-        else ReanchoredRoot(path, resultDepth, node, writer.KeyOffsetAt(PbtFourLevelGroupGeometry.RootPosition), ref result);
-        writer.DropLast(PbtFourLevelGroupGeometry.RootPosition);
+        else ReanchoredRoot(path, resultDepth, node, writer.KeyOffsetAt(PbtGroupGeometry.RootPosition), ref result);
+        writer.DropLast(PbtGroupGeometry.RootPosition);
 
         // A group's root branch, stored at the group's depth, as a result anchored at resultDepth.
         // A prefix jump leaves resultDepth above the group, so the bits in between are read from path.
@@ -388,7 +389,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             CompressedPrefix prefix = root.Prefix;
             int anchorDepth = path.BitDepth;
             int splitDepth = anchorDepth + prefix.BitCount;
-            int localLength = Math.Min(splitDepth - resultDepth, PbtFourLevelGroupGeometry.LevelsPerGroup);
+            int localLength = Math.Min(splitDepth - resultDepth, PbtGroupGeometry.LevelsPerGroup);
             int slot = 0;
             for (int bit = resultDepth; bit < resultDepth + localLength; bit++)
                 slot = (slot << 1) | (bit < anchorDepth ? GetBit(path.Bytes, bit) : GetBit(prefix.Bytes, bit - anchorDepth));
@@ -407,7 +408,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 if (prefixStart < splitDepth) PbtBitPrefix.CopyBits(prefix.Bytes, prefixStart - anchorDepth, splitDepth - prefixStart, bits, prefixStart - ownedStart);
             }
 
-            result = new(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
+            result = new(new NodeGroupPath(slot << (PbtGroupGeometry.LevelsPerGroup - localLength), localLength),
                 root.LeftHash, root.RightHash,
                 root.LeftKeyPostfix.IsEmpty ? default : PbtKeyOperations.CreateKey<TKey>(path.Bytes[..keyOffset], root.LeftKeyPostfix),
                 root.RightKeyPostfix.IsEmpty ? default : PbtKeyOperations.CreateKey<TKey>(path.Bytes[..keyOffset], root.RightKeyPostfix),
@@ -454,7 +455,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// <summary>Records a rise from <paramref name="childPosition"/> over an empty sibling, with the node on <paramref name="side"/>, which <see cref="Land"/> applies.</summary>
         internal ComposedNode Rise(int childPosition, int side)
         {
-            Debug.Assert(RiseBitCount < PbtFourLevelGroupGeometry.LevelsPerGroup, "A node rises at most to the group root.");
+            Debug.Assert(RiseBitCount < PbtGroupGeometry.LevelsPerGroup, "A node rises at most to the group root.");
             return this with
             {
                 EntryPosition = RiseBitCount == 0 ? childPosition : EntryPosition,
@@ -464,7 +465,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
     }
 
-    [InlineArray(PbtFourLevelGroupGeometry.LevelsPerGroup + 1)]
+    [InlineArray(PbtGroupGeometry.MaxLevelsPerGroup + 1)]
     private struct ComposeFrameBuffer
     {
         private ComposeFrame _element;

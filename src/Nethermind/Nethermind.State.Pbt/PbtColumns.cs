@@ -45,6 +45,6 @@ public enum PbtColumns
     /// <summary>Storage node groups below the top, keyed by boundary path.</summary>
     StorageNodeGroups,
 
-    /// <summary>The top of every partition: the shared depth-four groups and the groups above each partition's top depth, keyed by boundary path.</summary>
+    /// <summary>The top of every partition: the groups shallower than the zone byte, which zones share, and the groups above each partition's top depth, keyed by boundary path.</summary>
     TopNodeGroups,
 }
