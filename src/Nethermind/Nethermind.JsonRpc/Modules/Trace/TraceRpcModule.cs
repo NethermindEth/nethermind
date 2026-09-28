@@ -103,6 +103,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null)
         {
+            if (GetOtherChainError(call) is { } chainError)
+                return ResultWrapper<ParityTxTraceFromReplay>.Fail(chainError, ErrorCodes.InvalidParams);
+
             blockParameter ??= BlockParameter.Latest;
             if (IsPending(blockParameter))
                 return PendingNotSupported<ParityTxTraceFromReplay>();
@@ -124,6 +127,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             using TraceCallManyRequest _ = request;
             ArrayPoolList<TransactionForRpcWithTraceTypes> calls = request.Calls;
+            foreach (TransactionForRpcWithTraceTypes call in calls)
+            {
+                if (GetOtherChainError(call.Transaction) is { } chainError)
+                    return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(chainError, ErrorCodes.InvalidParams);
+            }
+
             blockParameter ??= BlockParameter.Latest;
             if (IsPending(blockParameter))
             {
@@ -178,6 +187,20 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     IReadOnlyCollection<ParityLikeTxTrace> traces = TraceBlock(block, new(traceTypeByTransaction, specProvider));
                     return traces.Select(static t => new ParityTxTraceFromReplay(t));
                 });
+        }
+
+        /// <summary>
+        /// Returns an error message when <paramref name="call"/> sets a <c>chainId</c> for another chain, otherwise <see langword="null"/>.
+        /// </summary>
+        /// <remarks>
+        /// A <c>chainId</c> for another chain is invalid regardless of state, so it is checked before the block lookup and the other call checks.
+        /// </remarks>
+        private string? GetOtherChainError(TransactionForRpc call)
+        {
+            ulong chainId = blockchainBridge.GetChainId();
+            return call is LegacyTransactionForRpc { ChainId: { } requestedChainId } && requestedChainId != chainId
+                ? RpcTransactionErrors.InvalidChainId(chainId, requestedChainId)
+                : null;
         }
 
         /// <summary>
