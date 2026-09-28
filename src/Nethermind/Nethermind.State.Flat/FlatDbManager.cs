@@ -281,11 +281,19 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private static readonly StringLabel _depthInMemoryLabel = new("in_memory");
     private static readonly StringLabel _depthPersistedLabel = new("persisted");
 
-    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
+        GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
+
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock, ReaderFlags readerFlags)
     {
         // A linked-list snapshot chain was considered but rejected: the constantly moving chain makes
         // invalidation error-prone.
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
+
+        // Bundles built with non-default reader flags hold specially-configured readers; keep them out of
+        // the shared cache so ordinary consumers never inherit them, and never serve a cached (flagless)
+        // bundle for such a request.
+        bool shareable = readerFlags == ReaderFlags.None;
 
         if (baseBlock == StateId.PreGenesis)
         {
@@ -298,7 +306,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         while (true)
         {
             // Fastpath: Share a recently created ReadOnlySnapshotBundle
-            if (_readonlySnapshotBundleCache.TryGetValue(baseBlock, out ReadOnlySnapshotBundle? bundle) && bundle.TryLease()) return bundle;
+            if (shareable && _readonlySnapshotBundleCache.TryGetValue(baseBlock, out ReadOnlySnapshotBundle? bundle) && bundle.TryLease()) return bundle;
 
             if (attempt == 1) sw = Stopwatch.GetTimestamp();
             if (attempt != 0)
@@ -312,7 +320,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 Thread.Sleep(delayMs);
             }
 
-            IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader();
+            IPersistence.IPersistenceReader persistenceReader = _persistenceManager.LeaseReader(readerFlags);
             AssembledSnapshotResult assembled;
             try
             {
@@ -334,9 +342,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 assembled.Dispose();
                 persistenceReader.Dispose();
 
-                if (!_snapshotRepository.HasState(baseBlock))
+                if (!HasStateForBlock(baseBlock))
                 {
-                    throw new StateUnavailableException($"State {baseBlock} no longer exists; concurrently removed.");
+                    throw new StateNotRetainedException($"No state available for block {baseBlock.BlockNumber} with state root {baseBlock.StateRoot}");
                 }
 
                 attempt++;
@@ -349,6 +357,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
                 new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics));
+
+            if (!shareable) return res;
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))

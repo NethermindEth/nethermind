@@ -18,7 +18,7 @@
          as the other half of the partial class. Compiled in rather than
          referenced: ZkvmThrow is an UnmanagedCallersOnly export the runtime
          looks up in the guest assembly itself. -->
-    <Compile Include="..\Nethermind.Stateless.Guest.Shared\GuestProgram.cs" Link="GuestProgram.cs" />
+    <Compile Include="..\Nethermind.Stateless.Guest\Program.cs" Link="Guest\Program.cs" />
   </ItemGroup>
 
   <ItemGroup>

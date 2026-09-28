@@ -43,8 +43,9 @@ public class FullPrunerFactory(
 
         if (!pruningConfig.Mode.IsFull() || stateDb is not IFullPruningDb fullPruningDb) return null;
 
+        IChainEstimations chainEstimations = ChainSizes.CreateChainSizeInfo(chainSpec.ChainId);
         string pruningDbPath = fullPruningDb.GetPath(initConfig.BaseDbPath);
-        IPruningTrigger? automaticTrigger = CreateAutomaticTrigger(pruningDbPath);
+        IPruningTrigger? automaticTrigger = CreateAutomaticTrigger(pruningDbPath, chainEstimations);
         if (automaticTrigger is not null)
         {
             compositePruningTrigger.Add(automaticTrigger);
@@ -65,13 +66,13 @@ public class FullPrunerFactory(
             stateBoundary,
             worldStateManager.GlobalStateReader,
             processExit,
-            ChainSizes.CreateChainSizeInfo(chainSpec.ChainId),
+            chainEstimations,
             drive,
             trieStore,
             logManager);
     }
 
-    private IPruningTrigger? CreateAutomaticTrigger(string dbPath)
+    private IPruningTrigger? CreateAutomaticTrigger(string dbPath, IChainEstimations chainEstimations)
     {
         long threshold = pruningConfig.FullPruningThresholdMb.MB;
 
@@ -82,9 +83,30 @@ public class FullPrunerFactory(
                 return new PathSizePruningTrigger(dbPath, threshold, timerFactory, fileSystem);
             case FullPruningTrigger.VolumeFreeSpace:
                 if (_logger.IsInfo) _logger.Info($"Full pruning will activate when disk free space drops below {threshold.SizeToString(true)} (={threshold.SizeToString()}).");
+                WarnIfThresholdBelowRequiredSpace(threshold, chainEstimations);
                 return new DiskFreeSpacePruningTrigger(dbPath, threshold, timerFactory, fileSystem);
             default:
                 return null;
+        }
+    }
+
+    /// <summary>
+    /// Warns when a configured <see cref="FullPruningTrigger.VolumeFreeSpace"/> threshold is set too low
+    /// for automatic pruning to ever observe enough free disk space to start.
+    /// </summary>
+    /// <remarks>
+    /// The trigger fires only while free space is below the threshold, but <see cref="FullPruner"/> starts
+    /// only once free space reaches <see cref="FullPruner.GetRequiredFreeSpace"/>. A threshold at or below
+    /// that requirement leaves no free-space value satisfying both, so automatic pruning never runs (#6838).
+    /// </remarks>
+    private void WarnIfThresholdBelowRequiredSpace(long threshold, IChainEstimations chainEstimations)
+    {
+        if (_logger.IsWarn
+            && pruningConfig.AvailableSpaceCheckEnabled
+            && FullPruner.GetRequiredFreeSpace(chainEstimations) is long requiredSpace
+            && threshold <= requiredSpace)
+        {
+            _logger.Warn($"Full pruning threshold {threshold.SizeToString(true)} (={threshold.SizeToString()}) is at or below the estimated {requiredSpace.SizeToString(true)} (={requiredSpace.SizeToString()}) required to run full pruning; automatic pruning may never find enough free disk space to start. Consider raising Pruning.{nameof(IPruningConfig.FullPruningThresholdMb)}.");
         }
     }
 }

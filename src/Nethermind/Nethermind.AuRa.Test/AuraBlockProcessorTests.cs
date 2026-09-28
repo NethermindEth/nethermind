@@ -60,14 +60,14 @@ namespace Nethermind.AuRa.Test
             txFilter
                 .IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
                 .Returns(AcceptTxResult.Accepted);
-            BranchProcessor processor = CreateProcessor(txFilter).Processor;
+            (BranchProcessor processor, _, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessor(txFilter);
 
-            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(3).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithParent(stateHeaderProvider.Parent!).TestObject;
             Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
                 .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).TestObject;
             Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx }).TestObject;
             _ = processor.Process(
-                null,
+                stateHeaderProvider.Parent,
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
@@ -77,15 +77,15 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void For_normal_processing_it_should_not_fail_with_gas_remaining_rules()
         {
-            BranchProcessor processor = CreateProcessor().Processor;
+            (BranchProcessor processor, _, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessor();
             ulong gasLimit = 10000000;
-            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(3).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithParent(stateHeaderProvider.Parent!).TestObject;
             Transaction tx = Nethermind.Core.Test.Builders.Build.A.Transaction.WithData(new byte[] { 0, 1 })
                 .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).WithGasLimit(gasLimit + 1).TestObject;
             Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx })
                 .WithGasLimit(gasLimit).TestObject;
             Assert.DoesNotThrow(() => processor.Process(
-                null,
+                stateHeaderProvider.Parent,
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance));
@@ -94,8 +94,9 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void Should_rewrite_contracts([Values] bool isPostMerge)
         {
-            static BlockHeader Process(BranchProcessor auRaBlockProcessor, BlockHeader parent, IBlockTree blockTree, bool isPostMerge)
+            static BlockHeader Process(BranchProcessor auRaBlockProcessor, BlockHeader parent, IBlockTree blockTree, bool isPostMerge, TestStateHeaderProvider stateHeaderProvider)
             {
+                stateHeaderProvider.Parent = parent;
                 BlockHeader header = Build.A.BlockHeader
                     .WithAuthor(TestItem.AddressD)
                     .WithParent(parent)
@@ -139,7 +140,7 @@ namespace Nethermind.AuRa.Test
                 (1000036, TestItem.AddressD, Bytes.FromHexString("0x654"))
             ];
 
-            (BranchProcessor processor, IWorldState stateProvider, IBlockTree blockTree) =
+            (BranchProcessor processor, IWorldState stateProvider, IBlockTree blockTree, TestStateHeaderProvider stateHeaderProvider) =
                 CreateProcessor(contractRewriter: new ContractRewriter(contractOverrides, contractOverridesTimestamp));
 
             Hash256 stateRoot;
@@ -157,7 +158,7 @@ namespace Nethermind.AuRa.Test
             }
 
             BlockHeader currentBlock = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateRoot).TestObject;
-            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge);
+            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, stateHeaderProvider);
 
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
@@ -168,7 +169,7 @@ namespace Nethermind.AuRa.Test
                 Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Array.Empty<byte>()));
             }
 
-            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge);
+            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, stateHeaderProvider);
 
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
@@ -179,7 +180,7 @@ namespace Nethermind.AuRa.Test
                 Assert.That(stateProvider.GetCode(TestItem.AddressD), Is.EqualTo(Bytes.FromHexString("0x321")));
             }
 
-            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge);
+            currentBlock = Process(processor, currentBlock, blockTree, isPostMerge, stateHeaderProvider);
 
             using (stateProvider.BeginScope(currentBlock))
             using (Assert.EnterMultipleScope())
@@ -191,9 +192,19 @@ namespace Nethermind.AuRa.Test
             }
         }
 
-        private (BranchProcessor Processor, IWorldState StateProvider, IBlockTree blockTree) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
+        private (BranchProcessor Processor, IWorldState StateProvider, IBlockTree blockTree, TestStateHeaderProvider StateHeaderProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null, BlockHeader? parentHeader = null)
         {
-            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            TestStateHeaderProvider stateHeaderProvider = new() { Parent = parentHeader };
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest(stateHeaderProvider);
+            if (parentHeader is null)
+            {
+                using (stateProvider.BeginScope(IWorldState.PreGenesis))
+                {
+                    stateProvider.Commit(GnosisSpecProvider.Instance.GenesisSpec, isGenesis: true);
+                    stateProvider.CommitTree(0);
+                    stateHeaderProvider.Parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(stateProvider.StateRoot).TestObject;
+                }
+            }
             IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
@@ -228,7 +239,7 @@ namespace Nethermind.AuRa.Test
                 new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
                 LimboLogs.Instance);
 
-            return (branchProcessor, stateProvider, blockTree);
+            return (branchProcessor, stateProvider, blockTree, stateHeaderProvider);
         }
     }
 }

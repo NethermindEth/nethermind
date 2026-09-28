@@ -2,10 +2,11 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-"""Exercise the client policy and image matrix in the EXPB workflow.
+"""Exercise the client policy and image list in the EXPB workflow.
 
-The tests execute the checked-in Bash bodies so resolver and matrix cases cover the same
-validation and output construction used by GitHub Actions.
+The tests execute the checked-in Bash bodies so resolver and image-list cases cover the same
+validation and output construction used by GitHub Actions. The multi-image campaign itself
+(rendering, gates and summary) is covered by scripts/expb/test_sequential_driver.py.
 
 Run with: python -m unittest scripts.ci.test_expb_multiclient_workflow
 """
@@ -107,13 +108,16 @@ class ExpbWorkflowTests(unittest.TestCase):
             raise unittest.SkipTest("a POSIX bash is required to execute workflow steps")
         cls.resolver = extract_step(WORKFLOW, "Resolve branch and configuration")
         cls.matrix = extract_step(WORKFLOW, "Resolve Docker images")
-        cls.summary = extract_step(WORKFLOW, "Build comparison table")
-        cls.installers = extract_steps(WORKFLOW, "Install or upgrade expb")
+        # The single-image job installs expb alone; the sequential campaign job installs yq with it.
+        cls.installers = extract_steps(WORKFLOW, "Install or upgrade expb") + extract_steps(
+            WORKFLOW, "Install or upgrade expb and yq"
+        )
         if len(cls.installers) != 2:
             raise AssertionError("expected both single and multi-image EXPB install steps")
+        # Only the single-image job analyzes in Bash; the campaign driver owns the multi-image gates.
         cls.analyzers = extract_steps(WORKFLOW, "Analyze benchmark output")
-        if len(cls.analyzers) != 2:
-            raise AssertionError("expected both single and multi-image analyze steps")
+        if len(cls.analyzers) != 1:
+            raise AssertionError("expected exactly the single-image analyze step")
         cls.snapshot_preflight = extract_step(WORKFLOW, "Verify client snapshot and provenance")
 
     def run_body(self, body, values, output_name="github-output"):
@@ -134,6 +138,102 @@ class ExpbWorkflowTests(unittest.TestCase):
                 text=True,
             )
             return proc, parse_output(output), temp_path
+
+    def render_resources(self, **overrides):
+        """Run the render step's config rewrite on the amd64 resources block; return the rendered block."""
+        yq = os.environ.get("YQ") or shutil.which("yq")
+        if not yq:
+            self.skipTest("Mike Farah yq is required (set YQ or add it to PATH)")
+        renderers = extract_steps(WORKFLOW, "Render benchmark config")
+        self.assertEqual(1, len(renderers))
+        renderer = renderers[0]
+        with tempfile.TemporaryDirectory() as directory:
+            topology = Path(directory) / "cpu"
+            for cpu in range(16):
+                (topology / f"cpu{cpu}" / "topology").mkdir(parents=True)
+                (topology / f"cpu{cpu}" / "topology" / "thread_siblings_list").write_text(
+                    f"{cpu % 8},{cpu % 8 + 8}\n", encoding="utf-8"
+                )
+            source = Path(directory) / "source.yaml"
+            rendered = Path(directory) / "rendered.yaml"
+            original = (
+                'resources:\n  cpu: 8\n  cpuset: "2-7,10-15"\n'
+                '  infra_cpuset: "0-1,8-9"\n  mem: 64g\n'
+                'scenarios:\n  nethermind:\n    amount: 10\n'
+            )
+            source.write_text(original, encoding="utf-8")
+            start = renderer.index('sed \\')
+            end = renderer.index('scenario_key="${SCENARIO_NAME}"')
+            proc, _, _ = self.run_body(renderer[start:end], {
+                "YQ": to_bash(yq),
+                "SOURCE_CONFIG_FILE": to_bash(source),
+                "RENDERED_CONFIG_FILE": to_bash(rendered),
+                "DOCKER_TAG": "test",
+                "DELAY_SECONDS": "0",
+                "AMOUNT": "10",
+                "EXPB_DATA_DIR": "/data/expb-data",
+                "FLAT_SNAPSHOT_DIR": "/data/snapshot",
+                "FLAT_SNAPSHOT_BLOCK_DIR": "/data/snapshot-block",
+                "SCENARIO_NAME": "test",
+                "CPU_TOPOLOGY_DIR": to_bash(topology),
+                "DOCKER_CPU": "",
+                "DOCKER_CPUSET": "",
+                "DOCKER_INFRA_CPUSET": "",
+                **overrides,
+            })
+            self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+            result = subprocess.run(
+                [yq, "-o=json", ".resources", str(rendered)],
+                capture_output=True, text=True, check=True,
+            )
+            self.assertEqual(original, source.read_text(encoding="utf-8"))
+            return json.loads(result.stdout)
+
+    def test_render_replaces_the_cpu_quota_with_whole_core_affinity(self):
+        self.assertEqual({
+            "cpu": 0, "cpuset": "2,3,4,5,10,11,12,13",
+            "infra_cpuset": "0-1,8-9", "mem": "64g",
+        }, self.render_resources())
+
+    def test_render_applies_the_dispatch_cpu_overrides_before_the_pinning(self):
+        for label, overrides, expected in (
+            ("a wider budget and cpuset", {"DOCKER_CPU": "12", "DOCKER_CPUSET": "0-15", "DOCKER_INFRA_CPUSET": "0-1"},
+             {"cpu": 0, "cpuset": "0,1,2,3,4,5,8,9,10,11,12,13", "infra_cpuset": "0-1", "mem": "64g"}),
+            ("all lifts every limit", {"DOCKER_CPU": "all", "DOCKER_CPUSET": "all", "DOCKER_INFRA_CPUSET": "all"},
+             {"cpu": 0, "mem": "64g"}),
+            ("cpu=all pins the whole cpuset", {"DOCKER_CPU": "all"},
+             {"cpu": 0, "cpuset": "2-7,10-15", "infra_cpuset": "0-1,8-9", "mem": "64g"}),
+        ):
+            with self.subTest(case=label):
+                self.assertEqual(expected, self.render_resources(**overrides))
+
+    def test_dispatch_inputs_stay_within_the_workflow_dispatch_limit(self):
+        # GitHub rejects the whole workflow file when workflow_dispatch declares more than 25 inputs.
+        text = WORKFLOW.read_text(encoding="utf-8")
+        block = text[text.index("  workflow_dispatch:\n    inputs:\n"):text.index("\n  pull_request:")]
+        self.assertLessEqual(len(re.findall(r"^      [a-z_]+:$", block, re.M)), 25)
+
+    def test_resolver_splits_the_packed_cpu_overrides(self):
+        for label, packed, expected in (
+            ("empty", "", ("", "", "")),
+            ("all keys", "cpu=16; cpuset=0-15  infra_cpuset=0-1,8-9", ("16", "0-15", "0-1,8-9")),
+            ("zero means all", "CPU=0", ("all", "", "")),
+            ("an unpinned client has no budget", "cpuset=ALL", ("all", "all", "")),
+        ):
+            with self.subTest(case=label):
+                code, log, output = self.run_resolver(DISPATCH_DOCKER_CPU_OVERRIDES=packed)
+                self.assertEqual(0, code, log)
+                self.assertEqual(expected, (output["docker_cpu"], output["docker_cpuset"], output["docker_infra_cpuset"]))
+        for label, packed in (
+            ("an unknown key", "cores=4"),
+            ("a fractional budget", "cpu=1.5"),
+            ("a malformed cpuset", "cpuset=2-7:10"),
+            ("a budget for an unpinned client", "cpu=8 cpuset=all"),
+        ):
+            with self.subTest(rejected=label):
+                code, log, _ = self.run_resolver(DISPATCH_DOCKER_CPU_OVERRIDES=packed)
+                self.assertNotEqual(0, code)
+                self.assertIn("docker_cpu_overrides", log)
 
     def run_resolver(self, **overrides):
         values = {
@@ -161,6 +261,7 @@ class ExpbWorkflowTests(unittest.TestCase):
             "DISPATCH_PERF": "false",
             "DISPATCH_TRACE_BLOCKS": "",
             "DISPATCH_CLIENT_ENV": "",
+            "DISPATCH_DOCKER_CPU_OVERRIDES": "",
         }
         values.update(overrides)
         proc, output, _ = self.run_body(self.resolver, values)
@@ -292,54 +393,28 @@ fi
         self.assertEqual("", output["snapshot_mount_path"])
         self.assertIn("FlatDb.PersistenceWriteBufferFloor=67108864", output["additional_extra_flags"])
 
-    def test_empty_explicit_image_list_is_rejected_before_matrix_output(self):
+    def test_empty_explicit_image_list_is_rejected_before_image_output(self):
         code, log, output = self.run_matrix(" , , ")
         self.assertNotEqual(0, code)
         self.assertIn("must contain at least one non-empty image reference", log)
-        self.assertNotIn("matrix", output)
+        self.assertNotIn("images", output)
 
-    def test_duplicate_tags_keep_full_images_in_ordered_matrix(self):
-        code, log, output = self.run_matrix("a/x:latest,b/x:latest")
+    def test_duplicate_tags_keep_full_images_under_distinct_ids(self):
+        # Two arms sharing a tag must stay two arms: the campaign keys samples by id, never by tag.
+        code, log, output = self.run_matrix("a/x:latest,b/x:latest,a/x:latest")
         self.assertEqual(0, code, log)
-        ordered = json.loads(output["ordered_tags"])
+        images = json.loads(output["images"])
         self.assertEqual(
-            [
-                {"tag": "latest-0", "date": "n/a", "image": "a/x:latest"},
-                {"tag": "latest-1", "date": "n/a", "image": "b/x:latest"},
-            ],
-            ordered,
+            ["a/x:latest", "b/x:latest", "a/x:latest"],
+            [entry["image"] for entry in images],
         )
+        self.assertEqual(["latest"] * 3, [entry["tag"] for entry in images])
+        ids = [entry["id"] for entry in images]
+        self.assertEqual(len(ids), len(set(ids)))
+        for index, image_id in enumerate(ids, start=1):
+            self.assertRegex(image_id, r"^image-{}-[0-9a-f]{{12}}$".format(index))
 
-    def test_summary_maps_disambiguated_tags_to_full_images(self):
-        code, log, matrix = self.run_matrix("a/x:latest,b/x:latest")
-        self.assertEqual(0, code, log)
-        with tempfile.TemporaryDirectory(prefix="expb-summary-test-") as temp_dir:
-            temp_path = Path(temp_dir)
-            metrics = temp_path / "metrics"
-            for tag in ("latest-0", "latest-1"):
-                artifact = metrics / "expb-metrics-{}-run1".format(tag)
-                artifact.mkdir(parents=True)
-                (artifact / "metrics.env").write_text(
-                    "AVG=1\nMEDIAN=1\nP90=1\nP95=1\nP99=1\nMIN=1\nMAX=1\n",
-                    encoding="utf-8",
-                )
-            summary = temp_path / "summary.md"
-            env = {
-                "METRICS_DIR": to_bash(metrics),
-                "ORDERED_TAGS": matrix["ordered_tags"],
-                "RUN_COUNT": "1",
-                "RUNNER_TEMP": to_bash(temp_path),
-                "GITHUB_STEP_SUMMARY": to_bash(summary),
-            }
-            proc, _, _ = self.run_body(self.summary, env)
-            self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
-            # Git Bash's Windows jq can leave CR characters in mapfile values. The workflow runs
-            # this step on Ubuntu, but normalize them here so the test remains portable.
-            text = summary.read_bytes().decode("utf-8").replace("\r", "")
-            self.assertIn("`latest-0` → `a/x:latest`", text)
-            self.assertIn("`latest-1` → `b/x:latest`", text)
-
-    def run_analyzer(self, body, log_text, **overrides):
+    def run_analyzer(self, body, log_text, metrics_name="expb-metrics-latest-0-run1/metrics.env", **overrides):
         """Run one `Analyze benchmark output` body over a synthetic expb run log."""
         with tempfile.TemporaryDirectory(prefix="expb-analyze-test-") as temp_dir:
             temp_path = Path(temp_dir)
@@ -357,6 +432,7 @@ fi
                     "TAG": "latest-0",
                     "RUN": "1",
                     "MEASUREMENT_SOURCE": "engine-api",
+                    "MEASUREMENT_MODE": "standard",
                     "EXPECTED_AMOUNT": "3",
                     "GITHUB_OUTPUT": to_bash(output),
                     "GITHUB_STEP_SUMMARY": to_bash(summary),
@@ -372,7 +448,7 @@ fi
                 capture_output=True,
                 text=True,
             )
-            metrics = temp_path / "expb-metrics-latest-0-run1" / "metrics.env"
+            metrics = temp_path / metrics_name
             return proc, metrics.read_text(encoding="utf-8") if metrics.is_file() else ""
 
     @staticmethod
@@ -380,11 +456,12 @@ fi
         """The per-payload metrics table expb prints, which is the engine-api timing source."""
         return "".join("| {} | 30000000 | {}.0 |\n".format(index, 20 + index) for index in range(1, rows + 1))
 
-    def test_engine_api_gate_refuses_a_partial_run_in_both_analyze_copies(self):
+    def test_engine_api_gate_refuses_a_partial_run(self):
         # The gate is the only thing keeping a truncated run from being averaged into a cross-client
-        # comparison, and it can abort a multi-hour benchmark - so both copies have to behave alike.
-        for index, analyzer in enumerate(self.analyzers):
-            with self.subTest(copy=("single", "multi")[index]):
+        # comparison, and it can abort a multi-hour benchmark. The campaign driver applies the same
+        # delivery gate to every multi-image sample (see scripts/expb/test_sequential_driver.py).
+        for analyzer in self.analyzers:
+            with self.subTest(copy="single"):
                 complete, _ = self.run_analyzer(analyzer, self.k6_table(3))
                 self.assertEqual(0, complete.returncode, complete.stdout + complete.stderr)
 
@@ -399,19 +476,40 @@ fi
                 auto, _ = self.run_analyzer(analyzer, self.k6_table(2), MEASUREMENT_SOURCE="auto")
                 self.assertEqual(0, auto.returncode, auto.stdout + auto.stderr)
 
+    def test_the_feed_pairs_with_the_k6_rows_only_when_complete_or_one_short(self):
+        # Same rule as collect_metrics in scripts/expb/sequential_driver.py: the feed can lack only its last
+        # record, so a larger gap sits mid-run and the paired figures must not be computed from it.
+        for analyzer in self.analyzers:
+            for records, paired in ((3, True), (2, True), (1, False)):
+                with self.subTest(records=records):
+                    feed = "".join(
+                        "[payload-server] client_metric block_number={} processing_ms=20\n".format(100 + index)
+                        for index in range(records)
+                    )
+                    proc, metrics = self.run_analyzer(
+                        analyzer, feed + self.k6_table(3), metrics_name="expb-metrics.env", MEASUREMENT_SOURCE="auto",
+                        # grep -P, which reads the feed, refuses a non-UTF-8 locale such as a bare Git Bash.
+                        LC_ALL="C.UTF-8",
+                    )
+                    self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+                    self.assertIn("SOURCE=sse", metrics)
+                    self.assertEqual(paired, "\nMGAS_S=" in "\n" + metrics)
+                    self.assertEqual(paired, "OUTSIDE_AVG=" in metrics)
+                    self.assertIn("TTFB_MGAS_S=", metrics)
+
     def test_an_unusable_amount_disables_the_gate_but_says_so(self):
         # `expected_amount` is `.amount // ""` from the rendered config, so it can arrive empty - and
         # a silently skipped completeness check is exactly what the gate exists to prevent.
-        for index, analyzer in enumerate(self.analyzers):
+        for analyzer in self.analyzers:
             for amount in ("", "all"):
-                with self.subTest(copy=("single", "multi")[index], amount=amount):
+                with self.subTest(copy="single", amount=amount):
                     proc, _ = self.run_analyzer(analyzer, self.k6_table(2), EXPECTED_AMOUNT=amount)
                     self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
                     self.assertIn("completeness check is disabled", proc.stdout)
 
     def test_no_metrics_at_all_still_fails_before_the_completeness_gate(self):
-        for index, analyzer in enumerate(self.analyzers):
-            with self.subTest(copy=("single", "multi")[index]):
+        for analyzer in self.analyzers:
+            with self.subTest(copy="single"):
                 proc, metrics = self.run_analyzer(analyzer, "nothing parseable here\n")
                 self.assertNotEqual(0, proc.returncode)
                 self.assertIn("Could not extract any processing_ms data", proc.stdout)

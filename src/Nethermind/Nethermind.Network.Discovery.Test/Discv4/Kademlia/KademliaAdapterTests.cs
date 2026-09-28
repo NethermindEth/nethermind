@@ -7,10 +7,12 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
@@ -420,6 +422,38 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 Assert.That(wirePing?.SourceAddress, Is.EqualTo(expectedSourceText is null ? null : new IPEndPoint(IPAddress.Parse(expectedSourceText), 30304)));
                 Assert.That(wirePing?.SourceTcpPort, Is.EqualTo(expectedSourceText is null ? null : expectedTcpPort));
             }
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Ping_uses_the_current_resolved_source_after_address_rotation(CancellationToken token)
+        {
+            await _adapter.DisposeAsync();
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddSingleton(_ipResolver)
+                .Build();
+            NetworkListenerState listenerState = container.Resolve<NetworkListenerState>();
+            listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+            listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+            IPAddress firstAddress = IPAddress.Parse("2001:db8::10");
+            IPAddress secondAddress = IPAddress.Parse("2001:db8::20");
+            _ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(
+                new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.IPv6Any, firstAddress)),
+                new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.IPv6Any, secondAddress)));
+            _receiver = new Node(TestItem.PublicKeyB, "2001:db8::2", 30303);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, listenerState);
+            List<IPEndPoint> sourceAddresses = [];
+            ConfigureBondCallback(onWirePing: ping => sourceAddresses.Add(ping.SourceAddress!));
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+
+            Assert.That(sourceAddresses, Is.EqualTo(new[]
+            {
+                new IPEndPoint(firstAddress, _kademliaConfig.CurrentNodeId.DiscoveryPort),
+                new IPEndPoint(secondAddress, _kademliaConfig.CurrentNodeId.DiscoveryPort)
+            }));
         }
 
         [Test]

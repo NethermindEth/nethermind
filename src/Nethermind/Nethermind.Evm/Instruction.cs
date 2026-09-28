@@ -159,6 +159,23 @@ public enum Instruction : byte
     LOG3 = 0xa3,
     LOG4 = 0xa4,
 
+    // EIP-8141 frame transactions
+    APPROVE = 0xaa,
+    TXPARAM = 0xb0,
+    FRAMEDATALOAD = 0xb1,
+    FRAMEDATACOPY = 0xb2,
+    FRAMEPARAM = 0xb3,
+    SIGPARAM = 0xb4,
+    SIGDATACOPY = 0xb5,
+
+    // EIP-8272 recent roots
+    RECENTROOTREFLOAD = 0xb6,
+
+    // EIP-7906, draft: shifted up two from the spec's 0xb5-0xb7, which collides with EIP-8141 and EIP-8272.
+    TXTRACE = 0xb7,
+    TXDIFF = 0xb8,
+    EVENTDATACOPY = 0xb9,
+
     DUPN = 0xe6,
     SWAPN = 0xe7,
     EXCHANGE = 0xe8,

@@ -18,6 +18,119 @@ namespace Nethermind.State.Flat.History.Test;
 
 public class NodeViewsTests
 {
+    [Test]
+    public void Batched_child_views_match_individual_decoding([Range(0, 16)] int fullBranches, [Values] bool interleaved)
+    {
+        byte[]?[] rlps = new byte[]?[BranchRlp.ChildCount];
+        NodeView[] expected = new NodeView[BranchRlp.ChildCount];
+        NodeView[] actual = new NodeView[BranchRlp.ChildCount];
+        Random random = new(1234);
+        ChildVector references = ChildVector.Rent();
+        try
+        {
+            for (int i = 0; i < rlps.Length; i++)
+            {
+                int index = interleaved ? i * 7 % rlps.Length : i;
+                if (i < fullBranches)
+                {
+                    for (int child = 0; child < BranchRlp.ChildCount; child++)
+                    {
+                        byte[] hash = new byte[Hash256.Size];
+                        random.NextBytes(hash);
+                        references.SetHash(child, new ValueHash256(hash));
+                    }
+                    rlps[index] = BranchRlp.Encode(references);
+                }
+                else if ((i & 1) == 0)
+                {
+                    NodeView leaf = NodeView.Leaf([1, 2, 3], [(byte)i]);
+                    rlps[index] = leaf.Rlp.ToArray();
+                    leaf.Release();
+                }
+            }
+
+            for (int i = 0; i < rlps.Length; i++) expected[i] = rlps[i] is { } rlp ? NodeViews.FromRlp(rlp) : NodeView.Empty;
+            NodeViews.FromChildrenRlp(rlps, actual);
+            for (int i = 0; i < rlps.Length; i++)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actual[i].Kind, Is.EqualTo(expected[i].Kind));
+                    ValueHash256 expectedHash = rlps[i] is { } encoded ? ValueKeccak.Compute(encoded) : Keccak.EmptyTreeHash.ValueHash256;
+                    Assert.That(actual[i].Hash, Is.EqualTo(expectedHash));
+                    Assert.That(actual[i].Rlp.ToArray(), Is.EqualTo(rlps[i] ?? []));
+                }
+            }
+            NodeView expectedParent = NodeViews.Combine(expected);
+            NodeView actualParent = NodeViews.Combine(actual);
+            try
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(actualParent.Rlp.ToArray(), Is.EqualTo(expectedParent.Rlp.ToArray()));
+                    Assert.That(actualParent.Hash, Is.EqualTo(expectedParent.Hash));
+                }
+                VerifyArchiveComposition(rlps, expectedParent, interleaved ? 4 : 1);
+            }
+            finally
+            {
+                actualParent.Release();
+                expectedParent.Release();
+            }
+        }
+        finally
+        {
+            foreach (NodeView view in actual) view.Release();
+            foreach (NodeView view in expected) view.Release();
+            ChildVector.Return(references);
+        }
+    }
+
+    private static void VerifyArchiveComposition(byte[]?[] rlps, NodeView expected, int fanOut)
+    {
+        using SnapshotableMemDb rows = new();
+        using SnapshotableMemDb commitmentRows = new();
+        using SnapshotableMemDb availability = new();
+        HistoryRowFormat format = HistoryRowFormat.Resolve(new HistoryAvailability(availability), new FlatDbConfig());
+        CommitmentDepthPolicy policy = CommitmentDepthPolicy.Default;
+        CommitmentStore commitments = new(commitmentRows, policy, 0);
+        TreePath parent = TreePath.FromHexString("a");
+        using (IWriteBatch batch = commitmentRows.StartWriteBatch())
+        {
+            for (int index = 0; index < rlps.Length; index++)
+            {
+                if (rlps[index] is not { } rlp) continue;
+                byte[] prefix = new byte[CommitmentKeyLayout.MaxKeyLength];
+                int prefixLength = CommitmentKeyLayout.WritePathPrefix(prefix, parent.Append(index), exact: true);
+                byte[] row = new byte[ParentRowCodec.WholeNodeRowLength(rlp.Length)];
+                int rowLength = ParentRowCodec.EncodeWholeNode(1, rlp, row);
+                commitments.Write(prefix.AsSpan(0, prefixLength), 1, row.AsSpan(0, rowLength), batch);
+            }
+        }
+
+        HistoricalTrieNodeBuilder builder = new(new AccountHistoryScope(rows, format, commitments, policy), 1, new ResolutionBudget(0), fanOut, new ArchiveProofNodeCache(100));
+        Hash256 hash = expected.Hash.ToCommitment();
+        Assert.That(builder.LoadRlp(parent, hash), Is.EqualTo(expected.Rlp.ToArray()));
+        Assert.That(builder.LoadRlp(parent, hash), Is.EqualTo(expected.Rlp.ToArray()));
+        Assert.That(() => builder.LoadRlp(parent, Keccak.EmptyTreeHash), Throws.InstanceOf<StateUnavailableException>());
+    }
+
+    [Test]
+    public void Batched_child_views_reject_malformed_rlp()
+    {
+        byte[]?[] children = new byte[]?[BranchRlp.ChildCount];
+        NodeView[] views = new NodeView[BranchRlp.ChildCount];
+        for (int i = 0; i < 8; i++) children[i] = new byte[532];
+        try
+        {
+            Assert.That(() => NodeViews.FromChildrenRlp(children, views), Throws.InstanceOf<Serialization.Rlp.RlpException>());
+        }
+        finally
+        {
+            foreach (NodeView view in views) view.Release();
+        }
+    }
+
     [TestCase(1, 1)]
     [TestCase(2, 1)]
     [TestCase(3, 1)]

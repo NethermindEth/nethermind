@@ -37,6 +37,7 @@ public sealed class WithdrawalTrie : PatriciaTrie<Withdrawal>
 
     private readonly struct WithdrawalEncoder : IndexedTrieRoot.IValueEncoder<Withdrawal>
     {
+        public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.SmallValues;
         // Empty signals uncached data; the codec always writes a nonempty RLP, even for null.
         public ReadOnlySpan<byte> GetEncodedValue(Withdrawal item) => default;
         public int GetLength(Withdrawal item) => _codec.GetLength(item, RlpBehaviors.None);

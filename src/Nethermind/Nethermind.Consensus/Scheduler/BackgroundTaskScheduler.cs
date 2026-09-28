@@ -435,9 +435,10 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                                 Thread thread = new (ProcessBackgroundTasks)
                                 {
                                     IsBackground = true,
-                                    Priority = ThreadPriority.BelowNormal,
                                     Name = $"Nethermind Background {i + 1}",
                                 };
+                                // Assume the default Linux policy (SCHED_OTHER), where priority changes only add native calls.
+                                if (!OperatingSystem.IsLinux()) thread.Priority = ThreadPriority.BelowNormal;
                                 thread.Start();
                                 return thread;
                             })];

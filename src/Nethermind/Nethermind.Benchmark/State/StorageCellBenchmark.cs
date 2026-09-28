@@ -43,9 +43,6 @@ namespace Nethermind.Benchmarks.State
         {
             public bool IsTracingStorage => throw new NotImplementedException();
 
-            public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
-                throw new NotImplementedException();
-
             [MethodImpl(MethodImplOptions.NoInlining)]
             public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
 

@@ -132,7 +132,9 @@ public abstract partial class BaseEngineModuleTests
         PayloadAttributes payloadAttributes =
             new() { Timestamp = timestamp, PrevRandao = random, SuggestedFeeRecipient = feeRecipient };
 
-        // we're using payloadService directly, because we can't use fcU for branch
+        // we're using payloadService directly, because we can't use fcU for branch; fcU would have waited for the
+        // parent's commit before building on it, so wait for it here
+        await chain.WaitForCommitted(parentHeader.Hash!);
         string payloadId = chain.PayloadPreparationService.StartPreparingPayload(parentHeader, payloadAttributes)!;
 
         ResultWrapper<ExecutionPayload?> getPayloadResult =
@@ -186,6 +188,12 @@ public abstract partial class BaseEngineModuleTests
                 h => TxPool.TxPoolHeadChanged += h,
                 h => TxPool.TxPoolHeadChanged -= h,
                 b => b.Hash == blockHash);
+
+        /// <summary>
+        /// newPayload answers on the block's verdict, before its state is committed and it is marked processed; a test
+        /// that reads the block's state, receipts or processed flag right after VALID waits here first.
+        /// </summary>
+        public Task WaitForCommitted(Hash256 blockHash) => BlockProcessingQueue.WaitUntilRemovedAsync(blockHash).AsTask();
 
         public IBeaconPivot BeaconPivot => Container.Resolve<IBeaconPivot>();
 
@@ -325,7 +333,16 @@ public abstract partial class BaseEngineModuleTests
         {
             TestBlockchain bc = await base.Build(configurer);
             _lazyEngineRpcModule = bc.Container.Resolve<Lazy<IEngineRpcModule>>();
+            UndisposedChainGuardAttribute.Track(this);
             return bc;
+        }
+
+        internal bool IsDisposed { get; private set; }
+
+        public override void Dispose()
+        {
+            IsDisposed = true;
+            base.Dispose();
         }
 
         public IBlockImprovementContextFactory BlockImprovementContextFactory =>

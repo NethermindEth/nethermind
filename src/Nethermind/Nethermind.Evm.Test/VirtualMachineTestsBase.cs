@@ -30,6 +30,8 @@ public abstract class VirtualMachineTestsBase
     protected const string SampleHexData2 = "b15678";
     protected const string HexZero = "00";
     protected const ulong DefaultBlockGasLimit = 8000000;
+    protected const ulong DefaultBlockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
+    protected const ulong DefaultTimestamp = 0UL;
 
     private IEthereumEcdsa _ethereumEcdsa;
     protected ITransactionProcessor _processor;
@@ -49,8 +51,8 @@ public abstract class VirtualMachineTestsBase
     protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
-    protected virtual ulong BlockNumber { get; private set; } = MainnetSpecProvider.ByzantiumBlockNumber;
-    protected virtual ulong Timestamp { get; private set; } = 0UL;
+    protected virtual ulong BlockNumber { get; private set; } = DefaultBlockNumber;
+    protected virtual ulong Timestamp { get; private set; } = DefaultTimestamp;
 
     /// <summary>Applies a signed <paramref name="adjustment"/> to a block number, e.g. to target just before/after a fork.</summary>
     protected static ulong AdjustBlockNumber(ulong blockNumber, long adjustment) => (ulong)((long)blockNumber + adjustment);
@@ -62,6 +64,9 @@ public abstract class VirtualMachineTestsBase
     [SetUp]
     public virtual void Setup()
     {
+        BlockNumber = DefaultBlockNumber;
+        Timestamp = DefaultTimestamp;
+
         ILogManager logManager = GetLogManager();
 
         _stateDb = new MemDb();

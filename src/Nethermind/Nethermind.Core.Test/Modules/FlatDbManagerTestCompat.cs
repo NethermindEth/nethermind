@@ -4,6 +4,7 @@
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.Core.Test.Modules;
 
@@ -18,11 +19,16 @@ internal class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbMa
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId stateId) => flatDbManager.GatherReadOnlySnapshotBundle(NormalizeState(stateId));
 
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId stateId, ReaderFlags readerFlags) => flatDbManager.GatherReadOnlySnapshotBundle(NormalizeState(stateId), readerFlags);
+
     public bool HasStateForBlock(in StateId stateId)
     {
         if (stateId.StateRoot == Keccak.EmptyTreeHash) return true;
         return flatDbManager.HasStateForBlock(stateId);
     }
+
+    public bool HasStateForBlock(in StateId stateId, ResourcePool.Usage usage) =>
+        stateId.StateRoot == Keccak.EmptyTreeHash || flatDbManager.HasStateForBlock(stateId, usage);
 
     private StateId NormalizeState(StateId stateId)
     {
