@@ -189,9 +189,9 @@ public class ColumnGossipRouterGloasTests
         }
     }
 
-    /// <summary>The spec orders verify_data_column_sidecar's REJECT after the block checks, so only a block already read can convict.</summary>
+    /// <summary>The spec orders verify_data_column_sidecar's REJECT after the block-seen IGNORE, so a held block convicts whether or not it was read.</summary>
     [Test]
-    public void Out_of_range_index_on_its_subnet_is_rejected_only_once_its_block_is_read([Values] bool blockRead)
+    public void Out_of_range_index_on_its_subnet_is_rejected_once_its_block_is_held([Values] bool blockRead)
     {
         (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create();
         if (blockRead)
@@ -203,7 +203,7 @@ public class ColumnGossipRouterGloasTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(validity, Is.EqualTo(blockRead ? MessageValidity.Rejected : MessageValidity.Ignored));
+            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
             Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedStructure), Is.EqualTo(1));
             Assert.That(pool.GetPendingGloas(BlockRoot, Column + Eip7594DasConstants.DataColumnSidecarSubnetCount), Is.Empty);
         }
@@ -516,9 +516,56 @@ public class ColumnGossipRouterGloasTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(validity, Is.EqualTo(MessageValidity.Ignored));
+            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
             Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedBlobCount), Is.EqualTo(1));
             Assert.That(pool.TryGetGloas(root, Column, out _), Is.False);
+        }
+    }
+
+    /// <summary>A held block's bid is within its epoch's blob limit, so a longer column naming it fails verify_data_column_sidecar.</summary>
+    [TestCase(0UL, MessageValidity.Rejected, TestName = "Column over the blob limit naming a held block is rejected")]
+    [TestCase(1UL, MessageValidity.Ignored, TestName = "Column over the blob limit naming a held block from the next slot is only ignored")]
+    public void Column_over_the_blob_limit_is_convicted_only_by_a_held_block_and_a_slot_not_from_the_future(ulong slotsAhead, MessageValidity expected)
+    {
+        // A later schedule entry lifts the size bound to 22 cells while the block's own epoch allows 21.
+        BeaconChainSpec spec = WithBlobEntry(Sepolia, new BlobScheduleEntry(Sepolia.GloasForkEpoch + 1, 22));
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(spec, populate: static (_, store) => store.PutForkedBlock(BlockRoot, new ForkedSignedBeaconBlock.OfGloas(Block)));
+
+        MessageValidity validity = router.Handle(Column, gloasTopic: true, Encode(Sidecar(slot: BlockSlot + slotsAhead, mutate: static s => Widen(s, 22))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validity, Is.EqualTo(expected));
+            Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedBlobCount), Is.EqualTo(1));
+            Assert.That(pool.GetPendingGloas(BlockRoot, Column), Is.Empty, "a column no bid can match is never parked");
+        }
+    }
+
+    /// <summary>Fulu and Gloas column topics are both live around the fork, so a flood on one must not spend the store reads of the other.</summary>
+    [Test]
+    public void Fulu_parent_slot_reads_and_gloas_block_decodes_have_separate_budgets([Values] bool spendFuluParentReads)
+    {
+        Hash256[] fuluRoots = [];
+        Hash256[] gloasParents = [];
+        (ColumnGossipRouter router, DataColumnSidecarPool _) = Create(populate: (_, store) =>
+        {
+            fuluRoots = StoreFuluBlocks(store, ColumnGossipRouter.StoreDecodesPerSlot);
+            gloasParents = StoreGloasBlocksAtBlockSlot(store, ColumnGossipRouter.ParentSlotReadsPerSlot + 1);
+        });
+        DataColumnSidecar fulu = DataColumnSidecarTestFixture.BuildValidSidecar(Column, BlockSlot);
+
+        MessageValidity[] spending = spendFuluParentReads
+            ? [.. gloasParents[1..].Select((parent, i) => router.Handle(Column, gloasTopic: false, FuluMessage(fulu, parent, proposer: (ulong)i)))]
+            : [.. fuluRoots.Select(root => router.Handle(Column, gloasTopic: true, Encode(Sidecar(root: root))))];
+        MessageValidity probe = spendFuluParentReads
+            ? router.Handle(Column, gloasTopic: true, Encode(Sidecar()))
+            : router.Handle(Column, gloasTopic: false, FuluMessage(fulu, gloasParents[0], proposer: 1000));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spending, Is.All.EqualTo(MessageValidity.Rejected), "fixture: every spending message reads a held block and is rejected");
+            Assert.That(probe, Is.EqualTo(spendFuluParentReads ? MessageValidity.Accepted : MessageValidity.Rejected), "the probed rule's budget is still whole");
+            Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.Zero);
         }
     }
 
@@ -607,6 +654,28 @@ public class ColumnGossipRouterGloasTests
         }
 
         return roots;
+    }
+
+    private static Hash256[] StoreGloasBlocksAtBlockSlot(BeaconChainStore store, int count)
+    {
+        Hash256[] roots = new Hash256[count];
+        for (int i = 0; i < count; i++)
+        {
+            SignedBeaconBlockGloas gloas = CreateMinimalGloasBlock(BlockSlot);
+            gloas.Message!.ProposerIndex = 100 + (ulong)i;
+            roots[i] = SszRoots.HashTreeRoot(gloas.Message);
+            store.PutForkedBlock(roots[i], new ForkedSignedBeaconBlock.OfGloas(gloas));
+        }
+
+        return roots;
+    }
+
+    // The inclusion proof binds the commitments to the header's body root only, so parent and proposer can be rewritten.
+    private static byte[] FuluMessage(DataColumnSidecar sidecar, Hash256 parent, ulong proposer)
+    {
+        sidecar.SignedBlockHeader!.Message!.ParentRoot = parent;
+        sidecar.SignedBlockHeader.Message.ProposerIndex = proposer;
+        return Snappy.CompressToArray(DataColumnSidecar.Encode(sidecar));
     }
 
     private static SignedBeaconBlockGloas BlockWithBlobs()

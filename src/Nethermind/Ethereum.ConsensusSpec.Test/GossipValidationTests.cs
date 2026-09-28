@@ -96,12 +96,17 @@ public class GossipValidationTests
                 // REJECTs needing no state that the spec orders after store checks; gossip_validation.md lets them run in any order.
                 ("attestation epoch does not match target epoch", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("aggregate has no participants", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                // gloas/p2p-interface.md verify_attestation_payload_status, answered from the held block's slot.
+                ("same-slot attestation must attest with index 0", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
             ],
             [GossipTopics.AttesterSlashing] =
             [
                 ("all attester slashing indices already seen", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
                 ("all attester slashing indices already seen", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
                 ("attestation data is not slashable", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                // is_valid_indexed_attestation's sorted and unique indices need no state; its signature does.
+                ("invalid indexed attestation 1", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("invalid indexed attestation 2", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
             ],
             // An envelope whose block is not held is raised, so "envelope's block has not been seen" and, as the store holds only
             // accepted blocks, "envelope's block failed validation" have no row; neither has the signature, which needs the state.
@@ -334,7 +339,7 @@ public class GossipValidationTests
 
     /// <summary>The vector's own <c>config.yaml</c> when present, otherwise the mainnet config with the vector's fork live from genesis.</summary>
     /// <exception cref="NotImplementedInDriverException">The config's slot duration differs from the spec's, which <see cref="SlotClock"/> would misread.</exception>
-    private static BeaconChainSpec VectorSpec(string casePath, bool gloas)
+    internal static BeaconChainSpec VectorSpec(string casePath, bool gloas)
     {
         string configPath = Path.Combine(casePath, "config.yaml");
         if (!File.Exists(configPath))
@@ -350,7 +355,7 @@ public class GossipValidationTests
         return spec;
     }
 
-    private static (ulong GenesisTime, ulong FinalizedEpoch) ReadAnchorState(string statePath, bool gloas)
+    internal static (ulong GenesisTime, ulong FinalizedEpoch) ReadAnchorState(string statePath, bool gloas)
     {
         if (!gloas)
         {
@@ -363,7 +368,7 @@ public class GossipValidationTests
     }
 
     // compute_time_at_slot reads the anchor state's genesis_time, which the vectors set apart from the network config's.
-    private static BeaconChainSpec WithGenesisTime(BeaconChainSpec spec, ulong genesisTime) => new()
+    internal static BeaconChainSpec WithGenesisTime(BeaconChainSpec spec, ulong genesisTime) => new()
     {
         ChainId = spec.ChainId,
         CheckpointSyncUrl = spec.CheckpointSyncUrl,
@@ -403,14 +408,14 @@ public class GossipValidationTests
     /// <summary>A message's expected result and reason from meta.yaml, with the verdict the router reached.</summary>
     private sealed record Observation(string Topic, string Expected, string? Reason, RouterVerdict Verdict);
 
-    /// <summary>One message of meta.yaml's <c>messages</c>, received at <see cref="TimeMs"/> after genesis.</summary>
-    private sealed record VectorMessage(string Name, string Expected, string? Reason, long TimeMs);
+    /// <summary>One message of meta.yaml's <c>messages</c>, received at <see cref="TimeMs"/> after genesis on <see cref="SubnetId"/> when the topic has subnets.</summary>
+    internal sealed record VectorMessage(string Name, string Expected, string? Reason, long TimeMs, ulong? SubnetId);
 
     /// <summary>One entry of meta.yaml's <c>blocks</c>; <see cref="Failed"/> marks a block that fails validation.</summary>
-    private sealed record VectorBlock(string Name, bool Failed);
+    internal sealed record VectorBlock(string Name, bool Failed);
 
     /// <summary>The meta.yaml fields the synchronous checks read.</summary>
-    private sealed record VectorMeta(string Topic, ulong? FinalizedEpoch, List<VectorMessage> Messages, List<VectorBlock> Blocks)
+    internal sealed record VectorMeta(string Topic, ulong? FinalizedEpoch, List<VectorMessage> Messages, List<VectorBlock> Blocks)
     {
         public static VectorMeta Load(string casePath)
         {
@@ -434,7 +439,8 @@ public class GossipValidationTests
             foreach (YamlMappingNode message in ((YamlSequenceNode)root.Children[new YamlScalarNode("messages")]).Children.Cast<YamlMappingNode>())
             {
                 long time = Scalar(message, "current_time_ms") is { } absolute ? long.Parse(absolute) : baseTime + long.Parse(Scalar(message, "offset_ms") ?? "0");
-                messages.Add(new VectorMessage(Scalar(message, "message")!, Scalar(message, "expected")!, Scalar(message, "reason"), time));
+                ulong? subnetId = Scalar(message, "subnet_id") is { } subnet ? ulong.Parse(subnet) : null;
+                messages.Add(new VectorMessage(Scalar(message, "message")!, Scalar(message, "expected")!, Scalar(message, "reason"), time, subnetId));
             }
 
             if (messages.Count == 0)
