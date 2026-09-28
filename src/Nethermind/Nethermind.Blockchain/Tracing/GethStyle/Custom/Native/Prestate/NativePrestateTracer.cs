@@ -34,6 +34,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
     private readonly HashSet<AddressAsKey> _createdAccounts;
     private readonly HashSet<AddressAsKey> _deletedAccounts;
+    private readonly HashSet<AddressAsKey> _absentAccounts;
     private readonly bool _diffMode;
 
     public NativePrestateTracer(
@@ -62,6 +63,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             _poststate = [];
             _deletedAccounts = [];
             _createdAccounts = [];
+            _absentAccounts = [];
         }
 
         LookupAccount(from!);
@@ -274,6 +276,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 {
                     Balance = UInt256.Zero
                 });
+                if (_diffMode)
+                    _absentAccounts.Add(addr);
             }
         }
     }
@@ -289,9 +293,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             account.Storage.Add(index, storage);
         }
     }
-
-    private static bool IsEmpty(NativePrestateTracerAccount account) =>
-        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code is null;
 
     private void ProcessDiffState()
     {
@@ -356,8 +357,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 _poststate.Add(addr, diffAccount);
 
             // If no account fields were modified or the account was created then remove it from the prestate trace;
-            // a contract created onto an address that already held state did not create the account.
-            if (!modified || (_createdAccounts.Contains(addr) && IsEmpty(prestateAccount)))
+            // a contract created onto an address that already existed, even with only a balance or storage, did not
+            // create the account (EIP-684 collides only on code or nonce).
+            if (!modified || (_createdAccounts.Contains(addr) && _absentAccounts.Contains(addr)))
                 _prestate.Remove(addr);
         }
     }
