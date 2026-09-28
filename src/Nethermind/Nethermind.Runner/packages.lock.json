@@ -732,6 +732,17 @@
           "NonBlocking": "[2.1.2, )"
         }
       },
+      "nethermind.db.lmdb": {
+        "type": "Project",
+        "dependencies": {
+          "LightningDB": "[0.23.0, )",
+          "Nethermind.Api": "[2.1.0-preview, )",
+          "Nethermind.Config": "[2.1.0-preview, )",
+          "Nethermind.Core": "[2.1.0-preview, )",
+          "Nethermind.Db": "[2.1.0-preview, )",
+          "Nethermind.State.Flat": "[2.1.0-preview, )"
+        }
+      },
       "nethermind.db.rocks": {
         "type": "Project",
         "dependencies": {
@@ -1410,6 +1421,12 @@
           "YamlDotNet": "16.3.0"
         }
       },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.0, )",
+        "resolved": "0.23.0",
+        "contentHash": "J/EyEyVUFBYMtDT25mITkDFGVcpxm46tswVqrW1/g5ywB7ybSYspEYXq3jDafFW9J8w3qc3SD4w25P7gfRk5aw=="
+      },
       "MathNet.Numerics.FSharp": {
         "type": "CentralTransitive",
         "requested": "[5.0.0, )",
@@ -1749,6 +1766,12 @@
         "resolved": "2.1.8.1680",
         "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
       },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.0, )",
+        "resolved": "0.23.0",
+        "contentHash": "J/EyEyVUFBYMtDT25mITkDFGVcpxm46tswVqrW1/g5ywB7ybSYspEYXq3jDafFW9J8w3qc3SD4w25P7gfRk5aw=="
+      },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
         "requested": "[7.5.1.1, )",
@@ -1844,6 +1867,12 @@
         "requested": "[2.1.8.1680, )",
         "resolved": "2.1.8.1680",
         "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
+      },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.0, )",
+        "resolved": "0.23.0",
+        "contentHash": "J/EyEyVUFBYMtDT25mITkDFGVcpxm46tswVqrW1/g5ywB7ybSYspEYXq3jDafFW9J8w3qc3SD4w25P7gfRk5aw=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -1941,6 +1970,12 @@
         "resolved": "2.1.8.1680",
         "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
       },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.0, )",
+        "resolved": "0.23.0",
+        "contentHash": "J/EyEyVUFBYMtDT25mITkDFGVcpxm46tswVqrW1/g5ywB7ybSYspEYXq3jDafFW9J8w3qc3SD4w25P7gfRk5aw=="
+      },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
         "requested": "[7.5.1.1, )",
@@ -2036,6 +2071,12 @@
         "requested": "[2.1.8.1680, )",
         "resolved": "2.1.8.1680",
         "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
+      },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.0, )",
+        "resolved": "0.23.0",
+        "contentHash": "J/EyEyVUFBYMtDT25mITkDFGVcpxm46tswVqrW1/g5ywB7ybSYspEYXq3jDafFW9J8w3qc3SD4w25P7gfRk5aw=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
@@ -2228,6 +2269,12 @@
         "requested": "[2.1.8.1680, )",
         "resolved": "2.1.8.1680",
         "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
+      },
+      "LightningDB": {
+        "type": "CentralTransitive",
+        "requested": "[0.23.0, )",
+        "resolved": "0.23.0",
+        "contentHash": "J/EyEyVUFBYMtDT25mITkDFGVcpxm46tswVqrW1/g5ywB7ybSYspEYXq3jDafFW9J8w3qc3SD4w25P7gfRk5aw=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
