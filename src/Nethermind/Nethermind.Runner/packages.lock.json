@@ -621,7 +621,8 @@
         "dependencies": {
           "JetBrains.Profiler.Api": "[1.4.11, )",
           "Nethermind.Api": "[2.1.0-preview, )",
-          "Nethermind.Consensus": "[2.1.0-preview, )"
+          "Nethermind.Consensus": "[2.1.0-preview, )",
+          "Nethermind.State.Flat": "[2.1.0-preview, )"
         }
       },
       "nethermind.censorshipdetector.plugin": {
