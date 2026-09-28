@@ -263,7 +263,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
         {
             Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
-            state.Vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), (int)pc, in stack);
+            state.Vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), (int)pc, in stack, TOpcode.TraceGasCost ?? TOpcode.GetSpecTraceGasCost(state.Vm.Spec), TOpcode.StackInputs, TOpcode.StackGrowth);
         }
 
         pc++;
@@ -287,7 +287,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
         else
         {
+            int traceStackHead = TTracingInst.IsActive ? (int)stack.Head : 0;
             exceptionType = TOpcode.Execute(ref stack, ref gas, state.Vm, ref pc);
+            if (TTracingInst.IsActive && exceptionType == EvmExceptionType.StackUnderflow && TOpcode.StackInputs > 0)
+                state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
         }
 
         if (!TContinuable.IsActive)
@@ -368,7 +371,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
         {
             Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
-            vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), (int)pc, in stack);
+            vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), (int)pc, in stack, GasPolicy.JumpIGasCost.GasCost, stackInputs: 2);
         }
 
         pc++;

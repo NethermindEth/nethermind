@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Linq;
@@ -18,6 +19,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
@@ -103,6 +105,25 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
+    private Result<Transaction> ToTraceCallTransaction(TransactionForRpc call, IReleaseSpec spec)
+    {
+        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true } blob)
+            return call.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: spec);
+
+        // Geth permits a zero blob fee cap for simulated calls; retain all other RPC validation.
+        blob.MaxFeePerBlobGas = null;
+        try
+        {
+            Result<Transaction> result = call.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: spec);
+            if (result) result.Data.MaxFeePerBlobGas = UInt256.Zero;
+            return result;
+        }
+        finally
+        {
+            blob.MaxFeePerBlobGas = UInt256.Zero;
+        }
+    }
+
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         blockParameter ??= BlockParameter.Latest;
@@ -119,7 +140,27 @@ public class DebugRpcModule(
 
         if (options?.TxIndex is not null) blockParameter = new BlockParameter(header!.Hash!);
 
-        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
+        if (options?.BlockOverrides is { } blockOverrides)
+        {
+            string? unsupported = blockOverrides.BeaconRoot is not null ? "beaconRoot"
+                : blockOverrides.Withdrawals is not null ? "withdrawals" : null;
+            if (unsupported is not null)
+                return ResultWrapper<GethLikeTxTrace>.Fail($"block override \"{unsupported}\" is not supported for this RPC method", ErrorCodes.InvalidInput);
+        }
+
+        if (options?.StateOverrides is { } stateOverrides)
+        {
+            foreach (Address address in stateOverrides.Keys)
+            {
+                if (stateOverrides[address] is { State: not null, StateDiff: not null })
+                    return ResultWrapper<GethLikeTxTrace>.Fail($"account {address} has both 'state' and 'stateDiff'", ErrorCodes.InvalidInput);
+            }
+        }
+
+        if (call is LegacyTransactionForRpc { ChainId: { } requestedChainId } && requestedChainId != specProvider.ChainId)
+            return ResultWrapper<GethLikeTxTrace>.Fail($"chainId does not match node's (have={requestedChainId}, want={specProvider.ChainId})", ErrorCodes.InvalidInput);
+
+        Result<Transaction> txResult = ToTraceCallTransaction(call, specProvider.GetSpec(header!));
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
@@ -148,6 +189,14 @@ public class DebugRpcModule(
         catch (InsufficientBalanceException ex)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(ex.Message), ErrorCodes.InvalidInput);
+        }
+        catch (InvalidDataException ex) when (effective.Tracer == "muxTracer")
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (ArgumentException ex) when (effective.Tracer == "prestateTracer" && ex.Message == "cannot use diffMode with includeEmpty")
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
 
         if (transactionTrace is null)

@@ -76,7 +76,6 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_stack_underflow_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -87,7 +86,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries[0].Error, Is.EqualTo("StackUnderflow"));
+            Assert.That(trace.Entries[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
         }
     }
 
@@ -111,7 +110,6 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_invalid_jump_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -123,12 +121,11 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadJumpDestination"));
+            Assert.That(trace.Entries.Last().Error, Is.Null);
         }
     }
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_invalid_opcode_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -139,7 +136,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadInstruction"));
+            Assert.That(trace.Entries.Last().Error, Is.Null);
         }
     }
 

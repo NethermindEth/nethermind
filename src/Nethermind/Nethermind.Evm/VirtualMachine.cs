@@ -1475,6 +1475,10 @@ public partial class VirtualMachine<TGasPolicy>(
         return new CallResult(Unsafe.As<byte[]>(ReturnData), null);
 
     Revert:
+        if (TTracingInst.IsActive)
+            _txTracer.ForEach<ITraceRevertFault, EvmExceptionType>(
+                static tracer => tracer.IsTracingInstructions, EvmExceptionType.Revert,
+                static (tracer, error) => tracer.ReportOperationError(error));
         Debug.Assert(ReturnData is byte[], "REVERT stages a byte array before stopping dispatch.");
         return new CallResult(Unsafe.As<byte[]>(ReturnData), null, shouldRevert: true, exceptionType);
 
@@ -1505,20 +1509,24 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void StartInstructionTrace(Instruction instruction, ulong gasAvailable, int programCounter, in EvmStack stackValue)
-        => StartInstructionTrace(_txTracer, instruction, gasAvailable, programCounter, (int)stackValue.Head);
+    private void StartInstructionTrace(Instruction instruction, ulong gasAvailable, int programCounter, in EvmStack stackValue, ulong? gasCost = null, int stackInputs = 0, int stackGrowth = 0)
+        => StartInstructionTrace(_txTracer, instruction, gasAvailable, programCounter, (int)stackValue.Head, gasCost, stackInputs, stackGrowth);
 
-    private void StartInstructionTrace(ITxTracer tracer, Instruction instruction, ulong gasAvailable, int programCounter, int stackHead)
+    private void StartInstructionTrace(ITxTracer tracer, Instruction instruction, ulong gasAvailable, int programCounter, int stackHead, ulong? gasCost = null, int stackInputs = 0, int stackGrowth = 0)
     {
         VmState<TGasPolicy> vmState = VmState;
         tracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
+        if (gasCost is ulong cost)
+            tracer.ForEach<ITraceOperationStart, (ulong Cost, int Head, int Inputs, int Growth)>(
+                static inner => inner.IsTracingInstructions, (cost, stackHead, stackInputs, stackGrowth),
+                static (inner, operation) => inner.ReportOperationStart(operation.Cost, operation.Head, operation.Inputs, operation.Growth));
         if (tracer.IsTracingMemory)
         {
             tracer.SetOperationMemory(vmState.Memory.GetTrace());
             tracer.SetOperationMemorySize(vmState.Memory.Size);
         }
 
-        if (tracer.IsTracingStack)
+        if (tracer.IsTracingStack || tracer.IsTracingOpLevelStorage && instruction == Instruction.SSTORE && stackHead >= 2)
         {
             // Slots hold words in limb layout; TraceStack reverses the ones the tracer reads into the
             // big-endian words the EVM shows.
@@ -1527,7 +1535,13 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 _tracedStackWords = new byte[EvmStack.MaxStackSize * EvmStack.WordSize];
             }
-            tracer.SetOperationStack(new TraceStack(slots, _tracedStackWords.AsMemory(0, slots.Length)));
+            TraceStack traceStack = new(slots, _tracedStackWords.AsMemory(0, slots.Length));
+            if (tracer.IsTracingStack) tracer.SetOperationStack(traceStack);
+            if (instruction == Instruction.SSTORE && traceStack.Count >= 2)
+                tracer.ForEach<ITraceOperationStorage, (Address Address, UInt256 Key, UInt256 Value)>(
+                    static inner => inner.IsTracingOpLevelStorage,
+                    (vmState.Env.ExecutingAccount, traceStack.PeekUInt256(0), traceStack.PeekUInt256(1)),
+                    static (inner, storage) => inner.ReportStorageAttempt(storage.Address, storage.Key, storage.Value));
         }
 
         if (tracer.IsTracingReturnData)
@@ -1546,6 +1560,85 @@ public partial class VirtualMachine<TGasPolicy>(
                 state.Machine.StartInstructionTrace(implicitStopTracer, Instruction.STOP, state.Gas, state.ProgramCounter, state.StackHead);
                 implicitStopTracer.ReportOperationRemainingGas(state.Gas);
             });
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceRejectedCall(ulong gas, UInt256 value, Address from, Address to, UInt256 dataOffset, UInt256 dataLength, ExecutionType callType) =>
+        _txTracer.ForEach<ITraceRejectedCall, (VirtualMachine<TGasPolicy> Machine, ulong Gas, UInt256 Value, Address From, Address To, UInt256 Offset, UInt256 Length, ExecutionType Type)>(
+            static tracer => tracer.IsTracingActions,
+            (this, gas, value, from, to, dataOffset, dataLength, callType),
+            static (tracer, call) =>
+            {
+                if (call.Machine.VmState.Memory.TryLoad(in call.Offset, call.Length, out ReadOnlyMemory<byte> input))
+                    tracer.ReportRejectedCall(call.Gas, call.Value, call.From, call.To, input, call.Type, EvmExceptionType.NotEnoughBalance);
+            });
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceStorageRefund(long refund) =>
+        _txTracer.ForEach<ITraceOperationStorage, long>(
+            static tracer => tracer.IsTracingInstructions, refund,
+            static (tracer, value) => tracer.ReportStorageRefund(value));
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceOperationGasCost(ulong gasCost)
+    {
+        if (_txTracer.IsTracingInstructions)
+            _txTracer.ForEach<ITraceOperationGasCost, ulong>(
+                static tracer => tracer.IsTracingInstructions, gasCost,
+                static (tracer, cost) => tracer.ReportOperationGasCost(cost));
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceMemoryOperationGasCost(in UInt256 position, in UInt256 length, ulong additionalGas = 0)
+    {
+        if (!_txTracer.IsTracingInstructions)
+            return;
+
+        // Cost calculation changes Size, so diagnostics must not consume the execution's expansion.
+        EvmPooledMemory memory = VmState.Memory;
+        ulong memoryCost = memory.CalculateMemoryCost(in position, in length, out bool overflow);
+        if (!overflow && memoryCost <= ulong.MaxValue - additionalGas)
+        {
+            TraceOperationGasCost(additionalGas + memoryCost);
+            TraceOperationReady(additionalGas + memoryCost);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceOperationReady(ulong gasCost, string? error = null) =>
+        _txTracer.ForEach<ITraceOperationStart, (ulong Cost, string? Error)>(
+            static tracer => tracer.IsTracingInstructions, (gasCost, error),
+            static (tracer, operation) => tracer.ReportOperationReady(operation.Cost, operation.Error));
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal ulong GetAccountAccessTraceGasCost(Address address, ulong baseCost, ulong extraCost = 0)
+    {
+        if (!Spec.UseHotAndColdStorage)
+            return baseCost + extraCost;
+
+        bool isCold = !IsTracingAccess && VmState.AccessTracker.IsCold(address) && !Spec.IsPrecompile(address);
+        ulong accessCost = isCold
+            ? Spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess
+            : GasCostOf.WarmStateRead;
+        return baseCost + accessCost + extraCost;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal ulong GetStorageLoadTraceGasCost(in StorageCell cell)
+    {
+        if (!Spec.UseHotAndColdStorage)
+            return Spec.GasCosts.SLoadCost;
+
+        return !IsTracingAccess && VmState.AccessTracker.IsCold(in cell)
+            ? Spec.IsEip8038Enabled ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad
+            : GasCostOf.WarmStateRead;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceActionErrorDetails(string error)
+    {
+        if (IsTracingActions)
+            _txTracer.ReportActionErrorDetails(error);
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal void EndInstructionTrace(ulong gasAvailable) => _txTracer.ReportOperationRemainingGas(gasAvailable);

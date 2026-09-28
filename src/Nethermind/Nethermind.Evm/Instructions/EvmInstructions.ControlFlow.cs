@@ -213,6 +213,9 @@ public static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
+        if (DispatchFlags.ConstTracing && vm.TxTracer.IsTracingInstructions)
+            vm.TraceMemoryOperationGasCost(in position, in length);
+
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
             !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
         {

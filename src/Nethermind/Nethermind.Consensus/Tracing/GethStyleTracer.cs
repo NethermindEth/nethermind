@@ -28,7 +28,6 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
@@ -43,7 +42,8 @@ public class GethStyleTracer(
     IOverridableEnv<GethStyleTracer.BlockProcessingComponents> blockProcessingEnv,
     IPrefixStateSeedSource prefixSeeds,
     IOverridableCodeInfoRepository codeInfoRepository,
-    IParallelBlockTracer? parallelTracer = null
+    IParallelBlockTracer? parallelTracer = null,
+    GethStyleTracer.TraceCallRequestState? callRequestState = null
 ) : IGethStyleTracer
 {
     public GethLikeTxTrace? Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
@@ -69,15 +69,22 @@ public class GethStyleTracer(
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
         TransactionProcessorAdapterFactory previousAdapterFactory = transactionProcessorAdapter.CurrentAdapterFactory;
-        transactionProcessorAdapter.CurrentAdapterFactory = static processor => new TraceTransactionProcessorAdapter(processor);
+        (BlockHeader callHeader, IReleaseSpec callSpec) = PrepareCallHeader(block, options);
+        UInt256? blobBaseFee = GetCallBlobBaseFee(tx, options);
+        transactionProcessorAdapter.CurrentAdapterFactory = processor =>
+            blobBaseFee is not null || options.BlockOverrides?.PrevRandao is not null
+                ? CreateCallAdapter(processor, callHeader, callSpec, options.BlockOverrides, blobBaseFee)
+                : new TraceCallTransactionProcessorAdapter(processor, options.BlockOverrides, blobBaseFee);
 
         try
         {
+            if (callRequestState is not null) callRequestState.BlobBaseFee = blobBaseFee;
             return TraceImpl(block, tx.Hash, cancellationToken, options, useBlockAsBase: true, writer, pipeWriter);
         }
         finally
         {
             transactionProcessorAdapter.CurrentAdapterFactory = previousAdapterFactory;
+            if (callRequestState is not null) callRequestState.BlobBaseFee = null;
         }
     }
 
@@ -85,16 +92,11 @@ public class GethStyleTracer(
         CancellationToken cancellationToken, Utf8JsonWriter? writer, PipeWriter? pipeWriter)
     {
         Block replay = CreateCallReplay(block, call, index);
-        BlockHeader callHeader = block.Header.Clone();
-        options.BlockOverrides?.ApplyOverrides(callHeader);
-        if (options.NoBaseFee) callHeader.BaseFeePerGas = UInt256.Zero;
-        IReleaseSpec callSpec = specProvider.GetSpec(callHeader);
+        (BlockHeader callHeader, IReleaseSpec callSpec) = PrepareCallHeader(block, options);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(FindParent(block));
         IWorldState state = scope.Component.WorldState;
-        GethTraceOptions filtered = options with { TxHash = call.Hash };
-        IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(callHeader, filtered, state, specProvider)
-            : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, (long)callSpec.GasCosts.DestroyRefund);
+        IBlockTracer<GethLikeTxTrace> tracer = CreateIndexedCallTracer(callHeader, call, options, state, callSpec,
+            cancellationToken, writer, pipeWriter);
         TransactionProcessorAdapterFactory previous = transactionProcessorAdapter.CurrentAdapterFactory;
         try
         {
@@ -103,7 +105,7 @@ public class GethStyleTracer(
                 tracedBlock => PrepareIndexedCall(tracedBlock, call, options, state, callSpec));
             IBlockTracer boundary = TransactionTraceBoundary.Wrap(callTracer, call.Hash);
             scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
-            if (!callTracer.IsPrepared) throw new InvalidOperationException("The synthetic call was not prepared for tracing.");
+            if (!callTracer.IsPrepared) throw new InvalidOperationException($"The synthetic call at index {index} in block {block.Hash} was not prepared for tracing.");
             return tracer.BuildResult().SingleOrDefault();
         }
         catch
@@ -114,7 +116,26 @@ public class GethStyleTracer(
         finally
         {
             transactionProcessorAdapter.CurrentAdapterFactory = previous;
+            if (callRequestState is not null) callRequestState.BlobBaseFee = null;
         }
+    }
+
+    private (BlockHeader Header, IReleaseSpec Spec) PrepareCallHeader(Block block, GethTraceOptions options)
+    {
+        BlockHeader header = block.Header.Clone();
+        options.BlockOverrides?.ApplyOverrides(header);
+        if (options.NoBaseFee) header.BaseFeePerGas = UInt256.Zero;
+        return (header, specProvider.GetSpec(header));
+    }
+
+    private IBlockTracer<GethLikeTxTrace> CreateIndexedCallTracer(BlockHeader header, Transaction call,
+        GethTraceOptions options, IWorldState state, IReleaseSpec spec, CancellationToken cancellationToken,
+        Utf8JsonWriter? writer, PipeWriter? pipeWriter)
+    {
+        GethTraceOptions filtered = options with { TxHash = call.Hash };
+        return writer is null
+            ? CreateOptionsTracer(header, filtered, state, specProvider)
+            : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, (long)spec.GasCosts.DestroyRefund);
     }
 
     private static Block CreateCallReplay(Block block, Transaction call, ulong index)
@@ -129,20 +150,53 @@ public class GethStyleTracer(
         return block.WithReplacedBodyCloned(block.Body.WithChangedTransactions(transactions));
     }
 
-    private void PrepareIndexedCall(Block block, Transaction call, GethTraceOptions options, IWorldState state, IReleaseSpec callSpec)
+    private void PrepareIndexedCall(Block tracedBlock, Transaction call, GethTraceOptions options, IWorldState state, IReleaseSpec callSpec)
     {
-        options.BlockOverrides?.ApplyOverrides(block.Header);
-        if (options.NoBaseFee) block.Header.BaseFeePerGas = UInt256.Zero;
+        UInt256? blobBaseFee = GetCallBlobBaseFee(call, options);
+        if (callRequestState is not null) callRequestState.BlobBaseFee = blobBaseFee;
+        options.BlockOverrides?.ApplyOverrides(tracedBlock.Header);
+        if (options.NoBaseFee) tracedBlock.Header.BaseFeePerGas = UInt256.Zero;
         IReleaseSpec overrideSpec = callSpec.WithoutEip158();
         state.ApplyStateOverridesNoCommit(codeInfoRepository, options.StateOverrides, overrideSpec);
         state.Commit(overrideSpec);
-        // Keep transaction metadata consistent with overrides applied after LoadNonceFromState.
-        call.Nonce = state.GetNonce(call.SenderAddress!);
         transactionProcessorAdapter.CurrentAdapterFactory = processor =>
         {
-            processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, callSpec));
-            return new TraceTransactionProcessorAdapter(processor);
+            // This Ethereum context does not invoke chain-specific BlockProcessor context overrides (for example XDC).
+            return CreateCallAdapter(processor, tracedBlock.Header, callSpec, options.BlockOverrides, blobBaseFee);
         };
+    }
+
+    private static UInt256? GetCallBlobBaseFee(Transaction call, GethTraceOptions options) =>
+        call.MaxFeePerBlobGas is { IsZero: true } ? UInt256.Zero : options.BlockOverrides?.BlobBaseFee;
+
+    private static TraceCallTransactionProcessorAdapter CreateCallAdapter(ITransactionProcessor processor,
+        BlockHeader header, IReleaseSpec spec, BlockOverride? overrides, UInt256? blobBaseFee)
+    {
+        TraceCallTransactionProcessorAdapter adapter = new(processor, overrides, blobBaseFee);
+        adapter.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
+        return adapter;
+    }
+
+    private sealed class TraceCallTransactionProcessorAdapter(ITransactionProcessor processor, BlockOverride? overrides, UInt256? blobBaseFee) : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer tracer) => processor.Trace(transaction, tracer);
+
+        public void SetBlockExecutionContext(in BlockExecutionContext context)
+        {
+            if (blobBaseFee is { } fee)
+            {
+                processor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(
+                    context.Header, context.Spec, overrides?.PrevRandao?.ValueHash256 ?? context.PrevRandao, fee));
+            }
+            else if (overrides?.PrevRandao is { } prevRandao)
+            {
+                processor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandao(context.Header, context.Spec, prevRandao.ValueHash256));
+            }
+            else
+            {
+                processor.SetBlockExecutionContext(context);
+            }
+        }
     }
 
     private sealed class CallAtIndexBlockTracer(IBlockTracer inner, BlockHeader callHeader, Transaction call, Action<Block> prepareCall) : IBlockTracer
@@ -321,7 +375,9 @@ public class GethStyleTracer(
     public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider) =>
         options switch
         {
-            _ when RequiresLogIndices(options) => new GethLikeBlockCallTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
+            { Tracer: GethLikeBlockMuxTracer.TracerName } => new GethLikeBlockMuxTracer(options,
+                child => CreateOptionsTracer(block, child, worldState, specProvider)),
+            _ when RequiresLogIndices(options) => new GethLikeBlockCallTracer(options.TxHash, (b, tx) => new NativeCallTracer(tx, specProvider.GetSpec(b.Header), options)),
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options, (long)specProvider.GetSpec(block).GasCosts.DestroyRefund),
@@ -373,9 +429,25 @@ public class GethStyleTracer(
         }
     }
 
-    private static bool RequiresLogIndices(GethTraceOptions options) =>
-        options.Tracer == NativeCallTracer.CallTracer &&
-        options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions)?.WithLog is true;
+    private static bool RequiresLogIndices(GethTraceOptions options)
+    {
+        if (options.Tracer == GethLikeBlockMuxTracer.TracerName)
+        {
+            foreach ((string name, JsonElement childConfig) in GethLikeBlockMuxTracer.ParseConfig(options.TracerConfig))
+                if (RequiresLogIndices(options with { Tracer = name, TracerConfig = childConfig })) return true;
+            return false;
+        }
+        if (options.Tracer != NativeCallTracer.CallTracer || options.TracerConfig is not { ValueKind: JsonValueKind.Object } config)
+            return false;
+
+        bool withLog = false;
+        foreach (JsonProperty property in config.EnumerateObject())
+        {
+            if (property.Name.Equals("withLog", StringComparison.OrdinalIgnoreCase))
+                withLog = property.Value.ValueKind == JsonValueKind.True;
+        }
+        return withLog;
+    }
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>
     private static bool IsJavaScriptTracer(GethTraceOptions options) =>
@@ -406,6 +478,13 @@ public class GethStyleTracer(
         }
 
         return block;
+    }
+
+    /// <summary>Holds fee overrides while executing a synthetic trace call.</summary>
+    public sealed class TraceCallRequestState
+    {
+        /// <summary>The synthetic call blob fee, or null during canonical execution.</summary>
+        public UInt256? BlobBaseFee { get; set; }
     }
 
     public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor);

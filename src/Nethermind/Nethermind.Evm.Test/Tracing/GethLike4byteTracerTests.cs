@@ -18,21 +18,22 @@ namespace Nethermind.Evm.Test.Tracing;
 public class GethLike4byteTracerTests : VirtualMachineTestsBase
 {
     [Test]
-    public void ReportAction_WithoutOpcodeCallbacks_CountsOnlyNestedCalls(
-        [Values(ExecutionType.CALL, ExecutionType.CALLCODE, ExecutionType.DELEGATECALL, ExecutionType.STATICCALL,
+    public void ReportAction_WithoutOpcodeCallbacks_CountsOnlyCalls(
+        [Values(ExecutionType.TRANSACTION, ExecutionType.CALL, ExecutionType.CALLCODE, ExecutionType.DELEGATECALL, ExecutionType.STATICCALL,
             ExecutionType.CREATE, ExecutionType.CREATE2)] ExecutionType callType,
-        [Values] bool precompile)
+        [Values] bool precompile, [Values] bool nested)
     {
         using Native4ByteTracer tracer = new(Build.A.Transaction.TestObject,
             GethTraceOptions.Default with { EnableMemory = true, EnableReturnData = true });
-        tracer.ReportAction(100, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
+        if (nested)
+            tracer.ReportAction(100, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
         tracer.ReportAction(50, UInt256.Zero, TestItem.AddressB, TestItem.AddressC,
             new byte[] { 1, 2, 3, 4 }, callType, precompile);
         Dictionary<string, int> result = (Dictionary<string, int>)tracer.BuildResult().CustomTracerResult!.Value!;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Count, Is.EqualTo(callType.IsAnyCall() && !precompile ? 1 : 0));
+            Assert.That(result.Count, Is.EqualTo((callType.IsAnyCall() || callType == ExecutionType.TRANSACTION) && !precompile ? 1 : 0));
             Assert.That(tracer.IsTracingInstructions, Is.False);
             Assert.That(tracer.IsTracingStack, Is.False);
             Assert.That(tracer.IsTracingOpLevelStorage, Is.False);

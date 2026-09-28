@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using Collections.Pooled;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Evm;
@@ -18,7 +18,8 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     private readonly Transaction? _transaction;
     private readonly long _limit;
     private long _resultSize;
-    private readonly Dictionary<AddressAsKey, Dictionary<UInt256, UInt256>>? _sizeStorageByAddress;
+    private Utf8JsonWriter? _sizeWriter;
+    private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>>? _sizeStorageByAddress;
 
     private bool LimitReached => _limit != 0 && _resultSize > _limit;
 
@@ -27,7 +28,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         _transaction = transaction;
         _limit = options.Limit;
         if (_limit > 0 && !options.DisableStorage)
-            _sizeStorageByAddress = [];
+            _sizeStorageByAddress = new(4);
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -47,17 +48,32 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         base.AddTraceEntry(entry);
         if (_limit <= 0) return;
 
-        Dictionary<UInt256, UInt256>? storage = null;
+        PooledDictionary<UInt256, UInt256>? storage = null;
         if (_sizeStorageByAddress is not null && entry.StorageDelta is { } delta)
         {
             if (!_sizeStorageByAddress.TryGetValue(delta.Address, out storage))
-                _sizeStorageByAddress[delta.Address] = storage = [];
+                _sizeStorageByAddress[delta.Address] = storage = new(4);
             storage[delta.Key] = delta.Value;
         }
 
-        using Utf8JsonWriter writer = new(Stream.Null);
-        GethLikeTxTraceConverter.WriteEntry(writer, entry, storage);
-        _resultSize += writer.BytesCommitted + writer.BytesPending;
+        _sizeWriter ??= new(Stream.Null, new JsonWriterOptions { SkipValidation = true });
+        _sizeWriter.Reset();
+        GethLikeTxTraceConverter.WriteEntry(_sizeWriter, entry, storage);
+        _resultSize += _sizeWriter.BytesCommitted + _sizeWriter.BytesPending;
+    }
+
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        if (CurrentTraceEntry?.Opcode == "INVALID")
+        {
+            CurrentTraceEntry.GasCost = 0;
+            return;
+        }
+        if (error == EvmExceptionType.BadInstruction && CurrentTraceEntry is not null)
+            CurrentTraceEntry.GasCost = 0;
+        if (error == EvmExceptionType.StaticCallViolation && CurrentTraceEntry?.Opcode == "SSTORE")
+            CurrentTraceEntry.Error = "out of gas: write protection";
+        if (!IsExecutionFault(error)) base.ReportOperationError(error);
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -96,5 +112,17 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             return;
 
         CurrentTraceEntry.StorageDelta = (address, storageIndex, new UInt256(value, isBigEndian: true));
+    }
+
+    public override void Dispose()
+    {
+        if (_sizeStorageByAddress is not null)
+        {
+            foreach (PooledDictionary<UInt256, UInt256> storage in _sizeStorageByAddress.Values)
+                storage.Dispose();
+            _sizeStorageByAddress.Dispose();
+        }
+        _sizeWriter?.Dispose();
+        base.Dispose();
     }
 }

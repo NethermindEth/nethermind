@@ -202,7 +202,7 @@ public class Engine : IDisposable
     /// <summary>
     /// Converts input to hex string
     /// </summary>
-    private string ToHex(object? bytes) => bytes is null ? "0x" : bytes.ToBytes().ToHexString();
+    private string ToHex(object? bytes) => bytes is null ? "0x" : bytes.ToBytes().ToHexString(withZeroX: true);
 
     /// <summary>
     /// Converts input to 20 byte Address byte representation

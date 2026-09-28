@@ -7,6 +7,8 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -23,6 +25,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     public UInt256 InstructionMask => CaptureMask;
 
     private static readonly UInt256 CaptureMask = CreateCaptureMask();
+    private static readonly EthereumEcdsa AuthorityRecovery = new(0);
 
     private readonly IWorldState? _worldState;
     private readonly Hash256? _txHash;
@@ -34,7 +37,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
     private readonly HashSet<AddressAsKey> _createdAccounts;
     private readonly HashSet<AddressAsKey> _deletedAccounts;
+    private readonly bool _isEip6780Enabled;
+    private readonly bool _isEip7702Enabled;
     private readonly bool _diffMode;
+    private readonly bool _includeEmpty;
     private readonly bool _disableCode;
     private readonly bool _disableStorage;
 
@@ -45,6 +51,19 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         Address? from,
         Address? to = null,
         Address? beneficiary = null)
+        : this(worldState, options, txHash, from, to, beneficiary, null)
+    {
+    }
+
+    internal NativePrestateTracer(
+        IWorldState worldState,
+        GethTraceOptions options,
+        Hash256? txHash,
+        Address? from,
+        Address? to,
+        Address? beneficiary,
+        IReleaseSpec? spec,
+        AuthorizationTuple[]? authorizations = null)
         : base(options)
     {
         IsTracingActions = true;
@@ -55,9 +74,14 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         _worldState = worldState;
         _txHash = txHash;
+        _isEip6780Enabled = spec?.IsEip6780Enabled ?? false;
+        _isEip7702Enabled = spec?.IsEip7702Enabled ?? false;
 
         NativePrestateTracerConfig config = options.TracerConfig?.Deserialize<NativePrestateTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
         _diffMode = config.DiffMode;
+        _includeEmpty = config.IncludeEmpty;
+        if (_diffMode && _includeEmpty)
+            throw new ArgumentException("cannot use diffMode with includeEmpty");
         _disableCode = config.DisableCode;
         _disableStorage = config.DisableStorage;
         if (_diffMode)
@@ -68,8 +92,30 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         }
 
         LookupAccount(from!);
-        LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
+        Address recipient = to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0);
+        LookupAccount(recipient);
+        if (to is not null) LookupDelegation(to);
+        if (_diffMode && to is null)
+            _createdAccounts.Add(recipient);
         LookupAccount(beneficiary ?? Address.Zero);
+        if (authorizations is not null)
+        {
+            // Geth captures recoverable authorities even when chain ID or nonce prevents applying the authorization.
+            foreach (AuthorizationTuple authorization in authorizations)
+            {
+                if (HasValidAuthoritySignature(authorization.AuthoritySignature)
+                    && (authorization.Authority ??= AuthorityRecovery.RecoverAddress(authorization)) is { } authority)
+                    LookupAccount(authority);
+            }
+        }
+    }
+
+    private static bool HasValidAuthoritySignature(Signature signature)
+    {
+        UInt256 r = new(signature.RAsSpan, isBigEndian: true);
+        UInt256 s = new(signature.SAsSpan, isBigEndian: true);
+        return (signature.V == Signature.VOffset || signature.V == Signature.VOffset + 1)
+            && !r.IsZero && r < SecP256k1Curve.N && !s.IsZero && s <= SecP256k1Curve.HalfN;
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();
@@ -94,6 +140,15 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
+
+        if (!_includeEmpty)
+        {
+            foreach ((AddressAsKey address, NativePrestateTracerAccount account) in _prestate)
+            {
+                if (account.Balance.GetValueOrDefault().IsZero && account.Nonce.GetValueOrDefault().IsZero && account.CodeHash is null)
+                    _prestate.Remove(address);
+            }
+        }
 
         result.TxHash = _txHash;
         result.CustomTracerResult = new GethLikeCustomTrace
@@ -124,15 +179,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         base.StartOperation(pc, opcode, gas, env);
 
-        // Everything after an operation error is ignored, so stop pulling stack and memory for the
-        // frames that keep running; leaving the flags set would also freeze _op and _executingAccount
-        // at the failing operation.
-        if (_error is not null)
-        {
-            IsTracingMemory = false;
-            IsTracingStack = false;
-            return;
-        }
+        _error = null;
 
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
@@ -176,8 +223,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 {
                     address = stack.PeekAddress(0);
                     LookupAccount(address);
-                    if (_diffMode && _op == Instruction.SELFDESTRUCT)
-                        _deletedAccounts.Add(address);
+                    if (_diffMode && _op == Instruction.SELFDESTRUCT &&
+                        (!_isEip6780Enabled || _createdAccounts.Contains(_executingAccount!)))
+                        _deletedAccounts.Add(_executingAccount!);
                 }
                 break;
             case Instruction.DELEGATECALL:
@@ -188,6 +236,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 {
                     address = stack.PeekAddress(1);
                     LookupAccount(address);
+                    LookupDelegation(address);
                 }
                 break;
             case Instruction.CREATE2:
@@ -206,10 +255,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                     }
                     catch
                     {
-                        /*
-                         * This operation error will be recorded in ReportOperationError and all
-                         * subsequent operations will be ignored from the prestate trace
-                         */
+                        // The VM reports invalid CREATE2 memory ranges.
                     }
                 }
                 break;
@@ -227,6 +273,12 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         base.ReportOperationError(error);
         _error = error;
+    }
+
+    private void LookupDelegation(Address address)
+    {
+        if (_isEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(_worldState!.GetCode(address), out Address? target))
+            LookupAccount(target);
     }
 
     protected void LookupAccount(Address addr)
@@ -335,8 +387,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             if (modified)
                 _poststate.Add(addr, diffAccount);
 
-            // If no account fields were modified or the account was created then remove it from the prestate trace
-            if (!modified || _createdAccounts.Contains(addr))
+            if (!modified)
                 _prestate.Remove(addr);
         }
     }

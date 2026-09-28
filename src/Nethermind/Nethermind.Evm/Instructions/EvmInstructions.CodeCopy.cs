@@ -34,6 +34,8 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
+        if (TTracingInst.IsActive && !outOfGas && words <= (ulong.MaxValue - GasCostOf.VeryLow) / GasCostOf.Memory)
+            vm.TraceMemoryOperationGasCost(in a, in result, GasCostOf.VeryLow + GasCostOf.Memory * words);
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
@@ -96,13 +98,31 @@ public static partial class EvmInstructions
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
             goto StackUnderflow;
 
+        ulong traceInitialGas = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
         ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
+        if (TTracingInst.IsActive && !outOfGas && words <= (ulong.MaxValue - GasCostOf.VeryLow) / GasCostOf.Memory)
+            vm.TraceMemoryOperationGasCost(in destOffset, in size, GasCostOf.VeryLow + GasCostOf.Memory * words);
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
         if (UInt256.AddOverflow(size, sourceOffset, out UInt256 result) || result > returnDataBuffer.Length)
+        {
+            if (TTracingInst.IsActive)
+            {
+                // Geth calculates memory expansion before checking return-data bounds.
+                EvmPooledMemory traceMemory = vm.VmState.Memory;
+                ulong memoryCost = traceMemory.CalculateMemoryCost(in destOffset, in size, out bool memoryOverflow);
+                ulong remainingGas = TGasPolicy.GetRemainingGas(in gas);
+                if (!memoryOverflow)
+                {
+                    vm.TraceOperationGasCost(traceInitialGas - remainingGas + memoryCost);
+                    if (memoryCost > remainingGas)
+                        vm.TraceActionErrorDetails("out of gas");
+                }
+            }
             goto AccessViolation;
+        }
 
         if (!size.IsZero)
         {
@@ -271,12 +291,20 @@ public static partial class EvmInstructions
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
+        ulong traceGasCost = TTracingInst.IsActive
+            ? vm.GetAccountAccessTraceGasCost(address, spec.GasCosts.ExtCodeCost, Eip8038.IsActive ? Eip8038Constants.WarmAccess : 0)
+            : 0;
+
         // Charge gas for accessing the account's state.
-        if (!TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address))
-            goto OutOfGas;
+        bool gasAvailable = TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address);
 
         // EIP-8038 charges an extra warm access for the second DB read EXTCODESIZE performs.
-        if (Eip8038.IsActive && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
+        if (gasAvailable && Eip8038.IsActive)
+            gasAvailable = TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess);
+
+        if (TTracingInst.IsActive)
+            vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
+        if (!gasAvailable)
             goto OutOfGas;
 
         vm.WorldState.AddAccountRead(address);

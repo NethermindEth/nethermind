@@ -14,11 +14,11 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 {
-    private readonly Action<GethTxFileTraceEntry> _dumpCallback;
-    private readonly Action<ReadOnlyMemory<byte>, ulong, string?>? _dumpActionEnd;
+    private readonly IGethFileTraceSink _sink;
     private readonly Stack<ulong>? _actionGas;
     private GethTxFileTraceEntry? _reusableEntry;
     private TopLevelGasTracker _gasTracker;
+    private bool _captureStopped;
 
     /// <summary>
     /// Creates a streaming Geth-style transaction tracer.
@@ -31,27 +31,43 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         Action<GethTxFileTraceEntry> dumpCallback,
         GethTraceOptions options,
         long destroyRefund = 0,
-        ulong? standardIntrinsicGas = null) : this(dumpCallback, null, options, destroyRefund, standardIntrinsicGas)
+        ulong? standardIntrinsicGas = null) : this(new EntryCallbackSink(dumpCallback), options, destroyRefund, standardIntrinsicGas, false)
     {
     }
 
-    internal GethLikeTxFileTracer(
-        Action<GethTxFileTraceEntry> dumpCallback,
-        Action<ReadOnlyMemory<byte>, ulong, string?>? dumpActionEnd,
-        GethTraceOptions options,
-        long destroyRefund,
-        ulong? standardIntrinsicGas) : base(options, destroyRefund)
+    internal GethLikeTxFileTracer(IGethFileTraceSink sink, GethTraceOptions options,
+        long destroyRefund, ulong? standardIntrinsicGas) : this(sink, options, destroyRefund, standardIntrinsicGas, true)
     {
-        _dumpCallback = dumpCallback ?? throw new ArgumentNullException(nameof(dumpCallback));
+    }
+
+    private GethLikeTxFileTracer(IGethFileTraceSink sink, GethTraceOptions options,
+        long destroyRefund, ulong? standardIntrinsicGas, bool traceActionEnds) : base(options, destroyRefund)
+    {
+        _sink = sink;
         _gasTracker = new(standardIntrinsicGas);
-        _dumpActionEnd = dumpActionEnd;
-        if (dumpActionEnd is not null)
+        if (traceActionEnds)
             _actionGas = new();
 
         IsTracingMemory = true;
         IsTracingOpLevelStorage = false;
         IsTracingRefunds = true;
         IsTracingActions = true;
+        if (options.Limit < 0) StopCapture();
+    }
+
+    internal void StopCapture()
+    {
+        _captureStopped = true;
+        CurrentTraceEntry = null;
+        IsTracingMemory = false;
+        IsTracingStack = false;
+    }
+
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+    {
+        if (_captureStopped) return;
+        base.StartOperation(pc, opcode, gas, in env);
+        if (_captureStopped) CurrentTraceEntry = null;
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
@@ -99,7 +115,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     }
 
     protected override void AddTraceEntry(GethTxFileTraceEntry entry)
-        => _dumpCallback(entry);
+        => _sink.WriteEntry(entry);
 
     protected override GethTxFileTraceEntry CreateTraceEntry(Instruction opcode)
     {
@@ -145,7 +161,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
                 CurrentTraceEntry = null;
             }
 
-            _dumpActionEnd!(output, initialGas.SaturatingSub(gas), error);
+            _sink.WriteActionEnd(output, initialGas.SaturatingSub(gas), error);
         }
     }
 
@@ -154,4 +170,16 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         if (_gasTracker.GetReceiptFallback(in gasSpent) is ulong gasUsed)
             Trace.Gas = gasUsed;
     }
+    private sealed class EntryCallbackSink(Action<GethTxFileTraceEntry> callback) : IGethFileTraceSink
+    {
+        private readonly Action<GethTxFileTraceEntry> _callback = callback ?? throw new ArgumentNullException(nameof(callback));
+        public void WriteEntry(GethTxFileTraceEntry entry) => _callback(entry);
+        public void WriteActionEnd(ReadOnlyMemory<byte> output, ulong gas, string? error) { }
+    }
+}
+
+internal interface IGethFileTraceSink
+{
+    void WriteEntry(GethTxFileTraceEntry entry);
+    void WriteActionEnd(ReadOnlyMemory<byte> output, ulong gas, string? error);
 }

@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Tracing;
 using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
@@ -136,7 +137,18 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas))
+        {
+            if (TTracingInst.IsActive) vm.TraceOperationGasCost(GasCostOf.VeryLow);
+            return EvmExceptionType.OutOfGas;
+        }
+
+        if (TTracingInst.IsActive && stack.EnsureDepth(2))
+        {
+            // The word pop below reverses its slot in place; trace before that changes the stack view.
+            EvmStack.ReadMemoryPositionFromSlot(ref stack.PeekBytesByRefUnchecked(), out UInt256 tracePosition);
+            vm.TraceMemoryOperationGasCost(in tracePosition, EvmStack.WordSize, GasCostOf.VeryLow);
+        }
 
         // Single bounds check covering both the offset and the word.
         UInt256 result;
@@ -156,9 +168,19 @@ public static partial class EvmInstructions
 
         VmState<TGasPolicy> vmState = vm.VmState;
 
+        ulong memoryCost = 0;
+        if (TTracingInst.IsActive)
+        {
+            // Calculate against a copy because calculating expansion advances the memory size.
+            EvmPooledMemory traceMemory = vmState.Memory;
+            memoryCost = traceMemory.CalculateMemoryCost(in result, 32UL, out _);
+        }
+
         // Update the memory cost for a 32-byte store; if insufficient gas, signal out-of-gas.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, ref vmState.Memory))
         {
+            if (TTracingInst.IsActive && memoryCost != 0)
+                vm.TraceOperationGasCost(GasCostOf.VeryLow + memoryCost);
             goto OutOfGas;
         }
 
@@ -214,6 +236,9 @@ public static partial class EvmInstructions
 
         VmState<TGasPolicy> vmState = vm.VmState;
 
+        if (TTracingInst.IsActive)
+            vm.TraceMemoryOperationGasCost(in result, UInt256.One, GasCostOf.VeryLow);
+
         // Update the memory cost for a single-byte extension; if insufficient, signal out-of-gas.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 1UL, ref vmState.Memory))
         {
@@ -258,6 +283,9 @@ public static partial class EvmInstructions
         EvmStack.ReadMemoryPositionFromSlot(ref stack.PeekBytesByRefUnchecked(), out UInt256 result);
 
         VmState<TGasPolicy> vmState = vm.VmState;
+
+        if (TTracingInst.IsActive)
+            vm.TraceMemoryOperationGasCost(in result, EvmStack.WordSize, GasCostOf.VeryLow);
 
         // Update memory cost for a 32-byte load.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, ref vmState.Memory))
@@ -371,7 +399,24 @@ public static partial class EvmInstructions
 
         // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
         if (!TGasPolicy.TryConsumeSStoreResetGas(ref gas, spec))
+        {
+            if (TTracingInst.IsActive && stack.EnsureDepth(2) && vm.TxTracer.Any<ITraceOperationStart>(static _ => true))
+            {
+                // The legacy charge precedes the read; Geth calculates the attempted cost and refund first.
+                ref byte top = ref stack.PeekBytesByRefUnchecked();
+                EvmStack.ReadUInt256FromSlot(ref top, out UInt256 traceKey);
+                EvmStack.ReadUInt256FromSlot(ref Unsafe.Subtract(ref top, EvmStack.WordSize), out UInt256 traceValue);
+                StorageCell traceCell = new(vmState.Env.ExecutingAccount, in traceKey);
+                vm.WorldState.Get(in traceCell, out UInt256 traceCurrent);
+                ulong attemptedCost = spec.GasCosts.SStoreResetCost;
+                if (traceCurrent.IsZero && !traceValue.IsZero)
+                    attemptedCost += GasCostOf.SSet - GasCostOf.SReset;
+                if (!traceCurrent.IsZero && traceValue.IsZero)
+                    vm.TraceStorageRefund((long)spec.GasCosts.SClearRefund);
+                vm.TraceOperationReady(attemptedCost, "out of gas");
+            }
             goto OutOfGas;
+        }
 
         if (!stack.PopUInt256(out UInt256 result, out UInt256 newValue)) goto StackUnderflow;
         bool newIsZero = newValue.IsZero;
@@ -379,8 +424,14 @@ public static partial class EvmInstructions
         // Construct the storage cell for the executing account.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
+        ulong traceStorageAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
         if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+        {
+            if (TTracingInst.IsActive)
+                vm.TraceOperationReady(0, "out of gas: not enough gas for slot access");
             goto OutOfGas;
+        }
+        if (TTracingInst.IsActive) traceStorageAccessCost -= TGasPolicy.GetRemainingGas(in gas);
 
         // Retrieve the current value from persistent storage.
         vm.WorldState.Get(in storageCell, out UInt256 currentValue);
@@ -406,8 +457,16 @@ public static partial class EvmInstructions
         else if (currentIsZero)
         {
             if (!TGasPolicy.TryConsumeSSetFromCleanGas(ref gas))
+            {
+                if (TTracingInst.IsActive)
+                    vm.TraceOperationReady(traceStorageAccessCost + spec.GasCosts.SStoreResetCost + GasCostOf.SSet - GasCostOf.SReset, "out of gas");
                 goto OutOfGas;
+            }
         }
+
+        if (TTracingInst.IsActive)
+            vm.TraceOperationReady(traceStorageAccessCost + spec.GasCosts.SStoreResetCost +
+                (currentIsZero && !newIsZero ? GasCostOf.SSet - GasCostOf.SReset : 0));
 
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
@@ -437,6 +496,7 @@ public static partial class EvmInstructions
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
+        if (TTracingInst.IsActive) vm.TraceOperationReady(0, "out of gas: write protection");
         return EvmExceptionType.StaticCallViolation;
     }
 
@@ -479,7 +539,16 @@ public static partial class EvmInstructions
             if (vm.IsTracingRefunds)
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - gasCosts.NetMeteredSStoreCost + 1);
             if (TGasPolicy.GetRemainingGas(in gas) <= GasCostOf.CallStipend)
+            {
+                if (TTracingInst.IsActive)
+                {
+                    vm.TraceOperationGasCost(0);
+                    vm.TraceOperationReady(0, "out of gas: not enough gas for reentrancy sentry");
+                }
+                if (DispatchFlags.ConstTracing && vm.IsTracingActions)
+                    vm.TraceActionErrorDetails("out of gas: not enough gas for reentrancy sentry");
                 goto OutOfGas;
+            }
         }
 
         if (!stack.PopUInt256(out UInt256 result, out UInt256 newValue)) goto StackUnderflow;
@@ -490,8 +559,14 @@ public static partial class EvmInstructions
 
         // Charge gas based on whether this is a cold or warm storage access before reading
         // the slot; BAL records the read only once the access cost is covered.
+        ulong traceStorageAccessCost = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
         if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+        {
+            if (TTracingInst.IsActive)
+                vm.TraceOperationReady(0, "out of gas: not enough gas for slot access");
             goto OutOfGas;
+        }
+        if (TTracingInst.IsActive) traceStorageAccessCost -= TGasPolicy.GetRemainingGas(in gas);
 
         vm.WorldState.Get(in storageCell, out UInt256 currentValue);
         bool currentIsZero = currentValue.IsZero;
@@ -502,10 +577,15 @@ public static partial class EvmInstructions
         // Retrieve the refund value associated with clearing storage.
         long sClearRefunds = (long)gasCosts.SClearRefund;
 
+        ulong traceExecutionCost = traceStorageAccessCost + (Eip8038.IsActive ? 0 : gasCosts.NetMeteredSStoreCost);
+
         if (newSameAsCurrent)
         {
             if (!TGasPolicy.TryConsumeNetMeteredSStoreGas<Eip8038>(ref gas, spec))
+            {
+                if (TTracingInst.IsActive) vm.TraceOperationReady(traceExecutionCost, "out of gas");
                 goto OutOfGas;
+            }
         }
         else
         {
@@ -516,15 +596,35 @@ public static partial class EvmInstructions
 
             if (currentSameAsOriginal)
             {
+                traceExecutionCost = traceStorageAccessCost + (currentIsZero
+                    ? TEip8037.IsActive ? Eip8038.IsActive ? Eip8038Constants.StorageWrite : GasCostOf.SSetExecution : GasCostOf.SSet
+                    : Eip8038.IsActive ? Eip8038Constants.StorageWrite : gasCosts.SStoreResetCost);
                 if (currentIsZero)
                 {
                     bool ssetOutOfGas = !TGasPolicy.TryConsumeStorageWrite<TEip8037, OnFlag, Eip8038>(ref gas, spec);
-                    if (ssetOutOfGas) goto OutOfGas;
+                    if (ssetOutOfGas)
+                    {
+                        if (TTracingInst.IsActive && !TEip8037.IsActive && !Eip8038.IsActive)
+                            vm.TraceOperationGasCost(traceStorageAccessCost + GasCostOf.SSet);
+                        if (TTracingInst.IsActive) vm.TraceOperationReady(traceExecutionCost, "out of gas");
+                        goto OutOfGas;
+                    }
                 }
                 else
                 {
                     if (!TGasPolicy.TryConsumeStorageWrite<TEip8037, OffFlag, Eip8038>(ref gas, spec))
+                    {
+                        if (TTracingInst.IsActive && !TEip8037.IsActive && !Eip8038.IsActive)
+                        {
+                            vm.TraceOperationGasCost(traceStorageAccessCost + gasCosts.SStoreResetCost);
+                        }
+                        if (TTracingInst.IsActive)
+                        {
+                            if (newIsZero) vm.TraceStorageRefund(sClearRefunds);
+                            vm.TraceOperationReady(traceExecutionCost, "out of gas");
+                        }
                         goto OutOfGas;
+                    }
 
                     if (newIsZero)
                     {
@@ -537,7 +637,24 @@ public static partial class EvmInstructions
             else
             {
                 if (!TGasPolicy.TryConsumeNetMeteredSStoreGas<Eip8038>(ref gas, spec))
+                {
+                    if (TTracingInst.IsActive)
+                    {
+                        long attemptedRefund = 0;
+                        if (!originalIsZero)
+                        {
+                            if (currentIsZero) attemptedRefund -= sClearRefunds;
+                            if (newIsZero) attemptedRefund += sClearRefunds;
+                        }
+                        if (originalValue == newValue)
+                            attemptedRefund += Eip8038.IsActive ? (long)Eip8038Constants.StorageWrite
+                                : TEip8037.IsActive && originalIsZero ? (long)(GasCostOf.SSetExecution - GasCostOf.WarmStateRead)
+                                : (long)gasCosts.RefundFromReversal(originalIsZero);
+                        vm.TraceStorageRefund(attemptedRefund);
+                        vm.TraceOperationReady(traceExecutionCost, "out of gas");
+                    }
                     goto OutOfGas;
+                }
 
                 if (!originalIsZero)
                 {
@@ -581,6 +698,8 @@ public static partial class EvmInstructions
             }
         }
 
+        if (TTracingInst.IsActive) vm.TraceOperationReady(traceExecutionCost);
+
         // Only update storage if the new value differs from the current value.
         if (!newSameAsCurrent)
         {
@@ -609,6 +728,7 @@ public static partial class EvmInstructions
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
+        if (TTracingInst.IsActive) vm.TraceOperationReady(0, "out of gas: write protection");
         return EvmExceptionType.StaticCallViolation;
     }
 
@@ -694,8 +814,12 @@ public static partial class EvmInstructions
         Address executingAccount = vm.VmState.Env.ExecutingAccount;
         StorageCell storageCell = new(executingAccount, in value);
 
+        ulong traceGasCost = TTracingInst.IsActive ? vm.GetStorageLoadTraceGasCost(in storageCell) : 0;
         // Charge additional gas based on whether the storage cell is hot or cold.
-        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
+        bool gasAvailable = TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec);
+        if (TTracingInst.IsActive)
+            vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
+        if (!gasAvailable)
             goto OutOfGas;
 
         vm.WorldState.Get(in storageCell, out value);

@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -24,7 +25,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 // TracerConfig options:
 // onlyTopCall (default = false): Only the main (top-level) call will be processed to avoid any extra processing if only the main call info is required.
 // withLog (default = false): Logs emitted during each call will also be collected and included in the result.
-public sealed class NativeCallTracer : GethLikeNativeTxTracer
+public sealed class NativeCallTracer : GethLikeNativeTxTracer, ITraceRejectedCall
 {
     public const string CallTracer = "callTracer";
 
@@ -120,6 +121,24 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         _callStack.Add(callFrame);
     }
 
+    /// <inheritdoc/>
+    public void ReportRejectedCall(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error)
+    {
+        if (_config.OnlyTopCall || _callStack.Count == 0) return;
+
+        _callStack[^1].Calls.Add(new NativeCallTracerCallFrame
+        {
+            Type = callType.ToInstruction(),
+            From = from,
+            To = to,
+            Gas = gas,
+            GasUsed = 0,
+            Value = value,
+            Input = input.Span.ToPooledList(),
+            Error = error.GetEvmExceptionDescription()
+        });
+    }
+
     public override void ReportLog(LogEntry log)
     {
         base.ReportLog(log);
@@ -152,6 +171,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         OnExit(gas, output);
         base.ReportActionEnd(gas, output);
+    }
+
+    /// <inheritdoc/>
+    public override void ReportActionErrorDetails(string error)
+    {
+        if (_callStack.Count != 0 && (!_config.OnlyTopCall || Depth == 0))
+            _callStack[^1].Error = error;
     }
 
     public override void ReportActionError(EvmExceptionType evmExceptionType)
@@ -270,7 +296,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     /// </remarks>
     private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
     {
-        callFrame.Error = error.GetEvmExceptionDescription();
+        callFrame.Error ??= error.GetEvmExceptionDescription();
         if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2)
         {
             callFrame.To = null;
