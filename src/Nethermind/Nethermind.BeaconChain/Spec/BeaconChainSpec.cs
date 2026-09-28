@@ -99,6 +99,12 @@ public class BeaconChainSpec
     /// </remarks>
     public byte[] VersionForEpoch(ulong epoch) => Forks.Last(f => f.Epoch <= epoch).Version;
 
+    /// <summary><c>GENESIS_FORK_VERSION</c>: the phase0 entry of <see cref="Forks"/>, which deposit and BLS-to-execution-change domains use.</summary>
+    public byte[] GenesisForkVersion => Forks[0].Version;
+
+    /// <summary><c>CAPELLA_FORK_VERSION</c>: the Capella entry of <see cref="Forks"/>, which EIP-7044 fixes as the voluntary-exit domain.</summary>
+    public byte[] CapellaForkVersion => Forks[3].Version;
+
     /// <summary>
     /// The beacon state shape live at <paramref name="epoch"/>. Never falls back to an earlier fork for
     /// an epoch this driver cannot represent: an epoch before <see cref="ElectraForkEpoch"/> throws,
@@ -264,4 +270,15 @@ public class BeaconChainSpec
         BlockchainIds.Sepolia => Sepolia,
         _ => throw new UnsupportedBeaconNetworkException(chainId),
     };
+
+    /// <summary>The supported network a state with <paramref name="genesisValidatorsRoot"/> belongs to.</summary>
+    /// <remarks>
+    /// Signing domains fixed to a config fork version (<see cref="GenesisForkVersion"/>, <see cref="CapellaForkVersion"/>)
+    /// resolve the network through the state's own root, so a testnet state never signs with mainnet's versions. Any
+    /// other root is a consensus-spec test state, whose config is mainnet's.
+    /// </remarks>
+    public static BeaconChainSpec ForGenesisValidatorsRoot(Hash256 genesisValidatorsRoot) =>
+        genesisValidatorsRoot == Hoodi.GenesisValidatorsRoot ? Hoodi
+        : genesisValidatorsRoot == Sepolia.GenesisValidatorsRoot ? Sepolia
+        : Mainnet;
 }
