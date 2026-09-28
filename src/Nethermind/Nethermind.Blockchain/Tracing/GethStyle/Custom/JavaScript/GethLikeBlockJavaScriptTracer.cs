@@ -3,9 +3,9 @@
 
 
 using System;
-using System.Collections.Generic;
-using System.Threading;
+using Microsoft.ClearScript;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Evm.State;
@@ -18,28 +18,54 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     private readonly Context _ctx = new();
     private readonly Db _db = new(worldState);
     private int _index;
-    private List<IDisposable>? _engines;
+    // Validated on construction so an unusable tracer is refused before any transaction; inline code keeps the
+    // runtime it was compiled in, with its script cached.
+    private TracerRuntime? _runtime = TracerRuntime.CreateValidated(options.Tracer);
+    private GethLikeJavaScriptTxTracer? _currentTxTracer;
+    private Hash256? _blockHash;
     private UInt256 _baseFee;
 
     public override void StartNewBlockTrace(Block block)
     {
-        _engines = new List<IDisposable>(block.Transactions.Length + 1);
         _ctx.block = block.Number;
-        _ctx.BlockHash = block.Hash;
+        _blockHash = block.Hash;
         _baseFee = block.BaseFeePerGas;
+        _index = 0;
         base.StartNewBlockTrace(block);
     }
 
+    /// <summary>
+    /// Starts a transaction trace in its own engine inside the tracer's runtime, so script globals never outlive a
+    /// transaction while the runtime, and the scripts compiled in it, serve every transaction the tracer traces.
+    /// The engine is released as soon as the transaction's result is built, the runtime when the tracer is disposed.
+    /// </summary>
+    /// <remarks>
+    /// The runtime outlives <see cref="EndBlockTrace"/> so that a tracer reused across blocks, as
+    /// <c>debug_simulateV1</c> does for every block state call, builds one V8 isolate per request rather than one
+    /// per block. The tracer's owner must therefore dispose it on every path.
+    /// </remarks>
     protected override GethLikeJavaScriptTxTracer OnStart(Transaction? tx)
     {
         SetTransactionCtx(tx);
-        Engine engine = new(spec);
-        _engines?.Add(engine);
-        return new GethLikeJavaScriptTxTracer(this, engine, _db, _ctx, options);
+        _runtime ??= new TracerRuntime();
+        Engine engine = new(spec, _runtime);
+        try
+        {
+            return _currentTxTracer = new GethLikeJavaScriptTxTracer(engine, _db, _ctx, options);
+        }
+        catch
+        {
+            engine.Dispose();
+            throw;
+        }
     }
 
     private void SetTransactionCtx(Transaction? tx)
     {
+        _ctx.BlockHash = _blockHash;
+        _ctx.error = Undefined.Value;
+        _ctx.Output = null;
+        _ctx.gasUsed = 0;
         _ctx.GasPrice = tx!.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _baseFee);
         _ctx.TxHash = tx.Hash;
         _ctx.txIndex = tx.Hash is not null ? _index++ : null;
@@ -51,18 +77,20 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         _ctx.Input = tx.Data;
     }
 
-    public override void EndBlockTrace()
-    {
-        base.EndBlockTrace();
-        Engine.CurrentEngine = null;
-    }
-
     protected override bool ShouldTraceTx(Transaction? tx) => base.ShouldTraceTx(tx) && tx is not null;
 
-    protected override GethLikeTxTrace OnEnd(GethLikeJavaScriptTxTracer txTracer) => txTracer.BuildResult();
+    protected override GethLikeTxTrace OnEnd(GethLikeJavaScriptTxTracer txTracer)
+    {
+        GethLikeTxTrace trace = txTracer.BuildResult();
+        _currentTxTracer = null;
+        return trace;
+    }
+
     public void Dispose()
     {
-        List<IDisposable>? list = Interlocked.Exchange(ref _engines, null);
-        list?.ForEach(static e => e.Dispose());
+        _currentTxTracer?.Dispose();
+        _currentTxTracer = null;
+        _runtime?.Dispose();
+        _runtime = null;
     }
 }

@@ -30,6 +30,16 @@ namespace Nethermind.Trie.Test
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class TrieTests
     {
+        [Test]
+        public void Oversized_storage_leaf_is_rejected()
+        {
+            StorageTree tree = new(NullTrieStore.Instance, LimboLogs.Instance);
+            byte[] oversized = new byte[33];
+            Array.Fill(oversized, (byte)1);
+            tree.Set(UInt256.One, oversized);
+            Assert.Throws<TrieException>(() => tree.Get(UInt256.One, out _));
+        }
+
         private ILogger _logger;
         private ILogManager _logManager;
         private Random _random = new();
@@ -244,6 +254,8 @@ namespace Nethermind.Trie.Test
             Assert.That(checkTree.GetNodeByKey(Nibbles.CompactToHexEncode(emptyByteCompactEncoded), patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
 
             Assert.That(checkTree.GetNodeByKey(branchNodeKey1, patriciaTree.RootHash), Is.EqualTo(branchNodeValue1));
+            Assert.That(checkTree.GetNodeByKey([0xff], patriciaTree.RootHash), Is.Empty);
+            Assert.That(checkTree.Get(branchNodeKey1).ToArray(), Is.Empty);
         }
 
         // [Test]
@@ -754,7 +766,7 @@ namespace Nethermind.Trie.Test
                 IPruningConfig pruningConfig = new PruningConfig()
                 {
                     TrackPastKeys = TrackPastKeys,
-                    PruningBoundary = LookupLimit,
+                    PruningBoundary = (ulong)LookupLimit,
                 };
                 TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
                 TrieStore trieStore = new(
@@ -848,7 +860,7 @@ namespace Nethermind.Trie.Test
                 accounts[accountIndex] = key;
             }
 
-            for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
+            for (uint blockNumber = 0; blockNumber < blocksCount; blockNumber++)
             {
                 bool isEmptyBlock = _random.Next(5) == 0;
                 if (!isEmptyBlock)
@@ -970,7 +982,7 @@ namespace Nethermind.Trie.Test
             }
 
             int blockCount = 0;
-            for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
+            for (uint blockNumber = 0; blockNumber < blocksCount; blockNumber++)
             {
                 int reorgDepth = _random.Next(Math.Min(5, blockCount));
                 _logger.Debug($"Reorganizing {reorgDepth}");
@@ -1121,7 +1133,7 @@ namespace Nethermind.Trie.Test
             }
 
             BlockHeader? baseBlock = null;
-            for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
+            for (uint blockNumber = 0; blockNumber < blocksCount; blockNumber++)
             {
                 using IDisposable _ = stateProvider.BeginScope(baseBlock);
 
@@ -1153,12 +1165,12 @@ namespace Nethermind.Trie.Test
                                         address, existing.Balance - account.Balance, MuirGlacier.Instance);
                                 }
 
-                                stateProvider.IncrementNonce(address, UInt256.One);
+                                stateProvider.IncrementNonce(address, 1UL);
                             }
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), new UInt256(storage, isBigEndian: true));
                         }
                         else if (!account.IsTotallyEmpty)
                         {
@@ -1166,7 +1178,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), new UInt256(storage, isBigEndian: true));
                         }
                     }
                 }
@@ -1181,7 +1193,7 @@ namespace Nethermind.Trie.Test
                 baseBlock = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithNumber(blockNumber)
                     .TestObject;
 
-                if (blockNumber > blocksCount - Reorganization.MaxDepth)
+                if (blockNumber > (ulong)blocksCount - Reorganization.MaxDepth)
                 {
                     rootQueue.Enqueue(baseBlock);
                 }
@@ -1196,14 +1208,14 @@ namespace Nethermind.Trie.Test
             {
                 try
                 {
-                    using IDisposable _ = stateProvider.BeginScope(baseBlock);
+                    using IDisposable scope = stateProvider.BeginScope(baseBlock);
                     for (int i = 0; i < addresses.Length; i++)
                     {
                         if (stateProvider.AccountExists(addresses[i]))
                         {
                             for (int j = 0; j < 256; j++)
                             {
-                                stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                                stateProvider.Get(new StorageCell(addresses[i], (UInt256)j), out _);
                             }
                         }
                     }
@@ -1346,5 +1358,6 @@ namespace Nethermind.Trie.Test
 
             Assert.That(task.Wait(TimeSpan.FromSeconds(10)), Is.True, "Commit deadlocked on bounded scheduler");
         }
+
     }
 }

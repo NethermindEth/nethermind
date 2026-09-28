@@ -42,10 +42,11 @@ public class OptimismPayloadPreparationServiceTests
             yield return (new() { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(0, 250, 6));
 
             // V1
-            yield return (new() { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(1, 8, 2, 0));
-            yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 255], NoTxPool = noTxPool }, new EIP1559Parameters(1, 2, 2, 255));
-            yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10, 255, 255, 255, 255, 255, 255, 255, 255], NoTxPool = noTxPool }, new EIP1559Parameters(1, 2, 10, ulong.MaxValue));
-            yield return (new() { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(1, 250, 6, 0));
+            yield return (new() { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2], MinBaseFee = 0, NoTxPool = noTxPool }, new EIP1559Parameters(1, 8, 2, 0));
+            yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 2], MinBaseFee = 255, NoTxPool = noTxPool }, new EIP1559Parameters(1, 2, 2, 255));
+            yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10], MinBaseFee = ulong.MaxValue, NoTxPool = noTxPool }, new EIP1559Parameters(1, 2, 10, ulong.MaxValue));
+            yield return (new() { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], MinBaseFee = 0, NoTxPool = noTxPool }, new EIP1559Parameters(1, 250, 6, 0));
+            yield return (new() { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], MinBaseFee = 255, NoTxPool = noTxPool }, new EIP1559Parameters(1, 250, 6, 255));
         }
     }
     [TestCaseSource(nameof(TestCases))]
@@ -56,7 +57,7 @@ public class OptimismPayloadPreparationServiceTests
         IOptimismReleaseSpec releaseSpec = OptimismReleaseSpecSubstitute.Create();
         releaseSpec.IsOpHoloceneEnabled.Returns(true);
         releaseSpec.BaseFeeMaxChangeDenominator.Returns((UInt256)250);
-        releaseSpec.ElasticityMultiplier.Returns(6);
+        releaseSpec.ElasticityMultiplier.Returns(6UL);
         ISpecProvider? specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(parent).Returns(releaseSpec);
 
@@ -96,7 +97,7 @@ public class OptimismPayloadPreparationServiceTests
         testCase.Attributes.PrevRandao = Hash256.Zero;
         testCase.Attributes.SuggestedFeeRecipient = TestItem.AddressA;
 
-        string payloadId = service.StartPreparingPayload(parent, testCase.Attributes);
+        string payloadId = service.StartPreparingPayload(parent, testCase.Attributes)!;
         IBlockProductionContext context = (await service.GetPayload(payloadId))!;
         Block currentBestBlock = context.CurrentBestBlock!;
 

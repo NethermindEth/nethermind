@@ -16,12 +16,65 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.Xdc.Spec;
 using Nethermind.Int256;
 
 namespace Nethermind.Xdc;
 
-internal class XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider, IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, IBlockhashStore blockHashStore, ILogManager logManager, IWithdrawalProcessor withdrawalProcessor, IExecutionRequestsProcessor executionRequestsProcessor, IBlockAccessListManager balManager) : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor, balManager)
+internal class XdcBlockProcessor(
+    ISpecProvider specProvider,
+    IBlockValidator blockValidator,
+    IRewardCalculator rewardCalculator,
+    IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
+    IWorldState stateProvider,
+    IReceiptStorage receiptStorage,
+    IBeaconBlockRootHandler beaconBlockRootHandler,
+    IBlockhashStore blockHashStore,
+    ILogManager logManager,
+    IWithdrawalProcessor withdrawalProcessor,
+    IExecutionRequestsProcessor executionRequestsProcessor,
+    IBlockAccessListManager balManager) : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor, balManager), IBlockProcessor
 {
+    protected override Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block) =>
+        base.CalculateReceiptsRoot(AsEncodedForTrie(receipts, spec), spec, block);
+
+    /// <summary>
+    /// Returns the receipts as the receipts trie must encode them, which is not always how they are stored.
+    /// </summary>
+    /// <remarks>
+    /// A sign transaction's receipt enters the trie as a legacy receipt whatever the transaction's type,
+    /// because the reference client builds it with <c>types.NewReceipt</c> and never assigns
+    /// <c>receipt.Type</c> — see XinFinOrg/XDPoSChain
+    /// https://github.com/XinFinOrg/XDPoSChain/blob/5d080472c84a92a46f5fd0d343c09cca9f1b1356/core/state_processor.go#L426
+    /// It still reports the real type over RPC, as the reference does by filling it in from the
+    /// transaction when the receipt is read back, so only the encoding fed to the trie is adjusted here.
+    /// </remarks>
+    internal static TxReceipt[] AsEncodedForTrie(TxReceipt[] receipts, IReleaseSpec spec)
+    {
+        if (spec is not IXdcReleaseSpec { BlockSignerContract: not null } xdcSpec) return receipts;
+
+        TxReceipt[]? forTrie = null;
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            TxReceipt receipt = receipts[i];
+            if (receipt.TxType == TxType.Legacy || receipt.Recipient != xdcSpec.BlockSignerContract) continue;
+
+            forTrie ??= (TxReceipt[])receipts.Clone();
+            forTrie[i] = new TxReceipt(receipt) { TxType = TxType.Legacy };
+        }
+
+        return forTrie ?? receipts;
+    }
+
+    protected override void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)
+    {
+        base.PostValidation(suggestedBlock, processedBlock, receipts, options);
+        if (suggestedBlock.Header is XdcBlockHeader suggestedHeader && processedBlock.Header is XdcBlockHeader processedHeader)
+        {
+            suggestedHeader.ProcessedRewards = processedHeader.ProcessedRewards;
+        }
+    }
+
     protected override BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec)
     {
         // Match Go's big.Int.Bytes() behavior: zero produces empty bytes, not [0x00].
@@ -41,41 +94,8 @@ internal class XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blo
 
     protected override Block PrepareBlockForProcessing(Block suggestedBlock)
     {
-        //TODO find a better way to do this copy
         XdcBlockHeader bh = suggestedBlock.Header as XdcBlockHeader;
-        XdcBlockHeader headerForProcessing = new(
-            bh.ParentHash,
-            bh.UnclesHash,
-            bh.Beneficiary,
-            bh.Difficulty,
-            bh.Number,
-            bh.GasLimit,
-            bh.Timestamp,
-            bh.ExtraData,
-            bh.IsSelfMined
-        )
-        {
-            Bloom = Bloom.Empty,
-            Author = bh.Author,
-            Hash = bh.Hash,
-            MixHash = bh.MixHash,
-            Nonce = bh.Nonce,
-            TxRoot = bh.TxRoot,
-            TotalDifficulty = bh.TotalDifficulty,
-            AuRaStep = bh.AuRaStep,
-            AuRaSignature = bh.AuRaSignature,
-            ReceiptsRoot = bh.ReceiptsRoot,
-            BaseFeePerGas = bh.BaseFeePerGas,
-            WithdrawalsRoot = bh.WithdrawalsRoot,
-            RequestsHash = bh.RequestsHash,
-            IsPostMerge = bh.IsPostMerge,
-            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
-            ExcessBlobGas = bh.ExcessBlobGas,
-            BlobGasUsed = bh.BlobGasUsed,
-            Validator = bh.Validator,
-            Validators = bh.Validators,
-            Penalties = bh.Penalties,
-        };
+        XdcBlockHeader headerForProcessing = bh.CreateHeaderForProcessing();
 
         if (!ShouldComputeStateRoot(bh))
         {

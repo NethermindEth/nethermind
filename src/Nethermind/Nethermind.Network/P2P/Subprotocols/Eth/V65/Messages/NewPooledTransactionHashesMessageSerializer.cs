@@ -16,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 
         public override NewPooledTransactionHashesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            ArrayPoolList<Hash256>? hashes = DeserializeHashesArrayPool(byteBuffer, RlpLimit);
+            ArrayPoolList<Hash256> hashes = DeserializeHashesArrayPool(byteBuffer, RlpLimit);
             return new NewPooledTransactionHashesMessage(hashes);
         }
     }

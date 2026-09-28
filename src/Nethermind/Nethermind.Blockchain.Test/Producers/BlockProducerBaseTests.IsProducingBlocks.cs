@@ -4,6 +4,7 @@
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -162,15 +163,18 @@ public partial class BlockProducerBaseTests
 
         BuildBlocksWhenRequested trigger = new();
         StandardBlockProducerRunner runner = new(trigger, testRpc.BlockTree, blockProducer);
-        long currentHead = testRpc.BlockTree.Head?.Number ?? 0;
+        ulong currentHead = testRpc.BlockTree.Head?.Number ?? 0ul;
 
-        _ = new NonProcessingProducedBlockSuggester(testRpc.BlockTree, runner);
+        using ILifetimeScope scope = testRpc.Container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IBlockProducerRunner>(runner)
+            .AddScoped<NonProcessingProducedBlockSuggester>());
+        scope.Resolve<NonProcessingProducedBlockSuggester>();
 
         runner.Start();
 
         await trigger.BuildBlock(testRpc.BlockTree.Head?.Header);
 
-        Assert.That(testRpc.BlockTree.BestSuggestedHeader?.Number, Is.EqualTo(currentHead + 1));
+        Assert.That(testRpc.BlockTree.BestSuggestedHeader?.Number, Is.EqualTo(currentHead + 1ul));
     }
 
     private async Task<TestRpcBlockchain> CreateTestRpc()

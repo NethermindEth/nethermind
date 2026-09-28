@@ -23,7 +23,6 @@ namespace Nethermind.Taiko.Rpc;
 
 internal class TaikoForkchoiceUpdatedHandler(
     IBlockTree blockTree,
-    IManualBlockFinalizationManager manualBlockFinalizationManager,
     IPoSSwitcher poSSwitcher,
     IPayloadPreparationService payloadPreparationService,
     IBlockProcessingQueue processingQueue,
@@ -35,9 +34,10 @@ internal class TaikoForkchoiceUpdatedHandler(
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
-    ILogManager logManager) : ForkchoiceUpdatedHandler(
+    ILogManager logManager,
+    IBlockProcessingPauseControl pauseControl,
+    BlockTreeMutationLock mutationLock) : ForkchoiceUpdatedHandler(
     blockTree,
-    manualBlockFinalizationManager,
     poSSwitcher,
     payloadPreparationService,
     processingQueue,
@@ -49,7 +49,9 @@ internal class TaikoForkchoiceUpdatedHandler(
     specProvider,
     syncPeerPool,
     mergeConfig,
-    logManager)
+    logManager,
+    pauseControl,
+    mutationLock)
 {
     protected override bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
         [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)
@@ -62,7 +64,7 @@ internal class TaikoForkchoiceUpdatedHandler(
     // on finalized (Casper FFG monotonicity) and safe (safe >= finalized) don't apply. Keep the
     // ancestry check via the base call; pass lowerBound=0 to disable the numeric bound.
     protected override ResultWrapper<ForkchoiceUpdatedV1Result>? RejectIfInconsistent(
-        BlockHeader? header, long lowerBound, string label, BlockHeader newHeadHeader, string requestStr)
+        BlockHeader? header, ulong lowerBound, string label, BlockHeader newHeadHeader, string requestStr)
         => base.RejectIfInconsistent(header, 0, label, newHeadHeader, requestStr);
 
     protected override BlockHeader? ValidateBlockHash(ref Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)

@@ -26,11 +26,11 @@ public class RawTrieStore(INodeStorage nodeStorage) : IReadOnlyTrieStore
         new(NodeType.Unknown, hash);
 
     public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags) =>
-        nodeStorage.Get(address, path, hash, flags)
+        nodeStorage.Get(address, path, hash.ValueHash256, flags)
         ?? throw new MissingTrieNodeException("Node missing", address, path, hash);
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags) =>
-        nodeStorage.Get(address, path, hash, flags);
+        nodeStorage.Get(address, path, hash.ValueHash256, flags);
 
     public INodeStorage.KeyScheme Scheme { get; } = nodeStorage.Scheme;
 
@@ -40,5 +40,5 @@ public class RawTrieStore(INodeStorage nodeStorage) : IReadOnlyTrieStore
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new RawScopedTrieStore(nodeStorage, address);
 
-    public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
+    public IBlockCommitter BeginBlockCommit(ulong blockNumber) => NullCommitter.Instance;
 }

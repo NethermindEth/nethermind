@@ -21,11 +21,13 @@ namespace Nethermind.Crypto
                 InvalidPrivateKey();
             }
 
-            byte[] signatureBytes = SecP256k1.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
+            byte[] signatureBytes = SecP256k1.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId)
+                ?? throw new InvalidOperationException("Could not sign message.");
             Signature signature = new(signatureBytes, recoveryId);
 
 #if DEBUG
-            PublicKey address = RecoverPublicKey(signature, message);
+            PublicKey address = RecoverPublicKey(signature, message)
+                ?? throw new InvalidOperationException("Could not recover address after signing");
             if (!address.Equals(privateKey.PublicKey))
             {
                 throw new InvalidOperationException("After signing recovery returns different address than ecdsa's");

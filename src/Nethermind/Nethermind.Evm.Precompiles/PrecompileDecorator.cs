@@ -16,13 +16,15 @@ public abstract class PrecompileDecorator(IPrecompile inner) : IPrecompile
 {
     protected IPrecompile Inner { get; } = inner;
 
+    public virtual string Name => Inner.Name;
+
     public virtual bool SupportsCaching => Inner.SupportsCaching;
 
     public virtual ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) => Inner.NormalizeInput(inputData);
 
-    public virtual long BaseGasCost(IReleaseSpec releaseSpec) => Inner.BaseGasCost(releaseSpec);
+    public virtual ulong BaseGasCost(IReleaseSpec releaseSpec) => Inner.BaseGasCost(releaseSpec);
 
-    public virtual long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => Inner.DataGasCost(inputData, releaseSpec);
+    public virtual ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => Inner.DataGasCost(inputData, releaseSpec);
 
     public virtual Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => Inner.Run(inputData, releaseSpec);
 }

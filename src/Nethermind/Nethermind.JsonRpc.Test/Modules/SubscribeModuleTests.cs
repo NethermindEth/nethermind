@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.WebSockets;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -67,18 +68,18 @@ namespace Nethermind.JsonRpc.Test.Modules
             _specProvider = Substitute.For<ISpecProvider>();
             _filterStore = new FilterStore(new TimerFactory());
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
-            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
+            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager);
             _syncConfig = new SyncConfig();
             _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             _ethSyncingInfo = new EthSyncingInfo(_blockTree, Substitute.For<ISyncPointers>(), _syncConfig,
-                new StaticSelector(SyncMode.All), _syncProgressResolver, _logManager);
+                new StaticSelector(SyncMode.All), _syncProgressResolver, Synchronization.No.BeaconSync, _logManager);
             _peerPool = Substitute.For<IPeerPool>();
             _rlpxPeer = Substitute.For<IRlpxHost>();
 
             SubscriptionFactory subscriptionFactory = new();
 
             // Register the standard subscription types in the dictionary
-            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo);
+            subscriptionFactory.RegisterStandardEthSubscriptions(_blockTree, _logManager, _specProvider, _receiptCanonicalityMonitor, _filterStore, _txPool, _ethSyncingInfo, new BlockForRpcFactory());
 
             _subscriptionManager = new SubscriptionManager(
             subscriptionFactory,
@@ -106,7 +107,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, TransactionsOption? options = null, bool shouldReceiveResult = true)
         {
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, options);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, new BlockForRpcFactory(), options);
 
             JsonRpcResult jsonRpcResult = new();
 
@@ -127,8 +128,18 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private List<JsonRpcResult> GetLogsSubscriptionResult(Filter filter, BlockReplacementEventArgs blockEventArgs, out string subscriptionId, int expectedResults = 1)
         {
-            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
+            using LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
+            subscriptionId = logsSubscription.Id;
 
+            return CollectResults(logsSubscription, expectedResults, () =>
+            {
+                _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
+                _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
+            });
+        }
+
+        private static List<JsonRpcResult> CollectResults(LogsSubscription logsSubscription, int expectedResults, Action raiseEvents)
+        {
             List<JsonRpcResult> jsonRpcResults = [];
             SemaphoreSlim received = new(0);
             logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
@@ -137,15 +148,13 @@ namespace Nethermind.JsonRpc.Test.Modules
                 received.Release();
             }));
 
-            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
-            _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), blockEventArgs);
+            raiseEvents();
 
             for (int i = 0; i < expectedResults; i++)
             {
-                received.Wait(TimeSpan.FromSeconds(30));
+                Assert.That(received.Wait(TimeSpan.FromSeconds(30)), Is.True, $"result {i + 1} of {expectedResults} was not published");
             }
 
-            subscriptionId = logsSubscription.Id;
             return jsonRpcResults;
         }
 
@@ -187,7 +196,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             return jsonRpcResult;
         }
 
-        private SyncingSubscription GetSyncingSubscription(int bestSuggested, int head)
+        private SyncingSubscription GetSyncingSubscription(ulong bestSuggested, ulong head)
         {
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(bestSuggested).TestObject;
             _blockTree.FindBestSuggestedHeader().Returns(blockHeader);
@@ -196,7 +205,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree.Head.Returns(block);
 
             EthSyncingInfo ethSyncingInfo = new(_blockTree, Substitute.For<ISyncPointers>(), _syncConfig,
-                new StaticSelector(SyncMode.All), _syncProgressResolver, _logManager);
+                new StaticSelector(SyncMode.All), _syncProgressResolver, Synchronization.No.BeaconSync, _logManager);
 
             SyncingSubscription syncingSubscription = new(_jsonRpcDuplexClient, _blockTree, ethSyncingInfo, _logManager);
 
@@ -285,9 +294,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
-        [TestCase("true")]
-        [TestCase("false")]
-        public async Task NewHeadSubscription_with_bool_arg(string boolArg)
+        [Test]
+        public async Task NewHeadSubscription_with_bool_arg([Values("true", "false")] string boolArg)
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", boolArg);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
@@ -345,7 +353,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithSpecProvider(specProvider)
                 .TestObject;
 
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider, new BlockForRpcFactory());
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
 
             Block block0 = Build.A.Block.Genesis.WithTotalDifficulty(0L).TestObject;
@@ -397,7 +405,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithSpecProvider(specProvider)
                 .TestObject;
 
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider, new BlockForRpcFactory());
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
 
             Block block0 = Build.A.Block.Genesis.WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
@@ -439,7 +447,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 jsonRpcResult.TryDequeue(out JsonRpcResult result);
 
-                Assert.That(((JsonRpcSubscriptionResponse<BlockForRpc>)result.Response!).Params.Result.Difficulty, Is.EqualTo((UInt256)i));
+                using JsonDocument notification = JsonDocument.Parse(RpcTest.SerializeResponse(result.Response!));
+                Assert.That(notification.RootElement.GetProperty("params").GetProperty("result").GetProperty("difficulty").GetString(),
+                    Is.EqualTo($"0x{i:x}"), $"notification {i} must carry block {i}");
             }
         }
 
@@ -467,12 +477,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
-        [Test]
-        public async Task LogsSubscription_with_invalid_arguments_creating_result()
+        [TestCase("invalid_param")]
+        [TestCase("{\"fromBlock\":\"-1\"}")]
+        [TestCase("{\"fromBlock\":\"0x10000000000000000\"}")]
+        [TestCase("{\"toBlock\":\"notanumber\"}")]
+        [TestCase("{\"address\":\"0xzz705ae4c6f81b66cdb323c65f4e8133690fc099\"}")]
+        [TestCase("{\"blockHash\":\"0xzz783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"}")]
+        public async Task LogsSubscription_with_malformed_args_returns_invalid_params(string args)
         {
-            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "invalid_param");
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", args);
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}";
-            Assert.That(expectedResult, Is.EqualTo(serialized));
+            Assert.That(expectedResult, Is.EqualTo(serialized), "malformed eth_subscribe/logs args should map to InvalidParams, not InternalError");
         }
 
         [Test]
@@ -487,7 +502,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -508,25 +523,185 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_with_not_matching_block_on_NewHeadBlock_event()
         {
-            int blockNumber = 22222;
-            Filter filter = Substitute.For<Filter>();
+            Filter filter = new() { FromBlock = new BlockParameter(33333) };
 
+            // The out-of-range block is raised first: had it been published, it would be the first result.
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 1,
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(22222).TestObject),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(33333).TestObject));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x8235\""));
+        }
+
+        [Test]
+        public void LogsSubscription_with_null_arguments_publishes_logs_of_a_block_below_the_head()
+        {
+            // The head is already past this block when its event is handled (multi-block branch, or a head advancing
+            // before the asynchronous dispatch); "latest" must not be resolved against it.
+            SetHead(100);
+
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(null, expectedResults: 1,
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x63\"").And.Contain("\"removed\":false"));
+        }
+
+        [Test]
+        public void LogsSubscription_with_null_arguments_publishes_removed_logs_of_a_reorged_block_below_the_head()
+        {
+            SetHead(100);
+
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(null, expectedResults: 2,
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).WithExtraData([1]).TestObject, removed: true),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"removed\":true"));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"removed\":false"));
+        }
+
+        [Test]
+        public void LogsSubscription_with_earliest_fromBlock_does_not_resolve_it()
+        {
+            // "earliest" is the default lower bound of a supplied filter; a missing genesis header must not drop the logs.
+            _blockTree.FindHeader(Arg.Any<BlockParameter>()).Returns((BlockHeader?)null);
+            Filter filter = new() { FromBlock = BlockParameter.Earliest };
+
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 1,
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void LogsSubscription_with_blockHash_filter_publishes_only_that_block()
+        {
+            BlockHeader wanted = Build.A.BlockHeader.WithNumber(99).TestObject;
+            BlockHeader sibling = Build.A.BlockHeader.WithNumber(99).WithExtraData([1]).TestObject;
+            BlockParameter blockHash = new(wanted.Hash!);
+            _blockTree.FindHeader(Arg.Is<BlockParameter>(p => p.BlockHash == wanted.Hash)).Returns(wanted);
+            _blockTree.FindHeader(Arg.Is<BlockParameter>(p => p.BlockHash == wanted.Hash), true).Returns(wanted);
+            Filter filter = new() { FromBlock = blockHash, ToBlock = blockHash };
+
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 1,
+                MatchingLogEvent(sibling),
+                MatchingLogEvent(wanted));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain($"\"blockHash\":\"{wanted.Hash}\""));
+        }
+
+        [Test]
+        public void LogsSubscription_with_numeric_bounds_publishes_only_blocks_within_them()
+        {
+            Filter filter = new() { FromBlock = new BlockParameter(99), ToBlock = new BlockParameter(100) };
+
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 2,
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(98).TestObject),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(101).TestObject),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(100).TestObject));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x63\""));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"blockNumber\":\"0x64\""));
+        }
+
+        [Test]
+        public void LogsSubscription_with_one_sided_hash_bound_publishes_from_that_block_onward()
+        {
+            BlockHeader from = Build.A.BlockHeader.WithNumber(100).TestObject;
+            _blockTree.FindHeader(Arg.Is<BlockParameter>(p => p.BlockHash == from.Hash)).Returns(from);
+            Filter filter = new() { FromBlock = new BlockParameter(from.Hash!) };
+
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 2,
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(100).WithExtraData([1]).TestObject),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(101).TestObject));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x64\""));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"blockNumber\":\"0x65\""));
+        }
+
+        [Test]
+        public void Subscription_disconnects_a_client_that_falls_too_far_behind()
+        {
+            _jsonRpcDuplexClient.SendJsonRpcResult(Arg.Any<JsonRpcResult>())
+                .Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+            IReceiptMonitor receiptMonitor = Substitute.For<IReceiptMonitor>();
+            ReceiptsEventArgs receiptsEvent = MatchingLogEvent(Build.A.BlockHeader.WithNumber(1).TestObject);
+
+            using (new LogsSubscription(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, null))
+            {
+                // The first message blocks the sender and the queue fills behind it.
+                for (int i = 0; i < Subscription.MaxQueuedBlocks + 2; i++)
+                {
+                    receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
+                }
+
+                Assert.That(() => _jsonRpcDuplexClient.ReceivedCalls().Any(c => c.GetMethodInfo().Name == nameof(IDisposable.Dispose)),
+                    Is.True.After(10_000, 50));
+            }
+        }
+
+        [Test]
+        public void Subscription_does_not_disconnect_a_client_on_one_log_heavy_block()
+        {
+            _jsonRpcDuplexClient.SendJsonRpcResult(Arg.Any<JsonRpcResult>())
+                .Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+            IReceiptMonitor receiptMonitor = Substitute.For<IReceiptMonitor>();
+            ReceiptsEventArgs receiptsEvent = MatchingLogEvent(Build.A.BlockHeader.WithNumber(1).TestObject, logCount: Subscription.MaxQueuedBlocks + 2);
+            using ManualResetEventSlim disposed = new();
+            _jsonRpcDuplexClient.When(c => c.Dispose()).Do(_ => disposed.Set());
+
+            using (new LogsSubscription(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, null))
+            {
+                receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
+
+                Assert.That(disposed.Wait(TimeSpan.FromMilliseconds(500)), Is.False);
+            }
+        }
+
+        private void SetHead(ulong number)
+        {
+            BlockHeader head = Build.A.BlockHeader.WithNumber(number).TestObject;
+            _blockTree.FindHeader(Arg.Any<BlockParameter>()).Returns(head);
+            _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(head);
+        }
+
+        private static ReceiptsEventArgs MatchingLogEvent(BlockHeader header, bool removed = false, int logCount = 1)
+        {
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
-            TxReceipt[] txReceipts = { Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject };
-            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            TxReceipt[] receipts = { Build.A.Receipt.WithBlockNumber(header.Number).WithBlockHash(header.Hash).WithLogs(Enumerable.Repeat(logEntry, logCount).ToArray()).TestObject };
+            return new ReceiptsEventArgs(header, receipts, removed);
+        }
 
-            Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
-            BlockReplacementEventArgs blockEventArgs = new(block);
+        /// <summary>
+        /// Raises the receipts events synchronously and in order, so the subscription's send channel (single reader,
+        /// FIFO) delivers the published ones in the same order: a block that must be skipped is raised before one that
+        /// must be published, and the assertion on the first result is what proves it was skipped.
+        /// </summary>
+        private List<JsonRpcResult> PublishThroughLogsSubscription(Filter? filter, int expectedResults, params ReceiptsEventArgs[] events)
+        {
+            IReceiptMonitor receiptMonitor = Substitute.For<IReceiptMonitor>();
+            using LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, filter);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string _, expectedResults: 0);
-
-            Assert.That(jsonRpcResults.Count, Is.EqualTo(0));
+            return CollectResults(logsSubscription, expectedResults, () =>
+            {
+                foreach (ReceiptsEventArgs receiptsEvent in events)
+                {
+                    receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
+                }
+            });
         }
 
         [Test]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event_with_one_TxReceipt_with_few_logs()
         {
-            int blockNumber = 77777;
+            ulong blockNumber = 77777;
             Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -558,7 +733,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
             LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
@@ -604,7 +779,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_some_address_mismatches()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = new()
             {
                 FromBlock = BlockParameter.Latest,
@@ -651,7 +826,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_some_topic_mismatches()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
 
             Filter filter = new()
             {
@@ -698,7 +873,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_few_topics_and_some_address_and_topic_mismatches()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
 
             Filter filter = new()
             {
@@ -751,7 +926,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_should_not_send_logs_of_new_txs_on_ReceiptsInserted_event_but_on_NewHeadBlock_event()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
@@ -803,9 +978,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
-        [TestCase("true")]
-        [TestCase("false")]
-        public async Task NewPendingTransactionsSubscription_creating_result_with_bool_arg(string boolArg)
+        [Test]
+        public async Task NewPendingTransactionsSubscription_creating_result_with_bool_arg([Values("true", "false")] string boolArg)
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions", boolArg);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
@@ -872,11 +1046,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse($$$$"""{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"{{{{subscriptionId}}}}","result":{"nonce":"0x0","blockHash":null,"blockNumber":null,"blockTimestamp":null,"transactionIndex":null,"to":"0x0000000000000000000000000000000000000000","value":"0x1","gasPrice":"0x1","gas":"0x5208","input":"0x","type":"0x0","hash":null,"v":"0x0","r":"0x0","s":"0x0","from":null}}}""")).Using(JToken.EqualityComparer));
         }
 
-        [TestCase(2)]
-        [TestCase(5)]
-        [TestCase(10)]
+        [Test]
         [Explicit("Requires a WS server running")]
-        public async Task NewPendingTransactionSubscription_multiple_fast_messages(int messages)
+        public async Task NewPendingTransactionSubscription_multiple_fast_messages([Values(2, 5, 10)] int messages)
         {
             ITxPool txPool = Substitute.For<ITxPool>();
 
@@ -909,11 +1081,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             await Task.Delay(1_000);
         }
 
-        [TestCase(2)]
-        [TestCase(5)]
-        [TestCase(10)]
+        [Test]
         [Explicit("Requires a WS server running")]
-        public async Task MultipleSubscriptions_concurrent_fast_messages(int messages)
+        public async Task MultipleSubscriptions_concurrent_fast_messages([Values(2, 5, 10)] int messages)
         {
             using ClientWebSocket socket = new();
             await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
@@ -955,7 +1125,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                         jsonRpcDuplexClient: client,
                         blockTree: blockTree,
                         specProvider: new TestSpecProvider(new ReleaseSpec()),
-                        logManager: LimboLogs.Instance
+                        logManager: LimboLogs.Instance,
+                        blockForRpcFactory: new BlockForRpcFactory()
                     );
 
                 for (int i = 0; i < messages; i++)
@@ -1163,6 +1334,28 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public async Task Eth_unsubscribe_unknown_subscription_returns_not_found_error()
+        {
+            string serializedUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", "0xdeadbeef");
+            string expectedUnsub = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}";
+
+            Assert.That(serializedUnsub, Is.EqualTo(expectedUnsub));
+        }
+
+        [Test]
+        public async Task Eth_unsubscribe_already_removed_subscription_returns_not_found_error()
+        {
+            string serializedSub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads");
+            string subscriptionId = serializedSub.Substring(serializedSub.Length - 44, 34);
+
+            string serializedFirstUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", subscriptionId);
+            Assert.That(serializedFirstUnsub, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
+
+            string serializedSecondUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", subscriptionId);
+            Assert.That(serializedSecondUnsub, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}"));
+        }
+
+        [Test]
         public async Task Subscriptions_remove_after_closing_websockets_client()
         {
             string serializedLogs = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs");
@@ -1180,22 +1373,18 @@ namespace Nethermind.JsonRpc.Test.Modules
             _jsonRpcDuplexClient.Closed += Raise.Event();
 
             string serializedLogsUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", logsId);
-            string expectedLogsUnsub =
-                string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-                    logsId, ".\"},\"id\":67}");
-            Assert.That(expectedLogsUnsub, Is.EqualTo(serializedLogsUnsub));
+            string expectedLogsUnsub = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}";
+            Assert.That(serializedLogsUnsub, Is.EqualTo(expectedLogsUnsub));
 
             string serializedNewPendingTxUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", newPendingTxId);
-            string expectedNewPendingTxUnsub =
-                string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-                    newPendingTxId, ".\"},\"id\":67}");
-            Assert.That(expectedNewPendingTxUnsub, Is.EqualTo(serializedNewPendingTxUnsub));
+            string expectedNewPendingTxUnsub = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"subscription not found\"},\"id\":67}";
+            Assert.That(serializedNewPendingTxUnsub, Is.EqualTo(expectedNewPendingTxUnsub));
         }
 
         [Test]
         public void LogsSubscription_can_send_logs_with_removed_txs_when_inserted()
         {
-            int blockNumber = 55555;
+            ulong blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
@@ -1205,7 +1394,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
             Block block = Build.A.Block.TestObject;
             Block previousBlock = Build.A.Block.WithHeader(blockHeader).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
-            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptStorage.Get(previousBlock).Returns(txReceipts);
+            _receiptStorage.Get(block).Returns([]);
             List<JsonRpcResult> jsonRpcResults = [];
 
             ManualResetEvent manualResetEvent = new(false);
@@ -1224,6 +1414,71 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.SerializeResponse(jsonRpcResults[0].Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", logsSubscription.Id, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":true,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\"}}}");
             Assert.That(expectedResult, Is.EqualTo(serialized));
+        }
+
+        [Test]
+        [Repeat(20)]
+        public async Task Concurrent_add_unsubscribe_and_client_close_do_not_corrupt_the_bag()
+        {
+            ISubscriptionFactory factory = Substitute.For<ISubscriptionFactory>();
+            factory
+                .CreateSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
+                .Returns(ci => new NoopSubscription((IJsonRpcDuplexClient)ci[0]));
+            SubscriptionManager manager = new(factory, LimboLogs.Instance);
+
+            IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+            client.Id.Returns("concurrent-client");
+
+            const int adders = 8;
+            const int perAdder = 100;
+            ConcurrentQueue<Exception> failures = new();
+            using ManualResetEventSlim start = new();
+
+            Task Run(Action body) => Task.Run(() =>
+            {
+                start.Wait();
+                try { body(); }
+                catch (Exception e) { failures.Enqueue(e); }
+            });
+
+            ConcurrentQueue<string> subscriptionIds = new();
+            List<Task> tasks = [];
+            for (int i = 0; i < adders; i++)
+            {
+                tasks.Add(Run(() =>
+                {
+                    for (int j = 0; j < perAdder; j++) subscriptionIds.Enqueue(manager.AddSubscription(client, "test"));
+                }));
+            }
+            // Racing the unsubscribe path against the concurrent adds.
+            for (int i = 0; i < 4; i++)
+            {
+                tasks.Add(Run(() =>
+                {
+                    for (int j = 0; j < perAdder; j++)
+                    {
+                        if (subscriptionIds.TryDequeue(out string? subscriptionId)) manager.RemoveSubscription(client, subscriptionId);
+                    }
+                }));
+            }
+            // Racing the enumerate-and-dispose path against the concurrent adds.
+            for (int i = 0; i < 4; i++)
+            {
+                tasks.Add(Run(() =>
+                {
+                    for (int j = 0; j < perAdder; j++) manager.RemoveClientSubscriptions(client);
+                }));
+            }
+
+            start.Set();
+            await Task.WhenAll(tasks);
+
+            Assert.That(failures, Is.Empty, () => string.Join(Environment.NewLine, failures));
+        }
+
+        private sealed class NoopSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient) : Subscription(jsonRpcDuplexClient, MaxQueuedBlocks)
+        {
+            public override string Type => "test";
         }
     }
 }

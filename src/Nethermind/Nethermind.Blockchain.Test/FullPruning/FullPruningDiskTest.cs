@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -69,6 +70,7 @@ public class FullPruningDiskTest
                 PruningConfig,
                 BlockTree,
                 Container.Resolve<IStateBoundaryWriter>(),
+                Container.Resolve<IStateBoundary>(),
                 StateReader,
                 ProcessExitSource,
                 DriveInfo,
@@ -120,6 +122,7 @@ public class FullPruningDiskTest
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
             IStateBoundaryWriter stateBoundary,
+            IStateBoundary stateBoundaryReader,
             IStateReader stateReader,
             IProcessExitSource processExitSource,
             IDriveInfo driveInfo,
@@ -127,7 +130,7 @@ public class FullPruningDiskTest
             IChainEstimations chainEstimations,
             ILogManager logManager)
             : FullPruner(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree,
-                stateBoundary, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
+                stateBoundary, stateBoundaryReader, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
         {
             public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false);
 
@@ -173,20 +176,23 @@ public class FullPruningDiskTest
         Assert.That(args.Status, Is.EqualTo(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiskSpace));
     }
 
+    private static readonly TimeSpan PruningWaitBudget = TimeSpan.FromMilliseconds(Timeout.LongTestTime / 4);
+
     private static async Task RunPruning(PruningTestBlockchain chain, int time, bool onlyFirstRuns)
     {
         chain.FullPruner.WaitHandle.Reset();
         PruningTriggerEventArgs args = new();
         chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
         if (args.Status != PruningStatus.Starting) return;
-        for (int i = 0; i < Reorganization.MaxDepth + 2; i++)
+        for (ulong i = 0ul; i < Reorganization.MaxDepth + 2ul; i++)
         {
             await chain.AddBlock();
         }
 
         HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
         bool pruningFinished = false;
-        for (int i = 0; i < 100 && !pruningFinished; i++)
+        long waitStart = Stopwatch.GetTimestamp();
+        while (!pruningFinished && Stopwatch.GetElapsedTime(waitStart) < PruningWaitBudget)
         {
             pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(100));
             await chain.AddBlockDoNotWaitForHead();
@@ -204,7 +210,9 @@ public class FullPruningDiskTest
                 );
 
             HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
-            // Exclude the boundary marker FullPruner writes on commit — it's absent from the pre-prune snapshot.
+            // Exclude the OldestStateBlock floor FullPruner records in the state DB on a successful
+            // prune — it's absent from the pre-prune snapshot. (BestPersistedState lives in the
+            // BlockInfos DB, so it never shows up here.)
             byte[]? boundaryValue = chain.DbProvider.StateDb[StateBoundaryStore.OldestStateBlockKey];
             Assert.That(boundaryValue, Is.Not.Null, "FullPruner should record the OldestStateBlock floor on a successful prune");
             currentItems.Remove(boundaryValue!);

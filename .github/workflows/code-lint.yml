@@ -30,9 +30,6 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-        with:
-          cache: true
-          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: Register problem matcher
         run: echo "::add-matcher::.github/problem-matchers/dotnet-format.json"
@@ -48,3 +45,116 @@ jobs:
             -p:GenerateDocumentationFile=true \
             -p:NoWarn=CS0419%3BCS1570%3BCS1572%3BCS1573%3BCS1574%3BCS1584%3BCS1587%3BCS1591%3BCS1658%3BCS1711%3BCS1712%3BCS1723%3BCS1734%3BCS1735%3BNU1701%3BNUnit1032 2>&1 | awk '!seen[$0]++' | tee /tmp/build.log
           ! grep -qP "warning (IDE|CA)\d+" /tmp/build.log
+
+  rpc-bench-scripts:
+    name: Test RPC benchmark scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # These scripts enforce the private-corpus privacy boundary (what may be staged and
+      # published). Their suites are the only thing that verifies it, so CI must run them.
+      - name: Run script test suites
+        run: python -m unittest discover -s scripts/rpc-bench -p 'test*.py' -v
+
+  ci-script-tests:
+    name: Test CI scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # Covers the benchmark runners' overlay reaper: destructive root-level shell duplicated
+      # across three checkout-less workflow jobs. The suite runs the shipped step bodies against
+      # synthetic mount tables and fails if the copies drift apart.
+      - name: Run script test suites
+        run: python -m unittest discover -s scripts/ci -p 'test*.py' -v
+
+      - name: Test code review publication guards
+        run: node --test scripts/ci/test-open-code-review.cjs
+
+  expb-script-tests:
+    name: Test EXPB campaign driver
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # The sequential driver owns every pass/fail gate of a multi-image campaign, and a campaign
+      # costs hours of benchmark-runner time. Nothing else exercises its parsing or failure scope.
+      - name: Run script test suites
+        run: python -m unittest discover -s scripts/expb -p 'test*.py' -v
+
+  frame-verify-gas-scripts:
+    name: Test frame-verify-gas artifact fetch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      # fetch-artifacts.sh is the only gate between a frame-verify-gas release and the tar members
+      # extracted on the shared benchmark runner, so its suite must run on every change.
+      - name: Run the fetch-artifacts test suite
+        run: scripts/frame-verify-gas/test-fetch-artifacts.sh
+
+  sync-scripts:
+    name: Test sync workflow scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # Covers the network selection and L1 mapping the sync workflows depend on; both
+      # were production bugs, and nothing else exercises them without a multi-hour run.
+      - name: Run script test suites
+        run: python -m unittest discover -s scripts/sync -p 'test*.py' -v
+
+  docker-image-labels:
+    name: Check Docker image labels
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Without a LABEL in its final stage, a published image carries the base image's OCI
+      # metadata (Ubuntu's), and a label fed by an ARG that the final stage forgot to redeclare
+      # is silently empty. Neither is visible in the Dockerfile diff, only on a built image, so
+      # this builds the final stage of every published Dockerfile and inspects the result.
+      - name: Check the published images' OCI labels
+        run: scripts/check-docker-labels.sh

@@ -35,13 +35,13 @@ internal static class PayloadBodiesHandlerHelper
     public static PayloadBodyV2? CreatePayloadBodyV2(IBlockStore blockStore, IBlockAccessListStore balStore, BlockHeader? header) =>
         header?.Hash is { } blockHash ? CreatePayloadBodyV2(blockStore, balStore, header.Number, blockHash) : null;
 
-    private static PayloadBodyV1? CreatePayloadBodyV1(IBlockStore blockStore, long blockNumber, Hash256 blockHash)
+    private static PayloadBodyV1? CreatePayloadBodyV1(IBlockStore blockStore, ulong blockNumber, Hash256 blockHash)
     {
         byte[]? blockRlp = blockStore.GetRlp(blockNumber, blockHash);
         return blockRlp is null ? null : PayloadBodiesV1DirectResponse.CreatePayloadBody(blockRlp);
     }
 
-    private static PayloadBodyV2? CreatePayloadBodyV2(IBlockStore blockStore, IBlockAccessListStore balStore, long blockNumber, Hash256 blockHash)
+    private static PayloadBodyV2? CreatePayloadBodyV2(IBlockStore blockStore, IBlockAccessListStore balStore, ulong blockNumber, Hash256 blockHash)
     {
         byte[]? blockRlp = blockStore.GetRlp(blockNumber, blockHash);
         if (blockRlp is null)

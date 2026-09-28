@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -19,27 +21,30 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 {
     protected readonly IWorldState State = state;
 
-    public virtual Hash256 StateRoot => State.StateRoot;
-    public virtual bool IsInScope => State.IsInScope;
-    public virtual IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
+    public Hash256 StateRoot => State.StateRoot;
+    public bool IsInScope => State.IsInScope;
+    public IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
 
-    public virtual IDisposable BeginScope(BlockHeader? baseBlock)
-        => State.BeginScope(baseBlock);
+    public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        => State.TryBeginScope(baseBlock, out scopeCloser);
 
-    public virtual Task HintBal(ReadOnlyBlockAccessList bal)
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        => State.TryBeginScopeAtTarget(targetBlock, out scopeCloser);
+
+    public bool HasStateForTargetBlock(BlockHeader targetBlock)
+        => State.HasStateForTargetBlock(targetBlock);
+
+    public Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);
 
-    public virtual bool HasStateForBlock(BlockHeader? baseBlock)
+    public bool HasStateForBlock(BlockHeader? baseBlock)
         => State.HasStateForBlock(baseBlock);
 
     public virtual bool TryGetAccount(Address address, out AccountStruct account)
         => State.TryGetAccount(address, out account);
 
-    public virtual UInt256 GetNonce(Address address)
+    public virtual ulong GetNonce(Address address)
         => State.GetNonce(address);
-
-    public virtual bool IsStorageEmpty(Address address)
-        => State.IsStorageEmpty(address);
 
     public virtual ref readonly UInt256 GetBalance(Address address)
         => ref State.GetBalance(address);
@@ -62,19 +67,24 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual bool IsDeadAccount(Address address)
         => State.IsDeadAccount(address);
 
-    public virtual ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
-        => State.GetOriginal(in storageCell);
+    public virtual void GetOriginal(in StorageCell storageCell, out UInt256 value)
+        => State.GetOriginal(in storageCell, out value);
 
-    public virtual ReadOnlySpan<byte> Get(in StorageCell storageCell)
-        => State.Get(in storageCell);
+    public virtual void Get(in StorageCell storageCell, out UInt256 value)
+        => State.Get(in storageCell, out value);
 
-    public virtual void Set(in StorageCell storageCell, byte[] newValue)
+    public virtual void Set(in StorageCell storageCell, in UInt256 newValue)
         => State.Set(in storageCell, newValue);
 
-    public virtual ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
-        => State.GetTransientState(in storageCell);
+    /// <inheritdoc/>
+    /// <remarks>Preserves interception by decorators that only override the ordinary write.</remarks>
+    public virtual void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+        => Set(in storageCell, in newValue);
 
-    public virtual void SetTransientState(in StorageCell storageCell, byte[] newValue)
+    public virtual void GetTransientState(in StorageCell storageCell, out UInt256 value)
+        => State.GetTransientState(in storageCell, out value);
+
+    public virtual void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
         => State.SetTransientState(in storageCell, newValue);
 
     public virtual void Reset(bool resetBlockChanges = true)
@@ -86,10 +96,12 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void Restore(Snapshot snapshot)
         => State.Restore(snapshot);
 
-    public virtual void WarmUp(AccessList? accessList)
-        => State.WarmUp(accessList);
+    public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
+        => State.WarmUp(accessList, cancellationToken);
 
-    public virtual void WarmUp(Address address)
+    public virtual bool TryApplyAccountOverlay(IStateReadOverlay overlay) => State.TryApplyAccountOverlay(overlay);
+
+    public void WarmUp(Address address)
         => State.WarmUp(address);
 
     public virtual void ClearStorage(Address address)
@@ -101,10 +113,10 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void DeleteAccount(Address address)
         => State.DeleteAccount(address);
 
-    public virtual void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public virtual void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
         => State.CreateAccount(address, in balance, in nonce);
 
-    public virtual void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public virtual void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
         => State.CreateAccountIfNotExists(address, in balance, in nonce);
 
     public virtual void CreateEmptyAccountIfDeleted(Address address)
@@ -122,19 +134,19 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         => State.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
 
-    public virtual void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public virtual void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
         => State.IncrementNonce(address, delta, out oldNonce);
 
-    public virtual void DecrementNonce(Address address, UInt256 delta)
+    public virtual void DecrementNonce(Address address, ulong delta)
         => State.DecrementNonce(address, delta);
 
-    public virtual void SetNonce(Address address, in UInt256 nonce)
+    public virtual void SetNonce(Address address, in ulong nonce)
         => State.SetNonce(address, in nonce);
 
     public virtual void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         => State.Commit(releaseSpec, tracer, isGenesis, commitRoots);
 
-    public virtual void CommitTree(long blockNumber)
+    public void CommitTree(ulong blockNumber)
         => State.CommitTree(blockNumber);
 
     public virtual ArrayPoolList<AddressAsKey>? GetAccountChanges()
@@ -145,6 +157,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public virtual void AddAccountRead(Address address)
         => State.AddAccountRead(address);
+
+    public virtual void RecordAccountAccess(Address address)
+        => State.RecordAccountAccess(address);
 
     public virtual void RecordBytecodeAccess(Address address)
         => State.RecordBytecodeAccess(address);

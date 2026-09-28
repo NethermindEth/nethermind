@@ -69,12 +69,18 @@ public static class ShutterCrypto
 
     public static EncryptedMessage DecodeEncryptedMessage(ReadOnlySpan<byte> bytes)
     {
+        const int minLength = 1 + 96 + 32;
+        if (bytes.Length < minLength)
+        {
+            throw new ShutterCryptoException($"Encrypted Shutter message too short: expected at least {minLength} bytes, found {bytes.Length}.");
+        }
+
         if (bytes[0] != CryptoVersion)
         {
             throw new ShutterCryptoException($"Encrypted message had wrong Shutter crypto version. Expected version {CryptoVersion}, found {bytes[0]}.");
         }
 
-        ReadOnlySpan<byte> c3 = bytes[(1 + 96 + 32)..];
+        ReadOnlySpan<byte> c3 = bytes[minLength..];
 
         if (c3.Length == 0 || c3.Length % 32 != 0)
         {

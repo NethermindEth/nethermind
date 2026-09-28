@@ -37,20 +37,21 @@ public class ReceiptsSyncFeedTests
     {
         public Scenario(ISpecProvider specProvider, int nonEmptyBlocks, int txPerBlock, int emptyBlocks = 0)
         {
-            Blocks = new Block[_pivotNumber + 1];
+            int pivot = checked((int)_pivotNumber);
+            Blocks = new Block[pivot + 1];
             Blocks[0] = Build.A.Block.Genesis.TestObject;
 
             Block parent = Blocks[0]!;
-            for (int blockNumber = 1; blockNumber <= _pivotNumber; blockNumber++)
+            for (int blockNumber = 1; blockNumber <= pivot; blockNumber++)
             {
                 Block block = Build.A.Block
                     .WithParent(parent)
-                    .WithTransactions(blockNumber > _pivotNumber - nonEmptyBlocks ? txPerBlock : 0, specProvider).TestObject;
+                    .WithTransactions(blockNumber > pivot - nonEmptyBlocks ? txPerBlock : 0, specProvider).TestObject;
 
-                if (blockNumber > _pivotNumber - nonEmptyBlocks - emptyBlocks)
+                if (blockNumber > pivot - nonEmptyBlocks - emptyBlocks)
                     Blocks[blockNumber] = block;
 
-                if (blockNumber == _pivotNumber - nonEmptyBlocks - emptyBlocks + 1)
+                if (blockNumber == pivot - nonEmptyBlocks - emptyBlocks + 1)
                     LowestInsertedBody = block;
 
                 parent = block;
@@ -77,7 +78,7 @@ public class ReceiptsSyncFeedTests
     private IDb _metadataDb;
     private IHistoryPruner _historyPruner;
 
-    private static long _pivotNumber = 1024;
+    private static ulong _pivotNumber = 1024;
 
     private static readonly Scenario _1024BodiesWithOneTxEach;
     private static readonly Scenario _256BodiesWithOneTxEach;
@@ -243,14 +244,14 @@ public class ReceiptsSyncFeedTests
         Assert.That(_progressLogger.HasEnded, Is.True);
     }
 
-    [TestCase(1, 1024, false, null, false)]
-    [TestCase(1, 1024, true, null, false)]
-    [TestCase(1, 1024, false, 0, false)]
+    [TestCase(1UL, 1024UL, false, null, false)]
+    [TestCase(1UL, 1024UL, true, null, false)]
+    [TestCase(1UL, 1024UL, false, 0UL, false)]
     public void When_finished_sync_with_old_default_barrier_then_finishes_immediately(
-        long AncientBarrierInConfig,
-        long? lowestInsertedReceiptBlockNumber,
+        ulong AncientBarrierInConfig,
+        ulong? lowestInsertedReceiptBlockNumber,
         bool JustStarted,
-        long? previousBarrierInDb,
+        ulong? previousBarrierInDb,
         bool shouldFinish)
     {
         _syncPointers = Substitute.For<ISyncPointers>();
@@ -280,15 +281,15 @@ public class ReceiptsSyncFeedTests
             DownloadReceiptsInFastSync = true,
         };
         _blockTree.SyncPivot.Returns((_pivotNumber, scenario.Blocks.Last()!.Hash!));
-        _blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(
+        _blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>()).Returns(
             ci =>
             {
-                Block? block = scenario.Blocks[ci.Arg<long>()];
+                Block? block = scenario.Blocks[(int)ci.Arg<ulong>()];
                 return block is null
                     ? null
-                    : new BlockInfo(block.Hash!, block.TotalDifficulty ?? 0) { BlockNumber = ci.Arg<long>() };
+                    : new BlockInfo(block.Hash!, block.TotalDifficulty ?? 0) { BlockNumber = ci.Arg<ulong>() };
             });
-        _receiptStorage.HasBlock(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(false);
+        _receiptStorage.HasBlock(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(false);
         _syncPointers = new MemorySyncPointers();
 
         _feed = new ReceiptsSyncFeed(
@@ -351,16 +352,16 @@ public class ReceiptsSyncFeedTests
         _feed.InitializeFeed();
 
         _blockTree.Genesis.Returns(scenario.Blocks[0]!.Header);
-        _blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(
+        _blockTree.FindCanonicalBlockInfo(Arg.Any<ulong>()).Returns(
             ci =>
             {
-                Block? block = scenario.Blocks[ci.Arg<long>()];
+                Block? block = scenario.Blocks[(int)ci.Arg<ulong>()];
                 if (block is null)
                     return null;
 
                 BlockInfo blockInfo = new(block.Hash!, block.TotalDifficulty ?? 0)
                 {
-                    BlockNumber = ci.Arg<long>(),
+                    BlockNumber = ci.Arg<ulong>(),
                 };
                 return blockInfo;
             });
@@ -374,7 +375,7 @@ public class ReceiptsSyncFeedTests
                 scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? value.Header
                     : null);
 
-        _syncPointers.LowestInsertedReceiptBlockNumber.Returns((long?)null);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns((ulong?)null);
     }
 
     [Test]
@@ -441,6 +442,51 @@ public class ReceiptsSyncFeedTests
     }
 
     [Test]
+    public async Task Inserts_receipts_when_the_block_number_index_has_no_entry()
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+
+        // Given no block number, the block tree resolves one from the block number index first, so a body whose
+        // index entry is missing is only reachable when the number the feed already knows is passed along.
+        _blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(ci => ci.ArgAt<ulong?>(2) is null
+                ? null
+                : _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0)));
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        int requested = batch!.Infos.Length;
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _receiptStorage.Received(requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+    }
+
+    [Test]
+    public async Task If_header_is_missing_locally_then_does_not_report_breach_of_protocol_or_drop_the_rest_of_the_batch()
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        Hash256 missingHeaderHash = batch!.Infos[0]!.BlockHash;
+        _blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+            .Returns(ci => ci.ArgAt<Hash256>(0) == missingHeaderHash
+                ? null
+                : _1024BodiesWithOneTxEach.BlocksByHash.GetValueOrDefault(ci.ArgAt<Hash256>(0))?.Header);
+
+        PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+        batch.ResponseSourcePeer = peerInfo;
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _syncPeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+        _receiptStorage.Received(batch.Infos.Length - 1).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+    }
+
+    [Test]
     public async Task Can_sync_final_batch()
     {
         LoadScenario(_64BodiesWithOneTxEach);
@@ -448,7 +494,7 @@ public class ReceiptsSyncFeedTests
 
         FillBatchResponses(batch!);
         _feed.HandleResponse(batch);
-        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1UL);
         Assert.That(_feed.PrepareRequest().Result, Is.EqualTo(null));
 
         Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
@@ -469,7 +515,7 @@ public class ReceiptsSyncFeedTests
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
 
         _syncPointers = Substitute.For<ISyncPointers>();
-        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(2);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(2UL);
 
         ReceiptsSyncFeed feed = CreateFeed();
         Assert.That(feed.IsFinished, Is.False);
@@ -489,7 +535,7 @@ public class ReceiptsSyncFeedTests
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
         _syncPointers = Substitute.For<ISyncPointers>();
-        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1);
+        _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1UL);
 
         ReceiptsSyncFeed feed = CreateFeed();
         feed.InitializeFeed();

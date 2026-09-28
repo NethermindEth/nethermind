@@ -4,15 +4,21 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Stateless;
 
+/// <summary>
+/// Stateless world state used inside the zkVM guest.
+/// </summary>
 public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorator(state)
 {
+    public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+        => State.Set(in storageCell, in newValue, in currentValue);
+
     /// <remarks>
-    /// Resolving the code forces a lookup against the witness-backed code database,
-    /// which fails if the bytecode was not included in the witness.
+    /// Forces a witness-backed code lookup that throws when the bytecode is absent from the witness.
     /// </remarks>
     public override void RecordBytecodeAccess(Address address)
     {

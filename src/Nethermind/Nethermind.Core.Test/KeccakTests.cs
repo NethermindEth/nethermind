@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -14,6 +17,25 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class KeccakTests
     {
+        [OneTimeSetUp]
+        public void Check_instruction_set_expectations() => VectorIsaExpectations.AssertPinnedInstructionSet();
+
+        [Test]
+        public void ToUInt256_preserves_big_endian_limb_order([Values] bool zero)
+        {
+            Hash256 hash = new(zero
+                ? "0x0000000000000000000000000000000000000000000000000000000000000000"
+                : "0x0102030405060708111213141516171821222324252627283132333435363738");
+            UInt256 expected = zero ? UInt256.Zero : new UInt256(
+                0x3132333435363738, 0x2122232425262728, 0x1112131415161718, 0x0102030405060708);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hash.ToUInt256(), Is.EqualTo(expected));
+                Assert.That(hash.ValueHash256.ToUInt256(), Is.EqualTo(expected));
+            }
+        }
+
         public const string KeccakOfAnEmptyString = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
         public const string KeccakZero = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
 
@@ -150,7 +172,19 @@ namespace Nethermind.Core.Test
         public void CompareSameInstance() => Assert.That(Keccak.Zero.CompareTo(Keccak.Zero), Is.EqualTo(0));
 
         [Test]
-        public void Span()
+        public void Constructors_reject_other_lengths([Values(0, 20, 31, 33)] int length)
+        {
+            byte[] bytes = new byte[length];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => new Hash256(bytes), Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("bytes"));
+                Assert.That(() => new Hash256((ReadOnlySpan<byte>)bytes), Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("bytes"));
+            }
+        }
+
+        [Test]
+        public void Computes_known_hash_for_span_and_array()
         {
             byte[] byteArray = new byte[1024];
             for (int i = 0; i < byteArray.Length; i++)
@@ -158,7 +192,205 @@ namespace Nethermind.Core.Test
                 byteArray[i] = (byte)(i % 256);
             }
 
-            Assert.That(Keccak.Compute(byteArray.AsSpan()), Is.EqualTo(Keccak.Compute(byteArray)));
+            // An independent keccak-256 implementation (pycryptodome) produced the expected hash.
+            Hash256 expected = new("0x5902e53903be0d0f9656bdbd5b9f0d8c2d815f865645d629eef77f5185f6cd7f");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Keccak.Compute(byteArray.AsSpan()), Is.EqualTo(expected));
+                Assert.That(Keccak.Compute(byteArray), Is.EqualTo(expected));
+            }
+        }
+
+        [Test]
+        public void Avx512VL_permutation_matches_scalar()
+        {
+            if (!Avx512F.VL.IsSupported)
+            {
+                Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
+            }
+
+            const int stateLength = 25;
+            ulong[] expected = new ulong[stateLength];
+            ulong[] actual = new ulong[stateLength];
+
+            for (int testCase = 0; testCase < 64; testCase++)
+            {
+                for (int lane = 0; lane < stateLength; lane++)
+                {
+                    actual[lane] = testCase switch
+                    {
+                        0 => 0,
+                        1 => ulong.MaxValue,
+                        _ => unchecked((ulong)(testCase * stateLength + lane + 1) * 0x9e3779b97f4a7c15UL)
+                    };
+                }
+
+                actual.CopyTo(expected, 0);
+
+                KeccakHash.KeccakF1600Scalar(ref expected[0]);
+                KeccakHash.KeccakF1600Avx512VL(ref actual[0]);
+
+                Assert.That(actual, Is.EqualTo(expected), $"Permutation mismatch for test case {testCase}.");
+            }
+        }
+
+        [Test]
+        public void Eight_way_hash_matches_individual_hashes([Values(32, 64, 136, 272, 408, 544, 1088, 2176)] int inputLength)
+            => AssertBatchedHashMatchesIndividualHashes(inputLength, 8);
+
+        [Test]
+        public void Four_way_padded_hash_matches_individual_hashes([Values(136, 272, 408, 544, 1088, 2176)] int inputLength)
+            => AssertBatchedHashMatchesIndividualHashes(inputLength, 4);
+
+        private static void AssertBatchedHashMatchesIndividualHashes(int inputLength, int batchSize)
+        {
+            if (batchSize == 8 ? !Avx512F.IsSupported : !Avx2.IsSupported)
+            {
+                Assert.Ignore("The required batch intrinsics are not supported on this machine.");
+            }
+
+            bool padded = inputLength >= 136;
+            const int hashLength = 32;
+            byte[] input = new byte[inputLength * batchSize];
+            byte[] output = new byte[hashLength * batchSize];
+
+            Random random = new(42);
+            for (int iteration = 0; iteration < 136 / batchSize; iteration++)
+            {
+                random.NextBytes(input);
+                if (padded)
+                {
+                    for (int i = 0; i < batchSize; i++)
+                    {
+                        int length = inputLength - 136 + iteration * batchSize + i;
+                        Span<byte> block = input.AsSpan(i * inputLength, inputLength);
+                        block[length..].Clear();
+                        block[length] = 0x01;
+                        block[^1] |= 0x80;
+                    }
+                    if (inputLength > 136 && batchSize == 8)
+                        KeccakHash.ComputePaddedMultiBlocks8Avx512(ref input[0], inputLength, ref output[0]);
+                    else if (batchSize == 8)
+                        KeccakHash.ComputePaddedBlocks8Avx512(ref input[0], ref output[0]);
+                    else if (inputLength > 136)
+                        KeccakHash.ComputePaddedMultiBlocks4Avx2(ref input[0], inputLength, ref output[0]);
+                    else
+                        KeccakHash.ComputePaddedBlocks4Avx2(ref input[0], ref output[0]);
+                }
+                else if (inputLength == 32)
+                {
+                    KeccakHash.ComputeHash32Bytes8Avx512(ref input[0], ref output[0]);
+                }
+                else
+                {
+                    KeccakHash.ComputeHash64Bytes8Avx512(ref input[0], ref output[0]);
+                }
+
+                for (int i = 0; i < batchSize; i++)
+                {
+                    int length = padded ? inputLength - 136 + iteration * batchSize + i : inputLength;
+                    ValueHash256 expected = ValueKeccak.Compute(input.AsSpan(i * inputLength, length));
+                    Assert.That(output.AsSpan(i * hashLength, hashLength).SequenceEqual(expected.Bytes), Is.True,
+                        $"Hash mismatch at iteration {iteration}, batch index {i}.");
+                }
+            }
+        }
+
+        [Test]
+        public void Batched_532_byte_hash_matches_individual_hashes([Values(2, 8)] int batchSize)
+        {
+            if (batchSize == 8 ? !Avx512F.IsSupported : !Avx512F.VL.IsSupported)
+            {
+                Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
+            }
+
+            byte[] inputs = new byte[batchSize * 532];
+            byte[] output = new byte[batchSize * Hash256.Size];
+            Random random = new(42);
+
+            for (int iteration = 0; iteration < 16; iteration++)
+            {
+                random.NextBytes(inputs);
+                if (batchSize == 8)
+                    KeccakHash.ComputeHash532Bytes8Avx512(ref inputs[0], ref output[0]);
+                else
+                    KeccakHash.ComputeHash532Bytes2Avx512VL(ref inputs[0], ref inputs[532], ref output[0]);
+
+                for (int i = 0; i < batchSize; i++)
+                {
+                    ValueHash256 expected = ValueKeccak.Compute(inputs.AsSpan(i * 532, 532));
+                    Assert.That(output.AsSpan(i * Hash256.Size, Hash256.Size).SequenceEqual(expected.Bytes), Is.True,
+                        $"Hash mismatch at iteration {iteration}, batch index {i}.");
+                }
+            }
+        }
+
+        // Expected hashes were generated with PyCryptodome's independent Keccak-256 implementation.
+        [TestCase(20, "50c02dbeee2be79b9595060fe30efbd78f06acedf7a1fe8cb05df7ddd76f2b1b")]
+        [TestCase(32, "d064c972ea7cbd9f1237bbd922fd5f08ca57895c13bc9ea2b91913f7099809a1")]
+        [TestCase(64, "52c1f4616862f9d5011ed6a2a77d89a2102e51ee7db2db045bb5fb267fba98d1")]
+        public void Common_input_lengths_match_known_hash(int inputLength, string expected)
+        {
+            byte[] input = FilledInput(inputLength);
+            byte[] output = new byte[32];
+
+            KeccakHash.ComputeHash(input, output);
+
+            Assert.That(output.ToHexString(), Is.EqualTo(expected));
+        }
+
+        // The sponge squeezes a single block, so it can only serve an output that fits the rate,
+        // STATE_SIZE - 2 * size. Larger sizes used to be accepted: at 100 the rate is zero and the absorb
+        // loop never advanced, and above that it is negative and the state was indexed backwards.
+        [Test]
+        public void Unsupported_output_sizes_are_rejected([Values(0, 67, 100, 137, 201)] int outputLength)
+        {
+            byte[] input = new byte[200];
+            byte[] output = new byte[outputLength];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => KeccakHash.ComputeHash(input, output), Throws.InstanceOf<ArgumentOutOfRangeException>());
+                Assert.That(() => KeccakHash.Create(outputLength), Throws.InstanceOf<ArgumentOutOfRangeException>());
+            }
+        }
+
+        // UpdateFinalTo squeezes from that same single block, so it is bounded by the sponge's rate
+        // rather than by MAX_HASH_SIZE. 66 is the widest hash and so carries the narrowest rate, 68.
+        [Test]
+        public void Incremental_output_wider_than_the_rate_is_rejected()
+        {
+            byte[] input = new byte[300];
+
+            KeccakHash atRate = KeccakHash.Create(66);
+            atRate.Update(input);
+            KeccakHash overRate = KeccakHash.Create(66);
+            overRate.Update(input);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => atRate.UpdateFinalTo(new byte[68]), Throws.Nothing);
+                Assert.That(() => overRate.UpdateFinalTo(new byte[69]), Throws.InstanceOf<ArgumentOutOfRangeException>());
+            }
+        }
+
+        // The 20- and 32-byte inputs take ComputeHash's sub-rate fast paths, which write the terminator at
+        // stateBytes[input.Length] without comparing it against the rate. That is only safe because the rate
+        // is at least 68, which the widest output, 66, exercises at its tightest.
+        [Test]
+        public void Supported_output_sizes_agree_across_the_one_shot_and_incremental_paths(
+            [Values(20, 32, 300)] int inputLength,
+            [Values(1, 32, 64, 66)] int outputLength)
+        {
+            byte[] input = FilledInput(inputLength);
+
+            byte[] oneShot = new byte[outputLength];
+            KeccakHash.ComputeHash(input, oneShot);
+
+            KeccakHash incremental = KeccakHash.Create(outputLength);
+            incremental.Update(input);
+
+            Assert.That(incremental.Hash, Is.EqualTo(oneShot));
         }
 
         [TestCase("0x", "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")]
@@ -169,6 +401,25 @@ namespace Nethermind.Core.Test
             Assert.That(h.Bytes.ToHexString(), Is.EqualTo(expected));
         }
 
+        [Test]
+        public void Partial_word_absorption_matches_reference(
+            [Range(0, 7)] int tailLength, [Values(0, 1, 7)] int offset, [Values(32, 64)] int hashLength)
+        {
+            // One rate block and one ulong are absorbed first, leaving exactly tailLength bytes for
+            // the 4/2/1-byte path. Nonzero offsets also exercise unaligned reads.
+            int inputLength = 200 - 2 * hashLength + sizeof(ulong) + tailLength;
+            byte[] input = FilledInput(offset + inputLength);
+            byte[] expected = new byte[hashLength];
+            Org.BouncyCastle.Crypto.Digests.KeccakDigest reference = new(hashLength * 8);
+            reference.BlockUpdate(input, offset, inputLength);
+            reference.DoFinal(expected, 0);
+            byte[] actual = new byte[hashLength];
+
+            KeccakHash.ComputeHash(input.AsSpan(offset, inputLength), actual);
+
+            Assert.That(actual, Is.EqualTo(expected));
+        }
+
         [TestCaseSource(nameof(KeccakCases))]
         public void Sanity_checks(string hexString, string expected)
         {
@@ -176,13 +427,45 @@ namespace Nethermind.Core.Test
             ValueHash256 h = ValueKeccak.Compute(bytes);
             Assert.That(h.Bytes.ToHexString(), Is.EqualTo(expected));
 
-            KeccakRlpStream stream = new();
+            KeccakRlpWriter writer = new();
             for (int i = 0; i < bytes.Length; i++)
             {
-                stream.Write([bytes[i]]);
+                WriteByte(ref writer, bytes[i]);
             }
 
-            Assert.That(stream.GetHash().Bytes.ToHexString(), Is.EqualTo(expected));
+            Assert.That(writer.GetHash().Bytes.ToHexString(), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void KeccakRlpWriter_WriteByteArrayList_WithWrapper_MatchesCanonicalEncoding()
+        {
+            byte[] large = new byte[60];
+            for (int i = 0; i < large.Length; i++)
+            {
+                large[i] = (byte)(i ^ 0xaa);
+            }
+
+            byte[][] items = [[0x01], [0x80], [], large];
+            byte[] expected = EncodeItems(items);
+            using RlpByteArrayList list = CreateList(expected);
+
+            KeccakRlpWriter writer = new();
+            writer.WriteByteArrayList(list);
+
+            Assert.That(writer.GetHash(), Is.EqualTo(Keccak.Compute(expected)));
+        }
+
+        [Test]
+        public void KeccakRlpWriter_EncodeEmptyBloom_HashesCanonicalZeroBytes()
+        {
+            byte[] expected = new byte[Rlp.LengthOf(Bloom.Empty)];
+            RlpWriter expectedWriter = new(expected);
+            expectedWriter.Encode(Bloom.Empty);
+
+            KeccakRlpWriter writer = new();
+            writer.Encode(Bloom.Empty);
+
+            Assert.That(writer.GetHash(), Is.EqualTo(Keccak.Compute(expected)));
         }
 
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000001", Description = "Normal increment")]
@@ -1232,6 +1515,52 @@ namespace Nethermind.Core.Test
         ["0x34925cc5cf6ece6759f008716fd59af2a3fa41d384bfa1e5402e9842c384cc14aac1913d459679b3876584e5184c998723372a19341501e4647883ad062e7253592fe1ec699bee515601cf041f08350dcbbb5e8fde60074bba669fc2e27f4c2192a1c2d737f336d199ba309555bff182d22d5bf6a06e0d7fa789aa4dcc06b29419da41512b72eb3cbfb017d099e88d9f478b3e9694e0805e239647e32d7c795183453a976a32b8743a9c5ca563f8904d2ab671ac49e5ef8bf2f2e8580557523e7e2ce236ed08437de83357e595700759e8f8c9c09d91079ad3e6d4bf3d0e337db5eb312d0bd34242e02cbfa391a7c20e793483d9c8084f3ca40a6981bdc7e096b1cdce3c51f90a3767517be6b13ffd34ae2a5900e75b177f224eb8a083ba6690dcde5a252e1321e54d8687453b9cfb247a746c3ac7a74a259cab8b328b4cdc7d8600c6276929eaed5cb39e099c5881399483ef15c2cbebf912b7eab736d07d5784a15f7414f3678ad8a967d94ec10e85756610f3e60b2b42f3f8e92153784f52bf87ca5ba752826195ec907125a998b5a4b4a6dc3778c696cdc6e300dcfd09a01a0437da5a9112fba4c932f6b07bf8a98f56d709f439024447ba8836c8d3bac22e7e3bb88166560a2f50a2f9dab9e044fb261bb2d30d0e23cfdc35ad5efce9b47697209d73c02a55a76a779e47b675d7ab8e1a99bcad4b213ec164d25c108","52e42cc6e8ec4884dfd0682c3a055305894e6e822d31fb9c96fdd253382702e0"],
         ["0x1a625bc90b1e3a18b6a9c82fe4a755d787fef103c9042f5cc2dd7b5214112834390812a442f20ffdaf9f634f1d317eaccaef8495f4ec92d04bf3ff913dded21d1d7f5f603b5d3f86a95905b1274154b8d14d4efa33ea54dd85f239e804ea86756917b46332b1dc32c6b6881fef6443b419fc1639dea9f4956d7c3d3846b231767d8fe1e59d5944ce37281ea1fa5a87aa42257a20699a7ac9cd344aee895f933d3374152f86ad7948c1fa87388e879156a7bacbc0cc585a3117a62a0439282cf36022678bf2a22e7830bafc8f624d2785335f183526adeea543840e18d4c8442909ed6114b34f688ce7e9af31c8f13bee056be8e16ea9a967a10704130eb8a6662d21c125ae962ffbbc63dfb14d015244b3f92fed61e679cae4d2e90d43634e917dcecbb4cc8d60a6d8383e1e0bc6d76358ecc8418466c4a185042a69436154b6498615ba325b5c28545f6f791aeee9e00918fbcd9c1898485971ff9bfc7ad371d25245d2fb25727fed73de3c20b617719525a69f207192bb6badfe4047035041bdadefa314e34bf6a2c0a72c92dc392f3b3f31d96fa8e7f04f6854243bac757c6913a9bd043e58d5bd09ce2bcbd446bdea4ce442d4a27afdaca5b9c13fd02e93baf71ed019150a1db050f4499c65d0caddcb59071727c0b9adc3b4981d8d7e63e06257ffccdc15ceffbfb71190f037406254e98854338c4d02c0af79fa3a3e","7f849b09a7ead26acc15eaf80f9c5656098249dd70b7ddeed53e9f6bb8f5ed5f"],
             };
+
+        private static byte[] EncodeItems(byte[][] items)
+        {
+            int contentLength = 0;
+            for (int i = 0; i < items.Length; i++)
+            {
+                contentLength += Rlp.LengthOf(items[i]);
+            }
+
+            byte[] encoded = new byte[Rlp.LengthOfSequence(contentLength)];
+            RlpWriter writer = new(encoded);
+            writer.StartSequence(contentLength);
+            for (int i = 0; i < items.Length; i++)
+            {
+                writer.Encode(items[i]);
+            }
+
+            return encoded;
+        }
+
+        private static RlpByteArrayList CreateList(byte[] encoded)
+        {
+            ExactMemoryOwner memoryOwner = new(encoded);
+            return new RlpByteArrayList(memoryOwner, memoryOwner.Memory);
+        }
+
+        private static void WriteByte<TWriter>(ref TWriter writer, byte value)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct
+            => writer.WriteByte(value);
+
+        private sealed class ExactMemoryOwner(byte[] data) : IMemoryOwner<byte>
+        {
+            public Memory<byte> Memory => data;
+            public void Dispose() { }
+        }
+
+        private static byte[] FilledInput(int length)
+        {
+            byte[] input = new byte[length];
+            for (int i = 0; i < input.Length; i++)
+            {
+                input[i] = (byte)(i * 37 + 11);
+            }
+
+            return input;
+        }
 
         private static FieldInfo GetRemainderCacheField()
         {

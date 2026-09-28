@@ -16,13 +16,13 @@ namespace Nethermind.State.Flat.ScopeProvider;
 public class FlatWorldStateManager(
     IFlatDbManager flatDbManager,
     IPersistence persistence,
-    IPersistenceManager persistenceManager,
     IFlatDbConfig configuration,
     FlatStateReader flatStateReader,
     ITrieWarmer trieWarmer,
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
+    IStateHeaderProvider stateHeaderProvider,
     ILogManager logManager)
     : IWorldStateManager, IDisposable
 {
@@ -32,32 +32,21 @@ public class FlatWorldStateManager(
         configuration,
         trieWarmer,
         ResourcePool.Usage.MainBlockProcessing,
+        stateHeaderProvider,
         logManager,
         isReadOnly: false);
 
     private readonly FlatTrieVerifier _trieVerifier = new(flatDbManager, persistence, logManager);
 
-    private FlatSnapServer? _snapServer;
+    private SnapFlatStateServer? _snapServer;
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
     public IStateReader GlobalStateReader => flatStateReader;
-    public ISnapServer SnapServer => _snapServer ??= new FlatSnapServer(
+    public ISnapStateServer SnapStateServer => _snapServer ??= new SnapFlatStateServer(
         flatDbManager,
-        codeDb,
         flatStateRootIndex,
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
-
-    public long? RetentionWindowBlocks => null;
-
-    public long? OldestStateBlock
-    {
-        get
-        {
-            long blockNumber = persistenceManager.GetCurrentPersistedStateId().BlockNumber;
-            return blockNumber >= 0 ? blockNumber : null;
-        }
-    }
 
     public IWorldStateScopeProvider CreateResettableWorldState() =>
         new FlatScopeProvider(
@@ -66,14 +55,9 @@ public class FlatWorldStateManager(
             configuration,
             new NoopTrieWarmer(),
             ResourcePool.Usage.ReadOnlyProcessingEnv,
+            stateHeaderProvider,
             logManager,
             isReadOnly: true);
-
-    event EventHandler<ReorgBoundaryReached>? IWorldStateManager.ReorgBoundaryReached
-    {
-        add => flatDbManager.ReorgBoundaryReached += value;
-        remove => flatDbManager.ReorgBoundaryReached -= value;
-    }
 
     public IReadOnlyTrieStore CreateReadOnlyTrieStore() => new FlatReadOnlyTrieStore(flatDbManager);
 
@@ -84,6 +68,8 @@ public class FlatWorldStateManager(
         _trieVerifier.Verify(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
+
+    public void DropStateNotReachableFrom(BlockHeader head) => flatDbManager.DropStateNotReachableFrom(new StateId(head));
 
     public void Dispose() => _mainWorldState.Dispose();
 }

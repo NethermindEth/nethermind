@@ -15,10 +15,10 @@ public class IpEntry(IPAddress ipAddress) : EnrContentEntry<IPAddress>(ipAddress
 
     protected override int GetRlpLengthOfValue() => 5;
 
-    protected override void EncodeValue(RlpStream rlpStream)
+    protected override void EncodeValue<TWriter>(ref TWriter writer)
     {
         Span<byte> bytes = stackalloc byte[4];
         Value.MapToIPv4().TryWriteBytes(bytes, out int _);
-        rlpStream.Encode(bytes);
+        writer.Encode(bytes);
     }
 }

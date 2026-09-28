@@ -67,7 +67,7 @@ public interface IInitConfig : IConfig
     string RpcDbUrl { get; set; }
 
     [ConfigItem(Description = "The hint on the max memory limit, in bytes, to configure the database and networking memory allocations.", DefaultValue = "null")]
-    long? MemoryHint { get; set; }
+    ulong? MemoryHint { get; set; }
 
     [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }
@@ -85,7 +85,7 @@ public interface IInitConfig : IConfig
     INodeStorage.KeyScheme StateDbKeyScheme { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
-    long? ExitOnBlockNumber { get; set; }
+    ulong? ExitOnBlockNumber { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Exit when invalid block is triggered. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     bool ExitOnInvalidBlock { get; set; }
@@ -98,6 +98,15 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] True when in runner test. Disable some wait.", DefaultValue = "false", HiddenFromDocs = true)]
     bool InRunnerTest { get; set; }
+
+    [ConfigItem(
+        Description = "[TECHNICAL] Whether to exercise the EVM instruction handlers on startup so the JIT promotes them before the first block. Costs about a second of CPU that only pays back over many blocks.",
+        DefaultValue = "true",
+        HiddenFromDocs = true)]
+    bool EvmWarmupEnabled { get; set; }
+
+    [ConfigItem(Description = "Whether to warm the block processing pipeline before RPC and Engine API startup. Cancellation is requested after 30 seconds, then startup waits for cleanup. Skipped when JSON-RPC is disabled, without the standard Merge plugin, or with custom spec providers, custom processing pipelines, or database diagnostic modes.", DefaultValue = "true")]
+    bool PipelineWarmupEnabled { get; set; }
 
     [ConfigItem(Description = "Whether to repair canonical-chain markers on startup after a canonical mismatch.", DefaultValue = "false", HiddenFromDocs = true)]
     bool HealCanonicalChain { get; set; }
@@ -129,6 +138,6 @@ public enum DiagnosticMode
     [Description("Scans and sums supply on all accounts.")]
     VerifySupply,
 
-    [Description("Verifies if full state trie is stored.")]
+    [Description("Verifies if full state trie is stored, then exits. Equivalent to the `verify-trie` command.")]
     VerifyTrie
 }

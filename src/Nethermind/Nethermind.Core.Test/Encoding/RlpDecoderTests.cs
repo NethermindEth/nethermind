@@ -2,16 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
 
 public class RlpDecoderTests
 {
+    [Test]
+    public void Transaction_decoder_is_registered() =>
+        Assert.That(Rlp.GetDecoder<Transaction>(), Is.SameAs(TxDecoder.Instance));
+
     [Test]
     public void Decode_complete_not_null_decodes_item()
     {
@@ -29,8 +34,8 @@ public class RlpDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoder.GetContentLength((Withdrawal?[]?)null), Is.Zero);
-            Assert.That(decoder.GetLength((Withdrawal?[]?)null), Is.EqualTo(Rlp.OfEmptyList.Length));
+            Assert.That(decoder.GetContentLength(null), Is.Zero);
+            Assert.That(decoder.GetLength(null), Is.EqualTo(Rlp.OfEmptyList.Length));
         }
 
         int contentLength = decoder.GetContentLength(withdrawals);
@@ -44,15 +49,62 @@ public class RlpDecoderTests
             Assert.That(decoder.GetLength(withdrawals), Is.EqualTo(Rlp.LengthOfSequence(contentLength)));
         }
 
-        RlpStream stream = new(decoder.GetLength(withdrawals));
-        decoder.Encode(stream, withdrawals);
-        Rlp.ValueDecoderContext context = new(stream.Data.AsSpan());
+        byte[] bytes = new byte[decoder.GetLength(withdrawals)];
+        RlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, withdrawals);
+        RlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
         Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyListByte));
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
         context.Check(sequenceEnd);
+    }
+
+    [Test]
+    public void Decoder_array_legacy_api_preserves_null_elements()
+    {
+        WithdrawalDecoder decoder = new();
+        Withdrawal?[] withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
+        Rlp encoded = decoder.Encode(withdrawals);
+        RlpReader context = new(encoded.Bytes);
+
+        Withdrawal?[] decoded = decoder.DecodeArray(ref context);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(withdrawals.Length));
+            Assert.That(decoded[0], Is.Not.Null);
+            Assert.That(decoded[1], Is.Null);
+            Assert.That(decoded[2], Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void Decoder_non_null_array_rejects_null_elements()
+    {
+        WithdrawalDecoder decoder = new();
+        Rlp encoded = decoder.Encode(new Withdrawal?[] { null });
+
+        void Decode()
+        {
+            RlpReader context = new(encoded.Bytes);
+            decoder.DecodeNonNullArray(ref context);
+        }
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Decoder_non_null_array_rejects_empty_list_for_value_type_element()
+    {
+        static void Decode()
+        {
+            RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+            UInt256Decoder.Instance.DecodeNonNullArray(ref context);
+        }
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
     }
 
     [Test]
@@ -69,72 +121,160 @@ public class RlpDecoderTests
         static void DecodeEmptyInput()
         {
             WithdrawalDecoder decoder = new();
-            Rlp.ValueDecoderContext context = new(ReadOnlySpan<byte>.Empty);
+            RlpReader context = new(ReadOnlySpan<byte>.Empty);
             decoder.Decode(ref context);
         }
     }
 
     [Test]
-    public void Netty_array_encoding_uses_empty_list_for_null_withdrawals()
+    public void Array_pool_span_encoding_uses_empty_list_for_null_withdrawals()
     {
         WithdrawalDecoder decoder = new();
-        Withdrawal?[] withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
+        ReadOnlySpan<Withdrawal?> withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
 
-        using NettyRlpStream stream = decoder.EncodeToNewNettyStream(withdrawals);
+        using ArrayPoolSpan<byte> stream = decoder.EncodeToArrayPoolSpan(withdrawals);
 
-        AssertEncodedNullItem(decoder, stream.AsSpan());
+        AssertEncodedNullItem(decoder, stream);
     }
 
     [Test]
-    public void Netty_list_encoding_uses_empty_list_for_null_withdrawals()
+    public void Array_pool_span_encoding_does_not_call_item_encoder_for_null_items()
     {
-        WithdrawalDecoder decoder = new();
-        List<Withdrawal?> withdrawals = [TestItem.WithdrawalA_1Eth, null, TestItem.WithdrawalB_2Eth];
+        NonNullableItemDecoder decoder = new();
+        ReadOnlySpan<NonNullableItem?> items = [new(), null, new()];
 
-        using NettyRlpStream stream = decoder.EncodeToNewNettyStream(withdrawals);
+        using ArrayPoolSpan<byte> stream = decoder.EncodeToArrayPoolSpan(items);
 
-        AssertEncodedNullItem(decoder, stream.AsSpan());
+        AssertEncodedNullItem(stream);
     }
 
     [Test]
-    public void Netty_array_pool_list_ref_encoding_uses_empty_list_for_null_withdrawals()
-    {
-        WithdrawalDecoder decoder = new();
-        using ArrayPoolListRef<Withdrawal?> withdrawals = new(3);
-        withdrawals.Add(TestItem.WithdrawalA_1Eth);
-        withdrawals.Add(null);
-        withdrawals.Add(TestItem.WithdrawalB_2Eth);
-
-        using NettyRlpStream stream = decoder.EncodeToNewNettyStream(in withdrawals);
-
-        AssertEncodedNullItem(decoder, stream.AsSpan());
-    }
-
-    [Test]
-    public void Netty_collection_encoding_does_not_call_item_encoder_for_null_items()
+    public void Single_item_encoding_uses_empty_list_for_null_without_calling_item_length()
     {
         NonNullableItemDecoder decoder = new();
 
-        NonNullableItem?[] array = [new(), null, new()];
-        using NettyRlpStream arrayStream = decoder.EncodeToNewNettyStream(array);
-        AssertEncodedNullItem(arrayStream.AsSpan());
+        Rlp rlp = decoder.Encode((NonNullableItem?)null);
 
-        List<NonNullableItem?> list = [new(), null, new()];
-        using NettyRlpStream listStream = decoder.EncodeToNewNettyStream(list);
-        AssertEncodedNullItem(listStream.AsSpan());
+        Assert.That(rlp.Bytes, Is.EqualTo(Rlp.OfEmptyList.Bytes));
+    }
 
-        using ArrayPoolListRef<NonNullableItem?> pooled = new(3);
-        pooled.Add(new());
-        pooled.Add(null);
-        pooled.Add(new());
+    [Test]
+    public void Decode_delegate_array_rejects_empty_list_for_value_type_element()
+    {
+        static void Decode()
+        {
+            RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+            context.DecodeNonNullArray(static (ref RlpReader c) => (c.DecodeKeccak(), c.DecodeULong()));
+        }
 
-        using NettyRlpStream pooledStream = decoder.EncodeToNewNettyStream(in pooled);
-        AssertEncodedNullItem(pooledStream.AsSpan());
+        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+    }
+
+    [Test]
+    public void Decode_array_pool_list_rejects_empty_list_for_value_type_element()
+    {
+        static void Decode()
+        {
+            RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+            context.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeInt());
+        }
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+    }
+
+    [Test]
+    public void Decode_delegate_array_legacy_api_uses_value_type_default()
+    {
+        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+
+        int[] result = context.DecodeArray(
+            static (ref RlpReader _) => throw new InvalidOperationException(),
+            defaultElement: 42);
+
+        Assert.That(result, Is.EqualTo(new[] { 42 }));
+    }
+
+    [Test]
+    public void Decode_array_pool_list_legacy_api_uses_value_type_default()
+    {
+        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+
+        using ArrayPoolList<int> result = context.DecodeArrayPoolList(
+            static (ref RlpReader _) => throw new InvalidOperationException(),
+            defaultElement: 42);
+
+        Assert.That(result, Is.EqualTo(new[] { 42 }));
+    }
+
+    [Test]
+    public void Decode_nullable_delegate_array_allows_null_reference_element()
+    {
+        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
+
+        Hash256?[] result = context.DecodeNullableArray(static (ref RlpReader c) => c.DecodeKeccakOrNull());
+
+        Assert.That(result, Is.EqualTo(new Hash256?[] { null }));
+    }
+
+    [Test]
+    public void Decode_non_null_array_rejects_empty_list_element()
+    {
+        static void Decode()
+        {
+            RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+            context.DecodeNonNullArray(KeccakDecoder.Instance);
+        }
+
+        Assert.That(Decode, Throws.TypeOf<RlpException>().With.Message.Contains("null array element"));
+    }
+
+    [Test]
+    public void Decode_array_legacy_allow_nulls_parameter_is_preserved()
+    {
+        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+
+        Hash256?[] result = context.DecodeArray(KeccakDecoder.Instance, allowNulls: true);
+
+        Assert.That(result, Is.EqualTo(new Hash256?[] { null }));
+    }
+
+    [Test]
+    public void Decode_nullable_delegate_array_uses_default_for_empty_list_element()
+    {
+        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+
+        Hash256?[] result = context.DecodeNullableArray(
+            static (ref RlpReader _) => throw new InvalidOperationException(),
+            defaultElement: TestItem.KeccakA);
+
+        Assert.That(result, Is.EqualTo(new[] { TestItem.KeccakA }));
+    }
+
+    [Test]
+    public void Decode_nullable_array_pool_list_allows_null_reference_element()
+    {
+        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyByteArrayByte });
+
+        using ArrayPoolList<Hash256?> result = context.DecodeNullableArrayPoolList(static (ref RlpReader c) => c.DecodeKeccakOrNull());
+
+        Assert.That(result, Is.EqualTo(new Hash256?[] { null }));
+    }
+
+    [Test]
+    public void Decode_nullable_array_pool_list_uses_default_for_empty_list_element()
+    {
+        RlpReader context = new(new[] { (byte)0xc1, Rlp.EmptyListByte });
+
+        using ArrayPoolList<Hash256?> result = context.DecodeNullableArrayPoolList(
+            static (ref RlpReader _) => throw new InvalidOperationException(),
+            defaultElement: TestItem.KeccakA);
+
+        Assert.That(result, Is.EqualTo(new[] { TestItem.KeccakA }));
     }
 
     private static void AssertEncodedNullItem(WithdrawalDecoder decoder, ReadOnlySpan<byte> bytes)
     {
-        Rlp.ValueDecoderContext context = new(bytes);
+        RlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
         Assert.That(decoder.Decode(ref context), Is.Not.Null);
@@ -145,7 +285,7 @@ public class RlpDecoderTests
 
     private static void AssertEncodedNullItem(ReadOnlySpan<byte> bytes)
     {
-        Rlp.ValueDecoderContext context = new(bytes);
+        RlpReader context = new(bytes);
         int sequenceEnd = context.ReadSequenceLength() + context.Position;
 
         Assert.That(context.ReadByte(), Is.EqualTo(Rlp.EmptyByteArrayByte));
@@ -160,19 +300,19 @@ public class RlpDecoderTests
 
     private sealed class NonNullableItemDecoder : RlpDecoder<NonNullableItem>
     {
-        public override int GetLength(NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override int GetLength(NonNullableItem? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
             return Rlp.OfEmptyByteArray.Length;
         }
 
-        public override void Encode(RlpStream stream, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode<TWriter>(ref TWriter writer, NonNullableItem item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ArgumentNullException.ThrowIfNull(item);
-            stream.Encode(Rlp.OfEmptyByteArray);
+            writer.Encode(Rlp.OfEmptyByteArray);
         }
 
-        protected override NonNullableItem DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        protected override NonNullableItem DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
             throw new NotSupportedException();
     }
 }

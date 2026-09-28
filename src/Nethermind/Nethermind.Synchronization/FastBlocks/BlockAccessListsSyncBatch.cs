@@ -17,5 +17,5 @@ public class BlockAccessListsSyncBatch(BlockInfo?[] infos) : FastBlocksBatch
         Response?.Dispose();
     }
 
-    public override long? MinNumber => Infos[0]?.BlockNumber;
+    public override ulong? MinNumber => Infos[0]?.BlockNumber;
 }

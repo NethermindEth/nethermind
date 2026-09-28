@@ -5,8 +5,10 @@ using System;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -27,7 +29,7 @@ public class TaikoPayloadAttributes : PayloadAttributes
 
     private string? _taikoPayloadId;
 
-    public override long? GetGasLimit() => BlockMetadata!.GasLimit;
+    public override ulong GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator) => BlockMetadata!.GasLimit;
 
     /// <summary>
     /// Computes the Taiko-canonical payload id so it matches the <c>buildPayloadArgsId</c> stored
@@ -89,14 +91,15 @@ public class TaikoPayloadAttributes : PayloadAttributes
             contentLength += codec.GetLength(withdrawal, RlpBehaviors.None);
         }
 
-        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-        stream.StartSequence(contentLength);
+        using ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(contentLength));
+        RlpWriter writer = new(bytes);
+        writer.StartSequence(contentLength);
         foreach (Withdrawal withdrawal in withdrawals)
         {
-            codec.Encode(stream, withdrawal);
+            codec.Encode(ref writer, withdrawal);
         }
 
-        hasher.AppendData(stream.Data.AsSpan());
+        hasher.AppendData(bytes);
     }
 
     public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int fcuVersion,

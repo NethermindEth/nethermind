@@ -16,9 +16,13 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
-public class NativePrestateTracer : GethLikeNativeTxTracer
+public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingFilter
 {
     public const string PrestateTracer = "prestateTracer";
+
+    public UInt256 InstructionMask => CaptureMask;
+
+    private static readonly UInt256 CaptureMask = CreateCaptureMask();
 
     private readonly IWorldState? _worldState;
     private readonly Hash256? _txHash;
@@ -38,13 +42,15 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         Hash256? txHash,
         Address? from,
         Address? to = null,
-        Address? beneficiary = null)
+        Address? beneficiary = null,
+        Transaction? transaction = null)
         : base(options)
     {
-        IsTracingRefunds = true;
         IsTracingActions = true;
         IsTracingMemory = true;
         IsTracingStack = true;
+        IsTracingOpLevelStorage = false;
+        IsTracingReturnData = false;
 
         _worldState = worldState;
         _txHash = txHash;
@@ -59,11 +65,60 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
         }
 
         LookupAccount(from!);
-        LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
+        if (transaction?.Frames is null)
+            LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
+        else
+            LookupFrameTxState(from, transaction);
         LookupAccount(beneficiary ?? Address.Zero);
     }
 
+    /// <summary>Records the state an EIP-8141 transaction touches outside the VM, before anything reports it.</summary>
+    /// <remarks>A frame transaction creates no contract. The payer, always a frame target, is charged at approval,
+    /// which default code performs without entering the VM; approval also consumes EIP-8250 keyed nonces through
+    /// <c>NONCE_MANAGER</c> storage, and EIP-8272 references are checked against <c>RECENT_ROOT</c> storage before
+    /// the first frame, so every frame target, consumed nonce slot and referenced root cell is read up front.</remarks>
+    private void LookupFrameTxState(Address sender, Transaction transaction)
+    {
+        foreach (TxFrame frame in transaction.Frames!)
+            LookupAccount(frame.Target ?? sender);
+
+        if (transaction.NonceKeys is { } nonceKeys && KeyedNonceManager.UsesKeyedDomain(nonceKeys))
+        {
+            foreach (UInt256 nonceKey in nonceKeys)
+                LookupStorage(KeyedNonceManager.StorageSlot(sender, nonceKey));
+        }
+
+        if (transaction.RecentRootReferences is { } references)
+        {
+            foreach (RecentRootReference reference in references)
+                LookupStorage(RecentRootStore.ReferenceCell(reference.SourceId, reference.Slot));
+        }
+    }
+
+    private void LookupStorage(in StorageCell cell)
+    {
+        LookupAccount(cell.Address);
+        LookupStorage(cell.Address, cell.Index);
+    }
+
     protected override GethLikeTxTrace CreateTrace() => new();
+
+    private static UInt256 CreateCaptureMask()
+    {
+        UInt256 mask = UInt256.Zero;
+        for (int opcode = 0; opcode <= byte.MaxValue; opcode++)
+        {
+            if (RequiresStack((Instruction)opcode))
+                mask |= UInt256.One << opcode;
+        }
+        return mask;
+    }
+
+    private static bool RequiresStack(Instruction opcode) => opcode is Instruction.SLOAD or Instruction.SSTORE
+        or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH or Instruction.EXTCODESIZE
+        or Instruction.BALANCE or Instruction.SELFDESTRUCT
+        or Instruction.DELEGATECALL or Instruction.CALL or Instruction.STATICCALL or Instruction.CALLCODE
+        or Instruction.CREATE or Instruction.CREATE2;
 
     public override GethLikeTxTrace BuildResult()
     {
@@ -94,14 +149,25 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
             ProcessDiffState();
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         base.StartOperation(pc, opcode, gas, env);
 
-        if (_error is not null) return;
+        // Everything after an operation error is ignored, so stop pulling stack and memory for the
+        // frames that keep running; leaving the flags set would also freeze _op and _executingAccount
+        // at the failing operation.
+        if (_error is not null)
+        {
+            IsTracingMemory = false;
+            IsTracingStack = false;
+            return;
+        }
 
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
+
+        IsTracingMemory = _op == Instruction.CREATE2;
+        IsTracingStack = RequiresStack(_op);
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -113,6 +179,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
     public override void SetOperationStack(TraceStack stack)
     {
         base.SetOperationStack(stack);
+
+        // A wrapping tracer may keep asking for the stack after the flags were cleared above.
+        if (_error is not null) return;
 
         int stackLen = stack.Count;
         Address address;
@@ -174,7 +243,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                 }
                 break;
             case Instruction.CREATE:
-                UInt256 nonce = _worldState!.GetNonce(_executingAccount!);
+                ulong nonce = _worldState!.GetNonce(_executingAccount!);
                 address = ContractAddress.From(_executingAccount, nonce);
                 LookupAccount(address!);
                 if (_diffMode)
@@ -216,10 +285,13 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
 
         if (!account.Storage.ContainsKey(index))
         {
-            UInt256 storage = new(_worldState!.Get(new StorageCell(addr, index)), true);
+            _worldState!.Get(new StorageCell(addr, index), out UInt256 storage);
             account.Storage.Add(index, storage);
         }
     }
+
+    private static bool IsEmpty(NativePrestateTracerAccount account) =>
+        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code is null;
 
     private void ProcessDiffState()
     {
@@ -261,7 +333,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
                     if (prestateStorage.IsZero)
                         prestateAccount.Storage.Remove(index);
 
-                    UInt256 poststateStorage = new(_worldState!.Get(new StorageCell(addr, index)), true);
+                    _worldState!.Get(new StorageCell(addr, index), out UInt256 poststateStorage);
                     if (!prestateStorage.Equals(poststateStorage))
                     {
                         modified = true;
@@ -283,8 +355,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
             if (modified)
                 _poststate.Add(addr, diffAccount);
 
-            // If no account fields were modified or the account was created then remove it from the prestate trace
-            if (!modified || _createdAccounts.Contains(addr))
+            // If no account fields were modified or the account was created then remove it from the prestate trace;
+            // a contract created onto an address that already held state did not create the account.
+            if (!modified || (_createdAccounts.Contains(addr) && IsEmpty(prestateAccount)))
                 _prestate.Remove(addr);
         }
     }

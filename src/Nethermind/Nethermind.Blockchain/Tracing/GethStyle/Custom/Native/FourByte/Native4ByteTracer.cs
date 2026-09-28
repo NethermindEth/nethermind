@@ -30,13 +30,17 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
 
     private readonly Transaction _transaction;
     private readonly Dictionary<string, int> _4ByteIds = [];
-    private Instruction _op;
 
     public Native4ByteTracer(Transaction transaction, GethTraceOptions options) : base(options)
     {
         _transaction = transaction;
         IsTracingActions = true;
+        IsTracingStack = false;
+        IsTracingOpLevelStorage = false;
+        IsTracingReturnData = false;
     }
+
+    public override bool IsTracingInstructions => false;
 
     protected override GethLikeTxTrace CreateTrace() => new();
 
@@ -50,7 +54,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         return result;
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
@@ -60,12 +64,9 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         }
         else
         {
-            CaptureEnter(_op, input, to, isPrecompileCall);
+            CaptureEnter(callType, input, to, isPrecompileCall);
         }
     }
-
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
-        _op = opcode;
 
     private void CaptureStart(ReadOnlyMemory<byte> input)
     {
@@ -75,10 +76,10 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         }
     }
 
-    private void CaptureEnter(Instruction op, ReadOnlyMemory<byte> input, Address? to, bool isPrecompileCall)
+    private void CaptureEnter(ExecutionType callType, ReadOnlyMemory<byte> input, Address? to, bool isPrecompileCall)
     {
         if (input.Length >= 4
-            && op is Instruction.DELEGATECALL or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE
+            && callType.IsAnyCall()
             && to is not null
             && !isPrecompileCall)
         {

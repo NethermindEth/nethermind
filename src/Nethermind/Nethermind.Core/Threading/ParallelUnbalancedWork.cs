@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.ExceptionServices;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Core.Threading;
@@ -11,10 +9,38 @@ namespace Nethermind.Core.Threading;
 /// <summary>
 /// Provides methods to execute parallel loops efficiently for unbalanced workloads.
 /// </summary>
-public class ParallelUnbalancedWork : IThreadPoolWorkItem
+/// <remarks>
+/// The loop bodies live in <c>ParallelUnbalancedWork.std.cs</c>, which spreads the range over
+/// thread-pool workers, and in <c>ParallelUnbalancedWork.zkevm.cs</c>, which runs it on the calling
+/// thread: the zkEVM guest has no threads, and an ahead-of-time build would otherwise carry the
+/// thread pool for loops that never fan out.
+/// </remarks>
+public partial class ParallelUnbalancedWork
 {
+    /// <summary>Shares a worker budget between parallel operations on the calling thread and their nested work.</summary>
+    /// <remarks>
+    /// The budget includes the calling thread. Nested scopes inherit the outer budget.
+    /// This is a synchronous, thread-affine scope; join or dispose its background work before leaving it.
+    /// Independent callers and unrelated thread-pool work are outside this budget.
+    /// </remarks>
+    /// <param name="maxDegreeOfParallelism">The maximum number of participating threads, including the caller.</param>
+    /// <returns>A scope that restores the previous worker context on disposal.</returns>
+    public static WorkerScope BeginWorkerScope(int maxDegreeOfParallelism)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxDegreeOfParallelism, 1);
+        return new(maxDegreeOfParallelism);
+    }
+
+    /// <summary>Provides a shared worker budget for synchronous and background parallel operations.</summary>
+    public sealed partial class WorkerScope : IDisposable
+    {
+        /// <summary>Restores the calling thread's previous worker context.</summary>
+        public partial void Dispose();
+    }
+
+    internal static partial int GetWorkerCount(int fromInclusive, int toExclusive, ParallelOptions parallelOptions);
+
     public static readonly ParallelOptions DefaultOptions = new() { MaxDegreeOfParallelism = Cpu.RuntimeInformation.ProcessorCount };
-    private readonly Data _data;
 
     /// <summary>
     /// Executes a parallel for loop over a range of integers.
@@ -33,29 +59,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// <param name="parallelOptions">An object that configures the behavior of this operation.</param>
     /// <param name="action">The delegate that is invoked once per iteration.</param>
     public static void For(int fromInclusive, int toExclusive, ParallelOptions parallelOptions, Action<int> action)
-    {
-        int threads = parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : Environment.ProcessorCount;
-
-        Data data = new(threads, fromInclusive, toExclusive, action, parallelOptions.CancellationToken);
-
-        for (int i = 0; i < threads - 1; i++)
-        {
-            ThreadPool.UnsafeQueueUserWorkItem(new ParallelUnbalancedWork(data), preferLocal: false);
-        }
-
-        new ParallelUnbalancedWork(data).Execute();
-
-        // If there are still active threads, wait for them to complete
-        if (data.ActiveThreads > 0)
-        {
-            data.Event.Wait();
-        }
-
-        // Rethrow the first captured worker exception, if any, on the calling thread
-        data.ThrowIfFaulted();
-
-        parallelOptions.CancellationToken.ThrowIfCancellationRequested();
-    }
+        => ForCore(fromInclusive, toExclusive, parallelOptions, action);
 
     /// <summary>
     /// Executes a parallel for loop over a range of integers, with thread-local data, initialization, and finalization functions.
@@ -74,7 +78,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         Func<TLocal> init,
         Func<int, TLocal, TLocal> action,
         Action<TLocal> @finally)
-        => InitProcessor<TLocal>.For(fromInclusive, toExclusive, parallelOptions, init, default, action, @finally);
+        => ForCore(fromInclusive, toExclusive, parallelOptions, init, default, action, @finally);
 
     /// <summary>
     /// Executes a parallel for loop over a range of integers, with thread-local data, initialization, and finalization functions.
@@ -93,7 +97,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         TLocal value,
         Func<int, TLocal, TLocal> action,
         Action<TLocal> @finally)
-        => InitProcessor<TLocal>.For(fromInclusive, toExclusive, parallelOptions, null, value, action, @finally);
+        => ForCore(fromInclusive, toExclusive, parallelOptions, null, value, action, @finally);
 
     /// <summary>
     /// Executes a parallel for loop over a range of integers, with thread-local data.
@@ -121,276 +125,84 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         ParallelOptions parallelOptions,
         TLocal state,
         Func<int, TLocal, TLocal> action)
-        => InitProcessor<TLocal>.For(fromInclusive, toExclusive, parallelOptions, null, state, action);
+        => ForCore(fromInclusive, toExclusive, parallelOptions, null, state, action, null);
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ParallelUnbalancedWork"/> class.
-    /// </summary>
-    /// <param name="data">The shared data for the parallel work.</param>
-    private ParallelUnbalancedWork(Data data) => _data = data;
+    /// <summary>Starts loop workers without executing iterations on the caller until it joins.</summary>
+    /// <remarks>
+    /// The worker limit includes the joining caller: a limit of one defers all work until joining.
+    /// The zkEVM implementation always defers work until joining.
+    /// Dispose abandons unclaimed iterations and waits for running callbacks without reporting faults;
+    /// WaitForCompletion reports them. Join and disposal must be called sequentially, outside callbacks.
+    /// The completion callback runs once on success, including an empty range, on the joiner or last worker.
+    /// Keep callback state alive until joining or disposal returns. Joining after abandonment throws ObjectDisposedException.
+    /// </remarks>
+    /// <param name="fromInclusive">The inclusive lower bound of the range.</param>
+    /// <param name="toExclusive">The exclusive upper bound of the range.</param>
+    /// <param name="options">The worker limit and cancellation token.</param>
+    /// <param name="action">The callback for each iteration.</param>
+    /// <param name="completed">An optional callback after all iterations succeed.</param>
+    /// <returns>A handle that must be joined or disposed before releasing callback state.</returns>
+    public static BackgroundWork BackgroundFor(int fromInclusive, int toExclusive, ParallelOptions options,
+        Action<int> action, Action? completed = null)
+        => BackgroundForCore(fromInclusive, toExclusive, options, action, completed);
 
-    /// <summary>
-    /// Executes the parallel work item.
-    /// </summary>
-    public void Execute()
+    private static partial BackgroundWork BackgroundForCore(int fromInclusive, int toExclusive,
+        ParallelOptions options, Action<int> action, Action? completed);
+
+    /// <summary>Coordinates background iterations and their completion callback.</summary>
+    public sealed partial class BackgroundWork : IDisposable
     {
-        try
-        {
-            try
-            {
-                int i = _data.Index.GetNext();
-                while (i < _data.ToExclusive)
-                {
-                    // Stop pulling work once cancelled or another worker has faulted.
-                    if (_data.CancellationToken.IsCancellationRequested || _data.IsFaulted) return;
-                    _data.Action(i);
-                    i = _data.Index.GetNext();
-                }
-            }
-            catch (Exception ex)
-            {
-                // Capture so the exception is rethrown on the calling thread instead of escaping
-                // a thread-pool worker (which would otherwise be unobserved/fatal).
-                _data.CaptureException(ex);
-            }
-        }
-        finally
-        {
-            // Signal that this thread has completed its work
-            _data.MarkThreadCompleted();
-        }
+        /// <summary>Runs a callback after this stage succeeds, returning a handle for the whole chain.</summary>
+        /// <remarks>Each stage accepts one continuation. Join and dispose the returned handle to drain all stages.</remarks>
+        /// <param name="action">The callback to run after this stage succeeds.</param>
+        /// <returns>The final stage, which owns the preceding stages for joining and disposal.</returns>
+        public BackgroundWork ContinueWith(Action action)
+            => ContinueWith(0, 1, DefaultOptions, _ => action());
+
+        /// <summary>Starts another parallel loop after this stage succeeds.</summary>
+        /// <remarks>
+        /// Each stage accepts one continuation. Joining the returned handle helps finish preceding stages first;
+        /// disposing it abandons pending work and drains running callbacks throughout the chain.
+        /// Attach, join and dispose from a single owner, outside callbacks. Faults or cancellation skip subsequent stages.
+        /// </remarks>
+        /// <param name="fromInclusive">The inclusive lower bound of the next range.</param>
+        /// <param name="toExclusive">The exclusive upper bound of the next range.</param>
+        /// <param name="options">The next stage's worker limit and cancellation token.</param>
+        /// <param name="action">The callback for each iteration of the next stage.</param>
+        /// <param name="completed">An optional callback after the next stage's iterations succeed.</param>
+        /// <returns>The final stage, which owns the preceding stages for joining and disposal.</returns>
+        public BackgroundWork ContinueWith(int fromInclusive, int toExclusive, ParallelOptions options,
+            Action<int> action, Action? completed = null)
+            => ContinueWithCore(fromInclusive, toExclusive, options, action, completed);
+
+        private partial BackgroundWork ContinueWithCore(int fromInclusive, int toExclusive, ParallelOptions options,
+            Action<int> action, Action? completed);
+
+        /// <summary>Runs one queued part of this stage on the caller if one is ready, without waiting.</summary>
+        /// <remarks>
+        /// Lets an owner that must stay responsive to other work help this stage before joining it.
+        /// Returns <see langword="false"/> when nothing is queued; outside a parallel scope, and in the zkEVM
+        /// implementation, queued parts cannot be taken back, so it always returns <see langword="false"/>.
+        /// Call from the owner, outside callbacks, before joining or disposal.
+        /// </remarks>
+        /// <returns><see langword="true"/> if a queued part was taken and run.</returns>
+        public partial bool TryHelp();
+
+        /// <summary>Helps execute outstanding iterations, waits for completion, and reports faults or cancellation.</summary>
+        public partial void WaitForCompletion();
+
+        /// <summary>Abandons unclaimed work and waits for running callbacks without throwing captured faults or cancellation.</summary>
+        public partial void Dispose();
     }
 
-    /// <summary>
-    /// Provides a thread-safe counter for sharing indices among threads.
-    /// </summary>
-    private class SharedCounter(int fromInclusive)
-    {
-        private CacheLinePaddedLong _index = new(fromInclusive);
+    private static partial void ForCore(int fromInclusive, int toExclusive, ParallelOptions parallelOptions, Action<int> action);
 
-        /// <summary>
-        /// Gets the next index in a thread-safe manner.
-        /// </summary>
-        /// <returns>The next index.</returns>
-        public int GetNext() => (int)(Interlocked.Increment(ref _index.Value) - 1);
-    }
-
-    /// <summary>
-    /// Represents the base data shared among threads during parallel execution.
-    /// </summary>
-    private class BaseData(int threads, int fromInclusive, int toExclusive, CancellationToken token)
-    {
-        /// <summary>
-        /// Gets the shared counter for indices.
-        /// </summary>
-        public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
-
-        public ManualResetEventSlim Event { get; } = new(initialState: false);
-        private int _activeThreads = threads;
-        private int _faulted;
-        private ExceptionDispatchInfo? _exception;
-        public CancellationToken CancellationToken { get; } = token;
-
-        /// <summary>
-        /// Gets the exclusive upper bound of the range.
-        /// </summary>
-        public int ToExclusive => toExclusive;
-
-        /// <summary>
-        /// Gets the number of active threads.
-        /// </summary>
-        public int ActiveThreads => Volatile.Read(ref _activeThreads);
-
-        /// <summary>
-        /// Whether any worker has captured an exception. Used by workers to short-circuit
-        /// fetching new indices once the operation is already faulted.
-        /// </summary>
-        public bool IsFaulted => Volatile.Read(ref _faulted) != 0;
-
-        /// <summary>
-        /// Captures the first exception observed by any worker so it can be rethrown on the
-        /// calling thread. Subsequent exceptions are dropped.
-        /// </summary>
-        public void CaptureException(Exception exception)
-        {
-            // Publish the fault flag before the (non-trivial) ExceptionDispatchInfo.Capture so
-            // other workers can short-circuit during the capture window.
-            if (Interlocked.CompareExchange(ref _faulted, 1, 0) != 0) return;
-            Volatile.Write(ref _exception, ExceptionDispatchInfo.Capture(exception));
-        }
-
-        /// <summary>
-        /// Rethrows the first captured exception (preserving its original stack trace), if any.
-        /// </summary>
-        public void ThrowIfFaulted() => Volatile.Read(ref _exception)?.Throw();
-
-        /// <summary>
-        /// Marks a thread as completed.
-        /// </summary>
-        /// <returns>The number of remaining active threads.</returns>
-        public int MarkThreadCompleted()
-        {
-            int remaining = Interlocked.Decrement(ref _activeThreads);
-
-            if (remaining == 0)
-            {
-                Event.Set();
-            }
-
-            return remaining;
-        }
-    }
-
-    /// <summary>
-    /// Represents the data shared among threads for the parallel action.
-    /// </summary>
-    private class Data(int threads, int fromInclusive, int toExclusive, Action<int> action, CancellationToken token) :
-        BaseData(threads, fromInclusive, toExclusive, token)
-    {
-        /// <summary>
-        /// Gets the action to be executed for each iteration.
-        /// </summary>
-        public Action<int> Action => action;
-    }
-
-    /// <summary>
-    /// Provides methods to execute parallel loops with thread-local data initialization and finalization.
-    /// </summary>
-    /// <typeparam name="TLocal">The type of the thread-local data.</typeparam>
-    private class InitProcessor<TLocal> : IThreadPoolWorkItem
-    {
-        private readonly Data<TLocal> _data;
-
-        /// <summary>
-        /// Executes a parallel for loop over a range of integers, with thread-local data initialization and finalization.
-        /// </summary>
-        /// <param name="fromInclusive">The inclusive lower bound of the range.</param>
-        /// <param name="toExclusive">The exclusive upper bound of the range.</param>
-        /// <param name="parallelOptions">An object that configures the behavior of this operation.</param>
-        /// <param name="init">The function to initialize the local data for each thread.</param>
-        /// <param name="initValue">The initial value of the local data.</param>
-        /// <param name="action">The delegate that is invoked once per iteration.</param>
-        /// <param name="finally">The function to finalize the local data for each thread.</param>
-        public static void For(
-            int fromInclusive,
-            int toExclusive,
-            ParallelOptions parallelOptions,
-            Func<TLocal>? init,
-            TLocal? initValue,
-            Func<int, TLocal, TLocal> action,
-            Action<TLocal>? @finally = null)
-        {
-            // Determine the number of threads to use
-            int threads = parallelOptions.MaxDegreeOfParallelism > 0
-                ? parallelOptions.MaxDegreeOfParallelism
-                : Environment.ProcessorCount;
-
-            // Create shared data with thread-local initializers and finalizers
-            Data<TLocal> data = new(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
-
-            // Queue work items to the thread pool for all threads except the current one
-            for (int i = 0; i < threads - 1; i++)
-            {
-                ThreadPool.UnsafeQueueUserWorkItem(new InitProcessor<TLocal>(data), preferLocal: false);
-            }
-
-            // Execute work on the current thread
-            new InitProcessor<TLocal>(data).Execute();
-
-            // If there are still active threads, wait for them to complete
-            if (data.ActiveThreads > 0)
-            {
-                data.Event.Wait();
-            }
-
-            // Rethrow the first captured worker exception, if any, on the calling thread
-            data.ThrowIfFaulted();
-
-            parallelOptions.CancellationToken.ThrowIfCancellationRequested();
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="InitProcessor{TLocal}"/> class.
-        /// </summary>
-        /// <param name="data">The shared data for the parallel work.</param>
-        private InitProcessor(Data<TLocal> data) => _data = data;
-
-        /// <summary>
-        /// Executes the parallel work item with thread-local data.
-        /// </summary>
-        public void Execute()
-        {
-            TLocal? value = default;
-            // Track Init success so a throwing Init does not leak into Finally with default(TLocal)
-            // — matches BCL Parallel.For<TLocal>, which only invokes localFinally when localInit ran.
-            bool initSucceeded = false;
-            try
-            {
-                value = _data.Init();
-                initSucceeded = true;
-                int i = _data.Index.GetNext();
-                while (i < _data.ToExclusive)
-                {
-                    // Stop pulling work once cancelled or another worker has faulted.
-                    if (_data.CancellationToken.IsCancellationRequested || _data.IsFaulted) return;
-                    value = _data.Action(i, value);
-                    i = _data.Index.GetNext();
-                }
-            }
-            catch (Exception ex)
-            {
-                // Capture so the exception is rethrown on the calling thread instead of escaping
-                // a thread-pool worker (which would otherwise be unobserved/fatal).
-                _data.CaptureException(ex);
-            }
-            finally
-            {
-                if (initSucceeded)
-                {
-                    // A throwing Finally must not skip MarkThreadCompleted, or the calling thread
-                    // hangs on the semaphore. Capture and continue.
-                    try
-                    {
-                        _data.Finally(value!);
-                    }
-                    catch (Exception ex)
-                    {
-                        _data.CaptureException(ex);
-                    }
-                }
-                _data.MarkThreadCompleted();
-            }
-        }
-
-        /// <summary>
-        /// Represents the data shared among threads for the parallel action with thread-local data.
-        /// </summary>
-        /// <typeparam name="TValue">The type of the thread-local data.</typeparam>
-        private class Data<TValue>(int threads,
-            int fromInclusive,
-            int toExclusive,
-            Func<int, TLocal, TLocal> action,
-            Func<TValue>? init,
-            TValue? initValue,
-            Action<TValue>? @finally,
-            CancellationToken token) : BaseData(threads, fromInclusive, toExclusive, token)
-        {
-            /// <summary>
-            /// Gets the action to be executed for each iteration.
-            /// </summary>
-            public Func<int, TLocal, TLocal> Action => action;
-
-            /// <summary>
-            /// Initializes the thread-local data.
-            /// </summary>
-            /// <returns>The initialized thread-local data.</returns>
-            public TValue Init() => init is not null ? init.Invoke() : initValue!;
-
-            /// <summary>
-            /// Finalizes the thread-local data.
-            /// </summary>
-            /// <param name="value">The thread-local data to finalize.</param>
-            public void Finally(TValue value) => @finally?.Invoke(value);
-        }
-    }
+    private static partial void ForCore<TLocal>(
+        int fromInclusive,
+        int toExclusive,
+        ParallelOptions parallelOptions,
+        Func<TLocal>? init,
+        TLocal? initValue,
+        Func<int, TLocal, TLocal> action,
+        Action<TLocal>? @finally);
 }

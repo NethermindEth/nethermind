@@ -148,7 +148,7 @@ namespace Nethermind.Evm.Test
             return _logManager;
         }
 
-        [TestCase(0)]
+        [TestCase(0UL)]
         [TestCase(MainnetSpecProvider.HomesteadBlockNumber)]
         [TestCase(MainnetSpecProvider.SpuriousDragonBlockNumber)]
         [TestCase(MainnetSpecProvider.TangerineWhistleBlockNumber)]
@@ -163,7 +163,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 3, MainnetSpecProvider.PragueBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 4, MainnetSpecProvider.OsakaBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 7, MainnetSpecProvider.AmsterdamBlockTimestamp)]
-        public void Test(long blockNumber, ulong? timestamp = null)
+        public void Test(ulong blockNumber, ulong? timestamp = null)
         {
             ILogger logger = _logManager.GetClassLogger<InvalidOpcodeTests>();
             Instruction[] validOpcodes = _validOpcodes[(blockNumber, timestamp)];
@@ -190,6 +190,19 @@ namespace Nethermind.Evm.Test
                     Assert.That(result.Error, Is.EqualTo(InvalidOpCodeErrorMessage), ((Instruction)i).ToString());
                     Assert.That(result.StatusCode, Is.EqualTo(0), ((Instruction)i).ToString());
                 }
+            }
+        }
+
+        // Two names on one byte compile silently but let the later dispatch-table entry shadow the earlier one.
+        [Test]
+        public void Every_opcode_owns_a_distinct_byte()
+        {
+            Dictionary<Instruction, string> claimed = [];
+            foreach (string name in Enum.GetNames<Instruction>())
+            {
+                Instruction opcode = Enum.Parse<Instruction>(name);
+                Assert.That(claimed.TryAdd(opcode, name), Is.True,
+                    $"0x{(byte)opcode:x2} is claimed by both {claimed.GetValueOrDefault(opcode)} and {name}");
             }
         }
     }

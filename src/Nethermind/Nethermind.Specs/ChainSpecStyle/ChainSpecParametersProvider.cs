@@ -54,9 +54,12 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
         foreach (Type type in types)
         {
             IChainSpecEngineParameters instance = (IChainSpecEngineParameters)Activator.CreateInstance(type)!;
-            if (_chainSpecParameters.TryGetValue(instance.EngineName!, out JsonElement json))
+            if (_chainSpecParameters.TryGetValue(instance.EngineName, out JsonElement json))
             {
-                _instances[type] = (IChainSpecEngineParameters)_jsonSerializer.Deserialize(json.ToString(), type);
+                object? instanceFromJson = _jsonSerializer.Deserialize(json.ToString(), type);
+                _instances[type] = instanceFromJson is IChainSpecEngineParameters chainSpecEngineParameters
+                    ? chainSpecEngineParameters
+                    : throw new InvalidOperationException($"Could not deserialize chain spec engine parameters of type {type.Name}");
             }
         }
     }

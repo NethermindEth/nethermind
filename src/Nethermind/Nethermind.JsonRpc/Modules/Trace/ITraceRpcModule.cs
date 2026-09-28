@@ -55,20 +55,21 @@ namespace Nethermind.JsonRpc.Modules.Trace
             [JsonRpcParameter(ExampleValue = "\"latest\"")] BlockParameter numberOrTag,
             [JsonRpcParameter(Description = "Optional fork name (e.g. \"Berlin\", \"Cancun\") to re-execute the block under. Must be one of the chain's named forks (see ISpecProvider AvailableForks). Default: the block's natural fork.")] string? fork = null);
 
-        [JsonRpcMethod(Description = "Returns trace at given position.",
+        [JsonRpcMethod(Description = "Returns the trace at the given traceAddress path: [] selects the root, [\"0x0\"] its first child. Returns null if the transaction has no trace at that path.",
             IsImplemented = true,
             IsSharable = false,
-            ExampleResponse = """{"jsonrpc":"2.0","result":[{"action":{"callType":"call","from":"0x1c39ba39e4735cb65978d4db400ddd70a72dc750","gas":"0x13e99","input":"0x16c72721","to":"0x2bd2326c993dfaef84f696526064ff22eba5b362","value":"0x0"},"blockHash":"0x7eb25504e4c202cf3d62fd585d3e238f592c780cca82dacb2ed3cb5b38883add","blockNumber":3068185,"result":{"gasUsed":"0x183","output":"0x0000000000000000000000000000000000000000000000000000000000000001"},"subtraces":0,"traceAddress":[0],"transactionHash":"0x17104ac9d3312d8c136b7f44d4b8b47852618065ebfa534bd2d3b5ef218ca1f3","transactionPosition":2,"type":"call"}],"id":1}""")]
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(
+            ResultCanBeNull = true,
+            ExampleResponse = """{"jsonrpc":"2.0","result":{"action":{"callType":"call","from":"0x1c39ba39e4735cb65978d4db400ddd70a72dc750","gas":"0x13e99","input":"0x16c72721","to":"0x2bd2326c993dfaef84f696526064ff22eba5b362","value":"0x0"},"blockHash":"0x7eb25504e4c202cf3d62fd585d3e238f592c780cca82dacb2ed3cb5b38883add","blockNumber":3068185,"result":{"gasUsed":"0x183","output":"0x0000000000000000000000000000000000000000000000000000000000000001"},"subtraces":0,"traceAddress":[0],"transactionHash":"0x17104ac9d3312d8c136b7f44d4b8b47852618065ebfa534bd2d3b5ef218ca1f3","transactionPosition":2,"type":"call"},"id":1}""")]
+        ResultWrapper<ParityTxTraceFromStore?> trace_get(
             [JsonRpcParameter(ExampleValue = "0x17104ac9d3312d8c136b7f44d4b8b47852618065ebfa534bd2d3b5ef218ca1f3")] Hash256 txHash,
-            [JsonRpcParameter(ExampleValue = """["0x0","0x1"]""")] long[] positions);
+            [JsonRpcParameter(Description = "The traceAddress path as hex quantities", ExampleValue = """["0x0"]""")] long[] traceAddress);
 
         [JsonRpcMethod(Description = "", IsImplemented = true,
             IsSharable = false,
             ExampleResponse = "[{\"action\":{\"callType\":\"call\",\"from\":\"0x3c436c8ec40e0679fe64168545812ac13220f150\",\"gas\":\"0xc118\",\"input\":\"0xd46eb119\",\"to\":\"0x9e00de186f33e9fac9e28d69127f7f637b96c177\",\"value\":\"0xde0b6b3a7640000\"},\"blockHash\":\"0xf40b4c9faaeaf116a50380ce3795297bc02068b062f1797cd507875347c3372e\",\"blockNumber\":8970132,\"result\":{\"gasUsed\":\"0xc118\",\"output\":\"0x\"},\"subtraces\":4,\"traceAddress\":[],\"transactionHash\":\"0x203abf19610ce15bc509d4b341e907ff8c5a8287ae61186fd4da82146408c28c\",\"transactionPosition\":9,\"type\":\"call\"},(...)]")]
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction([JsonRpcParameter(ExampleValue = "\"0x203abf19610ce15bc509d4b341e907ff8c5a8287ae61186fd4da82146408c28c\"")] Hash256 txHash, [JsonRpcParameter(Description = "If true, traces the transaction even if it is in a non-canonical block. Default: false.")] bool traceNonCanonical = false);
 
-        [JsonRpcMethod(Description = "Returns parity like traces for simulated blocks", IsImplemented = true, IsSharable = false)]
+        [JsonRpcMethod(Description = "Returns parity like traces for simulated blocks", IsImplemented = true, IsSharable = true)]
         ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null);
     }
 }

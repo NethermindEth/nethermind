@@ -35,4 +35,8 @@ public class NullableBigIntegerConverterTests : ConverterTestBase<BigInteger?>
         BigInteger? result = JsonSerializer.Deserialize<BigInteger?>(json, options);
         Assert.That(result, Is.EqualTo(expected is null ? null : BigInteger.Parse(expected)));
     }
+
+    [Test]
+    public void Serializes_as_decimal_string() =>
+        TestConverter((BigInteger?)int.MaxValue, "\"2147483647\"", converter, static (a, b) => a.Equals(b));
 }

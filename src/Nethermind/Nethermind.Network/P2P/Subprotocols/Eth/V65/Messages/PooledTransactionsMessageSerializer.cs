@@ -16,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
         public PooledTransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
             byteBuffer.DeserializeRlp(Deserialize);
 
-        private static PooledTransactionsMessage Deserialize(ref Rlp.ValueDecoderContext ctx) =>
+        private static PooledTransactionsMessage Deserialize(ref RlpReader ctx) =>
             new(TransactionsMessageSerializer.DeserializeTxs(ref ctx));
 
         public int GetLength(PooledTransactionsMessage message, out int contentLength) => _txsMessageDeserializer.GetLength(message, out contentLength);

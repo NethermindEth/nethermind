@@ -6,14 +6,16 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using TaskCompletionSource = DotNetty.Common.Concurrency.TaskCompletionSource;
 
 namespace Nethermind.Consensus.Test.Scheduler;
+
+internal readonly struct TestRequest : IBackgroundTaskRequest<TestRequest>;
 
 public class BackgroundTaskSchedulerTests
 {
@@ -29,18 +31,33 @@ public class BackgroundTaskSchedulerTests
     }
 
     [Test]
-    public async Task Test_task_will_execute()
+    public async Task Test_task_will_execute([Values(ThreadPriority.AboveNormal, ThreadPriority.Highest, ThreadPriority.Normal)] ThreadPriority priority)
     {
-        TaskCompletionSource tcs = new();
+        System.Threading.Tasks.TaskCompletionSource<(ThreadPriority Before, ThreadPriority Boosted, ThreadPriority After)> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
 
-        scheduler.TryScheduleTask(1, (_, token) =>
+        scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
         {
-            tcs.SetResult(1);
+            Thread thread = Thread.CurrentThread;
+            ThreadPriority before = thread.Priority;
+            ThreadPriority boosted;
+            using (priority switch
+            {
+                ThreadPriority.AboveNormal => thread.BoostPriority(),
+                ThreadPriority.Highest => thread.SetHighestPriority(),
+                _ => thread.SetNormalPriority()
+            }) boosted = thread.Priority;
+            tcs.SetResult((before, boosted, thread.Priority));
             return Task.CompletedTask;
         });
 
-        await tcs.Task;
+        (ThreadPriority before, ThreadPriority boosted, ThreadPriority after) = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.EqualTo(OperatingSystem.IsLinux() ? ThreadPriority.Normal : ThreadPriority.BelowNormal));
+            Assert.That(boosted, Is.EqualTo(OperatingSystem.IsLinux() ? before : priority));
+            Assert.That(after, Is.EqualTo(before));
+        }
     }
 
     [Test]
@@ -53,6 +70,76 @@ public class BackgroundTaskSchedulerTests
             "DisposeAsync did not complete within timeout - possible deadlock in background task scheduler");
     }
 
+    public enum CancellationCause
+    {
+        Deadline,
+        BlockProcessing,
+        Shutdown
+    }
+
+    [Test]
+    public async Task Completed_request_token_is_not_cancelled_by_later_request([Values] CancellationCause cause)
+    {
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 16, LimboLogs.Instance);
+        System.Threading.Tasks.TaskCompletionSource<CancellationToken> firstStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        System.Threading.Tasks.TaskCompletionSource<CancellationToken> secondStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        System.Threading.Tasks.TaskCompletionSource secondFinished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.That(scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
+        {
+            firstStarted.SetResult(token);
+            return Task.CompletedTask;
+        }), Is.True);
+        CancellationToken firstToken = await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(scheduler.TryScheduleTask(default(TestRequest), async (_, token) =>
+        {
+            secondStarted.SetResult(token);
+            await Task.Delay(Timeout.InfiniteTimeSpan, token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            secondFinished.SetResult();
+        }, cause == CancellationCause.Deadline ? TimeSpan.FromSeconds(1) : TimeSpan.FromSeconds(30)), Is.True);
+        CancellationToken secondToken = await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(secondToken.IsCancellationRequested, Is.False);
+
+        if (cause == CancellationCause.BlockProcessing)
+        {
+            RaiseBlocksProcessing();
+        }
+        else if (cause == CancellationCause.Shutdown)
+        {
+            await scheduler.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        await secondFinished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondToken.IsCancellationRequested, Is.True);
+            Assert.That(firstToken.IsCancellationRequested, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Scheduling_after_dispose_does_not_warn_queue_is_full()
+    {
+        TestLogger testLogger = new() { IsInfo = false };
+        BackgroundTaskScheduler scheduler = new(
+            _branchProcessor,
+            _chainHeadInfo,
+            1,
+            65536,
+            new OneLoggerLogManager(new ILogger(testLogger)));
+        await scheduler.DisposeAsync();
+
+        bool scheduled = scheduler.TryScheduleTask(default(TestRequest), static (_, _) => Task.CompletedTask);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scheduled, Is.False, "a disposed scheduler must reject new tasks");
+            Assert.That(testLogger.LogList, Has.None.Contains("Background task queue is full"),
+                "shutdown rejection must not be reported as queue saturation");
+        }
+    }
+
     [Test]
     public async Task Test_task_will_execute_concurrently_when_configured_so()
     {
@@ -61,13 +148,13 @@ public class BackgroundTaskSchedulerTests
         int counter = 0;
 
         SemaphoreSlim waitSignal = new(0);
-        scheduler.TryScheduleTask(1, async (_, token) =>
+        scheduler.TryScheduleTask(default(TestRequest), async (_, token) =>
         {
             Interlocked.Increment(ref counter);
             await waitSignal.WaitAsync(token);
             Interlocked.Decrement(ref counter);
         });
-        scheduler.TryScheduleTask(1, async (_, token) =>
+        scheduler.TryScheduleTask(default(TestRequest), async (_, token) =>
         {
             Interlocked.Increment(ref counter);
             await waitSignal.WaitAsync(token);
@@ -85,10 +172,10 @@ public class BackgroundTaskSchedulerTests
 
         bool wasCancelled = false;
 
-        ManualResetEvent waitSignal = new(false);
-        scheduler.TryScheduleTask(1, async (_, token) =>
+        TaskCompletionSource waitSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.TryScheduleTask(default(TestRequest), async (_, token) =>
         {
-            waitSignal.Set();
+            waitSignal.TrySetResult();
             try
             {
                 await Task.Delay(100000, token);
@@ -99,10 +186,10 @@ public class BackgroundTaskSchedulerTests
             }
         });
 
-        await waitSignal.WaitOneAsync(CancellationToken.None);
-        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+        await waitSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
         await Task.Delay(10);
-        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+        RaiseBranchProcessingCompleted(branchProcessing);
         Assert.That(() => wasCancelled, Is.EqualTo(true).After(10, 1));
     }
 
@@ -110,13 +197,13 @@ public class BackgroundTaskSchedulerTests
     public async Task Test_task_scheduled_during_block_processing_gets_cancelled_token()
     {
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
-        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+        BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
 
         int cancelledCount = 0;
         CountdownEvent expiredRan = new(5);
         for (int i = 0; i < 5; i++)
         {
-            scheduler.TryScheduleTask(1, (_, token) =>
+            scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
             {
                 if (token.IsCancellationRequested)
                     Interlocked.Increment(ref cancelledCount);
@@ -128,13 +215,13 @@ public class BackgroundTaskSchedulerTests
         Assert.That(expiredRan.Wait(TimeSpan.FromSeconds(30)), Is.True, "Expired tasks did not all run within 30s");
         Assert.That(cancelledCount, Is.EqualTo(5));
 
-        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+        RaiseBranchProcessingCompleted(branchProcessing);
 
         int postBlockCount = 0;
         CountdownEvent postBlockRan = new(3);
         for (int i = 0; i < 3; i++)
         {
-            scheduler.TryScheduleTask(1, (_, token) =>
+            scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
             {
                 if (!token.IsCancellationRequested)
                     Interlocked.Increment(ref postBlockCount);
@@ -148,33 +235,74 @@ public class BackgroundTaskSchedulerTests
     }
 
     [Test]
+    public async Task Test_task_waits_until_branch_processing_finishes()
+    {
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
+        BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
+
+        TaskCompletionSource waitSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.That(scheduler.TryScheduleTask(default(TestRequest), (_, _) =>
+        {
+            waitSignal.TrySetResult();
+            return Task.CompletedTask;
+        }, TimeSpan.FromSeconds(5)), Is.True);
+
+        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+        Assert.That(await Task.WhenAny(waitSignal.Task, Task.Delay(500)), Is.Not.SameAs(waitSignal.Task), "task should remain paused until the whole branch finishes");
+
+        RaiseBranchProcessingCompleted(branchProcessing);
+        await waitSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Test]
+    public async Task Test_branch_completion_restores_uncancelled_token()
+    {
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
+        BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
+
+        RaiseBranchProcessingCompleted(branchProcessing);
+
+        bool wasCancelled = true;
+        TaskCompletionSource waitSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.That(scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
+        {
+            wasCancelled = token.IsCancellationRequested;
+            waitSignal.TrySetResult();
+            return Task.CompletedTask;
+        }), Is.True);
+
+        await waitSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(wasCancelled, Is.False);
+    }
+
+    [Test]
     public async Task Test_expired_task_during_block_processing_gets_cancelled_token_and_exits()
     {
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 2, 65536, LimboLogs.Instance);
-        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+        BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
 
         bool wasCancelled = false;
-        ManualResetEvent waitSignal = new(false);
-        scheduler.TryScheduleTask(1, (_, token) =>
+        TaskCompletionSource waitSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
         {
             wasCancelled = token.IsCancellationRequested;
-            waitSignal.Set();
+            waitSignal.TrySetResult();
             return Task.CompletedTask;
         }, TimeSpan.FromMilliseconds(1));
 
-        Assert.That((await waitSignal.WaitOneAsync(CancellationToken.None)), Is.True);
+        await waitSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(wasCancelled, Is.True, "expired task should receive a cancelled token during block processing");
 
         // After block processing, new tasks execute normally
-        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+        RaiseBranchProcessingCompleted(branchProcessing);
 
-        ManualResetEvent postBlockSignal = new(false);
-        scheduler.TryScheduleTask(1, (_, token) =>
+        TaskCompletionSource postBlockSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
         {
-            postBlockSignal.Set();
+            postBlockSignal.TrySetResult();
             return Task.CompletedTask;
         });
-        Assert.That((await postBlockSignal.WaitOneAsync(CancellationToken.None)), Is.True);
+        await postBlockSignal.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Test]
@@ -184,12 +312,12 @@ public class BackgroundTaskSchedulerTests
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, capacity, LimboLogs.Instance);
 
         // Start block processing — token cancelled
-        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+        BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
 
         // Fill the queue with tasks that expire in 1ms
         for (int i = 0; i < capacity; i++)
         {
-            scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
+            scheduler.TryScheduleTask(default(TestRequest), (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
         }
 
         // Expired tasks are drained (run with cancelled token) during block processing, freeing queue space
@@ -198,11 +326,11 @@ public class BackgroundTaskSchedulerTests
         // New tasks should be accepted because expired tasks freed up queue space
         for (int i = 0; i < capacity; i++)
         {
-            bool accepted = scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
+            bool accepted = scheduler.TryScheduleTask(default(TestRequest), (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
             Assert.That(accepted, Is.True, $"Task {i} should be accepted after expired tasks freed queue space");
         }
 
-        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+        RaiseBranchProcessingCompleted(branchProcessing);
     }
 
     [Test]
@@ -212,12 +340,12 @@ public class BackgroundTaskSchedulerTests
         await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, capacity, LimboLogs.Instance);
 
         // Start block processing — signal is reset, token cancelled
-        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+        BlocksProcessingEventArgs branchProcessing = RaiseBlocksProcessing();
 
         // Fill the queue with short-lived tasks
         for (int i = 0; i < capacity; i++)
         {
-            Assert.That(scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1)), Is.True);
+            Assert.That(scheduler.TryScheduleTask(default(TestRequest), (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1)), Is.True);
         }
 
         // Wait for deadlines to pass and expired tasks to be drained with cancelled tokens
@@ -226,11 +354,11 @@ public class BackgroundTaskSchedulerTests
         // New tasks should be accepted because expired tasks freed up queue space
         for (int i = 0; i < capacity; i++)
         {
-            bool accepted = scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
+            bool accepted = scheduler.TryScheduleTask(default(TestRequest), (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(1));
             Assert.That(accepted, Is.True, $"Task {i} should be accepted after expired tasks were drained");
         }
 
-        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+        RaiseBranchProcessingCompleted(branchProcessing);
     }
 
     [Test]
@@ -243,11 +371,11 @@ public class BackgroundTaskSchedulerTests
         int executedCount = 0;
 
         // --- Phase 1: Fill the queue during block processing — expired tasks drain with cancelled tokens ---
-        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+        BlocksProcessingEventArgs phase1BranchProcessing = RaiseBlocksProcessing();
 
         for (int i = 0; i < capacity; i++)
         {
-            bool accepted = scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(10));
+            bool accepted = scheduler.TryScheduleTask(default(TestRequest), (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(10));
             Assert.That(accepted, Is.True, $"Phase 1: task {i} should be accepted up to capacity");
         }
 
@@ -255,12 +383,12 @@ public class BackgroundTaskSchedulerTests
         await Task.Delay(2000);
 
         // --- Phase 2: End block processing, verify queue accepts tasks and runs them normally ---
-        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+        RaiseBranchProcessingCompleted(phase1BranchProcessing);
 
         int phase2Count = capacity / 2;
         for (int i = 0; i < phase2Count; i++)
         {
-            bool accepted = scheduler.TryScheduleTask(1, (_, _) =>
+            bool accepted = scheduler.TryScheduleTask(default(TestRequest), (_, _) =>
             {
                 Interlocked.Increment(ref executedCount);
                 return Task.CompletedTask;
@@ -274,25 +402,25 @@ public class BackgroundTaskSchedulerTests
             "all phase 2 tasks should execute normally after block processing ends");
 
         // --- Phase 3: Another block processing cycle ---
-        _branchProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
+        BlocksProcessingEventArgs phase3BranchProcessing = RaiseBlocksProcessing();
 
         int totalPhase3 = capacity / 2 + capacity / 4;
         for (int i = 0; i < totalPhase3; i++)
         {
-            Assert.That(scheduler.TryScheduleTask(1, (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(5)), Is.True, $"Phase 3: task {i} should be accepted");
+            Assert.That(scheduler.TryScheduleTask(default(TestRequest), (_, _) => Task.CompletedTask, TimeSpan.FromMilliseconds(5)), Is.True, $"Phase 3: task {i} should be accepted");
         }
 
         // Wait for expired tasks to drain with cancelled tokens
         await Task.Delay(2000);
 
         // End block processing — verify normal operation with new tasks
-        _branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
+        RaiseBranchProcessingCompleted(phase3BranchProcessing);
 
         int phase3ExecutedCount = 0;
         int longLivedCount = capacity / 4;
         for (int i = 0; i < longLivedCount; i++)
         {
-            scheduler.TryScheduleTask(1, (_, token) =>
+            scheduler.TryScheduleTask(default(TestRequest), (_, token) =>
             {
                 if (!token.IsCancellationRequested)
                     Interlocked.Increment(ref phase3ExecutedCount);
@@ -310,7 +438,7 @@ public class BackgroundTaskSchedulerTests
 
         for (int i = 0; i < capacity; i++)
         {
-            Assert.That(scheduler.TryScheduleTask(1, (_, _) =>
+            Assert.That(scheduler.TryScheduleTask(default(TestRequest), (_, _) =>
             {
                 Interlocked.Increment(ref executedCount);
                 return Task.CompletedTask;
@@ -322,4 +450,83 @@ public class BackgroundTaskSchedulerTests
             Is.EqualTo(capacity).After(5000, 10),
             "all tasks in the final phase should execute successfully");
     }
+
+    [Test]
+    public async Task Stats_are_reported_when_a_task_is_dropped()
+    {
+        const int capacity = 10;
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, capacity, new OneLoggerLogManager(new ILogger(logger)));
+
+        SemaphoreSlim release = new(0);
+        await BlockTheOnlyWorker(scheduler, release);
+
+        for (int i = 0; i < capacity; i++)
+        {
+            Assert.That(Schedule(scheduler, static (_, _) => Task.CompletedTask), Is.True, $"task {i} should fit in the queue");
+        }
+
+        Assert.That(Schedule(scheduler, static (_, _) => Task.CompletedTask), Is.False, "the queue is full so the next task is dropped");
+
+        logger.Received()
+            .Warn(Arg.Is<string>(static msg =>
+                msg.Contains("Background task queue is full")
+                && msg.Contains("Capacity: 10")
+                && msg.Contains($"dropping task [{nameof(TestRequest)}]")
+                && msg.Contains($"Stats: ({nameof(TestRequest)}: {capacity})")));
+
+        release.Release();
+    }
+
+    [Test]
+    public async Task Stats_track_queue_depth_and_return_to_zero()
+    {
+        const int queued = 5;
+        await using BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, queued + 1, LimboLogs.Instance);
+
+        SemaphoreSlim release = new(0);
+        await BlockTheOnlyWorker(scheduler, release);
+
+        for (int i = 0; i < queued; i++)
+        {
+            Assert.That(Schedule(scheduler, static (_, _) => Task.CompletedTask), Is.True);
+        }
+
+        Assert.That(scheduler.GetStats()[nameof(TestRequest)], Is.EqualTo(queued), "tasks waiting in the queue are counted");
+
+        release.Release();
+        Assert.That(() => scheduler.GetStats()[nameof(TestRequest)], Is.EqualTo(0).After(5000, 10),
+            "the counter returns to zero once the queue drains");
+    }
+
+    /// <summary>
+    /// Occupies the scheduler's single worker so that everything scheduled afterwards stays queued,
+    /// which makes queue-depth assertions deterministic.
+    /// </summary>
+    private static async Task BlockTheOnlyWorker(BackgroundTaskScheduler scheduler, SemaphoreSlim release)
+    {
+        DotNetty.Common.Concurrency.TaskCompletionSource running = new();
+        Assert.That(Schedule(scheduler, async (_, token) =>
+        {
+            running.TrySetResult(0);
+            // Observes the token so disposing the scheduler cannot deadlock on an unreleased semaphore
+            await release.WaitAsync(token);
+        }), Is.True);
+
+        await running.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    private static bool Schedule(BackgroundTaskScheduler scheduler, Func<TestRequest, CancellationToken, Task> task) =>
+        scheduler.TryScheduleTask<TestRequest>(default, task, TimeSpan.FromMinutes(1));
+
+    private BlocksProcessingEventArgs RaiseBlocksProcessing()
+    {
+        BlocksProcessingEventArgs args = new([]);
+        _branchProcessor.BlocksProcessing += Raise.EventWith(args);
+        return args;
+    }
+
+    private void RaiseBranchProcessingCompleted(BlocksProcessingEventArgs args) =>
+        _branchProcessor.BranchProcessingCompleted += Raise.EventWith(new BranchProcessingCompletedEventArgs(args.Blocks, 0));
 }

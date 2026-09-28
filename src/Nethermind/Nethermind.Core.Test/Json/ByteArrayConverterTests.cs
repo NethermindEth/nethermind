@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -107,10 +108,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         }
     }
 
-    [TestCase("true")]
-    [TestCase("123")]
-    [TestCase("{}")]
-    public void NonStringTokens_ShouldThrowInvalidOperation(string literal)
+    [Test]
+    public void NonStringTokens_ShouldThrowInvalidOperation([Values("true", "123", "{}")] string literal)
     {
         ReadOnlySequence<byte> seq = JsonForLiteral(literal);
         (_, Exception? err) = InvokeRaw(seq);
@@ -118,9 +117,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Assert.That(err, Is.TypeOf<InvalidOperationException>());
     }
 
-    [TestCase("0x")]
-    [TestCase("0X")]
-    public void EmptyAfterPrefix_BehaviorIsConsistentAcrossSegmentation(string hex)
+    [Test]
+    public void EmptyAfterPrefix_BehaviorIsConsistentAcrossSegmentation([Values("0x", "0X")] string hex)
     {
         byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
         // We accept either null or empty — but it must be consistent across segmentations.
@@ -175,6 +173,42 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         }
     }
 
+    [TestCaseSource(nameof(ValidHexCases))]
+    public void ConvertToArrayPoolList_ForHexInput_MatchesByteArrayConverter(string hex)
+    {
+        byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
+
+        Utf8JsonReader referenceReader = new(json);
+        referenceReader.Read();
+        byte[]? expected = null;
+        Exception? expectedError = null;
+        try { expected = ByteArrayConverter.Convert(ref referenceReader); }
+        catch (Exception ex) { expectedError = ex; }
+
+        Utf8JsonReader reader = new(json);
+        reader.Read();
+        ArrayPoolList<byte>? result = null;
+        Exception? error = null;
+        try { result = ByteArrayConverter.ConvertToArrayPoolList(ref reader); }
+        catch (Exception ex) { error = ex; }
+
+        using (result)
+        {
+            if (expectedError is not null)
+            {
+                Assert.That(error?.GetType(), Is.EqualTo(expectedError.GetType()), "must throw the same way as the byte[] converter");
+            }
+            else if (expected is null)
+            {
+                Assert.That(result, Is.Null, "must deserialize to null wherever the byte[] converter does");
+            }
+            else
+            {
+                Assert.That(result?.AsSpan().ToArray(), Is.EqualTo(expected), "pooled bytes must match the byte[] converter");
+            }
+        }
+    }
+
     [TestCase(new byte[] { 0xab, 0xcd }, true, true, "\"0xabcd\"")]
     [TestCase(new byte[] { 0xab, 0xcd }, false, true, "\"0xabcd\"")]
     [TestCase(new byte[] { 0x00, 0xab }, true, true, "\"0xab\"")]
@@ -194,11 +228,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Assert.That(Encoding.UTF8.GetString(ms.ToArray()), Is.EqualTo(expected));
     }
 
-    [TestCase(126)]
-    [TestCase(127)]
-    [TestCase(1022)]
-    [TestCase(1023)]
-    public void Write_OutputAroundInlineThresholds_IsByteIdentical(int length)
+    [Test]
+    public void Write_OutputAroundInlineThresholds_IsByteIdentical([Values(126, 127, 1022, 1023)] int length)
     {
         byte[] input = new byte[length];
         for (int i = 0; i < input.Length; i++) input[i] = (byte)(i & 0xFF);
@@ -227,9 +258,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         Assert.That(Encoding.UTF8.GetString(ms.ToArray()), Is.EqualTo(expected));
     }
 
-    [TestCase(127)]
-    [TestCase(1022)]
-    public void WriteAsPropertyName_MediumOutput_IsByteIdentical(int length)
+    [Test]
+    public void WriteAsPropertyName_MediumOutput_IsByteIdentical([Values(127, 1022)] int length)
     {
         byte[] input = new byte[length];
         for (int i = 0; i < input.Length; i++) input[i] = (byte)(i & 0xFF);

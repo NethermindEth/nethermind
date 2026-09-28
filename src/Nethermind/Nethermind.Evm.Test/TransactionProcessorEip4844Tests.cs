@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -55,7 +54,7 @@ internal class TransactionProcessorEip4844Tests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        long gasLimit = GasCostOf.Transaction;
+        ulong gasLimit = GasCostOf.Transaction;
         Transaction blobTx = Build.A.Transaction
             .WithValue(value)
             .WithGasPrice(1)
@@ -93,7 +92,7 @@ internal class TransactionProcessorEip4844Tests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        long gasLimit = GasCostOf.Transaction;
+        ulong gasLimit = GasCostOf.Transaction;
         Transaction blobTx = Build.A.Transaction
             .WithGasPrice(1)
             .WithMaxFeePerGas(1)
@@ -117,9 +116,9 @@ internal class TransactionProcessorEip4844Tests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.ErrorDescription, Does.Contain(BlockErrorMessages.InsufficientMaxFeePerBlobGas));
+            Assert.That(result.ErrorDescription, Does.Contain("max fee per blob gas less than block blob gas fee"));
             Assert.That(_stateProvider.GetBalance(TestItem.PrivateKeyA.Address), Is.EqualTo(balance));
-            Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(UInt256.Zero));
+            Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(0UL));
         }
     }
 

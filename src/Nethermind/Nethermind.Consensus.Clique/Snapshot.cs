@@ -10,22 +10,22 @@ namespace Nethermind.Consensus.Clique
 {
     public class Snapshot : ICloneable
     {
-        public long Number { get; set; }
+        public ulong Number { get; set; }
         public Hash256 Hash { get; set; }
-        public SortedList<Address, long> Signers { get; }
+        public SortedList<Address, ulong> Signers { get; }
         public List<Vote> Votes { get; init; }
         public Dictionary<Address, Tally> Tally { get; }
 
-        internal Snapshot(long number, Hash256 hash, SortedList<Address, long> signers, Dictionary<Address, Tally> tally)
+        internal Snapshot(ulong number, Hash256 hash, SortedList<Address, ulong> signers, Dictionary<Address, Tally> tally)
         {
             Number = number;
             Hash = hash;
-            Signers = new SortedList<Address, long>(signers, GenericComparer.GetOptimized<Address>());
+            Signers = new SortedList<Address, ulong>(signers, GenericComparer.GetOptimized<Address>());
             Votes = [];
             Tally = tally;
         }
 
-        internal Snapshot(long number, Hash256 hash, SortedList<Address, long> signers)
+        internal Snapshot(ulong number, Hash256 hash, SortedList<Address, ulong> signers)
             : this(number, hash, signers, [])
         {
         }
@@ -33,12 +33,12 @@ namespace Nethermind.Consensus.Clique
         public object Clone() =>
             new Snapshot(Number,
                 Hash,
-                new SortedList<Address, long>(Signers, GenericComparer.GetOptimized<Address>()),
+                new SortedList<Address, ulong>(Signers, GenericComparer.GetOptimized<Address>()),
                 new Dictionary<Address, Tally>(Tally))
             {
                 Votes = [.. Votes]
             };
 
-        public long SignerLimit => Signers.Count / 2 + 1;
+        public ulong SignerLimit => (ulong)Signers.Count / 2 + 1;
     }
 }

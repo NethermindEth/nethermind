@@ -23,7 +23,7 @@ namespace Nethermind.Wallet
             IKeyStore keyStore, in ValueHash256 message, Address address, SecureString passphrase, [NotNullWhen(true)] out Signature signature)
         {
             (PrivateKey key, Result result) = keyStore.GetKey(address, passphrase);
-            if (result.ResultType != ResultType.Success)
+            if (result.ResultType != ResultType.Success || key is null)
             {
                 signature = null;
                 return false;

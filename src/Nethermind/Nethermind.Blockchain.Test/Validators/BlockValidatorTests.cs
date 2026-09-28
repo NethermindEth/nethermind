@@ -4,6 +4,7 @@
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -33,7 +34,8 @@ public class BlockValidatorTests
     public void Setup()
     {
         IHeaderValidator headerValidator = Substitute.For<IHeaderValidator>();
-        headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()).Returns(true);
+        headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<bool>(), out Arg.Any<string?>(), Arg.Any<bool>())
+            .Returns(true);
         _blockValidator = new(
             Substitute.For<ITxValidator>(),
             headerValidator,
@@ -42,6 +44,55 @@ public class BlockValidatorTests
             LimboLogs.Instance);
     }
 
+
+    /// <summary>
+    /// The header hash is the one check <c>validateHashes</c> turns off, so an inverted branch on the way to the
+    /// header validator would silently disable it on every path, sync included.
+    /// </summary>
+    [TestCase(true, false, TestName = "ValidateSuggestedBlock_ValidatingHashes_RejectsAMismatchedHeaderHash")]
+    [TestCase(false, true, TestName = "ValidateSuggestedBlock_SkippingHashes_AcceptsAMismatchedHeaderHash")]
+    public void ValidateSuggestedBlock_CarriesValidateHashesToTheHeaderValidator(bool validateHashes, bool expectedValid)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Byzantium.Instance);
+        IBlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
+        BlockValidator sut = new(
+            Always.Valid,
+            new HeaderValidator(blockTree, Always.Valid, specProvider, LimboLogs.Instance),
+            Always.Valid,
+            specProvider,
+            LimboLogs.Instance);
+
+        Block parent = Build.A.Block.WithDifficulty(1).TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithDifficulty(2).TestObject;
+        blockTree.SuggestBlock(parent);
+        block.Header.Hash = Keccak.Zero;
+
+        bool isValid = sut.ValidateSuggestedBlock(block, parent.Header, out string? error, validateHashes);
+
+        Assert.That(isValid, Is.EqualTo(expectedValid), error);
+        if (!expectedValid)
+        {
+            Assert.That(error, Does.StartWith("InvalidHeaderHash"), "the hash check must be what rejects the block");
+        }
+    }
+
+    /// <summary>
+    /// The EIP-4895 presence rules are not a hash recomputation, so a caller that verified the header hash has not
+    /// verified them: the header only pins the withdrawals root field, not whether a body carries withdrawals.
+    /// </summary>
+    [Test]
+    public void ValidateSuggestedBlock_WithdrawalsMissingAfterShanghai_IsRejected([Values] bool validateHashes)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Shanghai.Instance);
+        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithWithdrawals(null).TestObject;
+
+        bool isValid = sut.ValidateSuggestedBlock(block, parent, out string? error, validateHashes);
+
+        Assert.That(isValid, Is.False);
+        Assert.That(error, Does.StartWith(BlockErrorMessages.MissingWithdrawals));
+    }
 
     [Test]
     public void Accepts_valid_block()
@@ -205,7 +256,7 @@ public class BlockValidatorTests
                 .TestObject,
             parent,
             new CustomSpecProvider(((ForkActivation)0, Cancun.Instance)),
-            "InsufficientMaxFeePerBlobGas")
+            "max fee per blob gas less than block blob gas fee")
         { TestName = "InsufficientMaxFeePerBlobGas" };
 
         yield return new TestCaseData(
@@ -263,9 +314,10 @@ public class BlockValidatorTests
         Assert.That(error, Does.StartWith(expectedError));
     }
 
-    [TestCase(30_000, true)]
-    [TestCase(29_999, false)]
-    public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(long gasLimit, bool expectedValid)
+    // WithPrecompileChanges yields 25 BAL items; the cap is itemCount <= gasLimit / Eip7928Constants.ItemCost.
+    [TestCase(50_000ul, true)]
+    [TestCase(49_999ul, false)]
+    public void ValidateSuggestedBlock_enforces_bal_item_gas_limit_boundary(ulong gasLimit, bool expectedValid)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
@@ -300,7 +352,7 @@ public class BlockValidatorTests
             .TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(10_000)
+            .WithGasLimit(10_000ul)
             .WithTransactions(2, Amsterdam.Instance)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
@@ -326,7 +378,7 @@ public class BlockValidatorTests
             .TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(0)
+            .WithGasLimit(0ul)
             .WithTransactions([])
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
@@ -339,9 +391,9 @@ public class BlockValidatorTests
         AssertValidation(false, isValid, error, "BlockAccessListGasLimitExceeded");
     }
 
-    [TestCase(30_000, true)]
-    [TestCase(29_999, false)]
-    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_rlp_imported_blocks(long gasLimit, bool expectedValid)
+    [TestCase(30_000ul, true)]
+    [TestCase(29_999ul, false)]
+    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_rlp_imported_blocks(ulong gasLimit, bool expectedValid)
     {
         // Hive eels/consume-rlp feeds blocks via RLP, which leaves Block.BlockAccessList null
         // (BlockDecoder does not decode BAL). The pre-execution check in
@@ -412,7 +464,7 @@ public class BlockValidatorTests
 
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(30_000_000)
+            .WithGasLimit(30_000_000ul)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
             .WithBal(bal)

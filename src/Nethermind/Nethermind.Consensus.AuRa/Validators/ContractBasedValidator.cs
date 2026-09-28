@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly ILogger _logger;
 
         private PendingValidators _currentPendingValidators;
-        private long? _lastProcessedBlockNumber = null;
+        private ulong? _lastProcessedBlockNumber = null;
         private Hash256? _lastProcessedBlockHash = null;
         private IAuRaBlockFinalizationManager _blockFinalizationManager;
         internal IBlockTree BlockTree { get; }
@@ -38,8 +38,8 @@ namespace Nethermind.Consensus.AuRa.Validators
             IAuRaBlockFinalizationManager finalizationManager,
             BlockHeader parentHeader,
             ILogManager logManager,
-            long startBlockNumber,
-            long posdaoTransition = long.MaxValue,
+            ulong startBlockNumber,
+            ulong posdaoTransition = ulong.MaxValue,
             bool forSealing = false) : base(validSealerStrategy, validatorStore, logManager, startBlockNumber, forSealing)
         {
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -135,8 +135,8 @@ namespace Nethermind.Consensus.AuRa.Validators
         private PendingValidators TryGetInitChangeFromPastBlocks(Hash256 blockHash)
         {
             PendingValidators pendingValidators = null;
-            long lastFinalized = _blockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
-            long toBlock = Math.Max(lastFinalized, InitBlockNumber);
+            ulong lastFinalized = _blockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
+            ulong toBlock = Math.Max(lastFinalized, InitBlockNumber);
             Block block = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
             while (block?.Number >= toBlock)
             {
@@ -189,7 +189,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             ValidatorInfo validatorsInfo = ValidatorStore.GetValidatorsInfo(block.Number);
             bool isInitialValidatorSet = validatorsInfo.FinalizingBlockNumber == InitBlockNumber
-                                        && validatorsInfo.PreviousFinalizingBlockNumber < InitBlockNumber;
+                                        && (validatorsInfo.PreviousFinalizingBlockNumber == ulong.MaxValue || validatorsInfo.PreviousFinalizingBlockNumber < InitBlockNumber);
 
             if (InitBlockNumber == block.Number || (!isInitialValidatorSet && validatorsInfo.FinalizingBlockNumber == block.Number - 1))
             {
@@ -223,7 +223,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         }
 
         // NOTE: this is only added to `_blockFinalizationManager.BlocksFinalized` when `!ForSealing`
-        private void OnBlocksFinalized(object sender, FinalizeEventArgs e)
+        private void OnBlocksFinalized(object sender, AuRaFinalizeEventArgs e)
         {
             if (e.FinalizedBlocks.Any(header => header.Hash == _currentPendingValidators?.BlockHash))
             {

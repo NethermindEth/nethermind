@@ -35,13 +35,13 @@ public sealed class CumulativeMetadata
     /// Gets or sets the first block number included in the cumulative count.
     /// </summary>
     [JsonPropertyName("firstBlock")]
-    public required long FirstBlock { get; init; }
+    public required ulong FirstBlock { get; init; }
 
     /// <summary>
     /// Gets or sets the last block number included in the cumulative count.
     /// </summary>
     [JsonPropertyName("lastBlock")]
-    public required long LastBlock { get; init; }
+    public required ulong LastBlock { get; init; }
 
     /// <summary>
     /// Gets or sets the total number of blocks processed.
@@ -95,14 +95,14 @@ public sealed class CumulativeMetadata
     /// </summary>
     [JsonPropertyName("configuredStartBlock")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long? ConfiguredStartBlock { get; init; }
+    public ulong? ConfiguredStartBlock { get; init; }
 
     /// <summary>
     /// Gets or sets the configured end block (if range was specified).
     /// </summary>
     [JsonPropertyName("configuredEndBlock")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long? ConfiguredEndBlock { get; init; }
+    public ulong? ConfiguredEndBlock { get; init; }
 
     /// <summary>
     /// Gets or sets warnings encountered during tracing.

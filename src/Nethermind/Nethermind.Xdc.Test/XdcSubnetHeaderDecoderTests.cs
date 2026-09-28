@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -25,17 +26,9 @@ namespace Nethermind.Xdc.Test
         public void EncodeDecode_RoundTrip_Matches_AllFields()
         {
             XdcSubnetHeaderDecoder codec = new();
-            (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec);
+            XdcSubnetBlockHeader original = Build.A.XdcSubnetBlockHeader().TestObject;
 
-            // Decode
-            Rlp.ValueDecoderContext context = encodedBytes.AsRlpValueContext();
-            BlockHeader? decodedBase = codec.Decode(ref context);
-            Assert.That(decodedBase, Is.Not.Null, "The decoded header should not be null.");
-            Assert.That(decodedBase, Is.InstanceOf<XdcSubnetBlockHeader>(), "The decoded header should be an instance of XdcSubnetBlockHeader.");
-
-            XdcSubnetBlockHeader decoded = (XdcSubnetBlockHeader)decodedBase!;
-
-            Assert.That(decoded, Is.EqualTo(original).UsingXdcComparer(compareHash: false));
+            AssertRoundTrip(codec, original);
         }
 
         [Test]
@@ -68,12 +61,49 @@ namespace Nethermind.Xdc.Test
             (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(decoder, true);
 
             // ForSealing encoding
-            Rlp.ValueDecoderContext context = encodedBytes.AsRlpValueContext();
+            RlpReader context = new(encodedBytes);
             XdcSubnetBlockHeader unencoded = (XdcSubnetBlockHeader)decoder.Decode(ref context, RlpBehaviors.ForSealing)!;
 
             Assert.That(unencoded.Validator, Is.Null, "ForSealing encoding should not contain Validator field.");
             Assert.That(unencoded.NextValidators, Is.Null, "ForSealing encoding should not contain NextValidators field.");
         }
 
+        [Test]
+        public void Encode_EmptySubnetCollections_DecodesToOriginalHeader()
+        {
+            XdcSubnetHeaderDecoder decoder = new();
+            XdcSubnetBlockHeaderBuilder builder = Build.A.XdcSubnetBlockHeader();
+            builder.WithValidators(Array.Empty<byte>());
+            builder.WithNextValidators(Array.Empty<byte>());
+            builder.WithPenalties(Array.Empty<byte>());
+
+            AssertRoundTrip(decoder, builder.TestObject);
+        }
+
+        [Test]
+        public void Encode_SubnetAddressCollections_DecodesToOriginalHeader()
+        {
+            XdcSubnetHeaderDecoder decoder = new();
+            Address[] validators = [Address.FromNumber(1), Address.FromNumber(2)];
+            Address[] nextValidators = [Address.FromNumber(3)];
+            Address[] penalties = [Address.FromNumber(4)];
+            XdcSubnetBlockHeaderBuilder builder = Build.A.XdcSubnetBlockHeader();
+            builder.WithValidators(validators);
+            builder.WithNextValidators(nextValidators);
+            builder.WithPenalties(penalties);
+
+            AssertRoundTrip(decoder, builder.TestObject);
+        }
+
+        private static void AssertRoundTrip(XdcSubnetHeaderDecoder codec, XdcSubnetBlockHeader original)
+        {
+            RlpReader context = new(codec.Encode(original).Bytes);
+
+            BlockHeader? decodedBase = codec.Decode(ref context);
+            Assert.That(decodedBase, Is.InstanceOf<XdcSubnetBlockHeader>(), "The decoded header should be an instance of XdcSubnetBlockHeader.");
+
+            XdcSubnetBlockHeader decoded = (XdcSubnetBlockHeader)decodedBase!;
+            Assert.That(decoded, Is.EqualTo(original).UsingXdcComparer(compareHash: false));
+        }
     }
 }

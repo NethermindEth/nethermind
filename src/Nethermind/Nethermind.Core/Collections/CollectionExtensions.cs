@@ -14,6 +14,12 @@ namespace Nethermind.Core.Collections
     {
         public static int LockPartitions { get; } = Environment.ProcessorCount * 16;
 
+        /// <summary>Default capacity above which <c>ClearAndTrim</c> shrinks a collection's backing storage.</summary>
+        public const int DefaultTrimAboveCapacity = 8192;
+
+        /// <summary>Default capacity <c>ClearAndTrim</c> shrinks a collection back to once <see cref="DefaultTrimAboveCapacity"/> is exceeded.</summary>
+        public const int DefaultTrimToCapacity = 1024;
+
         public static void AddRange<T>(this ICollection<T> list, IEnumerable<T> items)
         {
             switch (items)
@@ -76,19 +82,50 @@ namespace Nethermind.Core.Collections
             }
         }
 
+        public static void ClearAndTrim<T>(this HashSet<T> set, int trimAboveCapacity = DefaultTrimAboveCapacity, int trimToCapacity = DefaultTrimToCapacity)
+        {
+            set.Clear();
+            if (set.Capacity > trimAboveCapacity)
+            {
+                set.TrimExcess(trimToCapacity);
+            }
+        }
+
         public static bool NoResizeClear<TKey, TValue>(this ConcurrentDictionary<TKey, TValue>? dictionary)
                 where TKey : notnull
         {
-            if (dictionary?.IsEmpty ?? true)
+            if (dictionary is null)
             {
                 return false;
             }
 
+            // No unlocked precheck: a lock-free count scan can transiently read all-zero while a
+            // concurrent writer holds entries, skipping a clear the caller asked for. Under the
+            // stripes the counts are exact, and the scan is far cheaper than clearing a large
+            // retained bucket array.
             using ConcurrentDictionaryLock<TKey, TValue>.Lock handle = dictionary.AcquireLock();
+            return ClearIfHasEntries(dictionary);
+        }
 
-            // Recheck under lock, so not to over clear which is expensive.
-            // May have cleared while waiting for lock.
-            if (dictionary.IsEmpty)
+        /// <summary>
+        /// Clears the dictionary in place like <see cref="NoResizeClear{TKey,TValue}"/>, retaining
+        /// the grown bucket table, but without acquiring the stripe locks.
+        /// </summary>
+        /// <remarks>
+        /// Requires complete quiescence: no concurrent writers or readers - a reader already
+        /// mid-enumeration may still observe pre-clear entries. Stripe locks that have ever been
+        /// contended stay inflated and route every acquisition through the Monitor slow path, so
+        /// for large pooled maps the lock sweep dominates the cost of a locked clear.
+        /// </remarks>
+        /// <returns><c>true</c> when entries were cleared; <c>false</c> when already empty.</returns>
+        public static bool NoLockClear<TKey, TValue>(this ConcurrentDictionary<TKey, TValue>? dictionary)
+                where TKey : notnull =>
+            dictionary is not null && ClearIfHasEntries(dictionary);
+
+        private static bool ClearIfHasEntries<TKey, TValue>(ConcurrentDictionary<TKey, TValue> dictionary)
+                where TKey : notnull
+        {
+            if (!HasEntries(dictionary))
             {
                 return false;
             }
@@ -97,9 +134,42 @@ namespace Nethermind.Core.Collections
             return true;
         }
 
+        /// <remarks>
+        /// Reads the per-stripe counts without locks: <see cref="ConcurrentDictionary{TKey,TValue}.IsEmpty"/>
+        /// acquires every stripe lock to CONFIRM an empty map, which is the common case for pooled
+        /// clears. Exact only while the caller holds all stripes or the map is quiescent.
+        /// </remarks>
+        private static bool HasEntries<TKey, TValue>(ConcurrentDictionary<TKey, TValue> dictionary)
+                where TKey : notnull
+        {
+            int[] countPerLock = ClearCache<TKey, TValue>.CountPerLock(dictionary);
+            for (int i = 0; i < countPerLock.Length; i++)
+            {
+                if (countPerLock[i] != 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static class ClearCache<TKey, TValue> where TKey : notnull
         {
             public static readonly Action<ConcurrentDictionary<TKey, TValue>> Clear = CreateNoResizeClearExpression();
+            public static readonly Func<ConcurrentDictionary<TKey, TValue>, int[]> CountPerLock = CreateCountPerLockGetter();
+
+            private static Func<ConcurrentDictionary<TKey, TValue>, int[]> CreateCountPerLockGetter()
+            {
+                ParameterExpression dictionaryParam = Expression.Parameter(typeof(ConcurrentDictionary<TKey, TValue>), "dictionary");
+
+                FieldInfo? tablesField = typeof(ConcurrentDictionary<TKey, TValue>).GetField("_tables", BindingFlags.NonPublic | BindingFlags.Instance);
+                FieldInfo? countPerLockField = tablesField!.FieldType.GetField("_countPerLock", BindingFlags.NonPublic | BindingFlags.Instance);
+
+                MemberExpression countPerLockAccess = Expression.Field(Expression.Field(dictionaryParam, tablesField), countPerLockField!);
+
+                return Expression.Lambda<Func<ConcurrentDictionary<TKey, TValue>, int[]>>(countPerLockAccess, dictionaryParam).Compile();
+            }
 
             private static Action<ConcurrentDictionary<TKey, TValue>> CreateNoResizeClearExpression()
             {

@@ -6,6 +6,7 @@ using System.Collections.Frozen;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
@@ -18,7 +19,7 @@ public partial class Rlp
     {
         get
         {
-            FrozenDictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
+            FrozenDictionary<RlpDecoderKey, IRlpDecoder>? snapshot = Volatile.Read(ref _decodersSnapshot);
             return snapshot ?? CreateDecodersSnapshot();
         }
     }
@@ -26,7 +27,21 @@ public partial class Rlp
     private static FrozenDictionary<RlpDecoderKey, IRlpDecoder> CreateDecodersSnapshot()
     {
         using Lock.Scope _ = _decoderLock.EnterScope();
-        return _decodersSnapshot ??= _decoderBuilder.ToFrozenDictionary();
+        FrozenDictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
+        if (snapshot is null)
+        {
+            snapshot = _decoderBuilder.ToFrozenDictionary();
+            Volatile.Write(ref _decodersSnapshot, snapshot);
+        }
+
+        return snapshot;
+    }
+
+    private static bool RegisterDefaultDecoders()
+    {
+        RegisterDecoders(typeof(Rlp).Assembly);
+        RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+        return true;
     }
 
     public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)
@@ -77,9 +92,11 @@ public partial class Rlp
                         {
                             try
                             {
-                                _decoderBuilder[key] = instance ??= (IRlpDecoder)(type.GetConstructor(Type.EmptyTypes) is not null ?
-                                    Activator.CreateInstance(type) :
-                                    Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null));
+                                object? decoder = type.GetConstructor(Type.EmptyTypes) is not null
+                                    ? Activator.CreateInstance(type)
+                                    : Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null);
+                                _decoderBuilder[key] = instance ??= (IRlpDecoder)(decoder
+                                    ?? throw new InvalidOperationException($"Could not create decoder {type}."));
                             }
                             catch (Exception)
                             {
@@ -95,7 +112,7 @@ public partial class Rlp
             }
         }
 
-        _decodersSnapshot = null;
+        Volatile.Write(ref _decodersSnapshot, null);
     }
 }
 

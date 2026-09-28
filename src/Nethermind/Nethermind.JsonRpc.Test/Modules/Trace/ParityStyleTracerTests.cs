@@ -78,9 +78,8 @@ public class ParityStyleTracerTests
         Assert.That(result.Data, Is.Not.Null);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Should_return_correct_block_reward(bool isPostMerge)
+    [Test]
+    public async Task Should_return_correct_block_reward([Values] bool isPostMerge)
     {
         Block block = Build.A.Block.WithParent(_blockTree!.Head!).TestObject;
         Assert.That((await _blockTree!.SuggestBlockAsync(block, BlockTreeSuggestOptions.None)), Is.EqualTo(AddBlockResult.Added));

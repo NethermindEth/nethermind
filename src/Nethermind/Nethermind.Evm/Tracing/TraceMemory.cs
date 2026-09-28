@@ -39,6 +39,20 @@ public readonly struct TraceMemory(ulong size, ReadOnlyMemory<byte> memory)
         return memory;
     }
 
+    /// <summary>Returns a copy of the raw memory bytes padded to a whole number of 32-byte words.
+    /// Returns an empty array for zero-size memory. The EVM reuses its internal buffer across opcodes, so a copy is required.</summary>
+    public byte[] ToRawWordBytes()
+    {
+        if (Size == 0) return Array.Empty<byte>();
+        int wordCount = (int)((Size + EvmPooledMemory.WordSize - 1) / EvmPooledMemory.WordSize);
+        byte[] raw = new byte[wordCount * EvmPooledMemory.WordSize];
+        int copyLength = Math.Min((int)Size, _memory.Length);
+        if (copyLength > 0)
+            _memory.Span.Slice(0, copyLength).CopyTo(raw);
+        // remainder is zero-initialised by the array constructor
+        return raw;
+    }
+
     private const int MemoryPadLimit = MemorySizes.MiB;
     public ReadOnlySpan<byte> Slice(int start, int length, bool limit = true)
     {

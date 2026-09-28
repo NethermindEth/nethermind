@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
             }
-            catch (JsonException)
+            catch (Exception e) when (e is JsonException or FormatException or OverflowException)
             {
                 return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams);
             }
@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             bool unsubscribed = subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
             return unsubscribed
                 ? ResultWrapper<bool>.Success(true)
-                : ResultWrapper<bool>.Fail($"Failed to unsubscribe: {subscriptionId}.");
+                : ResultWrapper<bool>.Fail(ErrorMessages.SubscriptionNotFound, ErrorCodes.ResourceNotFound, isTemporary: true);
         }
 
         public JsonRpcContext Context { get; set; }

@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -15,7 +16,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
-public class ParityLikeTxTracer : TxTracer
+public partial class ParityLikeTxTracer : TxTracer
 {
     private Transaction? _tx;
     private readonly ParityTraceTypes _parityTraceTypes;
@@ -33,9 +34,12 @@ public class ParityLikeTxTracer : TxTracer
     protected bool _treatGasParityStyle;
     protected bool _gasAlreadySetForCurrentOp;
 
-    public ParityLikeTxTracer(Block block, Transaction? tx, ParityTraceTypes parityTraceTypes)
+    /// <param name="spec">The block's spec, which prices an EIP-8141 frame transaction's gas budget for its root;
+    /// without it the root reports only the frame limits.</param>
+    public ParityLikeTxTracer(Block block, Transaction? tx, ParityTraceTypes parityTraceTypes, IReleaseSpec? spec = null)
     {
         _parityTraceTypes = parityTraceTypes;
+        _spec = spec;
 
         _tx = tx;
         _trace = new ParityLikeTxTrace
@@ -56,7 +60,6 @@ public class ParityLikeTxTracer : TxTracer
         if ((_parityTraceTypes & ParityTraceTypes.Trace) != 0)
         {
             IsTracingActions = true;
-            IsTracingReceipt = true;
         }
 
         if ((_parityTraceTypes & ParityTraceTypes.VmTrace) != 0)
@@ -64,12 +67,14 @@ public class ParityLikeTxTracer : TxTracer
             IsTracingActions = true;
             IsTracingInstructions = true;
             IsTracingCode = true;
-            IsTracingReceipt = true;
         }
+
+        _frameTx = CreateFrameTxTraceBuilder(tx);
     }
 
     public sealed override bool IsTracingActions { get; protected set; }
-    public sealed override bool IsTracingReceipt { get; protected set; }
+    public sealed override bool IsTracingReceipt => true;
+    public override bool IsCollectingLogs => false;
     public sealed override bool IsTracingInstructions { get; protected set; }
     public sealed override bool IsTracingCode { get; protected set; }
     public sealed override bool IsTracingState { get; protected set; }
@@ -107,6 +112,8 @@ public class ParityLikeTxTracer : TxTracer
 
     public virtual ParityLikeTxTrace BuildResult()
     {
+        _frameTx?.CloseRoot();
+
         if ((_parityTraceTypes & ParityTraceTypes.Trace) == ParityTraceTypes.None)
         {
             _trace.Action = null;
@@ -124,7 +131,7 @@ public class ParityLikeTxTracer : TxTracer
 
     protected virtual Dictionary<UInt256, ParityStateChange<byte[]>> RentStorageDictionary() => [];
 
-    protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[] before, byte[] after) => new(before, after);
+    protected virtual ParityStateChange<byte[]> RentByteStateChange(byte[]? before, byte[]? after) => new(before, after);
 
     protected virtual ParityStateChange<UInt256?> RentNullableUInt256StateChange(UInt256? before, UInt256? after) => new(before, after);
 
@@ -158,6 +165,7 @@ public class ParityLikeTxTracer : TxTracer
         _currentVmTrace = (null!, null!);
         _treatGasParityStyle = false;
         _gasAlreadySetForCurrentOp = false;
+        _frameTx = CreateFrameTxTraceBuilder(tx);
     }
 
     private void PushAction(ParityTraceAction action)
@@ -171,6 +179,7 @@ public class ParityLikeTxTracer : TxTracer
             parentSpan.CopyTo(childSpan);
             childSpan[parentLen] = _currentAction.Subtraces.Count;
             action.TraceAddress = traceAddress;
+            _frameTx?.OnChildPushed(_currentAction, action);
             if (action.IncludeInTrace)
             {
                 _currentAction.Subtraces.Add(action);
@@ -208,6 +217,7 @@ public class ParityLikeTxTracer : TxTracer
     {
         ParityTraceAction popped = _actionStack.Peek();
         OnLeaveVmFrame(popped);
+        _frameTx?.OnPopped(popped);
 
         _actionStack.Pop();
         _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
@@ -232,22 +242,34 @@ public class ParityLikeTxTracer : TxTracer
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null)
     {
+        _frameTx?.MarkSucceeded(gasSpent);
+
         if (_currentAction is not null)
         {
             throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
         }
 
-        if (_trace.Action!.TraceAddress.Length == 0)
+        if (!IsTracingActions)
+        {
+            _trace.Output = output;
+            return;
+        }
+
+        _trace.Action ??= CreateRootActionFromTx();
+
+        if (_trace.Action.TraceAddress.Length == 0)
         {
             _trace.Output = output;
         }
 
-        _trace.Action!.Result!.Output = output;
+        _trace.Action.Result!.Output = output;
     }
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
         Hash256? stateRoot = null)
     {
+        _frameTx?.MarkFailed(gasSpent, output, error);
+
         if (_currentAction is not null)
         {
             throw new InvalidOperationException($"Closing trace at level {_currentAction!.TraceAddress.Length}");
@@ -255,21 +277,29 @@ public class ParityLikeTxTracer : TxTracer
 
         _trace.Output = output;
 
+        if (!IsTracingActions) return;
+
         if (_trace.Action is null)
         {
-            ParityTraceAction action = RentAction();
-            action.From = _tx!.SenderAddress;
-            action.To = _tx.To;
-            action.Value = _tx.Value;
-            action.Input = CopyInput(_tx.Data);
-            action.Gas = _tx.GasLimit;
-            action.CallType = _tx.IsMessageCall ? "call" : "init";
+            ParityTraceAction action = CreateRootActionFromTx();
             action.Error = error;
             _trace.Action = action;
         }
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+    private ParityTraceAction CreateRootActionFromTx()
+    {
+        ParityTraceAction action = RentAction();
+        action.From = _tx!.SenderAddress;
+        action.To = _tx.To;
+        action.Value = _tx.Value;
+        action.Input = CopyInput(_tx.Data);
+        action.Gas = _tx.GasLimit;
+        action.CallType = _tx.IsMessageCall ? "call" : "init";
+        return action;
+    }
+
+    public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         ParityVmOperationTrace operationTrace = new();
         _gasAlreadySetForCurrentOp = false;
@@ -289,18 +319,18 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    public override void ReportOperationRemainingGas(long gas)
+    public override void ReportOperationRemainingGas(ulong gas)
     {
-        if (!_gasAlreadySetForCurrentOp)
+        if (!_gasAlreadySetForCurrentOp && _currentOperation is not null)
         {
             _gasAlreadySetForCurrentOp = true;
 
-            _currentOperation!.Cost -= (_treatGasParityStyle ? 0 : gas);
+            _currentOperation.Cost -= (_treatGasParityStyle ? 0UL : gas);
 
             // based on Parity behaviour - adding stipend to the gas cost
-            if (_currentOperation.Cost == 7400)
+            if (_currentOperation.Cost == 7400UL)
             {
-                _currentOperation.Cost = 9700;
+                _currentOperation.Cost = 9700UL;
             }
 
             _currentOperation.Push = _currentPushList.ToArray();
@@ -320,7 +350,7 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
+    public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
         _currentOperation!.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
 
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -344,7 +374,7 @@ public class ParityLikeTxTracer : TxTracer
         value.Balance = RentNullableUInt256StateChange(before, after);
     }
 
-    public override void ReportCodeChange(Address address, byte[] before, byte[] after)
+    public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
     {
         if (_trace.StateChanges is null)
         {
@@ -401,9 +431,11 @@ public class ParityLikeTxTracer : TxTracer
         change = RentByteStateChange(before, after);
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
+        _frameTx?.EnsureRoot();
+
         ParityTraceAction action = RentAction();
         action.IsPrecompiled = isPrecompileCall;
         // ignore pre compile calls with Zero value that originates from contracts
@@ -444,7 +476,7 @@ public class ParityLikeTxTracer : TxTracer
         PopAction();
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         if (_currentAction!.Result is null)
         {
@@ -457,14 +489,18 @@ public class ParityLikeTxTracer : TxTracer
         PopAction();
     }
 
-    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    public override void ReportActionError(EvmExceptionType evmExceptionType) => HandleActionError(evmExceptionType);
+
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => HandleActionError(EvmExceptionType.Revert, gas, output);
+
+    private void HandleActionError(EvmExceptionType evmExceptionType, ulong gasLeft = 0, ReadOnlyMemory<byte> output = default)
     {
-        _currentAction!.Result = null;
+        _currentAction!.Result = _frameTx?.FailedActionResult(_currentAction, evmExceptionType, gasLeft, output);
         _currentAction.Error = GetErrorDescription(evmExceptionType);
         PopAction();
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         if (_currentAction!.Result is null)
         {
@@ -482,6 +518,16 @@ public class ParityLikeTxTracer : TxTracer
         // TODO: use memory pool?
         _currentVmTrace.VmTrace.Code = byteCode.ToArray();
 
-    public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable) =>
-        _currentOperation!.Used = gasAvailable;
+    public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
+    {
+        if (_currentOperation is null) return;
+        _currentOperation.Used = gasAvailable;
+
+        if (!_gasAlreadySetForCurrentOp)
+        {
+            _gasAlreadySetForCurrentOp = true;
+            _currentOperation.Push = _currentPushList.ToArray();
+            _treatGasParityStyle = false;
+        }
+    }
 }

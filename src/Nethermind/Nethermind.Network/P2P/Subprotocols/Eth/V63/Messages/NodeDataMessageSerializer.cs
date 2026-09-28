@@ -9,13 +9,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
     public class NodeDataMessageSerializer : IZeroInnerMessageSerializer<NodeDataMessage>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<NodeDataMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(NodeDataMessage.Data));
+        internal static readonly RlpLimit RlpLimit = RlpLimit.For<NodeDataMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(NodeDataMessage.Data));
 
-        public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message) =>
-            NettyRlpStream.WriteByteArrayList(byteBuffer, message.Data);
+        public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
+        {
+            byteBuffer.EnsureWritable(GetLength(message, out _));
+            ByteBufferRlpWriter writer = new(byteBuffer);
+            writer.WriteByteArrayList(message.Data);
+        }
 
         public NodeDataMessage Deserialize(IByteBuffer byteBuffer) =>
-            new(NettyRlpStream.DecodeByteArrayList(byteBuffer));
+            new(byteBuffer.DecodeRlpByteArrayList(RlpLimit));
 
         public int GetLength(NodeDataMessage message, out int contentLength)
         {

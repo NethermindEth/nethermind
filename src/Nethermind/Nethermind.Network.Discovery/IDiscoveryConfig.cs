@@ -116,7 +116,7 @@ public interface IDiscoveryConfig : IConfig
     NetworkNode[] Bootnodes { get; set; }
 
     /// <summary>
-    /// Timeout for closing UDP channel in milliseconds
+    /// Timeout for closing the UDP channels and shutting their event loop down, in milliseconds
     /// </summary>
     [ConfigItem(DefaultValue = "5000")]
     int UdpChannelCloseTimeout { get; }
@@ -138,7 +138,7 @@ public interface IDiscoveryConfig : IConfig
     [Obsolete]
     float DropFullBucketNodeProbability { get; set; }
 
-    [ConfigItem(Description = "Limit number of outgoing discovery message per second.", DefaultValue = "100", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Limit number of outgoing discovery message per second.", DefaultValue = "500", HiddenFromDocs = true)]
     int MaxOutgoingMessagePerSecond { get; set; }
 
     [ConfigItem(Description = "Discovery version(s) to enable", DefaultValue = "V4", HiddenFromDocs = true)]

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -19,22 +18,11 @@ public class BlockHeaderForRpc
     [SkipLocalsInit]
     public BlockHeaderForRpc(BlockHeader header, ISpecProvider? specProvider = null)
     {
-        bool isAuRaBlock = header.AuRaSignature is not null;
         Number = header.Number;
         Hash = header.Hash;
         ParentHash = header.ParentHash;
-        if (!isAuRaBlock)
-        {
-            MixHash = header.MixHash;
-            Nonce = new byte[8];
-            BinaryPrimitives.WriteUInt64BigEndian(Nonce, header.Nonce);
-        }
-        else
-        {
-            Author = header.Author;
-            Step = header.AuRaStep;
-            Signature = header.AuRaSignature;
-        }
+        MixHash = header.MixHash;
+        Nonce = header.Nonce;
         Sha3Uncles = header.UnclesHash;
         LogsBloom = header.Bloom;
         StateRoot = header.StateRoot;
@@ -70,7 +58,7 @@ public class BlockHeaderForRpc
     public Address? Author { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public long? Number { get; set; }
+    public ulong? Number { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Hash256? Hash { get; set; }
@@ -78,15 +66,16 @@ public class BlockHeaderForRpc
     public Hash256? ParentHash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public byte[]? Nonce { get; set; }
+    [JsonConverter(typeof(BlockNonceConverter))]
+    public ulong? Nonce { get; set; }
 
     public Hash256? MixHash { get; set; }
     public Hash256? Sha3Uncles { get; set; }
 
     public byte[]? Signature { get; set; }
 
-    [JsonConverter(typeof(NullableRawLongConverter))]
-    public long? Step { get; set; }
+    [JsonConverter(typeof(NullableRawULongConverter))]
+    public ulong? Step { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Bloom? LogsBloom { get; set; }
@@ -98,8 +87,8 @@ public class BlockHeaderForRpc
 
     public UInt256 Difficulty { get; set; }
     public byte[] ExtraData { get; set; } = [];
-    public long GasLimit { get; set; }
-    public long GasUsed { get; set; }
+    public ulong GasLimit { get; set; }
+    public ulong GasUsed { get; set; }
     public UInt256 Timestamp { get; set; }
     public Hash256? TransactionsRoot { get; set; }
     public Hash256? ReceiptsRoot { get; set; }

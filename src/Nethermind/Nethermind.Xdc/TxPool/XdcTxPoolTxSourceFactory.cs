@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Xdc.TxPool;
 
@@ -16,12 +17,13 @@ internal class XdcTxPoolTxSourceFactory(
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
         IBlockFinder blockFinder,
-        ILogManager logManager) : IBlockProducerTxSourceFactory
+        ILogManager logManager,
+        [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator) : IBlockProducerTxSourceFactory
 {
     public virtual ITxSource Create()
     {
         ITxFilterPipeline txSourceFilterPipeline = new XdcTxFilterPipeline(
             TxFilterPipelineBuilder.CreateStandardFilteringPipeline(logManager, blocksConfig));
-        return new TxPoolTxSource(txPool, specProvider, new XdcTransactionComparerProvider(specProvider, blockFinder), logManager, txSourceFilterPipeline, blocksConfig);
+        return new TxPoolTxSource(txPool, specProvider, new XdcTransactionComparerProvider(specProvider, blockFinder), logManager, txSourceFilterPipeline, blocksConfig, specChangeTxValidator);
     }
 }

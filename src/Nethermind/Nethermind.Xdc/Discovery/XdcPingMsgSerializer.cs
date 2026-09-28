@@ -3,8 +3,8 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Crypto;
-using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.Serializers;
+using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Network.Discovery.Discv4.Serializers;
 
 namespace Nethermind.Xdc.Discovery;
 

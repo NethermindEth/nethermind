@@ -5,7 +5,6 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -27,10 +26,10 @@ public partial class PatriciaTree
         DoNotParallelize = 2
     }
 
-    public readonly struct BulkSetEntry(in ValueHash256 path, byte[] value) : IComparable<BulkSetEntry>
+    public readonly struct BulkSetEntry(in ValueHash256 path, byte[]? value) : IComparable<BulkSetEntry>
     {
         public readonly ValueHash256 Path = path;
-        public readonly byte[] Value = value;
+        public readonly byte[]? Value = value;
 
         public int CompareTo(BulkSetEntry entry) => Path.CompareTo(entry.Path);
 
@@ -121,6 +120,64 @@ public partial class PatriciaTree
 
     private readonly record struct Context(BulkSetEntry[] OriginalEntriesArray, BulkSetEntry[] OriginalSortBufferArray);
 
+    private void BulkSetParallelJobs(
+        in Context ctx,
+        ArrayPoolList<(int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)> jobs,
+        Span<BulkSetEntry> entries,
+        ref TreePath path,
+        TrieNode node,
+        ReadOnlySpan<int> indexes,
+        int nibMask,
+        int flipCount,
+        Flags flags)
+    {
+        Context closureCtx = ctx;
+        BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
+        BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
+        TrieNode.ChildIterator childIterator = node.CreateChildIterator();
+
+        while (nibMask != 0)
+        {
+            int nib = BitOperations.TrailingZeroCount(nibMask);
+            nibMask &= nibMask - 1;
+            int startRange = indexes[nib];
+
+            int endRange = nibMask != 0 ? indexes[BitOperations.TrailingZeroCount(nibMask)] : entries.Length;
+
+            Span<BulkSetEntry> jobEntry = entries.Slice(startRange, endRange - startRange);
+
+            TreePath childPath = path.Append(nib);
+            TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref childPath, nib);
+            jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
+        }
+
+        ParallelUnbalancedWork.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
+            GetTraverseStack,
+            (i, workerTraverseStack) =>
+            {
+                (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
+
+                Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
+                Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
+
+                TrieNode? newChild = BulkSet(
+                    in closureCtx,
+                    workerTraverseStack,
+                    jobEntries,
+                    bufferEntries,
+                    ref childPath,
+                    child,
+                    flipCount,
+                    flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
+
+                jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
+
+                return workerTraverseStack;
+            },
+            ReturnTraverseStack
+        );
+    }
+
     /// <param name="ctx">Just to reduce the param count</param>
     /// <param name="traverseStack">Stack used in set. Parallel call use different stack.</param>
     /// <param name="entries">The entries</param>
@@ -199,7 +256,7 @@ public partial class PatriciaTree
         bool hasRemove = false;
         int nonNullChildCount = 0;
 
-        if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
+        if (!Core.Cpu.RuntimeInformation.IsSingleProcessor && entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
         {
             using ArrayPoolList<(
                 int startIdx,
@@ -210,51 +267,9 @@ public partial class PatriciaTree
                 TrieNode? newChild
                 )> jobs = new(TrieNode.BranchesCount, TrieNode.BranchesCount);
 
-            Context closureCtx = ctx;
-            BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
-            BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
-            TrieNode.ChildIterator childIterator = node.CreateChildIterator();
-
-            while (nibMask != 0)
-            {
-                int nib = BitOperations.TrailingZeroCount(nibMask);
-                nibMask &= nibMask - 1;
-                int startRange = indexes[nib];
-
-                int endRange = nibMask != 0 ? indexes[BitOperations.TrailingZeroCount(nibMask)] : entries.Length;
-
-                Span<BulkSetEntry> jobEntry = entries.Slice(startRange, endRange - startRange);
-
-                TreePath childPath = path.Append(nib);
-                TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref childPath, nib);
-                jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
-            }
-
-            Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
-                GetTraverseStack,
-                (i, _, workerTraverseStack) =>
-                {
-                    (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
-
-                    Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
-                    Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
-
-                    TrieNode? newChild = BulkSet(
-                        in closureCtx,
-                        workerTraverseStack,
-                        jobEntries,
-                        bufferEntries,
-                        ref childPath,
-                        child,
-                        flipCount,
-                        flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
-
-                    jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
-
-                    return workerTraverseStack;
-                },
-                ReturnTraverseStack
-            );
+            // Kept separate: its lambda captures parameters, whose closure would otherwise be allocated on every
+            // recursive BulkSet call.
+            BulkSetParallelJobs(in ctx, jobs, entries, ref path, node, indexes, nibMask, flipCount, flags);
 
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
@@ -296,7 +311,7 @@ public partial class PatriciaTree
                 else
                     endRange = entries.Length;
 
-                TrieNode newChild = (endRange - startRange == 1)
+                TrieNode? newChild = (endRange - startRange == 1)
                     ? BulkSetOne(traverseStack, entries[startRange], ref path, child)
                     : BulkSet(in ctx,
                         traverseStack,
@@ -341,15 +356,16 @@ public partial class PatriciaTree
         Nibbles.BytesToNibbleBytes(entry.Path.BytesAsSpan, nibble);
         Span<byte> remainingKey = nibble[path.Length..];
 
-        byte[] value = entry.Value;
+        byte[]? value = entry.Value;
         return SetNew(traverseStack, remainingKey, value, ref path, node);
     }
 
-    private TrieNode? MakeFakeBranch(ref TreePath currentPath, TrieNode? existingNode)
+    private TrieNode MakeFakeBranch(ref TreePath currentPath, TrieNode existingNode)
     {
-        ReadOnlySpan<byte> shortenedKey = existingNode.Key.AsSpan(1, existingNode.Key.Length - 1);
+        byte[] existingKey = existingNode.Key!;
+        ReadOnlySpan<byte> shortenedKey = existingKey.AsSpan(1, existingKey.Length - 1);
 
-        int branchIdx = existingNode.Key[0];
+        int branchIdx = existingKey[0];
 
         TrieNode newChild;
 
@@ -359,9 +375,10 @@ public partial class PatriciaTree
         }
         else
         {
-            TrieNode child = existingNode.GetChild(TrieStore, ref currentPath, 0);
+            TrieNode child = existingNode.GetChild(TrieStore, ref currentPath, 0)
+                ?? throw new InvalidOperationException("An extension node cannot be converted to a branch without a child.");
 
-            if (existingNode.Key.Length == 1)
+            if (existingKey.Length == 1)
             {
                 newChild = child;
             }

@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             IBlockTree? blockTree,
             IEthSyncingInfo ethSyncingInfo,
             ILogManager? logManager)
-            : base(jsonRpcDuplexClient)
+            : base(jsonRpcDuplexClient, MaxQueuedBlocks)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
@@ -38,9 +38,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         internal sealed class SubscriptionSyncingResult
         {
-            public long? StartingBlock { get; set; }
-            public long? CurrentBlock { get; set; }
-            public long? HighestBlock { get; set; }
+            public ulong? StartingBlock { get; set; }
+            public ulong? CurrentBlock { get; set; }
+            public ulong? HighestBlock { get; set; }
         }
 
         private void OnConditionsChange(object? sender, BlockEventArgs e) => ScheduleAction(async () =>

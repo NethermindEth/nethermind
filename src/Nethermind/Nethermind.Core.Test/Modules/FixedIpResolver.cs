@@ -11,7 +11,10 @@ namespace Nethermind.Core.Test.Modules;
 
 public class FixedIpResolver(INetworkConfig networkConfig) : IIPResolver
 {
-    public IPAddress LocalIp => IPAddress.Parse(networkConfig.LocalIp!);
-    public IPAddress ExternalIp => IPAddress.Parse(networkConfig.ExternalIp!);
-    public Task Initialize(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public ValueTask<IIPResolver.NethermindIp> Resolve(CancellationToken cancellationToken = default) =>
+        new(new IIPResolver.NethermindIp(
+            networkConfig.LocalIp is null ? IPAddress.Loopback : IPAddress.Parse(networkConfig.LocalIp),
+            networkConfig.ExternalIp is null ? IPAddress.None : IPAddress.Parse(networkConfig.ExternalIp),
+            networkConfig.ExternalIpV4 is null ? null : IPAddress.Parse(networkConfig.ExternalIpV4),
+            networkConfig.ExternalIpV6 is null ? null : IPAddress.Parse(networkConfig.ExternalIpV6)));
 }

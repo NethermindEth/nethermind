@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie;
 
@@ -46,10 +46,10 @@ public readonly struct TinyTreePath : IEquatable<TinyTreePath>
     public bool Equals(in TinyTreePath other) => _data == other._data;
     public override bool Equals(object? obj) => obj is TinyTreePath other && Equals(other);
     // Need more variance than straightforward long.GetHashCode() as it determines lock contention in ConcurrentDictionary
-    public override int GetHashCode() => (int)BitOperations.Crc32C((uint)_data, ((ulong)_data & 0xffff_ffff_0000_0000) | ~(uint)_data);
+    public override int GetHashCode() => AsSpan.FastHash();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal int GetChainedHashCode(uint seed) => (int)BitOperations.Crc32C(seed, (ulong)_data);
+    internal int GetChainedHashCode(uint seed) => SpanExtensions.CombineHash(seed, (uint)GetHashCode());
 
     public static bool operator ==(in TinyTreePath left, in TinyTreePath right) => left.Equals(in right);
 

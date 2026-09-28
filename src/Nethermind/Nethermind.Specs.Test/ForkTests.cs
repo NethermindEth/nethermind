@@ -43,4 +43,48 @@ public class ForkTests
             }
         }
     }
+
+    [Test]
+    public void Bpo_forks_are_blob_only_and_do_not_inherit_Amsterdam()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BPO3.Instance.Parent, Is.SameAs(BPO2.Instance));
+            Assert.That(BPO4.Instance.Parent, Is.SameAs(BPO3.Instance));
+            Assert.That(BPO5.Instance.Parent, Is.SameAs(BPO4.Instance));
+
+            Assert.That(BPO3.Instance.IsEip7928Enabled, Is.False);
+            Assert.That(BPO4.Instance.IsEip7928Enabled, Is.False);
+            Assert.That(BPO5.Instance.IsEip7928Enabled, Is.False);
+            Assert.That(Amsterdam.Instance.IsEip7928Enabled, Is.True);
+        }
+    }
+
+    [Test]
+    public void Eip8141Prototype_enables_only_frame_transactions_on_top_of_Amsterdam()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8141Prototype.Instance.Parent, Is.SameAs(Amsterdam.Instance));
+            Assert.That(Eip8141Prototype.Instance.IsEip8141Enabled, Is.True, "prototype fork must enable frame transactions");
+            Assert.That(Eip8141Prototype.Instance.IsEip7928Enabled, Is.True, "Amsterdam-era flags must be inherited");
+            Assert.That(Amsterdam.Instance.IsEip8141Enabled, Is.False, "no production fork may enable frame transactions");
+            Assert.That(Fork.GetLatest().IsEip8141Enabled, Is.False, "latest mainnet fork must not enable frame transactions");
+        }
+    }
+
+    // Frame transactions stay off Bogota: the expiry-verifier predeploy they install adds a code change to
+    // every block's EIP-7928 access list, shifting the access-list hash the Bogota fixtures pin. A chain
+    // wanting both schedules eip8141TransitionTimestamp alongside the fork.
+    [Test]
+    public void Bogota_enables_inclusion_lists_without_frame_transactions()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Bogota.Instance.Parent, Is.SameAs(Amsterdam.Instance));
+            Assert.That(Bogota.Instance.IsEip7805Enabled, Is.True);
+            Assert.That(Bogota.Instance.IsEip8141Enabled, Is.False);
+            Assert.That(Amsterdam.Instance.IsEip7805Enabled, Is.False);
+        }
+    }
 }

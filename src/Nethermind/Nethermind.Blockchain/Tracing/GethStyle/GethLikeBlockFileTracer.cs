@@ -9,6 +9,7 @@ using System.Text.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using System.IO.Abstractions;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
@@ -24,13 +25,26 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     private readonly IFileSystem _fileSystem;
     private Utf8JsonWriter? _jsonWriter;
     private readonly GethTraceOptions _options;
+    private readonly IReleaseSpec _spec;
     private readonly JsonSerializerOptions _serializerOptions = new();
 
-    public GethLikeBlockFileTracer(Block block, GethTraceOptions options, IFileSystem fileSystem) : base(options?.TxHash)
+    /// <summary>
+    /// Creates a file tracer for the transactions in a block.
+    /// </summary>
+    /// <param name="block">Block being traced.</param>
+    /// <param name="options">Geth trace configuration.</param>
+    /// <param name="fileSystem">File system used to write the trace files.</param>
+    /// <param name="spec">Active specification used for intrinsic gas and self-destruct refunds.</param>
+    public GethLikeBlockFileTracer(
+        Block block,
+        GethTraceOptions options,
+        IFileSystem fileSystem,
+        IReleaseSpec spec) : base(options?.TxHash)
     {
         _block = block ?? throw new ArgumentNullException(nameof(block));
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _spec = spec ?? throw new ArgumentNullException(nameof(spec));
 
         string hash = _block.Hash.Bytes[..4].ToHexString(true);
 
@@ -77,7 +91,8 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _file = _fileSystem.File.OpenWrite(_fileNames.Last());
         _jsonWriter = new(_file);
 
-        return new(DumpTraceEntry, _options);
+        ulong? standardIntrinsicGas = TopLevelGasTracker.GetStandardIntrinsicGas(tx, _spec, _block.Header.GasLimit);
+        return new(DumpTraceEntry, _options, (long)_spec.GasCosts.DestroyRefund, standardIntrinsicGas);
     }
 
     private void DisposeFileStreamIfAny()

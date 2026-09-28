@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -19,9 +20,14 @@ public class WitnessCollector(
     IBlockProcessor blockProcessor,
     ISpecProvider specProvider) : IExistingBlockWitnessCollector
 {
+    /// <remarks>
+    /// Re-processes <paramref name="block"/> directly via <see cref="IBlockProcessor.ProcessOne"/>, so the caller
+    /// must have recovered transaction senders first (this bypasses the pipeline's <c>RecoverSignatures</c> step).
+    /// </remarks>
     public Witness GetWitnessForExistingBlock(BlockHeader parentHeader, Block block)
     {
-        using IDisposable? scope = worldState.BeginScope(parentHeader);
+        // The scope and the witness must share one parent: the witness walks the pre-state at parentHeader's root.
+        using IDisposable _ = worldState.BeginScope(parentHeader);
         blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
         return worldState.GetWitness(parentHeader);
     }

@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Logging;
 
@@ -35,14 +36,22 @@ public sealed class GethLikeTxTraceStreamingBundleResult : JsonStreamingResultBa
     private readonly IDebugBridge _bridge;
     private readonly TransactionBundle[] _bundles;
     private readonly BlockParameter _blockParameter;
-    private readonly long? _gasCap;
+    private readonly ulong? _gasCap;
     private readonly GethTraceOptions _options;
+
+    /// <summary>Spec of the block the bundles are traced against.</summary>
+    /// <remarks>
+    /// Required in practice: callers must set it to the spec of the header they resolved. Left <c>null</c>,
+    /// a transaction that omits <c>gas</c> falls back to an unbounded default instead of being clamped to
+    /// EIP-8037's <c>TX_MAX_TOTAL_GAS_LIMIT</c>, and the trace fails the inclusion check.
+    /// </remarks>
+    internal IReleaseSpec? Spec { private get; init; }
 
     public GethLikeTxTraceStreamingBundleResult(
         IDebugBridge bridge,
         TransactionBundle[] bundles,
         BlockParameter blockParameter,
-        long? gasCap,
+        ulong? gasCap,
         GethTraceOptions options,
         CancellationTokenSource timeoutCts,
         ILogger logger)
@@ -100,10 +109,10 @@ public sealed class GethLikeTxTraceStreamingBundleResult : JsonStreamingResultBa
 
     private void EmitTraceForTx(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, TransactionForRpc txForRpc)
     {
-        Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: _gasCap);
+        Result<Transaction> txResult = txForRpc.ToValidatedTransaction(gasCap: _gasCap, spec: Spec);
         if (!txResult.Success(out Transaction? tx, out string? validationError))
         {
-            StructLogEnvelopeWriter.EmitFailedTrace(writer, txForRpc.Gas ?? 0L, validationError);
+            StructLogEnvelopeWriter.EmitFailedTrace(writer, txForRpc.Gas ?? 0UL, validationError);
             return;
         }
 

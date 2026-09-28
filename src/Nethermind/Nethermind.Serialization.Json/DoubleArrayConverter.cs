@@ -3,8 +3,6 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
@@ -20,7 +18,7 @@ namespace Nethermind.Serialization.Json
         {
             if (reader.TokenType == JsonTokenType.String)
             {
-                string s = reader.GetString();
+                string? s = reader.GetString();
                 if (s is null) ThrowExpectedArrayString();
                 return JsonSerializer.Deserialize<double[]>(s)
                     ?? throw new JsonException($"Could not deserialize double array from string: {s}");
@@ -44,7 +42,6 @@ namespace Nethermind.Serialization.Json
             return result;
         }
 
-        [SkipLocalsInit]
         public override void Write(
             Utf8JsonWriter writer,
             double[] values,
@@ -53,9 +50,7 @@ namespace Nethermind.Serialization.Json
             writer.WriteStartArray();
             foreach (double value in values)
             {
-                if (double.IsNaN(value) || double.IsInfinity(value))
-                    ThrowNotFiniteJsonException(value);
-                writer.WriteRawValue(value.ToString("R", CultureInfo.InvariantCulture), skipInputValidation: true);
+                DoubleConverter.WriteFinite(writer, value);
             }
             writer.WriteEndArray();
         }
@@ -71,9 +66,5 @@ namespace Nethermind.Serialization.Json
         [DoesNotReturn]
         private static void ThrowExpectedEndArray() =>
             throw new JsonException("Expected end of JSON array.");
-
-        [DoesNotReturn]
-        private static void ThrowNotFiniteJsonException(double value) =>
-            throw new JsonException($"The value '{value}' is not a valid JSON number.");
     }
 }

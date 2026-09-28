@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -17,7 +20,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
     [Test]
     public void Correctly_read_merge_block_number()
     {
-        long terminalBlockNumber = 100;
+        ulong terminalBlockNumber = 100;
         ChainSpec chainSpec = new()
         {
             Parameters = new ChainParameters
@@ -64,10 +67,30 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
     }
 
     [Test]
+    public void Block_for_rpc_omits_total_difficulty_for_zero_terminal_total_difficulty()
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { TerminalTotalDifficulty = UInt256.Zero },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        Block block = Build.A.Block.WithNumber(1).WithTotalDifficulty(UInt256.Zero).TestObject;
+        BlockForRpc blockForRpc = new(block, false, provider);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(0));
+            Assert.That(blockForRpc.TotalDifficulty, Is.Null);
+        }
+    }
+
+    [Test]
     public void Changing_spec_provider_in_dynamic_merge_transition()
     {
         long expectedTerminalPoWBlock = 100;
-        long newMergeBlock = 50;
+        ulong newMergeBlock = 50;
 
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");

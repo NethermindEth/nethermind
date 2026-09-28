@@ -2,7 +2,7 @@ name: Hive tests
 
 on:
   push:
-    tags: ['*']
+    tags: ['*', '!zkvm-guests-*', '!bootnode-*']
     branches: [master]
   workflow_dispatch:
     inputs:
@@ -53,7 +53,7 @@ on:
   workflow_call:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: hive-tests-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -66,66 +66,43 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - name: Build matrix
-        id: matrix
+      - id: matrix
+        env:
+          SUITE: ${{ github.event.inputs.test-suite }}
+          LIMIT: ${{ github.event.inputs.limit }}
+          PARALLELISM: ${{ github.event.inputs.parallelism || env.DEFAULT_PARALLELISM }}
         run: |
-          event="${{ github.event_name }}"
-          ref="${{ github.ref }}"
-          suite_input='${{ github.event.inputs.test-suite }}'
-          limit_input='${{ github.event.inputs.limit }}'
-          parallelism='${{ github.event.inputs.parallelism || env.DEFAULT_PARALLELISM }}'
-
-          need_static=false
-          if [[ "$event" == "push" ]]; then
-            if [[ "$ref" == "refs/heads/master" || "$ref" == refs/tags/* ]]; then
-              need_static=true
-            fi
-          elif [[ "$event" == "pull_request" || "$event" == "workflow_call" ]]; then
-            need_static=true
-          elif [[ "$event" == "workflow_dispatch" ]]; then
-            need_static=true
-          fi
-
-          matrix='[]'
-          if [[ "$need_static" == "true" ]]; then
-            if [[ "$event" == "workflow_dispatch" && "$suite_input" != "all" ]]; then
-              matrix=$(jq -cn \
-                --arg suite "$suite_input" \
-                --arg limit "$limit_input" \
-                --argjson p "$parallelism" \
-                '[{suite:$suite, limit:$limit, parallelism:$p, name:$suite}]')
-            else
-              # engine-withdrawals at parallelism 2: the 128-block primary build takes
-              # ~5 min on shared CI runners at parallelism 4, consuming the entire 300 s
-              # test timeout before the syncing client starts.
-              # engine-cancun and engine-api split into two runners each (I* vs non-I*)
-              # to reduce contention.
-              # engine-[^acw] catches exchange-capabilities and any future engine suites.
-              matrix='[
-                {"suite":"ethereum/engine",     "limit":"engine-cancun/^I",    "parallelism":3, "name":"engine-cancun-i"},
-                {"suite":"ethereum/engine",     "limit":"engine-cancun/^[^I]", "parallelism":3, "name":"engine-cancun-other"},
-                {"suite":"ethereum/engine",     "limit":"engine-api/^I",       "parallelism":3, "name":"engine-api-i"},
-                {"suite":"ethereum/engine",     "limit":"engine-api/^[^I]",    "parallelism":3, "name":"engine-api-other"},
-                {"suite":"ethereum/engine",     "limit":"engine-withdrawals",  "parallelism":2, "name":"engine-withdrawals"},
-                {"suite":"ethereum/engine",     "limit":"engine-auth",         "parallelism":2, "name":"engine-auth"},
-                {"suite":"ethereum/engine",     "limit":"engine-[^acw]",       "parallelism":2, "name":"engine-other"},
-                {"suite":"ethereum/graphql",    "limit":"", "parallelism":4, "name":"graphql"},
-                {"suite":"ethereum/rpc-compat", "limit":"", "parallelism":4, "name":"rpc-compat"},
-                {"suite":"ethereum/sync",       "limit":"", "parallelism":4, "name":"sync"}
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" || "$SUITE" == "all" ]]; then
+            # engine-withdrawals at parallelism 2: the 128-block primary build takes
+            # ~5 min on shared CI runners at parallelism 4, consuming the entire 300 s
+            # test timeout before the syncing client starts.
+            # engine-cancun and engine-api split into two runners each (I* vs non-I*)
+            # to reduce contention.
+            # engine-[^acw] catches exchange-capabilities and any future engine suites.
+            {
+              echo 'matrix<<MATRIX_END'
+              echo '[
+                {"suite":"ethereum/engine", "limit":"engine-cancun/^I", "parallelism":3, "name":"engine-cancun-i"},
+                {"suite":"ethereum/engine", "limit":"engine-cancun/^[^I]", "parallelism":3, "name":"engine-cancun-other"},
+                {"suite":"ethereum/engine", "limit":"engine-api/^I", "parallelism":3, "name":"engine-api-i"},
+                {"suite":"ethereum/engine", "limit":"engine-api/^[^I]", "parallelism":3, "name":"engine-api-other"},
+                {"suite":"ethereum/engine", "limit":"engine-withdrawals", "parallelism":2, "name":"engine-withdrawals"},
+                {"suite":"ethereum/engine", "limit":"engine-auth", "parallelism":2, "name":"engine-auth"},
+                {"suite":"ethereum/engine", "limit":"engine-[^acw]", "parallelism":2, "name":"engine-other"},
+                {"suite":"ethereum/graphql"},
+                {"suite":"ethereum/rpc-compat"},
+                {"suite":"ethereum/sync"}
               ]'
-            fi
+              echo 'MATRIX_END'
+            } >> "$GITHUB_OUTPUT"
+          else
+            jq -rn --arg suite "$SUITE" --arg limit "$LIMIT" --argjson p "$PARALLELISM" \
+              '"matrix=" + ([{suite:$suite, limit:$limit, parallelism:$p}] | tojson)' >> "$GITHUB_OUTPUT"
           fi
-
-          {
-            echo "matrix<<MATRIX_END"
-            echo "$matrix"
-            echo "MATRIX_END"
-          } >> "$GITHUB_OUTPUT"
 
   build-image:
     name: Build Nethermind image
     needs: setup
-    if: needs.setup.outputs.matrix != '[]'
     runs-on: ubuntu-latest
     steps:
       - name: Check out Nethermind repository
@@ -137,7 +114,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Build Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         env:
           DOCKER_BUILD_SUMMARY: false
         with:
@@ -156,8 +133,8 @@ jobs:
   test:
     name: Run Hive (${{ matrix.name || matrix.suite }})
     needs: [setup, build-image]
-    if: needs.setup.outputs.matrix != '[]'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(github.event.inputs.max-parallel || '256') }}
@@ -175,7 +152,7 @@ jobs:
           path: nethermind
 
       - name: Download image artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: nethermind-image-${{ github.run_id }}
 

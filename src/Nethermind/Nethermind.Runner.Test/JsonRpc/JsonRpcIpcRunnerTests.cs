@@ -3,7 +3,6 @@
 
 #nullable enable
 using System;
-using System.IO;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Net.Sockets;
@@ -12,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.IO;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
@@ -52,33 +52,26 @@ public class JsonRpcIpcRunnerTests
             new EthereumJsonSerializer(),
             Substitute.For<IFileSystem>());
 
-        // Unix domain socket paths are capped (104 chars on macOS), so avoid the long temp dir.
-        string path = $"/tmp/nm-ipc-{Guid.NewGuid():N}"[..18] + ".sock";
+        using TempPath tmpPath = TempPath.GetTempFile();
+        UnixDomainSocketEndPoint endPoint = new(tmpPath.Path);
         using Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-        try
+        listener.Bind(endPoint);
+        listener.Listen(1);
+
+        using Socket client = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        await client.ConnectAsync(endPoint);
+        using Socket server = await listener.AcceptAsync();
+
+        byte[] request = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[],\"id\":1}\n");
+        await client.SendAsync(request, SocketFlags.None);
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+        await runner.HandleIpcConnection(server, cts.Token);
+
+        using (Assert.EnterMultipleScope())
         {
-            listener.Bind(new UnixDomainSocketEndPoint(path));
-            listener.Listen(1);
-
-            using Socket client = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-            await client.ConnectAsync(new UnixDomainSocketEndPoint(path));
-            using Socket server = await listener.AcceptAsync();
-
-            byte[] request = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[],\"id\":1}\n");
-            await client.SendAsync(request, SocketFlags.None);
-
-            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
-            await runner.HandleIpcConnection(server, cts.Token);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(testLogger.LogList, Has.None.StartsWith("IPC server error"));
-                Assert.That(testLogger.LogList, Has.Member("IPC client disconnected."));
-            }
-        }
-        finally
-        {
-            try { File.Delete(path); } catch (IOException) { }
+            Assert.That(testLogger.LogList, Has.None.StartsWith("IPC server error"));
+            Assert.That(testLogger.LogList, Has.Member("IPC client disconnected."));
         }
     }
 }

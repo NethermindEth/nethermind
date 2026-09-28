@@ -18,7 +18,7 @@ namespace Nethermind.Consensus
             return Task.FromResult(block);
         }
 
-        public bool CanSeal(long blockNumber, Hash256 parentHash) => true;
+        public bool CanSeal(ulong blockNumber, Hash256 parentHash) => true;
 
         public Address Address { get; } = address ?? Address.Zero;
 

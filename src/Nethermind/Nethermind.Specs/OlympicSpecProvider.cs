@@ -11,7 +11,7 @@ namespace Nethermind.Specs
     {
         private ForkActivation? _theMergeBlock = null;
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
                 _theMergeBlock = (ForkActivation)blockNumber;
@@ -26,7 +26,7 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GetSpec(ForkActivation forkActivation) => Olympic.Instance;
 
-        public long? DaoBlockNumber => 0L;
+        public ulong? DaoBlockNumber => 0UL;
         public ulong? BeaconChainGenesisTimestamp => null;
 
         public ulong NetworkId => Core.BlockchainIds.Olympic;

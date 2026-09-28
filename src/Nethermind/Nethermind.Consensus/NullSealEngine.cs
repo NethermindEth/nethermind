@@ -20,7 +20,7 @@ namespace Nethermind.Consensus
 
         public Task<Block> SealBlock(Block? block, CancellationToken cancellationToken) => Task.FromResult(block);
 
-        public bool CanSeal(long blockNumber, Hash256? parentHash) => true;
+        public bool CanSeal(ulong blockNumber, Hash256? parentHash) => true;
 
         public bool ValidateParams(BlockHeader? parent, BlockHeader? header, bool isUncle = false) => true;
 

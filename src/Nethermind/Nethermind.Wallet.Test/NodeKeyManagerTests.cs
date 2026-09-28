@@ -40,9 +40,8 @@ namespace Nethermind.Wallet.Test
             Assert.That(test.NodeKeyManager.LoadNodeKey().Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
         }
 
-        [TestCase(null)]
-        [TestCase("testFile")]
-        public void LoadNodeKey_creates_file(string filePath)
+        [Test]
+        public void LoadNodeKey_creates_file([Values(null, "testFile")] string filePath)
         {
             NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.EnodeKeyFile = filePath;
@@ -55,9 +54,8 @@ namespace Nethermind.Wallet.Test
             test.FileSystem.File.Received().WriteAllBytes(filePath, Arg.Is<byte[]>(a => a.SequenceEqual(nodeKey.KeyBytes)));
         }
 
-        [TestCase(null)]
-        [TestCase("testFile")]
-        public void LoadNodeKey_loads_file(string filePath)
+        [Test]
+        public void LoadNodeKey_loads_file([Values(null, "testFile")] string filePath)
         {
             NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.EnodeKeyFile = filePath;

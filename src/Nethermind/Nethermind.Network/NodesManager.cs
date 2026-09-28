@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
 
@@ -22,6 +24,64 @@ public abstract class NodesManager(string path, ILogger logger)
 
     protected readonly ILogger _logger = logger;
     protected ConcurrentDictionary<PublicKey, NetworkNode> _nodes = [];
+
+    // Refcount of managed nodes per IP so membership can be queried in O(1) on hot paths.
+    // A count rather than a set because several nodes can share one IP (different ports/keys).
+    // The comparer folds IPv4-mapped IPv6 onto plain IPv4 so both forms share a slot.
+    private readonly ConcurrentDictionary<IPAddress, int> _ipCounts = new(NormalizingIpAddressComparer.Instance);
+
+    // Guards the (_nodes, _ipCounts) pair so a node is never present in one but missing from the other.
+    private readonly Lock _indexLock = new();
+
+    /// <summary>Returns <see langword="true"/> when any managed node is reachable at <paramref name="ip"/>.</summary>
+    public bool ContainsIp(IPAddress ip) => _ipCounts.ContainsKey(ip);
+
+    // Nodes explicitly persisted (loaded from the file or added with updateFile=true). The file mirrors this set,
+    // so transient (updateFile=false) changes to _nodes never leak into it and a failed load cannot be amplified.
+    private ConcurrentDictionary<PublicKey, NetworkNode> _persistedNodes = [];
+
+    /// <summary>Adds a node and updates the IP index. Returns <see langword="false"/> if already present.</summary>
+    protected bool TryAddNode(NetworkNode node)
+    {
+        lock (_indexLock)
+        {
+            if (!_nodes.TryAdd(node.NodeId, node)) return false;
+            _ipCounts.AddOrUpdate(node.HostIp, 1, static (_, count) => count + 1);
+            return true;
+        }
+    }
+
+    /// <summary>Replaces the whole node set (bulk load) and rebuilds the IP index.</summary>
+    protected void SetNodes(ConcurrentDictionary<PublicKey, NetworkNode> nodes)
+    {
+        lock (_indexLock)
+        {
+            _nodes = nodes;
+            _ipCounts.Clear();
+            foreach (KeyValuePair<PublicKey, NetworkNode> kvp in nodes)
+            {
+                _ipCounts.AddOrUpdate(kvp.Value.HostIp, 1, static (_, count) => count + 1);
+            }
+
+            _persistedNodes = new ConcurrentDictionary<PublicKey, NetworkNode>(nodes);
+        }
+    }
+
+    private void UnindexIp(NetworkNode node)
+    {
+        IPAddress key = node.HostIp;
+        while (_ipCounts.TryGetValue(key, out int count))
+        {
+            if (count > 1)
+            {
+                if (_ipCounts.TryUpdate(key, count - 1, count)) return;
+            }
+            else if (_ipCounts.TryRemove(new KeyValuePair<IPAddress, int>(key, count)))
+            {
+                return;
+            }
+        }
+    }
 
     private void EnsureFile(string resource)
     {
@@ -132,12 +192,52 @@ public abstract class NodesManager(string path, ILogger logger)
         return nodes;
     }
 
+    /// <summary>
+    /// Raised when a node is explicitly removed from this source.
+    /// </summary>
+    public event EventHandler<NodeEventArgs>? NodeRemoved;
+
+    /// <summary>
+    /// Removes a node from the in-memory store and fires <see cref="NodeRemoved"/> as an
+    /// <see cref="ExplicitNodeRemovalEventArgs"/> so downstream listeners (e.g. <c>PeerPool</c>)
+    /// know to disconnect the peer unconditionally.
+    /// </summary>
+    protected bool TryRemoveNode(PublicKey nodeId)
+    {
+        NetworkNode? removed;
+        lock (_indexLock)
+        {
+            if (!_nodes.TryRemove(nodeId, out removed))
+                return false;
+
+            UnindexIp(removed);
+        }
+
+        // Fire outside the lock so downstream handlers (e.g. PeerPool) don't run under it.
+        NodeRemoved?.Invoke(this, new ExplicitNodeRemovalEventArgs(new Node(removed)));
+        return true;
+    }
+
+    /// <summary>Marks <paramref name="node"/> persistent when <paramref name="updateFile"/> is set, rewriting the nodes file if it was not persisted yet, and returns <paramref name="changed"/>.</summary>
+    protected async Task<bool> PersistAsync(bool changed, NetworkNode node, bool updateFile, CancellationToken cancellationToken)
+    {
+        if (updateFile && _persistedNodes.TryAdd(node.NodeId, node)) await SaveFileAsync(cancellationToken);
+        return changed;
+    }
+
+    /// <summary>Unmarks <paramref name="node"/> as persistent when <paramref name="updateFile"/> is set, rewriting the nodes file if it was persisted, and returns <paramref name="changed"/>.</summary>
+    protected async Task<bool> UnpersistAsync(bool changed, NetworkNode node, bool updateFile, CancellationToken cancellationToken)
+    {
+        if (updateFile && _persistedNodes.TryRemove(node.NodeId, out _)) await SaveFileAsync(cancellationToken);
+        return changed;
+    }
+
     protected virtual Task SaveFileAsync(CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
         string contents = JsonSerializer.Serialize(
-            _nodes.Select(static n => n.Value.ToString()),
+            _persistedNodes.Select(static n => n.Value.ToString()),
             EthereumJsonSerializer.JsonOptionsIndented
             );
 

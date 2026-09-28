@@ -36,7 +36,6 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </remarks>
 public class ForkchoiceUpdatedHandler(
     IBlockTree blockTree,
-    IManualBlockFinalizationManager manualBlockFinalizationManager,
     IPoSSwitcher poSSwitcher,
     IPayloadPreparationService payloadPreparationService,
     IBlockProcessingQueue processingQueue,
@@ -48,10 +47,27 @@ public class ForkchoiceUpdatedHandler(
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
-    ILogManager logManager) : IForkchoiceUpdatedHandler
+    ILogManager logManager,
+    IBlockProcessingPauseControl pauseControl,
+    BlockTreeMutationLock mutationLock) : IForkchoiceUpdatedHandler
 {
+    /// <summary>How long a forkchoice update gives the head block's commit after its verdict before answering SYNCING.</summary>
+    /// <remarks>
+    /// The newPayload budget: before newPayload answered ahead of the commit, it held the engine API's lock through that
+    /// same commit for up to this long, so waiting here holds it no longer than it was held then. A shorter bound turns
+    /// a slow commit into a SYNCING the CL never got before, which leaves it on an optimistic head. Per block the worst
+    /// case is now two budgets rather than one - newPayload's for the execution, this one for the commit - but only a
+    /// commit that is itself that slow spends the second.
+    /// <para>
+    /// Capped at half the lock timeout. The wait holds the engine API's lock, and unlike newPayload's it is a fresh
+    /// budget rather than the rest of one: uncapped, a stalled commit under the 7 s default leaves a newPayload queued
+    /// behind it about a second before it times out, and a raised budget outlasts the lock timeout and the CL's own
+    /// request timeout, turning SYNCING into timeouts. At the cap the call behind gets at least as long as this one waited.
+    /// </para>
+    /// </remarks>
+    private readonly TimeSpan _commitWait = TimeSpan.FromMilliseconds(Math.Clamp(mergeConfig.NewPayloadBlockProcessingTimeout, 0, EngineRpcModule.LockTimeout.TotalMilliseconds / 2));
+
     protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-    private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
@@ -59,6 +75,9 @@ public class ForkchoiceUpdatedHandler(
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         BlockHeader? newHeadHeader = GetBlockHeader(forkchoiceState.HeadBlockHash);
+        // Before ApplyForkchoiceUpdate boosts this thread: an await inside that scope would resume elsewhere and the
+        // boost would never be restored.
+        if (newHeadHeader is not null) await WaitForHeadCommitAsync(newHeadHeader);
         return await ApplyForkchoiceUpdate(newHeadHeader, forkchoiceState, payloadAttributes)
             ?? ValidateAttributes(payloadAttributes, version)
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
@@ -92,7 +111,7 @@ public class ForkchoiceUpdatedHandler(
     // L1-derived finality models override this to relax the bounds check while keeping
     // ancestry validation.
     protected virtual ResultWrapper<ForkchoiceUpdatedV1Result>? RejectIfInconsistent(
-        BlockHeader? header, long lowerBound, string label, BlockHeader newHeadHeader, string requestStr)
+        BlockHeader? header, ulong lowerBound, string label, BlockHeader newHeadHeader, string requestStr)
     {
         if ((header is not null && (header.Number < lowerBound || header.Number > newHeadHeader.Number))
             || IsInconsistent(header, newHeadHeader))
@@ -140,6 +159,21 @@ public class ForkchoiceUpdatedHandler(
             {
                 StartNewBeaconHeaderSync(forkchoiceState, headBlockHeader, simpleRequestStr);
                 return ForkchoiceUpdatedV1Result.Syncing;
+            }
+
+            // Head not resolvable yet (e.g. no peers right after a restart): still record the forkchoice
+            // state so StartingSyncPivotUpdater can derive a fresh pivot from the finalized hash once peers
+            // appear, instead of waiting forever for an FCU with a resolvable head.
+            blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+            blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
+
+            // The cache does not survive a restart, so persist the hashes like the resolved-head paths do.
+            // Safe while the finalized header is unknown: finalized blocks cannot reorg, TryUpdateSyncPivot
+            // no-ops on an unresolvable hash, and OnForkChoiceUpdated briefly reports finalized/safe as 0.
+            // A zero finalized hash must not overwrite one already persisted that a restart relies on.
+            if (forkchoiceState.FinalizedBlockHash != Keccak.Zero)
+            {
+                _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
             }
 
             if (_logger.IsInfo) _logger.Info($"Syncing Unknown ForkChoiceState head hash Request: {simpleRequestStr}.");
@@ -241,7 +275,7 @@ public class ForkchoiceUpdatedHandler(
         // Spec ordering within a single FCU: finalized <= safe <= head. Ancestry must be
         // re-validated on every FCU - the binding is (head, finalized, safe), so a repeated
         // finalized/safe hash paired with a new head on a sibling branch is still a spec violation.
-        long finalizedNumber = finalizedHeader?.Number ?? 0;
+        ulong finalizedNumber = finalizedHeader?.Number ?? 0;
 
         if (RejectIfInconsistent(finalizedHeader, 0, "finalized", newHeadHeader, requestStr) is { } finalizedError) return finalizedError;
         if (RejectIfInconsistent(safeBlockHeader, finalizedNumber, "safe", newHeadHeader, requestStr) is { } safeError) return safeError;
@@ -250,6 +284,12 @@ public class ForkchoiceUpdatedHandler(
         {
             return result;
         }
+
+        if (pauseControl.IsPaused) return ForkchoiceUpdatedV1Result.Syncing;
+
+        if (!mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) return ForkchoiceUpdatedV1Result.Syncing;
+        using BlockTreeMutationLock.Scope mutationScope = mutation;
+        if (pauseControl.IsPaused) return ForkchoiceUpdatedV1Result.Syncing;
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadHeader.Hash;
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead;
@@ -262,18 +302,12 @@ public class ForkchoiceUpdatedHandler(
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
-        bool nonZeroFinalizedBlockHash = finalizedBlockHash != Keccak.Zero;
-        if (nonZeroFinalizedBlockHash)
-        {
-            _manualBlockFinalizationManager.MarkFinalized(newHeadHeader, finalizedHeader!);
-        }
-
         if (shouldUpdateHead)
         {
-            _poSSwitcher.ForkchoiceUpdated(newHeadHeader, finalizedBlockHash);
             if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadHeader.ToString(BlockHeader.Format.Short)}");
         }
 
+        _poSSwitcher.ForkchoiceUpdated(newHeadHeader, finalizedBlockHash);
         _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
         return null;
     }
@@ -281,7 +315,7 @@ public class ForkchoiceUpdatedHandler(
     protected virtual bool IsPayloadTimestampValid(BlockHeader newHeadHeader, PayloadAttributes payloadAttributes)
         => payloadAttributes.Timestamp > newHeadHeader.Timestamp;
 
-    protected bool ArePayloadAttributesTimestampAndSlotNumberValid(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
+    protected bool ArePayloadAttributesTimestampValid(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState, PayloadAttributes payloadAttributes,
         [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
         if (!IsPayloadTimestampValid(newHeadHeader, payloadAttributes))
@@ -291,12 +325,6 @@ public class ForkchoiceUpdatedHandler(
             return false;
         }
 
-        if (newHeadHeader.SlotNumber >= payloadAttributes.SlotNumber)
-        {
-            string error = $"Payload slot number {payloadAttributes.SlotNumber} must be greater than block slot number {newHeadHeader.SlotNumber}.";
-            errorResult = ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
-            return false;
-        }
         errorResult = null;
         return true;
     }
@@ -313,7 +341,7 @@ public class ForkchoiceUpdatedHandler(
 
         if (payloadAttributes is not null)
         {
-            if (!ArePayloadAttributesTimestampAndSlotNumberValid(newHeadHeader, forkchoiceState, payloadAttributes, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
+            if (!ArePayloadAttributesTimestampValid(newHeadHeader, forkchoiceState, payloadAttributes, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {errorResult.Result.Error}");
                 return errorResult;
@@ -322,7 +350,6 @@ public class ForkchoiceUpdatedHandler(
             payloadId = payloadPreparationService.StartPreparingPayload(newHeadHeader, payloadAttributes);
         }
 
-        _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
         return ForkchoiceUpdatedV1Result.Valid(isPayloadSimulated ? null : payloadId, forkchoiceState.HeadBlockHash);
     }
 
@@ -375,6 +402,21 @@ public class ForkchoiceUpdatedHandler(
             cursor = parent;
         }
         return cursor.GetOrCalculateHash() != candidateHeader.GetOrCalculateHash();
+    }
+
+    /// <summary>
+    /// newPayload answers VALID once the block is executed, before it is committed and marked processed, and the CL's
+    /// forkchoice follows at once: a head that has its verdict and is still committing gets its moment here rather than
+    /// the SYNCING that would make the CL retry. A head that is merely queued has no verdict, so the wait completes at
+    /// once and it gets the SYNCING it always got; blocks queued behind a committing head, another copy of it included,
+    /// do not delay its commit, so the wait is for that copy alone.
+    /// </summary>
+    private async Task WaitForHeadCommitAsync(BlockHeader newHeadHeader)
+    {
+        Hash256 hash = newHeadHeader.GetOrCalculateHash();
+        if (_blockTree.GetInfo(newHeadHeader.Number, hash).Info is not { WasProcessed: false }) return;
+
+        await processingQueue.WaitForExecutedCopyAsync(hash, _commitWait);
     }
 
     private BlockHeader? GetBlockHeader(Hash256 headBlockHash)

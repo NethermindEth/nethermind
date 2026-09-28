@@ -26,9 +26,17 @@ namespace Nethermind.Core.Test.Builders
             Timestamp = 0,
         };
 
-        public TransactionBuilder<T> WithNonce(UInt256 nonce)
+        public TransactionBuilder<T> WithNonce(ulong nonce)
         {
             TestObjectInternal.Nonce = nonce;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithNonce(int nonce) => WithNonce((ulong)nonce);
+
+        public TransactionBuilder<T> WithNonceKeys(params UInt256[]? nonceKeys)
+        {
+            TestObjectInternal.NonceKeys = nonceKeys;
             return this;
         }
 
@@ -77,7 +85,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithGasLimit(long gasLimit)
+        public TransactionBuilder<T> WithGasLimit(ulong gasLimit)
         {
             TestObjectInternal.GasLimit = gasLimit;
             return this;

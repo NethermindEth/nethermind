@@ -23,28 +23,28 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
     private readonly ConcurrentDictionary<Hash256AsKey, CacheNode> _blocks = new();
     private readonly LruCache<Hash256AsKey, Hash256[]> _flatCache = new(32, nameof(BlockhashCache));
     private readonly Lock _lock = new();
-    public const int MaxDepth = BlockhashProvider.MaxDepth;
-    private long _minBlock = int.MaxValue;
+    public const ulong MaxDepth = BlockhashProvider.MaxDepth;
+    private ulong _minBlock = ulong.MaxValue;
     private Task _pruningTask = Task.CompletedTask;
 
-    public Hash256? GetHash(BlockHeader headBlock, int depth) =>
+    public Hash256? GetHash(BlockHeader headBlock, ulong depth) =>
         depth == 0 ? headBlock.Hash
         : depth == 1 ? headBlock.ParentHash
         : depth > MaxDepth ? null
-        : _flatCache.TryGet(headBlock.ParentHash!, out Hash256[] array) ? array[depth - 2]
+        : _flatCache.TryGet(headBlock.ParentHash!, out Hash256[] array) ? array[(int)depth - 2]
         : Load(headBlock, depth, out _)?.Hash;
 
-    private CacheNode? Load(BlockHeader blockHeader, int depth, out Hash256[]? hashes, CancellationToken cancellationToken = default)
+    private CacheNode? Load(BlockHeader blockHeader, ulong depth, out Hash256[]? hashes, CancellationToken cancellationToken = default)
     {
         hashes = null;
         if (depth > MaxDepth) return null;
         bool alwaysAdd = depth == MaxDepth;
-        using ArrayPoolListRef<(CacheNode Node, bool NeedToAdd)> blocks = new(depth + 1);
+        using ArrayPoolListRef<(CacheNode Node, bool NeedToAdd)> blocks = new((int)depth + 1);
         Hash256 currentHash = blockHeader.Hash!;
         CacheNode currentNode = null;
         bool needToAddAny = false;
-        int skipped = 0;
-        for (int i = 0; i <= depth && !cancellationToken.IsCancellationRequested; i++)
+        ulong skipped = 0;
+        for (ulong i = 0; i <= depth && !cancellationToken.IsCancellationRequested; i++)
         {
             bool needToAdd = false;
             if (currentNode is null)
@@ -115,7 +115,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
-        int index = depth - skipped;
+        int index = (int)depth - (int)skipped;
         return index < 0 ? currentNode // if index <0 then we skipped everything and got it from cache
             : blocks.Count > index
                 ? blocks[index].Node
@@ -186,13 +186,13 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
-        bool ShouldPrune() => _minBlock + MaxDepth * 4 < blockHeader.Number && _pruningTask.IsCompleted;
+        bool ShouldPrune() => _minBlock != ulong.MaxValue && _minBlock + MaxDepth * 4 < blockHeader.Number && _pruningTask.IsCompleted;
     }
 
-    public int PruneBefore(long blockNumber)
+    public int PruneBefore(ulong blockNumber)
     {
         int removed = 0;
-        long minBlockNumber = long.MaxValue;
+        ulong minBlockNumber = ulong.MaxValue;
 
         Interlocked.Exchange(ref _minBlock, blockNumber);
 
@@ -245,7 +245,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
         _blocks.Clear();
         _flatCache.Clear();
-        Interlocked.Exchange(ref _minBlock, int.MaxValue);
+        Interlocked.Exchange(ref _minBlock, ulong.MaxValue);
     }
 
     public void Dispose() => Clear();
@@ -275,10 +275,13 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
     private class CacheNode(BlockHeader blockHeader, CacheNode? parent = null)
     {
         public Hash256 Hash { get; } = blockHeader.Hash!;
-        public long Number { get; } = blockHeader.Number;
+        public ulong Number { get; } = blockHeader.Number;
         public Hash256 ParentHash { get; } = blockHeader.ParentHash!;
         public CacheNode? Parent { get; set; } = parent;
     }
 
-    public record struct Stats(int Nodes, int Roots, int FlatCache);
+    public record struct Stats(ulong Nodes, ulong Roots, ulong FlatCache)
+    {
+        public Stats(int nodes, int roots, int flatCache) : this((ulong)nodes, (ulong)roots, (ulong)flatCache) { }
+    }
 }

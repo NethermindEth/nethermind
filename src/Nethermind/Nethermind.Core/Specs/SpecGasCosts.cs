@@ -13,21 +13,22 @@ namespace Nethermind.Core.Specs;
 public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
 {
     private readonly int _hashCode;
-    public readonly long SLoadCost;
-    public readonly long BalanceCost;
-    public readonly long ExtCodeCost;
-    public readonly long ExtCodeHashCost;
-    public readonly long CallCost;
-    public readonly long ExpByteCost;
-    public readonly long SStoreResetCost;
-    public readonly long TxDataNonZeroMultiplier;
-    public readonly long TotalCostFloorPerToken;
+    public readonly ulong SLoadCost;
+    public readonly ulong BalanceCost;
+    public readonly ulong ExtCodeCost;
+    public readonly ulong ExtCodeHashCost;
+    public readonly ulong CallCost;
+    public readonly ulong ExpByteCost;
+    public readonly ulong SStoreResetCost;
+    public readonly ulong ColdAccountAccessCost;
+    public readonly ulong TxDataNonZeroMultiplier;
+    public readonly ulong TotalCostFloorPerToken;
 
-    public readonly long NetMeteredSStoreCost;
-    public readonly long ClearReversalRefund;
-    public readonly long SetReversalRefund;
-    public readonly long SClearRefund;
-    public readonly long DestroyRefund;
+    public readonly ulong NetMeteredSStoreCost;
+    public readonly ulong ClearReversalRefund;
+    public readonly ulong SetReversalRefund;
+    public readonly ulong SClearRefund;
+    public readonly ulong DestroyRefund;
 
     public readonly ulong MaxBlobGasPerBlock;
     public readonly ulong MaxBlobGasPerTx;
@@ -41,24 +42,25 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
         bool netIstanbul = spec.UseIstanbulNetGasMetering;  // EIP-2200
         bool netConstantinople = spec.UseConstantinopleNetGasMetering;  // EIP-1283
 
-        long clearReversalRefund = ClearReversalRefund =
+        ulong clearReversalRefund = ClearReversalRefund =
             hotCold ? RefundOf.SResetReversedHotCold
             : netIstanbul ? RefundOf.SResetReversedEip2200
             : netConstantinople ? RefundOf.SResetReversedEip1283
             : GasCostOf.Free;
 
-        long setReversalRefund = SetReversalRefund =
+        ulong setReversalRefund = SetReversalRefund =
             hotCold ? RefundOf.SSetReversedHotCold
             : netIstanbul ? RefundOf.SSetReversedEip2200
             : netConstantinople ? RefundOf.SSetReversedEip1283
             : GasCostOf.Free;
 
-        long sStoreResetCost = SStoreResetCost = hotCold
+        ulong sStoreResetCost = SStoreResetCost = hotCold
             ? GasCostOf.SReset - GasCostOf.ColdSLoad
             : GasCostOf.SReset;
 
-        long netMeteredSStoreCost = NetMeteredSStoreCost =
-            hotCold ? GasCostOf.WarmStateRead
+        ulong netMeteredSStoreCost = NetMeteredSStoreCost =
+            spec.IsEip8038Enabled ? GasCostOf.Free
+            : hotCold ? GasCostOf.WarmStateRead
             : netIstanbul ? GasCostOf.SStoreNetMeteredEip2200
             : netConstantinople ? GasCostOf.SStoreNetMeteredEip1283
             : GasCostOf.Free;
@@ -90,6 +92,11 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             : shanghaiDDos ? GasCostOf.CallEip150
             : GasCostOf.Call;
 
+        // EIP-2929 cold account access, repriced by EIP-8038.
+        ColdAccountAccessCost = spec.IsEip8038Enabled
+            ? Eip8038Constants.ColdAccountAccess
+            : GasCostOf.ColdAccountAccess;
+
         ExpByteCost = spec.UseExpDDosProtection
             ? GasCostOf.ExpByteEip160
             : GasCostOf.ExpByte;
@@ -108,9 +115,11 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
                 ? GasCostOf.TotalCostFloorPerTokenEip7623
                 : GasCostOf.Free;
 
-        SClearRefund = spec.IsEip3529Enabled
-            ? RefundOf.SClearAfterEip3529
-            : RefundOf.SClearBeforeEip3529;
+        SClearRefund = spec.IsEip8038Enabled
+            ? RefundOf.SClearEip8038
+            : spec.IsEip3529Enabled
+                ? RefundOf.SClearAfterEip3529
+                : RefundOf.SClearBeforeEip3529;
 
         DestroyRefund = spec.IsEip3529Enabled
             ? RefundOf.DestroyAfterEip3529
@@ -118,10 +127,10 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
 
         int hashCode1 = HashCode.Combine(SLoadCost, BalanceCost, ExtCodeCost, ExtCodeHashCost, CallCost, ExpByteCost, sStoreResetCost, netMeteredSStoreCost);
         int hashCode2 = HashCode.Combine(TxDataNonZeroMultiplier, TotalCostFloorPerToken, clearReversalRefund, setReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock);
-        _hashCode = HashCode.Combine(hashCode1, hashCode2, DestroyRefund);
+        _hashCode = HashCode.Combine(hashCode1, hashCode2, DestroyRefund, ColdAccountAccessCost);
     }
 
-    public long RefundFromReversal(bool originalIsZero) => originalIsZero
+    public ulong RefundFromReversal(bool originalIsZero) => originalIsZero
         ? SetReversalRefund
         : ClearReversalRefund;
 
@@ -137,6 +146,7 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             && CallCost == other.CallCost
             && ExpByteCost == other.ExpByteCost
             && SStoreResetCost == other.SStoreResetCost
+            && ColdAccountAccessCost == other.ColdAccountAccessCost
             && TxDataNonZeroMultiplier == other.TxDataNonZeroMultiplier
             && TotalCostFloorPerToken == other.TotalCostFloorPerToken
             && NetMeteredSStoreCost == other.NetMeteredSStoreCost

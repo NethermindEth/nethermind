@@ -14,10 +14,10 @@ namespace Nethermind.Trie.Pruning
         public static IPruningStrategy DontDeleteObsoleteNode(this IPruningStrategy baseStrategy)
             => new DontDeleteObsoleteNodeStrategy(baseStrategy);
 
-        public static IPruningStrategy WhenLastPersistedBlockIsTooOld(this IPruningStrategy baseStrategy, long maxBlockInCache, long pruningBoundary)
+        public static IPruningStrategy WhenLastPersistedBlockIsTooOld(this IPruningStrategy baseStrategy, ulong maxBlockInCache, ulong pruningBoundary)
             => new MaxBlockInCachePruneStrategy(baseStrategy, maxBlockInCache, pruningBoundary);
 
-        public static IPruningStrategy UnlessLastPersistedBlockIsTooNew(this IPruningStrategy baseStrategy, long minBlockInCache, long pruningBoundary)
+        public static IPruningStrategy UnlessLastPersistedBlockIsTooNew(this IPruningStrategy baseStrategy, ulong minBlockInCache, ulong pruningBoundary)
             => new MinBlockInCachePruneStrategy(baseStrategy, minBlockInCache, pruningBoundary);
 
     }

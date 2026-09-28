@@ -6,42 +6,23 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Consensus;
+using Nethermind.Config;
+using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(InitTxTypesAndRlp), typeof(SetupKeyStore))]
-    public class InitializeBlockTree : IStep
+    public class InitializeBlockTree(
+        IInitConfig initConfig,
+        IBlockTree blockTree,
+        IProcessExitSource processExitSource,
+        ILogManager logManager) : IStep
     {
-        private readonly IBasicApi _get;
-        private readonly IApiWithStores _set;
-        private readonly INethermindApi _api;
-
-        public InitializeBlockTree(INethermindApi api)
-        {
-            (_get, _set) = api.ForInit;
-            _api = api;
-        }
-
         public Task Execute(CancellationToken cancellationToken)
         {
-            IInitConfig initConfig = _get.Config<IInitConfig>();
-
-            ISigner signer = NullSigner.Instance;
-            ISignerStore signerStore = NullSigner.Instance;
-            if (_get.Config<IMiningConfig>().Enabled)
-            {
-                Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, _get.LogManager);
-                signer = signerAndStore;
-                signerStore = signerAndStore;
-            }
-
-            _set.EngineSigner = signer;
-            _set.EngineSignerStore = signerStore;
-
             if (initConfig.ExitOnBlockNumber is not null)
             {
-                new ExitOnBlockNumberHandler(_api.BlockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
+                new ExitOnBlockNumberHandler(blockTree, processExitSource, initConfig.ExitOnBlockNumber.Value, logManager);
             }
 
             return Task.CompletedTask;

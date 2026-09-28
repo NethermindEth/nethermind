@@ -28,6 +28,7 @@ public class PosForwardHeaderProviderCacheTests
     private IChainLevelHelper _chainLevelHelper = null!;
     private IBeaconPivot _beaconPivot = null!;
     private IBlockTree _blockTree = null!;
+    private ISealValidator _sealValidator = null!;
     private PosForwardHeaderProvider _provider = null!;
 
     [SetUp]
@@ -45,17 +46,17 @@ public class PosForwardHeaderProviderCacheTests
         _beaconPivot.BeaconPivotExists().Returns(true);
         _beaconPivot.ProcessDestination = BuildHeader(1_000, TestItem.KeccakA);
 
-        ISealValidator sealValidator = Substitute.For<ISealValidator>();
-        sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
+        _sealValidator = Substitute.For<ISealValidator>();
+        _sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
 
         _blockTree = Substitute.For<IBlockTree>();
-        _blockTree.BestKnownNumber.Returns(0);
+        _blockTree.BestKnownNumber.Returns(0UL);
 
         _provider = new PosForwardHeaderProvider(
             _chainLevelHelper,
             poSSwitcher,
             _beaconPivot,
-            sealValidator,
+            _sealValidator,
             _blockTree,
             Substitute.For<ISyncPeerPool>(),
             new NullSyncReport(),
@@ -65,7 +66,7 @@ public class PosForwardHeaderProviderCacheTests
     [TearDown]
     public void TearDown() => _provider.UnsubscribeForTest();
 
-    private Task<IOwnedReadOnlyList<BlockHeader?>?> Get(int skip = 0, int max = Requested) =>
+    private Task<IOwnedReadOnlyList<BlockHeader?>?> Get(ulong skip = 0, ulong max = Requested) =>
         _provider.GetBlockHeaders(skip, max, CancellationToken.None);
 
     private void RaiseMainChainUpdate(params Block[] blocks)
@@ -78,12 +79,40 @@ public class PosForwardHeaderProviderCacheTests
     private void AssertChainLevelCalls(int expected) =>
         _chainLevelHelper.ReceivedWithAnyArgs(expected).GetNextHeaders(default, default, default);
 
-    private async Task ExpectCalls(int expected, Action<IOwnedReadOnlyList<BlockHeader?>> between, int firstSkip = 0, int firstMax = Requested, int secondSkip = 0, int secondMax = Requested)
+    private async Task ExpectCalls(int expected, Action<IOwnedReadOnlyList<BlockHeader?>> between, ulong firstSkip = 0, ulong firstMax = Requested, ulong secondSkip = 0, ulong secondMax = Requested)
     {
         using IOwnedReadOnlyList<BlockHeader?>? first = await Get(firstSkip, firstMax);
         between(first!);
         using IOwnedReadOnlyList<BlockHeader?>? _ = await Get(secondSkip, secondMax);
         AssertChainLevelCalls(expected);
+    }
+
+    [Test]
+    public async Task Hints_each_batch_range_before_validating_its_seals()
+    {
+        // This branch never reaches RequestHeaders, so the hint must come from ValidateSeals itself; without it
+        // Ethash refuses every forced pre-merge PoW seal and sync from genesis stalls. Cover both entry points:
+        // the freshly fetched batch and the cache-served slice. ValidateSeals runs its checks in parallel, so
+        // record the sequence explicitly instead of relying on a matcher over the interleaving.
+        List<string> events = [];
+        Lock eventsLock = new();
+        _sealValidator.When(v => v.HintValidationRange(Arg.Any<Guid>(), Arg.Any<ulong>(), Arg.Any<ulong>()))
+            .Do(ci => { lock (eventsLock) events.Add($"hint {ci.ArgAt<ulong>(1)}-{ci.ArgAt<ulong>(2)}"); });
+        _sealValidator.When(v => v.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()))
+            .Do(_ => { lock (eventsLock) events.Add("seal"); });
+
+        using IOwnedReadOnlyList<BlockHeader?>? fresh = await Get();
+        int afterFresh = events.Count;
+        using IOwnedReadOnlyList<BlockHeader?>? cached = await Get();
+
+        string sequence = string.Join(", ", events);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(events[0], Is.EqualTo($"hint 0-{CachedBatchSize - 1}"), sequence);
+            Assert.That(events.GetRange(1, afterFresh - 1), Has.All.EqualTo("seal"), sequence);
+            Assert.That(events[afterFresh], Is.EqualTo($"hint 0-{Requested - 1}"), sequence);
+            Assert.That(events.GetRange(afterFresh + 1, events.Count - afterFresh - 1), Has.All.EqualTo("seal"), sequence);
+        }
     }
 
     [Test]
@@ -98,7 +127,7 @@ public class PosForwardHeaderProviderCacheTests
     [Test]
     public Task Cache_miss_when_best_known_number_advances_past_cached_range() =>
         ExpectCalls(expected: 2, between: _ =>
-            _blockTree.BestKnownNumber.Returns((long)CachedBatchSize + 10));
+            _blockTree.BestKnownNumber.Returns((ulong)CachedBatchSize + 10));
 
     [Test]
     public Task Cache_is_invalidated_when_skipLastN_changes() =>
@@ -117,7 +146,7 @@ public class PosForwardHeaderProviderCacheTests
     [Test]
     public async Task Cache_is_invalidated_on_ascending_reorg_starting_below_cached_range()
     {
-        const long cacheStart = 100;
+        const ulong cacheStart = 100;
         _chainLevelHelper.GetNextHeaders(default, default, default).ReturnsForAnyArgs(_ => BuildSequentialHeaders(start: cacheStart, count: CachedBatchSize));
         _blockTree.BestKnownNumber.Returns(cacheStart);
 
@@ -153,7 +182,7 @@ public class PosForwardHeaderProviderCacheTests
         Assert.That(first!.Count, Is.EqualTo(Requested));
         Assert.That(first[0]!.Number, Is.EqualTo(0));
 
-        _blockTree.BestKnownNumber.Returns(20L);
+        _blockTree.BestKnownNumber.Returns(20UL);
         using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
 
         Assert.That(second!.Count, Is.EqualTo(Requested));
@@ -161,13 +190,13 @@ public class PosForwardHeaderProviderCacheTests
         AssertChainLevelCalls(1);
     }
 
-    private static BlockHeader[] BuildSequentialHeaders(long start, int count)
+    private static BlockHeader[] BuildSequentialHeaders(ulong start, int count)
     {
         BlockHeader[] headers = new BlockHeader[count];
         BlockHeader? parent = null;
         for (int i = 0; i < count; i++)
         {
-            BlockHeaderBuilder builder = Build.A.BlockHeader.WithNumber(start + i);
+            BlockHeaderBuilder builder = Build.A.BlockHeader.WithNumber(start + (ulong)i);
             if (parent is not null) builder = builder.WithParent(parent);
             headers[i] = builder.TestObject;
             parent = headers[i];
@@ -175,6 +204,6 @@ public class PosForwardHeaderProviderCacheTests
         return headers;
     }
 
-    private static BlockHeader BuildHeader(long number, Hash256 hash) =>
+    private static BlockHeader BuildHeader(ulong number, Hash256 hash) =>
         Build.A.BlockHeader.WithNumber(number).WithHash(hash).TestObject;
 }
