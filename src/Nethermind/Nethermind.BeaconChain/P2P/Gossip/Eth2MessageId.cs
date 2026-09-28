@@ -44,6 +44,15 @@ public static class Eth2MessageId
             ? Hash(MessageDomainValidSnappy, topic, decompressed)
             : Hash(MessageDomainInvalidSnappy, topic, data);
 
+    /// <summary>The spec <c>max_compressed_len(n)</c>: the worst-case snappy-compressed size of a payload of <paramref name="maxUncompressed"/> bytes.</summary>
+    /// <remarks>phase0 p2p-interface.md computes <c>32 + n + n // 6</c>; the result is clamped to <see cref="int.MaxValue"/>.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxUncompressed"/> is negative.</exception>
+    public static int MaxCompressedLength(int maxUncompressed)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxUncompressed);
+        return (int)Math.Min(32L + maxUncompressed + maxUncompressed / 6, int.MaxValue);
+    }
+
     /// <summary>Snappy block decompression with an uncompressed-size cap, as used for gossip payloads.</summary>
     public static SnappyDecodeResult TryDecompress(ReadOnlySpan<byte> data, int maxSize, out byte[]? decompressed)
     {

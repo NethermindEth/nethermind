@@ -47,6 +47,20 @@ public class Eth2MessageIdTests
         Assert.That(Eth2MessageId.Compute(Topic, compressed), Is.EqualTo(expected));
     }
 
+    // phase0 p2p max_compressed_len(n) = 32 + n + n // 6; 12233418 is max_compressed_len(MAX_PAYLOAD_SIZE), and the result saturates at int.MaxValue.
+    [TestCase(0, 32)]
+    [TestCase(5, 37)]
+    [TestCase(6, 39)]
+    [TestCase(16829, 19665)]
+    [TestCase(10 * 1024 * 1024, 12233418)]
+    [TestCase(int.MaxValue, int.MaxValue)]
+    public void Max_compressed_len_follows_the_spec_formula(int maxUncompressed, int expected) =>
+        Assert.That(Eth2MessageId.MaxCompressedLength(maxUncompressed), Is.EqualTo(expected));
+
+    [Test]
+    public void Max_compressed_len_of_a_negative_size_throws() =>
+        Assert.That(() => Eth2MessageId.MaxCompressedLength(-1), Throws.InstanceOf<ArgumentOutOfRangeException>());
+
     [TestCase("0x051068656c6c6f", SnappyDecodeResult.Decoded, "0x68656c6c6f", TestName = "decodes valid block data")]
     [TestCase("0xffffffff", SnappyDecodeResult.Invalid, null, TestName = "rejects corrupt data")]
     [TestCase("0x8080c0051068656c6c6f", SnappyDecodeResult.Oversized, null, TestName = "rejects an oversized declared length without decompressing")]
