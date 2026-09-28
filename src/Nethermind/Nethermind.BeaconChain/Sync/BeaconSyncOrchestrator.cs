@@ -102,6 +102,11 @@ public sealed class BeaconSyncOrchestrator(
     private readonly Channel<WorkItem> _work = Channel.CreateBounded<WorkItem>(
         new BoundedChannelOptions(WorkQueueCapacity) { SingleReader = true });
 
+    /// <summary>The newest slot tick queued, written before the tick is; a queued tick older than it is skipped.</summary>
+    private ulong _newestSlotTick;
+
+    private ulong _statusLogEpoch;
+
     /// <summary>Gossip blocks waiting for their parent, keyed by the unknown parent root.</summary>
     private readonly Dictionary<Hash256, List<ForkedSignedBeaconBlock>> _pendingByParent = [];
 
@@ -372,7 +377,9 @@ public sealed class BeaconSyncOrchestrator(
             case GossipGloasAttesterSlashingItem slashing:
                 _importer!.OnGossipAttesterSlashing(slashing.Slashing);
                 break;
-            case SlotTickItem tick:
+            // on_tick steps through every skipped slot, so only the newest tick of a backlog needs the per-slot work;
+            // each older one would send another forkchoiceUpdated for the same head.
+            case SlotTickItem tick when tick.Slot >= Volatile.Read(ref _newestSlotTick):
                 await ProcessSlotAsync(tick.Slot, token);
                 break;
             case EnvelopeItem envelope:
@@ -1154,8 +1161,9 @@ public sealed class BeaconSyncOrchestrator(
             ReconcileGossipDigests(epoch);
         }
 
-        if (slot % spec.SlotsPerEpoch == 0 && _lastHead is { } head && _logger.IsInfo)
+        if (epoch > _statusLogEpoch && _lastHead is { } head && _logger.IsInfo)
         {
+            _statusLogEpoch = epoch;
             _logger.Info($"Beacon chain: head slot {head.HeadSlot} ({head.HeadRoot}), finalized epoch {head.Finalized.Epoch}, peers {peerManager?.PeerCount ?? 0}/{config.TargetPeerCount}, EL {(_elInSync ? "in sync" : "syncing")}");
         }
     }
@@ -1256,8 +1264,14 @@ public sealed class BeaconSyncOrchestrator(
     {
         await foreach (ulong slot in slotClock.SlotTicks(token))
         {
-            await _work.Writer.WriteAsync(new SlotTickItem(slot), token);
+            await EnqueueSlotTickAsync(slot, token);
         }
+    }
+
+    internal ValueTask EnqueueSlotTickAsync(ulong slot, CancellationToken token)
+    {
+        Volatile.Write(ref _newestSlotTick, slot);
+        return _work.Writer.WriteAsync(new SlotTickItem(slot), token);
     }
 
     /// <summary>Feeds range-synced blocks into the work channel, re-running as the wall clock outpaces the sync tip.</summary>
