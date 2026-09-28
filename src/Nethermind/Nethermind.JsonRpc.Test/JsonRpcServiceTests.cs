@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -1381,6 +1382,40 @@ public class JsonRpcServiceTests
         Assert.That(service.EvmGate.Queued, Is.Zero);
     }
 
+    [Test]
+    public async Task Caller_cancelled_after_the_grant_never_executes()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcService service = CreateGatedService(ethRpcModule);
+        using CancellationTokenSource cancellation = new();
+        JsonRpcRequest request = EthCall();
+        request.CancellationToken = cancellation.Token;
+        EvmAdmissionGate.Lease held = await HoldSlot(service);
+        HeldContinuations continuations = new();
+        SynchronizationContext? previous = SynchronizationContext.Current;
+        Task<JsonRpcResponse> response;
+        try
+        {
+            // The request resumes after its grant only when the test runs the continuations, so the caller leaves first.
+            SynchronizationContext.SetSynchronizationContext(continuations);
+            response = service.SendRequestAsync(request, _context).AsTask();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+
+        Assert.That(service.EvmGate.Queued, Is.EqualTo(1));
+
+        held.Dispose();
+        cancellation.Cancel();
+        continuations.RunUntilCompleted(response, TestTimeout);
+
+        Assert.That(async () => await response, Throws.InstanceOf<OperationCanceledException>());
+        ethRpcModule.DidNotReceiveWithAnyArgs().eth_call(null!);
+        Assert.That(service.EvmGate.InFlight, Is.Zero);
+    }
+
     private JsonRpcService CreateGatedService(IEthRpcModule ethRpcModule, int maxQueueWaitMs = 60_000, int webSocketsProcessingConcurrency = 1) =>
         CreateService(
             new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(ethRpcModule), true),
@@ -1396,6 +1431,24 @@ public class JsonRpcServiceTests
 
     private static ValueTask<EvmAdmissionGate.Lease> HoldSlot(JsonRpcService service) =>
         service.EvmGate.AdmitAsync(0, TimeSpan.Zero, CancellationToken.None);
+
+    /// <summary>Holds the continuations posted to it until <see cref="RunUntilCompleted"/> runs them on the calling thread.</summary>
+    private sealed class HeldContinuations : SynchronizationContext
+    {
+        private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _posted = new();
+
+        public override void Post(SendOrPostCallback d, object? state) => _posted.Enqueue((d, state));
+
+        public void RunUntilCompleted(Task task, TimeSpan timeout)
+        {
+            long deadline = Environment.TickCount64 + (long)timeout.TotalMilliseconds;
+            while (!task.IsCompleted && Environment.TickCount64 < deadline)
+            {
+                if (_posted.TryDequeue(out (SendOrPostCallback Callback, object? State) posted)) posted.Callback(posted.State);
+                else Thread.Sleep(1);
+            }
+        }
+    }
 
     [RpcModule(ModuleType.Eth)]
     public interface IMetadataTestRpcModule : IRpcModule

@@ -96,19 +96,34 @@ public class EvmAdmissionGateTests
         clock.Advance(TimeSpan.FromMilliseconds(2));
         waiters.Add(("light 3", Admit(gate).AsTask()));
 
-        // One slot: each grant is disposed before the next, so completions follow the grant order.
-        List<string> order = [];
-        held.Dispose();
-        while (waiters.Count > 0)
-        {
-            Task<Lease> granted = await Task.WhenAny(waiters.Select(static w => w.Admission)).WaitAsync(TestTimeout);
-            (string name, _) = waiters.Single(w => w.Admission == granted);
-            waiters.RemoveAll(w => w.Admission == granted);
-            order.Add(name);
-            (await granted).Dispose();
-        }
+        Assert.That(await ReleaseAndRecordGrantOrder(held, waiters), Is.EqualTo(new[] { "light 1", "light 2", "heavy", "light 3" }));
+    }
 
-        Assert.That(order, Is.EqualTo(new[] { "light 1", "light 2", "heavy", "light 3" }));
+    [Test]
+    public async Task Equal_keys_are_served_in_enqueue_order()
+    {
+        EvmAdmissionGate gate = CreateGate();
+        Lease held = await Admit(gate);
+        // The clock never moves, so all keys are equal. Two waiters would be too few for the heap to reorder them.
+        List<(string Name, Task<Lease> Admission)> waiters = [.. Enumerable.Range(0, 5).Select(i => (i.ToString(), Admit(gate).AsTask()))];
+
+        Assert.That(await ReleaseAndRecordGrantOrder(held, waiters), Is.EqualTo(new[] { "0", "1", "2", "3", "4" }));
+    }
+
+    [TestCase(BudgetMs / 2 - 1, "light", TestName = "Just before half the budget: size order")]
+    [TestCase(BudgetMs / 2, "heavy", TestName = "At half the budget: oldest first")]
+    public async Task Oldest_waiter_goes_first_exactly_at_half_the_budget(int releaseAtMs, string expectedFirst)
+    {
+        ManualClock clock = new();
+        EvmAdmissionGate gate = CreateGate(clock);
+        Lease held = await Admit(gate);
+        // By size alone, the heavy request comes after one that arrived up to almost half the budget later.
+        List<(string Name, Task<Lease> Admission)> waiters = [("heavy", Admit(gate, MaxWeight * BytesPerWeightUnit).AsTask())];
+        clock.Advance(TimeSpan.FromMilliseconds(100));
+        waiters.Add(("light", Admit(gate).AsTask()));
+        clock.Advance(TimeSpan.FromMilliseconds(releaseAtMs - 100));
+
+        Assert.That((await ReleaseAndRecordGrantOrder(held, waiters))[0], Is.EqualTo(expectedFirst));
     }
 
     [Test]
@@ -224,6 +239,23 @@ public class EvmAdmissionGateTests
 
     private static ValueTask<Lease> Admit(EvmAdmissionGate gate, int paramsUtf8Length = 0, CancellationToken cancellationToken = default, TimeSpan? maxWait = null) =>
         gate.AdmitAsync(paramsUtf8Length, maxWait ?? gate.Budget, cancellationToken);
+
+    // One slot: each grant is disposed before the next, so completions follow the grant order.
+    private static async Task<List<string>> ReleaseAndRecordGrantOrder(Lease held, List<(string Name, Task<Lease> Admission)> waiters)
+    {
+        List<string> order = [];
+        held.Dispose();
+        while (waiters.Count > 0)
+        {
+            Task<Lease> granted = await Task.WhenAny(waiters.Select(static w => w.Admission)).WaitAsync(TestTimeout);
+            (string name, _) = waiters.Single(w => w.Admission == granted);
+            waiters.RemoveAll(w => w.Admission == granted);
+            order.Add(name);
+            (await granted).Dispose();
+        }
+
+        return order;
+    }
 
     /// <summary>A clock that moves only when told to, firing the timers that fall due.</summary>
     private sealed class ManualClock : TimeProvider
