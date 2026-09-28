@@ -68,7 +68,17 @@ namespace Nethermind.BeaconChain.StateTransition;
 public static class GloasBlockProcessing
 {
     /// <summary>Spec <c>process_block</c> (Gloas). See this type's remarks for the step order and why.</summary>
+    /// <remarks>The operation signatures are verified as one <see cref="BlockSignatureBatch"/>, with the serial verdicts and messages.</remarks>
     public static void ProcessBlock(BeaconStateGloas state, BeaconBlockGloas block, EpochCache cache, PubkeyCache pubkeys, INewPayloadNotifier notifier, BeaconChainSpec spec, bool verifySignatures = true)
+    {
+        if (verifySignatures)
+            BlockSignatureBatch.Run(batch => ProcessBlock(state, block, cache, pubkeys, notifier, spec, verifySignatures: true, batch));
+        else
+            ProcessBlock(state, block, cache, pubkeys, notifier, spec, verifySignatures: false, batch: null);
+    }
+
+    /// <summary>Spec <c>process_block</c> (Gloas), deferring the signatures to <paramref name="batch"/> or, when it is <c>null</c>, verifying each at its own step.</summary>
+    internal static void ProcessBlock(BeaconStateGloas state, BeaconBlockGloas block, EpochCache cache, PubkeyCache pubkeys, INewPayloadNotifier notifier, BeaconChainSpec spec, bool verifySignatures, BlockSignatureBatch? batch)
     {
         BeaconBlockBodyGloas body = block.Body!;
         ulong parentSlot = state.LatestBlockHeader!.Slot;
@@ -76,11 +86,11 @@ public static class GloasBlockProcessing
         ProcessParentExecutionPayload(state, block, cache);
         ProcessBlockHeader(state, block);
         ProcessWithdrawals(state);
-        ProcessExecutionPayloadBid(state, body.SignedExecutionPayloadBid!, spec, pubkeys, verifySignatures);
-        ProcessRandao(state, body, pubkeys, verifySignatures);
+        ProcessExecutionPayloadBid(state, body.SignedExecutionPayloadBid!, spec, pubkeys, verifySignatures, batch);
+        ProcessRandao(state, body, pubkeys, verifySignatures, batch);
         ProcessEth1Data(state, body);
-        ProcessOperations(state, body, parentSlot, spec, cache, pubkeys, verifySignatures);
-        ProcessSyncAggregate(state, body.SyncAggregate!, cache, verifySignatures);
+        ProcessOperations(state, body, parentSlot, spec, cache, pubkeys, verifySignatures, batch);
+        ProcessSyncAggregate(state, body.SyncAggregate!, cache, verifySignatures, batch);
     }
 
     /// <summary>Verifies a Gloas block's outer proposer signature - not part of <c>process_block</c> itself, called once by the top-level state transition.</summary>
@@ -126,11 +136,12 @@ public static class GloasBlockProcessing
     }
 
     /// <summary>Spec <c>process_randao</c>: unchanged from Fulu except for the Gloas body type.</summary>
-    public static void ProcessRandao(BeaconStateGloas state, BeaconBlockBodyGloas body, PubkeyCache pubkeys, bool verifySignature = true)
+    public static void ProcessRandao(BeaconStateGloas state, BeaconBlockBodyGloas body, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
+        const string invalidSignature = "Invalid RANDAO reveal";
         ulong epoch = state.GetCurrentEpoch();
-        if (verifySignature && !VerifyRandaoReveal(state, (int)state.GetBeaconProposerIndex(), epoch, body.RandaoReveal, pubkeys))
-            throw new BeaconStateException("Invalid RANDAO reveal");
+        if (verifySignature && !VerifyRandaoReveal(state, (int)state.GetBeaconProposerIndex(), epoch, body.RandaoReveal, pubkeys, batch?.Defer(invalidSignature)))
+            throw new BeaconStateException(invalidSignature);
 
         Span<byte> mix = stackalloc byte[32];
         SHA256.HashData(body.RandaoReveal.Bytes, mix);
@@ -142,13 +153,13 @@ public static class GloasBlockProcessing
         state.RandaoMixes![(int)(epoch % Presets.EpochsPerHistoricalVector)] = new Hash256(mix);
     }
 
-    private static bool VerifyRandaoReveal(BeaconStateGloas state, int proposerIndex, ulong epoch, BlsSignature reveal, PubkeyCache pubkeys)
+    private static bool VerifyRandaoReveal(BeaconStateGloas state, int proposerIndex, ulong epoch, BlsSignature reveal, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral)
     {
         Span<byte> epochRoot = stackalloc byte[32];
         System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(epochRoot, epoch);
         Hash256 domain = state.GetDomain(DomainType.Randao, epoch);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(epochRoot), domain);
-        return BlsSigner.Verify(pubkeys.GetPublicKey(proposerIndex), reveal.Bytes, signingRoot.Bytes);
+        return BlockSignatureBatch.Verify(pubkeys.GetPublicKey(proposerIndex), reveal, signingRoot, deferral);
     }
 
     /// <summary>Spec <c>process_eth1_data</c>: unchanged from Fulu except for the Gloas body type.</summary>
@@ -170,33 +181,33 @@ public static class GloasBlockProcessing
     /// consolidation-request dispatch is gone (moved to <see cref="ApplyParentExecutionPayload"/>),
     /// payload attestations are added, and attestations learn the parent block's slot.
     /// </summary>
-    public static void ProcessOperations(BeaconStateGloas state, BeaconBlockBodyGloas body, ulong parentSlot, BeaconChainSpec spec, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
+    public static void ProcessOperations(BeaconStateGloas state, BeaconBlockBodyGloas body, ulong parentSlot, BeaconChainSpec spec, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null)
     {
         VerifyBlockBodyOperationLimits(body);
 
         foreach (ProposerSlashing slashing in body.ProposerSlashings ?? [])
         {
-            ProcessProposerSlashing(state, slashing, cache, pubkeys, verifySignatures);
+            ProcessProposerSlashing(state, slashing, cache, pubkeys, verifySignatures, batch);
         }
         foreach (AttesterSlashingGloas slashing in body.AttesterSlashings ?? [])
         {
-            ProcessAttesterSlashing(state, slashing, cache, pubkeys, verifySignatures);
+            ProcessAttesterSlashing(state, slashing, cache, pubkeys, verifySignatures, batch);
         }
         foreach (AttestationGloas attestation in body.Attestations ?? [])
         {
-            ProcessAttestation(state, attestation, parentSlot, cache, pubkeys, verifySignatures);
+            ProcessAttestation(state, attestation, parentSlot, cache, pubkeys, verifySignatures, batch);
         }
         foreach (SignedVoluntaryExit exit in body.VoluntaryExits ?? [])
         {
-            ProcessVoluntaryExit(state, exit, cache, pubkeys, verifySignatures);
+            ProcessVoluntaryExit(state, exit, cache, pubkeys, verifySignatures, batch);
         }
         foreach (SignedBlsToExecutionChange change in body.BlsToExecutionChanges ?? [])
         {
-            ProcessBlsToExecutionChange(state, change, verifySignatures);
+            ProcessBlsToExecutionChange(state, change, verifySignatures, batch);
         }
         foreach (PayloadAttestation attestation in body.PayloadAttestations ?? [])
         {
-            ProcessPayloadAttestation(state, attestation, spec, pubkeys, verifySignatures);
+            ProcessPayloadAttestation(state, attestation, spec, pubkeys, verifySignatures, batch);
         }
     }
 
@@ -231,7 +242,7 @@ public static class GloasBlockProcessing
     /// payload, valid only for the parent and the previous slot. Pure verification - the vote's
     /// content feeds fork choice, not the state.
     /// </summary>
-    public static void ProcessPayloadAttestation(BeaconStateGloas state, PayloadAttestation attestation, BeaconChainSpec spec, PubkeyCache pubkeys, bool verifySignature = true)
+    public static void ProcessPayloadAttestation(BeaconStateGloas state, PayloadAttestation attestation, BeaconChainSpec spec, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
         PayloadAttestationData data = attestation.Data!;
         if (data.BeaconBlockRoot != state.LatestBlockHeader!.ParentRoot)
@@ -239,9 +250,10 @@ public static class GloasBlockProcessing
         if (data.Slot + 1 != state.Slot)
             throw new BeaconStateException($"Payload attestation for slot {data.Slot} is not for the slot before {state.Slot}");
 
+        const string invalidAttestation = "Invalid indexed payload attestation";
         IndexedPayloadAttestation indexed = state.GetIndexedPayloadAttestation(attestation, spec);
-        if (!IsValidIndexedPayloadAttestation(state, indexed, pubkeys, verifySignature))
-            throw new BeaconStateException("Invalid indexed payload attestation");
+        if (!IsValidIndexedPayloadAttestation(state, indexed, pubkeys, verifySignature, batch?.Defer(invalidAttestation)))
+            throw new BeaconStateException(invalidAttestation);
     }
 
     /// <summary>
@@ -249,7 +261,8 @@ public static class GloasBlockProcessing
     /// is sampled with replacement, so repeats are legitimate) and in range, and the aggregate
     /// signature must verify.
     /// </summary>
-    public static bool IsValidIndexedPayloadAttestation(BeaconStateGloas state, IndexedPayloadAttestation attestation, PubkeyCache pubkeys, bool verifySignature)
+    /// <param name="deferral">Defers the signature to a batch; <c>null</c> verifies it now.</param>
+    public static bool IsValidIndexedPayloadAttestation(BeaconStateGloas state, IndexedPayloadAttestation attestation, PubkeyCache pubkeys, bool verifySignature, BlockSignatureBatch.Deferral? deferral = null)
     {
         ulong[] indices = attestation.AttestingIndices ?? [];
         if (indices.Length == 0)
@@ -261,7 +274,7 @@ public static class GloasBlockProcessing
             if (indices[i] >= (ulong)state.Validators!.Length)
                 return false;
         }
-        return !verifySignature || GloasSignatureSets.VerifyIndexedPayloadAttestation(state, attestation, pubkeys);
+        return !verifySignature || GloasSignatureSets.VerifyIndexedPayloadAttestation(state, attestation, pubkeys, deferral);
     }
 
     /// <summary>
@@ -269,7 +282,7 @@ public static class GloasBlockProcessing
     /// EIP-7732 clearing of the pending builder payment for the equivocated proposal, when that
     /// payment is still in the two-epoch window and was recorded for this same proposer.
     /// </summary>
-    public static void ProcessProposerSlashing(BeaconStateGloas state, ProposerSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
+    public static void ProcessProposerSlashing(BeaconStateGloas state, ProposerSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null)
     {
         BeaconBlockHeader header1 = slashing.SignedHeader1!.Message!;
         BeaconBlockHeader header2 = slashing.SignedHeader2!.Message!;
@@ -287,10 +300,12 @@ public static class GloasBlockProcessing
 
         if (verifySignatures)
         {
-            if (!GloasSignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader1, pubkeys))
-                throw new BeaconStateException("Invalid proposer slashing signature 1");
-            if (!GloasSignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader2, pubkeys))
-                throw new BeaconStateException("Invalid proposer slashing signature 2");
+            const string invalidSignature1 = "Invalid proposer slashing signature 1";
+            const string invalidSignature2 = "Invalid proposer slashing signature 2";
+            if (!GloasSignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader1, pubkeys, batch?.Defer(invalidSignature1)))
+                throw new BeaconStateException(invalidSignature1);
+            if (!GloasSignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader2, pubkeys, batch?.Defer(invalidSignature2)))
+                throw new BeaconStateException(invalidSignature2);
         }
 
         // Only the payment recorded for this proposer is cleared: an unrelated same-slot
@@ -319,17 +334,19 @@ public static class GloasBlockProcessing
         new() { Withdrawal = new BuilderPendingWithdrawal() };
 
     /// <summary>Spec <c>process_attester_slashing</c> (unmodified in Gloas): slashes every still-slashable validator attesting in both votes.</summary>
-    public static void ProcessAttesterSlashing(BeaconStateGloas state, AttesterSlashingGloas slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
+    public static void ProcessAttesterSlashing(BeaconStateGloas state, AttesterSlashingGloas slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null)
     {
+        const string invalidAttestation1 = "Attester slashing attestation 1 is invalid";
+        const string invalidAttestation2 = "Attester slashing attestation 2 is invalid";
         IndexedAttestationGloas attestation1 = slashing.Attestation1!;
         IndexedAttestationGloas attestation2 = slashing.Attestation2!;
 
         if (!BeaconStateAccessors.IsSlashableAttestationData(attestation1.Data!, attestation2.Data!))
             throw new BeaconStateException("Attester slashing votes are not slashable");
-        if (!IsValidIndexedAttestation(state, attestation1, pubkeys, verifySignatures))
-            throw new BeaconStateException("Attester slashing attestation 1 is invalid");
-        if (!IsValidIndexedAttestation(state, attestation2, pubkeys, verifySignatures))
-            throw new BeaconStateException("Attester slashing attestation 2 is invalid");
+        if (!IsValidIndexedAttestation(state, attestation1, pubkeys, verifySignatures, batch?.Defer(invalidAttestation1)))
+            throw new BeaconStateException(invalidAttestation1);
+        if (!IsValidIndexedAttestation(state, attestation2, pubkeys, verifySignatures, batch?.Defer(invalidAttestation2)))
+            throw new BeaconStateException(invalidAttestation2);
 
         ulong currentEpoch = state.GetCurrentEpoch();
         HashSet<ulong> indices2 = [.. attestation2.AttestingIndices!];
@@ -352,7 +369,8 @@ public static class GloasBlockProcessing
     /// EIP-7688 bound that replaced the list's SSZ limit, sorted, unique and in range, and the
     /// aggregate signature must verify.
     /// </summary>
-    public static bool IsValidIndexedAttestation(BeaconStateGloas state, IndexedAttestationGloas attestation, PubkeyCache pubkeys, bool verifySignature)
+    /// <param name="deferral">Defers the signature to a batch; <c>null</c> verifies it now.</param>
+    public static bool IsValidIndexedAttestation(BeaconStateGloas state, IndexedAttestationGloas attestation, PubkeyCache pubkeys, bool verifySignature, BlockSignatureBatch.Deferral? deferral = null)
     {
         ulong[] indices = attestation.AttestingIndices ?? [];
         if (indices.Length == 0 || indices.Length > Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot)
@@ -364,7 +382,7 @@ public static class GloasBlockProcessing
             if (indices[i] >= (ulong)state.Validators!.Length)
                 return false;
         }
-        return !verifySignature || GloasSignatureSets.VerifyIndexedAttestation(state, attestation, pubkeys);
+        return !verifySignature || GloasSignatureSets.VerifyIndexedAttestation(state, attestation, pubkeys, deferral);
     }
 
     /// <summary>
@@ -376,7 +394,7 @@ public static class GloasBlockProcessing
     /// builder payment (the PTC-quorum the epoch transition honors the payment against).
     /// </summary>
     /// <param name="parentSlot">The slot of the block's parent, where the attested block's payload availability is tracked.</param>
-    public static void ProcessAttestation(BeaconStateGloas state, AttestationGloas attestation, ulong parentSlot, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true)
+    public static void ProcessAttestation(BeaconStateGloas state, AttestationGloas attestation, ulong parentSlot, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
         AttestationData data = attestation.Data!;
         ulong currentEpoch = state.GetCurrentEpoch();
@@ -401,8 +419,9 @@ public static class GloasBlockProcessing
             Data = data,
             Signature = attestation.Signature,
         };
-        if (!IsValidIndexedAttestation(state, indexed, pubkeys, verifySignature))
-            throw new BeaconStateException("Invalid indexed attestation");
+        const string invalidAttestation = "Invalid indexed attestation";
+        if (!IsValidIndexedAttestation(state, indexed, pubkeys, verifySignature, batch?.Defer(invalidAttestation)))
+            throw new BeaconStateException(invalidAttestation);
 
         bool currentEpochTarget = data.Target.Epoch == currentEpoch;
         byte[] epochParticipation = currentEpochTarget ? state.CurrentEpochParticipation! : state.PreviousEpochParticipation!;
@@ -490,7 +509,7 @@ public static class GloasBlockProcessing
     }
 
     /// <summary>Spec <c>process_voluntary_exit</c> (Electra, unmodified in Gloas); the exit it initiates draws on the EIP-8061 exit churn.</summary>
-    public static void ProcessVoluntaryExit(BeaconStateGloas state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true)
+    public static void ProcessVoluntaryExit(BeaconStateGloas state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
         VoluntaryExit exit = signedExit.Message!;
         if (exit.ValidatorIndex >= (ulong)state.Validators!.Length)
@@ -508,14 +527,15 @@ public static class GloasBlockProcessing
             throw new BeaconStateException($"Validator {exit.ValidatorIndex} has not been active long enough");
         if (state.GetPendingBalanceToWithdraw((int)exit.ValidatorIndex) != 0)
             throw new BeaconStateException($"Validator {exit.ValidatorIndex} has pending partial withdrawals");
-        if (verifySignature && !GloasSignatureSets.VerifyVoluntaryExit(state, signedExit, pubkeys))
-            throw new BeaconStateException("Invalid voluntary exit signature");
+        const string invalidSignature = "Invalid voluntary exit signature";
+        if (verifySignature && !GloasSignatureSets.VerifyVoluntaryExit(state, signedExit, pubkeys, batch?.Defer(invalidSignature)))
+            throw new BeaconStateException(invalidSignature);
 
         state.InitiateValidatorExit((int)exit.ValidatorIndex, cache);
     }
 
     /// <summary>Spec <c>process_bls_to_execution_change</c> (Capella, unmodified in Gloas).</summary>
-    public static void ProcessBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange, bool verifySignature = true)
+    public static void ProcessBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
         BlsToExecutionChange change = signedChange.Message!;
         if (change.ValidatorIndex >= (ulong)state.Validators!.Length)
@@ -527,8 +547,9 @@ public static class GloasBlockProcessing
             throw new BeaconStateException($"Validator {change.ValidatorIndex} does not have BLS withdrawal credentials");
         if (!credentials[1..].SequenceEqual(SHA256.HashData(change.FromBlsPubkey.Bytes).AsSpan(1)))
             throw new BeaconStateException("BLS change pubkey does not match the withdrawal credentials");
-        if (verifySignature && !GloasSignatureSets.VerifyBlsToExecutionChange(state, signedChange))
-            throw new BeaconStateException("Invalid BLS to execution change signature");
+        const string invalidSignature = "Invalid BLS to execution change signature";
+        if (verifySignature && !GloasSignatureSets.VerifyBlsToExecutionChange(state, signedChange, batch?.Defer(invalidSignature)))
+            throw new BeaconStateException(invalidSignature);
 
         Span<byte> newCredentials = stackalloc byte[32];
         newCredentials[0] = Presets.EthWithdrawalPrefix;
@@ -543,10 +564,11 @@ public static class GloasBlockProcessing
     /// <see cref="BeaconStateGloas"/> because this step runs unconditionally in every
     /// <c>process_block</c>, Gloas included.
     /// </summary>
-    public static void ProcessSyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, EpochCache cache, bool verifySignature = true)
+    public static void ProcessSyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, EpochCache cache, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
-        if (verifySignature && !VerifySyncAggregate(state, syncAggregate))
-            throw new BeaconStateException("Invalid sync aggregate signature");
+        const string invalidSignature = "Invalid sync aggregate signature";
+        if (verifySignature && !VerifySyncAggregate(state, syncAggregate, batch?.Defer(invalidSignature)))
+            throw new BeaconStateException(invalidSignature);
 
         ulong totalActiveIncrements = state.GetTotalActiveBalance(cache) / Presets.EffectiveBalanceIncrement;
         ulong totalBaseRewards = state.GetBaseRewardPerIncrement(cache) * totalActiveIncrements;
@@ -573,7 +595,7 @@ public static class GloasBlockProcessing
         }
     }
 
-    private static bool VerifySyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate)
+    private static bool VerifySyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, BlockSignatureBatch.Deferral? deferral)
     {
         System.Collections.BitArray bits = syncAggregate.SyncCommitteeBits!;
         BlsPublicKey[] committee = state.CurrentSyncCommittee!.Pubkeys!;
@@ -595,10 +617,7 @@ public static class GloasBlockProcessing
         ulong previousSlot = Math.Max(state.Slot, 1) - 1;
         Hash256 domain = state.GetDomain(DomainType.SyncCommittee, BeaconStateAccessors.ComputeEpochAtSlot(previousSlot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(state.GetBlockRootAtSlot(previousSlot), domain);
-
-        Bls.P2 point = new(stackalloc long[Bls.P2.Sz]);
-        return point.TryDecode(syncAggregate.SyncCommitteeSignature.Bytes, out _)
-            && BlsSigner.VerifyAggregate(participants, new BlsSigner.Signature(point), signingRoot.Bytes);
+        return BlockSignatureBatch.Verify(participants.PublicKey, syncAggregate.SyncCommitteeSignature, signingRoot, deferral);
     }
 
     // ---- Execution payload bid (EIP-7732) ----
@@ -608,7 +627,7 @@ public static class GloasBlockProcessing
     /// verifies the bid is consistent with the chain tip, records the pending payment, and commits
     /// the bid as <c>state.latest_execution_payload_bid</c>.
     /// </summary>
-    public static void ProcessExecutionPayloadBid(BeaconStateGloas state, SignedExecutionPayloadBid signedBid, BeaconChainSpec spec, PubkeyCache pubkeys, bool verifySignature = true)
+    public static void ProcessExecutionPayloadBid(BeaconStateGloas state, SignedExecutionPayloadBid signedBid, BeaconChainSpec spec, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
         ExecutionPayloadBid bid = signedBid.Message!;
         ulong builderIndex = bid.BuilderIndex;
@@ -629,8 +648,9 @@ public static class GloasBlockProcessing
                 throw new BeaconStateException($"Builder {builderIndex} is not registered as a payload builder");
             if (!state.CanBuilderCoverBid(builderIndex, amount))
                 throw new BeaconStateException($"Builder {builderIndex} cannot cover a bid of {amount}");
-            if (verifySignature && !VerifyExecutionPayloadBidSignature(state, signedBid))
-                throw new BeaconStateException("Invalid execution payload bid signature");
+            const string invalidSignature = "Invalid execution payload bid signature";
+            if (verifySignature && !VerifyExecutionPayloadBidSignature(state, signedBid, batch?.Defer(invalidSignature)))
+                throw new BeaconStateException(invalidSignature);
         }
 
         // Spec get_blob_parameters falls back to MAX_BLOBS_PER_BLOCK_ELECTRA when no BLOB_SCHEDULE entry applies, whatever FULU_FORK_EPOCH is.
@@ -672,14 +692,14 @@ public static class GloasBlockProcessing
         state.LatestExecutionPayloadBid = bid;
     }
 
-    private static bool VerifyExecutionPayloadBidSignature(BeaconStateGloas state, SignedExecutionPayloadBid signedBid)
+    private static bool VerifyExecutionPayloadBidSignature(BeaconStateGloas state, SignedExecutionPayloadBid signedBid, BlockSignatureBatch.Deferral? deferral)
     {
         Builder builder = state.Builders![(int)signedBid.Message!.BuilderIndex];
         Hash256 domain = state.GetDomain(DomainType.BeaconBuilder);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(signedBid.Message), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
-        return pubkey.TryDecode(builder.Pubkey.Bytes, out _) && BlsSigner.Verify(pubkey, signedBid.Signature.Bytes, signingRoot.Bytes);
+        return pubkey.TryDecode(builder.Pubkey.Bytes, out _) && BlockSignatureBatch.Verify(pubkey, signedBid.Signature, signingRoot, deferral);
     }
 
     // ---- Execution payload envelope (EIP-7732) ----

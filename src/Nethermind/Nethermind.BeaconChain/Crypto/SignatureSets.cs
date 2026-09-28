@@ -22,7 +22,9 @@ namespace Nethermind.BeaconChain.Crypto;
 /// surrounding spec asserts are the caller's responsibility. Pubkeys of registered validators come
 /// decompressed from <see cref="PubkeyCache"/>; pubkeys carried by the message itself
 /// (BLS-to-execution changes, sync committee members) are decompressed on the fly. Deposits are
-/// handled separately by <see cref="DepositSignatureVerifier"/>.
+/// handled separately by <see cref="DepositSignatureVerifier"/>. Given a <see cref="BlockSignatureBatch.Deferral"/>,
+/// a helper defers its check to that batch under the caller's message, returning <c>false</c>
+/// only for a signature the batch refuses at once.
 /// </remarks>
 public static class SignatureSets
 {
@@ -42,7 +44,7 @@ public static class SignatureSets
     /// spec <c>is_valid_indexed_attestation</c>).
     /// </summary>
     /// <remarks>The index structure (sorted, unique, in range) must already be validated by the caller.</remarks>
-    public static bool VerifyIndexedAttestation(BeaconStateFulu state, IndexedAttestation attestation, PubkeyCache pubkeys)
+    public static bool VerifyIndexedAttestation(BeaconStateFulu state, IndexedAttestation attestation, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral = null)
     {
         Span<long> sum = stackalloc long[Bls.P1.Sz];
         pubkeys.SumPublicKeys(attestation.AttestingIndices, sum);
@@ -50,7 +52,7 @@ public static class SignatureSets
 
         Hash256 domain = state.GetDomain(DomainType.BeaconAttester, attestation.Data!.Target!.Epoch);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(attestation.Data), domain);
-        return VerifyAggregate(aggregate, attestation.Signature, signingRoot);
+        return BlockSignatureBatch.Verify(aggregate.PublicKey, attestation.Signature, signingRoot, deferral);
     }
 
     /// <summary>Verifies a block's proposer signature over <c>DOMAIN_BEACON_PROPOSER</c> at the block-slot epoch.</summary>
@@ -74,16 +76,16 @@ public static class SignatureSets
     }
 
     /// <summary>Verifies a signed block header against its claimed proposer (used by proposer slashings).</summary>
-    public static bool VerifySignedBeaconBlockHeader(BeaconStateFulu state, SignedBeaconBlockHeader signedHeader, PubkeyCache pubkeys)
+    public static bool VerifySignedBeaconBlockHeader(BeaconStateFulu state, SignedBeaconBlockHeader signedHeader, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral = null)
     {
         BeaconBlockHeader header = signedHeader.Message!;
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(header.Slot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(header), domain);
-        return Verify(pubkeys.GetPublicKey((int)header.ProposerIndex), signedHeader.Signature, signingRoot);
+        return BlockSignatureBatch.Verify(pubkeys.GetPublicKey((int)header.ProposerIndex), signedHeader.Signature, signingRoot, deferral);
     }
 
     /// <summary>Verifies the proposer's RANDAO reveal: a signature over the epoch number under <c>DOMAIN_RANDAO</c>.</summary>
-    public static bool VerifyRandaoReveal(BeaconStateFulu state, int proposerIndex, ulong epoch, BlsSignature reveal, PubkeyCache pubkeys)
+    public static bool VerifyRandaoReveal(BeaconStateFulu state, int proposerIndex, ulong epoch, BlsSignature reveal, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral = null)
     {
         // hash_tree_root(epoch): a single little-endian uint64 chunk.
         Span<byte> epochRoot = stackalloc byte[32];
@@ -91,16 +93,16 @@ public static class SignatureSets
 
         Hash256 domain = state.GetDomain(DomainType.Randao, epoch);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(epochRoot), domain);
-        return Verify(pubkeys.GetPublicKey(proposerIndex), reveal, signingRoot);
+        return BlockSignatureBatch.Verify(pubkeys.GetPublicKey(proposerIndex), reveal, signingRoot, deferral);
     }
 
     /// <summary>Verifies a voluntary exit signature over the EIP-7044 fork-agnostic Capella domain.</summary>
-    public static bool VerifyVoluntaryExit(BeaconStateFulu state, SignedVoluntaryExit signedExit, PubkeyCache pubkeys)
+    public static bool VerifyVoluntaryExit(BeaconStateFulu state, SignedVoluntaryExit signedExit, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral = null)
     {
         VoluntaryExit exit = signedExit.Message!;
         Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).CapellaForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain);
-        return Verify(pubkeys.GetPublicKey((int)exit.ValidatorIndex), signedExit.Signature, signingRoot);
+        return BlockSignatureBatch.Verify(pubkeys.GetPublicKey((int)exit.ValidatorIndex), signedExit.Signature, signingRoot, deferral);
     }
 
     /// <summary>
@@ -108,14 +110,14 @@ public static class SignatureSets
     /// (genesis fork version with the state's genesis validators root) and the pubkey is the
     /// message's <c>from_bls_pubkey</c>, not a registered validator key.
     /// </summary>
-    public static bool VerifyBlsToExecutionChange(BeaconStateFulu state, SignedBlsToExecutionChange signedChange)
+    public static bool VerifyBlsToExecutionChange(BeaconStateFulu state, SignedBlsToExecutionChange signedChange, BlockSignatureBatch.Deferral? deferral = null)
     {
         BlsToExecutionChange change = signedChange.Message!;
         Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).GenesisForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
-        return pubkey.TryDecode(change.FromBlsPubkey.Bytes, out _) && Verify(pubkey, signedChange.Signature, signingRoot);
+        return pubkey.TryDecode(change.FromBlsPubkey.Bytes, out _) && BlockSignatureBatch.Verify(pubkey, signedChange.Signature, signingRoot, deferral);
     }
 
     /// <summary>
@@ -128,7 +130,7 @@ public static class SignatureSets
     /// <c>eth_fast_aggregate_verify</c> rule: with no participants, only the G2 point at infinity
     /// is a valid signature.
     /// </remarks>
-    public static bool VerifySyncAggregate(BeaconStateFulu state, SyncAggregate syncAggregate)
+    public static bool VerifySyncAggregate(BeaconStateFulu state, SyncAggregate syncAggregate, BlockSignatureBatch.Deferral? deferral = null)
     {
         BitArray bits = syncAggregate.SyncCommitteeBits!;
         BlsPublicKey[] committee = state.CurrentSyncCommittee!.Pubkeys!;
@@ -150,16 +152,9 @@ public static class SignatureSets
         ulong previousSlot = Math.Max(state.Slot, 1) - 1;
         Hash256 domain = state.GetDomain(DomainType.SyncCommittee, BeaconStateAccessors.ComputeEpochAtSlot(previousSlot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(state.GetBlockRootAtSlot(previousSlot), domain);
-        return VerifyAggregate(participants, syncAggregate.SyncCommitteeSignature, signingRoot);
+        return BlockSignatureBatch.Verify(participants.PublicKey, syncAggregate.SyncCommitteeSignature, signingRoot, deferral);
     }
 
     private static bool Verify(G1Affine publicKey, BlsSignature signature, Hash256 signingRoot) =>
         BlsSigner.Verify(publicKey, signature.Bytes, signingRoot.Bytes);
-
-    private static bool VerifyAggregate(BlsSigner.AggregatedPublicKey publicKey, BlsSignature signature, Hash256 signingRoot)
-    {
-        Bls.P2 point = new(stackalloc long[Bls.P2.Sz]);
-        return point.TryDecode(signature.Bytes, out _)
-            && BlsSigner.VerifyAggregate(publicKey, new BlsSigner.Signature(point), signingRoot.Bytes);
-    }
 }
