@@ -84,7 +84,7 @@ public class ProtocolHandlerBaseTests
     }
 
     /// <summary>
-    /// Records the runner delegate each scheduled task is dispatched with.
+    /// Records the runner delegate the most recently scheduled task was dispatched with.
     /// </summary>
     /// <remarks>
     /// A cached runner is handed to the scheduler by reference, so repeated scheduling yielding the same
