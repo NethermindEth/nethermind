@@ -2951,6 +2951,53 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public void Parallel_validation_takes_account_changes_from_the_bal_on_the_processing_thread([Values] bool isBlockProcessingThread)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Transaction[] transactions = CreateParallelValidationTransactions(1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                // Pre-execution, like the beacon-root contract's storage-only entry.
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageChanges(1, new StorageChange(0, 1)).TestObject,
+                // Post-execution, like a withdrawal recipient.
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithBalanceChanges(new BalanceChange(2, 10)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressC).WithStorageReads(1).TestObject)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(21_000)
+            .WithTransactions(transactions)
+            .WithBlockAccessList(bal)
+            .TestObject;
+
+        using RecordingTransactionProcessorAdapter transactionProcessor = new();
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = CreateParallelValidationExecutor(stateProvider, transactionProcessor);
+
+        bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = isBlockProcessingThread;
+        try
+        {
+            executor.ProcessTransactions(block, ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+        }
+
+        using ArrayPoolList<AddressAsKey>? accountChanges = block.AccountChanges;
+        if (isBlockProcessingThread)
+        {
+            Assert.That(accountChanges!.Select(static address => address.Value), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+        }
+        else
+        {
+            Assert.That(accountChanges, Is.Null, "only the main processing thread publishes account changes");
+        }
+    }
+
+    [Test]
     public void Parallel_validation_forwards_parallel_safe_block_tracer_to_worker_transactions()
     {
         Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));

@@ -41,7 +41,15 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     Task HintBal(ReadOnlyBlockAccessList bal);
 
-    /// <inheritdoc cref="IWorldStateScopeProvider.IScope.ApplyBal"/>
+    /// <summary>
+    /// Writes the final balance, nonce, code and storage values of every account the Block Access List changed.
+    /// </summary>
+    /// <remarks>
+    /// The values go straight to the scope, and the world state then drops its cached state, so any change not yet
+    /// committed with roots is lost: commit before calling this. The state root is not updated; call
+    /// <see cref="RecalculateStateRoot"/> afterwards.
+    /// </remarks>
+    /// <param name="bal">The Block Access List whose last change per field is applied.</param>
     void ApplyBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }

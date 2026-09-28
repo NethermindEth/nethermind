@@ -3,6 +3,8 @@
 
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.State;
 
@@ -16,6 +18,8 @@ public static class ScopeBalApplier
     public static void Apply(IWorldStateScopeProvider.IScope scope, ReadOnlyBlockAccessList bal)
     {
         IWorldStateScopeProvider.ICodeSetter? codeSetter = null;
+        // Clones deploying the same code in one block would otherwise all write it: ContainsCode only sees persisted code.
+        ArrayPoolList<ValueHash256>? writtenCodeHashes = null;
         try
         {
             using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(bal.AccountChanges.Count);
@@ -40,10 +44,11 @@ public static class ScopeBalApplier
                 if (accountChanges.CodeChanges.Length > 0)
                 {
                     CodeChange codeChange = accountChanges.CodeChanges[^1];
-                    if (!scope.CodeDb.ContainsCode(codeChange.CodeHash))
+                    if (writtenCodeHashes?.Contains(codeChange.CodeHash) != true && !scope.CodeDb.ContainsCode(codeChange.CodeHash))
                     {
                         codeSetter ??= scope.CodeDb.BeginCodeWrite();
                         codeSetter.Set(codeChange.CodeHash, codeChange.Code);
+                        (writtenCodeHashes ??= new ArrayPoolList<ValueHash256>(1)).Add(codeChange.CodeHash);
                     }
                     account = account.WithChangedCodeHash(codeChange.CodeHash.ToCommitment());
                 }
@@ -63,6 +68,15 @@ public static class ScopeBalApplier
         {
             codeSetter?.Dispose();
         }
+
+        if (writtenCodeHashes is null) return;
+
+        foreach (ValueHash256 codeHash in writtenCodeHashes.AsSpan())
+        {
+            scope.CodeDb.MarkCodePersisted(in codeHash);
+        }
+
+        writtenCodeHashes.Dispose();
     }
 
     private static void WriteSlots(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, ReadOnlyAccountChanges accountChanges)

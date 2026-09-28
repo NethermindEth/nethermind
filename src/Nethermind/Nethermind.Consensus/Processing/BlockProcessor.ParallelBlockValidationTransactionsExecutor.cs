@@ -196,6 +196,9 @@ public partial class BlockProcessor
                                     ReadOnlyBlockAccessList bal = state.block.BlockAccessList;
                                     // The world state never sees the BAL's writes, so its account changes would miss them.
                                     if (state.isBlockProcessingThread) state.block.AccountChanges = bal.GetStateChangedAddresses();
+                                    // Pre-block writes on the shared state (e.g. AuRa's system accounts) are only committed to
+                                    // the journal; flush them to the scope, or the reset inside ApplyBal drops them.
+                                    state.stateProvider.Commit(state.specProvider.GetSpec(state.block.Header));
                                     state.stateProvider.ApplyBal(bal);
                                     state.stateProvider.RecalculateStateRoot();
                                     return state;

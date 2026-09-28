@@ -360,10 +360,6 @@ namespace Nethermind.State
         }
 
         /// <inheritdoc/>
-        /// <remarks>
-        /// Writes straight into the scope, then drops the block's cached state so later reads see the applied values.
-        /// Any change not yet committed is dropped with it, so call this with nothing pending.
-        /// </remarks>
         public void ApplyBal(ReadOnlyBlockAccessList bal)
         {
             GuardInScope();

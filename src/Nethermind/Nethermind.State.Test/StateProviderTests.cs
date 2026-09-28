@@ -83,6 +83,11 @@ public class StateProviderTests(bool useFlat)
                     .WithNonceChanges(new NonceChange(1, 1))
                     .WithCodeChanges(new CodeChange(1, code))
                     .WithStorageChanges(5, new StorageChange(1, 7))
+                    .TestObject,
+                // Storage-only, like the beacon-root and history system contracts in every block.
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressD)
+                    .WithStorageChanges(1, new StorageChange(1, 0x55))
                     .TestObject)
             .TestObject;
 
@@ -97,6 +102,7 @@ public class StateProviderTests(bool useFlat)
             state.CreateAccount(TestItem.AddressC, 0, 1);
             state.InsertCode(TestItem.AddressC, code, Amsterdam.Instance);
             state.Set(new StorageCell(TestItem.AddressC, 5), 7);
+            state.Set(new StorageCell(TestItem.AddressD, 1), 0x55);
         }, readBack: static _ => { });
 
         using Context applied = new(useFlat, UnavailableStateHeaderProvider.Instance);
@@ -120,6 +126,8 @@ public class StateProviderTests(bool useFlat)
                 Assert.That(state.GetCode(TestItem.AddressC), Is.EqualTo(code));
                 state.Get(new StorageCell(TestItem.AddressC, 5), out UInt256 newSlot);
                 Assert.That(newSlot, Is.EqualTo((UInt256)7));
+                state.Get(new StorageCell(TestItem.AddressD, 1), out UInt256 storageOnlySlot);
+                Assert.That(storageOnlySlot, Is.EqualTo((UInt256)0x55));
             }
         });
 
@@ -133,6 +141,8 @@ public class StateProviderTests(bool useFlat)
             state.Set(new StorageCell(TestItem.AddressA, 2), 0x22);
             state.Set(new StorageCell(TestItem.AddressA, 3), 0x33);
             state.CreateAccount(TestItem.AddressB, 5);
+            state.CreateAccount(TestItem.AddressD, 1);
+            state.Set(new StorageCell(TestItem.AddressD, 1), 0x44);
             state.Commit(Amsterdam.Instance, isGenesis: true);
             state.CommitTree(0);
 

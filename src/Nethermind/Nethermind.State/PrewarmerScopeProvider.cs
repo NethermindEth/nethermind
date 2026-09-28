@@ -135,12 +135,15 @@ public class PrewarmerScopeProvider(
         private long _writeBatchTime = 0;
         // Root of the state the next commit starts from: the base block's, then each committed root in turn.
         private Hash256? _committedStateRoot = baseStateRoot;
-        // Set once the block's state came from a BAL. The caches still describe the pre-block state the parallel
-        // workers read, so this scope must neither read nor backfill them until the write-back moves them forward.
-        private ReadOnlyBlockAccessList? _appliedBal;
+        // Set once the block's state came from a BAL, holding its final values for the write-back. The caches still
+        // describe the pre-block state the parallel workers read, so this scope must neither read nor backfill them
+        // until the write-back moves them forward.
+        private ArrayPoolList<AppliedAccount>? _appliedBalAccounts;
 
         public void Dispose()
         {
+            _appliedBalAccounts?.Dispose();
+            _appliedBalAccounts = null;
             if (isPrewarmer)
             {
                 ObserveWriteBatchToDispose();
@@ -176,7 +179,7 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
             IWorldStateScopeProvider.IStorageTree baseTree = baseScope.CreateStorageTree(address);
-            if (_appliedBal is not null) return baseTree;
+            if (_appliedBalAccounts is not null) return baseTree;
             return storageReadCapture is not null
                 ? new CapturingStorageTreeWrapper(baseTree, storageReadCapture, storageCache, address)
                 : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics);
@@ -214,43 +217,39 @@ public class PrewarmerScopeProvider(
         // Only the consumer's commits become state, and they are what the caches must reflect for the next block.
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot)
         {
-            ReadOnlyBlockAccessList? appliedBal = _appliedBal;
-            _appliedBal = null;
-            if (isPrewarmer) return;
-
-            Hash256 stateRoot = baseScope.RootHash;
-            // An unchanged root means the block changed nothing, or the scope computes no roots (a trieless one) and its
-            // committed values would be tagged with the pre-block root: either way there is nothing to bring forward.
-            if (stateRoot == _committedStateRoot) return;
-
-            Hash256? baseStateRoot = _committedStateRoot;
-            _committedStateRoot = stateRoot;
-            if (appliedBal is not null) takeSnapshot = WithAppliedBal(appliedBal, takeSnapshot);
-            preBlockCaches.WriteBackInBackground(baseStateRoot, stateRoot, takeSnapshot, _logger);
-        }
-
-        // The world state never saw the BAL's writes, so its snapshot is preceded by the BAL's final values, read back
-        // from the committed scope while the snapshot is still being taken on the calling thread.
-        private Func<IWorldStateScopeProvider.IBlockChangeSnapshot> WithAppliedBal(
-            ReadOnlyBlockAccessList bal,
-            Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => () =>
-        {
-            ArrayPoolList<(ReadOnlyAccountChanges Changes, Account? Account)> accounts = new(bal.AccountChanges.Count);
+            ArrayPoolList<AppliedAccount>? appliedBalAccounts = _appliedBalAccounts;
+            _appliedBalAccounts = null;
+            bool handedOver = false;
             try
             {
-                foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+                if (isPrewarmer) return;
+
+                Hash256 stateRoot = baseScope.RootHash;
+                // An unchanged root means the block changed nothing, or the scope computes no roots (a trieless one) and its
+                // committed values would be tagged with the pre-block root: either way there is nothing to bring forward.
+                if (stateRoot == _committedStateRoot) return;
+
+                Hash256? baseStateRoot = _committedStateRoot;
+                _committedStateRoot = stateRoot;
+                if (appliedBalAccounts is not null)
                 {
-                    if (accountChanges.HasStateChanges) accounts.Add((accountChanges, baseScope.Get(accountChanges.Address)));
+                    // The world state never saw the BAL's writes, so its snapshot is preceded by the BAL's final values.
+                    Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeWorldStateSnapshot = takeSnapshot;
+                    takeSnapshot = () =>
+                    {
+                        IWorldStateScopeProvider.IBlockChangeSnapshot worldStateSnapshot = takeWorldStateSnapshot();
+                        handedOver = true;
+                        return new AppliedBalChangeSnapshot(appliedBalAccounts, worldStateSnapshot);
+                    };
                 }
 
-                return new AppliedBalChangeSnapshot(accounts, takeSnapshot());
+                preBlockCaches.WriteBackInBackground(baseStateRoot, stateRoot, takeSnapshot, _logger);
             }
-            catch
+            finally
             {
-                accounts.Dispose();
-                throw;
+                if (!handedOver) appliedBalAccounts?.Dispose();
             }
-        };
+        }
 
         public Hash256 RootHash => baseScope.RootHash;
 
@@ -269,7 +268,7 @@ public class PrewarmerScopeProvider(
 
         public Account? Get(Address address)
         {
-            if (_appliedBal is not null) return baseScope.Get(address);
+            if (_appliedBalAccounts is not null) return baseScope.Get(address);
 
             AddressAsKey addressAsKey = address;
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
@@ -323,8 +322,40 @@ public class PrewarmerScopeProvider(
 
         public void ApplyBal(ReadOnlyBlockAccessList bal)
         {
-            baseScope.ApplyBal(bal);
-            _appliedBal = bal;
+            ArrayPoolList<AppliedAccount> accounts = new(bal.AccountChanges.Count);
+            try
+            {
+                foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+                {
+                    if (!accountChanges.HasStateChanges) continue;
+
+                    // The caches still hold the pre-block state the apply reads, so they spare it the backend reads.
+                    AddressAsKey key = accountChanges.Address;
+                    bool cached = preBlockCache.TryGetValue(in key, out Account? preBlockAccount);
+                    if (cached) baseScope.HintGet(accountChanges.Address, preBlockAccount);
+
+                    // Only an account change can remove an account; whether it took storage along is known only when cached.
+                    bool changesAccount = accountChanges.BalanceChanges.Length > 0 || accountChanges.NonceChanges.Length > 0 || accountChanges.CodeChanges.Length > 0;
+                    bool mayRemoveStorage = changesAccount && (!cached || preBlockAccount is { HasStorage: true } || !baseScope.StorageRootsAreAuthoritative);
+                    accounts.Add(new AppliedAccount(accountChanges, mayRemoveStorage));
+                }
+
+                baseScope.ApplyBal(bal);
+
+                // Read here, alongside the transactions, rather than on the commit path.
+                foreach (ref AppliedAccount appliedAccount in accounts.AsSpan())
+                {
+                    appliedAccount.Account = baseScope.Get(appliedAccount.Changes.Address);
+                }
+            }
+            catch
+            {
+                accounts.Dispose();
+                throw;
+            }
+
+            _appliedBalAccounts?.Dispose();
+            _appliedBalAccounts = accounts;
         }
 
         private sealed class CacheSink(
@@ -354,20 +385,32 @@ public class PrewarmerScopeProvider(
         private Account? GetFromBaseTree(in AddressAsKey address) => baseScope.Get(address);
     }
 
+    /// <summary>An account a BAL changed, with its final value once applied.</summary>
+    private struct AppliedAccount(ReadOnlyAccountChanges changes, bool mayRemoveStorage)
+    {
+        public readonly ReadOnlyAccountChanges Changes = changes;
+        public readonly bool MayRemoveStorage = mayRemoveStorage;
+        public Account? Account;
+    }
+
     /// <inheritdoc cref="IWorldStateScopeProvider.IBlockChangeSnapshot"/>
     private sealed class AppliedBalChangeSnapshot(
-        ArrayPoolList<(ReadOnlyAccountChanges Changes, Account? Account)> accounts,
+        ArrayPoolList<AppliedAccount> accounts,
         IWorldStateScopeProvider.IBlockChangeSnapshot worldStateChanges) : IWorldStateScopeProvider.IBlockChangeSnapshot
     {
         public void WriteTo(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
         {
-            foreach ((ReadOnlyAccountChanges changes, Account? account) in accounts)
+            foreach (AppliedAccount appliedAccount in accounts.AsSpan())
             {
+                ReadOnlyAccountChanges changes = appliedAccount.Changes;
+                Account? account = appliedAccount.Account;
                 writeBatch.Set(changes.Address, account);
                 if (!writeBatch.AcceptsStorageWrites) continue;
 
                 if (account is null)
                 {
+                    if (!appliedAccount.MayRemoveStorage) continue;
+
                     // The removed account's former slots are unknown here, so its storage cannot be dropped selectively.
                     using IWorldStateScopeProvider.IStorageWriteBatch clearBatch = writeBatch.CreateStorageWriteBatch(changes.Address, 0);
                     clearBatch.Clear();
