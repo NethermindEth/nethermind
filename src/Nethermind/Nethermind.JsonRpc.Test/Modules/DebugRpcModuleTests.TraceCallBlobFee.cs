@@ -125,19 +125,20 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task Debug_traceCall_blob_fee_rejection_preserves_execution_fee_order(
         [Values(null, "callTracer", "{step:function(){},fault:function(){},result:function(){return {};}}")] string? tracer,
-        [Values] bool streamMode, [Values] bool executionFeeTooLow, [Values(null, "0x0")] string? txIndex)
+        [Values] bool streamMode, [Values] bool executionFeeTooLow, [Values(null, "0x0")] string? txIndex,
+        [Values] bool overrideBlobFee)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
             .Build(new TestSpecProvider(Cancun.Instance));
-        chain.BlockTree.Head!.Header.ExcessBlobGas = 0;
+        chain.BlockTree.Head!.Header.ExcessBlobGas = overrideBlobFee ? 0UL : 7_500_000UL;
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
             BlobFeeTransaction(8, executionFeeTooLow ? 1 : 0), "latest", new
             {
                 tracer,
                 txIndex,
                 stateOverrides = new Dictionary<string, object> { [TestItem.AddressA.ToString()] = new { balance = "0x100000000" } },
-                blockOverrides = new { blobBaseFee = "0x9", baseFeePerGas = "0x2" }
+                blockOverrides = new { blobBaseFee = overrideBlobFee ? "0x9" : null, baseFeePerGas = "0x2" }
             });
         string address = TestItem.AddressA.ToString(withEip55Checksum: true);
         AssertBlobFeeRpcError(response, executionFeeTooLow
