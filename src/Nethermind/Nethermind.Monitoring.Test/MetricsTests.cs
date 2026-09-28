@@ -230,6 +230,7 @@ public class MetricsTests
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotMisses)}"));
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountWipes)}"));
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotWipes)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotEvictions)}"));
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountCount)}"));
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotCount)}"));
             }

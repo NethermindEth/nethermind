@@ -241,7 +241,8 @@ public class CarryForwardCachingPersistenceTests
         }
     }
 
-    [TestCaseSource(nameof(CacheKinds))]
+    // Slots replace within a set instead; see SlotCapacity_ReplacesWithinASetInsteadOfWiping.
+    [TestCase(CacheKind.Account, TestName = "account")]
     public async Task CapacityWipe_PublishesPostRefillCount(CacheKind kind)
     {
         FakePersistence inner = new();
@@ -273,6 +274,37 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
+    public async Task SlotCapacity_ReplacesWithinASetInsteadOfWiping()
+    {
+        const int capacity = CarryForwardSlotTable.Ways;
+        FakePersistence inner = new();
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner, maxEntriesPerKind: capacity);
+        try
+        {
+            cache.Clear();
+            long wipesBefore = Metrics.CarryForwardSlotWipes;
+            long evictionsBefore = Metrics.CarryForwardSlotEvictions;
+
+            for (int slot = 0; slot <= capacity; slot++) ReadSlot(cache, (ulong)slot);
+            int innerReadsAfterFill = inner.SlotReads;
+            ReadSlot(cache, (ulong)capacity);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.CarryForwardSlotWipes - wipesBefore, Is.Zero);
+                Assert.That(Metrics.CarryForwardSlotEvictions - evictionsBefore, Is.EqualTo(1));
+                Assert.That(Metrics.CarryForwardSlotCount, Is.EqualTo(capacity), "a full table stays full");
+                Assert.That(inner.SlotReads, Is.EqualTo(innerReadsAfterFill), "the newest slot is served from the cache");
+            }
+        }
+        finally
+        {
+            cache.Clear();
+        }
+    }
+
+    [Test]
     public void CreateReader_SyncReader_BypassesTheCache()
     {
         FakePersistence inner = new();
@@ -286,6 +318,42 @@ public class CarryForwardCachingPersistenceTests
         }
 
         Assert.That(inner.SlotReads, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task DisposeAsync_FreesTheSlotTableOnceTheLastReaderIsDisposed()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner);
+        IPersistence.IPersistenceReader reader = cache.CreateReader();
+        UInt256 value = default;
+        reader.TryGetSlot(Address, 1, ref value);
+
+        await cache.DisposeAsync();
+        await cache.DisposeAsync();
+        bool allocatedWhileReaderOpen = cache.SlotTable.IsAllocated;
+        bool readByOpenReader = reader.TryGetSlot(Address, 1, ref value);
+        reader.Dispose();
+        reader.Dispose();
+        bool allocatedAfterReaderDisposed = cache.SlotTable.IsAllocated;
+        bool readAfterDispose;
+        using (IPersistence.IPersistenceReader lateReader = cache.CreateReader())
+        {
+            readAfterDispose = lateReader.TryGetSlot(Address, 1, ref value);
+        }
+        Invalidate(CacheKind.Slot, cache, 1);
+        using (IPersistence.IWriteBatch clearingBatch = cache.CreateWriteBatch(Basis1, Basis1)) clearingBatch.SelfDestruct(Address);
+        cache.Clear();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocatedWhileReaderOpen, Is.True, "an open reader holds a lease");
+            Assert.That(readByOpenReader, Is.True);
+            Assert.That(allocatedAfterReaderDisposed, Is.False);
+            Assert.That(readAfterDispose, Is.True, "a reader created after dispose reads the inner persistence");
+            Assert.That(cache.SlotTable.IsAllocated, Is.False, "commits and clears after dispose leave the freed table alone");
+            Assert.That(inner.SlotReads, Is.EqualTo(2), "the open reader hit the cache, the late one bypassed it");
+        }
     }
 
     [TestCase(4, TestName = "capacity_4")]
@@ -358,6 +426,7 @@ public class CarryForwardCachingPersistenceTests
             Assert.That(mismatches, Is.Empty);
             Assert.That(reads, Is.GreaterThan(operations / 2));
             Assert.That(hits, Is.GreaterThan(reads / 100), "the cache served a share of the reads");
+            Assert.That(cache.SlotTable.Count, Is.LessThanOrEqualTo(cache.SlotTable.Capacity));
         }
     }
 
