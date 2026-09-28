@@ -28,6 +28,7 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -42,6 +43,7 @@ using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.TxPool;
 using Nethermind.State.OverridableEnv;
 using Newtonsoft.Json.Linq;
 
@@ -181,6 +183,66 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_call_rejects_a_chain_id_for_another_chain_as_invalid_params(
+        [Values("trace_call", "trace_callMany")] string method, [Values("0x0", "0x2")] string type, [Values] bool matching)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong chainId = blockchain.BlockTree.ChainId;
+        ulong requestedChainId = matching ? chainId : chainId + 1;
+        object transaction = new { type, from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x186a0", chainId = $"0x{requestedChainId:x}" };
+        string[] traceTypes = ["trace"];
+        object other = new { from = TestItem.AddressA, to = TestItem.AddressC, gas = "0x186a0" };
+        object[] parameters = method == "trace_call"
+            ? [transaction, traceTypes, "latest"]
+            : [new[] { new object[] { other, traceTypes }, new object[] { transaction, traceTypes } }, "latest"];
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+        using JsonDocument document = JsonDocument.Parse(response);
+        if (matching)
+        {
+            Assert.That(document.RootElement.TryGetProperty("result", out _), Is.True, response);
+            return;
+        }
+
+        AssertOtherChainError(document, response, chainId, requestedChainId);
+    }
+
+    [Test]
+    public async Task Trace_call_rejects_a_chain_id_for_another_chain_before_other_errors(
+        [Values("trace_call", "trace_callMany")] string method, [Values("latest", "0x100000")] string blockParameter)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        ulong chainId = blockchain.BlockTree.ChainId;
+        string otherChainId = $"0x{chainId + 1:x}";
+        // A creation without data fails conversion, and block 0x100000 does not exist.
+        object[] parameters = method == "trace_call"
+            ? [new { from = TestItem.AddressA, gas = "0x186a0", chainId = otherChainId }, new[] { "trace" }, blockParameter]
+            : [new[]
+            {
+                new object[] { new { from = TestItem.AddressA, gas = "0x186a0" }, new[] { "trace" } },
+                new object[] { new { from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x186a0", chainId = otherChainId }, new[] { "trace" } },
+            }, blockParameter];
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
+        using JsonDocument document = JsonDocument.Parse(response);
+        AssertOtherChainError(document, response, chainId, chainId + 1);
+    }
+
+    private static void AssertOtherChainError(JsonDocument document, string response, ulong chainId, ulong requestedChainId)
+    {
+        JsonElement error = document.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
+            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo($"invalid chain id (have={chainId}, want={requestedChainId})"), response);
+        }
+    }
+
+    [Test]
     public async Task Trace_replayBlockTransactions_returns_error_for_missing_block_or_parent([Values] bool parentMissing)
     {
         Context context = new();
@@ -237,7 +299,7 @@ public class TraceRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(module, "trace_filter",
             new { fromBlock = $"0x{headNumber:x}", toBlock = $"0x{headNumber - 2:x}" });
         Assert.That(response, Is.EqualTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.InvalidInput},\"message\":\"From block number: {headNumber} is greater than to block number {headNumber - 2}\"}},\"id\":67}}"));
+            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.InvalidParams},\"message\":\"From block number: {headNumber} is greater than to block number {headNumber - 2}\"}},\"id\":67}}"));
     }
 
     [Test]
@@ -434,16 +496,82 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task Trace_get_preserves_missing_transaction_error()
+    public async Task Trace_transaction_and_get_return_null_for_missing_transaction([Values] bool streaming, [Values] bool pending)
     {
         Context context = new();
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Hash256 txHash = TestItem.KeccakA;
+        if (pending)
+        {
+            Transaction transaction = Build.A.Transaction.WithNonce(blockchain.ReadOnlyState.GetNonce(TestItem.AddressB))
+                .WithTo(TestItem.AddressC).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Assert.That(blockchain.TxPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            txHash = transaction.Hash!;
+        }
 
-        string expected = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_transaction", TestItem.KeccakA);
-        string actual = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_get", TestItem.KeccakA, new long[] { 0 });
+        const string expected = "{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_transaction", txHash), Is.EqualTo(expected));
+            Assert.That(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_get", txHash, Array.Empty<string>()), Is.EqualTo(expected));
+            Assert.That(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_get", txHash, new[] { "0x0" }), Is.EqualTo(expected));
+        }
+    }
 
-        Assert.That(actual, Is.EqualTo(expected));
+    [Test]
+    public async Task Trace_transaction_and_get_keep_errors_for_unavailable_history([Values] UnavailableHistory unavailable)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Transaction transaction = Build.A.Transaction.WithNonce(blockchain.ReadOnlyState.GetNonce(TestItem.AddressB))
+            .WithTo(TestItem.AddressC).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        await blockchain.AddBlock(transaction);
+        Block block = blockchain.BlockTree.Head!;
+        await blockchain.AddBlock();
+        using ILifetimeScope scope = unavailable switch
+        {
+            UnavailableHistory.State => WithStateAvailability(blockchain, _ => false),
+            UnavailableHistory.ParentHeader => WithStateAvailability(blockchain, _ => true, new MissingHeaderBlockTree(blockchain.BlockTree, block.ParentHash!)),
+            _ => WithStateAvailability(blockchain, _ => true, new PrunedBodyBlockTree(blockchain.BlockTree, block)),
+        };
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+        (int Code, IResolveConstraint Message) expected = unavailable switch
+        {
+            UnavailableHistory.State => (ErrorCodes.ResourceUnavailable, Does.StartWith("No state available for block")),
+            UnavailableHistory.ParentHeader => (ErrorCodes.ResourceNotFound, Is.EqualTo(BlockFinderExtensions.HeaderNotFound)),
+            _ => (ErrorCodes.PrunedHistoryUnavailable, Does.StartWith(ErrorMessages.PrunedHistoryUnavailable)),
+        };
+
+        foreach ((string response, bool requireCanonical) in new[]
+        {
+            (await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!), true),
+            (await RpcTest.TestSerializedRequest(module, "trace_get", transaction.Hash!, Array.Empty<string>()), true),
+            (await RpcTest.TestSerializedRequest(module, "trace_transaction", transaction.Hash!, true), false),
+        })
+        {
+            using JsonDocument document = JsonDocument.Parse(response);
+            Assert.That(document.RootElement.TryGetProperty("error", out JsonElement error), Is.True, response);
+            // The canonical lookup reports a pruned body as a non-canonical block, so only the error itself is pinned there.
+            if (unavailable is UnavailableHistory.PrunedBody && requireCanonical) continue;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(expected.Code), response);
+                Assert.That(error.GetProperty("message").GetString(), expected.Message, response);
+            }
+        }
+    }
+
+    public enum UnavailableHistory { State, ParentHeader, PrunedBody }
+
+    private sealed class PrunedBodyBlockTree(IBlockTree inner, Block prunedBlock) : BlockTreeTestDouble(inner)
+    {
+        public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+            blockHash == prunedBlock.Hash ? null : base.FindBlock(blockHash, options, blockNumber);
+
+        public override ulong GetLowestBlock() => prunedBlock.Number + 1;
     }
 
     [Test]
@@ -519,7 +647,7 @@ public class TraceRpcModuleTests
 
         ParityTxTraceFromStore? Select(params long[] traceAddress)
         {
-            using ResultWrapper<ParityTxTraceFromStore?> result = TraceRpcModule.SelectTraceAddress(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces), traceAddress);
+            using ResultWrapper<ParityTxTraceFromStore?> result = TraceRpcModule.SelectTraceAddress(ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Success(traces), traceAddress);
             return result.Data;
         }
 
@@ -562,17 +690,19 @@ public class TraceRpcModuleTests
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"header not found\"},\"id\":67}"), serialized.Replace("\"", "\\\""));
     }
 
-    [Test]
-    public async Task Trace_filter_return_fail_from_block_higher_than_to_block()
+    // An omitted fromBlock is latest, so an older toBlock alone is a reversed range.
+    [TestCase("{\"fromBlock\":\"0x8\",\"toBlock\":\"0x6\"}", 8UL, 6UL)]
+    [TestCase("{\"toBlock\":\"0x2\"}", null, 2UL)]
+    public async Task Trace_filter_return_invalid_params_from_block_higher_than_to_block(string request, ulong? fromBlock, ulong toBlock)
     {
         Context context = new();
         await context.Build();
-        string request = "{\"fromBlock\":\"0x8\",\"toBlock\":\"0x6\"}";
+        ulong from = fromBlock ?? context.Blockchain.BlockTree.Head!.Number;
         string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
             "trace_filter", request);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"From block number: 8 is greater than to block number 6\"},\"id\":67}"), serialized.Replace("\"", "\\\""));
+            serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.InvalidParams},\"message\":\"From block number: {from} is greater than to block number {toBlock}\"}},\"id\":67}}"), serialized.Replace("\"", "\\\""));
     }
 
     [Test]
@@ -586,6 +716,28 @@ public class TraceRpcModuleTests
             "trace_filter", request);
         Assert.That(
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"), serialized.Replace("\"", "\\\""));
+    }
+
+    [Test]
+    public async Task Trace_filter_null_member_is_omitted(
+        [Values("after", "count")] string member, [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        const string range = "\"fromBlock\":\"0x1\",\"toBlock\":\"latest\"";
+        using JsonDocument withNull = JsonDocument.Parse($"{{{range},\"{member}\":null}}");
+        using JsonDocument omitted = JsonDocument.Parse($"{{{range}}}");
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", withNull.RootElement);
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.TryGetProperty("result", out JsonElement result) && result.GetArrayLength() > 0, Is.True, response);
+            Assert.That(response, Is.EqualTo(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", omitted.RootElement)));
+        }
     }
 
     [Test]
@@ -901,7 +1053,7 @@ public class TraceRpcModuleTests
         Transaction transaction = Build.A.Transaction.WithNonce(currentNonceAddressA++).WithTo(TestItem.AddressC)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         await blockchain.AddBlock(transaction);
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_transaction(transaction.Hash!);
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> traces = context.TraceRpcModule.trace_transaction(transaction.Hash!);
         Assert.That(traces.Data!.Select(static trace => trace.TransactionHash), Is.EqualTo(new[] { transaction.Hash }));
 
         using ResultWrapper<ParityTxTraceFromStore?> traceGet = context.TraceRpcModule.trace_get(transaction.Hash!, [0]);
@@ -964,14 +1116,14 @@ public class TraceRpcModuleTests
             .WithGasLimit(93548).TestObject;
         await blockchain.AddBlock(transaction2);
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_transaction(transaction2.Hash!);
-        Assert.That(System.Linq.Enumerable.Count(traces.Data), Is.EqualTo(3));
-        Assert.That(traces.Data.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash!));
+        IEnumerable<ParityTxTraceFromStore> traces = context.TraceRpcModule.trace_transaction(transaction2.Hash!).Data!;
+        Assert.That(System.Linq.Enumerable.Count(traces), Is.EqualTo(3));
+        Assert.That(traces.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash!));
 
         using ResultWrapper<ParityTxTraceFromStore?> traceGet = context.TraceRpcModule.trace_get(transaction2.Hash!, [0]);
-        Assert.That(traces.Data.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash));
+        Assert.That(traces.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash));
         EthereumJsonSerializer serializer = new();
-        Assert.That(JToken.Parse(serializer.Serialize(traces.Data.ElementAt(1))), Is.EqualTo(JToken.Parse(serializer.Serialize(traceGet.Data))).Using(JToken.EqualityComparer));
+        Assert.That(JToken.Parse(serializer.Serialize(traces.ElementAt(1))), Is.EqualTo(JToken.Parse(serializer.Serialize(traceGet.Data))).Using(JToken.EqualityComparer));
     }
 
     [Test]
@@ -1009,10 +1161,10 @@ public class TraceRpcModuleTests
             .WithTo(null)
             .WithGasLimit(93548).TestObject;
         await blockchain.AddBlock(transaction2);
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_transaction(transaction2.Hash!);
-        Assert.That(System.Linq.Enumerable.Count(traces.Data), Is.EqualTo(3));
-        Assert.That(traces.Data.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash!));
-        string serialized = new EthereumJsonSerializer().Serialize(traces.Data);
+        IEnumerable<ParityTxTraceFromStore> traces = context.TraceRpcModule.trace_transaction(transaction2.Hash!).Data!;
+        Assert.That(System.Linq.Enumerable.Count(traces), Is.EqualTo(3));
+        Assert.That(traces.ElementAt(0).TransactionHash, Is.EqualTo(transaction2.Hash!));
+        string serialized = new EthereumJsonSerializer().Serialize(traces);
 
         Assert.That(serialized, Is.EqualTo("[{\"action\":{\"creationMethod\":\"create\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x9a6c\",\"init\":\"0x60006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f160006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f1fd\",\"value\":\"0x1\"},\"blockHash\":\"0xeb0d05efb43e565c4a677e64dde4cd1339459310afe8f578acab57ad45dd8f44\",\"blockNumber\":18,\"subtraces\":2,\"traceAddress\":[],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"create\",\"error\":\"Reverted\"},{\"action\":{\"callType\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x8def\",\"input\":\"0x\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x0\"},\"blockHash\":\"0xeb0d05efb43e565c4a677e64dde4cd1339459310afe8f578acab57ad45dd8f44\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x8d78\",\"input\":\"0x\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x0\"},\"blockHash\":\"0xeb0d05efb43e565c4a677e64dde4cd1339459310afe8f578acab57ad45dd8f44\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[1],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"}]"), serialized.Replace("\"", "\\\""));
     }
@@ -1287,6 +1439,27 @@ public class TraceRpcModuleTests
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
     }
 
+    // Shaped like trace-interop's field-null-members probe: a null `input` after `data`, and the other optional members null.
+    [Test]
+    public async Task Trace_call_null_input_keeps_data()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        string fields = $"\"from\":\"{TestItem.AddressA}\",\"gas\":\"0x493e0\",\"gasPrice\":\"0x77359400\",\"data\":\"0x602a60005260206000f3\"";
+        using JsonDocument withNulls = JsonDocument.Parse(
+            $"{{{fields},\"input\":null,\"accessList\":null,\"authorizationList\":null,\"blobVersionedHashes\":null,\"chainId\":null,\"maxFeePerBlobGas\":null,\"maxFeePerGas\":null,\"maxPriorityFeePerGas\":null,\"nonce\":null,\"type\":null,\"value\":null}}");
+        using JsonDocument omitted = JsonDocument.Parse($"{{{fields}}}");
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", withNulls.RootElement, new[] { "trace" }, "latest");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["result"]?["output"]?.Value<string>(), Is.EqualTo($"0x{new UInt256(42).ToBigEndian().ToHexString()}"), response);
+            Assert.That(response, Is.EqualTo(await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", omitted.RootElement, new[] { "trace" }, "latest")));
+        }
+    }
+
     private static readonly IEnumerable<(object, string[], string)> Trace_call_without_blockParameter_test_cases = [
         (new { from = TestItem.AddressA, to = "0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f", value = "0x0", gasPrice = "0x119e04a40a", gas = "0xf4240" }, ["trace"], $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xbe5c953dd0ddb0ce033a98f36c981f1b74d3b33f\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}],\"vmTrace\":null}},\"id\":67}}"),
         (new { from = TestItem.AddressA, to = "0xa760e26aa76747020171fcf8bda108dfde8eb930", value = "0x0", gasPrice = "0x2108eea5bc", gas = "0xf4240" }, ["trace"], $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{{\"action\":{{\"callType\":\"call\",\"from\":\"{TestItem.AddressA}\",\"gas\":\"0xef038\",\"input\":\"0x\",\"to\":\"0xa760e26aa76747020171fcf8bda108dfde8eb930\",\"value\":\"0x0\"}},\"result\":{{\"gasUsed\":\"0x0\",\"output\":\"0x\"}},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}}],\"vmTrace\":null}},\"id\":67}}")
@@ -1504,6 +1677,29 @@ public class TraceRpcModuleTests
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
     }
 
+    /// <summary>A CREATE colliding with an existing account fails before any action is reported, so its root
+    /// carries the error alone.</summary>
+    [Test]
+    public async Task Trace_call_create_address_collision_reports_the_error_without_a_result([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Prague.Instance));
+        context.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Address sender = TestItem.AddressF;
+        Address collision = ContractAddress.From(sender, 0);
+        object call = new { from = sender, input = "0x6000", gas = "0xf4240" };
+        object? stateOverride = JsonSerializer.Deserialize<object>($"{{\"{collision}\":{{\"code\":\"0x6000\"}}}}");
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { "trace" }, "latest", stateOverride);
+        JToken? root = JToken.Parse(response)["result"]?["trace"]?[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root?["error"]?.Value<string>(), Is.Not.Null, response);
+            Assert.That(root?["result"], Is.Null, response);
+        }
+    }
+
     [TestCase(
         """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0xc200000000000000000000000000000000000000","gas":"0xf4240"}""",
         "stateDiff",
@@ -1705,7 +1901,7 @@ public class TraceRpcModuleTests
     {
         TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB);
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = module.trace_transaction(TestItem.KeccakA);
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> result = module.trace_transaction(TestItem.KeccakA);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1735,7 +1931,7 @@ public class TraceRpcModuleTests
     {
         TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB, traceNonCanonical: true);
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = module.trace_transaction(TestItem.KeccakA, traceNonCanonical: true);
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>?> result = module.trace_transaction(TestItem.KeccakA, traceNonCanonical: true);
 
         Assert.That(result.Result.Error, Does.Not.Contain("not canonical"), "traceNonCanonical=true must bypass the canonical block check");
     }
