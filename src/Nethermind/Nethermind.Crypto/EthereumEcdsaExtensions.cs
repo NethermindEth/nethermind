@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -217,7 +217,7 @@ public static class EthereumEcdsaExtensions
         byte[]? rented = null;
         Span<byte> message = length <= StackMessageLimit
             ? stackalloc byte[StackMessageLimit]
-            : rented = ArrayPool<byte>.Shared.Rent(length);
+            : rented = SafeArrayPool<byte>.Shared.Rent(length);
 
         RlpWriter writer = new(message);
         if (typed) WriteByte(ref writer, (byte)tx.Type);
@@ -234,7 +234,7 @@ public static class EthereumEcdsaExtensions
 
         ValueHash256 hash = ValueKeccak.Compute(message[..length]);
 
-        if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
+        if (rented is not null) SafeArrayPool<byte>.Shared.Return(rented);
 
         return hash;
     }

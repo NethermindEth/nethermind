@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -551,7 +550,7 @@ internal static class IndexedTrieRoot
             byte[]? rented = null;
             Span<byte> buffer = totalLength <= StackLeafLength
                 ? stackalloc byte[StackLeafLength]
-                : rented = ArrayPool<byte>.Shared.Rent(totalLength);
+                : rented = SafeArrayPool<byte>.Shared.Rent(totalLength);
             RlpWriter writer = new(buffer[..totalLength]);
             writer.StartSequence(contentLength);
             writer.Encode(path[..pathLength]);
@@ -571,7 +570,7 @@ internal static class IndexedTrieRoot
             Debug.Assert(writer.Position == totalLength);
             NodeReference reference = NodeReference.FromRlp(buffer[..writer.Position]);
 
-            if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
+            if (rented is not null) SafeArrayPool<byte>.Shared.Return(rented);
 
             return reference;
         }
