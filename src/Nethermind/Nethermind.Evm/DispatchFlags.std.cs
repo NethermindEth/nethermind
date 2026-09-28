@@ -31,6 +31,10 @@ internal static partial class DispatchFlags
     /// </remarks>
     public static bool PaddedCode => false;
 
+    /// <summary>Whether the untraced tables give some opcodes a fast path, backed by a plain copy of the table.</summary>
+    /// <remarks>See <c>IOpcodeBody.HasUntracedFastPath</c> and <c>FallbackHandlersOffset</c>.</remarks>
+    public static bool UntracedFastPaths => true;
+
     /// <summary>Whether the coming transaction can be cancelled part-way through.</summary>
     public static bool Cancelable(bool tracerIsCancelable) => tracerIsCancelable;
 

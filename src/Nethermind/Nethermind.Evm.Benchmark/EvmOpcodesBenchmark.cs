@@ -271,9 +271,12 @@ public unsafe class EvmOpcodesBenchmark
 
         _opcodeHandlers = _vm.GetOpcodeHandlers<OffFlag, OffFlag>();
         delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] continuationHandlers =
-            new delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[byte.MaxValue + 1];
-        for (int i = 0; i < continuationHandlers.Length; i++)
+            new delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[_opcodeHandlers.Length];
+        for (int i = 0; i < VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset; i++)
             continuationHandlers[i] = &CompleteOpcode;
+        // A fast path that falls back runs the plain handler from the table's fallback half, which then completes.
+        for (int i = VirtualMachine<EthereumGasPolicy>.FallbackHandlersOffset; i < continuationHandlers.Length; i++)
+            continuationHandlers[i] = _opcodeHandlers[i];
 
         _continuationHandlersHandle = GCHandle.Alloc(continuationHandlers, GCHandleType.Pinned);
         // Safety: the handle pins the complete table until GlobalCleanup, and every entry has the
