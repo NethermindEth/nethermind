@@ -165,7 +165,7 @@ public class SampledColumnCustodianTests
             {
                 Assert.That(peerManager.PeerCount, Is.Zero);
                 Assert.That(drops, Has.Length.EqualTo(1));
-                Assert.That(drops.Single(), Does.Match(@"repeated failures, last \w+Exception: .+"), "the drop names the failure that caused it");
+                Assert.That(drops.Single(), Does.Match(@"repeated failures, last: .+"), "the drop names the failure that caused it");
             }
         }
     }
@@ -218,6 +218,60 @@ public class SampledColumnCustodianTests
                 Assert.That(onlySupernodeCustodied, Is.Not.Empty);
                 Assert.That(discovery.WantedColumns, Is.EqualTo(onlySupernodeCustodied), "the columns only the dropped peer custodied are sought through discovery");
                 Assert.That(wokenByShortfall, Is.True, "the parked admission wait wakes once a sampled column loses its custodian");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A last custodian whose requests keep failing is kept connected, since it is still the only source of its columns
+    /// (fulu/das-core.md), but it is not picked for requests and its columns count as lacking a custodian, so a replacement is sought and admitted.
+    /// </summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_last_custodian_at_the_failure_limit_stays_connected_but_is_not_picked_and_a_replacement_is_admitted(CancellationToken token)
+    {
+        Node failing = CreateNode(custodyGroupCount: Eip7594DasConstants.NumberOfCustodyGroups);
+        using PrivateKey partialKey = new(PartialCustodianKey);
+        Node partial = CreateNode(partialKey, custodyGroupCount: Eip7594DasConstants.CustodyRequirement);
+        using PrivateKey replacementKey = new(SupernodeKey);
+        Node replacement = CreateNode(replacementKey, custodyGroupCount: Eip7594DasConstants.NumberOfCustodyGroups);
+        Node client = CreateNode();
+        SetMatchingStatus(failing, partial, replacement, client);
+        client.Config.TargetPeerCount = 2;
+        client.Config.MaxPeerCount = 4;
+        await using BeaconDiscovery discovery = CreateDiscovery();
+
+        await using (client.P2P)
+        await using (failing.P2P)
+        await using (partial.P2P)
+        await using (replacement.P2P)
+        {
+            await StartAsync(token, failing, partial, replacement, client);
+            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token), Is.True);
+            IReadOnlyList<ulong> uncustodiedWhileHealthy = peerManager.UncustodiedSampledColumns();
+            IBeaconSyncPeer failingPeer = peerManager.GetBestPeers(0).Single(p => p.Id == LoopbackAddress(failing.P2P));
+            for (int i = 0; i < 8; i++)
+            {
+                failingPeer.ReportFailure(PeerFailureReason.RequestFailed);
+            }
+
+            PeerColumnCustody partialCustody = PeerColumnCustody.ForNode(partialKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
+            ulong[] onlyFailingCustodied = [.. new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns.Where(c => !partialCustody.Custodies(c))];
+            string[] picked = [.. peerManager.GetBestPeers(0).Select(static p => p.Id)];
+            IReadOnlyList<ulong> uncustodied = peerManager.UncustodiedSampledColumns();
+            int connected = peerManager.PeerCount;
+            bool replacementAdmitted = await peerManager.TryAddPeerAsync(LoopbackAddress(replacement.P2P), token, Enr(replacementKey, replacement, Eip7594DasConstants.NumberOfCustodyGroups));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(uncustodiedWhileHealthy, Is.Empty);
+                Assert.That(onlyFailingCustodied, Is.Not.Empty);
+                Assert.That(picked, Is.EqualTo(new[] { LoopbackAddress(partial.P2P) }), "a peer at the failure limit is not picked for requests");
+                Assert.That(connected, Is.EqualTo(2), "the last custodian of a sampled column stays connected");
+                Assert.That(uncustodied, Is.EqualTo(onlyFailingCustodied), "the columns only the failing peer custodies are sought");
+                Assert.That(replacementAdmitted, Is.True, "at the target, a custodian of those columns is admitted");
             }
         }
     }
