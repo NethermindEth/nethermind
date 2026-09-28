@@ -77,6 +77,333 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(trace, Throws.TypeOf<ArgumentException>());
     }
 
+    [TestCase("fe", "INVALID")]
+    [TestCase("0c", "opcode 0xc not defined")]
+    public void Invalid_opcode_callbacks_have_geth_cost_and_error(string code, string opcode)
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { this.events.push("step:" + log.op.toString() + ":" + log.getCost() + ":" + (log.getError() || "")); },
+                fault: function(log) { this.events.push("fault:" + log.op.toString() + ":" + log.getCost() + ":" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+            GetTracer(userTracer), Bytes.FromHexString(code), MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { $"step:{opcode}:0:", $"fault:{opcode}:0:invalid opcode: {opcode}" });
+    }
+
+    [Test]
+    public void Fixed_cost_stack_underflow_is_reported_by_step()
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { this.events.push("step:" + log.getCost() + ":" + log.getError() + ":" + log.stack.length()); },
+                fault: function(log) { this.events.push("fault"); },
+                result: function() { return this.events; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+            GetTracer(userTracer), Prepare.EvmCode.Op(Instruction.ADD).Done, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { "step:3:stack underflow (0 <=> 2):0" });
+    }
+
+    [TestCase(Instruction.PUSH0, 2)]
+    [TestCase(Instruction.DUP1, 3)]
+    public void Fixed_cost_stack_overflow_is_reported_by_step(Instruction opcode, int cost)
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { if (log.getError()) this.events.push("step:" + log.getCost() + ":" + log.getError()); },
+                fault: function(log) { this.events.push("fault"); },
+                result: function() { return this.events; }
+            }
+            """;
+        byte[] code = new byte[1025];
+        Array.Fill(code, (byte)Instruction.PUSH0);
+        code[^1] = (byte)opcode;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+            GetTracer(userTracer), code, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { $"step:{cost}:stack limit reached 1024 (1023)" });
+    }
+
+    [TestCase("600156", 100000UL, "step:JUMP:8::1:1:0", "fault:JUMP:8:invalid jump destination:1:1:0")]
+    [TestCase("6001600157", 100000UL, "step:JUMPI:10::2:1,1:0", "fault:JUMPI:10:invalid jump destination:2:1,1:0")]
+    [TestCase("6000600157", 100000UL, "step:JUMPI:10::2:1,0:0", null)]
+    [TestCase("6001600060003e", 100000UL, "step:RETURNDATACOPY:9::3:0,0,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,1,1:0")]
+    [TestCase("6000600060003e", 100000UL, "step:RETURNDATACOPY:3::3:0,0,0:0", null)]
+    [TestCase("60006000f3", 100000UL, "step:RETURN:0::2:0,0:0", null)]
+    [TestCase("60016000f3", 100000UL, "step:RETURN:3::2:0,1:0", null)]
+    [TestCase("60006000fd", 100000UL, "step:REVERT:0::2:0,0:0", "fault:REVERT:0:execution reverted:2:0,0:0")]
+    [TestCase("60016000fd", 100000UL, "step:REVERT:3::2:0,1:0", "fault:REVERT:3:execution reverted:2:0,1:0")]
+    [TestCase("56", 21000UL, "step:JUMP:8:stack underflow (0 <=> 1):0::0", null)]
+    [TestCase("57", 21000UL, "step:JUMPI:10:stack underflow (0 <=> 2):0::0", null)]
+    [TestCase("3e", 21000UL, "step:RETURNDATACOPY:3:stack underflow (0 <=> 3):0::0", null)]
+    [TestCase("f3", 21000UL, "step:RETURN:0:stack underflow (0 <=> 2):0::0", null)]
+    [TestCase("fd", 21000UL, "step:REVERT:0:stack underflow (0 <=> 2):0::0", null)]
+    [TestCase("600156", 21003UL, "step:JUMP:8:out of gas:1:1:0", null)]
+    [TestCase("6001600157", 21006UL, "step:JUMPI:10:out of gas:2:1,1:0", null)]
+    [TestCase("6000600060003e", 21009UL, "step:RETURNDATACOPY:3:out of gas:3:0,0,0:0", null)]
+    [TestCase("6001600060003e", 21012UL, "step:RETURNDATACOPY:9:out of gas:3:0,0,1:0", null)]
+    [TestCase("60016000f3", 21006UL, "step:RETURN:3:out of gas:2:0,1:0", null)]
+    [TestCase("60016000fd", 21006UL, "step:REVERT:3:out of gas:2:0,1:0", null)]
+    [TestCase("600160005360406000f3", 100000UL, "step:RETURN:3::2:0,64:32", null)]
+    [TestCase("600160005360406000fd", 100000UL, "step:REVERT:3::2:0,64:32", "fault:REVERT:3:execution reverted:2:0,64:32")]
+    [TestCase("600160005360006000600160006004612710fa506001600060403e", 100000UL, "step:RETURNDATACOPY:12::3:64,0,1:32", null)]
+    [TestCase("51", 21000UL, "step:MLOAD:3:stack underflow (0 <=> 1):0::0", null)]
+    [TestCase("52", 21000UL, "step:MSTORE:3:stack underflow (0 <=> 2):0::0", null)]
+    [TestCase("53", 21000UL, "step:MSTORE8:3:stack underflow (0 <=> 2):0::0", null)]
+    [TestCase("37", 21000UL, "step:CALLDATACOPY:3:stack underflow (0 <=> 3):0::0", null)]
+    [TestCase("39", 21000UL, "step:CODECOPY:3:stack underflow (0 <=> 3):0::0", null)]
+    [TestCase("600051", 21003UL, "step:MLOAD:3:out of gas:1:0:0", null)]
+    [TestCase("600051", 21006UL, "step:MLOAD:6:out of gas:1:0:0", null)]
+    [TestCase("6001600052", 21006UL, "step:MSTORE:3:out of gas:2:0,1:0", null)]
+    [TestCase("6001600052", 21009UL, "step:MSTORE:6:out of gas:2:0,1:0", null)]
+    [TestCase("6001600053", 21006UL, "step:MSTORE8:3:out of gas:2:0,1:0", null)]
+    [TestCase("6001600053", 21009UL, "step:MSTORE8:6:out of gas:2:0,1:0", null)]
+    [TestCase("60016000600037", 21009UL, "step:CALLDATACOPY:3:out of gas:3:0,0,1:0", null)]
+    [TestCase("60016000600037", 21012UL, "step:CALLDATACOPY:9:out of gas:3:0,0,1:0", null)]
+    [TestCase("60016000600039", 21009UL, "step:CODECOPY:3:out of gas:3:0,0,1:0", null)]
+    [TestCase("60016000600039", 21012UL, "step:CODECOPY:9:out of gas:3:0,0,1:0", null)]
+    [TestCase("60006000600037", 100000UL, "step:CALLDATACOPY:3::3:0,0,0:0", null)]
+    [TestCase("60006000600039", 100000UL, "step:CODECOPY:3::3:0,0,0:0", null)]
+    [TestCase("600051", 100000UL, "step:MLOAD:6::1:0:0", null)]
+    [TestCase("6001600052", 100000UL, "step:MSTORE:6::2:0,1:0", null)]
+    [TestCase("6001600053", 100000UL, "step:MSTORE8:6::2:0,1:0", null)]
+    [TestCase("60016000600037", 100000UL, "step:CALLDATACOPY:9::3:0,0,1:0", null)]
+    [TestCase("60016000600039", 100000UL, "step:CODECOPY:9::3:0,0,1:0", null)]
+    [TestCase("31", 21000UL, "step:BALANCE:100:stack underflow (0 <=> 1):0::0", null)]
+    [TestCase("61beef31", 21003UL, "step:BALANCE:100:out of gas:1:48879:0", null)]
+    [TestCase("61beef31", 21103UL, "step:BALANCE:2600:out of gas:1:48879:0", null)]
+    [TestCase("61beef31", 100000UL, "step:BALANCE:2600::1:48879:0", null)]
+    [TestCase("600431", 100000UL, "step:BALANCE:100::1:4:0", null)]
+    [TestCase("3b", 21000UL, "step:EXTCODESIZE:100:stack underflow (0 <=> 1):0::0", null)]
+    [TestCase("61beef3b", 21003UL, "step:EXTCODESIZE:100:out of gas:1:48879:0", null)]
+    [TestCase("61beef3b", 21103UL, "step:EXTCODESIZE:2600:out of gas:1:48879:0", null)]
+    [TestCase("61beef3b", 100000UL, "step:EXTCODESIZE:2600::1:48879:0", null)]
+    [TestCase("60043b", 100000UL, "step:EXTCODESIZE:100::1:4:0", null)]
+    [TestCase("3f", 21000UL, "step:EXTCODEHASH:100:stack underflow (0 <=> 1):0::0", null)]
+    [TestCase("61beef3f", 21003UL, "step:EXTCODEHASH:100:out of gas:1:48879:0", null)]
+    [TestCase("61beef3f", 21103UL, "step:EXTCODEHASH:2600:out of gas:1:48879:0", null)]
+    [TestCase("61beef3f", 100000UL, "step:EXTCODEHASH:2600::1:48879:0", null)]
+    [TestCase("60043f", 100000UL, "step:EXTCODEHASH:100::1:4:0", null)]
+    [TestCase("54", 21000UL, "step:SLOAD:0:stack underflow (0 <=> 1):0::0", null)]
+    [TestCase("600054", 21003UL, "step:SLOAD:2100:out of gas:1:0:0", null)]
+    [TestCase("600054", 100000UL, "step:SLOAD:2100::1:0:0", null)]
+    [TestCase("5c", 21000UL, "step:TLOAD:100:stack underflow (0 <=> 1):0::0", null)]
+    [TestCase("5d", 21000UL, "step:TSTORE:100:stack underflow (0 <=> 2):0::0", null)]
+    [TestCase("60005c", 21003UL, "step:TLOAD:100:out of gas:1:0:0", null)]
+    [TestCase("600160005d", 21006UL, "step:TSTORE:100:out of gas:2:0,1:0", null)]
+    [TestCase("600160005d", 21106UL, "step:TSTORE:100::2:0,1:0", null)]
+    [TestCase("600160005d60005c", 100000UL, "step:TLOAD:100::1:0:0", null)]
+    [TestCase("6001600360003e", 100000UL, "step:RETURNDATACOPY:9::3:0,3,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,4,1:0")]
+    [TestCase("60006801000000000000000060003e", 100000UL, "step:RETURNDATACOPY:3::3:0,18446744073709551616,0:0", "fault:RETURNDATACOPY:3:return data out of bounds:3:0,18446744073709551616,0:0")]
+    [TestCase("600167ffffffffffffffff60003e", 100000UL, "step:RETURNDATACOPY:9::3:0,18446744073709551615,1:0", "fault:RETURNDATACOPY:9:return data out of bounds:3:0,18446744073709551616,1:0")]
+    public void Jump_and_memory_boundaries_preserve_geth_callback_order_and_state(string code, ulong gasLimit, string step, string? fault)
+    {
+        const string userTracer = """
+            {
+                events: [],
+                record: function(phase, log) {
+                    var op = log.op.toString();
+                    var stack = [];
+                    for (var i = 0; i < log.stack.length(); i++) stack.push(log.stack.peek(i).toString());
+                    if (log.op.toNumber() === 0x$opcode)
+                        this.events.push(phase + ":" + op + ":" + log.getCost() + ":" + (log.getError() || "") + ":" +
+                            log.stack.length() + ":" + stack.join(",") + ":" + log.memory.length());
+                },
+                step: function(log) { this.record("step", log); },
+                fault: function(log) { this.record("fault", log); },
+                result: function() { return this.events; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(userTracer.Replace("$opcode", code[^2..], StringComparison.Ordinal));
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, gasLimit, Bytes.FromHexString(code));
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, fault is null ? new[] { step } : new[] { step, fault });
+    }
+
+    [TestCase("600051", 3, "0", "aa", false)]
+    [TestCase("60bb600052", 3, "0,187", "bb", true)]
+    [TestCase("60bb600053", 3, "0,187", "bb", false)]
+    [TestCase("60016000600037", 6, "0,0,1", "00", false)]
+    [TestCase("60016000600039", 6, "0,0,1", "60", false)]
+    public void Memory_callbacks_observe_pre_effect_stack_memory_and_database(string operation, int cost, string operands, string finalByte, bool rightAligned)
+    {
+        const string prefix = "600160005560aa600053";
+        const string suffix = "600260005500";
+        string userTracer = $$"""
+            {
+                events: [],
+                step: function(log, db) {
+                    if (log.getPC() !== {{(prefix.Length + operation.Length) / 2 - 1}} && log.op.toNumber() !== 0) return;
+                    var stack = [];
+                    for (var i = 0; i < log.stack.length(); i++) stack.push(log.stack.peek(i).toString());
+                    var memory = toHex(log.memory.slice(0, 32));
+                    var storage = toHex(db.getState(log.contract.getAddress(), toWord("0x00")));
+                    this.events.push(log.op.toNumber() === 0 ? "end:" + memory + ":" + storage :
+                        "step:" + log.getCost() + ":" + stack.join(",") + ":" + log.memory.length() + ":" + memory + ":" + storage);
+                },
+                fault: function(log) { this.events.push("fault:" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+            GetTracer(userTracer), Bytes.FromHexString(prefix + operation + suffix), MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        string initialStorage = "1".PadLeft(64, '0');
+        string finalStorage = "2".PadLeft(64, '0');
+        string initialMemory = "aa".PadRight(64, '0');
+        string finalMemory = rightAligned ? finalByte.PadLeft(64, '0') : finalByte.PadRight(64, '0');
+        AssertResult(trace, new[]
+        {
+            $"step:{cost}:{operands}:32:{initialMemory}:{initialStorage}",
+            $"end:{finalMemory}:{finalStorage}"
+        });
+    }
+
+    [TestCase("31", MainnetSpecProvider.ConstantinopleFixBlockNumber, 400, 400)]
+    [TestCase("3b", MainnetSpecProvider.ConstantinopleFixBlockNumber, 700, 700)]
+    [TestCase("3f", MainnetSpecProvider.ConstantinopleFixBlockNumber, 400, 400)]
+    [TestCase("54", MainnetSpecProvider.ConstantinopleFixBlockNumber, 200, 200)]
+    [TestCase("31", MainnetSpecProvider.IstanbulBlockNumber, 700, 700)]
+    [TestCase("3b", MainnetSpecProvider.IstanbulBlockNumber, 700, 700)]
+    [TestCase("3f", MainnetSpecProvider.IstanbulBlockNumber, 700, 700)]
+    [TestCase("54", MainnetSpecProvider.IstanbulBlockNumber, 800, 800)]
+    [TestCase("31", MainnetSpecProvider.BerlinBlockNumber, 2600, 100)]
+    [TestCase("3b", MainnetSpecProvider.BerlinBlockNumber, 2600, 100)]
+    [TestCase("3f", MainnetSpecProvider.BerlinBlockNumber, 2600, 100)]
+    [TestCase("54", MainnetSpecProvider.BerlinBlockNumber, 2100, 100)]
+    public void Account_and_storage_callbacks_use_active_fork_costs_before_overwriting_operands(string opcode, ulong blockNumber, int firstCost, int secondCost)
+    {
+        string userTracer = $$"""
+            {
+                events: [],
+                step: function(log, db) {
+                    if (log.op.toNumber() !== 0x{{opcode}}) return;
+                    var storage = parseInt(toHex(db.getState(log.contract.getAddress(), toWord("0x00"))), 16);
+                    this.events.push(log.getCost() + ":" + log.stack.length() + ":" + log.stack.peek(0).toString() + ":" + storage + ":" + (log.getError() || ""));
+                },
+                fault: function(log) { this.events.push("fault:" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        string push = opcode == "54" ? "6000" : "61beef";
+        byte[] code = Bytes.FromHexString(push + opcode + "50" + push + opcode);
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), (UInt256)42);
+        Address external = new("0x000000000000000000000000000000000000beef");
+        TestState.CreateAccount(external, 7);
+        TestState.InsertCode(external, Bytes.FromHexString("6000"), Spec);
+        (Block block, Transaction transaction) = PrepareTx((blockNumber, 0), 100000UL, code);
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, SpecProvider.GetSpec(block.Header), GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        string operand = opcode == "54" ? "0" : "48879";
+        AssertResult(trace, new[] { $"{firstCost}:1:{operand}:42:", $"{secondCost}:1:{operand}:42:" });
+    }
+
+    [TestCase("5d", "step:100:stack underflow (0 <=> 2)", null)]
+    [TestCase("600160005d", "step:100:", "fault:100:write protection")]
+    public void Static_transient_store_preserves_precondition_and_execution_failure_callbacks(string childCode, string step, string? fault)
+    {
+        const string userTracer = """
+            {
+                events: [],
+                step: function(log) { if (log.op.toNumber() === 0x5d) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
+                fault: function(log) { if (log.op.toNumber() === 0x5d) this.events.push("fault:" + log.getCost() + ":" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), Spec);
+        byte[] code = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0)
+            .PushData(TestItem.AddressC).PushData(50000).Op(Instruction.STATICCALL).Op(Instruction.STOP).Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), code, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, fault is null ? new[] { step } : new[] { step, fault });
+    }
+
+    [TestCase(false, "00", true)]
+    [TestCase(false, "60006000fd", false)]
+    [TestCase(false, "fe", false)]
+    [TestCase(true, "00", true)]
+    [TestCase(true, "60006000fd", false)]
+    [TestCase(true, "fe", false)]
+    public void Storage_refund_counter_tracks_child_commit_and_rollback(bool clearParentStorage, string childEnding, bool childCommits)
+    {
+        const string userTracer = """
+            {
+                events: [],
+                child: null,
+                step: function(log, db) {
+                    if (log.getDepth() === 2 && log.getPC() === 5) {
+                        this.child = log.contract.getAddress();
+                        this.events.push("child:" + log.getRefund());
+                    }
+                    if (log.getDepth() === 1 && log.op.toNumber() === 0) {
+                        var childStorage = parseInt(toHex(db.getState(this.child, toWord("0x00"))), 16);
+                        this.events.push("parent:" + log.getRefund() + ":" + childStorage);
+                    }
+                },
+                fault: function(log) { },
+                result: function() { return this.events; }
+            }
+            """;
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), UInt256.One);
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.Set(new StorageCell(TestItem.AddressC, 0), UInt256.One);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString("6000600055" + childEnding), Spec);
+        Prepare code = Prepare.EvmCode;
+        if (clearParentStorage)
+            code = code.PushData(0).PushData(0).Op(Instruction.SSTORE);
+        byte[] bytecode = code.Call(TestItem.AddressC, 50000).Op(Instruction.POP).Op(Instruction.STOP).Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), bytecode, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        int parentRefund = clearParentStorage ? 4800 : 0;
+        AssertResult(trace, new[]
+        {
+            $"child:{parentRefund + 4800}",
+            $"parent:{parentRefund + (childCommits ? 4800 : 0)}:{(childCommits ? 0 : 1)}"
+        });
+    }
+
+    [TestCase(MainnetSpecProvider.IstanbulBlockNumber, 24000)]
+    [TestCase(MainnetSpecProvider.BerlinBlockNumber, 24000)]
+    [TestCase(MainnetSpecProvider.LondonBlockNumber, 0)]
+    public void Selfdestruct_finalization_does_not_double_count_refund_in_retained_log(ulong blockNumber, int expectedRefund)
+    {
+        const string userTracer = """
+            {
+                last: null,
+                step: function(log) { this.last = log; },
+                fault: function(log) { },
+                result: function() { return this.last.getRefund(); }
+            }
+            """;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        byte[] code = Prepare.EvmCode.PushData(TestItem.AddressC).Op(Instruction.SELFDESTRUCT).Done;
+        (Block block, Transaction transaction) = PrepareTx((blockNumber, 0), 100000UL, code);
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, SpecProvider.GetSpec(block.Header), GethTraceOptions.Default with { Tracer = userTracer });
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, transaction);
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, expectedRefund);
+    }
+
     [Test]
     public void log_operations()
     {
@@ -91,7 +418,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
-        string[] expectedStrings = { "0:PUSH32:0:79000:0", "33:PUSH1:0:78997:0", "35:MSTORE:0:78994:0", "36:PUSH32:0:78988:0", "69:PUSH1:0:78985:0", "71:MSTORE:0:78982:0", "72:STOP:0:78976:0" };
+        string[] expectedStrings = { "0:PUSH32:3:79000:0", "33:PUSH1:3:78997:0", "35:MSTORE:6:78994:0", "36:PUSH32:3:78988:0", "69:PUSH1:3:78985:0", "71:MSTORE:6:78982:0", "72:STOP:0:78976:0" };
         AssertResult(traces, expectedStrings);
     }
 

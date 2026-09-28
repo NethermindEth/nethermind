@@ -565,7 +565,11 @@ public static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
 
         // Charge gas for account access. If insufficient gas remains, abort.
-        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address)) goto OutOfGas;
+        ulong traceGasCost = TTracingInst.IsActive ? vm.GetAccountAccessTraceGasCost(address, spec.GasCosts.BalanceCost) : 0;
+        bool gasAvailable = TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address);
+        if (TTracingInst.IsActive)
+            vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
+        if (!gasAvailable) goto OutOfGas;
 
         // EIP-8279: the account enters the block access list on the transaction's first touch, metered after its charge.
         if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(address)) goto OutOfGas;
@@ -638,7 +642,11 @@ public static partial class EvmInstructions
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
-        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address)) goto OutOfGas;
+        ulong traceGasCost = TTracingInst.IsActive ? vm.GetAccountAccessTraceGasCost(address, spec.GasCosts.ExtCodeHashCost) : 0;
+        bool gasAvailable = TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address);
+        if (TTracingInst.IsActive)
+            vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
+        if (!gasAvailable) goto OutOfGas;
         // EIP-8279: the account enters the block access list on the transaction's first touch, metered after its charge.
         if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(address)) goto OutOfGas;
 
