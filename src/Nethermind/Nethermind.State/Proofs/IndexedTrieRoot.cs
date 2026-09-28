@@ -547,8 +547,11 @@ internal static class IndexedTrieRoot
             int encodedValueLength = Rlp.LengthOfByteString(valueLength, unprefixedByte ? (byte)0 : (byte)128);
             int contentLength = Rlp.LengthOf(path[..pathLength]) + encodedValueLength;
             int totalLength = Rlp.LengthOfSequence(contentLength);
-            using ArrayPoolDisposableReturn rental = ArrayPoolDisposableReturn.Rent(totalLength, out byte[] buffer);
-            RlpWriter writer = new(buffer.AsSpan(0, totalLength));
+            byte[]? rented = null;
+            Span<byte> buffer = totalLength <= StackLeafLength
+                ? stackalloc byte[StackLeafLength]
+                : rented = SafeArrayPool<byte>.Shared.Rent(totalLength);
+            RlpWriter writer = new(buffer[..totalLength]);
             writer.StartSequence(contentLength);
             writer.Encode(path[..pathLength]);
             if (valueLength <= 1)
@@ -565,8 +568,15 @@ internal static class IndexedTrieRoot
                 else writer.Encode(encodedValue);
             }
             Debug.Assert(writer.Position == totalLength);
-            return NodeReference.FromRlp(buffer.AsSpan(0, writer.Position));
+            NodeReference reference = NodeReference.FromRlp(buffer[..writer.Position]);
+
+            if (rented is not null) SafeArrayPool<byte>.Shared.Return(rented);
+
+            return reference;
         }
+
+        // Most transaction and receipt leaves fit, sparing them a pool round trip.
+        private const int StackLeafLength = 1024;
 
         private int GetLength(int position)
         {
