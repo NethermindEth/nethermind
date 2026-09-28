@@ -18,8 +18,9 @@ namespace Nethermind.JsonRpc;
 /// </summary>
 /// <remarks>
 /// EVM throughput plateaus at about one execution per logical processor, so running more at once only adds latency and,
-/// past saturation, wastes work on requests that are rejected anyway. An explicitly configured pool size is used as is, so a
-/// pool far above the processor count effectively turns off queueing and shedding. Waiters are served in order of arrival
+/// past saturation, wastes work on requests that are rejected anyway. An explicitly configured pool size is used as is;
+/// queueing and shedding start only when more than that many requests are in flight, so a pool at or above the peak
+/// concurrency turns them off. Waiters are served in order of arrival
 /// plus a penalty that grows with their <c>params</c> size up to half the wait budget, so a smaller request overtakes a
 /// larger one that arrived shortly before it. A waiter that has waited half the budget is served before any later arrival,
 /// so sustained light traffic cannot starve a heavy request.

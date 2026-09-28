@@ -173,9 +173,10 @@ public interface IJsonRpcConfig : IConfig
             `EvmExecutionMaxQueueWaitMs`. Authenticated (Engine API / JWT) and IPC requests are not
             limited by these slots, but their calls with overrides still count against the override-path
             env pool, so while they run, a public call with overrides can still fail with `LimitExceeded`.
-            Raising it above the number of logical processors also
-            runs more of those calls at once, and a value far above it effectively turns off their
-            queueing and load shedding. Defaults to the number of logical processors.
+            Raising it above the number of logical processors also runs more of those calls at once.
+            Queueing and load shedding start only when more than this many of these calls are in flight,
+            so a value at or above the node's peak concurrency turns them off. Defaults to the number of
+            logical processors.
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
@@ -193,13 +194,16 @@ public interface IJsonRpcConfig : IConfig
             Authenticated (Engine API / JWT) and IPC requests do not take a slot, so they never wait.
             Items of one batch share one budget, counted from the start of the batch; once it is spent, a later item is
             rejected at once if every slot is busy.
+            A request keeps its slot until it completes (up to `Timeout`), so `EthModuleConcurrentInstances` concurrent long
+            calls, such as large `eth_simulateV1` or `eth_estimateGas`, make every other EVM-executing request wait or be rejected.
+            `eth_fillTransaction` always takes a slot, even when gas is supplied.
             """,
         DefaultValue = "500")]
     int EvmExecutionMaxQueueWaitMs { get; set; }
 
     /// <summary>Maximum number of EVM-executing requests waiting for an execution slot. Defaults to 500; 0 or less removes the limit.</summary>
     [ConfigItem(
-        Description = "The max number of EVM-executing JSON-RPC requests waiting for an execution slot; further requests are answered with `LimitExceeded` (HTTP 503) at once. `0` or a negative value removes the limit.",
+        Description = "The max number of EVM-executing JSON-RPC requests waiting for an execution slot; further requests are answered with `LimitExceeded` (HTTP 503) at once. Each waiting request keeps its request body in memory. `0` or a negative value removes the limit.",
         DefaultValue = "500")]
     int EvmExecutionQueueLimit { get; set; }
 
