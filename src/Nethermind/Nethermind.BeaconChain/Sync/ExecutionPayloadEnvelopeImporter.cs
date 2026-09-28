@@ -5,6 +5,7 @@ using System;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Attributes;
@@ -110,6 +111,11 @@ public sealed class ExecutionPayloadEnvelopeImporter(
             return ExecutionPayloadEnvelopeImportResult.DataUnavailable;
         }
 
+        if (!HasSelfBuildProposerKey(signedEnvelope.Message, state))
+        {
+            return Reject($"envelope for beacon block {blockRoot}: self-build proposer {state.LatestBlockHeader!.ProposerIndex} is not in the validator registry");
+        }
+
         EnvelopeVerdict verdict = new(engine);
         try
         {
@@ -137,6 +143,34 @@ public sealed class ExecutionPayloadEnvelopeImporter(
             ExecutionStatus.Optimistic => ExecutionPayloadEnvelopeImportResult.Optimistic,
             _ => throw new InvalidOperationException($"Envelope for beacon block {blockRoot} verified with execution verdict {verdict.Status?.ToString() ?? "none"}"),
         };
+    }
+
+    /// <summary>
+    /// Whether the key a self-built envelope's signature is checked against is cached, first extending the cache from the
+    /// state's registry when it lags, as fork choice does for each block's post-state; an envelope from a builder needs none.
+    /// </summary>
+    /// <remarks>A proposer index outside the registry fails the spec's <c>state.validators[...]</c> lookup, so the envelope is invalid.</remarks>
+    private bool HasSelfBuildProposerKey(ExecutionPayloadEnvelope envelope, BeaconStateGloas state)
+    {
+        if (envelope.BuilderIndex != Presets.BuilderIndexSelfBuild)
+        {
+            return true;
+        }
+
+        ulong proposerIndex = state.LatestBlockHeader!.ProposerIndex;
+        if (proposerIndex < (ulong)pubkeys.Count)
+        {
+            return true;
+        }
+
+        Validator[] validators = state.Validators!;
+        if (proposerIndex >= (ulong)validators.Length)
+        {
+            return false;
+        }
+
+        pubkeys.Extend(validators, pubkeys.Count);
+        return true;
     }
 
     private ExecutionPayloadEnvelopeImportResult Reject(string reason)

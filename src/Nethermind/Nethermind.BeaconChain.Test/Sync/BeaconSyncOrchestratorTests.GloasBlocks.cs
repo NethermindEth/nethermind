@@ -257,6 +257,7 @@ public partial class BeaconSyncOrchestratorTests
         Harness harness = scenario.Harness;
         harness.Importer.Forged.Add(scenario.Child.ComputeMessageRoot());
         await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Parent, CancellationToken.None);
+        int callsBeforeChild = scenario.Peer.ReceivedCalls().Count();
 
         await harness.Orchestrator.ProcessGossipBlockAsync(scenario.Child, CancellationToken.None);
 
@@ -264,7 +265,7 @@ public partial class BeaconSyncOrchestratorTests
         {
             Assert.That(harness.Orchestrator.PendingGossipBlockCount, Is.Zero);
             Assert.That(harness.Router.IsProposalSeen(scenario.Child.Slot, scenario.Child.ProposerIndex), Is.False, "a forged block does not take its (slot, proposer)");
-            Assert.That(scenario.Peer.ReceivedCalls(), Is.Empty);
+            Assert.That(scenario.Peer.ReceivedCalls().Count(), Is.EqualTo(callsBeforeChild), "the forged child asks no peer for anything");
         }
     }
 
@@ -501,7 +502,7 @@ public partial class BeaconSyncOrchestratorTests
         await orchestrator.ProcessGossipBlockAsync(first.Forked, CancellationToken.None);
         await orchestrator.ProcessGossipBlockAsync(child.Forked, CancellationToken.None);
         bool childKnownBeforeEnvelope = importer.IsKnown(child.Root);
-        ExecutionPayloadEnvelopeImportResult envelope = await orchestrator.ImportEnvelopeAsync(first.Envelope, CancellationToken.None);
+        ExecutionPayloadEnvelopeImportResult? envelope = await orchestrator.ImportEnvelopeAsync(first.Envelope, CancellationToken.None);
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
