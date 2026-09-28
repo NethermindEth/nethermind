@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
@@ -15,6 +16,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 
@@ -49,6 +51,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     // How often WaitForAdmissionCapacityAsync re-checks the target band while parked.
     private static readonly TimeSpan AdmissionPollInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DialTimeout = TimeSpan.FromSeconds(10);
+    private const int MaxRedialsAfterSimultaneousDial = 3;
+    internal static readonly TimeSpan RedialBackoff = TimeSpan.FromMilliseconds(100);
     private const string PeerIdSeparator = "/p2p/";
 
     // Bounds the per-peer-id ban/diagnostics table so years of churn on a public network cannot
@@ -80,6 +84,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     // independent atomics, because the ceiling check and the reservation must happen as one step.
     private readonly ConcurrentDictionary<string, Reservation> _dialing = new();
     private readonly object _admissionLock = new();
+
+    // Admissions in flight per session, guarded by _admissionLock: a dial address without /p2p/ lets two
+    // admission paths hold one session at once (see AdmitSessionAsync).
+    private readonly Dictionary<ISession, int> _admittingSessions = [];
 
     /// <summary>What an admission in flight already knows about its peer: enough for the directory's
     /// <see cref="PeerConnectionState.Connecting"/> entry and for the peer-id dedup in <see cref="IsKnown"/>.
@@ -156,7 +164,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         {
             if (!IsConnected(address))
             {
-                await ConnectAsync(address, token);
+                await ConnectAsync(address, token, token);
             }
         }
 
@@ -253,7 +261,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         cts.CancelAfter(DialTimeout);
         try
         {
-            return await ConnectAsync(address, cts.Token, enr);
+            return await ConnectAsync(address, token, cts.Token, enr);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
@@ -548,7 +556,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// Refuses a banned id, a peer already connected or in flight, or one that would overshoot the
     /// ceiling, all without attempting a dial.
     /// </summary>
-    private async Task<bool> ConnectAsync(string address, CancellationToken token, string? enr = null)
+    /// <param name="callerToken">The caller's own token; once it is cancelled nothing is admitted after the dial ends.</param>
+    /// <param name="token">Cancels the dial: <paramref name="callerToken"/> or a timeout linked to it.</param>
+    private async Task<bool> ConnectAsync(string address, CancellationToken callerToken, CancellationToken token, string? enr = null)
     {
         string peerId = ExtractPeerId(address);
         if (IsBanned(peerId))
@@ -565,46 +575,147 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         try
         {
-            await _outboundDialGate.WaitAsync(token);
-            ISession? session = null;
-            bool admissionResolved = false;
-            try
+            DialOutcome outcome = await DialAndAdmitAsync(address, peerId, enr, token);
+            // The peer can still hold its half of the collapsed session when a redial arrives and refuses it, so redials back off.
+            for (int redials = 1; redials <= MaxRedialsAfterSimultaneousDial
+                && outcome.LostSessionPeerId is { } lostPeerId && RedialsAfterSimultaneousDial(lostPeerId); redials++)
             {
-                session = await _p2p.DialPeerAsync(Multiaddress.Decode(address), token);
-                // The dial returns before the agent probe has answered, and may hand back a session that
-                // already existed (the peer connected to us first): wait for what the libp2p layer
-                // recorded instead of assuming "we dialed it, no client string".
-                BeaconP2P.SessionInfo info = await _p2p.GetSessionInfoAsync(session, token);
-                bool admitted = await AdmitSessionAsync(address, peerId, session, info, enr, token);
-                admissionResolved = true;
-                return admitted;
+                await Task.Delay(RedialBackoff * redials, token);
+                outcome = await DialAndAdmitAsync(address, peerId, enr, token);
             }
-            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Failed to connect to beacon chain peer {address}: {e.Message}");
-                return false;
-            }
-            finally
-            {
-                // Covers the dial-timeout cancellation exit as well as a thrown status exchange: either
-                // way the dial produced a session that no admission decision ever closed.
-                if (session is not null && !admissionResolved)
-                {
-                    await DisconnectUnadmittedAsync(session);
-                }
 
-                _outboundDialGate.Release();
-            }
+            return outcome.Admitted;
         }
         finally
         {
             _dialing.TryRemove(address, out _);
+            _ = AdmitSessionLeftUnclaimedAsync(address, callerToken);
+        }
+    }
+
+    /// <summary>Admits the session the dialed peer opened to us while the dial held its reservation.</summary>
+    /// <remarks>The session-established event skips a peer id with a dial in flight (see <see cref="OnSessionEstablished"/>),
+    /// so a dial that ends without admitting would otherwise leave that session open outside the band and the health checks.</remarks>
+    private async Task AdmitSessionLeftUnclaimedAsync(string address, CancellationToken callerToken)
+    {
+        try
+        {
+            if (Multiaddress.Decode(address).GetPeerId() is not { } remotePeerId
+                || !_p2p.TryGetEstablishedSession(remotePeerId, out ISession? session))
+            {
+                return;
+            }
+
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(callerToken);
+            cts.CancelAfter(DialTimeout);
+            BeaconP2P.SessionInfo info = await _p2p.GetSessionInfoAsync(session, cts.Token);
+            if (!callerToken.IsCancellationRequested)
+            {
+                OnSessionEstablished(session, info);
+            }
+        }
+        catch (OperationCanceledException) when (callerToken.IsCancellationRequested)
+        {
+            // The caller is shutting down: there is nothing to admit and nothing worth logging.
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Admitting the session beacon chain peer {address} opened during our dial failed: {e.Message}");
+        }
+    }
+
+    /// <param name="LostSessionPeerId">The peer id of a dial whose connection opened but whose session the libp2p layer refused or
+    /// dropped before identify completed.</param>
+    private readonly record struct DialOutcome(bool Admitted, string? LostSessionPeerId = null);
+
+    /// <summary>Whether a dial whose session closed before identify completed is tried again.</summary>
+    /// <remarks>Two peers that dial each other at once can each keep the session it opened and refuse the other's
+    /// as a second session, which closes both connections. Only the side with the lower peer id redials, so redials never
+    /// cross each other, and the other side admits one as a session the remote opened. The peer can still hold its half of the
+    /// collapsed session for a while and refuse a redial as a second session, which is why the caller backs off and retries.</remarks>
+    private bool RedialsAfterSimultaneousDial(string remotePeerId) =>
+        _p2p.LocalPeerId is { } localPeerId && string.CompareOrdinal(localPeerId.ToString(), remotePeerId) < 0;
+
+    private async Task<DialOutcome> DialAndAdmitAsync(string address, string peerId, string? enr, CancellationToken token)
+    {
+        await _outboundDialGate.WaitAsync(token);
+        ISession? session = null;
+        bool admissionResolved = false;
+        try
+        {
+            session = await _p2p.DialPeerAsync(Multiaddress.Decode(address), token);
+            // The dial returns before the agent probe has answered, and may hand back a session that
+            // already existed (the peer connected to us first): wait for what the libp2p layer
+            // recorded instead of assuming "we dialed it, no client string".
+            BeaconP2P.SessionInfo info;
+            try
+            {
+                info = await _p2p.GetSessionInfoAsync(session, token);
+            }
+            catch (InvalidOperationException e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Session with beacon chain peer {address} closed before identify completed: {e.Message}");
+                return new DialOutcome(false, BeaconP2P.RemotePeerIdOf(session)?.ToString());
+            }
+
+            bool admitted = await AdmitSessionAsync(address, peerId, session, info, enr, token);
+            admissionResolved = true;
+            return new DialOutcome(admitted);
+        }
+        catch (Libp2pException e) when (!token.IsCancellationRequested)
+        {
+            // The pinned dial throws this, unwrapped, when the connection opened but its session was refused or closed,
+            // which is how our side of a simultaneous dial can end as well as the session closing before identify.
+            if (_logger.IsDebug) _logger.Debug($"Connection to beacon chain peer {address} closed before a session was established: {e.Message}");
+            return new DialOutcome(false, Multiaddress.Decode(address).GetPeerId()?.ToString());
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Failed to connect to beacon chain peer {address}: {e.Message}");
+            return new DialOutcome(false);
+        }
+        finally
+        {
+            // The dial slot is free before the teardown, so a slow disconnect cannot hold up the next dial.
+            _outboundDialGate.Release();
+
+            // Covers the dial-timeout cancellation exit as well as a thrown status exchange: either
+            // way the dial produced a session that no admission decision ever closed.
+            if (session is not null && !admissionResolved)
+            {
+                await DisconnectUnadmittedAsync(session);
+            }
         }
     }
 
     /// <summary>Status-exchanges an established session and, when it is on our fork, records it under
     /// <paramref name="address"/>. Shared by every admission path; the caller holds the reservation.</summary>
+    /// <remarks>Counts the admission as in flight for its session until it returns, so a concurrent admission of the
+    /// same session that fails does not tear the session down under this one (see <see cref="DisconnectUnadmittedAsync"/>).</remarks>
     private async Task<bool> AdmitSessionAsync(string address, string peerId, ISession session, BeaconP2P.SessionInfo info, string? enr, CancellationToken token)
+    {
+        lock (_admissionLock)
+        {
+            CollectionsMarshal.GetValueRefOrAddDefault(_admittingSessions, session, out _)++;
+        }
+
+        try
+        {
+            return await ExchangeStatusAndRecordAsync(address, peerId, session, info, enr, token);
+        }
+        finally
+        {
+            lock (_admissionLock)
+            {
+                if (--_admittingSessions[session] == 0)
+                {
+                    _admittingSessions.Remove(session);
+                }
+            }
+        }
+    }
+
+    private async Task<bool> ExchangeStatusAndRecordAsync(string address, string peerId, ISession session, BeaconP2P.SessionInfo info, string? enr, CancellationToken token)
     {
         // A dial address without a /p2p/ component keys on the whole address, so the session's real
         // peer id is the only reliable way to notice it is already admitted under another address.
@@ -702,10 +813,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// would keep a connection this manager neither counts against the band nor health-checks.</summary>
     private async Task DisconnectUnadmittedAsync(ISession session)
     {
-        // Another admission path may have recorded this very session meanwhile (see AdmitSessionAsync).
-        if (HoldsSession(session))
+        // Another admission path may have recorded this very session meanwhile, or still be admitting it (see AdmitSessionAsync).
+        lock (_admissionLock)
         {
-            return;
+            if (HoldsSession(session) || _admittingSessions.ContainsKey(session))
+            {
+                return;
+            }
         }
 
         try
