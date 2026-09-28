@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -24,6 +25,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     public UInt256 InstructionMask => CaptureMask;
 
     private static readonly UInt256 CaptureMask = CreateCaptureMask();
+    private static readonly EthereumEcdsa AuthorityRecovery = new(0);
 
     private readonly IWorldState? _worldState;
     private readonly Hash256? _txHash;
@@ -60,7 +62,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         Address? from,
         Address? to,
         Address? beneficiary,
-        IReleaseSpec? spec)
+        IReleaseSpec? spec,
+        AuthorizationTuple[]? authorizations = null)
         : base(options)
     {
         IsTracingActions = true;
@@ -95,6 +98,24 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         if (_diffMode && to is null)
             _createdAccounts.Add(recipient);
         LookupAccount(beneficiary ?? Address.Zero);
+        if (authorizations is not null)
+        {
+            // Geth captures recoverable authorities even when chain ID or nonce prevents applying the authorization.
+            foreach (AuthorizationTuple authorization in authorizations)
+            {
+                if (HasValidAuthoritySignature(authorization.AuthoritySignature)
+                    && (authorization.Authority ??= AuthorityRecovery.RecoverAddress(authorization)) is { } authority)
+                    LookupAccount(authority);
+            }
+        }
+    }
+
+    private static bool HasValidAuthoritySignature(Signature signature)
+    {
+        UInt256 r = new(signature.RAsSpan, isBigEndian: true);
+        UInt256 s = new(signature.SAsSpan, isBigEndian: true);
+        return (signature.V == Signature.VOffset || signature.V == Signature.VOffset + 1)
+            && !r.IsZero && r < SecP256k1Curve.N && !s.IsZero && s <= SecP256k1Curve.HalfN;
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();
