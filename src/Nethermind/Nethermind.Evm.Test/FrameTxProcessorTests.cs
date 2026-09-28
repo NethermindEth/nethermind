@@ -12,6 +12,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Core;
@@ -28,6 +29,8 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -4817,6 +4820,271 @@ public partial class FrameTxProcessorTests
         }
     }
 
+    /// <summary>The tracer outputs that carry a frame transaction's transaction-level status.</summary>
+    public enum FrameTxStatusConsumer
+    {
+        CallTracer,
+        StructLogger,
+        JavaScriptTracer,
+        Simulate
+    }
+
+    /// <summary>The processor marks every included frame transaction successful, so a tracer has to be given the
+    /// status the receipt derives from the frames, and simulate the receipt's logs rather than those emitted by a
+    /// frame an atomic batch later unrolled.</summary>
+    [Test]
+    public void Execute_FrameTxTracedThroughTheReceiptsTracer_ReportsTheReceiptStatus([Values] FrameTxStatusConsumer consumer, [Values] bool batchFails)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, LogEmitter(7));
+        DeployContract(Observer, batchFails
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
+            Frame(FrameMode.Sender, target: Observer),
+            Frame(FrameMode.Default, target: Recipient));
+        tx.Hash = tx.CalculateHash();
+
+        (bool failed, int? logCount, TxReceipt receipt) = TraceStatus(tx, consumer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(batchFails ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(receipt.Logs, Has.Length.EqualTo(batchFails ? 1 : 2), "an unrolled frame's log leaves the receipt");
+            Assert.That(failed, Is.EqualTo(batchFails), "the traced status must be the receipt's");
+            if (logCount is not null)
+            {
+                Assert.That(logCount, Is.EqualTo(receipt.Logs!.Length), "the simulated logs must be the receipt's");
+            }
+        }
+    }
+
+    /// <summary>Without EIP-7708, simulate synthesises transfer logs as values move, so a frame an atomic batch
+    /// unrolled would keep its transfer while the receipt drops everything else it did.</summary>
+    [Test]
+    public void Simulate_TraceTransfersOverAnUnrolledBatch_KeepsOnlyTheCommittedFramesTransfers([Values] bool batchFails)
+    {
+        _spec.IsEip7708Enabled = false;
+        Address afterBatch = TestItem.AddressD;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, LogEmitter(7));
+        DeployContract(Observer, batchFails
+            ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
+            : Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(afterBatch, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient, value: 1),
+            Frame(FrameMode.Sender, target: Observer),
+            Frame(FrameMode.Sender, target: afterBatch, value: 2));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: true, _specProvider);
+        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        LogEntry[] expected = batchFails
+            ? [TransferLog.CreateSimulateTransfer(Sender, afterBatch, 2)]
+            : [TransferLog.CreateSimulateTransfer(Sender, Recipient, 1), receipt.Logs![0], TransferLog.CreateSimulateTransfer(Sender, afterBatch, 2)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(batchFails ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(result.Logs.Select(static log => $"{log.Address}:{log.Topics[^1]}"),
+                Is.EqualTo(expected.Select(static log => $"{log.Address}:{log.Topics[^1]}")),
+                "the committed frames' transfers and logs, in emission order");
+        }
+    }
+
+    /// <summary>A failed frame transaction fails on its first failed frame, so simulate must report that frame's
+    /// error: not a later frame's, and not a later successful frame's inner revert.</summary>
+    [TestCase(false, EvmExceptionType.OutOfGas, TestName = "Simulate_BatchOutOfGasBeforeAnInnerRevert_ReportsTheFailedFramesError")]
+    [TestCase(true, EvmExceptionType.Revert, TestName = "Simulate_RevertBeforeALaterOutOfGasFrame_ReportsTheFirstFailedFramesError")]
+    public void Simulate_FailedFrameTransaction_ReportsTheFirstFailedFramesError(bool revertFirst, EvmExceptionType expected)
+    {
+        Address afterBatch = TestItem.AddressD;
+        Address reverter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(Observer, Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done);
+        DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(afterBatch, Prepare.EvmCode.Call(reverter, 50_000).Op(Instruction.STOP).Done);
+
+        Transaction tx = revertFirst
+            ? FrameTx(nonce: 0,
+                SelfVerifyFrame(),
+                Frame(FrameMode.Sender, target: reverter),
+                Frame(FrameMode.Sender, target: Observer))
+            : FrameTx(nonce: 0,
+                SelfVerifyFrame(),
+                Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
+                Frame(FrameMode.Sender, target: Observer),
+                Frame(FrameMode.Default, target: afterBatch));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: false, _specProvider);
+        ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(StatusCode.Failure));
+            Assert.That(result.Error!.EvmException, Is.EqualTo(expected));
+            Assert.That(result.Error.Message, Is.EqualTo(expected == EvmExceptionType.Revert
+                ? "execution reverted: frame failed"
+                : expected.GetEvmExceptionDescription()));
+        }
+    }
+
+    /// <summary>A failed <c>POST_TX</c> frame discards the body down to the validation prefix, so simulate keeps
+    /// the prefix's log and drops the body's log and transfer, and names the assertion in its error.</summary>
+    [Test]
+    public void Simulate_PostTxRevertsOverALoggingPrefix_KeepsOnlyThePrefixLogs()
+    {
+        _spec.IsEip7708Enabled = false;
+        Address reverter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, LogEmitter(999));
+        DeployContract(Recipient, LogEmitter(7));
+        DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        // The deploy frame opening the prefix is the one prefix frame that is not static, so it can log.
+        Transaction tx = FrameTx(nonce: 0,
+            Frame(FrameMode.Default, target: Observer),
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, target: Recipient, value: 1),
+            Frame(FrameMode.PostTx, target: reverter));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: true, _specProvider);
+        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.Logs, Has.Length.EqualTo(1), "only the prefix's log outlives the assertion");
+            Assert.That(result.Logs.Select(static log => log.Address), Is.EqualTo(new[] { Observer }),
+                "the body's log and transfer go with its state");
+            Assert.That(result.Error!.EvmException, Is.EqualTo(EvmExceptionType.Revert));
+            Assert.That(result.Error.Message, Is.EqualTo("execution reverted: POST_TX frame reverted"));
+        }
+    }
+
+    /// <summary>A reverted inner call's state goes with it, so a committed frame's receipt drops the call's logs
+    /// and simulate must drop the transfer it synthesised for the call's value too.</summary>
+    [Test]
+    public void Simulate_RevertedInnerValueCallInACommittedFrame_DropsItsTransferAndLog()
+    {
+        _spec.IsEip7708Enabled = false;
+        Address reverter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(reverter, Prepare.EvmCode
+            .PushData(5).PushData(0).PushData(0).Op(Instruction.LOG1)
+            .PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(Recipient, Prepare.EvmCode
+            .CallWithValue(reverter, 100_000, 1)
+            .PushData(7).PushData(0).PushData(0).Op(Instruction.LOG1)
+            .Op(Instruction.STOP).Done, balance: 10);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: true, _specProvider);
+        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.Logs, Has.Length.EqualTo(1), "only the frame's own log is committed");
+            Assert.That(result.Logs.Select(static log => $"{log.Address}:{log.Topics[^1]}"),
+                Is.EqualTo(receipt.Logs!.Select(static log => $"{log.Address}:{log.Topics[^1]}")),
+                "the reverted call's log and its transfer never happened");
+        }
+    }
+
+    /// <summary>The processor reports no output for a frame transaction, so simulate has to carry the revert data
+    /// of the frame it reports the error for: the first failed one.</summary>
+    [Test]
+    public void Simulate_FramesRevertingWithData_SurfacesTheFirstFailedFramesRevertData()
+    {
+        Address secondReverter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, RevertWithWord(0xaa));
+        DeployContract(secondReverter, RevertWithWord(0xbb));
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, target: Observer),
+            Frame(FrameMode.Sender, target: secondReverter));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: false, _specProvider);
+        ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error!.EvmException, Is.EqualTo(EvmExceptionType.Revert));
+            Assert.That(result.Error.Data, Is.EqualTo(new UInt256(0xaa).ToBigEndian()));
+        }
+    }
+
+    private static byte[] RevertWithWord(UInt256 word) => Prepare.EvmCode
+        .PushData(word).PushData(0).Op(Instruction.MSTORE)
+        .PushData(32).PushData(0).Op(Instruction.REVERT).Done;
+
+    /// <summary>Runs <paramref name="tx"/> through the receipts tracer under <paramref name="consumer"/>,
+    /// returning whether it reported a failure, the logs it reported when it reports any, and the receipt.</summary>
+    private (bool Failed, int? LogCount, TxReceipt Receipt) TraceStatus(Transaction tx, FrameTxStatusConsumer consumer)
+    {
+        switch (consumer)
+        {
+            case FrameTxStatusConsumer.CallTracer:
+                {
+                    using JsonDocument document = TraceThroughReceiptsTracer(tx,
+                    GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer }, baseFeePerGas: 0, out TxReceipt receipt);
+                    return (document.RootElement.TryGetProperty("error", out _), null, receipt);
+                }
+            case FrameTxStatusConsumer.StructLogger:
+                {
+                    GethLikeBlockMemoryTracer blockTracer = new(GethTraceOptions.Default);
+                    TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+                    using GethLikeTxTrace trace = blockTracer.BuildResult().Single();
+                    return (trace.Failed, null, receipt);
+                }
+            case FrameTxStatusConsumer.JavaScriptTracer:
+                {
+                    GethTraceOptions options = GethTraceOptions.Default with
+                    {
+                        Tracer = "{ step: function(log, db) { }, fault: function(log, db) { }, result: function(ctx, db) { return ctx.error !== undefined; } }"
+                    };
+                    GethLikeBlockJavaScriptTracer? blockTracer = null;
+                    try
+                    {
+                        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, state => blockTracer = new GethLikeBlockJavaScriptTracer(state, Spec, options));
+                        using GethLikeTxTrace trace = blockTracer!.BuildResult().Single();
+                        return (JsonSerializer.Serialize(trace.CustomTracerResult?.Value) == "true", null, receipt);
+                    }
+                    finally
+                    {
+                        blockTracer?.Dispose();
+                    }
+                }
+            default:
+                {
+                    SimulateBlockTracer blockTracer = new(isTracingLogs: false, _specProvider);
+                    TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+                    SimulateCallResult result = blockTracer.BuildResult().Single();
+                    return (result.Status == StatusCode.Failure, result.Logs.Count, receipt);
+                }
+        }
+    }
+
     /// <summary>A frame transaction has no <c>to</c> and creates nothing: prestateTracer has to record every
     /// frame target and the payer, whose storage and fee charge it otherwise misses or crashes on.</summary>
     [Test]
@@ -5111,6 +5379,19 @@ public partial class FrameTxProcessorTests
 
     private JsonDocument TraceThroughReceiptsTracer(Transaction tx, GethTraceOptions options, UInt256 baseFeePerGas, out TxReceipt receipt, ulong? slotNumber = null)
     {
+        GethLikeBlockNativeTracer? blockTracer = null;
+        receipt = ProcessThroughReceiptsTracer(tx, tracedState => blockTracer = new GethLikeBlockNativeTracer(txHash: null,
+            (b, t) => GethLikeNativeTracerFactory.CreateTracer(options, b, t, tracedState, Spec)), baseFeePerGas, slotNumber);
+
+        using GethLikeTxTrace trace = blockTracer!.BuildResult().Single();
+        return JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions));
+    }
+
+    /// <summary>Runs <paramref name="tx"/> through the receipts tracer over the cancellable block tracer
+    /// <paramref name="createBlockTracer"/> builds on the traced state, and returns the built receipt.</summary>
+    private TxReceipt ProcessThroughReceiptsTracer(Transaction tx, Func<IWorldState, IBlockTracer> createBlockTracer,
+        UInt256 baseFeePerGas = default, ulong? slotNumber = null)
+    {
         (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(baseFeePerGas)
@@ -5119,19 +5400,14 @@ public partial class FrameTxProcessorTests
             .WithSlotNumber(slotNumber)
             .WithGasLimit(30_000_000).TestObject;
 
-        GethLikeBlockNativeTracer blockTracer = new(txHash: null,
-            (b, t) => GethLikeNativeTracerFactory.CreateTracer(options, b, t, tracedState, Spec));
         BlockReceiptsTracer receiptsTracer = new();
-        receiptsTracer.SetOtherTracer(blockTracer.WithCancellation(CancellationToken.None));
+        receiptsTracer.SetOtherTracer(createBlockTracer(tracedState).WithCancellation(CancellationToken.None));
         receiptsTracer.StartNewBlockTrace(block);
         receiptsTracer.StartNewTxTrace(tx);
         Assert.That(tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), receiptsTracer).TransactionExecuted, Is.True);
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
-        receipt = receiptsTracer.TxReceipts[0];
-
-        using GethLikeTxTrace trace = blockTracer.BuildResult().Single();
-        return JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, EthereumJsonSerializer.JsonOptions));
+        return receiptsTracer.LastReceipt;
     }
 
     /// <summary>A <c>callTracer</c> that also keeps the per-frame receipts, so a test can hold the trace
