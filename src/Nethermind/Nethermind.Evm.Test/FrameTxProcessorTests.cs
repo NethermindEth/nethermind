@@ -4913,6 +4913,28 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <summary>EIP-8272 references are checked against <c>RECENT_ROOT</c> storage before the first frame, so a
+    /// prestate that omits those cells cannot replay the transaction.</summary>
+    [Test]
+    public void Execute_RecentRootReferencingFrameTxTracedWithPrestateTracer_RecordsTheReferencedCells()
+    {
+        const ulong committedSlot = 1_000;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
+        ValueHash256 root = TestItem.KeccakB.ValueHash256;
+        StorageCell cell = RecentRootStore.ReferenceCell(sourceId, committedSlot);
+        UInt256 entry = RecentRootStore.EntryHash(sourceId, committedSlot, root).ToUInt256();
+        _stateProvider.Set(cell, entry);
+        _stateProvider.Commit(Spec);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        tx.RecentRootReferences = [new RecentRootReference(sourceId, committedSlot, root)];
+
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode: false), baseFeePerGas: 0, out _, slotNumber: committedSlot + 1);
+
+        Assert.That(PrestateSlot(document.RootElement, Eip8272Constants.RecentRootAddress, cell.Index), Is.EqualTo(StorageWord(entry)));
+    }
+
     private static GethTraceOptions PrestateOptions(bool diffMode) => GethTraceOptions.Default with
     {
         Tracer = NativePrestateTracer.PrestateTracer,
@@ -5033,13 +5055,14 @@ public class FrameTxProcessorTests
     private JsonDocument TraceThroughReceiptsTracer(Transaction tx) =>
         TraceThroughReceiptsTracer(tx, GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer }, baseFeePerGas: 0, out _);
 
-    private JsonDocument TraceThroughReceiptsTracer(Transaction tx, GethTraceOptions options, UInt256 baseFeePerGas, out TxReceipt receipt)
+    private JsonDocument TraceThroughReceiptsTracer(Transaction tx, GethTraceOptions options, UInt256 baseFeePerGas, out TxReceipt receipt, ulong? slotNumber = null)
     {
         (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(baseFeePerGas)
             .WithBeneficiary(Beneficiary)
             .WithTransactions(tx)
+            .WithSlotNumber(slotNumber)
             .WithGasLimit(30_000_000).TestObject;
 
         GethLikeBlockNativeTracer blockTracer = new(txHash: null,
