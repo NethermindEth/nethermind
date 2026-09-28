@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -25,6 +26,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DEVNET_ROOT = os.path.dirname(HERE)
 REPO_ROOT = os.path.dirname(os.path.dirname(DEVNET_ROOT))
 TRAFFIC_SERVICE = "frame-tx-traffic"
+# Host ports checked from each port_publisher public_port_start before an enclave starts.
+PUBLISHED_PORTS_PER_RANGE = 16
 
 CAMPAIGN_CEILINGS = [100000, 235800, 250000, 300000, 400000, 500000]
 K_RETRIES = [1, 2, 4, 8]
@@ -133,6 +136,33 @@ def render_args_file(args, sid: str, destination: str) -> str:
     with open(destination, "w") as handle:
         handle.write(rendered)
     return destination
+
+
+def wait_for_published_ports(base_args: str, timeout: float = 120.0) -> None:
+    """Waits until the host ports the topology publishes are free.
+
+    A previous enclave releases its published ports a little after `kurtosis enclave rm`
+    returns, and a new enclave that tries to bind one of them fails to start."""
+    with open(base_args) as handle:
+        starts = [int(n) for n in re.findall(r"public_port_start:\s*(\d+)", handle.read())]
+    ports = [start + offset for start in starts for offset in range(PUBLISHED_PORTS_PER_RANGE)]
+    deadline = time.monotonic() + timeout
+    while True:
+        busy = [port for port in ports if not _port_free(port)]
+        if not busy or time.monotonic() > deadline:
+            if busy:
+                print("warning: host ports still in use: {0}".format(busy[:10]), file=sys.stderr)
+            return
+        time.sleep(2)
+
+
+def _port_free(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind(("0.0.0.0", port))
+            return True
+        except OSError:
+            return False
 
 
 def enclave_exists(name: str) -> bool:
@@ -478,13 +508,20 @@ def main(argv: list[str] | None = None) -> int:
     if os.path.isdir(out_dir):
         shutil.rmtree(out_dir)
 
+    wait_for_published_ports(args.base_args)
     started = time.time()
     launch = run(
         ["kurtosis", "run", ".", "--args-file", rendered, "--enclave", enclave],
         cwd=DEVNET_ROOT, check=False,
     )
     if launch.returncode != 0:
-        print("kurtosis run failed; leaving the enclave for inspection", file=sys.stderr)
+        # A failed enclave keeps its published ports and would break the next scenario.
+        if args.keep:
+            print("kurtosis run failed; --keep leaves the enclave for inspection", file=sys.stderr)
+        else:
+            print("kurtosis run failed; removing the enclave (pass --keep to inspect it)", file=sys.stderr)
+            run(["kurtosis", "enclave", "rm", "-f", enclave], check=False)
+        os.remove(rendered)
         return launch.returncode
 
     # Covers the generator's own wait for Hegota to activate (epoch 1) on top of the
