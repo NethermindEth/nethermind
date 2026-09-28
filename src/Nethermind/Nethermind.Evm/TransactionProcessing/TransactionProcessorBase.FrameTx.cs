@@ -133,10 +133,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
+        // Simulation accepts empty signature placeholders; supplied signatures and consensus execution remain fully validated.
+        bool allowEmptySignatures = !ShouldValidate(opts);
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         // EIP-7928: a tx that never takes the P256 branch never accesses the precompile, so no BAL entry.
         IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
-        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError))
+        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError, allowEmptySignatures))
         {
             WorldState.Restore(txSnapshot);
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);
@@ -166,7 +168,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // The structural check bounds the frame gas sum alone; the budget it feeds can still overflow.
         tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
-        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit))
+        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit, estimateSignatureBytes: allowEmptySignatures))
         {
             WorldState.Restore(txSnapshot);
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction gas limit overflows");
@@ -346,6 +348,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 // Body logs go with the state that produced them, and the bloom derives from these receipts.
                 FrameTxRollback.ScrubReceipts(frameReceipts, frameContext, prefixEnd.Index + 1, i);
+                frameReceiptTracer?.ReportFramesRolledBack(prefixEnd.Index + 1, i);
 
                 totalFrameGasUsed -= (ulong)(totalFrameStateGasUsed - prefixEnd.StateGas);
                 totalFrameStateGasUsed = prefixEnd.StateGas;
@@ -388,6 +391,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                     // Earlier frames' logs go with their state; status and gas_used stay.
                     FrameTxRollback.ScrubReceipts(frameReceipts, frameContext, batchStart.Index, i);
+                    frameReceiptTracer?.ReportFramesRolledBack(batchStart.Index, i);
 
                     // The unrolled frames' writes are gone with the snapshot, so their state charges
                     // are not owed either; the counter only grows, so the batch-start value undoes them.
@@ -567,7 +571,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
         else if (opts.HasFlag(ExecutionOptions.Commit))
         {
-            WorldState.Commit(spec, commitRoots: false);
+            WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
         }
 
         if (tracer.IsTracingFees)

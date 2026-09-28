@@ -268,6 +268,16 @@ internal readonly ref struct LiteRlpReader(ReadOnlySpan<byte> data)
     public void DecodeKeccak(scoped ref int position, out Hash256 keccak)
         => position = RlpHelpers.DecodeKeccak(_data, position, out keccak);
 
+    /// <inheritdoc cref="RlpHelpers.DecodeLogTopic0(ReadOnlySpan{byte}, int, out Hash256)" path="/summary"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecodeLogTopic0(scoped ref int position, out Hash256 topic)
+        => position = RlpHelpers.DecodeLogTopic0(_data, position, out topic);
+
+    /// <inheritdoc cref="RlpHelpers.DecodeZeroPrefixLogTopic0(ReadOnlySpan{byte}, int, out Hash256)" path="/summary"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecodeZeroPrefixLogTopic0(scoped ref int position, out Hash256 topic)
+        => position = RlpHelpers.DecodeZeroPrefixLogTopic0(_data, position, out topic);
+
     /// <inheritdoc cref="RlpHelpers.DecodeValueKeccakNonNull(ReadOnlySpan{byte}, int, out ValueHash256)" path="/summary"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DecodeValueKeccakNonNull(scoped ref int position, out ValueHash256 keccak)

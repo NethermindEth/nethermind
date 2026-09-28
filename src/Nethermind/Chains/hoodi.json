@@ -21,6 +21,7 @@
     "bpo1Time": 1762365720,
     "bpo2Time": 1762955544,
     "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
+    "beaconChainGenesisTimestamp": 1742213400,
     "osakaTime": 1761677592,
     "blobSchedule": {
       "prague": {

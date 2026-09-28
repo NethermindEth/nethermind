@@ -2,21 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.IO;
 using System.Numerics;
 using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Microsoft.ClearScript.V8;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Logging;
 #pragma warning disable CS0162 // Unreachable code detected
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
@@ -26,13 +18,9 @@ public class Engine : IDisposable
     private const bool IsDebugging = false;
     private V8ScriptEngine V8Engine { get; }
 
-    private const string BigIntegerJavaScript = "_bigInteger.js";
-
-    private const string CreateUint8ArrayCode = "(function (buffer) {return new Uint8Array(buffer);}).valueOf()";
-    private const string TracersPath = "Data/JSTracers/";
-    private const string Extension = "js";
-
     private readonly IReleaseSpec _spec;
+    private readonly TracerRuntime _runtime;
+    private readonly bool _ownsRuntime;
 
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
@@ -40,121 +28,36 @@ public class Engine : IDisposable
 
     [ThreadStatic] private static Engine? _currentEngine;
 
-    private const int V8MaxOldSpaceMb = 256;
-    private const double V8HeapExpansionMultiplier = 2;
-    private static readonly UIntPtr V8HeapSoftLimit = new(128 * 1024 * 1024);
-
-    private static readonly V8Runtime _runtime = CreateRuntime();
-    private static int _liveEngines;
-    private static readonly ConcurrentDictionary<string, V8Script> _builtInScripts = new();
-    private static readonly LruCache<string, V8Script> _runtimeScripts = new(10, "runtime scripts");
-    private static readonly FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> _shippedTracers = LoadShippedTracerNames();
-
     public static Engine? CurrentEngine
     {
         get => _currentEngine;
         set => _currentEngine = value;
     }
 
-    static Engine() =>
-        // compile default scripts in background thread
-        Task.Run(CompileStandardScripts);
-
     /// <summary>
-    /// Creates the runtime shared by every engine in the process. The monitored soft limit is the effective bound
-    /// on the script heap: it interrupts a script that outgrows it. The old-space size sits above it and the
-    /// expansion multiplier absorbs the allocation burst between two heap samples, so together they are the
-    /// backstop that keeps the sampler ahead of the runtime's own hard limit.
+    /// Creates an engine in a runtime of its own, released together with the engine.
     /// </summary>
-    private static V8Runtime CreateRuntime()
+    public Engine(IReleaseSpec spec) : this(spec, new TracerRuntime(), ownsRuntime: true)
     {
-        V8Runtime runtime = new(new V8RuntimeConstraints
-        {
-            MaxOldSpaceSize = V8MaxOldSpaceMb,
-            HeapExpansionMultiplier = V8HeapExpansionMultiplier
-        });
-        runtime.MaxHeapSize = V8HeapSoftLimit;
-        return runtime;
     }
 
     /// <summary>
-    /// A soft-limit violation blocks every script in the runtime until the limit is set again. The limit is
-    /// re-armed only when the live-engine count leaves or returns to zero, so releasing one engine cannot lift a
-    /// violation raised against a script that is still alive in another. Zero is always reached: while the
-    /// violation stands no engine can complete a script call, so every live engine fails and is released, and a
-    /// construction that fails releases its count as well. The count must stay balanced: an engine that is never
-    /// released disables recovery for the process, so engines belong to the tracer lifecycle only.
+    /// Creates an engine in its block tracer's runtime, which outlives the engine and is released by its owner.
     /// </summary>
-    private static void RearmHeapSoftLimit() => _runtime.MaxHeapSize = V8HeapSoftLimit;
-
-    private static void AcquireLiveEngine()
+    internal Engine(IReleaseSpec spec, TracerRuntime runtime) : this(spec, runtime, ownsRuntime: false)
     {
-        if (Interlocked.Increment(ref _liveEngines) != 1)
-        {
-            return;
-        }
-
-        try
-        {
-            RearmHeapSoftLimit();
-        }
-        catch
-        {
-            Interlocked.Decrement(ref _liveEngines);
-            throw;
-        }
     }
 
-    private static void ReleaseLiveEngine()
-    {
-        if (Interlocked.Decrement(ref _liveEngines) == 0)
-        {
-            RearmHeapSoftLimit();
-        }
-    }
-
-    private static string PackTracerCode(string tracerObjectCode) => "(" + tracerObjectCode + ")";
-
-    private static void CompileStandardScripts()
-    {
-        static IEnumerable<(string Name, string Code)> LoadJavaScriptCodeFromFiles()
-        {
-            foreach (string tracer in Directory.EnumerateFiles(TracersPath.GetApplicationResourcePath(), $"*.{Extension}", SearchOption.AllDirectories))
-            {
-                yield return (Path.GetFileName(tracer), PackTracerCode(File.ReadAllText(tracer)));
-            }
-        }
-
-        LoadBigInteger();
-        LoadBuiltIn(nameof(CreateUint8ArrayCode), CreateUint8ArrayCode);
-        foreach ((string Name, string Code) in LoadJavaScriptCodeFromFiles())
-        {
-            LoadBuiltIn(Name, Code);
-        }
-    }
-
-    private static FrozenSet<string>.AlternateLookup<ReadOnlySpan<char>> LoadShippedTracerNames()
-    {
-        List<string> names = [];
-        foreach (string tracer in Directory.EnumerateFiles(TracersPath.GetApplicationResourcePath(), $"*.{Extension}", SearchOption.AllDirectories))
-        {
-            names.Add(Path.GetFileNameWithoutExtension(tracer));
-        }
-
-        return names.ToFrozenSet(StringComparer.Ordinal).GetAlternateLookup<ReadOnlySpan<char>>();
-    }
-
-    private static V8Script LoadBuiltIn(string name, string code) => _builtInScripts.AddOrUpdate(name, c => _runtime.Compile(code), static (_, script) => script);
-
-    public Engine(IReleaseSpec spec)
+    private Engine(IReleaseSpec spec, TracerRuntime runtime, bool ownsRuntime)
     {
         _spec = spec;
+        _runtime = runtime;
+        _ownsRuntime = ownsRuntime;
 
-        AcquireLiveEngine();
         V8ScriptEngine? scriptEngine = null;
         try
         {
-            scriptEngine = _runtime.CreateScriptEngine(IsDebugging
+            scriptEngine = runtime.CreateScriptEngine(IsDebugging
                 ? V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging
                 : V8ScriptEngineFlags.None);
             V8Engine = scriptEngine;
@@ -163,15 +66,17 @@ public class Engine : IDisposable
         catch
         {
             // Creating the script engine and initializing it both run script, which fails while a heap-limit
-            // violation is pending. Release the script engine and the live count so nothing leaks and the
-            // violation cannot outlive the last engine.
+            // violation is pending in the runtime. Release what was created so nothing leaks.
             try
             {
                 scriptEngine?.Dispose();
             }
             finally
             {
-                ReleaseLiveEngine();
+                if (ownsRuntime)
+                {
+                    runtime.Dispose();
+                }
             }
 
             throw;
@@ -201,11 +106,8 @@ public class Engine : IDisposable
         V8Engine.AddHostObject(nameof(toContract), toContract);
         V8Engine.AddHostObject(nameof(toContract2), toContract2);
 
-        if (!IsDebugging)
-        {
-            _bigInteger = V8Engine.Evaluate(LoadBigInteger());
-            _createUint8Array = V8Engine.Evaluate(LoadBuiltIn(nameof(CreateUint8ArrayCode), CreateUint8ArrayCode));
-        }
+        _bigInteger = V8Engine.Evaluate(_runtime.BigInteger);
+        _createUint8Array = V8Engine.Evaluate(_runtime.CreateUint8Array);
     }
 
     /// <summary>
@@ -293,7 +195,10 @@ public class Engine : IDisposable
         }
         finally
         {
-            ReleaseLiveEngine();
+            if (_ownsRuntime)
+            {
+                _runtime.Dispose();
+            }
         }
     }
 
@@ -310,103 +215,5 @@ public class Engine : IDisposable
     /// <summary>
     /// Creates a JavaScript tracer object from JavaScript code or name
     /// </summary>
-    public dynamic CreateTracer(string tracer)
-    {
-        static V8Script LoadJavaScriptCode(string tracer)
-        {
-            tracer = tracer.Trim();
-            if (tracer.StartsWith('_'))
-            {
-                throw new ArgumentException($"Cannot access internal tracer '{tracer}'");
-            }
-            else if (tracer.StartsWith('{') && tracer.EndsWith('}'))
-            {
-                return CompileTracerCode(tracer);
-            }
-            else
-            {
-                tracer = ToTracerFileName(tracer);
-
-                return _builtInScripts.TryGetValue(tracer, out V8Script script)
-                    ? script
-                    // fallback, shouldn't happen if the tracers were initialized from file before
-                    : LoadBuiltIn(tracer, LoadTracerCodeFromFile(tracer));
-            }
-        }
-
-        static string LoadJavaScriptDebugCode(string tracer)
-        {
-            tracer = tracer.Trim();
-            if (tracer.StartsWith('{') && tracer.EndsWith('}'))
-            {
-                return PackTracerCode(tracer);
-            }
-            else
-            {
-                tracer = ToTracerFileName(tracer);
-
-                return LoadTracerCodeFromFile(tracer);
-            }
-        }
-
-        if (IsDebugging)
-        {
-            object tracerObj = V8Engine.Evaluate(LoadJavaScriptDebugCode(tracer));
-            _bigInteger = V8Engine.Evaluate(LoadBigInteger());
-            _createUint8Array = V8Engine.Evaluate(LoadBuiltIn(nameof(CreateUint8ArrayCode), CreateUint8ArrayCode));
-            return tracerObj;
-        }
-        else
-        {
-            return V8Engine.Evaluate(LoadJavaScriptCode(tracer));
-        }
-    }
-
-    /// <summary>
-    /// Refuses a tracer that no script engine could load: inline tracer code that does not compile, or a name that
-    /// is internal or not shipped under <c>Data/JSTracers</c>.
-    /// </summary>
-    /// <remarks>
-    /// Every traced transaction gets its own engine, so checking once per request keeps such a tracer from creating
-    /// an engine per transaction. Inline code is compiled through the shared runtime, which needs no engine, and the
-    /// compiled script is cached for the engines that follow. Code that compiles but lacks the functions a tracer
-    /// must expose, such as <c>{}</c>, passes and is refused by its first engine: finding the functions takes
-    /// evaluating the code in an engine, and a minimal working tracer costs a caller the same engine anyway.
-    /// </remarks>
-    /// <exception cref="ArgumentException">The tracer is not found or its code does not compile.</exception>
-    public static void ValidateTracer(string tracer)
-    {
-        ReadOnlySpan<char> trimmed = tracer.AsSpan().Trim();
-        if (trimmed.StartsWith('{') && trimmed.EndsWith('}'))
-        {
-            try
-            {
-                CompileTracerCode(tracer.Trim());
-            }
-            catch (ScriptEngineException e) when (!e.IsFatal)
-            {
-                throw new ArgumentException($"Tracer code could not be compiled: {e.Message}", e);
-            }
-        }
-        else if (trimmed.StartsWith('_')
-            || Path.GetFileName(trimmed).Length != trimmed.Length
-            || !_shippedTracers.Contains(Path.GetFileNameWithoutExtension(trimmed)))
-        {
-            throw new ArgumentException($"Tracer '{tracer}' not found");
-        }
-    }
-
-    private static V8Script CompileTracerCode(string tracerCode) =>
-        _runtimeScripts.SetOrGet(tracerCode, tracerCode, static (_, code) => _runtime.Compile(PackTracerCode(code)));
-
-    private static string ToTracerFileName(string tracer) => Path.ChangeExtension(tracer, Extension);
-
-    private static string LoadJavaScriptCodeFromFile(string tracerFileName) =>
-        File.ReadAllText(Path.Combine(TracersPath, tracerFileName).GetApplicationResourcePath());
-
-    private static string LoadTracerCodeFromFile(string tracerFileName) => PackTracerCode(LoadJavaScriptCodeFromFile(tracerFileName));
-
-    private static V8Script LoadBigInteger() => _builtInScripts.TryGetValue(nameof(BigIntegerJavaScript), out V8Script script)
-        ? script
-        : LoadBuiltIn(nameof(BigIntegerJavaScript), LoadJavaScriptCodeFromFile(BigIntegerJavaScript));
+    public dynamic CreateTracer(string tracer) => V8Engine.Evaluate(_runtime.GetTracerScript(tracer));
 }
