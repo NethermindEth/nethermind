@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -39,203 +40,31 @@ public partial class GasEstimator
         tx.Frames = frames;
         tx.SenderAddress ??= Address.Zero;
         tx.Nonce = stateProvider.GetNonce(tx.SenderAddress);
-        BlockHeader header = context.Header;
-        IReleaseSpec spec = context.Spec;
-        UInt256 blobBaseFee = new(context.BlobBaseFee.Bytes, isBigEndian: true);
-        ulong executionCap = Math.Min(gasCap, Math.Min(header.GasLimit, Eip7825Constants.DefaultTxGasLimitCap));
-        ulong stateCap = Math.Min(gasCap, header.GasLimit);
-        if (!FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out ulong reservedExecution, out ulong reservedState, estimateSignatureBytes: true)
-            || reservedExecution > executionCap || reservedState > stateCap)
-            return Result<TxFrame[]>.Fail(CannotEstimateGasExceeded);
 
-        ulong fixedGas = FrameTxValidation.SignatureVerificationWorkGas(tx);
-        int executionCount = 0;
-        int stateCount = 0;
-        for (int i = 0; i < frames.Length; i++)
-        {
-            fixedGas = fixedGas.SaturatingAdd(fillExecution[i] ? 0 : frames[i].ExecutionGasLimit).SaturatingAdd(fillState[i] ? 0 : frames[i].StateGasLimit);
-            if (fillExecution[i]) executionCount++;
-            if (fillState[i]) stateCount++;
-        }
-        if (fixedGas > gasCap) return Result<TxFrame[]>.Fail(CannotEstimateGasExceeded);
-        ulong fillBudget = gasCap - fixedGas;
-        ulong executionPool = executionCount == 0 ? 0 : Math.Min(executionCap - reservedExecution, fillBudget);
-        ulong statePool = stateCount == 0 ? 0 : Math.Min(stateCap - reservedState, fillBudget);
-        // When the gas cap cannot cover both rooms, neither dimension is squeezed below half of the budget.
-        bool capLimited = (executionCount > 0 && executionPool < executionCap - reservedExecution)
-            || (stateCount > 0 && statePool < stateCap - reservedState);
-        if (executionPool + statePool > fillBudget)
-        {
-            capLimited = true;
-            ulong half = fillBudget / 2;
-            if (executionPool <= half) statePool = fillBudget - executionPool;
-            else if (statePool <= half) executionPool = fillBudget - statePool;
-            else (executionPool, statePool) = (half, fillBudget - half);
-        }
-
-        ulong[] executionReserve = new ulong[frames.Length];
-        ulong[] stateReserve = new ulong[frames.Length];
-        for (int i = 0; i < frames.Length; i++)
-        {
-            executionReserve[i] = fillExecution[i] ? executionPool / (ulong)executionCount : frames[i].ExecutionGasLimit;
-            stateReserve[i] = fillState[i] ? statePool / (ulong)stateCount : frames[i].StateGasLimit;
-            frames[i] = WithGas(frames[i], executionReserve[i], stateReserve[i]);
-        }
+        Span<FrameReservation> reservations = frames.Length <= Eip8141Constants.MaxFrames
+            ? stackalloc FrameReservation[Eip8141Constants.MaxFrames]
+            : new FrameReservation[frames.Length];
+        FrameGasSearch search = new(transactionProcessor, tx, context, fillExecution, fillState, gasCap, errorMargin, token,
+            reservations[..frames.Length]);
+        if (!search.TryPartitionRooms()) return Result<TxFrame[]>.Fail(CannotEstimateGasExceeded);
+        search.ReserveEvenSplit();
 
         UInt256 gasPrice = tx.GasPrice;
         UInt256 feeCap = tx.DecodedMaxFeePerGas;
         tx.GasPrice = 0;
         tx.DecodedMaxFeePerGas = 0;
-        int probes = 0;
-        bool lastProbeReverted = false;
-        bool probesExhausted = false;
-        TxFrameReceipt[]? receipts = null;
-        (int? Frame, EvmExceptionType? Error) reservationFailure = default;
-
-        // Later frames keep a margin over what they used on the even split, so their reservation absorbs usage that
-        // shifts as earlier frames are minimised.
-        FrameEstimateTracer split = Probe(realFees: false, out _);
-        bool[] outgrewSplit = new bool[frames.Length];
-        for (int i = 0; i < frames.Length; i++)
+        search.MeasureReservations();
+        if (!search.TryMinimizeFrames(out string? error))
         {
-            outgrewSplit[i] = split.Receipts?[i].Status != TxFrameReceipt.StatusSuccess;
-            if (outgrewSplit[i]) continue;
-            if (fillExecution[i]) executionReserve[i] = Math.Min(executionReserve[i], split.Receipts![i].ExecutionGasUsed.SaturatingAdd(split.Receipts[i].ExecutionGasUsed));
-            if (fillState[i]) stateReserve[i] = Math.Min(stateReserve[i], split.Receipts![i].StateGasUsed.SaturatingAdd(split.Receipts[i].StateGasUsed));
+            executionReverted = search.LastProbeReverted;
+            return Result<TxFrame[]>.Fail(error);
         }
-
-        for (int i = 0; i < frames.Length; i++)
-        {
-            if (!fillExecution[i] && !fillState[i]) continue;
-            RaiseToUpperLimits(i);
-            reservationFailure = default;
-            if (probes < MaxFrameProbes - 1 && !TryProbe(i, atUpperLimits: true, out string? error))
-            {
-                executionReverted = lastProbeReverted;
-                return Result<TxFrame[]>.Fail(error!);
-            }
-            if (fillState[i]) Minimize(i, false, receipts?[i]);
-            if (fillExecution[i]) Minimize(i, true, receipts?[i]);
-        }
-
-        if (!FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out reservedExecution, out reservedState, estimateSignatureBytes: true)
-            || reservedExecution > executionCap || reservedState > stateCap
-            || !FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong totalGas, estimateSignatureBytes: true)
-            || totalGas > gasCap)
-            return Result<TxFrame[]>.Fail(CannotEstimateGasExceeded);
+        if (!search.FitsRooms()) return Result<TxFrame[]>.Fail(CannotEstimateGasExceeded);
 
         tx.IntrinsicGasMemo = null;
         tx.GasPrice = gasPrice;
         tx.DecodedMaxFeePerGas = feeCap;
-        Probe(realFees: true, out string? finalError);
-        executionReverted = finalError is not null && lastProbeReverted;
-        if (finalError is not null && probesExhausted)
-            finalError = $"frame gas search used all {MaxFrameProbes} probes before verifying every limit: {finalError}";
-        return finalError is null ? frames : Result<TxFrame[]>.Fail(finalError);
-
-        // Frames before index hold their final limits and later frames their reservations; index takes the rest.
-        void RaiseToUpperLimits(int index)
-        {
-            ulong execution = executionPool;
-            ulong state = statePool;
-            for (int i = 0; i < frames.Length; i++)
-            {
-                if (i == index) continue;
-                ulong otherExecution = i < index ? frames[i].ExecutionGasLimit : executionReserve[i];
-                ulong otherState = i < index ? frames[i].StateGasLimit : stateReserve[i];
-                if (i > index) frames[i] = WithGas(frames[i], otherExecution, otherState);
-                if (fillExecution[i]) execution = Deduct(execution, otherExecution);
-                if (fillState[i]) state = Deduct(state, otherState);
-            }
-            frames[index] = WithGas(frames[index], fillExecution[index] ? execution : frames[index].ExecutionGasLimit,
-                fillState[index] ? state : frames[index].StateGasLimit);
-        }
-
-        // Frames up to and including index must succeed. At its upper limits a later frame may fail, since it holds
-        // only a reservation until its own turn and may react to the gas it has; a smaller limit must not change that.
-        bool TryProbe(int index, bool atUpperLimits, out string? error)
-        {
-            FrameEstimateTracer output = Probe(realFees: false, out string? failure);
-            bool reservationBound = output.FailedFrame > index
-                && (atUpperLimits || (output.FailedFrame, output.FrameError) == reservationFailure);
-            if (failure is null || reservationBound)
-            {
-                if (atUpperLimits) reservationFailure = (output.FailedFrame, output.FrameError);
-                receipts = output.Receipts;
-                error = null;
-                return true;
-            }
-
-            error = capLimited && output.FailedFrame == index && output.FrameError == EvmExceptionType.OutOfGas
-                ? CannotEstimateGasExceeded
-                : failure;
-            return false;
-        }
-
-        FrameEstimateTracer Probe(bool realFees, out string? error)
-        {
-            token.ThrowIfCancellationRequested();
-            probes++;
-            Transaction probe = new();
-            tx.CopyTo(probe, copyHash: false);
-            probe.GasLimit = FrameTxValidation.TotalGasLimit(frames);
-            BlockHeader probeHeader = header.Clone();
-            probeHeader.GasUsed = 0;
-            if (!realFees) probeHeader.BaseFeePerGas = 0;
-            FrameEstimateTracer output = new();
-            transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(probeHeader, spec, blobBaseFee));
-            TransactionResult result = transactionProcessor.CallAndRestore(probe, output.WithCancellation(token));
-            error = result.GetErrorMessage(output.Error);
-            lastProbeReverted = result.TransactionExecuted && output.FrameError == EvmExceptionType.Revert;
-            if (error is null && output.FailedFrame is { } index)
-                error = $"frame {index} failed: {output.FrameError}";
-            if (error is null && output.Receipts is null) error = "frame transaction simulation failed";
-            return output;
-        }
-
-        // Seeded from the frame's measured use; without one, the first accepted probe supplies it.
-        void Minimize(int index, bool execution, TxFrameReceipt? measured)
-        {
-            // A receipt of the frame failing, which can be all there is once probes run out, bounds nothing it needs.
-            if (measured?.Status != TxFrameReceipt.StatusSuccess) measured = null;
-            TxFrame frame = frames[index];
-            ulong high = execution ? frame.ExecutionGasLimit : frame.StateGasLimit;
-            ulong low = measured is null ? 0 : Math.Min(Used(measured, execution), high);
-            ulong candidate = measured is null ? high / 2 : Optimistic(low, high, execution);
-            // Out of probes: take a limit unverified; the final probe checks the whole assignment.
-            if (probes >= MaxFrameProbes - 1) (high, probesExhausted) = (measured is null ? Unmeasured(index, execution, high) : candidate, true);
-            for (int attempt = 0; attempt < 8 && probes < MaxFrameProbes - 1; attempt++)
-            {
-                frames[index] = WithGas(frame, execution ? candidate : frame.ExecutionGasLimit, execution ? frame.StateGasLimit : candidate);
-                if (TryProbe(index, atUpperLimits: false, out _))
-                {
-                    high = candidate;
-                    if (measured is null && receipts is not null)
-                    {
-                        measured = receipts[index];
-                        low = Math.Max(low, Math.Min(Used(measured, execution), high));
-                        candidate = Optimistic(low, high, execution);
-                        if (candidate < high) continue;
-                    }
-                }
-                else low = candidate + 1;
-                if (low >= high || high - low <= high * (ulong)errorMargin / 10000) break;
-                candidate = low + (high - low) / 2;
-            }
-            frames[index] = WithGas(frame, execution ? high : frame.ExecutionGasLimit, execution ? frame.StateGasLimit : high);
-        }
-
-        // Without a measurement, a frame keeps its reservation plus an even part of the slack among the frames still
-        // to come that outgrew the even split, since only those may need more than their reservation.
-        ulong Unmeasured(int index, bool execution, ulong high)
-        {
-            ulong reserve = Math.Min(execution ? executionReserve[index] : stateReserve[index], high);
-            if (!outgrewSplit[index]) return reserve;
-            ulong outgrown = 0;
-            for (int i = index; i < frames.Length; i++)
-                if (outgrewSplit[i] && (execution ? fillExecution[i] : fillState[i])) outgrown++;
-            return reserve + (high - reserve) / outgrown;
-        }
+        return search.Verify(out executionReverted);
     }
 
     private static ulong Used(TxFrameReceipt receipt, bool execution) => execution ? receipt.ExecutionGasUsed : receipt.StateGasUsed;
@@ -246,7 +75,281 @@ public partial class GasEstimator
     private static ulong Deduct(ulong left, ulong amount) => left > amount ? left - amount : 0;
 
     private static TxFrame WithGas(TxFrame frame, ulong execution, ulong state) =>
-        new(frame.Mode, frame.Flags, frame.Target, execution, state, frame.Value, frame.Data);
+        frame.ExecutionGasLimit == execution && frame.StateGasLimit == state
+            ? frame
+            : new(frame.Mode, frame.Flags, frame.Target, execution, state, frame.Value, frame.Data);
+
+    private struct FrameReservation
+    {
+        public ulong Execution;
+        public ulong State;
+        public bool OutgrewSplit;
+    }
+
+    /// <summary>The state of one <see cref="EstimateFrameGas"/> call, whose phases run in declaration order.</summary>
+    /// <remarks>Probes share one header copy and one tracer, both reset before each run; each probe still gets a fresh
+    /// transaction copy, since execution memoizes its gas budget on the transaction.</remarks>
+    private ref struct FrameGasSearch
+    {
+        private readonly ITransactionProcessor _processor;
+        private readonly Transaction _tx;
+        private readonly TxFrame[] _frames;
+        private readonly bool[] _fillExecution;
+        private readonly bool[] _fillState;
+        private readonly Span<FrameReservation> _reservations;
+        private readonly IReleaseSpec _spec;
+        private readonly UInt256 _baseFee;
+        private readonly BlockHeader _probeHeader;
+        private readonly BlockExecutionContext _probeContext;
+        private readonly FrameEstimateTracer _tracer = new();
+        private readonly CancellationTxTracer _probeTracer;
+        private readonly CancellationToken _token;
+        private readonly ulong _gasCap;
+        private readonly ulong _executionCap;
+        private readonly ulong _stateCap;
+        private readonly int _errorMargin;
+        private readonly int _executionCount;
+        private readonly int _stateCount;
+        private ulong _executionPool;
+        private ulong _statePool;
+        private bool _capLimited;
+        private int _probes;
+        private bool _probesExhausted;
+        private TransactionResult _lastResult;
+        private TxFrameReceipt[]? _receipts;
+        private (int? Frame, EvmExceptionType? Error) _reservationFailure;
+
+        public FrameGasSearch(ITransactionProcessor processor, Transaction tx, in BlockExecutionContext context, bool[] fillExecution,
+            bool[] fillState, ulong gasCap, int errorMargin, CancellationToken token, Span<FrameReservation> reservations)
+        {
+            _processor = processor;
+            _tx = tx;
+            _frames = tx.Frames!;
+            _fillExecution = fillExecution;
+            _fillState = fillState;
+            _reservations = reservations;
+            _spec = context.Spec;
+            _baseFee = context.Header.BaseFeePerGas;
+            _probeHeader = context.Header.Clone();
+            _probeContext = new BlockExecutionContext(_probeHeader, _spec, new UInt256(context.BlobBaseFee.Bytes, isBigEndian: true));
+            _probeTracer = _tracer.WithCancellation(token);
+            _token = token;
+            _gasCap = gasCap;
+            _executionCap = Math.Min(gasCap, Math.Min(context.Header.GasLimit, Eip7825Constants.DefaultTxGasLimitCap));
+            _stateCap = Math.Min(gasCap, context.Header.GasLimit);
+            _errorMargin = errorMargin;
+            for (int i = 0; i < _frames.Length; i++)
+            {
+                if (fillExecution[i]) _executionCount++;
+                if (fillState[i]) _stateCount++;
+            }
+        }
+
+        public bool LastProbeReverted { get; private set; }
+
+        /// <summary>Sizes the pools the omitted limits share, or fails when the fixed gas leaves no room for them.</summary>
+        public bool TryPartitionRooms()
+        {
+            if (!TryReserveBlockRooms(out ulong reservedExecution, out ulong reservedState)) return false;
+            ulong fixedGas = FixedGas();
+            if (fixedGas > _gasCap) return false;
+
+            ulong fillBudget = _gasCap - fixedGas;
+            ulong executionRoom = _executionCap - reservedExecution;
+            ulong stateRoom = _stateCap - reservedState;
+            _executionPool = _executionCount == 0 ? 0 : Math.Min(executionRoom, fillBudget);
+            _statePool = _stateCount == 0 ? 0 : Math.Min(stateRoom, fillBudget);
+            // When the gas cap cannot cover both rooms, neither dimension is squeezed below half of the budget.
+            _capLimited = (_executionCount > 0 && _executionPool < executionRoom) || (_stateCount > 0 && _statePool < stateRoom);
+            if (_executionPool + _statePool > fillBudget)
+            {
+                _capLimited = true;
+                ulong half = fillBudget / 2;
+                if (_executionPool <= half) _statePool = fillBudget - _executionPool;
+                else if (_statePool <= half) _executionPool = fillBudget - _statePool;
+                else (_executionPool, _statePool) = (half, fillBudget - half);
+            }
+            return true;
+        }
+
+        public void ReserveEvenSplit()
+        {
+            for (int i = 0; i < _frames.Length; i++)
+            {
+                ulong execution = _fillExecution[i] ? _executionPool / (ulong)_executionCount : _frames[i].ExecutionGasLimit;
+                ulong state = _fillState[i] ? _statePool / (ulong)_stateCount : _frames[i].StateGasLimit;
+                _reservations[i] = new FrameReservation { Execution = execution, State = state };
+                _frames[i] = WithGas(_frames[i], execution, state);
+            }
+        }
+
+        /// <summary>Probes the even split; later frames keep a margin over what they used on it, so their reservation
+        /// absorbs usage that shifts as earlier frames are minimised.</summary>
+        public void MeasureReservations()
+        {
+            Probe(realFees: false);
+            TxFrameReceipt[]? split = _tracer.Receipts;
+            for (int i = 0; i < _frames.Length; i++)
+            {
+                ref FrameReservation reservation = ref _reservations[i];
+                reservation.OutgrewSplit = split?[i].Status != TxFrameReceipt.StatusSuccess;
+                if (reservation.OutgrewSplit) continue;
+                if (_fillExecution[i]) reservation.Execution = Math.Min(reservation.Execution, split![i].ExecutionGasUsed.SaturatingAdd(split[i].ExecutionGasUsed));
+                if (_fillState[i]) reservation.State = Math.Min(reservation.State, split![i].StateGasUsed.SaturatingAdd(split[i].StateGasUsed));
+            }
+        }
+
+        public bool TryMinimizeFrames([NotNullWhen(false)] out string? error)
+        {
+            for (int i = 0; i < _frames.Length; i++)
+            {
+                if (!_fillExecution[i] && !_fillState[i]) continue;
+                RaiseToUpperLimits(i);
+                _reservationFailure = default;
+                if (_probes < MaxFrameProbes - 1 && !TryProbe(i, atUpperLimits: true))
+                {
+                    error = ProbeFailure(i);
+                    return false;
+                }
+                if (_fillState[i]) Minimize(i, false, _receipts?[i]);
+                if (_fillExecution[i]) Minimize(i, true, _receipts?[i]);
+            }
+            error = null;
+            return true;
+        }
+
+        public bool FitsRooms() =>
+            TryReserveBlockRooms(out _, out _)
+            && FrameTxValidation.TryCalculateGasBudget(_tx, _spec, out _, out _, out ulong totalGas, estimateSignatureBytes: true)
+            && totalGas <= _gasCap;
+
+        /// <summary>Runs the filled transaction at its real fees, which decides the outcome.</summary>
+        public Result<TxFrame[]> Verify(out bool executionReverted)
+        {
+            bool succeeded = Probe(realFees: true);
+            executionReverted = !succeeded && LastProbeReverted;
+            if (succeeded) return _frames;
+            string error = ProbeError();
+            return Result<TxFrame[]>.Fail(_probesExhausted
+                ? $"frame gas search used all {MaxFrameProbes} probes before verifying every limit: {error}"
+                : error);
+        }
+
+        private bool TryReserveBlockRooms(out ulong execution, out ulong state) =>
+            FrameTxValidation.TryCalculateBlockGasReservations(_tx, _spec, out execution, out state, estimateSignatureBytes: true)
+            && execution <= _executionCap && state <= _stateCap;
+
+        private ulong FixedGas()
+        {
+            ulong fixedGas = FrameTxValidation.SignatureVerificationWorkGas(_tx);
+            for (int i = 0; i < _frames.Length; i++)
+                fixedGas = fixedGas.SaturatingAdd(_fillExecution[i] ? 0 : _frames[i].ExecutionGasLimit).SaturatingAdd(_fillState[i] ? 0 : _frames[i].StateGasLimit);
+            return fixedGas;
+        }
+
+        // Frames before index hold their final limits and later frames their reservations; index takes the rest.
+        private void RaiseToUpperLimits(int index)
+        {
+            ulong execution = _executionPool;
+            ulong state = _statePool;
+            for (int i = 0; i < _frames.Length; i++)
+            {
+                if (i == index) continue;
+                ulong otherExecution = i < index ? _frames[i].ExecutionGasLimit : _reservations[i].Execution;
+                ulong otherState = i < index ? _frames[i].StateGasLimit : _reservations[i].State;
+                if (i > index) _frames[i] = WithGas(_frames[i], otherExecution, otherState);
+                if (_fillExecution[i]) execution = Deduct(execution, otherExecution);
+                if (_fillState[i]) state = Deduct(state, otherState);
+            }
+            _frames[index] = WithGas(_frames[index], _fillExecution[index] ? execution : _frames[index].ExecutionGasLimit,
+                _fillState[index] ? state : _frames[index].StateGasLimit);
+        }
+
+        // Seeded from the frame's measured use; without one, the first accepted probe supplies it.
+        private void Minimize(int index, bool execution, TxFrameReceipt? measured)
+        {
+            // A receipt of the frame failing, which can be all there is once probes run out, bounds nothing it needs.
+            if (measured?.Status != TxFrameReceipt.StatusSuccess) measured = null;
+            TxFrame frame = _frames[index];
+            ulong high = execution ? frame.ExecutionGasLimit : frame.StateGasLimit;
+            ulong low = measured is null ? 0 : Math.Min(Used(measured, execution), high);
+            ulong candidate = measured is null ? high / 2 : Optimistic(low, high, execution);
+            // Out of probes: take a limit unverified; the final probe checks the whole assignment.
+            if (_probes >= MaxFrameProbes - 1) (high, _probesExhausted) = (measured is null ? Unmeasured(index, execution, high) : candidate, true);
+            for (int attempt = 0; attempt < 8 && _probes < MaxFrameProbes - 1; attempt++)
+            {
+                _frames[index] = WithGas(frame, execution ? candidate : frame.ExecutionGasLimit, execution ? frame.StateGasLimit : candidate);
+                if (TryProbe(index, atUpperLimits: false))
+                {
+                    high = candidate;
+                    if (measured is null && _receipts is not null)
+                    {
+                        measured = _receipts[index];
+                        low = Math.Max(low, Math.Min(Used(measured, execution), high));
+                        candidate = Optimistic(low, high, execution);
+                        if (candidate < high) continue;
+                    }
+                }
+                else low = candidate + 1;
+                if (low >= high || high - low <= high * (ulong)_errorMargin / 10000) break;
+                candidate = low + (high - low) / 2;
+            }
+            _frames[index] = WithGas(frame, execution ? high : frame.ExecutionGasLimit, execution ? frame.StateGasLimit : high);
+        }
+
+        // Without a measurement, a frame keeps its reservation plus an even part of the slack among the frames still
+        // to come that outgrew the even split, since only those may need more than their reservation.
+        private ulong Unmeasured(int index, bool execution, ulong high)
+        {
+            ulong reserve = Math.Min(execution ? _reservations[index].Execution : _reservations[index].State, high);
+            if (!_reservations[index].OutgrewSplit) return reserve;
+            ulong outgrown = 0;
+            for (int i = index; i < _frames.Length; i++)
+                if (_reservations[i].OutgrewSplit && (execution ? _fillExecution[i] : _fillState[i])) outgrown++;
+            return reserve + (high - reserve) / outgrown;
+        }
+
+        // Frames up to and including index must succeed. At its upper limits a later frame may fail, since it holds
+        // only a reservation until its own turn and may react to the gas it has; a smaller limit must not change that.
+        private bool TryProbe(int index, bool atUpperLimits)
+        {
+            bool succeeded = Probe(realFees: false);
+            (int? Frame, EvmExceptionType? Error) failure = (_tracer.FailedFrame, _tracer.FrameError);
+            bool reservationBound = failure.Frame > index && (atUpperLimits || failure == _reservationFailure);
+            if (!succeeded && !reservationBound) return false;
+            if (atUpperLimits) _reservationFailure = failure;
+            _receipts = _tracer.Receipts;
+            return true;
+        }
+
+        /// <summary>The error <see cref="TryMinimizeFrames"/> reports for a failed probe of frame <paramref name="index"/>.</summary>
+        private readonly string ProbeFailure(int index) =>
+            _capLimited && _tracer.FailedFrame == index && _tracer.FrameError == EvmExceptionType.OutOfGas
+                ? CannotEstimateGasExceeded
+                : ProbeError();
+
+        /// <returns>Whether the probe ran every frame successfully.</returns>
+        private bool Probe(bool realFees)
+        {
+            _token.ThrowIfCancellationRequested();
+            _probes++;
+            Transaction probe = new();
+            _tx.CopyTo(probe, copyHash: false);
+            probe.GasLimit = FrameTxValidation.TotalGasLimit(_frames);
+            _probeHeader.GasUsed = 0;
+            _probeHeader.BaseFeePerGas = realFees ? _baseFee : UInt256.Zero;
+            _tracer.Clear();
+            _processor.SetBlockExecutionContext(in _probeContext);
+            _lastResult = _processor.CallAndRestore(probe, _probeTracer);
+            LastProbeReverted = _lastResult.TransactionExecuted && _tracer.FrameError == EvmExceptionType.Revert;
+            return _lastResult.GetErrorMessage(_tracer.Error) is null && _tracer.FailedFrame is null && _tracer.Receipts is not null;
+        }
+
+        /// <summary>Describes why the last probe failed; formatted only when a failure is reported.</summary>
+        private readonly string ProbeError() =>
+            _lastResult.GetErrorMessage(_tracer.Error)
+            ?? (_tracer.FailedFrame is { } index ? $"frame {index} failed: {_tracer.FrameError}" : "frame transaction simulation failed");
+    }
 
     private sealed class FrameEstimateTracer : CallOutputTracer, IFrameTxReceiptTracer
     {
@@ -262,5 +365,13 @@ public partial class GasEstimator
             }
         }
         public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) => Receipts = frameReceipts;
+
+        public void Clear()
+        {
+            Reset();
+            Receipts = null;
+            FailedFrame = null;
+            FrameError = null;
+        }
     }
 }
