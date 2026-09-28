@@ -102,8 +102,9 @@ public static class ParityReplayEnvelopeWriter
         ParityTraceActionConverter.Instance.Write(writer, action, options);
 
         // A failed action keeps its result only when it produced output, as a reverted frame does; a failed root
-        // built without an action keeps an empty one, which is not written.
-        if (action.Error is null || action.Result?.Output is not null)
+        // built without an action keeps an empty one, which is not written. A selfdestruct has no result, as in
+        // Geth's flatCallTracer and the stored traces of trace_block and trace_transaction.
+        if ((action.Error is null && action.Type != "suicide") || action.Result?.Output is not null)
         {
             writer.WritePropertyName("result"u8);
             JsonSerializer.Serialize(writer, action.Result, options);
