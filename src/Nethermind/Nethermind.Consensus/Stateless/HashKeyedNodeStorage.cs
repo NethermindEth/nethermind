@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -39,37 +40,48 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     private readonly Dictionary<NodeKey, byte[]> _overflow = [];
     private readonly NodeKey[] _keys;
     private readonly byte[][] _values;
-    private readonly int[] _starts;
+    // Per bucket, one past its newest entry's index: 0 when empty, Overflowed once it outgrew MaxBucketLength.
+    private readonly int[] _heads;
+    // Per entry, one past the index of the next older entry in its bucket: 0 at the end of the chain.
+    private readonly int[] _next;
     private readonly int _bucketMask;
     private const int MaxBucketLength = 8;
+    private const int Overflowed = -1;
 
     /// <param name="state">The witness' state nodes, each keyed by the keccak of its own bytes.</param>
     public HashKeyedNodeStorage(ReadOnlySpan<byte[]> state)
     {
         int count = state.Length + 1;
         int bucketCount = (int)BitOperations.RoundUpToPowerOf2((uint)count);
-        _bucketMask = bucketCount - 1;
-        _starts = new int[bucketCount + 1];
-        NodeKey[] unsorted = new NodeKey[count];
+        // Locals rather than the fields, which the loop would reload after every keccak call.
+        int bucketMask = _bucketMask = bucketCount - 1;
+        int[] heads = _heads = new int[bucketCount];
+        int[] next = _next = new int[count];
+        NodeKey[] keys = _keys = new NodeKey[count];
+        byte[][] values = _values = new byte[count][];
+        state.CopyTo(values);
+        values[state.Length] = [128];
+        keys[state.Length] = EmptyRootKey;
+        int[] lengths = new int[bucketCount];
         for (int i = 0; i < count; i++)
         {
-            NodeKey key = i == state.Length ? EmptyRootKey : new NodeKey(ValueKeccak.Compute(state[i]));
-            unsorted[i] = key;
-            _starts[key.Bucket(_bucketMask) + 1]++;
-        }
-        for (int i = 1; i < _starts.Length; i++) _starts[i] += _starts[i - 1];
-        int[] cursors = (int[])_starts.Clone();
-        _keys = new NodeKey[count];
-        _values = new byte[count][];
-        for (int i = 0; i < count; i++)
-        {
-            NodeKey key = unsorted[i];
-            byte[] value = i == state.Length ? [128] : state[i];
-            int bucket = key.Bucket(_bucketMask);
-            int slot = cursors[bucket]++;
-            _keys[slot] = key;
-            _values[slot] = value;
-            if (_starts[bucket + 1] - _starts[bucket] > MaxBucketLength) _overflow[key] = value;
+            // Hashed straight into the key array: a returned hash would be copied twice on the way there.
+            if (i != state.Length) KeccakHash.ComputeHashBytesToSpan(state[i], MemoryMarshal.AsBytes(keys.AsSpan(i, 1)));
+            ref readonly NodeKey key = ref keys[i];
+            int bucket = key.Bucket(bucketMask);
+            int head = heads[bucket];
+            if (head != Overflowed && ++lengths[bucket] <= MaxBucketLength)
+            {
+                next[i] = head;
+                heads[bucket] = i + 1;
+                continue;
+            }
+
+            _overflow[key] = values[i];
+            if (head == Overflowed) continue;
+            for (int entry = head; entry != 0; entry = next[entry - 1])
+                _overflow[keys[entry - 1]] = values[entry - 1];
+            heads[bucket] = Overflowed;
         }
     }
 
@@ -94,12 +106,10 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     private byte[]? Find(NodeKey key)
     {
         if (_nodes.Count != 0 && _nodes.TryGetValue(key, out byte[]? value)) return value;
-        int bucket = key.Bucket(_bucketMask);
-        int start = _starts[bucket];
-        int end = _starts[bucket + 1];
-        if (end - start > MaxBucketLength) return _overflow.GetValueOrDefault(key);
-        for (int i = end - 1; i >= start; i--)
-            if (_keys[i].Equals(key)) return _values[i];
+        int entry = _heads[key.Bucket(_bucketMask)];
+        if (entry == Overflowed) return _overflow.GetValueOrDefault(key);
+        for (; entry != 0; entry = _next[entry - 1])
+            if (_keys[entry - 1].Equals(key)) return _values[entry - 1];
         return null;
     }
 

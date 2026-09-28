@@ -267,7 +267,14 @@ public class AddressTests
         for (int i = 0; i < 256; i++)
         {
             random.NextBytes(bytes);
-            Assert.That(new ValueAddress(bytes).GetHashCode(), Is.EqualTo(new Address(bytes).GetHashCode()));
+            Address address = new(bytes);
+            int expected = new ValueAddress(bytes).GetHashCode();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(address.GetHashCode(), Is.EqualTo(expected));
+                Assert.That(new AddressAsKey(address).GetHashCode(), Is.EqualTo(expected));
+                Assert.That(unchecked((int)new AddressAsKey(address).GetHashCode64()), Is.EqualTo(expected));
+            }
         }
     }
 
