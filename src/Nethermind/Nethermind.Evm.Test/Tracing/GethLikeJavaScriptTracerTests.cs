@@ -888,7 +888,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"type\":\"CALL\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gas\":\"0x186a0\",\"gasUsed\":\"0xdbd1\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"DELEGATECALL\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0xc350\",\"gasUsed\":\"0x14d07\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"CREATE\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\",\"value\":\"0x0\",\"gas\":\"0x4513\",\"gasUsed\":\"0x7f6e\",\"input\":\"0x7f000000000000000000000000000000000000000000000000000000000000000060005260036000f3\",\"output\":\"0x000000\"}]}]}"));
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"type\":\"CALL\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gas\":\"0x186a0\",\"gasUsed\":\"0xdbd1\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"DELEGATECALL\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0xc350\",\"gasUsed\":\"0x7f8f\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"CREATE\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\",\"value\":\"0x0\",\"gas\":\"0x4513\",\"gasUsed\":\"0x7f6e\",\"input\":\"0x7f000000000000000000000000000000000000000000000000000000000000000060005260036000f3\",\"output\":\"0x000000\"}]}]}"));
     }
 
     [Test]
@@ -1661,4 +1661,202 @@ public class GethLikeJavaScriptStaticCallTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace trace = tracer.BuildResult().First();
         return JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions);
     }
+}
+
+
+public class GethLikeJavaScriptCallTracerTests : VirtualMachineTestsBase
+{
+    protected override ISpecProvider SpecProvider => new CustomSpecProvider(
+        ((ForkActivation)0, Homestead.Instance), ((ForkActivation)1, Byzantium.Instance),
+        ((ForkActivation)2, Prague.Instance), ((ForkActivation)3, Amsterdam.Instance));
+
+    [TestCaseSource(nameof(CallCases))]
+    public void Call_cost_is_ready_before_transfer_and_child_entry(Instruction opcode, ulong fork, bool warm, bool newAccount,
+        int value, int memoryLength, bool maximumForwarding, ulong gasLimit, bool refundPrefix)
+    {
+        IReleaseSpec spec = SpecProvider.GetSpec((ForkActivation)fork);
+        Address target = TestItem.AddressC;
+        if (!newAccount)
+        {
+            TestState.CreateAccount(target, 10);
+            TestState.InsertCode(target, Bytes.FromHexString("00"), spec);
+        }
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), UInt256.One);
+        Prepare builder = Prepare.EvmCode;
+        if (refundPrefix) builder = builder.PushData(0).PushData(0).Op(Instruction.SSTORE);
+        if (warm) builder = builder.PushData(target).Op(Instruction.BALANCE).Op(Instruction.POP);
+        builder = builder.PushData(memoryLength).PushData(0).PushData(memoryLength).PushData(0);
+        if (opcode != Instruction.DELEGATECALL) builder = builder.PushData(value);
+        UInt256 requested = maximumForwarding ? UInt256.MaxValue : 10000;
+        byte[] code = builder.PushData(target).PushData(requested).Op(opcode).Op(Instruction.STOP).Done;
+        (Block block, Transaction transaction) = PrepareTx((fork, 0), gasLimit, code, blockGasLimit: 40000000);
+        ulong coldCost = spec.IsEip8038Enabled ? 3000UL : 2600UL;
+        ulong access = spec.UseHotAndColdStorage ? warm ? 100UL : coldCost : spec.GasCosts.CallCost;
+        ulong warmup = warm ? 5 + (spec.UseHotAndColdStorage ? coldCost : spec.GasCosts.BalanceCost) : 0;
+        ulong clearingCost = refundPrefix ? 6 + (spec.IsEip8038Enabled ? 12100UL : 5000UL) : 0;
+        ulong refund = refundPrefix ? spec.GasCosts.SClearRefund : 0;
+        ulong intrinsic = IntrinsicGasCalculator.Calculate(transaction, spec, block.Header.GasLimit).Standard;
+        ulong available = gasLimit - intrinsic;
+        ulong reservoir = spec.IsEip8037Enabled && available > 16777216 - intrinsic ? available - (16777216 - intrinsic) : 0;
+        int inputs = opcode == Instruction.DELEGATECALL ? 6 : 7;
+        ulong entryGas = available - reservoir - (ulong)(inputs * 3) - warmup - clearingCost;
+        bool createsAccount = opcode == Instruction.CALL && newAccount && (!spec.ClearEmptyAccountWhenTouched || value != 0);
+        ulong stateSpill = createsAccount && spec.IsEip8037Enabled ? (ulong)Math.Max(0, GasCostOf.NewAccountState - (long)reservoir) : 0;
+        ulong extra = access + (ulong)(memoryLength / 32 * 3) + (value != 0 ? spec.IsEip8038Enabled ? 11300UL : 9000UL : 0)
+            + (createsAccount && !spec.IsEip8037Enabled ? 25000UL : 0);
+        ulong forwarded = maximumForwarding ? entryGas - extra - stateSpill - (entryGas - extra - stateSpill) / 64 : 10000;
+        string result = RunTrace(block, transaction, CallTracer, out GethLikeTxTrace native);
+        using (native)
+        using (Assert.EnterMultipleScope())
+        {
+            string expectedStep = $"step:{extra + forwarded}:{entryGas}:{refund}:{inputs}:{requested}:0:{(newAccount ? 0 : 10)}:{(!newAccount).ToString().ToLowerInvariant()}";
+            Assert.That(result, Is.EqualTo(JsonSerializer.Serialize(new[] { expectedStep, $"enter:{forwarded + (value != 0 ? 2300UL : 0)}", "exit:0:" })));
+            Assert.That(TestState.GetBalance(target), Is.EqualTo((UInt256)(uint)((newAccount ? 0 : 10) + (opcode == Instruction.CALL ? value : 0))));
+            GethTxTraceEntry callEntry = native.Entries.First(entry => entry.Opcode == opcode.ToString());
+            Assert.That(callEntry.GasCost, Is.EqualTo(extra + forwarded + stateSpill));
+        }
+    }
+
+    [TestCase(Instruction.CALL)]
+    [TestCase(Instruction.CALLCODE)]
+    public void Insufficient_balance_call_has_enter_exit_without_fault(Instruction opcode)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 10);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString("00"), Prague.Instance);
+        byte[] code = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0).PushData(UInt256.MaxValue)
+            .PushData(TestItem.AddressC).PushData(10000).Op(opcode).Op(Instruction.STOP).Done;
+        (Block block, Transaction transaction) = PrepareTx((2UL, 0), 100000, code);
+        string result = RunTrace(block, transaction, CallTracer, out GethLikeTxTrace native);
+        using (native)
+        {
+            Assert.That(result, Is.EqualTo(JsonSerializer.Serialize(new[]
+            {
+                "step:21600:78979:0:7:10000:0:10:true", "enter:12300", "exit:0:insufficient balance for transfer"
+            })));
+        }
+    }
+
+    [TestCase(Instruction.CALL, 0UL, 8000UL, 1, false, 40UL, "out of gas: out of gas")]
+    [TestCase(Instruction.CALLCODE, 0UL, 8000UL, 1, false, 19040UL, "out of gas")]
+    [TestCase(Instruction.CALL, 0UL, 50000UL, 0, true, 40UL, "out of gas: gas uint64 overflow")]
+    [TestCase(Instruction.CALLCODE, 0UL, 50000UL, 0, true, 40UL, "out of gas: gas uint64 overflow")]
+    [TestCase(Instruction.DELEGATECALL, 0UL, 50000UL, 0, true, 40UL, "out of gas: gas uint64 overflow")]
+    [TestCase(Instruction.CALL, 2UL, 2599UL, 0, false, 100UL, "out of gas: out of gas")]
+    [TestCase(Instruction.CALLCODE, 2UL, 2599UL, 0, false, 100UL, "out of gas: out of gas")]
+    [TestCase(Instruction.DELEGATECALL, 2UL, 2599UL, 0, false, 100UL, "out of gas: out of gas")]
+    [TestCase(Instruction.CALL, 2UL, 8000UL, 1, false, 100UL, "out of gas: out of gas")]
+    [TestCase(Instruction.CALLCODE, 2UL, 8000UL, 1, false, 100UL, "out of gas: out of gas")]
+    [TestCase(Instruction.CALL, 3UL, 12000UL, 1, false, 100UL, "out of gas: out of gas")]
+    [TestCase(Instruction.CALLCODE, 3UL, 12000UL, 1, false, 100UL, "out of gas: out of gas")]
+    public void Call_gas_failure_keeps_fork_specific_attempted_cost(Instruction opcode, ulong fork, ulong entryGas,
+        int value, bool oversizedGas, ulong expectedCost, string error)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 10);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString("00"), SpecProvider.GetSpec((ForkActivation)fork));
+        Prepare builder = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0);
+        if (opcode != Instruction.DELEGATECALL) builder = builder.PushData(value);
+        byte[] code = builder.PushData(TestItem.AddressC).PushData(oversizedGas ? UInt256.MaxValue : 10000).Op(opcode).Done;
+        int inputs = opcode == Instruction.DELEGATECALL ? 6 : 7;
+        (Block block, Transaction transaction) = PrepareTx((fork, 0), 100000, code);
+        transaction.GasLimit = IntrinsicGasCalculator.Calculate(transaction, SpecProvider.GetSpec(block.Header), block.Header.GasLimit).Standard + (ulong)(inputs * 3) + entryGas;
+        string result = RunTrace(block, transaction, ErrorTracer, out GethLikeTxTrace native);
+        using (native)
+            Assert.That(result, Is.EqualTo(JsonSerializer.Serialize(new[] { $"step:{expectedCost}:{error}" })));
+    }
+
+    [Test]
+    public void Call_stack_underflow_precedes_gas_checks(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL)] Instruction opcode,
+        [Values(0UL, 2UL, 3UL)] ulong fork, [Values(false, true)] bool oneMissing)
+    {
+        int required = opcode == Instruction.DELEGATECALL ? 6 : 7;
+        int present = oneMissing ? required - 1 : 0;
+        Prepare builder = Prepare.EvmCode;
+        for (int i = 0; i < present; i++) builder = builder.PushData(0);
+        (Block block, Transaction transaction) = PrepareTx((fork, 0), 100000, builder.Op(opcode).Done);
+        transaction.GasLimit = IntrinsicGasCalculator.Calculate(transaction, SpecProvider.GetSpec(block.Header), block.Header.GasLimit).Standard + (ulong)(present * 3);
+        string result = RunTrace(block, transaction, ErrorTracer, out GethLikeTxTrace native);
+        using (native)
+            Assert.That(result, Is.EqualTo(JsonSerializer.Serialize(new[] { $"step:{(fork == 0 ? 40 : 100)}:stack underflow ({present} <=> {required})" },
+                new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping })));
+    }
+
+    [TestCase(false, 50000, false, "step:100:out of gas: write protection")]
+    [TestCase(false, 2620, false, "step:100:out of gas: write protection")]
+    [TestCase(false, 50000, true, "step:100:gas uint64 overflow")]
+    [TestCase(true, 50000, false, "step:21600:")]
+    public void Static_frame_call_value_failure_obeys_precondition_order(bool callCode, int childGas, bool invalidMemory, string expected)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 10);
+        TestState.CreateAccount(TestItem.AddressE, 10);
+        TestState.InsertCode(TestItem.AddressE, Bytes.FromHexString("00"), Prague.Instance);
+        byte[] child = Prepare.EvmCode.PushData(0).PushData(0).PushData(invalidMemory ? 1 : 0)
+            .PushData(invalidMemory ? UInt256.MaxValue : UInt256.Zero).PushData(1).PushData(TestItem.AddressE).PushData(10000)
+            .Op(callCode ? Instruction.CALLCODE : Instruction.CALL).Done;
+        TestState.InsertCode(TestItem.AddressC, child, Prague.Instance);
+        byte[] code = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0).PushData(TestItem.AddressC).PushData(childGas)
+            .Op(Instruction.STATICCALL).Done;
+        (Block block, Transaction transaction) = PrepareTx((2UL, 0), 100000, code);
+        string result = RunTrace(block, transaction, ErrorTracer, out GethLikeTxTrace native);
+        using (native)
+            Assert.That(result, Is.EqualTo(JsonSerializer.Serialize(new[] { expected })));
+    }
+
+    private const string ErrorTracer = """
+        {
+            events: [],
+            step: function(log) { if ([0xf1,0xf2,0xf4].indexOf(log.op.toNumber()) >= 0) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
+            fault: function(log) { this.events.push("fault:" + log.getError()); },
+            result: function() { return this.events; }
+        }
+        """;
+
+    private string RunTrace(Block block, Transaction transaction, string tracerCode, out GethLikeTxTrace nativeResult)
+    {
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, SpecProvider.GetSpec(block.Header),
+            GethTraceOptions.Default with { EnableMemory = true, Tracer = tracerCode });
+        using GethLikeTxMemoryTracer native = new(transaction, GethTraceOptions.Default);
+        tracer.StartNewBlockTrace(block);
+        ITxTracer javascript = ((IBlockTracer)tracer).StartNewTxTrace(transaction);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), new CompositeTxTracer(javascript, native));
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        nativeResult = native.BuildResult();
+        return JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions);
+    }
+
+    private static IEnumerable<TestCaseData> CallCases()
+    {
+        foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL })
+        for (ulong fork = 0; fork <= 3; fork++)
+        foreach (bool warm in new[] { false, true })
+        foreach (bool newAccount in new[] { false, true })
+        foreach (int value in opcode == Instruction.DELEGATECALL ? new[] { 0 } : new[] { 0, 1 })
+        foreach (int memory in new[] { 0, 32 })
+        foreach (bool maximum in fork == 0 ? new[] { false } : new[] { false, true })
+            yield return new TestCaseData(opcode, fork, warm, newAccount, value, memory, maximum, 250000UL, false);
+
+        foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL })
+        foreach (ulong fork in new[] { 0UL, 2UL, 3UL })
+            yield return new TestCaseData(opcode, fork, false, false, 0, 32, false, 250000UL, true);
+        yield return new TestCaseData(Instruction.CALL, 3UL, false, true, 1, 32, true, 20000000UL, false);
+        yield return new TestCaseData(Instruction.CALL, 3UL, false, true, 1, 32, false, 20000000UL, false);
+    }
+
+    private const string CallTracer = """
+        {
+            events: [],
+            step: function(log, db) {
+                if ([0xf1,0xf2,0xf4].indexOf(log.op.toNumber()) < 0) return;
+                var target = toAddress(log.stack.peek(1).toString(16).padStart(40, "0"));
+                this.events.push("step:" + log.getCost() + ":" + log.getGas() + ":" + log.getRefund() + ":" + log.stack.length() + ":" + log.stack.peek(0).toString() + ":" + log.memory.length() + ":" + db.getBalance(target).toString() + ":" + db.exists(target));
+            },
+            fault: function(log) { this.events.push("fault:" + log.getError()); },
+            enter: function(frame) { this.events.push("enter:" + frame.getGas()); },
+            exit: function(frame) { this.events.push("exit:" + frame.getGasUsed() + ":" + (frame.getError() || "")); },
+            result: function() { return this.events; }
+        }
+        """;
 }
