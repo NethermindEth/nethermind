@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
@@ -30,6 +31,12 @@ internal sealed class EnvelopeServingPeer(
 
     public string Id => id;
     public ulong HeadSlot => headSlot;
+
+    /// <summary>Every column, as a supernode would custody.</summary>
+    public PeerColumnCustody Custody { get; } = new(Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c), isAdvertised: true);
+
+    public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) =>
+        Task.FromResult<IReadOnlyList<DataColumnSidecar>>([]);
 
     public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token) =>
         Task.FromResult(blocksByRange?.Invoke(startSlot, count) ?? []);
