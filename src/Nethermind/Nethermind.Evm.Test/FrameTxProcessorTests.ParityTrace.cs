@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
@@ -19,6 +20,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -309,6 +311,65 @@ public partial class FrameTxProcessorTests
             .ToArray();
     }
 
+    /// <summary>One block tracer across two blocks, as <c>trace_filter</c> uses it, prices each frame root with its
+    /// own block's spec.</summary>
+    [Test]
+    public void ParityTrace_FrameTx_RootGasFollowsEachBlocksSpec([Values] bool streaming)
+    {
+        Transaction first = ParityScenarioTx("keyedNonces");
+        Transaction second = ParityScenarioTx("keyedNonces");
+        second.NonceKeys = [2, 8];
+        second.Hash = Keccak.Compute("keyedNonces-second");
+        // Without EIP-8250 the nonce-key calldata the budget otherwise counts is not priced.
+        IReleaseSpec secondSpec = new OverridableReleaseSpec(Spec) { IsEip8250Enabled = false };
+        CustomSpecProvider tracerSpecs = new(((ForkActivation)0, Spec), ((ForkActivation)2, secondSpec));
+
+        ulong[] rootGas = streaming ? StreamedRootGas(tracerSpecs, first, second) : BufferedRootGas(tracerSpecs, first, second);
+
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(second, secondSpec, out _, out _, out ulong secondBudget), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondBudget, Is.Not.EqualTo(FrameGasBudget(second)), "the two specs price the second transaction differently");
+            Assert.That(rootGas, Is.EqualTo(new[] { FrameGasBudget(first), secondBudget }));
+        }
+    }
+
+    private ulong[] BufferedRootGas(ISpecProvider specProvider, params Transaction[] txs)
+    {
+        ParityLikeBlockTracer blockTracer = new(ParityTraceTypes.Trace, specProvider);
+        ulong[] rootGas = new ulong[txs.Length];
+        for (int i = 0; i < txs.Length; i++)
+        {
+            RunThroughReceiptsTracer(txs[i], blockTracer, blockNumber: (ulong)i + 1);
+            rootGas[i] = blockTracer.BuildResult().Single().Action!.Gas;
+        }
+
+        return rootGas;
+    }
+
+    private ulong[] StreamedRootGas(ISpecProvider specProvider, params Transaction[] txs)
+    {
+        ArrayBufferWriter<byte> sink = new();
+        using (Utf8JsonWriter writer = new(sink))
+        {
+            writer.WriteStartArray();
+            using StreamingParityLikeBlockTracer blockTracer = new(ParityTraceTypes.Trace, ParityTraceStreamMode.Store, includeTxHash: false,
+                writer, pipeWriter: null, CancellationToken.None, specProvider: specProvider);
+            for (int i = 0; i < txs.Length; i++)
+            {
+                RunThroughReceiptsTracer(txs[i], blockTracer, blockNumber: (ulong)i + 1);
+            }
+
+            writer.WriteEndArray();
+        }
+
+        using JsonDocument document = JsonDocument.Parse(sink.WrittenMemory);
+        return document.RootElement.EnumerateArray()
+            .Where(static t => t.GetProperty("traceAddress").GetArrayLength() == 0)
+            .Select(static t => HexValue(t.GetProperty("action"), "gas"))
+            .ToArray();
+    }
+
     private (ParityLikeTxTrace Trace, TxReceipt Receipt) TraceParity(Transaction tx, ParityTraceTypes types)
     {
         ParityLikeBlockTracer blockTracer = new(types, _specProvider);
@@ -341,9 +402,9 @@ public partial class FrameTxProcessorTests
 
     /// <summary>Runs <paramref name="tx"/> through the chain the tracing RPCs build: the receipts tracer over the
     /// cancellable block tracer.</summary>
-    private TxReceipt RunThroughReceiptsTracer(Transaction tx, IBlockTracer blockTracer)
+    private TxReceipt RunThroughReceiptsTracer(Transaction tx, IBlockTracer blockTracer, ulong blockNumber = 1)
     {
-        Block block = Build.A.Block.WithNumber(1)
+        Block block = Build.A.Block.WithNumber(blockNumber)
             .WithBaseFeePerGas(0)
             .WithBeneficiary(Beneficiary)
             .WithTransactions(tx)
