@@ -65,7 +65,12 @@ namespace Nethermind.Serialization.Rlp
             Rlp.GuardLimit(topicCount, rlp.Data.Length - position, RlpLimit.L4);
 
             Hash256[] topics = new Hash256[topicCount];
-            for (int i = 0; i < topics.Length; i++)
+            if (topics.Length > 0)
+            {
+                rlp.DecodeLogTopic0(ref position, out topics[0]);
+            }
+
+            for (int i = 1; i < topics.Length; i++)
             {
                 rlp.DecodeKeccak(ref position, out topics[i]);
             }
