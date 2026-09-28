@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -44,10 +45,8 @@ namespace Nethermind.JsonRpc
         internal ReadOnlyMemory<byte> ParamsUtf8 { get; set; }
         internal JsonValueKind ParamsKind { get; set; }
 
-        internal bool IsBatchItem { get; set; }
-
-        /// <summary>When the batch holding this item started, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp; zero outside a batch.</summary>
-        internal long BatchStartTimestamp { get; set; }
+        /// <summary>How long the items of the batch holding this request have waited for an EVM execution slot so far; <c>null</c> outside a batch.</summary>
+        internal StrongBox<TimeSpan>? BatchQueueWait { get; set; }
 
         /// <summary>Signals that the caller has gone, e.g. the connection was closed.</summary>
         internal CancellationToken CancellationToken { get; set; }

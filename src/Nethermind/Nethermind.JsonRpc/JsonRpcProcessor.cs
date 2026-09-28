@@ -551,6 +551,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         }
 
         long startTime = Stopwatch.GetTimestamp();
+        StrongBox<TimeSpan> batchQueueWait = new();
         int requestIndex = 0;
         bool isStopped = false;
         // Deferred so an empty batch can be answered as a single Invalid Request rather than an empty array.
@@ -579,8 +580,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 }
 
                 batchRequestJsonLifetime.TrackUntilBatchEnd(request, ownedRequestDocument);
-                request.IsBatchItem = true;
-                request.BatchStartTimestamp = startTime;
+                request.BatchQueueWait = batchQueueWait;
 
                 JsonRpcResult.Entry response = isStopped
                     ? CreateBatchResponseLimitEntry(request)

@@ -190,8 +190,8 @@ public interface IJsonRpcConfig : IConfig
             The budget bounds only the wait for a slot, not the response time. `0` or a negative value disables queueing.
             Per-method JSON-RPC durations include this wait; the `RpcAdmissionQueuedGrants` and
             `RpcAdmissionQueueWaitMicroseconds` metrics measure it.
-            Items of one batch share one budget, counted from the start of the batch; once it is spent, a later item is
-            rejected at once if every slot is busy.
+            Items of one batch share one budget: each may wait only what the earlier items did not, and once they have waited
+            all of it, a later item is rejected at once if every slot is busy.
             A request keeps its slot until it completes (up to `Timeout`), so `EthModuleConcurrentInstances` concurrent long
             calls, such as large `eth_simulateV1` or `eth_estimateGas`, make every other EVM-executing request wait or be rejected.
             `eth_fillTransaction` always takes a slot, even when gas is supplied.

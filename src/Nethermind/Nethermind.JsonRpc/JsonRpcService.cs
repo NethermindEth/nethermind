@@ -120,22 +120,32 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private async ValueTask<JsonRpcResponse> ExecuteGatedAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
         // Admitted before binding, so a rejected request never pays for deserializing its parameters.
-        // Authenticated and IPC callers are the operator's own, so they go ahead of every other waiter. They take a slot
-        // like everyone else: the override and simulate env pools have as many environments as there are slots.
-        using EvmAdmissionGate.Lease lease = await EvmGate.AdmitAsync(
-            request.ParamsUtf8Length, MaxQueueWait(request, context), context.IsAuthenticated, request.CancellationToken);
+        using EvmAdmissionGate.Lease lease = await AdmitAsync(request, context);
         request.CancellationToken.ThrowIfCancellationRequested();
         return await ExecuteAsync(request, methodName, method, context);
     }
 
-    // Items of one batch run one after another, so they share one budget counted from the start of the batch.
-    private TimeSpan MaxQueueWait(JsonRpcRequest request, JsonRpcContext context) => context.RpcEndpoint switch
+    // Authenticated and IPC callers are the operator's own, so they go ahead of every other waiter, each with the whole
+    // budget. They take a slot like everyone else: the override and simulate env pools have as many environments as there
+    // are slots.
+    private ValueTask<EvmAdmissionGate.Lease> AdmitAsync(JsonRpcRequest request, JsonRpcContext context) =>
+        context.IsAuthenticated || request.BatchQueueWait is null
+            ? EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget, context.IsAuthenticated, request.CancellationToken)
+            : AdmitBatchItemAsync(request, request.BatchQueueWait);
+
+    // Items of one batch run one after another, so they share one budget: each may wait only what the earlier ones did not.
+    private async ValueTask<EvmAdmissionGate.Lease> AdmitBatchItemAsync(JsonRpcRequest request, StrongBox<TimeSpan> batchQueueWait)
     {
-        _ when context.IsAuthenticated => EvmGate.Budget,
-        RpcEndpoint.Http or RpcEndpoint.Ws when request.IsBatchItem => EvmGate.Budget - Stopwatch.GetElapsedTime(request.BatchStartTimestamp),
-        RpcEndpoint.Http or RpcEndpoint.Ws => EvmGate.Budget,
-        _ => TimeSpan.Zero,
-    };
+        long queuedAt = Stopwatch.GetTimestamp();
+        try
+        {
+            return await EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget - batchQueueWait.Value, false, request.CancellationToken);
+        }
+        finally
+        {
+            batchQueueWait.Value += Stopwatch.GetElapsedTime(queuedAt);
+        }
+    }
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
