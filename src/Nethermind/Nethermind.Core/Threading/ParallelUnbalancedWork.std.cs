@@ -483,7 +483,8 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         }
 
         // Tests publish descendant work after the readiness check, at the wait boundary.
-        internal Action? BeforeJoinWait;
+        [ThreadStatic]
+        internal static Action? BeforeJoinWait;
 
         private void JoinScoped()
         {

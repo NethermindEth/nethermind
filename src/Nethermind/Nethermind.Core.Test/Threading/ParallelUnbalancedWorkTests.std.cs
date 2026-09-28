@@ -179,7 +179,8 @@ public partial class ParallelUnbalancedWorkTests
             });
         }
         Task worker = Task.Run(() => work.TryHelp());
-        if (enqueueAfterWait) work.BeforeJoinWait = release.Set;
+        Action? previousHook = ParallelUnbalancedWork.BackgroundWork.BeforeJoinWait;
+        if (enqueueAfterWait) ParallelUnbalancedWork.BackgroundWork.BeforeJoinWait = release.Set;
         try
         {
             Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
@@ -199,6 +200,7 @@ public partial class ParallelUnbalancedWorkTests
         }
         finally
         {
+            ParallelUnbalancedWork.BackgroundWork.BeforeJoinWait = previousHook;
             release.Set();
             assisted.Set();
             worker.GetAwaiter().GetResult();
