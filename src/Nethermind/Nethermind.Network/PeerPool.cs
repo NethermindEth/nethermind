@@ -160,7 +160,7 @@ namespace Nethermind.Network
                 return existing;
             }
 
-            Node node = new(networkNode) { IsTrusted = _trustedNodesManager.IsTrusted(networkNode.Enode) };
+            Node node = new(networkNode) { IsTrusted = networkNode.IsEnode && _trustedNodesManager.IsTrusted(networkNode.Enode) };
             Peer created = new(node, _stats.GetOrAdd(node));
             Peer peer = Peers.GetOrAdd(node.Id, created);
             if (ReferenceEquals(peer, created))

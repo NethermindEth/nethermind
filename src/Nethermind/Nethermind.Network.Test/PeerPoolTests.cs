@@ -333,19 +333,27 @@ public class PeerPoolTests
     }
 
     [Test]
-    public void GetOrAdd_NetworkNode_refreshes_the_trusted_flag_of_an_enr_backed_pooled_peer()
+    public void GetOrAdd_NetworkNode_accepts_enr_without_enode([Values] bool alreadyPooled)
     {
         ITrustedNodesManager trustedNodesManager = new TrustedNodesManager("trusted-nodes.json", LimboLogs.Instance);
         TestNodeSource nodeSource = new();
         PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
 
         NetworkNode enrNode = new(TestEnrString);
-        Peer pooled = pool.GetOrAdd(new Node(enrNode.NodeId, "1.2.3.4", 1234));
+        Peer? pooled = alreadyPooled ? pool.GetOrAdd(new Node(enrNode.NodeId, "1.2.3.4", 1234)) : null;
 
         Peer resolved = pool.GetOrAdd(enrNode);
 
-        Assert.That(resolved, Is.SameAs(pooled),
-            "an ENR has no enode representation, so the trusted refresh must not dereference it - a throw here aborts the whole persistence tick and skips the pending commit");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resolved.Node.IsTrusted, Is.False);
+            Assert.That(pool.TryGet(enrNode.NodeId, out Peer stored), Is.True);
+            Assert.That(stored, Is.SameAs(resolved));
+            if (alreadyPooled)
+            {
+                Assert.That(resolved, Is.SameAs(pooled));
+            }
+        }
     }
 
     private const string TestEnrString =
