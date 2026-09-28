@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -151,7 +152,9 @@ public sealed class TrieNodeCache : ITrieNodeCache
             return detached.TryResolveNode(NullTrieNodeResolver.Instance, ref path) ? detached : null;
         }
 
-        Parallel.For(0, ShardCount, (i) =>
+        // Bounded by the processor count like the rest of block processing, so a single-processor benchmark adds
+        // the nodes on the committing thread rather than splitting them with the pool by timing.
+        Parallel.For(0, ShardCount, ParallelUnbalancedWork.DefaultOptions, (i) =>
         {
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
