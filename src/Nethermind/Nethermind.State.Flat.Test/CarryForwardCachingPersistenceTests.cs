@@ -33,11 +33,14 @@ public class CarryForwardCachingPersistenceTests
         Slot
     }
 
-    [TestCaseSource(nameof(SlotReadCases))]
-    public void TryGetSlot_SecondReadAfterScenario_ReadsInnerExpectedTimes(Action<CarryForwardCachingPersistence, FakePersistence> scenario, int expectedSlotReads)
+    [TestCaseSource(nameof(SlotReadCasesWithAndWithoutDispose))]
+    public async Task TryGetSlot_SecondReadAfterScenario_ReadsInnerExpectedTimes(Action<CarryForwardCachingPersistence, FakePersistence> scenario, int expectedSlotReads, bool disposedWithAReaderOpen)
     {
         FakePersistence inner = new();
         CarryForwardCachingPersistence cache = new(inner);
+        // The open reader keeps the slot table alive, so the cache must go on serving and invalidating it.
+        using IPersistence.IPersistenceReader? openReader = disposedWithAReaderOpen ? cache.CreateReader() : null;
+        if (disposedWithAReaderOpen) await cache.DisposeAsync();
 
         ReadSlot(cache, 1);
         scenario(cache, inner);
@@ -305,6 +308,19 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
+    public async Task Reader_Dispose_WhenTheInnerReaderThrows_StillReleasesTheSlotTable()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner);
+        IPersistence.IPersistenceReader reader = cache.CreateReader();
+        await cache.DisposeAsync();
+        inner.ThrowOnReaderDispose = true;
+
+        Assert.Throws<InvalidOperationException>(reader.Dispose);
+        Assert.That(cache.SlotTable.IsAllocated, Is.False);
+    }
+
+    [Test]
     public void CreateReader_SyncReader_BypassesTheCache()
     {
         FakePersistence inner = new();
@@ -539,6 +555,15 @@ public class CarryForwardCachingPersistenceTests
             using (cache.CreateWriteBatch(Basis0, Basis1)) { }
         }), 2)
         { TestName = "reader_behind_basis_bypasses" };
+    }
+
+    private static IEnumerable<TestCaseData> SlotReadCasesWithAndWithoutDispose()
+    {
+        foreach (TestCaseData data in SlotReadCases())
+        {
+            yield return new TestCaseData(data.Arguments[0], data.Arguments[1], false) { TestName = data.TestName };
+            yield return new TestCaseData(data.Arguments[0], data.Arguments[1], true) { TestName = $"{data.TestName}_after_dispose" };
+        }
     }
 
     private static IEnumerable<TestCaseData> CacheKinds()
@@ -891,6 +916,7 @@ public class CarryForwardCachingPersistenceTests
         public int SlotReads;
         public bool AccountExists = true;
         public bool SlotExists = true;
+        public bool ThrowOnReaderDispose;
 
         public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => new Reader(this);
         public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new FakeWriteBatch();
@@ -921,7 +947,11 @@ public class CarryForwardCachingPersistenceTests
             public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
             public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
             public bool IsPreimageMode => false;
-            public void Dispose() { }
+
+            public void Dispose()
+            {
+                if (parent.ThrowOnReaderDispose) throw new InvalidOperationException("The inner reader failed to dispose");
+            }
         }
     }
 }

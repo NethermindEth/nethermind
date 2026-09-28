@@ -25,7 +25,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private readonly ConcurrentDictionary<Address, Account?> _accounts = new();
     private readonly CarryForwardSlotTable _slots;
     private int _accountCount;
-    private bool _disposed;
+    private int _disposed;
 
     private readonly Lock _lock = new();
     private StateId _basis;
@@ -105,16 +105,9 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     public ValueTask DisposeAsync()
     {
-        bool releaseSlots;
-        using (_lock.EnterScope())
-        {
-            // A write batch holds no lease on the slot table, so a commit that lands after this must not touch it.
-            releaseSlots = !_disposed;
-            _disposed = true;
-        }
-
-        // Readers still holding a lease keep the slot table alive until they are disposed.
-        if (releaseSlots) _slots.Dispose();
+        // Readers still holding a lease keep the slot table alive until they are disposed. Commits and clears lease it
+        // while they write it, so those readers, and any created while one is open, still see them.
+        if (Interlocked.Exchange(ref _disposed, 1) == 0) _slots.Dispose();
 
         return _inner is IAsyncDisposable asyncDisposable
             ? asyncDisposable.DisposeAsync()
@@ -185,11 +178,18 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 Metrics.PublishCarryForwardAccountCount(_accountCount);
             }
 
-            if (writtenSlots is not null && !_disposed)
+            if (writtenSlots is not null && _slots.TryLease())
             {
-                foreach ((Address address, UInt256 slot) in writtenSlots)
+                try
                 {
-                    _slots.RemoveNoLock(CarryForwardSlotTable.Hash(address, slot), address, slot);
+                    foreach ((Address address, UInt256 slot) in writtenSlots)
+                    {
+                        _slots.RemoveNoLock(CarryForwardSlotTable.Hash(address, slot), address, slot);
+                    }
+                }
+                finally
+                {
+                    _slots.Dispose();
                 }
                 Metrics.PublishCarryForwardSlotCount(_slots.Count);
             }
@@ -200,7 +200,17 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     {
         _accounts.Clear();
         _accountCount = 0;
-        if (!_disposed) _slots.ClearNoLock();
+        if (_slots.TryLease())
+        {
+            try
+            {
+                _slots.ClearNoLock();
+            }
+            finally
+            {
+                _slots.Dispose();
+            }
+        }
         Metrics.IncrementCarryForwardSlotWipes();
         Metrics.PublishCarryForwardAccountCount(0);
         Metrics.PublishCarryForwardSlotCount(0);
@@ -258,11 +268,21 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => inner.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
         public bool IsPreimageMode => inner.IsPreimageMode;
 
+        /// <remarks>
+        /// Reading through the reader afterwards is a caller bug, and once the persistence is disposed too it reads freed
+        /// memory.
+        /// </remarks>
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            inner.Dispose();
-            parent._slots.Dispose();
+            try
+            {
+                inner.Dispose();
+            }
+            finally
+            {
+                parent._slots.Dispose();
+            }
         }
     }
 
