@@ -357,8 +357,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 _poststate.Add(addr, diffAccount);
 
             // If no account fields were modified or the account was created then remove it from the prestate trace;
-            // a contract created onto an address that already existed, even with only a balance or storage, did not
-            // create the account (EIP-684 collides only on code or nonce).
+            // an account that existed before, even holding only a balance or storage (EIP-684), was not created.
             if (!modified || (_createdAccounts.Contains(addr) && _absentAccounts.Contains(addr)))
                 _prestate.Remove(addr);
         }
