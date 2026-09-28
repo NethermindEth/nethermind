@@ -1063,7 +1063,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peer.Id} failed health check ({peer.ConsecutiveFailures}/{MaxConsecutiveFailures}): {e.Message}");
             if (peer.ConsecutiveFailures >= MaxConsecutiveFailures)
             {
-                await DropAsync(peer, GoodbyeReason.Fault, $"repeated failures, last {e.GetType().Name}: {e.Message}", token);
+                await DropAsync(peer, GoodbyeReason.Fault, $"repeated failures, last: {DescribeFailure(e)}", token);
             }
         }
     }
@@ -1100,6 +1100,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         peer.Status = status;
         return true;
     }
+
+    /// <summary>The cause of a failed peer request as an operator reads it: a timeout is named as one, not by its exception type.</summary>
+    internal static string DescribeFailure(Exception e) =>
+        e is OperationCanceledException or TimeoutException ? "request timed out" : e.Message;
 
     private async Task DropAsync(ManagedPeer peer, ulong reason, string detail, CancellationToken token)
     {
