@@ -62,15 +62,15 @@ public class BlockSignatureBatchTests
 
     private static IEnumerable<TestCaseData> PointsOutsideTheBatchConditions()
     {
-        yield return new TestCaseData(G1Infinity, SignatureSets.G2PointAtInfinity, true).SetName("infinity_public_key_with_infinity_signature");
+        yield return new TestCaseData(G1Infinity, SignatureSets.G2PointAtInfinity, false).SetName("infinity_public_key_with_infinity_signature");
         yield return new TestCaseData(G1Infinity, SignedBy(3, Message).Bytes.ToArray(), false).SetName("infinity_public_key_with_a_real_signature");
         yield return new TestCaseData(NotInG1Pubkey, SignedBy(3, Message).Bytes.ToArray(), false).SetName("public_key_outside_g1");
         yield return new TestCaseData(new Bls.P1(DeriveKey(3)).Compress(), NotInG2Signature, false).SetName("signature_outside_g2");
     }
 
     /// <summary>
-    /// The serial path does not subgroup-check and accepts an infinity key; the batch is sound only for
-    /// subgroup points, so such a set must be verified serially at once, not deferred and not refused.
+    /// The batch is sound only for subgroup points, so such a set must get the serial verdict at once, not be deferred;
+    /// an infinity key is refused with any signature, as <c>KeyValidate</c> refuses it.
     /// </summary>
     [TestCaseSource(nameof(PointsOutsideTheBatchConditions))]
     public void A_set_outside_the_batch_conditions_gets_the_serial_verdict_at_once(byte[] compressedPublicKey, byte[] signature, bool serialVerdict)

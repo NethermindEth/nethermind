@@ -90,7 +90,7 @@ public static class GloasBlockProcessing
         ProcessRandao(state, body, pubkeys, verifySignatures, batch);
         ProcessEth1Data(state, body);
         ProcessOperations(state, body, parentSlot, spec, cache, pubkeys, verifySignatures, batch);
-        ProcessSyncAggregate(state, body.SyncAggregate!, cache, verifySignatures, batch);
+        ProcessSyncAggregate(state, body.SyncAggregate!, cache, pubkeys, verifySignatures, batch);
     }
 
     /// <summary>Verifies a Gloas block's outer proposer signature - not part of <c>process_block</c> itself, called once by the top-level state transition.</summary>
@@ -564,10 +564,12 @@ public static class GloasBlockProcessing
     /// <see cref="BeaconStateGloas"/> because this step runs unconditionally in every
     /// <c>process_block</c>, Gloas included.
     /// </summary>
-    public static void ProcessSyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, EpochCache cache, bool verifySignature = true, BlockSignatureBatch? batch = null)
+    public static void ProcessSyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
+        BlockProcessing.EnsureSyncCommitteeWidth(syncAggregate);
+
         const string invalidSignature = "Invalid sync aggregate signature";
-        if (verifySignature && !VerifySyncAggregate(state, syncAggregate, batch?.Defer(invalidSignature)))
+        if (verifySignature && !VerifySyncAggregate(state, syncAggregate, cache.FindSyncCommitteeIndices(state.CurrentSyncCommittee!, state.Validators!), pubkeys, batch?.Defer(invalidSignature)))
             throw new BeaconStateException(invalidSignature);
 
         ulong totalActiveIncrements = state.GetTotalActiveBalance(cache) / Presets.EffectiveBalanceIncrement;
@@ -595,29 +597,19 @@ public static class GloasBlockProcessing
         }
     }
 
-    private static bool VerifySyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, BlockSignatureBatch.Deferral? deferral)
+    private static bool VerifySyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, int[] committeeIndices, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral)
     {
-        System.Collections.BitArray bits = syncAggregate.SyncCommitteeBits!;
-        BlsPublicKey[] committee = state.CurrentSyncCommittee!.Pubkeys!;
-
-        BlsSigner.AggregatedPublicKey participants = new(stackalloc long[Bls.P1.Sz]);
-        int participantCount = 0;
-        for (int i = 0; i < bits.Length; i++)
-        {
-            if (!bits[i])
-                continue;
-            if (!participants.TryAggregate(committee[i].Bytes, out _))
-                return false;
-            participantCount++;
-        }
-
+        Bls.P1 participants = new(stackalloc long[Bls.P1.Sz]);
+        int participantCount = SignatureSets.AggregateSyncParticipants(syncAggregate.SyncCommitteeBits!, state.CurrentSyncCommittee!.Pubkeys!, committeeIndices, pubkeys, participants);
+        if (participantCount < 0)
+            return false;
         if (participantCount == 0)
             return syncAggregate.SyncCommitteeSignature.Bytes.SequenceEqual(SignatureSets.G2PointAtInfinity);
 
         ulong previousSlot = Math.Max(state.Slot, 1) - 1;
         Hash256 domain = state.GetDomain(DomainType.SyncCommittee, BeaconStateAccessors.ComputeEpochAtSlot(previousSlot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(state.GetBlockRootAtSlot(previousSlot), domain);
-        return BlockSignatureBatch.Verify(participants.PublicKey, syncAggregate.SyncCommitteeSignature, signingRoot, deferral);
+        return BlockSignatureBatch.Verify(participants.ToAffine(), syncAggregate.SyncCommitteeSignature, signingRoot, deferral);
     }
 
     // ---- Execution payload bid (EIP-7732) ----
@@ -699,7 +691,7 @@ public static class GloasBlockProcessing
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(signedBid.Message), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
-        return pubkey.TryDecode(builder.Pubkey.Bytes, out _) && BlockSignatureBatch.Verify(pubkey, signedBid.Signature, signingRoot, deferral);
+        return BlsSignatureSet.TryKeyValidate(builder.Pubkey.Bytes, pubkey) && BlockSignatureBatch.Verify(pubkey, signedBid.Signature, signingRoot, deferral);
     }
 
     // ---- Execution payload envelope (EIP-7732) ----
@@ -798,7 +790,7 @@ public static class GloasBlockProcessing
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
         Builder builder = state.Builders![(int)envelope.BuilderIndex];
-        return pubkey.TryDecode(builder.Pubkey.Bytes, out _) && BlsSigner.Verify(pubkey, signedEnvelope.Signature.Bytes, signingRoot.Bytes);
+        return BlsSignatureSet.TryKeyValidate(builder.Pubkey.Bytes, pubkey) && BlsSigner.Verify(pubkey, signedEnvelope.Signature.Bytes, signingRoot.Bytes);
     }
 
     /// <summary>
@@ -1146,7 +1138,7 @@ public static class GloasBlockProcessing
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
-        return pubkey.TryDecode(request.Pubkey.Bytes, out _) && BlsSigner.Verify(pubkey, request.Signature.Bytes, signingRoot.Bytes);
+        return BlsSignatureSet.TryKeyValidate(request.Pubkey.Bytes, pubkey) && BlsSigner.Verify(pubkey, request.Signature.Bytes, signingRoot.Bytes);
     }
 
     /// <summary>Spec <c>process_builder_exit_request</c> (EIP-8282, new in Gloas).</summary>
