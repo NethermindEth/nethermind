@@ -357,6 +357,38 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Invalid_opcode_action_detail_does_not_change_struct_step(
+        [Values(Instruction.INVALID, (Instruction)0x0c)] Instruction opcode, [Values] bool streaming)
+    {
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, [(byte)opcode]);
+        using NativeCallTracer callTracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        ArrayBufferWriter<byte> buffer = new();
+        using Utf8JsonWriter writer = new(buffer);
+        using GethLikeTxTracer opcodeTracer = streaming
+            ? new GethLikeTxDirectStreamingTracer(tx, GethTraceOptions.Default, writer, null, CancellationToken.None)
+            : new GethLikeTxMemoryTracer(tx, GethTraceOptions.Default);
+        if (streaming) writer.WriteStartArray();
+        _processor.CallAndRestore(tx, block.Header,
+            new CompositeTxTracer(callTracer.WithCancellation(CancellationToken.None), opcodeTracer).WithCancellation(CancellationToken.None));
+        using GethLikeTxTrace opcodeResult = opcodeTracer.BuildResult();
+        using GethLikeTxTrace callResult = callTracer.BuildResult();
+        NativeCallTracerCallFrame frame = (NativeCallTracerCallFrame)callResult.CustomTracerResult!.Value;
+        Assert.That(frame.Error, Is.EqualTo(opcode == Instruction.INVALID
+            ? "invalid opcode: INVALID" : "invalid opcode: opcode 0xc not defined"));
+        if (streaming)
+        {
+            writer.WriteEndArray();
+            writer.Flush();
+            using JsonDocument output = JsonDocument.Parse(buffer.WrittenMemory);
+            Assert.That(output.RootElement[0].TryGetProperty("error", out _), Is.False);
+        }
+        else
+        {
+            Assert.That(opcodeResult.Entries[0].Error, Is.Null);
+        }
+    }
+
     private static System.Collections.Generic.IEnumerable<TestCaseData> StorageOpcodeCases()
     {
         foreach (TestCaseData scenario in StorageOpcodeScenarios())

@@ -1641,6 +1641,18 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceInvalidOpcode(Instruction opcode)
+    {
+        if (IsTracingActions)
+        {
+            // Opcode tracers receive the execution fault separately; their pre-execution step has no error.
+            _txTracer.ForEach<ITxTracer, Instruction>(
+                static tracer => tracer.IsTracingActions && !tracer.IsTracingInstructions, opcode,
+                static (tracer, instruction) => tracer.ReportActionErrorDetails($"invalid opcode: {InstructionNames.GetName(instruction)}"));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
     internal void EndInstructionTrace(ulong gasAvailable) => _txTracer.ReportOperationRemainingGas(gasAvailable);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
