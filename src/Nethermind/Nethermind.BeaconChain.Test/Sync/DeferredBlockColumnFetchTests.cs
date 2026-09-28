@@ -62,6 +62,29 @@ public class DeferredBlockColumnFetchTests
         }
     }
 
+    /// <summary>fulu/p2p-interface.md DataColumnSidecarsByRoot names the block by root, so a custodian whose last status head is behind a gossip block at the head is still asked.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_block_past_every_peers_recorded_head_gets_its_columns_by_root_from_a_custodian(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        ulong blockSlot = fixture.Chain.Block.Message!.Slot;
+        PeerColumnCustody custody = new(fixture.Sampled, isAdvertised: true);
+        StubPeer behind = new("behind", blockSlot - 1, static (_, _) => [], custody: custody,
+            rootHandler: identifiers => [.. identifiers.Single().Columns!.Select(c => fixture.Chain.Columns[(int)c])]);
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
+        fixture.Peers.Add(behind);
+
+        BlockImportResult result = await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockSlot, Is.GreaterThan(behind.HeadSlot));
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(behind.RootColumnRequests, Is.EqualTo(1));
+        }
+    }
+
     [Test]
     [CancelAfter(30_000)]
     public async Task A_peer_whose_custody_grows_to_a_missing_column_is_asked_in_the_same_slot(CancellationToken token)
