@@ -1447,6 +1447,41 @@ public class JsonRpcServiceTests
         Assert.That(calls, Is.EqualTo(new (ulong?, int, int)[] { (2, 2, 1), (1, 1, 0) }));
     }
 
+    [TestCase(RpcEndpoint.Http, true, TestName = "Authenticated HTTP")]
+    [TestCase(RpcEndpoint.IPC, false, TestName = "IPC")]
+    public async Task Trusted_batch_items_share_their_batch_budget_too(RpcEndpoint endpoint, bool authenticatedUrl)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
+        // CreateGatedService gives a 60 s budget.
+        JsonRpcService service = CreateGatedService(ethRpcModule);
+        using JsonRpcContext trusted = CreateTrustedContext(endpoint, authenticatedUrl);
+
+        Task<JsonRpcResponse> queued;
+        using (await HoldSlot(service))
+        using (await HoldSlot(service, priority: true))
+        {
+            using (JsonRpcResponse rejected = await service.SendRequestAsync(BatchItem(TimeSpan.FromSeconds(60)), trusted))
+            {
+                AssertJsonRpcError(rejected, ErrorCodes.LimitExceeded);
+            }
+
+            Assert.That(service.EvmGate.NotQueueableRejections, Is.EqualTo(1), "an item whose batch waited its whole budget is rejected at once");
+            queued = service.SendRequestAsync(BatchItem(TimeSpan.FromSeconds(30)), trusted).AsTask();
+            Assert.That(service.EvmGate.Queued, Is.EqualTo(1), "one whose batch has budget left queues");
+        }
+
+        using JsonRpcResponse completed = await queued.WaitAsync(TestTimeout);
+        RpcTest.AssertSuccess<HexBytes>(completed);
+
+        static JsonRpcRequest BatchItem(TimeSpan batchWaited)
+        {
+            JsonRpcRequest request = EthCall();
+            request.BatchQueueWait = new(batchWaited);
+            return request;
+        }
+    }
+
     [TestCase(true, TestName = "Raw params")]
     [TestCase(false, TestName = "Parsed params")]
     public async Task Smaller_evm_request_overtakes_a_larger_one_by_params_size(bool rawParams)

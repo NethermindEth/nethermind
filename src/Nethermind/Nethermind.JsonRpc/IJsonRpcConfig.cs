@@ -185,7 +185,7 @@ public interface IJsonRpcConfig : IConfig
             `eth_createAccessList`, `eth_simulateV1`, `eth_fillTransaction`) waits for one of the
             `EthModuleConcurrentInstances` execution slots before it is answered with `LimitExceeded` (HTTP 503).
             Authenticated (Engine API / JWT) and IPC requests may take one slot more, so other requests holding every slot do
-            not hold them up, and are served ahead of every other waiter, each with the whole budget. While they keep more than
+            not hold them up, and are served ahead of every other waiter. While they keep more than
             `EthModuleConcurrentInstances` of these calls in flight, other requests are not served and are rejected after this
             budget.
             The others are served in arrival order, except that each full 128 KiB of `params` delays a request's turn by 1/14 of
@@ -194,8 +194,8 @@ public interface IJsonRpcConfig : IConfig
             The budget bounds only the wait for a slot, not the response time. `0` or a negative value disables queueing.
             Per-method JSON-RPC durations include this wait; the `RpcAdmissionQueuedGrants` and
             `RpcAdmissionQueueWaitMicroseconds` metrics measure it for the requests that got a slot.
-            Items of one batch share one budget: each may wait only what the earlier items did not, and once they have waited
-            all of it, a later item is rejected at once if every slot is busy.
+            Items of one batch, authenticated or not, share one budget: each may wait only what the earlier items did not, and
+            once they have waited all of it, a later item is rejected at once if every slot is busy.
             On a WebSocket or IPC connection served by one worker (`WebSocketsProcessingConcurrency` or
             `IpcProcessingConcurrency` of 1, the default), a waiting request also holds up that connection's later requests;
             raise the concurrency to avoid it.

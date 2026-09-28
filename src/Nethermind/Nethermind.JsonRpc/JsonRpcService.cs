@@ -125,21 +125,23 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return await ExecuteAsync(request, methodName, method, context);
     }
 
-    // Authenticated and IPC callers are the operator's own, so they go ahead of every other waiter, each with the whole
-    // budget, and may take one slot above the others, so public calls holding every slot do not hold them up. The override
-    // and simulate env pools hold that slot too.
+    // Authenticated and IPC callers are the operator's own, so they go ahead of every other waiter and may take one slot
+    // above the others, so public calls holding every slot do not hold them up. The override and simulate env pools hold
+    // that slot too.
     private ValueTask<EvmAdmissionGate.Lease> AdmitAsync(JsonRpcRequest request, JsonRpcContext context) =>
-        context.IsAuthenticated || request.BatchQueueWait is null
+        request.BatchQueueWait is null
             ? EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget, context.IsAuthenticated, request.CancellationToken)
-            : AdmitBatchItemAsync(request, request.BatchQueueWait);
+            : AdmitBatchItemAsync(request, request.BatchQueueWait, context.IsAuthenticated);
 
     // Items of one batch run one after another, so they share one budget: each may wait only what the earlier ones did not.
-    private async ValueTask<EvmAdmissionGate.Lease> AdmitBatchItemAsync(JsonRpcRequest request, StrongBox<TimeSpan> batchQueueWait)
+    // That holds for trusted batches too, which otherwise could hold up a single-worker IPC connection for their size times
+    // the budget.
+    private async ValueTask<EvmAdmissionGate.Lease> AdmitBatchItemAsync(JsonRpcRequest request, StrongBox<TimeSpan> batchQueueWait, bool priority)
     {
         long queuedAt = Stopwatch.GetTimestamp();
         try
         {
-            return await EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget - batchQueueWait.Value, false, request.CancellationToken);
+            return await EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget - batchQueueWait.Value, priority, request.CancellationToken);
         }
         finally
         {
