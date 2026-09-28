@@ -86,6 +86,7 @@ public class FrameTxPrefixSimulatorTests
             Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
             Assert.That(result.Indeterminate, Is.True);
             Assert.That(result.Reason, Does.Contain("budget"));
+            Assert.That(result.Yielded, Is.False);
             envFactory.DidNotReceive().Create();
         }
     }
@@ -304,6 +305,7 @@ public class FrameTxPrefixSimulatorTests
             Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
             Assert.That(result.NodeBound, Is.True);
             Assert.That(result.Reason, Does.Contain("preempted"));
+            Assert.That(result.Yielded, Is.True);
             envFactory.DidNotReceive().Create();
         }
     }
@@ -330,6 +332,7 @@ public class FrameTxPrefixSimulatorTests
             Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
             Assert.That(result.NodeBound, Is.True);
             Assert.That(result.Reason, Does.Contain("preempted"));
+            Assert.That(result.Yielded, Is.True);
         }
     }
 
@@ -375,6 +378,7 @@ public class FrameTxPrefixSimulatorTests
         {
             Assert.That(result.Reason, Does.Contain("busy"));
             Assert.That(result.NodeBound, Is.True, "the peer did not choose when this node is busy");
+            Assert.That(result.Yielded, Is.True);
             Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)), "shedding must not wait for the timeout");
         }
     }

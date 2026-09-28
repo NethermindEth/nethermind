@@ -81,7 +81,7 @@ public sealed class FrameTxPrefixSimulator(
         if (preempt?.Invoke() == true)
         {
             Interlocked.Increment(ref Metrics.FrameTxSimulationsPreempted);
-            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation preempted");
+            return FrameTxSimulationResult.RejectYielded("validation-prefix simulation preempted");
         }
 
         // No wait for gossip: that admission runs on a small pool of background threads which also serve
@@ -90,7 +90,7 @@ public sealed class FrameTxPrefixSimulator(
         if (!_lock.TryEnter(local && _timeout > TimeSpan.Zero ? _timeout : TimeSpan.Zero))
         {
             Interlocked.Increment(ref Metrics.FrameTxSimulationsBusy);
-            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulator busy");
+            return FrameTxSimulationResult.RejectYielded("validation-prefix simulator busy");
         }
 
         try
@@ -170,7 +170,7 @@ public sealed class FrameTxPrefixSimulator(
         {
             Interlocked.Increment(ref Metrics.FrameTxSimulations);
             Interlocked.Increment(ref Metrics.FrameTxSimulationsPreempted);
-            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation preempted");
+            return FrameTxSimulationResult.RejectYielded("validation-prefix simulation preempted");
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer is { TimedOut: true })
         {

@@ -51,12 +51,14 @@ public enum FrameTxSimulationOutcome
 /// <param name="reason">A human-readable explanation, for anything but an acceptance.</param>
 /// <param name="indeterminate">Whether the outcome reflects a bound or a fault rather than the prefix.</param>
 /// <param name="nodeBound">Whether that bound was one this node imposed on itself.</param>
+/// <param name="yielded">Whether the simulation stood aside for work this node was doing at that moment.</param>
 public readonly struct FrameTxSimulationResult(
     FrameTxSimulationOutcome outcome,
     Address? payer,
     string? reason,
     bool indeterminate = false,
-    bool nodeBound = false)
+    bool nodeBound = false,
+    bool yielded = false)
 {
     /// <summary>How far the simulation got.</summary>
     public FrameTxSimulationOutcome Outcome { get; } = outcome;
@@ -81,6 +83,13 @@ public readonly struct FrameTxSimulationResult(
     /// </summary>
     public bool NodeBound { get; } = nodeBound;
 
+    /// <summary>
+    /// True when the simulation stood aside for work this node was doing at that moment, such as block
+    /// processing or another simulation, so the same transaction can be judged moments later.
+    /// </summary>
+    /// <remarks>A spent per-head budget is not yielded: it holds until the next head by design.</remarks>
+    public bool Yielded { get; } = yielded;
+
     /// <summary>The prefix ran to <paramref name="payer"/>.</summary>
     public static FrameTxSimulationResult Accept(Address payer) => new(FrameTxSimulationOutcome.Accepted, payer, null);
 
@@ -90,6 +99,9 @@ public readonly struct FrameTxSimulationResult(
     /// <summary>A rejection caused by a bound this node spent on itself, not by the prefix. Still charged to
     /// the peer as load, because shedding is what the throttle is for.</summary>
     public static FrameTxSimulationResult RejectIndeterminate(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason, indeterminate: true, nodeBound: true);
+
+    /// <summary>A node-bound rejection because the simulation stood aside for this node's own concurrent work.</summary>
+    public static FrameTxSimulationResult RejectYielded(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason, indeterminate: true, nodeBound: true, yielded: true);
 
     /// <summary>A rejection the prefix's own wall-clock consumption caused; retained, but chargeable to the sender.</summary>
     public static FrameTxSimulationResult RejectTimedOut(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason, indeterminate: true);

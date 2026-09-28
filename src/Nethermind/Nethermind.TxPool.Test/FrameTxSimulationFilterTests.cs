@@ -214,6 +214,32 @@ public class FrameTxSimulationFilterTests
         Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted));
     }
 
+    [TestCase(true, TxHandlingOptions.None, false, true)]
+    [TestCase(false, TxHandlingOptions.None, false, false)]
+    [TestCase(true, TxHandlingOptions.PersistentBroadcast, false, false)]
+    [TestCase(true, TxHandlingOptions.None, true, false)]
+    public void Accept_DeferredSimulation_MarksOnlyAYieldedGossipedBloblessTxForRefetch(bool yielded, TxHandlingOptions options, bool carriesBlobs, bool expected)
+    {
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        if (carriesBlobs) tx.BlobVersionedHashes = [TestItem.KeccakA.BytesToArray()];
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>?>())
+            .Returns(yielded
+                ? FrameTxSimulationResult.RejectYielded("validation-prefix simulator busy")
+                : FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+        FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance);
+
+        AcceptTxResult result = filter.Accept(tx, ref filteringState, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+            Assert.That(filteringState.FrameSimulationYielded, Is.EqualTo(expected));
+        }
+    }
+
     private static AcceptTxResult Accept(
         TestReadOnlyStateProvider state,
         IFrameTxPrefixSimulator? simulator,
