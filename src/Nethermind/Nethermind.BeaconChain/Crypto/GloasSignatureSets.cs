@@ -95,6 +95,6 @@ public static class GloasSignatureSets
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
-        return pubkey.TryDecode(change.FromBlsPubkey.Bytes, out _) && BlockSignatureBatch.Verify(pubkey, signedChange.Signature, signingRoot, deferral);
+        return BlsSignatureSet.TryKeyValidate(change.FromBlsPubkey.Bytes, pubkey) && BlockSignatureBatch.Verify(pubkey, signedChange.Signature, signingRoot, deferral);
     }
 }

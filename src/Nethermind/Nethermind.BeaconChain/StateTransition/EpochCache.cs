@@ -44,6 +44,23 @@ public sealed class EpochCache
     /// <exception cref="BeaconStateException">A member's pubkey is not in <paramref name="validators"/>.</exception>
     public int[] GetSyncCommitteeIndices(SyncCommittee committee, Validator[] validators)
     {
+        int[] indices = FindSyncCommitteeIndices(committee, validators);
+        for (int i = 0; i < indices.Length; i++)
+        {
+            if (indices[i] < 0)
+                throw new BeaconStateException($"Sync committee member {committee.Pubkeys![i]} is not a registered validator");
+        }
+
+        return indices;
+    }
+
+    /// <summary>
+    /// Returns the validator index of each member of <paramref name="committee"/>, in committee order, or -1 for a member
+    /// that is not in <paramref name="validators"/>.
+    /// </summary>
+    /// <remarks>Memoized as <see cref="GetSyncCommitteeIndices"/> is, once every member is found.</remarks>
+    internal int[] FindSyncCommitteeIndices(SyncCommittee committee, Validator[] validators)
+    {
         if (_syncCommitteeIndices is { } memo && ReferenceEquals(memo.Committee, committee))
         {
             return memo.Indices;
@@ -69,12 +86,12 @@ public sealed class EpochCache
         int[] indices = new int[pubkeys.Length];
         for (int i = 0; i < pubkeys.Length; i++)
         {
-            indices[i] = wanted[pubkeys[i]] is var index and >= 0
-                ? index
-                : throw new BeaconStateException($"Sync committee member {pubkeys[i]} is not a registered validator");
+            indices[i] = wanted[pubkeys[i]];
         }
 
-        _syncCommitteeIndices = (committee, indices);
+        // An incomplete map is not kept, so a missing member is looked up again against the next registry.
+        if (found == wanted.Count)
+            _syncCommitteeIndices = (committee, indices);
         return indices;
     }
 

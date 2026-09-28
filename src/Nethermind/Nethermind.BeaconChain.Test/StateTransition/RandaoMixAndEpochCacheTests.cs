@@ -276,6 +276,24 @@ public class RandaoMixAndEpochCacheTests
         }
     }
 
+    /// <summary>A member missing from the registry maps to -1 without failing, and that incomplete map is not reused for a later registry.</summary>
+    [Test]
+    public void Sync_committee_indices_mark_a_missing_member_and_look_it_up_again()
+    {
+        Validator[] validators = [.. new[] { 1, 2 }.Select(static b => new Validator { Pubkey = Pubkey((byte)b) })];
+        SyncCommittee committee = new() { Pubkeys = [Pubkey(2), Pubkey(9)] };
+        EpochCache cache = new();
+
+        int[] missing = cache.FindSyncCommitteeIndices(committee, validators);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missing, Is.EqualTo(new[] { 1, -1 }));
+            Assert.Throws<BeaconStateException>(() => cache.GetSyncCommitteeIndices(committee, validators));
+            Assert.That(cache.GetSyncCommitteeIndices(committee, [.. validators, new Validator { Pubkey = Pubkey(9) }]), Is.EqualTo(new[] { 1, 2 }));
+        }
+    }
+
     private static BlsPublicKey Pubkey(byte b)
     {
         byte[] bytes = new byte[48];
