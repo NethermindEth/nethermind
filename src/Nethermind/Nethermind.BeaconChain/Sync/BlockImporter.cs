@@ -248,6 +248,12 @@ public sealed class BlockImporter : IBlockImporter
         Hash256? checkpointBlock = null;
         foreach (ProtoNode node in _runner.EnumerateAncestors(parentRoot))
         {
+            // specs/bellatrix/optimistic-sync.md: the parent of the block MUST NOT have an INVALIDATED execution payload.
+            if (node.Root == parentRoot && node.ExecutionStatus == ExecutionStatus.Invalid)
+            {
+                return $"its parent {parentRoot} has an invalid execution payload";
+            }
+
             if (node.Slot <= finalizedSlot)
             {
                 checkpointBlock = node.Root;

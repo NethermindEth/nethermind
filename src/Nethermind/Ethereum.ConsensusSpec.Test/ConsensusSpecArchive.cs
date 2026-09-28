@@ -73,7 +73,9 @@ public static class ConsensusSpecArchive
     /// <summary>
     /// The suite subtrees this driver knows how to run: ssz_static for every fork this repo models a
     /// container for, the state-driven suites for <see cref="StateTransitionForks"/>, fork for <see cref="ForkUpgradeForks"/>, transition for <see cref="TransitionForks"/>, fork_choice
-    /// for fulu only, and networking for the forks <see cref="GossipValidationTests"/> drives. fork_choice needs its full fixture set (steps.yaml plus the anchor/block/attestation
+    /// for fulu and gloas, networking for the forks <see cref="GossipValidationTests"/> drives, the block-sequence and rewards suites for
+    /// <see cref="StateTransitionForks"/>, shuffling for phase0, the only fork that ships it, merkle_proof, and sync for fulu,
+    /// whose optimistic-sync vectors the fork-choice driver replays. fork_choice needs its full fixture set (steps.yaml plus the anchor/block/attestation
     /// SSZ files it references), not just manifest.yaml. <see cref="ExtractionTag"/> is derived from this
     /// same table, so widening it invalidates the cached extraction by itself.
     /// </summary>
@@ -83,10 +85,16 @@ public static class ConsensusSpecArchive
         ("operations", StateTransitionForks),
         ("epoch_processing", StateTransitionForks),
         ("sanity", StateTransitionForks),
-        ("fork_choice", ["fulu"]),
+        ("fork_choice", ["fulu", "gloas"]),
         ("fork", ForkUpgradeForks),
         ("transition", TransitionForks),
         ("networking", ["fulu", "gloas"]),
+        ("finality", StateTransitionForks),
+        ("random", StateTransitionForks),
+        ("rewards", StateTransitionForks),
+        ("shuffling", ["phase0"]),
+        ("merkle_proof", ["electra", "fulu"]),
+        ("sync", ["fulu"]),
     ];
 
     /// <summary>

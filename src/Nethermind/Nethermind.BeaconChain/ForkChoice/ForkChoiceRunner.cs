@@ -711,7 +711,7 @@ public sealed class ForkChoiceRunner
     }
 
     /// <summary>The Gloas <c>is_valid_indexed_attestation</c> length bound (specs/gloas/beacon-chain.md, EIP-7688): at most <c>MAX_VALIDATORS_PER_COMMITTEE * MAX_COMMITTEES_PER_SLOT</c> attesting indices.</summary>
-    private static void ThrowIfOverGloasIndexedAttestationBound(ulong[]? attestingIndices, string what)
+    internal static void ThrowIfOverGloasIndexedAttestationBound(ulong[]? attestingIndices, string what)
     {
         const int MaxAttestingIndices = Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot;
         int count = attestingIndices?.Length ?? 0;
@@ -966,7 +966,8 @@ public sealed class ForkChoiceRunner
         EpochCache cache = new();
         ForkedBeaconState state = blockState switch
         {
-            ForkedBeaconState.OfFulu => new ForkedBeaconState.OfFulu(_stateProvider.CopyBlockState(blockRoot)!),
+            ForkedBeaconState.OfFulu => new ForkedBeaconState.OfFulu(_stateProvider.CopyBlockState(blockRoot)
+                ?? throw new ForkChoiceException($"No state for the block {blockRoot}")),
             ForkedBeaconState.OfGloas gloas => new ForkedBeaconState.OfGloas(gloas.State.Clone()),
             _ => throw new NotSupportedException($"Unhandled block state {blockState.GetType().Name}"),
         };

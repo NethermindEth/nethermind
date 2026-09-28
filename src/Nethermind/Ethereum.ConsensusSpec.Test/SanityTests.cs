@@ -72,7 +72,7 @@ public class SanityTests
     private static void ExecuteBlocks(SanityCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord("sanity/blocks", testCase.Fork, testCase.Preset, testCase.VectorName, () => RunBlocks(testCase));
 
-    private static void RunBlocks(SanityCase testCase)
+    internal static void RunBlocks(SanityCase testCase)
     {
         FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
         switch (FuluDriverSupport.RequireForkDriver(testCase.Fork))
