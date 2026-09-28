@@ -1,8 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using Nethermind.Core;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -142,4 +147,60 @@ public class Bls12381PairingCheckPrecompileTests : PrecompileTests<Bls12381Pairi
     [TestCase(G1Generator + G2Generator + G1NotInSubgroup + G2Infinity)]
     [TestCase(G1Generator + G2Generator + G1Infinity + G2NotInSubgroup)]
     public void Subgroup_invalid_point_in_infinity_pair_is_rejected(string input) => RunTest(input, "", false);
+
+    private static IEnumerable<TestCaseData> MultiItemInputs()
+    {
+        const string scalar = "0000000000000000000000000000000000000000000000000000000000000002";
+        const int items = 4;
+        yield return new TestCaseData(Bls12381PairingCheckPrecompile.Instance,
+            string.Concat(Enumerable.Repeat(G1Generator + G2Generator, items)))
+            .SetArgDisplayNames("pairing");
+        yield return new TestCaseData(Bls12381G1MsmPrecompile.Instance,
+            string.Concat(Enumerable.Repeat(G1Generator + scalar, items)))
+            .SetArgDisplayNames("g1_msm");
+        yield return new TestCaseData(Bls12381G2MsmPrecompile.Instance,
+            string.Concat(Enumerable.Repeat(G2Generator + scalar, items)))
+            .SetArgDisplayNames("g2_msm");
+    }
+
+    [TestCaseSource(nameof(MultiItemInputs))]
+    [NonParallelizable]
+    public void Multi_item_input_completes_while_thread_pool_is_saturated(IPrecompile precompile, string input)
+    {
+        byte[] data = Convert.FromHexString(input);
+        ThreadPool.GetMinThreads(out int minWorkers, out _);
+        // more blockers than the pool starts at once or injects within the join timeout
+        int blockers = minWorkers + 64;
+        using ManualResetEventSlim release = new(false);
+        using CountdownEvent released = new(blockers);
+        for (int i = 0; i < blockers; i++)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(_ =>
+            {
+                release.Wait();
+                released.Signal();
+            }, null);
+        }
+
+        Result<byte[]> result = default;
+        Thread caller = new(() => result = precompile.Run(data, Prague.Instance)) { IsBackground = true };
+        bool completed;
+        try
+        {
+            caller.Start();
+            completed = caller.Join(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            release.Set();
+            caller.Join();
+            released.Wait();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True, "precompile waited for a thread-pool worker");
+            Assert.That(result.IsError, Is.False, result.Error);
+        }
+    }
 }
