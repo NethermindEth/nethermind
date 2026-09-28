@@ -229,13 +229,15 @@ internal static partial class TrieUpdater<TKey, TPath>
         int runCount = PlanBucketRuns(counts[..foldCount], descendantBytes[..foldCount], fanOut, runEnds);
         if (runCount < 2) return;
 
-        // Two touched boundary siblings need both old hashes to key their groups, so both are hashed together.
-        for (int fold = 0; fold + 1 < foldCount; fold++)
+        // A touched boundary sibling needs its old hash to key its group, and an untouched one its hash for the branch
+        // over them, so both are hashed together.
+        for (int fold = 0; fold < foldCount; fold++)
         {
             int slot = slots[fold];
-            if ((slot & 1) != 0 || slots[fold + 1] != slot + 1) continue;
-            if (covers[fold].Kind != CoverKind.Stored || covers[fold + 1].Kind != CoverKind.Stored) continue;
-            walk.Hashes.GetChildHashesPaired(ref walk.Reader, BoundaryPosition(slot), BoundaryPosition(slot + 1), out _, out _);
+            if ((slot & 1) != 0 && fold > 0 && slots[fold - 1] == slot - 1) continue;
+            if (covers[fold].Kind != CoverKind.Stored || walk.CoverAt(slot ^ 1).Kind != CoverKind.Stored) continue;
+            int left = slot & ~1;
+            walk.Hashes.GetChildHashesPaired(ref walk.Reader, BoundaryPosition(left), BoundaryPosition(left + 1), out _, out _);
         }
 
         int operationOffset = OffsetOf(context.Operations!, operations);
@@ -529,9 +531,9 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         walk.ChildCovers(local, cover, out Cover leftCover, out Cover rightCover);
         int position = local.Position;
-        // Two touched boundary nodes each need their old hash to key the group below, so both are hashed together.
-        if (local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup - 1 && leftCover.Kind == CoverKind.Stored && rightCover.Kind == CoverKind.Stored
-            && walk.Owns(local.Left) && walk.OwnsAfter(local.Left, local.Right))
+        // A touched boundary node needs its old hash to key the group below, and an untouched sibling its hash for the
+        // branch over them, so both are hashed together.
+        if (local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup - 1 && leftCover.Kind == CoverKind.Stored && rightCover.Kind == CoverKind.Stored)
             walk.Hashes.GetChildHashesPaired(ref walk.Reader, position - local.Width, position - 1, out _, out _);
         ComposedNode left = Walk(ref walk, local.Left, leftCover);
         // Whatever the cursor still holds under this position lies on the right.
@@ -905,9 +907,6 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (_followingSlot < 0) _followingSlot = SlotAt(Next + 1);
             return Covers(_followingSlot, local);
         }
-
-        /// <summary>Whether the first operation past those under <paramref name="first"/> lies under <paramref name="second"/>.</summary>
-        internal readonly bool OwnsAfter(NodeGroupPath first, NodeGroupPath second) => Covers(SlotAt(Next + CountOwned(first)), second);
 
         /// <summary>How many operations from the cursor on lie under <paramref name="local"/>.</summary>
         internal readonly int CountOwned(NodeGroupPath local) => CountOwned(Operations, Next, local, BitDepth);
