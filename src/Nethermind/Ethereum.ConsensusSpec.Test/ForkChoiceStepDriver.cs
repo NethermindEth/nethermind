@@ -18,20 +18,28 @@ using YamlDotNet.RepresentationModel;
 namespace Ethereum.ConsensusSpec.Test;
 
 /// <summary>
-/// Replays one <c>fork_choice</c> vector's <c>steps.yaml</c> script against
+/// Replays one <c>fork_choice</c> or <c>sync</c> vector's <c>steps.yaml</c> script against
 /// <see cref="ForkChoiceRunner"/>: on_tick, on_block (via the real <see cref="StateTransition"/>
-/// pipeline), on_attestation, on_attester_slashing and checks (head, justified/finalized
+/// pipeline), on_attestation, on_attester_slashing, on_payload_info and checks (head, justified/finalized
 /// checkpoints, proposer boost root, get_proposer_head) and PeerDAS column-sidecar availability.
 /// Honors each step's <c>valid</c> flag - an invalid step must be rejected, and acceptance is
 /// reported as a failure, never silently treated as a pass. Step shapes with no entry point in
 /// this driver throw <see cref="NotImplementedInDriverException"/>, named, rather than being
 /// skipped.
 /// </summary>
+/// <remarks>
+/// A block the execution layer declared INVALID through on_payload_info is refused, and its ancestors back to
+/// <c>latest_valid_hash</c> are invalidated. Its body is still replayed: the pyspec harness's <c>add_block</c> with
+/// <c>is_optimistic</c> stores it and replays its attestations and attester slashings before marking the step
+/// invalid, whereas a refused block in the fork_choice format replays nothing.
+/// </remarks>
 internal static class ForkChoiceStepDriver
 {
-    private sealed class InMemoryStateProvider : IForkChoiceStateProvider
+    private sealed class InMemoryStateProvider(BeaconStateFulu anchor) : IForkChoiceStateProvider
     {
         public readonly Dictionary<Hash256, BeaconStateFulu> States = [];
+
+        public BeaconStateFulu Anchor => anchor;
 
         public BeaconStateFulu? GetBlockState(Hash256 blockRoot) =>
             States.TryGetValue(blockRoot, out BeaconStateFulu? state) ? state : null;
@@ -39,35 +47,58 @@ internal static class ForkChoiceStepDriver
         public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
     }
 
-    private sealed class FixedNewPayloadNotifier(bool valid) : INewPayloadNotifier
+    private sealed class FixedNewPayloadNotifier(ExecutionStatus status) : INewPayloadNotifier
     {
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => valid ? ExecutionStatus.Valid : ExecutionStatus.Invalid;
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => status;
     }
 
-    public static void Run(string casePath)
+    /// <summary>An on_payload_info step: the execution layer's answer for one payload, by <c>payloadStatus</c> field.</summary>
+    private sealed record PayloadInfo(string Status, Hash256? LatestValidHash)
+    {
+        public bool IsInvalid => Status is "INVALID" or "INVALID_BLOCK_HASH";
+
+        public ExecutionStatus ExecutionStatus => Status switch
+        {
+            "VALID" => ExecutionStatus.Valid,
+            "SYNCING" or "ACCEPTED" => ExecutionStatus.Optimistic,
+            _ when IsInvalid => ExecutionStatus.Invalid,
+            _ => throw new InvalidDataException($"unknown payload status '{Status}'"),
+        };
+    }
+
+    /// <returns>The fork choice store after the last step, for callers that inspect more than the vector's own checks.</returns>
+    public static ForkChoiceRunner Run(string casePath) => Run(casePath, out _);
+
+    /// <inheritdoc cref="Run(string)"/>
+    /// <param name="blockRejections">Why each block step, in order, was refused; <c>null</c> for an accepted block.</param>
+    internal static ForkChoiceRunner Run(string casePath, out List<Exception?> blockRejections)
     {
         BeaconStateFulu anchorState = FuluDriverSupport.DecodeState(Path.Combine(casePath, "anchor_state.ssz_snappy"));
         byte[] anchorBlockSsz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "anchor_block.ssz_snappy"));
         BeaconBlock.Decode(anchorBlockSsz, out BeaconBlock anchorBlock);
 
         PubkeyCache pubkeys = FuluDriverSupport.BuildPubkeyCache(anchorState.Validators!);
-        InMemoryStateProvider stateProvider = new();
+        InMemoryStateProvider stateProvider = new(anchorState);
         Hash256 anchorRoot = SszRoots.HashTreeRoot(anchorBlock);
         stateProvider.States[anchorRoot] = anchorState;
 
         ForkChoiceRunner runner = new(BeaconChainSpec.Mainnet, anchorState, anchorBlock, stateProvider, pubkeys);
         bool executionValid = FuluDriverSupport.ReadExecutionValid(casePath);
+        Dictionary<Hash256, PayloadInfo> payloadInfos = [];
+        blockRejections = [];
 
         YamlSequenceNode steps = LoadSteps(Path.Combine(casePath, "steps.yaml"));
         int stepIndex = 0;
         foreach (YamlNode stepNode in steps.Children)
         {
-            RunStep(casePath, (YamlMappingNode)stepNode, runner, stateProvider, pubkeys, stepIndex, executionValid);
+            RunStep(casePath, (YamlMappingNode)stepNode, runner, stateProvider, pubkeys, stepIndex, executionValid, payloadInfos, blockRejections);
             stepIndex++;
         }
+
+        return runner;
     }
 
-    private static YamlSequenceNode LoadSteps(string path)
+    internal static YamlSequenceNode LoadSteps(string path)
     {
         using StreamReader reader = new(path);
         YamlStream yaml = [];
@@ -75,11 +106,19 @@ internal static class ForkChoiceStepDriver
         return (YamlSequenceNode)yaml.Documents[0].RootNode;
     }
 
-    private static void RunStep(string casePath, YamlMappingNode step, ForkChoiceRunner runner, InMemoryStateProvider stateProvider, PubkeyCache pubkeys, int stepIndex, bool executionValid)
+    private static void RunStep(string casePath, YamlMappingNode step, ForkChoiceRunner runner, InMemoryStateProvider stateProvider, PubkeyCache pubkeys, int stepIndex, bool executionValid, Dictionary<Hash256, PayloadInfo> payloadInfos, List<Exception?> blockRejections)
     {
         if (TryGetScalar(step, "tick", out string? tickValue))
         {
             runner.OnTick(runner.GenesisTime + ulong.Parse(tickValue!));
+            return;
+        }
+
+        if (TryGetScalar(step, "block_hash", out string? blockHash) && TryGetChild(step, "payload_status", out YamlNode? statusNode))
+        {
+            YamlMappingNode status = (YamlMappingNode)statusNode!;
+            TryGetScalar(status, "latest_valid_hash", out string? latestValidHash);
+            payloadInfos[new Hash256(blockHash!)] = new PayloadInfo(GetScalar(status, "status"), string.IsNullOrEmpty(latestValidHash) || latestValidHash == "null" ? null : new Hash256(latestValidHash));
             return;
         }
 
@@ -89,7 +128,7 @@ internal static class ForkChoiceStepDriver
                 ? LoadDataColumnSidecars(casePath, (YamlSequenceNode)columnsNode!)
                 : null;
 
-            RunBlockStep(casePath, blockKey!, GetBool(step, "valid", defaultValue: true), runner, stateProvider, pubkeys, stepIndex, dataColumns, executionValid);
+            blockRejections.Add(RunBlockStep(casePath, blockKey!, GetBool(step, "valid", defaultValue: true), runner, stateProvider, pubkeys, stepIndex, dataColumns, executionValid, payloadInfos));
             return;
         }
 
@@ -121,37 +160,38 @@ internal static class ForkChoiceStepDriver
     /// "fork branch: stateless hasher, fresh balance memo" comment for the same rule in production
     /// code) and this driver deliberately explores conflicting branches within one vector.
     /// </summary>
-    private static void RunBlockStep(string casePath, string blockKey, bool expectedValid, ForkChoiceRunner runner, InMemoryStateProvider stateProvider, PubkeyCache pubkeys, int stepIndex, DataColumnSidecar[]? dataColumns, bool executionValid)
+    /// <returns>Why the block was refused, or <c>null</c>.</returns>
+    private static Exception? RunBlockStep(string casePath, string blockKey, bool expectedValid, ForkChoiceRunner runner, InMemoryStateProvider stateProvider, PubkeyCache pubkeys, int stepIndex, DataColumnSidecar[]? dataColumns, bool executionValid, Dictionary<Hash256, PayloadInfo> payloadInfos)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, blockKey + ".ssz_snappy"));
         SignedBeaconBlock.Decode(ssz, out SignedBeaconBlock signedBlock);
         BeaconBlock block = signedBlock.Message!;
         Hash256 blockRoot = SszRoots.HashTreeRoot(block);
+        PayloadInfo? payloadInfo = payloadInfos.GetValueOrDefault(block.Body!.ExecutionPayload!.BlockHash!);
+        ExecutionStatus executionStatus = payloadInfo?.ExecutionStatus ?? (executionValid ? ExecutionStatus.Valid : ExecutionStatus.Invalid);
 
         bool accepted;
         string? rejectionReason = null;
         Exception? rejection = null;
         BeaconStateFulu? postState = null;
-        if (!stateProvider.States.TryGetValue(block.ParentRoot!, out BeaconStateFulu? parentState))
+        try
         {
-            accepted = false;
-            rejectionReason = $"parent {block.ParentRoot} is unknown to this driver";
-        }
-        else
-        {
-            try
+            // on_block asserts the parent is known before any state transition, so a block with no parent
+            // state goes to fork choice with the anchor state standing in for the post-state it cannot have.
+            if (stateProvider.States.TryGetValue(block.ParentRoot!, out BeaconStateFulu? parentState))
             {
                 postState = parentState.Clone();
-                StateTransition.Apply(postState, signedBlock, new EpochCache(), pubkeys, new FixedNewPayloadNotifier(executionValid), BeaconChainSpec.Mainnet, validateResult: true, verifySignatures: true);
-                runner.OnBlock(signedBlock, postState, ExecutionStatus.Valid, dataColumns);
-                accepted = true;
+                StateTransition.Apply(postState, signedBlock, new EpochCache(), pubkeys, new FixedNewPayloadNotifier(executionStatus), BeaconChainSpec.Mainnet, validateResult: true, verifySignatures: true);
             }
-            catch (Exception ex)
-            {
-                accepted = false;
-                rejection = ex;
-                rejectionReason = ex.Message;
-            }
+
+            runner.OnBlock(signedBlock, postState ?? stateProvider.Anchor, payloadInfo is null ? ExecutionStatus.Valid : executionStatus, dataColumns);
+            accepted = true;
+        }
+        catch (Exception ex)
+        {
+            accepted = false;
+            rejection = ex;
+            rejectionReason = ex.Message;
         }
 
         if (accepted && !expectedValid)
@@ -160,11 +200,14 @@ internal static class ForkChoiceStepDriver
             Assert.Fail($"step {stepIndex}: block {blockKey} (slot {block.Slot}) was expected to be accepted but the driver rejected it: {rejectionReason}");
         AssertRejectedForASpecReason(rejection, $"step {stepIndex}: block {blockKey} (slot {block.Slot})");
 
-        if (!accepted)
-            return;
-        stateProvider.States[blockRoot] = postState!;
+        if (payloadInfo is { IsInvalid: true })
+            InvalidateBackToLatestValidHash(runner, block.ParentRoot!, payloadInfo.LatestValidHash);
+        else if (!accepted)
+            return rejection;
+        else
+            stateProvider.States[blockRoot] = postState ?? throw new InvalidOperationException($"step {stepIndex}: block {blockKey} was accepted without a parent state");
 
-        // The fork_choice test format treats an on_block step as implying on_attestation(is_from_block)
+        // The fork_choice and sync test formats treat an on_block step as implying on_attestation(is_from_block)
         // for every body attestation and on_attester_slashing for every body slashing.
         Attestation[] bodyAttestations = block.Body!.Attestations!;
         for (int i = 0; i < bodyAttestations.Length; i++)
@@ -179,6 +222,18 @@ internal static class ForkChoiceStepDriver
             try { runner.OnAttesterSlashing(bodySlashings[i], verifySignatures: false); }
             catch (Exception ex) { Assert.Fail($"step {stepIndex}: body attester slashing {i} of block {blockKey} rejected: {ex.Message}"); }
         }
+
+        return rejection;
+    }
+
+    /// <summary>
+    /// Marks the ancestors of an INVALID payload invalid up to the one whose payload hash is <paramref name="latestValidHash"/>, as
+    /// the pyspec harness's <c>add_optimistic_block</c> does; a parent that is itself the latest valid payload keeps its status.
+    /// </summary>
+    private static void InvalidateBackToLatestValidHash(ForkChoiceRunner runner, Hash256 parentRoot, Hash256? latestValidHash)
+    {
+        if (latestValidHash is not null && runner.ContainsBlock(parentRoot) && runner.GetExecutionBlockHash(parentRoot) != latestValidHash)
+            runner.OnInvalidExecutionPayload(parentRoot, latestValidHash);
     }
 
     /// <summary>Decodes the PeerDAS 'columns' sequence of a block step into the sidecars <see cref="ForkChoiceRunner.OnBlock"/> checks the block's data availability against.</summary>
@@ -289,7 +344,7 @@ internal static class ForkChoiceStepDriver
         }
     }
 
-    private static void AssertCheckpoint(string name, YamlMappingNode node, CheckpointRef actual, int stepIndex)
+    internal static void AssertCheckpoint(string name, YamlMappingNode node, CheckpointRef actual, int stepIndex)
     {
         ulong expectedEpoch = ulong.Parse(GetScalar(node, "epoch"));
         Hash256 expectedRoot = new(GetScalar(node, "root"));
@@ -303,7 +358,7 @@ internal static class ForkChoiceStepDriver
     // approach of comparing scalar key text directly, rather than trusting YamlNode's dictionary
     // equality semantics for a synthesized lookup key). ---
 
-    private static bool TryGetChild(YamlMappingNode map, string key, out YamlNode? value)
+    internal static bool TryGetChild(YamlMappingNode map, string key, out YamlNode? value)
     {
         foreach (KeyValuePair<YamlNode, YamlNode> kv in map.Children)
         {
@@ -319,7 +374,7 @@ internal static class ForkChoiceStepDriver
 
     private static bool HasKey(YamlMappingNode map, string key) => TryGetChild(map, key, out _);
 
-    private static bool TryGetScalar(YamlMappingNode map, string key, out string? value)
+    internal static bool TryGetScalar(YamlMappingNode map, string key, out string? value)
     {
         if (TryGetChild(map, key, out YamlNode? node) && node is YamlScalarNode scalar)
         {
@@ -330,13 +385,13 @@ internal static class ForkChoiceStepDriver
         return false;
     }
 
-    private static string GetScalar(YamlMappingNode map, string key) =>
+    internal static string GetScalar(YamlMappingNode map, string key) =>
         TryGetScalar(map, key, out string? value) ? value! : throw new KeyNotFoundException($"missing yaml key '{key}'");
 
-    private static bool GetBool(YamlMappingNode map, string key, bool defaultValue) =>
+    internal static bool GetBool(YamlMappingNode map, string key, bool defaultValue) =>
         TryGetScalar(map, key, out string? value) ? bool.Parse(value!) : defaultValue;
 
-    private static IEnumerable<string> Keys(YamlMappingNode map)
+    internal static IEnumerable<string> Keys(YamlMappingNode map)
     {
         foreach (KeyValuePair<YamlNode, YamlNode> kv in map.Children)
         {

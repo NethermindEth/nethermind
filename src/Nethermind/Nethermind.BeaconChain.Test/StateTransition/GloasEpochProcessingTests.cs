@@ -126,6 +126,15 @@ public class GloasEpochProcessingTests
 
     // ---- process_builder_pending_payments in isolation ----
 
+    /// <summary><c>get_builder_payment_quorum_threshold</c>: 60% of one slot's share of the total active balance, 2048 x 32 ETH / 32 slots here.</summary>
+    [Test]
+    public void Builder_payment_quorum_is_sixty_percent_of_a_slots_share_of_the_active_balance()
+    {
+        BeaconStateGloas state = StateWithRegistry(2048, 32);
+
+        Assert.That(state.GetBuilderPaymentQuorumThreshold(new EpochCache()), Is.EqualTo(1228_800_000_000UL));
+    }
+
     [Test]
     public void ProcessBuilderPendingPayments_queues_only_quorum_reaching_previous_epoch_payments_and_rotates_the_window()
     {
@@ -418,8 +427,42 @@ public class GloasEpochProcessingTests
     [TestCase(8192, 2048UL, 512UL, 256UL)] // over the 256 ETH activation cap; the exit churn is uncapped
     public void GetActivationChurnLimit_is_the_exit_churn_capped_at_256_eth(int validatorCount, ulong effectiveBalanceEth, ulong expectedExitEth, ulong expectedActivationEth)
     {
+        BeaconStateGloas state = StateWithRegistry(validatorCount, effectiveBalanceEth);
+        EpochCache cache = new();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(state.GetExitChurnLimit(cache), Is.EqualTo(expectedExitEth * Gwei));
+            Assert.That(state.GetActivationChurnLimit(cache), Is.EqualTo(expectedActivationEth * Gwei));
+        });
+    }
+
+    /// <summary>
+    /// Exits draw on the uncapped exit churn (EIP-8061): with a 512 ETH exit churn a 400 ETH exit fits in the first
+    /// exit epoch, which the 256 ETH activation churn would push one epoch later.
+    /// </summary>
+    [Test]
+    public void ComputeExitEpochAndUpdateChurn_draws_on_the_uncapped_exit_churn()
+    {
+        BeaconStateGloas state = StateWithRegistry(8192, 2048);
+        EpochCache cache = new();
+        state.EarliestExitEpoch = 0;
+        state.ExitBalanceToConsume = 0;
+        Assert.That(state.GetExitChurnLimit(cache), Is.GreaterThan(state.GetActivationChurnLimit(cache)), "fixture bug: the exit churn must exceed the activation cap");
+
+        ulong exitEpoch = state.ComputeExitEpochAndUpdateChurn(400 * Gwei, cache);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(exitEpoch, Is.EqualTo(BeaconStateAccessors.ComputeActivationExitEpoch(state.GetCurrentEpoch())));
+            Assert.That(state.ExitBalanceToConsume, Is.EqualTo(112 * Gwei));
+        });
+    }
+
+    /// <summary>The fixture state with a registry of <paramref name="validatorCount"/> active validators at <paramref name="effectiveBalanceEth"/>; only the registry feeds the churn limits.</summary>
+    private static BeaconStateGloas StateWithRegistry(int validatorCount, ulong effectiveBalanceEth)
+    {
         BeaconStateGloas state = CreateGloasState(out _, out _);
-        // Only the registry feeds the churn limits; the rest of the state stays the fixture's.
         Validator[] validators = new Validator[validatorCount];
         for (int i = 0; i < validators.Length; i++)
         {
@@ -434,13 +477,7 @@ public class GloasEpochProcessingTests
             };
         }
         state.Validators = validators;
-        EpochCache cache = new();
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(state.GetExitChurnLimit(cache), Is.EqualTo(expectedExitEth * Gwei));
-            Assert.That(state.GetActivationChurnLimit(cache), Is.EqualTo(expectedActivationEth * Gwei));
-        });
+        return state;
     }
 
     [Test]
@@ -497,23 +534,28 @@ public class GloasEpochProcessingTests
         });
     }
 
-    [Test]
-    public void ProcessPendingDeposits_credits_a_withdrawn_validators_deposit_outside_the_churn()
+    /// <summary>
+    /// A validator counts as withdrawn only once its <c>withdrawable_epoch</c> is before the next epoch; one withdrawable
+    /// exactly at the next epoch is still exiting, so its deposit is postponed like any exiting validator's.
+    /// </summary>
+    [TestCase(1ul, true, TestName = "ProcessPendingDeposits_credits_a_withdrawn_validators_deposit_outside_the_churn")]
+    [TestCase(0ul, false, TestName = "ProcessPendingDeposits_postpones_the_deposit_of_a_validator_withdrawable_at_the_next_epoch")]
+    public void ProcessPendingDeposits_credits_a_withdrawn_validators_deposit_outside_the_churn(ulong epochsBeforeNextEpoch, bool withdrawn)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         state.Validators![3].ExitEpoch = 0;
-        state.Validators[3].WithdrawableEpoch = 1;
-        PendingDeposit withdrawn = TopUpDeposit(state, 3, 100 * Gwei, BoundarySlot);
+        state.Validators[3].WithdrawableEpoch = state.GetCurrentEpoch() + 1 - epochsBeforeNextEpoch;
+        PendingDeposit exited = TopUpDeposit(state, 3, 100 * Gwei, BoundarySlot);
         PendingDeposit active = TopUpDeposit(state, 5, 100 * Gwei, BoundarySlot);
-        state.PendingDeposits = [withdrawn, active];
+        state.PendingDeposits = [exited, active];
 
         GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
 
         Assert.Multiple(() =>
         {
-            Assert.That(state.Balances![3], Is.EqualTo(132 * Gwei), "credited for withdrawal rather than queued behind the churn");
-            Assert.That(state.Balances[5], Is.EqualTo(132 * Gwei), "200 ETH exceeds the churn, so the withdrawn validator's deposit must not have been charged");
-            Assert.That(state.PendingDeposits, Is.Empty);
+            Assert.That(state.Balances![3], Is.EqualTo((withdrawn ? 132UL : 32UL) * Gwei), "credited for withdrawal rather than queued behind the churn");
+            Assert.That(state.Balances[5], Is.EqualTo(132 * Gwei), "200 ETH exceeds the churn, so the exited validator's deposit must not have been charged");
+            Assert.That(state.PendingDeposits, withdrawn ? Is.Empty : Is.EqualTo(new[] { exited }).AsCollection);
             Assert.That(state.DepositBalanceToConsume, Is.Zero);
         });
     }
