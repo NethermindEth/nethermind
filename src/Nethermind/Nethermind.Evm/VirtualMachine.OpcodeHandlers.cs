@@ -1313,6 +1313,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip8038 : struct, IEip8038Flag
         where Eip2929 : struct, IFlag
     {
+        public static ulong? TraceGasCost => 0;
+        public static int StackInputs => 2;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionSStoreMetered<TGasPolicy, TTracingInst, TStipendFix, TEip8037, Eip8038, Eip2929>(ref stack, ref gas, vm);
     }
@@ -1323,6 +1325,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip8038 : struct, IEip8038Flag
         where Eip2929 : struct, IFlag
     {
+        public static ulong? TraceGasCost => 0;
+        public static int StackInputs => 2;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionSStoreUnmetered<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref stack, ref gas, vm);
     }
@@ -1582,6 +1586,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TEip7708 : struct, IFlag
         where TSpec : struct, EvmInstructions.ICallSpec
     {
+        public static ulong? GetSpecTraceGasCost(IReleaseSpec spec) => TOpCall.ExecutionType == ExecutionType.STATICCALL
+            ? spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : spec.GasCosts.CallCost
+            : null;
+        public static int StackInputs => TOpCall.ExecutionType == ExecutionType.STATICCALL ? 6 : 0;
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708, TSpec>(ref stack, ref gas, vm);
     }
