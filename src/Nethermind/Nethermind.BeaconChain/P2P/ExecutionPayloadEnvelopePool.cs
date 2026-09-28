@@ -11,36 +11,81 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.P2P;
 
 /// <summary>
-/// In-memory cache of verified Gloas execution payload envelopes, serving
-/// <c>ExecutionPayloadEnvelopesByRange</c>/<c>ByRoot</c>.
+/// Verified Gloas execution payload envelopes, serving <c>ExecutionPayloadEnvelopesByRange</c>/<c>ByRoot</c>.
 /// </summary>
 /// <remarks>
-/// A bounded recent-envelope cache only, evicted under capacity pressure with no epoch-based
-/// retention guarantee, mirroring <see cref="DataColumnSidecarPool"/>'s own caveat. Only envelopes
+/// With a store, every added envelope is persisted there and a read that misses the bounded in-memory
+/// cache falls through to it, so eviction and restarts lose nothing the store still retains; the store's
+/// <see cref="BeaconChainStore.PruneExecutionPayloadEnvelopes"/> bounds that retention. Only envelopes
 /// that passed every check, their signature included, may be added: both protocols serve what it holds.
 /// </remarks>
-/// <param name="capacity">The most envelopes held.</param>
-/// <param name="store">Where <see cref="GetCanonical"/> reads the chain from; <c>null</c> serves no range.</param>
+/// <param name="capacity">The most envelopes held in memory.</param>
+/// <param name="store">Where envelopes are persisted and <see cref="GetCanonical"/> reads the chain from; <c>null</c> keeps envelopes in memory only and serves no range.</param>
 /// <param name="status">Where <see cref="GetCanonical"/> reads the head from; <c>null</c> serves no range.</param>
-public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconChainStore? store = null, IBeaconChainStatusSource? status = null)
+/// <param name="logManager">Reports stored envelopes that cannot be read.</param>
+public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconChainStore? store = null, IBeaconChainStatusSource? status = null, ILogManager? logManager = null)
 {
+    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<ExecutionPayloadEnvelopePool>();
+
     /// <summary>The most blocks <see cref="GetCanonical"/> walks back from the head; not a spec value.</summary>
     internal const int MaxCanonicalWalk = 8192;
 
     private readonly LruCache<Hash256, SignedExecutionPayloadEnvelope> _byRoot = new(capacity, "execution payload envelopes");
 
+    // A corrupt record's header can claim up to MAX_PAYLOAD_SIZE, so each repeat request for it would allocate that much again.
+    private readonly LruKeyCache<Hash256> _unreadable = new(256, "unreadable execution payload envelopes");
+
     // A stored block never changes, so a flood of range requests decodes each block once, not once per request. Twice the walk,
     // so one full walk plus fork entries never evicts the head, which would make every repeat of that walk decode all of it again.
     private readonly LruCache<Hash256, BlockLink> _links = new(2 * MaxCanonicalWalk, "execution payload envelope chain links");
 
-    public void Add(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope) => _byRoot.Set(blockRoot, envelope);
+    /// <exception cref="ArgumentException">The envelope has no payload, or names a beacon block other than <paramref name="blockRoot"/>.</exception>
+    public void Add(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope)
+    {
+        if (store is null)
+        {
+            _ = BeaconChainStore.GetExecutionPayloadEnvelopeSlot(blockRoot, envelope);
+        }
+        else
+        {
+            store.PutExecutionPayloadEnvelope(blockRoot, envelope);
+        }
 
-    public bool TryGet(Hash256 blockRoot, out SignedExecutionPayloadEnvelope? envelope) =>
-        _byRoot.TryGet(blockRoot, out envelope);
+        _byRoot.Set(blockRoot, envelope);
+        _unreadable.Delete(blockRoot);
+    }
+
+    /// <remarks>A stored envelope that cannot be read is reported once and treated as not held, so it is never served, and is not read again until a later <see cref="Add"/> replaces it.</remarks>
+    public bool TryGet(Hash256 blockRoot, out SignedExecutionPayloadEnvelope? envelope)
+    {
+        if (_byRoot.TryGet(blockRoot, out envelope))
+        {
+            return true;
+        }
+
+        try
+        {
+            if (store is null || _unreadable.Get(blockRoot) || !store.TryGetExecutionPayloadEnvelope(blockRoot, out envelope))
+            {
+                return false;
+            }
+        }
+        catch (InvalidDataException e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Stored execution payload envelope {blockRoot} is unreadable and is not served: {e.Message}");
+            _unreadable.Set(blockRoot);
+            envelope = null;
+            return false;
+        }
+
+        _byRoot.Set(blockRoot, envelope);
+        return true;
+    }
 
     /// <summary>The held envelopes of the chain ending at the current head whose block slot is in <c>[startSlot, startSlot + count)</c>, in slot order.</summary>
     /// <remarks>
