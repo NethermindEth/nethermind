@@ -540,9 +540,13 @@ public static partial class EvmInstructions
                 vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - gasCosts.NetMeteredSStoreCost + 1);
             if (TGasPolicy.GetRemainingGas(in gas) <= GasCostOf.CallStipend)
             {
-                vm.TraceOperationGasCost(0);
-                vm.TraceActionErrorDetails("out of gas: not enough gas for reentrancy sentry");
-                if (TTracingInst.IsActive) vm.TraceOperationReady(0, "out of gas: not enough gas for reentrancy sentry");
+                if (TTracingInst.IsActive)
+                {
+                    vm.TraceOperationGasCost(0);
+                    vm.TraceOperationReady(0, "out of gas: not enough gas for reentrancy sentry");
+                }
+                if (DispatchFlags.ConstTracing && vm.IsTracingActions)
+                    vm.TraceActionErrorDetails("out of gas: not enough gas for reentrancy sentry");
                 goto OutOfGas;
             }
         }
