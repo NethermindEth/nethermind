@@ -90,8 +90,8 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <summary>Per-transaction cache of the <see cref="ITxTracer"/> flags the processor branches on.</summary>
         /// <remarks>A tracer's flags are fixed for the transaction it traces, yet each read is an interface call, two
         /// through a forwarding tracer such as the block receipts tracer. Each flag is read on first use, so a path pays
-        /// only for the flags it consults. It holds no tracer, so a pooled processor does not keep the last one alive.</remarks>
-        private protected struct TracerFlags
+        /// only for the flags it consults.</remarks>
+        private protected struct TracerFlags(ITxTracer tracer)
         {
             private bool? _isTracing;
             private bool? _isTracingState;
@@ -104,16 +104,16 @@ namespace Nethermind.Evm.TransactionProcessing
             private bool? _isTracingRefunds;
             private bool? _isTracingActions;
 
-            public bool IsTracing(ITxTracer tracer) => _isTracing ??= tracer.IsTracing;
-            public bool IsTracingState(ITxTracer tracer) => _isTracingState ??= tracer.IsTracingState;
-            public bool IsTracingReceipt(ITxTracer tracer) => _isTracingReceipt ??= tracer.IsTracingReceipt;
-            public bool IsCollectingLogs(ITxTracer tracer) => _isCollectingLogs ??= tracer.IsCollectingLogs;
-            public bool IsTracingLogs(ITxTracer tracer) => _isTracingLogs ??= tracer.IsTracingLogs;
-            public bool IsTracingInstructions(ITxTracer tracer) => _isTracingInstructions ??= tracer.IsTracingInstructions;
-            public bool IsTracingMemory(ITxTracer tracer) => _isTracingMemory ??= tracer.IsTracingMemory;
-            public bool IsTracingAccess(ITxTracer tracer) => _isTracingAccess ??= tracer.IsTracingAccess;
-            public bool IsTracingRefunds(ITxTracer tracer) => _isTracingRefunds ??= tracer.IsTracingRefunds;
-            public bool IsTracingActions(ITxTracer tracer) => _isTracingActions ??= tracer.IsTracingActions;
+            public bool IsTracing => _isTracing ??= tracer.IsTracing;
+            public bool IsTracingState => _isTracingState ??= tracer.IsTracingState;
+            public bool IsTracingReceipt => _isTracingReceipt ??= tracer.IsTracingReceipt;
+            public bool IsCollectingLogs => _isCollectingLogs ??= tracer.IsCollectingLogs;
+            public bool IsTracingLogs => _isTracingLogs ??= tracer.IsTracingLogs;
+            public bool IsTracingInstructions => _isTracingInstructions ??= tracer.IsTracingInstructions;
+            public bool IsTracingMemory => _isTracingMemory ??= tracer.IsTracingMemory;
+            public bool IsTracingAccess => _isTracingAccess ??= tracer.IsTracingAccess;
+            public bool IsTracingRefunds => _isTracingRefunds ??= tracer.IsTracingRefunds;
+            public bool IsTracingActions => _isTracingActions ??= tracer.IsTracingActions;
         }
 
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
@@ -295,7 +295,7 @@ namespace Nethermind.Evm.TransactionProcessing
         [SkipLocalsInit]
         private TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas)
         {
-            _tracerFlags = default;
+            _tracerFlags = new(tracer);
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
             // commit - is for standard execute, we will commit the state after execution
@@ -325,8 +325,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Address? simpleTransferRecipient = PrepareSimpleTransferFastPath(tx, spec, out CodeInfo? preloadedCodeInfo, out Address? preloadedDelegationAddress);
 
-            bool commitBeforeExecution = commit && (simpleTransferRecipient is null || restore || _tracerFlags.IsTracingState(tracer));
-            if (commitBeforeExecution) WorldState.Commit(spec, _tracerFlags.IsTracingState(tracer) ? tracer : NullTxTracer.Instance, commitRoots: false);
+            bool commitBeforeExecution = commit && (simpleTransferRecipient is null || restore || _tracerFlags.IsTracingState);
+            if (commitBeforeExecution) WorldState.Commit(spec, _tracerFlags.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
 
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
 
@@ -384,13 +384,13 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice)
             {
-                SuppressLogs = !_tracerFlags.IsCollectingLogs(tracer) && !_tracerFlags.IsTracingLogs(tracer),
-                MaterializeLogMemory = _tracerFlags.IsTracingInstructions(tracer) || _tracerFlags.IsTracingMemory(tracer)
+                SuppressLogs = !_tracerFlags.IsCollectingLogs && !_tracerFlags.IsTracingLogs,
+                MaterializeLogMemory = _tracerFlags.IsTracingInstructions || _tracerFlags.IsTracingMemory
             });
             // Top-level CREATE tx; the opcode-level CREATE/CREATE2 path bumps this counter from EvmInstructions.Create.
             if (tx.IsContractCreation) Metrics.IncrementCreates();
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
-            using StackAccessTracker accessTracker = new(_tracerFlags.IsTracingAccess(tracer));
+            using StackAccessTracker accessTracker = new(_tracerFlags.IsTracingAccess);
             long delegationRefunds = 0;
             TGasPolicy executionIntrinsicGasStandard = intrinsicGas.Standard;
             TransactionResult result;
@@ -448,7 +448,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
             }
 
-            if (delegationRefunds > 0 && _tracerFlags.IsTracingRefunds(tracer))
+            if (delegationRefunds > 0 && _tracerFlags.IsTracingRefunds)
             {
                 // EIP-7702 credits the global refund counter before EVM execution.
                 ulong executionRefund = TGasPolicy.GetCodeInsertExecutionRefund((ulong)delegationRefunds, spec);
@@ -458,7 +458,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             IntrinsicGas<TGasPolicy> executionIntrinsicGas = new(executionIntrinsicGasStandard, intrinsicGas.FloorGas);
 
-            int statusCode = !DispatchFlags.Tracing(_tracerFlags.IsTracingInstructions(tracer)) ?
+            int statusCode = !DispatchFlags.Tracing(_tracerFlags.IsTracingInstructions) ?
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out GasConsumed spentGas) :
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out substate, out spentGas);
 
@@ -472,8 +472,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (destroyList is not null)
                 {
                     bool removeSelfdestructBurn = spec.IsEip8246Enabled;
-                    bool tracingRefunds = _tracerFlags.IsTracingRefunds(tracer);
-                    bool tracingLogs = _tracerFlags.IsTracingLogs(tracer);
+                    bool tracingRefunds = _tracerFlags.IsTracingRefunds;
+                    bool tracingLogs = _tracerFlags.IsTracingLogs;
                     long destroyRefund = (long)spec.GasCosts.DestroyRefund;
                     foreach (Address toBeDestroyed in destroyList)
                     {
@@ -525,7 +525,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ref readonly UInt256 value = ref tx.ValueRef;
             bool hasValueTransfer = !value.IsZero;
             bool senderIsRecipient = tx.SenderAddress == recipient;
-            bool isTracingActions = _tracerFlags.IsTracingActions(tracer);
+            bool isTracingActions = _tracerFlags.IsTracingActions;
 
             // EIP-8037: a value transfer materialising a new (dead) recipient — including an empty
             // precompile — pays NEW_ACCOUNT state gas; if uncovered, no value moves and all gas is forfeit.
@@ -558,7 +558,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 LogEntry transferLog = TransferLog.CreateTransfer(tx.SenderAddress!, recipient, in value);
                 logs = [transferLog];
-                if (_tracerFlags.IsTracingLogs(tracer)) tracer.ReportLog(transferLog);
+                if (_tracerFlags.IsTracingLogs) tracer.ReportLog(transferLog);
             }
 
             TransactionSubstate substate = new(
@@ -592,7 +592,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             int statusCode = newAccountOutOfGas ? StatusCode.Failure : StatusCode.Success;
 
-            if (_tracerFlags.IsTracingAccess(tracer))
+            if (_tracerFlags.IsTracingAccess)
             {
                 ReportSimpleTransferAccess(tx, spec, tracer, recipient);
             }
@@ -738,14 +738,14 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else if (commit)
             {
-                WorldState.Commit(spec, _tracerFlags.IsTracingState(tracer) ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
+                WorldState.Commit(spec, _tracerFlags.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
             }
             else
             {
                 WorldState.ResetTransient();
             }
 
-            if (_tracerFlags.IsTracingReceipt(tracer))
+            if (_tracerFlags.IsTracingReceipt)
             {
                 Hash256? stateRoot = null;
                 if (!spec.IsEip658Enabled)
@@ -1421,7 +1421,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (topFrameOutOfGas)
             {
                 TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
-                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, _tracerFlags.IsTracing(tracer));
+                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, _tracerFlags.IsTracing);
                 TGasPolicy oogIntrinsicGasStandard = gas.Standard;
                 gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in oogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
                 goto CompleteWithoutFrame;
@@ -1438,7 +1438,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
                         WorldState.Restore(snapshot);
-                        substate = new TransactionSubstate(EvmExceptionType.TransactionCollision, _tracerFlags.IsTracing(tracer));
+                        substate = new TransactionSubstate(EvmExceptionType.TransactionCollision, _tracerFlags.IsTracing);
                         TGasPolicy collisionIntrinsicGasStandard = gas.Standard;
                         gasConsumed = RefundOnContractCollision(
                             tx,
@@ -1470,7 +1470,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (spec.IsEip8037Enabled && topLevelCreateStateGasCharged && !TGasPolicy.TryConsumeCreateStateGas(ref state.Gas))
                 {
                     TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
-                    substate = new TransactionSubstate(EvmExceptionType.OutOfGas, _tracerFlags.IsTracing(tracer));
+                    substate = new TransactionSubstate(EvmExceptionType.OutOfGas, _tracerFlags.IsTracing);
                     gasAvailable = state.Gas;
                     WorldState.Restore(snapshot);
                     TGasPolicy createStateOogIntrinsicGasStandard = gas.Standard;
@@ -1486,7 +1486,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 VirtualMachine.FlushMetricsCounters();
                 gasAvailable = state.Gas;
 
-                if (_tracerFlags.IsTracingAccess(tracer))
+                if (_tracerFlags.IsTracingAccess)
                 {
                     tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
                 }
@@ -1517,8 +1517,8 @@ namespace Nethermind.Evm.TransactionProcessing
                         bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool removeSelfdestructBurn = spec.IsEip8246Enabled;
-                        bool tracingRefunds = _tracerFlags.IsTracingRefunds(tracer);
-                        bool tracingLogs = _tracerFlags.IsTracingLogs(tracer);
+                        bool tracingRefunds = _tracerFlags.IsTracingRefunds;
+                        bool tracingLogs = _tracerFlags.IsTracingLogs;
                         foreach (Address toBeDestroyed in destroyList)
                         {
                             if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
@@ -1577,7 +1577,7 @@ namespace Nethermind.Evm.TransactionProcessing
         CompleteWithoutFrame:
             // The create-state-gas halt jumps here from inside the top-level `using (VmState ...)`, so the
             // tracker outlives the Dispose: RentTopLevel leaves `_canRestore` false, so it never Restores.
-            if (_tracerFlags.IsTracingAccess(tracer))
+            if (_tracerFlags.IsTracingAccess)
             {
                 tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
             }
