@@ -14,16 +14,25 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class NodeFilterTests
 {
+    /// <remarks>
+    /// Reports the cheapest of several identical measurement windows: a per-touch cost survives the minimum,
+    /// while a one-off chunk the runtime charges to this thread lands in one window only.
+    /// </remarks>
     [Test]
     public void Touch_existing_address_does_not_allocate([Values] bool exactMatchOnly)
     {
+        const int Windows = 5;
         NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly);
         IPAddress address = IPAddress.Parse("203.0.113.1");
         for (int i = 0; i < 1000; i++) filter.Touch(address);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1000; i++) filter.Touch(address);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = long.MaxValue;
+        for (int window = 0; window < Windows; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1000; i++) filter.Touch(address);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
 
         using (Assert.EnterMultipleScope())
         {
