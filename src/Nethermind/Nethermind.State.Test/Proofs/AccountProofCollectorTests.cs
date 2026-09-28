@@ -650,6 +650,58 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
         }
 
         [Test]
+        public void Storage_proof_ends_in_the_branch_that_embeds_a_short_leaf()
+        {
+            // The hashed slots share their first 8 nibbles (0x21036f8c), so both leaves sit at depth 9 where their RLP is
+            // under 32 bytes and each is embedded in the branch instead of being referenced by hash.
+            Address address = TestItem.AddressA;
+            UInt256[] keys =
+            [
+                UInt256.Parse("48523752242879508828440976935553665377449459776893266580303076491490339549259"),
+                UInt256.Parse("111441116583694579330994579543328952341102629710800874549520941775158004606487")
+            ];
+            IDb memDb = new MemDb();
+            StateTree tree = new(new RawScopedTrieStore(memDb), LimboLogs.Instance);
+            StorageTree storageTree = new(new RawScopedTrieStore(memDb, address.ToAccountPath.ToCommitment()), Keccak.EmptyTreeHash, LimboLogs.Instance);
+            foreach (UInt256 key in keys) storageTree.Set(key, [1]);
+            storageTree.UpdateRootHash();
+            storageTree.Commit();
+            tree.Set(address, Build.An.Account.TestObject.WithChangedStorageRoot(storageTree.RootHash));
+            tree.UpdateRootHash();
+            tree.Commit();
+
+            AccountProof accountProof = CollectProof(tree, address, keys);
+
+            for (int j = 0; j < keys.Length; j++)
+            {
+                byte[] indexBytes = new byte[32];
+                keys[j].ToBigEndian(indexBytes);
+                TrieNode node = new(NodeType.Unknown, accountProof.StorageProofs[j].Proof.Last());
+                node.ResolveNode(null, TreePath.Empty);
+                Assert.That(node.IsBranch, Is.True);
+                Assert.That(FindEmbeddedLeaf(node, Keccak.Compute(indexBytes).Bytes).Value.ToArray(), Is.EqualTo(new byte[] { 1 }));
+            }
+        }
+
+        /// <summary>
+        /// Finds the leaf for <paramref name="hashedKey"/> embedded in <paramref name="branch"/>, or returns the branch when there is none.
+        /// </summary>
+        private static TrieNode FindEmbeddedLeaf(TrieNode branch, ReadOnlySpan<byte> hashedKey)
+        {
+            byte[] keyNibbles = Nibbles.BytesToNibbleBytes(hashedKey);
+            for (int i = 0; i < 16; i++)
+            {
+                if (branch.IsChildNull(i) || branch.GetChildHashAsValueKeccak(i, out _)) continue;
+                TreePath path = TreePath.Empty;
+                TrieNode child = branch.GetChild(NullTrieNodeResolver.Instance, ref path, i)!;
+                child.ResolveNode(NullTrieNodeResolver.Instance, path);
+                if (child.IsLeaf && keyNibbles.AsSpan().EndsWith(child.Key) && keyNibbles[^(child.Key.Length + 1)] == i) return child;
+            }
+
+            return branch;
+        }
+
+        [Test]
         public void Chaotic_test()
         {
             const int accountsCount = 100;
@@ -719,6 +771,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
 
                     TrieNode node = new(NodeType.Unknown, accountProof.StorageProofs[j].Proof.Last());
                     node.ResolveNode(null, TreePath.Empty);
+                    if (node.IsBranch) node = FindEmbeddedLeaf(node, Keccak.Compute(indexBytes).Bytes);
                     // TestContext.Write($"|[{i},{j}]");
                     if (node.Value.Length != 1)
                     {

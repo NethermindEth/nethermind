@@ -9,7 +9,9 @@ using System.Linq;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.Arm;
 using System.Runtime.Intrinsics.X86;
+using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -69,10 +71,10 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
-        public async Task Analysis_failure_is_reported_to_every_reader()
+        public async Task Analysis_failure_is_reported_to_every_reader([Values(1, 23)] int length)
         {
             InvalidOperationException expected = new("analysis failed");
-            using GatedCodeMemory memory = new([(byte)Instruction.JUMPDEST], () => throw expected);
+            using GatedCodeMemory memory = new(new byte[length], () => throw expected);
             CodeInfo codeInfo = new(memory.Memory);
 
             for (int reader = 0; reader < 2; reader++)
@@ -90,6 +92,41 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     }
                 }).WaitAsync(TimeSpan.FromSeconds(30));
                 Assert.That(actual, Is.SameAs(expected));
+            }
+        }
+
+        [Test]
+        public async Task Concurrent_delegation_getter_returns_same_address_instance()
+        {
+            const int Workers = 4;
+            byte[] code = new byte[Eip7702Constants.DelegationHeaderLength + Address.Size];
+            Eip7702Constants.DelegationHeader.CopyTo(code);
+            using Barrier barrier = new(Workers);
+            using GatedCodeMemory memory = new(code, () =>
+            {
+                if (!barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
+                {
+                    throw new TimeoutException("delegation getters did not reach the span barrier");
+                }
+            });
+            CodeInfo codeInfo = new(memory.Memory);
+
+            Task<Address?>[] workers = new Task<Address?>[Workers];
+            for (int worker = 0; worker < workers.Length; worker++)
+            {
+                workers[worker] = Task.Factory.StartNew(
+                    () => codeInfo.DelegatedAddress,
+                    CancellationToken.None,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
+            }
+
+            Address?[] addresses = await Task.WhenAll(workers).WaitAsync(TimeSpan.FromSeconds(30));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(addresses, Is.All.SameAs(addresses[0]));
+                Assert.That(addresses[0], Is.EqualTo(Address.Zero));
             }
         }
 

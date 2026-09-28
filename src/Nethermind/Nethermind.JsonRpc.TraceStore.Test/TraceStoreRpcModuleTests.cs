@@ -59,8 +59,8 @@ public class TraceStoreRpcModuleTests
         if (fail) Assert.Throws<InvalidOperationException>(() => test.Module.trace_get(TestItem.KeccakA, [0]));
         else
         {
-            using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = test.Module.trace_get(TestItem.KeccakA, [0]);
-            Assert.That(result.Data, Is.Empty);
+            using ResultWrapper<ParityTxTraceFromStore?> result = test.Module.trace_get(TestItem.KeccakA, [0]);
+            Assert.That(result.Data, Is.Null);
         }
         Assert.That(executions, Is.EqualTo(1));
         Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
@@ -74,7 +74,42 @@ public class TraceStoreRpcModuleTests
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail("Trace unavailable", errorCode, isTemporary: true);
         test.InnerModule.trace_transaction(TestItem.KeccakA).Returns(error);
 
-        Assert.That(test.Module.trace_get(TestItem.KeccakA, [0]), Is.SameAs(error));
+        using ResultWrapper<ParityTxTraceFromStore?> result = test.Module.trace_get(TestItem.KeccakA, [0]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.Error, Is.EqualTo("Trace unavailable"));
+            Assert.That(result.ErrorCode, Is.EqualTo(errorCode));
+            Assert.That(result.IsTemporary, Is.True);
+        }
+    }
+
+    [Test]
+    public void trace_get_selects_stored_trace_by_trace_address([Values] bool streaming)
+    {
+        TestContext test = new(streaming: streaming);
+        ParityTraceAction Call(Address to, params int[] traceAddress) =>
+            new() { Type = "call", CallType = "call", From = TestItem.AddressA, To = to, TraceAddress = traceAddress };
+        // The root calls B (which calls C) and then D.
+        ParityTraceAction root = Call(TestItem.AddressB);
+        ParityTraceAction first = Call(TestItem.AddressB, 0);
+        first.Subtraces.Add(Call(TestItem.AddressC, 0, 0));
+        root.Subtraces.AddRange([first, Call(TestItem.AddressD, 1)]);
+        test.DbTrace.Action = root;
+        test.Store.Set(test.DbTrace.BlockHash!, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize(test.DbTraces));
+
+        Address? To(params long[] traceAddress)
+        {
+            using ResultWrapper<ParityTxTraceFromStore?> result = test.Module.trace_get(test.DbTrace.TransactionHash!, traceAddress);
+            return result.Data?.Action?.To;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(To(), Is.EqualTo(TestItem.AddressB));
+            Assert.That(To(0, 0), Is.EqualTo(TestItem.AddressC));
+            Assert.That(To(1), Is.EqualTo(TestItem.AddressD));
+            Assert.That(To(2), Is.Null);
+        }
     }
 
     private static async Task<byte[]> Serialize(JsonRpcResponse response)
@@ -125,7 +160,7 @@ public class TraceStoreRpcModuleTests
         Replay(new DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer>(
             new ParityLikeBlockTracer(new TraceStoreConfig().TraceTypes), test.Store, new ParityLikeTraceSerializer(LimboLogs.Instance), LimboLogs.Instance), block);
         string[] types = selection.Split(',');
-        ParityTraceTypes liveTypes = TraceRpcModule.GetParityTypes(types);
+        Assert.That(TraceRpcModule.TryGetParityTypes(types, out ParityTraceTypes liveTypes), Is.True);
         JToken expected;
         if (streaming)
         {
@@ -224,6 +259,17 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
+    public void trace_replayTransaction_defers_unknown_trace_type_to_inner_module()
+    {
+        TestContext test = new();
+        string[] traceTypes = ["unknown"];
+
+        test.Module.trace_replayTransaction(test.DbTrace.TransactionHash!, traceTypes);
+
+        test.InnerModule.Received(1).trace_replayTransaction(test.DbTrace.TransactionHash!, traceTypes, false);
+    }
+
+    [Test]
     public void trace_replayBlockTransactions_returns_from_inner_module()
     {
         TestContext test = new();
@@ -263,6 +309,28 @@ public class TraceStoreRpcModuleTests
         Assert.That(JToken.Parse(Serializer.Serialize(test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Latest }))), Is.EqualTo(JToken.Parse(Serializer.Serialize(ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.NonDbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace))))).Using(JToken.EqualityComparer));
 
         test.InnerModule.Received().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    // Pending resolves to the head, whose traces are stored; neither the store nor the inner module may answer it.
+    [Test]
+    public void rejects_pending_block_as_invalid_params(
+        [Values("trace_block", "trace_replayBlockTransactions", "trace_filter fromBlock", "trace_filter toBlock")] string request)
+    {
+        TestContext test = new();
+        IResultWrapper result = request switch
+        {
+            "trace_block" => test.Module.trace_block(BlockParameter.Pending),
+            "trace_replayBlockTransactions" => test.Module.trace_replayBlockTransactions(BlockParameter.Pending, [ParityTraceTypes.Trace.ToString()]),
+            "trace_filter fromBlock" => test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Pending, ToBlock = BlockParameter.Latest }),
+            _ => test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Pending }),
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(result.Result.Error, Is.EqualTo("Pending block is not supported for tracing"));
+            Assert.That(test.InnerModule.ReceivedCalls(), Is.Empty);
+        }
     }
 
     [Test]
@@ -334,9 +402,6 @@ public class TraceStoreRpcModuleTests
                 .Returns(nonDbFromStoreWrapper);
 
             InnerModule.trace_block(BlockParameter.Latest)
-                .Returns(nonDbFromStoreWrapper);
-
-            InnerModule.trace_get(nonDbTransaction, new[] { 0L })
                 .Returns(nonDbFromStoreWrapper);
 
             InnerModule.trace_transaction(nonDbTransaction)

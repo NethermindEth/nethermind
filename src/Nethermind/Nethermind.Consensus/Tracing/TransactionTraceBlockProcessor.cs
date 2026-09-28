@@ -52,6 +52,9 @@ public sealed class TransactionTraceBlockProcessor(
             return receipts;
         }
 
-        return base.FinalizeBlock(block, blockTracer, options, spec, receipts);
+        // Tracers read only execution; IntermediateRootsBlockTracer derives its roots itself.
+        return TransactionTraceBoundary.IsUnpersistedReplay(options)
+            ? FinalizeBlock<OffFlag>(block, blockTracer, spec, receipts)
+            : base.FinalizeBlock(block, blockTracer, options, spec, receipts);
     }
 }

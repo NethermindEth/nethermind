@@ -14,9 +14,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
@@ -175,6 +178,37 @@ public class BlockchainBridgeTests
     }
 
     [Test]
+    public void Call_leaves_the_hash_of_ethereum_types_null([Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.FrameTx)] TxType type)
+    {
+        Transaction tx = Build.A.Transaction.WithType(type).TestObject;
+        tx.Hash = TestItem.KeccakA;
+
+        _blockchainBridge.Call(Build.A.BlockHeader.TestObject, tx);
+
+        Assert.That(tx.Hash, Is.Null);
+    }
+
+    [Test]
+    public void Call_computes_the_hash_of_other_types()
+    {
+        // Stands in for a plugin's decoder: core registers none for deposit transactions.
+        TxDecoder.Instance.RegisterDecoder(TxType.DepositTx, new EIP1559TxDecoder<Transaction>());
+        try
+        {
+            Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;
+            tx.Hash = TestItem.KeccakA;
+
+            _blockchainBridge.Call(Build.A.BlockHeader.TestObject, tx);
+
+            Assert.That(tx.Hash, Is.EqualTo(tx.CalculateHash()));
+        }
+        finally
+        {
+            TxDecoder.Instance.RegisterDecoder(TxType.DepositTx, null!);
+        }
+    }
+
+    [Test]
     public void Call_uses_valid_block_number()
     {
         _timestamper.UtcNow = DateTime.MinValue;
@@ -188,6 +222,48 @@ public class BlockchainBridgeTests
         _transactionProcessor.Received().CallAndRestore(
             tx,
             Arg.Any<ITxTracer>());
+    }
+
+    [Test]
+    public void EstimateGas_executes_on_the_given_block_header()
+    {
+        _timestamper.UtcNow = DateTime.MinValue;
+        _timestamper.Add(TimeSpan.FromDays(123));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(10).WithTimestamp(1_000).TestObject;
+        Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
+
+        _blockchainBridge.EstimateGas(header, tx, 1);
+
+        _transactionProcessor.Received().SetBlockExecutionContext(
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Number == 10 && blkCtx.Header.Timestamp == 1_000));
+        _transactionProcessor.DidNotReceive().SetBlockExecutionContext(
+            Arg.Is<BlockExecutionContext>(static blkCtx => blkCtx.Header.Number != 10));
+    }
+
+    [Test]
+    public void EstimateGas_without_state_is_rejected_at_the_requested_gas_limit()
+    {
+        IShareableTxProcessorSource unavailableState = Substitute.For<IShareableTxProcessorSource>();
+        unavailableState.TryBuild(Arg.Any<BlockHeader?>(), out Arg.Any<IReadOnlyTxProcessingScope?>()).Returns(false);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(_blockTree)
+            .AddSingleton<IReceiptFinder>(_receiptStorage)
+            .AddSingleton(Substitute.For<ILogFinder>())
+            .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
+            .AddSingleton(unavailableState)
+            .Build();
+        BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
+        Transaction tx = new() { GasLimit = 50_000 };
+
+        CallOutput callOutput = container.Resolve<IBlockchainBridge>().EstimateGas(header, tx, 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callOutput.Error, Does.StartWith("No state available for block"));
+            Assert.That(callOutput.InputError, Is.True, "the RPC error names the gas limit");
+            Assert.That(callOutput.GasSpent, Is.EqualTo(50_000ul), "the requested gas limit");
+        }
     }
 
     [Test]
@@ -622,15 +698,29 @@ public class BlockchainBridgeTests
         Assert.That(callOutput.Error, Is.EqualTo(expectedError));
     }
 
-    [TestCaseSource(nameof(MinerPremiumNegativeCases))]
-    public void EstimateGas_tx_returns_MinerPremiumIsNegativeError(Transaction tx, TransactionResult result, string expectedError)
+    [Test]
+    public void EstimateGas_tx_returns_MinerPremiumIsNegativeError()
     {
         _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(result);
+            .Returns(TransactionResult.MinerPremiumNegative);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(Build.A.BlockHeader.TestObject, new Transaction { GasLimit = 1 }, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("miner premium is negative"));
+    }
+
+    [Test]
+    public void EstimateGas_priced_tx_from_an_empty_sender_returns_insufficient_funds_for_transfer()
+    {
+        Transaction tx = new() { GasLimit = 56786, SenderAddress = TestItem.AddressA, DecodedMaxFeePerGas = 140_000_000_000UL, Type = TxType.EIP1559 };
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(Build.A.BlockHeader.TestObject, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo(expectedError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callOutput.Error, Is.EqualTo(GasEstimator.InsufficientBalance), "a priced estimate needs a balance above the value, even a zero value");
+            _transactionProcessor.DidNotReceive().CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
+        }
     }
 
     [Test]
@@ -766,7 +856,7 @@ public class BlockchainBridgeTests
                 tracer.ReportAction(currentTx.GasLimit, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.TRANSACTION);
                 tracer.ReportActionError(EvmExceptionType.Revert);
                 tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(21000, 0), Array.Empty<byte>(), null);
-                return TransactionResult.Ok;
+                return TransactionResult.EvmException(EvmExceptionType.Revert);
             });
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
@@ -816,15 +906,21 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void EstimateGas_tx_returns_GasLimitOverCap()
+    public void EstimateGas_tx_below_floor_gas_is_rejected_at_the_probe_gas_limit()
     {
-        BlockHeader header = Build.A.BlockHeader
-            .TestObject;
-        Transaction tx = new() { GasLimit = 30_000_000, Data = new byte[1_680_000] };
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        Transaction tx = new() { GasLimit = 1_000_000, Data = new byte[1_000] };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.GasLimitBelowFloorGas);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callOutput.Error, Is.EqualTo("gas below floor data cost"), "a floor shortfall ends the estimate");
+            Assert.That(callOutput.InputError, Is.True, "the transaction was rejected before execution");
+            Assert.That(callOutput.GasSpent, Is.EqualTo(1_000_000ul), "the gas limit it was rejected at");
+        }
     }
 
     [Test]
@@ -1167,7 +1263,9 @@ public class BlockchainBridgeTests
             });
 
         SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
-        adapter.Execute(new Transaction { GasLimit = 200_000 }, Substitute.For<ITxTracer>());
+        Transaction explicitGas = new() { GasLimit = 200_000 };
+        using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(explicitGas);
+        ExecuteWithReceiptsTracer(adapter, receiptsTracer, explicitGas);
         Transaction omittedGas = new() { GasLimit = 500_000 };
         adapter.PrepareForInclusionCheck(omittedGas, ulong.MaxValue);
 

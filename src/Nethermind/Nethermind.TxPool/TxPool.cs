@@ -70,7 +70,7 @@ namespace Nethermind.TxPool
         private readonly ISpecChangeValidationStorage? _specChangeValidationStorage;
         private readonly bool _blobReorgsSupportEnabled;
         private bool _specChangeMarkerUnpublished;
-        private readonly DelegationCache _pendingDelegations = new();
+        private readonly DelegationCache _pendingDelegations;
         private readonly PayerExposureCache _payerExposure = new();
         private readonly PendingPaymasterCache _pendingPaymasters = new();
         private readonly FrameTxDependencyIndex _frameDependencies = new();
@@ -203,6 +203,7 @@ namespace Nethermind.TxPool
             _frameTxPrefixSimulator = frameTxPrefixSimulator;
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
+            _pendingDelegations = new DelegationCache(_specProvider.ChainId);
             ObserveHeadSpec(_specProvider.GetCurrentHeadSpec());
             SupportsBlobs = _txPoolConfig.BlobsSupport != BlobsSupportMode.Disabled;
             _cts = new();
@@ -737,7 +738,7 @@ namespace Nethermind.TxPool
 
             ReadOnlySpan<byte> code = _headInfo.ReadOnlyStateProvider.GetCode(address);
             return Eip7702Constants.IsDelegatedCode(code)
-                ? new Address(code[Eip7702Constants.DelegationHeader.Length..])
+                ? new Address(code[Eip7702Constants.DelegationHeaderLength..])
                 : null;
         }
 
@@ -1766,8 +1767,7 @@ namespace Nethermind.TxPool
             {
                 foreach (AuthorizationTuple auth in tx.AuthorizationList)
                 {
-                    if (auth.Authority is not null)
-                        _pendingDelegations.IncrementDelegationCount(auth.Authority!);
+                    _pendingDelegations.Add(auth);
                 }
             }
         }
@@ -1778,8 +1778,7 @@ namespace Nethermind.TxPool
             {
                 foreach (AuthorizationTuple auth in transaction.AuthorizationList)
                 {
-                    if (auth.Authority is not null)
-                        _pendingDelegations.DecrementDelegationCount(auth.Authority!);
+                    _pendingDelegations.Remove(auth);
                 }
             }
         }
