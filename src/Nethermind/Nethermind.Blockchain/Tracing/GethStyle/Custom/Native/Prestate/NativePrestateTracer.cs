@@ -40,11 +40,13 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly bool _diffMode;
     // Before EIP-5920, 0xfc is an undefined opcode and its operand is no account.
     private readonly bool _isEip5920Enabled;
+    private readonly bool _isEip7702Enabled;
     private readonly bool _isEip8298Enabled;
     // EIP-6780: SELFDESTRUCT deletes only an account created in the same transaction.
     private readonly bool _isEip6780Enabled;
     // EIP-8246: a self-destructed account that ends the transaction with a balance survives.
     private readonly bool _isEip8246Enabled;
+    private readonly bool _includeEmpty;
     private readonly bool _disableCode;
     private readonly bool _disableStorage;
 
@@ -67,6 +69,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         _worldState = worldState;
         _txHash = txHash;
+        _isEip7702Enabled = releaseSpec?.IsEip7702Enabled ?? false;
         _isEip5920Enabled = releaseSpec?.IsEip5920Enabled == true;
         _isEip8298Enabled = releaseSpec?.IsEip8298Enabled == true;
         _isEip6780Enabled = releaseSpec?.IsEip6780Enabled == true;
@@ -78,6 +81,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         NativePrestateTracerConfig config = NativePrestateTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
         _diffMode = config.DiffMode;
+        _includeEmpty = config.IncludeEmpty;
+        if (_diffMode && _includeEmpty)
+            throw new ArgumentException("cannot use diffMode with includeEmpty");
         _disableCode = config.DisableCode;
         _disableStorage = config.DisableStorage;
         if (_diffMode)
@@ -92,12 +98,15 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         {
             Address recipient = to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0);
             LookupAccount(recipient);
+            if (to is not null) LookupDelegation(to);
             // As in geth, a contract-creation transaction creates its recipient.
             if (_diffMode && to is null)
                 _createdAccounts.Add(recipient);
         }
         else
+        {
             LookupFrameTxState(from, transaction);
+        }
         LookupAccount(beneficiary ?? Address.Zero);
     }
 
@@ -146,6 +155,15 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         GethLikeTxTrace result = base.BuildResult();
 
+        if (!_includeEmpty)
+        {
+            foreach ((AddressAsKey address, NativePrestateTracerAccount account) in _prestate)
+            {
+                if (account.Balance.GetValueOrDefault().IsZero && account.Nonce.GetValueOrDefault().IsZero && account.CodeHash is null)
+                    _prestate.Remove(address);
+            }
+        }
+
         result.TxHash = _txHash;
         result.CustomTracerResult = new GethLikeCustomTrace
         {
@@ -175,15 +193,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         base.StartOperation(pc, opcode, gas, env);
 
-        // Everything after an operation error is ignored, so stop pulling stack and memory for the
-        // frames that keep running; leaving the flags set would also freeze _op and _executingAccount
-        // at the failing operation.
-        if (_error is not null)
-        {
-            IsTracingMemory = false;
-            IsTracingStack = false;
-            return;
-        }
+        _error = null;
 
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
@@ -260,6 +270,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 {
                     address = stack.PeekAddress(1);
                     LookupAccount(address);
+                    LookupDelegation(address);
                 }
                 break;
             case Instruction.CREATE2:
@@ -283,10 +294,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                     }
                     catch
                     {
-                        /*
-                         * This operation error will be recorded in ReportOperationError and all
-                         * subsequent operations will be ignored from the prestate trace
-                         */
+                        // The VM reports invalid CREATE2 memory ranges.
                     }
                 }
                 break;
@@ -304,6 +312,12 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         base.ReportOperationError(error);
         _error = error;
+    }
+
+    private void LookupDelegation(Address address)
+    {
+        if (_isEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(_worldState!.GetCode(address), out Address? target))
+            LookupAccount(target);
     }
 
     protected void LookupAccount(Address addr)
