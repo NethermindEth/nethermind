@@ -9,6 +9,7 @@ public class EezConfig : IEezConfig
 {
     public bool Enabled { get; set; }
     public bool FollowerEnabled { get; set; }
+    public string? SequencerRpcUrl { get; set; }
     public string? L1RpcUrl { get; set; }
     public ulong L1ChainId { get; set; }
     public string? RegistryAddress { get; set; }

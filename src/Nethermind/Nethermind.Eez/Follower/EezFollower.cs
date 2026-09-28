@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Eez.Config;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Eez.Follower;
 
@@ -26,6 +27,7 @@ public sealed class EezFollower(
     L1BatchScanner scanner,
     BatchReconciler reconciler,
     ResumePointFinder resumePoints,
+    IUnsafeHeadSource unsafeHead,
     IBlockTree blockTree,
     IEezL2Engine engine,
     IEezConfig config,
@@ -109,6 +111,7 @@ public sealed class EezFollower(
 
     private async Task Tick()
     {
+        engine.EnsureSoleDriver();
         EezL1Block latest = await Latest();
         EezL1Block? scannedNow = await l1.GetBlockByNumber(_lastScanned.Number);
         if (scannedNow?.Hash != _lastScanned.Hash)
@@ -124,6 +127,20 @@ public sealed class EezFollower(
         }
 
         await AdvanceFinalized();
+        await AdvanceUnsafeHead();
+    }
+
+    /// <summary>Takes the sequencer's blocks as the unsafe head; its failures never hold back what L1 settled.</summary>
+    private async Task AdvanceUnsafeHead()
+    {
+        try
+        {
+            await unsafeHead.Advance(_heads);
+        }
+        catch (Exception e) when (e is L1SourceIncompleteException or HttpRequestException or DataException or RlpException)
+        {
+            if (_logger.IsWarn) _logger.Warn($"EEZ follower could not read the sequencer's head: {e.Message}");
+        }
     }
 
     /// <summary>Derives what L1 settled in blocks <see cref="_nextL1"/> to <paramref name="to"/> and moves the safe head after each block.</summary>

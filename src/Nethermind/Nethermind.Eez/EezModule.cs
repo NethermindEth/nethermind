@@ -23,6 +23,7 @@ namespace Nethermind.Eez;
 public class EezModule(IEezConfig config) : Module
 {
     private const string L1RpcClientKey = "Eez.L1";
+    private const string SequencerRpcClientKey = "Eez.Sequencer";
 
     protected override void Load(ContainerBuilder builder)
     {
@@ -62,7 +63,20 @@ public class EezModule(IEezConfig config) : Module
             .AddSingleton<ResumePointFinder, IEezL1Api, IBlockTree>((l1, blockTree) =>
                 new ResumePointFinder(l1, blockTree, registry, config.RollupId, config.RegistryDeployBlock, config.L1LogScanBlocks))
             .AddSingleton<BatchReconciler>()
+            .AddSingleton<IUnsafeHeadSource>(NullUnsafeHeadSource.Instance)
             .AddSingleton<EezFollower>()
             .AddStep(typeof(StartEezFollower));
+
+        if (!string.IsNullOrEmpty(config.SequencerRpcUrl))
+        {
+            builder
+                .AddKeyedSingleton<IJsonRpcClient>(SequencerRpcClientKey, static ctx =>
+                {
+                    IEezConfig eez = ctx.Resolve<IEezConfig>();
+                    return new BasicJsonRpcClient(new Uri(eez.SequencerRpcUrl!), ctx.Resolve<IJsonSerializer>(), ctx.Resolve<ILogManager>());
+                })
+                .AddSingleton<IEezSequencerApi>(static ctx => new EezSequencerApi(ctx.ResolveKeyed<IJsonRpcClient>(SequencerRpcClientKey)))
+                .AddSingleton<IUnsafeHeadSource, UnsafeHeadFollower>();
+        }
     }
 }

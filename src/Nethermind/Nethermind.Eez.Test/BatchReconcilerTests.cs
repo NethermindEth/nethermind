@@ -211,26 +211,4 @@ public class BatchReconcilerTests
         {
         }
     }
-
-    /// <summary>The engine of a node that accepts every block: it inserts it and moves the head, as the real engine does.</summary>
-    private sealed class ChainEngine(IBlockTree chain) : IEezL2Engine
-    {
-        public List<Block> Inserted { get; } = [];
-
-        public List<(Hash256 Head, Hash256 Safe, Hash256 Finalized)> Forkchoices { get; } = [];
-
-        public Task Insert(Block block)
-        {
-            chain.SuggestBlock(block, BlockTreeSuggestOptions.None);
-            Inserted.Add(block);
-            return Task.CompletedTask;
-        }
-
-        public Task UpdateForkchoice(Hash256 head, Hash256 safe, Hash256 finalized)
-        {
-            Forkchoices.Add((head, safe, finalized));
-            chain.TryUpdateMainChain(chain.FindHeader(head)!, true, true);
-            return Task.CompletedTask;
-        }
-    }
 }
