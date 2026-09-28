@@ -45,7 +45,8 @@ public static class DerivedHeader
         Require(header.Difficulty == derived.Difficulty && header.Nonce == derived.Nonce && header.UnclesHash == derived.UnclesHash, header, "proof-of-work fields");
     }
 
-    private static ulong Timestamp(BlockHeader parent, EezSettlementContext context) =>
+    /// <summary>The timestamp derivation gives the child of <paramref name="parent"/>.</summary>
+    public static ulong Timestamp(BlockHeader parent, EezSettlementContext context) =>
         parent.Timestamp > ulong.MaxValue - context.BlockTimeSeconds ? ulong.MaxValue : parent.Timestamp + context.BlockTimeSeconds;
 
     private static void Require(bool condition, BlockHeader header, string field)

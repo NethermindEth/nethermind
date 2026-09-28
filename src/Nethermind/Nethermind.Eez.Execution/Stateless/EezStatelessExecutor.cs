@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -60,15 +61,7 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
         AssignSenders(block);
 
         TransactionCheckpointRecorder? recorder = checkpoints.Length > 0 ? new TransactionCheckpointRecorder(specProvider, checkpoints) : null;
-        StatelessBlockProcessingEnv env = new(input.Witness, specProvider, Always.Valid, logManager)
-        {
-            TransactionProcessorFactory = _transactionProcessorFactory,
-            TxValidator = CreateTxValidator(),
-            BlockValidatorFactory = (txValidator, headerValidator, unclesValidator) =>
-                new EezBlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager),
-            ExecutionRequestsProcessorFactory = _executionRequestsProcessorFactory,
-            TransactionProcessedEventHandler = recorder,
-        };
+        StatelessBlockProcessingEnv env = CreateEnvironment(input.Witness, recorder);
         if (recorder is not null)
         {
             recorder.WorldState = env.WorldState;
@@ -85,6 +78,19 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
             : CreateCheckpoints(result.ProcessedBlock!, result.Receipts, checkpoints, recorder.StateRoots);
         return new EezStatelessBlockResult(result.ProcessedBlock!, result.Parent!, result.Receipts, transactionCheckpoints);
     }
+
+    /// <summary>An environment that executes blocks under the EEZ rules over <paramref name="witness"/>.</summary>
+    public StatelessBlockProcessingEnv CreateEnvironment(Witness witness,
+        BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed = null) =>
+        new(witness, specProvider, Always.Valid, logManager)
+        {
+            TransactionProcessorFactory = _transactionProcessorFactory,
+            TxValidator = CreateTxValidator(),
+            BlockValidatorFactory = (txValidator, headerValidator, unclesValidator) =>
+                new EezBlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager),
+            ExecutionRequestsProcessorFactory = _executionRequestsProcessorFactory,
+            TransactionProcessedEventHandler = transactionProcessed,
+        };
 
     private static Block Decode(byte[] rlp)
     {

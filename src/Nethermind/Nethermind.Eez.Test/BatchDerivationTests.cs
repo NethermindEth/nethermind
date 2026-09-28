@@ -9,6 +9,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
+using Nethermind.Eez.Execution.Stateless;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -36,16 +38,8 @@ public class BatchDerivationTests
     [Test]
     public void Derive_RecordedDevnetWindow_RebuildsEveryBlock()
     {
-        Block[] recorded = Enumerable.Range(From, To - From + 1)
-            .Select(static n => Rlp.Decode<Block>(StatelessFixtures.ReadBlock(Window, $"block-{n}.rlp.hex"))!).ToArray();
-        JsonElement oracle = StatelessFixtures.ReadJson(Window, "oracle.json");
+        (Block[] recorded, DerivedBlock[] derived, EezSettlementContext context) = RecordedWindow();
         PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(StatelessFixtures.ReadPostBatch(Window));
-        ulong systemNonce = recorded[^1].Transactions.First(static t => t.Type == EezConstants.SystemTxType).Nonce;
-        EezSettlementContext context = new(oracle.GetProperty("rollup_id").GetUInt64(), oracle.GetProperty("l2_chain_id").GetUInt64(), Address.Zero, default,
-            oracle.GetProperty("l2_block_time_seconds").GetUInt64());
-
-        DerivedBlock[] derived = BatchDerivation.Derive(DaPayloadCodec.Decode(batch.CallData), ProducingSlice.OfSettledRun(0, batch.Entries.Length),
-            systemNonce, context.ChainId, context.RollupId);
 
         Assert.That(derived, Has.Length.EqualTo(recorded.Length), "the DA spans the recorded window");
         BlockHeader parent = WindowParent();
@@ -63,6 +57,45 @@ public class BatchDerivationTests
 
         Assert.That(recorded[^1].Transactions.Count(static t => t.Type == EezConstants.SystemTxType), Is.EqualTo(batch.Entries.Length - 1),
             "precondition: the Sync block carries a system transaction per effect");
+    }
+
+    /// <summary>
+    /// Each block of the recorded window, built from its derived header and transactions on the recorded parent
+    /// state, produces the hash the composer settled: roots, gas and bloom come out of execution alone.
+    /// </summary>
+    [Test]
+    public void Build_RecordedDevnetWindow_ReproducesEveryBlockHash()
+    {
+        (Block[] recorded, DerivedBlock[] derived, EezSettlementContext context) = RecordedWindow();
+        EezStatelessExecutor executor = new(Spec.Value, LimboLogs.Instance);
+        DerivedBlockBuilder builder = new(Spec.Value, context);
+
+        BlockHeader parent = WindowParent();
+        for (int i = 0; i < recorded.Length; i++)
+        {
+            using Witness witness = StatelessFixtures.ReadWitness(Window, $"witness-{recorded[i].Number}.json");
+            StatelessBlockProcessingEnv env = executor.CreateEnvironment(witness);
+
+            (Block built, _) = builder.Build(parent, derived[i], env.BlockProcessor, env.WorldState);
+
+            Assert.That(built.Hash, Is.EqualTo(recorded[i].Hash), $"block {recorded[i].Number} builds to the recorded hash");
+            parent = recorded[i].Header;
+        }
+    }
+
+    [Test]
+    public void Build_TransactionInvalidOnTheParentState_Throws()
+    {
+        (Block[] recorded, DerivedBlock[] derived, EezSettlementContext context) = RecordedWindow();
+        using Witness witness = StatelessFixtures.ReadWitness(Window, $"witness-{To}.json");
+        StatelessBlockProcessingEnv env = new EezStatelessExecutor(Spec.Value, LimboLogs.Instance).CreateEnvironment(witness);
+        byte[] user = derived[^1].Transactions.First(static t => t[0] != (byte)EezConstants.SystemTxType);
+        DerivedBlock replayed = derived[^1] with { Transactions = [.. derived[^1].Transactions, user] };
+
+        EezSettlementException error = Assert.Throws<EezSettlementException>(() =>
+            new DerivedBlockBuilder(Spec.Value, context).Build(recorded[^2].Header, replayed, env.BlockProcessor, env.WorldState))!;
+
+        Assert.That(error.Message, Does.Contain("does not execute"), "a replayed user transaction fails the block instead of being left out");
     }
 
     [Test]
@@ -130,6 +163,21 @@ public class BatchDerivationTests
     [TestCase(3, 1, 2, 1, TestName = "LastEffectOnly")]
     public void OfSettledRun_ClaimedSteps_SkipsTheAnchor(int start, int length, int skip, int take) =>
         Assert.That(ProducingSlice.OfSettledRun(start, length), Is.EqualTo(new ProducingSlice(skip, take)), "claimed step i is effect i - 1");
+
+    /// <summary>The recorded blocks and the blocks derivation rebuilds from the batch that settled them, all of it applied.</summary>
+    private static (Block[] Recorded, DerivedBlock[] Derived, EezSettlementContext Context) RecordedWindow()
+    {
+        Block[] recorded = Enumerable.Range(From, To - From + 1)
+            .Select(static n => Rlp.Decode<Block>(StatelessFixtures.ReadBlock(Window, $"block-{n}.rlp.hex"))!).ToArray();
+        JsonElement oracle = StatelessFixtures.ReadJson(Window, "oracle.json");
+        PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(StatelessFixtures.ReadPostBatch(Window));
+        ulong systemNonce = recorded[^1].Transactions.First(static t => t.Type == EezConstants.SystemTxType).Nonce;
+        EezSettlementContext context = new(oracle.GetProperty("rollup_id").GetUInt64(), oracle.GetProperty("l2_chain_id").GetUInt64(), Address.Zero, default,
+            oracle.GetProperty("l2_block_time_seconds").GetUInt64());
+        DerivedBlock[] derived = BatchDerivation.Derive(DaPayloadCodec.Decode(batch.CallData), ProducingSlice.OfSettledRun(0, batch.Entries.Length),
+            systemNonce, context.ChainId, context.RollupId);
+        return (recorded, derived, context);
+    }
 
     private static DerivedBlock[] Derive(ProducingSlice slice, byte[] payload) =>
         BatchDerivation.Derive(DaPayloadCodec.Decode(payload), slice, SyncSettlementFixture.StartingNonce, SyncSettlementFixture.ChainId,
