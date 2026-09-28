@@ -416,13 +416,13 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="gas">Gas the frame would have received, including a value call's stipend.</param>
     /// <param name="gasLeft">Gas returned to the caller: all of <paramref name="gas"/> after a failed precheck, none after a collision.</param>
-    /// <param name="value"></param>
-    /// <param name="from"></param>
+    /// <param name="value">Value the operation would have transferred.</param>
+    /// <param name="from">The calling or creating account.</param>
     /// <param name="to">The callee, or the creation address; <c>null</c> for a creation that failed its precheck, whose address is not derived.</param>
     /// <param name="input">Call data or init code.</param>
-    /// <param name="callType"></param>
+    /// <param name="callType">The CALL-family or CREATE operation.</param>
     /// <param name="error"><see cref="EvmExceptionType.NotEnoughBalance"/>, <see cref="EvmExceptionType.CallDepthExceeded"/> or <see cref="EvmExceptionType.TransactionCollision"/>.</param>
-    /// <param name="isPrecompileCall"></param>
+    /// <param name="isPrecompileCall">Whether <paramref name="to"/> is a precompile.</param>
     /// <remarks>
     /// Depends on <see cref="IsTracingActions"/>. The action is complete when reported, so no action end or error
     /// follows. From EIP-8037 a creation runs its precheck in the creating operation, so only its collision is reported.

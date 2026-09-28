@@ -259,6 +259,10 @@ public static partial class EvmInstructions
     /// gas it would have forwarded, which returns at once. Only used before EIP-8037, which moves the precheck into
     /// the creating operation, so the creation has no frame of its own.
     /// </summary>
+    /// <remarks>
+    /// See the <c>CREATE</c>/<c>CREATE2</c> paragraph of
+    /// <see href="https://eips.ethereum.org/EIPS/eip-8037#gas-accounting-for-new-accounts">EIP-8037, gas accounting for new accounts</see>.
+    /// </remarks>
     /// <param name="gas">A copy of the caller's gas, before any is reserved for the creation.</param>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(
