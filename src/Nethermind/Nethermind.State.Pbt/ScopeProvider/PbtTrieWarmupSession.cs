@@ -51,14 +51,13 @@ internal sealed class PbtTrieWarmupSession(
     /// <summary>Refuses further warm-ups without waiting for those in flight, which keep the frozen layers until they exit.</summary>
     internal void StopWarming() => Volatile.Write(ref _isStopped, true);
 
-    public void HintWarmAccount(in ValueAddress address)
+    public void HintWarmAccount(Address address)
     {
         if (!TryEnterOperation(sequenceId)) return;
         try
         {
-            if (!ShouldPrewarm(in address, null)) return;
-            Address hinted = address.ToAddress();
-            if (!trieWarmer.PushAddressJob(this, hinted, sequenceId)) ReportDropped(hinted);
+            if (!ShouldPrewarm(address, null)) return;
+            if (!trieWarmer.PushAddressJob(this, address, sequenceId)) ReportDropped(address);
         }
         finally
         {
@@ -66,16 +65,15 @@ internal sealed class PbtTrieWarmupSession(
         }
     }
 
-    public void HintWarmSlot(in ValueAddress address, in UInt256 index) => HintWarmSlot(in address, warmerKey: null, in index, singleProducer: false);
+    public void HintWarmSlot(Address address, in UInt256 index) => HintWarmSlot(address, in index, singleProducer: false);
 
-    /// <param name="warmerKey">The address as an object, when the caller already holds one, so keying the warmer allocates nothing.</param>
-    internal void HintWarmSlot(in ValueAddress address, Address? warmerKey, in UInt256 index, bool singleProducer)
+    internal void HintWarmSlot(Address address, in UInt256 index, bool singleProducer)
     {
         if (!TryEnterOperation(sequenceId)) return;
         try
         {
-            if (!ShouldPrewarm(in address, index)) return;
-            StorageWarmer storageWarmer = _storageWarmers.GetOrAdd(warmerKey ?? address.ToAddress(), static (key, session) => new StorageWarmer(session, key.Value), this);
+            if (!ShouldPrewarm(address, index)) return;
+            StorageWarmer storageWarmer = _storageWarmers.GetOrAdd(address, static (key, session) => new StorageWarmer(session, key.Value), this);
             if (!singleProducer || !trieWarmer.PushSlotJob(storageWarmer, in index, sequenceId))
                 trieWarmer.PushSlotJobMpmc(storageWarmer, in index, sequenceId);
         }
@@ -94,10 +92,10 @@ internal sealed class PbtTrieWarmupSession(
             logger.Warn($"Pbt trie warmer queue refused the warm-up of {address}; further drops in this scope are only counted in {nameof(Metrics.PbtTrieWarmerDropped)}.");
     }
 
-    private bool ShouldPrewarm(in ValueAddress address, UInt256? index)
+    private bool ShouldPrewarm(Address address, UInt256? index)
     {
         string kind = index is null ? Metrics.TrieWarmerAddressKind : Metrics.TrieWarmerStorageKind;
-        if (transientResource.ShouldPrewarm(in address, index))
+        if (transientResource.ShouldPrewarm(new ValueAddress(address.Bytes), index))
         {
             Metrics.PbtTrieWarmerTriggered.Increment(kind);
             return true;

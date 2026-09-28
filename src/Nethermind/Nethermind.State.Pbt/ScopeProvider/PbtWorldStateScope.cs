@@ -97,22 +97,22 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void HintGet(Address address, Account? account) => Bundle.HintAccount(address, account);
 
-    public void HintWarmAccount(in ValueAddress address)
+    public void HintWarmAccount(Address address)
     {
         using IWorldStateScopeProvider.ITrieWarmupSession session = CreateTrieWarmupSession();
-        session.HintWarmAccount(in address);
+        session.HintWarmAccount(address);
     }
 
-    public void HintWarmSlot(in ValueAddress address, in UInt256 index)
+    public void HintWarmSlot(Address address, in UInt256 index)
     {
         using IWorldStateScopeProvider.ITrieWarmupSession session = CreateTrieWarmupSession();
-        session.HintWarmSlot(in address, in index);
+        session.HintWarmSlot(address, in index);
     }
 
     internal void HintSet(Address address, in UInt256 index)
     {
         using IWorldStateScopeProvider.ITrieWarmupSession session = CreateTrieWarmupSession();
-        if (session is PbtTrieWarmupSession pbtSession) pbtSession.HintWarmSlot(new ValueAddress(address.Bytes), address, in index, singleProducer: true);
+        if (session is PbtTrieWarmupSession pbtSession) pbtSession.HintWarmSlot(address, in index, singleProducer: true);
     }
 
     /// <inheritdoc/>

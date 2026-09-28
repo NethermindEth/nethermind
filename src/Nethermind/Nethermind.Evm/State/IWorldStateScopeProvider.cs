@@ -27,21 +27,21 @@ public interface IWorldStateScopeProvider
     {
         /// <summary>Queues an account path for warm-up.</summary>
         /// <param name="address">The account address to warm.</param>
-        void HintWarmAccount(in ValueAddress address);
+        void HintWarmAccount(Address address);
 
         /// <summary>Queues a storage slot path for warm-up.</summary>
         /// <param name="address">The account and storage address to warm.</param>
         /// <param name="index">The storage slot index to warm.</param>
-        void HintWarmSlot(in ValueAddress address, in UInt256 index);
+        void HintWarmSlot(Address address, in UInt256 index);
 
         /// <summary>A reusable no-op session for backends without trie warm-up support.</summary>
         sealed class Noop : ITrieWarmupSession
         {
             public static Noop Instance { get; } = new();
 
-            public void HintWarmAccount(in ValueAddress address) { }
+            public void HintWarmAccount(Address address) { }
 
-            public void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
+            public void HintWarmSlot(Address address, in UInt256 index) { }
 
             public void Dispose() { }
         }
@@ -51,9 +51,9 @@ public interface IWorldStateScopeProvider
         {
             private volatile IScope? _scope = scope;
 
-            public void HintWarmAccount(in ValueAddress address) => _scope?.HintWarmAccount(in address);
+            public void HintWarmAccount(Address address) => _scope?.HintWarmAccount(address);
 
-            public void HintWarmSlot(in ValueAddress address, in UInt256 index) => _scope?.HintWarmSlot(in address, in index);
+            public void HintWarmSlot(Address address, in UInt256 index) => _scope?.HintWarmSlot(address, in index);
 
             public void Dispose() => _scope = null;
         }
@@ -110,10 +110,10 @@ public interface IWorldStateScopeProvider
         /// Advisory trie warm-up hints pushed concurrently by speculative (prewarm) execution so the
         /// commit-path trie nodes load ahead of the final commit. No-op for backends without trie warm-up.
         /// </summary>
-        void HintWarmAccount(in ValueAddress address) { }
+        void HintWarmAccount(Address address) { }
 
-        /// <inheritdoc cref="HintWarmAccount"/>
-        void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
+        /// <inheritdoc cref="HintWarmAccount(Address)"/>
+        void HintWarmSlot(Address address, in UInt256 index) { }
 
         /// <summary>
         /// Get the account information for the following address.

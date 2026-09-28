@@ -175,6 +175,12 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlockTransactions(BlockParameter blockParameter, string[] traceTypes)
     {
+        // The pending tag resolves to the head, whose stored traces are not a pending block's.
+        if (TraceRpcModule.IsPending(blockParameter))
+        {
+            return TraceRpcModule.PendingNotSupported<IEnumerable<ParityTxTraceFromReplay>>();
+        }
+
         SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter);
         if (blockSearch.IsError)
         {
@@ -206,6 +212,11 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_filter(TraceFilterForRpc traceFilterForRpc)
     {
+        if (TraceRpcModule.IsPending(traceFilterForRpc.FromBlock) || TraceRpcModule.IsPending(traceFilterForRpc.ToBlock))
+        {
+            return TraceRpcModule.PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
+        }
+
         IEnumerable<SearchResult<Block>> blocksSearch = _blockFinder.SearchForBlocksOnMainChain(
             traceFilterForRpc.FromBlock ?? BlockParameter.Latest,
             traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
@@ -275,6 +286,11 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
     {
+        if (TraceRpcModule.IsPending(blockParameter))
+        {
+            return TraceRpcModule.PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
+        }
+
         // Fork overrides require live re-execution; bypass the store and delegate directly.
         if (fork is not null)
             return _traceModule.trace_block(blockParameter, fork);
@@ -307,16 +323,8 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         return _traceModule.trace_block(blockParameter);
     }
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Hash256 txHash, long[] positions)
-    {
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
-        if (!traceTransaction.Result) return traceTransaction;
-        using (traceTransaction)
-        {
-            List<ParityTxTraceFromStore> traces = TraceRpcModule.ExtractPositionsFromTxTrace(positions, traceTransaction);
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
-        }
-    }
+    public ResultWrapper<ParityTxTraceFromStore?> trace_get(Hash256 txHash, long[] traceAddress) =>
+        TraceRpcModule.SelectTraceAddress(trace_transaction(txHash), traceAddress);
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Hash256 txHash, bool traceNonCanonical = false)
     {

@@ -35,8 +35,8 @@ public sealed class PbtReadOnlySnapshotBundle(
     private static readonly StringLabel[] _readNodeGroupPersistenceLabels = [new("node_group_account_persistence"), new("node_group_code_persistence"), new("node_group_storage_persistence")];
     private static readonly StringLabel[] _readNodeGroupPersistenceNullLabels = [new("node_group_account_persistence_null"), new("node_group_code_persistence_null"), new("node_group_storage_persistence_null")];
     // The size metric keys on the same label text, so a tier's bytes and its histogram count line up.
-    private static readonly string[] _readNodeGroupSnapshotSizeKeys = [.. _readNodeGroupSnapshotLabels.Select(static label => label.label)];
-    private static readonly string[] _readNodeGroupPersistenceSizeKeys = [.. _readNodeGroupPersistenceLabels.Select(static label => label.label)];
+    private static readonly string[] _readNodeGroupSnapshotSizeKeys = [.. _readNodeGroupSnapshotLabels.Select(static label => label.Labels[0])];
+    private static readonly string[] _readNodeGroupPersistenceSizeKeys = [.. _readNodeGroupPersistenceLabels.Select(static label => label.Labels[0])];
     private static readonly StringLabel _readCodeSnapshotLabel = new("code_snapshot");
     private static readonly StringLabel _readCodePersistenceLabel = new("code_persistence");
     private static readonly StringLabel _readCodePersistenceNullLabel = new("code_persistence_null");

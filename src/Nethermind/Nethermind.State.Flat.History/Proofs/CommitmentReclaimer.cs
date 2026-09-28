@@ -64,7 +64,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
     {
         if (!LayoutReady()) return;
 
-        while (RunOnePass(token, yieldBetweenChunks: false))
+        while (RunOnePass(token, delay: null))
         {
         }
     }
@@ -100,6 +100,8 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
     private void RunLoop()
     {
         CancellationToken token = _cts.Token;
+        using ManualResetEventSlim delay = new(false, spinCount: 0);
+        using CancellationTokenRegistration registration = token.UnsafeRegister(static state => ((ManualResetEventSlim)state!).Set(), delay);
         while (!token.IsCancellationRequested)
         {
             try
@@ -108,7 +110,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
                 _wake.Reset();
                 if (!LayoutReady()) return;
 
-                while (RunOnePass(token, yieldBetweenChunks: true))
+                while (RunOnePass(token, delay))
                 {
                 }
             }
@@ -123,7 +125,7 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
         }
     }
 
-    private bool RunOnePass(CancellationToken token, bool yieldBetweenChunks)
+    private bool RunOnePass(CancellationToken token, ManualResetEventSlim? delay)
     {
         token.ThrowIfCancellationRequested();
         ulong dropped = metadata.DroppedThroughEpoch;
@@ -145,8 +147,8 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
                 long startedAt = Stopwatch.GetTimestamp();
                 if (!metadata.IsCarried(dropped))
                 {
-                    CarryForward(_accounts, FlatHistoryColumns.AccountCommitments, dropped, token, yieldBetweenChunks);
-                    CarryForward(_storages, FlatHistoryColumns.StorageCommitments, dropped, token, yieldBetweenChunks);
+                    CarryForward(_accounts, FlatHistoryColumns.AccountCommitments, dropped, token, delay);
+                    CarryForward(_storages, FlatHistoryColumns.StorageCommitments, dropped, token, delay);
                     metadata.MarkCarried(dropped);
                 }
 
@@ -175,13 +177,13 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
         return reclaimed;
     }
 
-    private void CarryForward(CommitmentStore store, FlatHistoryColumns column, ulong epoch, CancellationToken token, bool yieldBetweenChunks)
+    private void CarryForward(CommitmentStore store, FlatHistoryColumns column, ulong epoch, CancellationToken token, ManualResetEventSlim? delay)
     {
-        CarryForward(store, column, epoch, CommitmentKeyLayout.FineTier, token, yieldBetweenChunks);
-        CarryForward(store, column, epoch, CommitmentKeyLayout.CoarseTier, token, yieldBetweenChunks);
+        CarryForward(store, column, epoch, CommitmentKeyLayout.FineTier, token, delay);
+        CarryForward(store, column, epoch, CommitmentKeyLayout.CoarseTier, token, delay);
     }
 
-    private void CarryForward(CommitmentStore store, FlatHistoryColumns column, ulong epoch, byte tier, CancellationToken token, bool yieldBetweenChunks)
+    private void CarryForward(CommitmentStore store, FlatHistoryColumns column, ulong epoch, byte tier, CancellationToken token, ManualResetEventSlim? delay)
     {
         ulong first = tier == CommitmentKeyLayout.FineTier ? policy.EpochStart(epoch + 1) : policy.WindowAtOrBelow(policy.EpochStart(epoch + 1));
         ulong target = first - 1;
@@ -262,10 +264,13 @@ public sealed class CommitmentReclaimer(IColumnsDb<FlatHistoryColumns> history, 
                 batch?.Dispose();
                 batch = null;
                 writesInBatch = 0;
-                if (yieldBetweenChunks)
+                if (delay is not null)
                 {
                     TimeSpan worked = Stopwatch.GetElapsedTime(chunkStartedAt);
-                    if (worked > TimeSpan.Zero) token.WaitHandle.WaitOne(worked);
+                    if (worked > TimeSpan.Zero)
+                    {
+                        if (delay.Wait(worked)) token.ThrowIfCancellationRequested();
+                    }
                     chunkStartedAt = Stopwatch.GetTimestamp();
                 }
             }

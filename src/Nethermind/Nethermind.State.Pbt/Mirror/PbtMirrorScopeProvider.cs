@@ -127,9 +127,9 @@ public class PbtMirrorScopeProvider(
 
         public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() => authoritative.CreateTrieWarmupSession();
 
-        public void HintWarmAccount(in ValueAddress address) => authoritative.HintWarmAccount(in address);
+        public void HintWarmAccount(Address address) => authoritative.HintWarmAccount(address);
 
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => authoritative.HintWarmSlot(in address, in index);
+        public void HintWarmSlot(Address address, in UInt256 index) => authoritative.HintWarmSlot(address, in index);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) =>
             authoritative.HintBal(bal, sink);

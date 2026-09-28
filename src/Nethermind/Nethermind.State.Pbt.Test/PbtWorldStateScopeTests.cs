@@ -413,9 +413,9 @@ public class PbtWorldStateScopeTests
         RecordingTrieWarmer warmer = new(acceptSlot: false);
         await using PbtTestContext ctx = new(trieWarmer: warmer);
         using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
-        if (slot < 0) scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        if (slot < 0) scope.HintWarmAccount(TestItem.AddressA);
         else if (singleProducer) scope.CreateStorageTree(TestItem.AddressA).HintSet((UInt256)(uint)slot);
-        else scope.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), (UInt256)(uint)slot);
+        else scope.HintWarmSlot(TestItem.AddressA, (UInt256)(uint)slot);
 
         using (Assert.EnterMultipleScope())
         {
@@ -445,8 +445,8 @@ public class PbtWorldStateScopeTests
         await using PbtTestContext ctx = new(trieWarmer: warmer);
         using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider(isReadOnly: true).BeginScope(null, new LocalMetrics());
         using IWorldStateScopeProvider.ITrieWarmupSession session = scope.CreateTrieWarmupSession();
-        session.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-        session.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), 7);
+        session.HintWarmAccount(TestItem.AddressA);
+        session.HintWarmSlot(TestItem.AddressA, 7);
         scope.HintGet(TestItem.AddressB, null);
         scope.CreateStorageTree(TestItem.AddressB).HintSet(1000);
 
@@ -468,13 +468,13 @@ public class PbtWorldStateScopeTests
         using IWorldStateScopeProvider.ITrieWarmupSession firstBorrow = scope.CreateTrieWarmupSession();
         IWorldStateScopeProvider.ITrieWarmupSession secondBorrow = scope.CreateTrieWarmupSession();
         secondBorrow.Dispose();
-        firstBorrow.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-        firstBorrow.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), 1000);
+        firstBorrow.HintWarmAccount(TestItem.AddressA);
+        firstBorrow.HintWarmSlot(TestItem.AddressA, 1000);
         Assert.That(ExecuteHint(warmer, -1), Is.True, "disposing another borrow must not stop the scope-owned session");
 
         await Task.Run(() => { if (disposeScope) scope.Dispose(); else scope.Commit(0); }).WaitAsync(TimeSpan.FromSeconds(10));
         int queued = warmer.AddressJobs;
-        firstBorrow.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
+        firstBorrow.HintWarmAccount(TestItem.AddressB);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ExecuteHint(warmer, -1), Is.False);
@@ -494,7 +494,7 @@ public class PbtWorldStateScopeTests
             using IWorldStateScopeProvider.ITrieWarmupSession borrow = scope.CreateTrieWarmupSession();
             PbtTrieWarmupSession session = (PbtTrieWarmupSession)borrow;
             Assert.That(session.TreeRoot, Is.EqualTo(scope.Bundle.TreeRoot));
-            borrow.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+            borrow.HintWarmAccount(TestItem.AddressA);
             Assert.That(ExecuteHint(warmer, -1), Is.True);
             Assert.That(warmer.AddressJobs, Is.EqualTo(block + 1), "deduplication must rotate with the committed generation");
             Write(scope, (byte)(block + 1));
@@ -566,8 +566,8 @@ public class PbtWorldStateScopeTests
             using PbtWorldStateScope scope = CreateCountingScope(reader, cache, warmer);
             if (warm)
             {
-                if (slot < 0) scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-                else scope.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), (UInt256)(uint)slot);
+                if (slot < 0) scope.HintWarmAccount(TestItem.AddressA);
+                else scope.HintWarmSlot(TestItem.AddressA, (UInt256)(uint)slot);
                 Assert.That(ExecuteHint(warmer, slot), Is.True);
                 Assert.That(reader.GroupReads, Is.GreaterThan(0));
             }
@@ -597,7 +597,7 @@ public class PbtWorldStateScopeTests
         RecordingTrieWarmer warmer = new();
         using PbtWorldStateScope scope = CreateCountingScope(reader, NoopPbtTrieNodeCache.Instance, warmer);
         IWorldStateScopeProvider.ITrieWarmupSession borrow = scope.CreateTrieWarmupSession();
-        borrow.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        borrow.HintWarmAccount(TestItem.AddressA);
         Task<bool> operation = Task.Run(() => ExecuteHint(warmer, -1));
         try
         {
@@ -643,7 +643,7 @@ public class PbtWorldStateScopeTests
         };
         RecordingTrieWarmer warmer = new();
         using PbtWorldStateScope scope = CreateCountingScope(reader, cache, warmer);
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
         Task<bool> operation = Task.Run(() => ExecuteHint(warmer, -1));
         try
         {
@@ -750,11 +750,11 @@ public class PbtWorldStateScopeTests
             void Warm(PbtWorldStateScope scope)
             {
                 if (!warming) return;
-                scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+                scope.HintWarmAccount(TestItem.AddressA);
                 Assert.That(ExecuteHint(warmer, -1), Is.True);
                 foreach (uint slot in new uint[] { 7, 1000 })
                 {
-                    scope.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), slot);
+                    scope.HintWarmSlot(TestItem.AddressA, slot);
                     Assert.That(ExecuteHint(warmer, (int)slot), Is.True);
                 }
             }
