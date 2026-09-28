@@ -24,10 +24,34 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig) : INethermindP
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
         EnsureEezGenesis(chainSpec);
+        EnsureFollowerConfig(eezConfig);
         api.RegisterTxType<EezSystemTransactionForRpc>(EezTxType.CreateDecoder(), EezTxType.CreateValidator(api.SpecProvider!.ChainId));
     }
 
-    public IModule Module => new EezModule();
+    public IModule Module => new EezModule(eezConfig);
+
+    internal static void EnsureFollowerConfig(IEezConfig config)
+    {
+        if (!config.FollowerEnabled)
+        {
+            return;
+        }
+
+        string? missing = config switch
+        {
+            { L1RpcUrl: null or "" } => nameof(IEezConfig.L1RpcUrl),
+            { RegistryAddress: null or "" } => nameof(IEezConfig.RegistryAddress),
+            { RollupId: 0 } => nameof(IEezConfig.RollupId),
+            { L1ChainId: 0 } => nameof(IEezConfig.L1ChainId),
+            { L2BlockTimeSeconds: 0 } => nameof(IEezConfig.L2BlockTimeSeconds),
+            _ => null,
+        };
+        if (missing is not null)
+        {
+            throw new InvalidConfigurationException($"{nameof(IEezConfig)}.{nameof(IEezConfig.FollowerEnabled)} requires {nameof(IEezConfig)}.{missing}.",
+                ExitCodes.ConflictingConfigurations);
+        }
+    }
 
     internal static void EnsureEezGenesis(ChainSpec chainSpec)
     {
