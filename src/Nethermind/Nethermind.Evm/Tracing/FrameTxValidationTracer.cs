@@ -15,6 +15,8 @@ namespace Nethermind.Evm.Tracing;
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
 /// <param name="timeProvider">The clock <paramref name="timeout"/> is measured against; the system clock by default.</param>
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
+/// <param name="preempt">Polled with <paramref name="token"/>; once it returns true the simulation stops and
+/// <see cref="Preempted"/> stays set.</param>
 public sealed class FrameTxValidationTracer(
     Address sender,
     Address expiryVerifier,
@@ -22,7 +24,8 @@ public sealed class FrameTxValidationTracer(
     IReleaseSpec spec,
     TimeSpan timeout = default,
     TimeProvider? timeProvider = null,
-    CancellationToken token = default)
+    CancellationToken token = default,
+    Func<bool>? preempt = null)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
@@ -56,7 +59,12 @@ public sealed class FrameTxValidationTracer(
     /// <inheritdoc/>
     /// <remarks>Polled by the interpreter every 1024 opcodes; aborting at the first violation denies a
     /// spammer the rest of the <c>MAX_VERIFY_GAS</c> budget per rejected transaction.</remarks>
-    bool ITxTracer.IsCancelled => Violated || TimedOut || token.IsCancellationRequested;
+    bool ITxTracer.IsCancelled => Violated || TimedOut || Preempted || token.IsCancellationRequested;
+
+    /// <summary>True once the preemption callback asked the simulation to stop.</summary>
+    public bool Preempted => _preempted || (_preempted = preempt?.Invoke() == true);
+
+    private bool _preempted;
 
     /// <summary>True once the wall-clock bound was reached; the transaction is then rejected, not cancelled.</summary>
     public bool TimedOut => _deadline != 0 && _time.GetTimestamp() > _deadline;

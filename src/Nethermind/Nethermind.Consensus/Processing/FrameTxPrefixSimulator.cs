@@ -48,7 +48,7 @@ public sealed class FrameTxPrefixSimulator(
     private bool _disposed;
     private bool _nodeFaultReported;
 
-    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default)
+    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default, Func<bool>? preempt = null)
     {
         token.ThrowIfCancellationRequested();
 
@@ -78,6 +78,12 @@ public sealed class FrameTxPrefixSimulator(
             return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head");
         }
 
+        if (preempt?.Invoke() == true)
+        {
+            Interlocked.Increment(ref Metrics.FrameTxSimulationsPreempted);
+            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation preempted");
+        }
+
         // No wait for gossip: that admission runs on a small pool of background threads which also serve
         // sync. A local submission is on the RPC thread instead, so shedding it protects nothing and would
         // hand a peer the exemption from the per-head budget it was given.
@@ -105,7 +111,7 @@ public sealed class FrameTxPrefixSimulator(
             long startedAt = _time.GetTimestamp();
             try
             {
-                return SimulateLocked(tx, head, signaturesPreValidated, token);
+                return SimulateLocked(tx, head, signaturesPreValidated, token, preempt);
             }
             finally
             {
@@ -120,7 +126,7 @@ public sealed class FrameTxPrefixSimulator(
         }
     }
 
-    private FrameTxSimulationResult SimulateLocked(Transaction tx, BlockHeader head, bool signaturesPreValidated, CancellationToken token)
+    private FrameTxSimulationResult SimulateLocked(Transaction tx, BlockHeader head, bool signaturesPreValidated, CancellationToken token, Func<bool>? preempt)
     {
         FrameTxValidationTracer? tracer = null;
         try
@@ -133,7 +139,7 @@ public sealed class FrameTxPrefixSimulator(
             processor.SetBlockExecutionContext(head);
 
             IReleaseSpec spec = specProvider.GetSpec(head);
-            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, _timeout, _time, token);
+            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, _timeout, _time, token, preempt);
             ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
             if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
             TransactionResult result = processor.Process(tx, tracer, opts);
@@ -159,6 +165,12 @@ public sealed class FrameTxPrefixSimulator(
             // The tracer aborted the interpreter on a rule violation.
             Interlocked.Increment(ref Metrics.FrameTxSimulations);
             return FrameTxSimulationResult.Reject(tracer.ViolationReason!);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer is { Preempted: true })
+        {
+            Interlocked.Increment(ref Metrics.FrameTxSimulations);
+            Interlocked.Increment(ref Metrics.FrameTxSimulationsPreempted);
+            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation preempted");
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer is { TimedOut: true })
         {

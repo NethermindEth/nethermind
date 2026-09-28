@@ -292,6 +292,48 @@ public class FrameTxPrefixSimulatorTests
     }
 
     [Test]
+    public void Simulate_PreemptedBeforeStart_DefersWithoutBuildingAnEnv()
+    {
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        using FrameTxPrefixSimulator simulator = Create(envFactory, out _);
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx(), preempt: static () => true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.NodeBound, Is.True);
+            Assert.That(result.Reason, Does.Contain("preempted"));
+            envFactory.DidNotReceive().Create();
+        }
+    }
+
+    [Test]
+    public void Simulate_PreemptedMidRun_DefersEvenAfterTheBlockEnds()
+    {
+        bool processingBlock = false;
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor);
+        processor.Process(Arg.Any<Transaction>(), Arg.Any<ITxTracer>(), Arg.Any<ExecutionOptions>())
+            .Returns<TransactionResult>(call =>
+            {
+                processingBlock = true;
+                bool cancelled = call.ArgAt<ITxTracer>(1).IsCancelled;
+                processingBlock = false;
+                if (cancelled) throw new OperationCanceledException();
+                return TransactionResult.Ok;
+            });
+
+        FrameTxSimulationResult result = simulator.Simulate(FrameTx(), preempt: () => processingBlock);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Outcome, Is.EqualTo(FrameTxSimulationOutcome.Rejected));
+            Assert.That(result.NodeBound, Is.True);
+            Assert.That(result.Reason, Does.Contain("preempted"));
+        }
+    }
+
+    [Test]
     public void Simulate_AfterDispose_LeavesTheTransactionUndecided()
     {
         FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out _);

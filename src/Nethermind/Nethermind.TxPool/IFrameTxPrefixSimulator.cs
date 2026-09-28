@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Core;
 
@@ -23,7 +24,9 @@ public interface IFrameTxPrefixSimulator
     /// trusted RPC: publicly exposed, it is the one admission path with no cumulative bound.</param>
     /// <param name="token">Honored at entry and polled cooperatively during execution. It does not gate access
     /// to the serialized processing env; a busy simulator sheds immediately rather than waiting for it.</param>
-    FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default);
+    /// <param name="preempt">Checked at entry and polled with <paramref name="token"/>; once it returns true the
+    /// simulation does not start or stops, and the result is a node-bound rejection.</param>
+    FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default, Func<bool>? preempt = null);
 }
 
 /// <summary>How far a validation-prefix simulation got.</summary>
