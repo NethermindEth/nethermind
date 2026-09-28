@@ -2141,24 +2141,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    public byte[]? FirstKey
-    {
-        get
-        {
-            using Iterator iterator = _db.NewIterator();
-            iterator.SeekToFirst();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-        }
-    }
+    public byte[]? FirstKey => GetEdgeKey(first: true);
 
-    public byte[]? LastKey
+    public byte[]? LastKey => GetEdgeKey(first: false);
+
+    /// <summary>Returns the smallest or largest key of the database or column family, or null when it is empty.</summary>
+    /// <remarks>Uses total order, since a prefix-extractor database (code) otherwise skips its unflushed memtable.</remarks>
+    internal byte[]? GetEdgeKey(bool first, IColumnFamilyHandle? cf = null)
     {
-        get
-        {
-            using Iterator iterator = _db.NewIterator();
-            iterator.SeekToLast();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-        }
+        using ReadOptions readOptions = CreateReadOptions();
+        readOptions.SetTotalOrderSeek(true);
+        using Iterator iterator = CreateIterator(readOptions, cf);
+        if (first) iterator.SeekToFirst();
+        else iterator.SeekToLast();
+        return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
     }
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) => GetViewBetween(firstKey, lastKey, null, flags);
