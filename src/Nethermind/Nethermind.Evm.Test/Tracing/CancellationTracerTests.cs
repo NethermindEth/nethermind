@@ -17,16 +17,18 @@ namespace Nethermind.Evm.Test.Tracing
     public class CancellationTracerTests
     {
         [Test]
-        public void Forwards_frame_receipts_and_failures()
+        public void Forwards_frame_receipts_and_failures([Values] bool wrapped)
         {
             ITxTracer inner = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
-            using CancellationTxTracer tracer = new(inner);
+            using CancellationTxTracer tracer = new(wrapped ? new CancellationTxTracer(inner) : inner);
             TxFrameReceipt[] receipts = [new(TxFrameReceipt.StatusSuccess, 100, 0, [])];
 
             tracer.ReportFrameEnd(1, EvmExceptionType.OutOfGas);
+            tracer.ReportFramesRolledBack(0, 1);
             tracer.ReportFrameTxReceipt(TestItem.AddressA, receipts);
 
             ((IFrameTxReceiptTracer)inner).Received().ReportFrameEnd(1, EvmExceptionType.OutOfGas);
+            ((IFrameTxReceiptTracer)inner).Received().ReportFramesRolledBack(0, 1);
             ((IFrameTxReceiptTracer)inner).Received().ReportFrameTxReceipt(TestItem.AddressA, receipts);
         }
 
