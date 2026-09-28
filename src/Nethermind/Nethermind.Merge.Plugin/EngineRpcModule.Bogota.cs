@@ -147,10 +147,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     /// <summary>Inclusion-list compliance of a <c>VALID</c> forkchoice head (bogota.md
     /// <c>engine_forkchoiceUpdatedV5</c> (2)).</summary>
     /// <remarks>
-    /// Uses the answer <c>engine_newPayloadV6</c> already computed, falling back to the list retained for a
-    /// payload that resolved to <c>ACCEPTED</c>/<c>SYNCING</c>. Decoding and sender recovery are deferred to
-    /// that fallback, so a head with nothing retained costs only dictionary lookups. The answer is a pure function of
-    /// (block, list), so concurrent calls for one head recompute the same value.
+    /// Uses the answer <c>engine_newPayloadV6</c> already computed, falling back to evaluating the list retained for a
+    /// payload that resolved to <c>ACCEPTED</c>/<c>SYNCING</c>. Concurrent calls for one head recompute the same value.
     /// </remarks>
     /// <returns><c>null</c> when no list was retained for the head, or its state is no longer readable.</returns>
     private bool? GetInclusionListSatisfied(Hash256 headBlockHash)
@@ -166,9 +164,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         bool? evaluated;
         try
         {
-            // An ecrecover per retained transaction plus a state read per sender, charged to the forkchoice
-            // response the consensus client awaits for payloadId. Accepted: only a head its own newPayloadV6
-            // left unanswered pays it, and publishing the answer below caps it at once per head.
+            // Sender recovery and state reads delay the payloadId response; accepted, as only a head newPayloadV6
+            // left unanswered pays it, and publishing the answer caps it at once per head.
             evaluated = _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained);
         }
         // The head is already applied and a build may be under way, and bogota.md permits a null answer, so
@@ -284,7 +281,9 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private void PruneFinalizedInclusionLists(Hash256 finalizedHash)
     {
-        if (finalizedHash == Hash256.Zero || _inclusionListBlockTree.FindHeader(finalizedHash,
+        // Read outside the lock: a stale value only costs the header lookup.
+        if (finalizedHash == Hash256.Zero || finalizedHash == _finalizedInclusionListHash
+            || _inclusionListBlockTree.FindHeader(finalizedHash,
                 BlockTreeLookupOptions.DoNotCreateLevelIfMissing) is not { Number: ulong number }) return;
 
         lock (_inclusionListLock)
