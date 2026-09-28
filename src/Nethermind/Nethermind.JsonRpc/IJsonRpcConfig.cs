@@ -170,7 +170,10 @@ public interface IJsonRpcConfig : IConfig
             overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. Also the
             number of execution slots shared by `eth_call`, `eth_estimateGas`, `eth_createAccessList`,
             `eth_simulateV1` and `eth_fillTransaction`, with or without overrides; see
-            `EvmExecutionMaxQueueWaitMs`. Raising it above the number of logical processors also
+            `EvmExecutionMaxQueueWaitMs`. Authenticated (Engine API / JWT) and IPC requests are not
+            limited by these slots, but their calls with overrides still count against the override-path
+            env pool, so while they run, a public call with overrides can still fail with `LimitExceeded`.
+            Raising it above the number of logical processors also
             runs more of those calls at once, and a value far above it effectively turns off their
             queueing and load shedding. Defaults to the number of logical processors.
             """)]
@@ -185,7 +188,8 @@ public interface IJsonRpcConfig : IConfig
             Waiters are served in arrival order, except that each full 128 KiB of `params` delays a request's turn by 1/14 of
             this budget, up to half of it; a request that has waited half this budget is served before any later arrival.
             The budget bounds only the wait for a slot, not the response time. `0` or a negative value disables queueing.
-            Batch items, authenticated and IPC requests, and WebSocket requests with `WebSocketsProcessingConcurrency` of 1 never queue.
+            Authenticated (Engine API / JWT) and IPC requests do not take a slot, so they never wait.
+            Batch items and WebSocket requests with `WebSocketsProcessingConcurrency` of 1 never queue.
             """,
         DefaultValue = "500")]
     int EvmExecutionMaxQueueWaitMs { get; set; }

@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc
 
         /// <summary>Number of EVM-executing JSON-RPC requests rejected at once because they may not queue.</summary>
         [CounterMetric]
-        [Description("Number of EVM-executing JSON RPC requests rejected because every execution slot was busy and the request may not queue: a batch item, an authenticated, IPC or single-worker WebSocket request, or any request when queueing is disabled.")]
+        [Description("Number of EVM-executing JSON RPC requests rejected because every execution slot was busy and the request may not queue: a batch item, a single-worker WebSocket request, or any request when queueing is disabled.")]
         public static long RpcAdmissionNotQueueableRejections { get; set; }
 
         /// <summary>Number of EVM-executing JSON-RPC requests rejected after waiting their whole budget.</summary>

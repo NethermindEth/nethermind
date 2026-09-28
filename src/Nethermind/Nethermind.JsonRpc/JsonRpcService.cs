@@ -61,7 +61,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution
+            // Authenticated and IPC callers are the operator's own, so they are not gated; the env pools still bound
+            // their calls with overrides and their simulations.
+            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution && !context.IsAuthenticated
                 ? ExecuteGatedAsync(rpcRequest, methodName, method, context)
                 : ExecuteAsync(rpcRequest, methodName, method, context);
             return responseTask.IsCompletedSuccessfully
@@ -126,10 +128,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return await ExecuteAsync(request, methodName, method, context);
     }
 
-    // Waiting would hold up the requests behind this one: the rest of its batch, a connection served one request at a
-    // time, or the engine calls on an authenticated connection (IPC always is).
+    // Waiting would hold up the requests behind this one: the rest of its batch or a connection served one request at a time.
     private bool CanQueue(JsonRpcRequest request, JsonRpcContext context) =>
-        !request.IsBatchItem && !context.IsAuthenticated && context.RpcEndpoint switch
+        !request.IsBatchItem && context.RpcEndpoint switch
         {
             RpcEndpoint.Http => true,
             RpcEndpoint.Ws => _webSocketsCanQueue,

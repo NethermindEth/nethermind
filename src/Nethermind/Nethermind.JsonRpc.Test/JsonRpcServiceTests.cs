@@ -1261,14 +1261,12 @@ public class JsonRpcServiceTests
 
     [TestCaseSource(nameof(EvmQueueingCases))]
     public async Task Evm_request_queues_only_where_waiting_holds_up_no_other_request(
-        RpcEndpoint endpoint, int webSocketsProcessingConcurrency, bool authenticated, bool batchItem, bool queues)
+        RpcEndpoint endpoint, int webSocketsProcessingConcurrency, bool batchItem, bool queues)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
         JsonRpcService service = CreateGatedService(ethRpcModule, webSocketsProcessingConcurrency: webSocketsProcessingConcurrency);
-        using JsonRpcContext context = authenticated
-            ? new JsonRpcContext(endpoint, url: new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, [ModuleType.Eth]))
-            : new JsonRpcContext(endpoint);
+        using JsonRpcContext context = new(endpoint);
         JsonRpcRequest request = EthCall();
         request.IsBatchItem = batchItem;
 
@@ -1286,12 +1284,38 @@ public class JsonRpcServiceTests
 
     private static IEnumerable<TestCaseData> EvmQueueingCases()
     {
-        yield return new TestCaseData(RpcEndpoint.Http, 1, false, false, true).SetName("HTTP queues");
-        yield return new TestCaseData(RpcEndpoint.Http, 1, true, false, false).SetName("Authenticated HTTP is rejected at once");
-        yield return new TestCaseData(RpcEndpoint.Http, 1, false, true, false).SetName("Batch item is rejected at once");
-        yield return new TestCaseData(RpcEndpoint.Ws, 1, false, false, false).SetName("Single-worker WebSocket is rejected at once");
-        yield return new TestCaseData(RpcEndpoint.Ws, 2, false, false, true).SetName("Multi-worker WebSocket queues");
-        yield return new TestCaseData(RpcEndpoint.IPC, 2, false, false, false).SetName("IPC is rejected at once");
+        yield return new TestCaseData(RpcEndpoint.Http, 1, false, true).SetName("HTTP queues");
+        yield return new TestCaseData(RpcEndpoint.Http, 1, true, false).SetName("Batch item is rejected at once");
+        yield return new TestCaseData(RpcEndpoint.Ws, 1, false, false).SetName("Single-worker WebSocket is rejected at once");
+        yield return new TestCaseData(RpcEndpoint.Ws, 2, false, true).SetName("Multi-worker WebSocket queues");
+    }
+
+    [TestCase(RpcEndpoint.Http, true, TestName = "Authenticated HTTP")]
+    [TestCase(RpcEndpoint.IPC, false, TestName = "IPC")]
+    public async Task Trusted_evm_request_is_not_limited_by_the_execution_slots(RpcEndpoint endpoint, bool authenticatedUrl)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcService service = CreateGatedService(ethRpcModule);
+        List<(int InFlight, int Queued)> gateDuringCalls = [];
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ =>
+        {
+            lock (gateDuringCalls) gateDuringCalls.Add((service.EvmGate.InFlight, service.EvmGate.Queued));
+            return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
+        });
+        using JsonRpcContext trusted = new(endpoint, url: authenticatedUrl ? new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, [ModuleType.Eth]) : null);
+        EvmAdmissionGate.Lease held = await HoldSlot(service);
+        Task<JsonRpcResponse> queued = service.SendRequestAsync(EthCall(), _context).AsTask();
+        Assert.That(service.EvmGate.Queued, Is.EqualTo(1));
+
+        using (JsonRpcResponse response = await service.SendRequestAsync(EthCall(), trusted).AsTask().WaitAsync(TestTimeout))
+        {
+            RpcTest.AssertSuccess<HexBytes>(response);
+        }
+
+        Assert.That(gateDuringCalls, Is.EqualTo(new[] { (1, 1) }), "ran while the only slot was held and a public request waited");
+        held.Dispose();
+        using JsonRpcResponse served = await queued.WaitAsync(TestTimeout);
+        RpcTest.AssertSuccess<HexBytes>(served);
     }
 
     [TestCase(true, TestName = "Raw params")]
