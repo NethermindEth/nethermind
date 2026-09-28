@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -18,6 +19,7 @@ using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Libp2p.Protocols;
+using NSubstitute;
 using NUnit.Framework;
 using IdentifyMessage = Nethermind.Libp2p.Protocols.Identify.Dto.Identify;
 
@@ -279,6 +281,31 @@ public class IdentifyTests
         await PeerSessionNodes.WaitUntilAsync(() => node.SessionCountForTest == 0, "the misidentified session was left open", token, within, [node]);
         Assert.That(Volatile.Read(ref established), Is.Zero, "a misidentified session is never reported as established");
         return true;
+    }
+
+    /// <summary>
+    /// A failed dial may hand back only a session the peer opened: one whose identify failed, or that the library already
+    /// dropped (its slot removed between the session snapshot and the check), is the dial's own lost session.
+    /// </summary>
+    [TestCase(null, ExpectedResult = false, TestName = "Dropped session with no slot")]
+    [TestCase(TaskStatus.Canceled, ExpectedResult = false, TestName = "Session whose identify failed")]
+    [TestCase(TaskStatus.WaitingForActivation, ExpectedResult = true, TestName = "Session still identifying")]
+    [TestCase(TaskStatus.RanToCompletion, ExpectedResult = true, TestName = "Identified session")]
+    public bool A_failed_dial_returns_only_a_raced_session_that_is_still_tracked(TaskStatus? slotStatus)
+    {
+        ISession session = Substitute.For<ISession>();
+        ConcurrentDictionary<ISession, TaskCompletionSource<BeaconP2P.SessionInfo>> sessionInfo = new();
+        if (slotStatus is { } status)
+        {
+            TaskCompletionSource<BeaconP2P.SessionInfo> slot = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (status == TaskStatus.Canceled)
+                slot.SetCanceled();
+            else if (status == TaskStatus.RanToCompletion)
+                slot.SetResult(new BeaconP2P.SessionInfo(PeerDirection.Inbound, ServerAgent));
+            sessionInfo[session] = slot;
+        }
+
+        return BeaconP2P.IsNotDropped(sessionInfo, session);
     }
 
     /// <summary>A fresh secp256k1 identity whose key signs for its own public key.</summary>
