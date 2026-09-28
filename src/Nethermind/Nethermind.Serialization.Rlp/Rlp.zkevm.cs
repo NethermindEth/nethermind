@@ -40,7 +40,9 @@ public partial class Rlp
         return snapshot;
     }
 
-    public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)
+    public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders) => RegisterDefaultDecoders();
+
+    private static bool RegisterDefaultDecoders()
     {
         // Under zkEVM/bflat AOT we cannot rely on reflection-based auto-discovery of decoders
         // (CustomAttribute instantiation can trigger TypeLoader failures).
@@ -69,6 +71,7 @@ public partial class Rlp
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), new ReceiptStorageDecoder());
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Storage), CompactReceiptStorageDecoder.Instance);
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Trie), new ReceiptMessageDecoder());
+        return true;
     }
 }
 

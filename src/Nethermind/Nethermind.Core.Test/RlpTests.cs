@@ -245,6 +245,14 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void GuardLimit_without_a_limit_applies_the_default_limit()
+        {
+            int limit = RlpLimit.DefaultLimit.Limit;
+            Assert.That(() => Rlp.GuardLimit(limit, int.MaxValue), Throws.Nothing);
+            Assert.That(() => Rlp.GuardLimit(limit + 1, int.MaxValue), Throws.TypeOf<RlpLimitException>());
+        }
+
+        [Test]
         public void Serializing_sequences()
         {
             Rlp output = Rlp.Encode(
@@ -312,6 +320,10 @@ namespace Nethermind.Core.Test
             expected = Rlp.Encode(value, expected);
             AssertValueWriterMatchesExpected(writer, buffer, expected);
         }
+
+        [Test]
+        public void EncodeToCappedArray_encodes_int_like_Rlp([Values(0, 1, 127, 128, 1023, 1024, 65536, int.MaxValue)] int value) =>
+            Assert.That(Rlp.EncodeToCappedArray(value).ToArray(), Is.EqualTo(Rlp.Encode(value).Bytes));
 
         [TestCaseSource(nameof(ValueWriterUInt256Cases))]
         public void RlpWriter_encodes_uint256_like_Rlp(UInt256 value)

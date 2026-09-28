@@ -801,17 +801,19 @@ namespace Nethermind.Core.Extensions
             state.Bytes.AsSpan().OutputBytesToCharHexWithEip55Checksum(chars, state.WithZeroX, state.LeadingZeros);
         });
 
-        internal static uint[] Lookup32 = CreateLookup32("x2");
-        private static uint[] CreateLookup32(string format)
+        internal static uint[] Lookup32 = CreateLookup32();
+        // Plain arithmetic rather than formatting each byte, which allocated and parsed a string per entry.
+        private static uint[] CreateLookup32()
         {
             uint[] result = new uint[256];
             for (int i = 0; i < 256; i++)
             {
-                string s = i.ToString(format);
-                result[i] = s[0] + ((uint)s[1] << 16);
+                result[i] = HexDigit(i >> 4) + (HexDigit(i & 0xF) << 16);
             }
 
             return result;
+
+            static uint HexDigit(int nibble) => (uint)(nibble < 10 ? '0' + nibble : 'a' - 10 + nibble);
         }
 
         public static int CountLeadingNibbleZeros(this ReadOnlySpan<byte> bytes)

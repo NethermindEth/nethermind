@@ -193,6 +193,13 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Hex_lookup_holds_both_lowercase_digits_of_every_byte([Range(0, 255)] int value)
+        {
+            string hex = value.ToString("x2");
+            Assert.That(Bytes.Lookup32[value], Is.EqualTo(hex[0] + ((uint)hex[1] << 16)));
+        }
+
+        [Test]
         public void Stream_hex_works()
         {
             byte[] bytes = new byte[] { 15, 16, 255 };
