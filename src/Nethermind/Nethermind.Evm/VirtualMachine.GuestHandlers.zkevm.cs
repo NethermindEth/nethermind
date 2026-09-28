@@ -453,8 +453,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>PUSH1 with its immediate and the opcode after it read from one address.</summary>
         /// <remarks>
-        /// A short gas, a full stack, or a PUSH1 without an opcode after its immediate in unpadded code runs the shared
-        /// PUSH1 handler instead, which also handles an immediate cut off by the end of the code.
+        /// A short gas or a full stack runs the shared PUSH1 handler instead.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -534,8 +533,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>PUSH2, fused with a JUMP or JUMPI after it whenever <see cref="EvmInstructions.InstructionPush2{TGasPolicy, TTracingInst}"/> would fuse them.</summary>
         /// <remarks>
         /// Fuses on the same conditions: a destination the incremental bitmap already holds, or a zero JUMPI
-        /// condition that never reads it. Every case that could fault - short gas, a full stack, immediates missing from
-        /// unpadded code or a fused jump's condition missing - runs the shared PUSH2 handler instead.
+        /// condition that never reads it. Every case that could fault - short gas, a full stack or a fused jump's
+        /// condition missing - runs the shared PUSH2 handler instead.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -550,7 +549,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint codeLength)
         {
             ulong pushGas = VeryLowGasCost.GasCost;
-            // Unless the code is padded, the opcode after the immediates has to be in it as well; a PUSH2 at the tail runs the shared handler.
             if (gas < pushGas || head >= EvmStack.MaxStackSize - 1)
                 goto Shared;
 

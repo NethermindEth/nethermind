@@ -620,9 +620,9 @@ public partial struct EvmPooledMemory
     /// <summary>The Yellow Paper memory cost of growing from <paramref name="activeWords"/> to <paramref name="newActiveWords"/> words.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ExpansionCost(ulong activeWords, ulong newActiveWords) =>
+        (newActiveWords - activeWords) * GasCostOf.Memory +
         ((newActiveWords * newActiveWords) >> 9) -
-        ((activeWords * activeWords) >> 9) +
-        (newActiveWords - activeWords) * GasCostOf.Memory;
+        ((activeWords * activeWords) >> 9);
 
     private static readonly TraceMemory EmptyTraceMemory = new(0, default);
 

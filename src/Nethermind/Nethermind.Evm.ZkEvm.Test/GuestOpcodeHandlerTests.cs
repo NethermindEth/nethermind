@@ -408,7 +408,7 @@ public class GuestOpcodeHandlerTests
         CodeInfo codeInfo = new(code);
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData ?? []);
         // Rented as a transaction's frame is, so its memory starts with nothing initialized, as the guest's does.
-        VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
+        using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default);
         vm.Enter(frame);
 
