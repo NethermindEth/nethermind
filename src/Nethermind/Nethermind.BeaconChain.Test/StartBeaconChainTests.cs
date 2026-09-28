@@ -42,11 +42,9 @@ public class StartBeaconChainTests
     {
         ExternalClDetector detector = new(new BeaconChainConfig(), new Lazy<IEngineRpcModule>(() => Substitute.For<IEngineRpcModule>()), LimboLogs.Instance);
         EngineDriver engine = new(detector, LimboLogs.Instance);
-        // `BeaconChainService`'s other dependencies are never touched here: `Start()` is
-        // fire-and-forget and its run loop NREs immediately on the null config, which its own
-        // top-level catch swallows and logs, matching StartBeaconChain's documented contract that
-        // exception handling happens inside `Start`.
-        BeaconChainService service = new(null!, null!, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), null!, null!, null!, detector, LimboLogs.Instance);
+        // `Start()` checks the empty store synchronously; its background run then NREs on the null
+        // checkpoint sync, which its own top-level catch swallows and logs.
+        BeaconChainService service = new(new BeaconChainConfig(), null!, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), null!, null!, null!, detector, LimboLogs.Instance);
         StartBeaconChain step = new(service, engine, LimboLogs.Instance);
 
         Assert.That(() => step.Execute(CancellationToken.None), Throws.Nothing);

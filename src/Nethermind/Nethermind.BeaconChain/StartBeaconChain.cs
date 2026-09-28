@@ -20,8 +20,9 @@ namespace Nethermind.BeaconChain;
 /// Depends on <see cref="RegisterRpcModules"/> because the driver resolves
 /// <c>IEngineRpcModule</c>, and the engine module's decorator chain (including the external
 /// consensus client interceptor) is only complete once RPC module registration has run.
-/// <see cref="BeaconChainService"/> is a long-running background service; it is started
-/// fire-and-forget here and disposed by the container.
+/// <see cref="BeaconChainService.Start"/> checks the database and any persisted anchor before it
+/// returns, so a refusal fails this step; the driver it then starts runs in the background, is not
+/// awaited here, and is disposed by the container.
 /// </remarks>
 [RunnerStepDependencies(typeof(RegisterRpcModules))]
 public class StartBeaconChain(BeaconChainService service, IEngineDriver engine, ILogManager logManager) : IStep
@@ -32,7 +33,8 @@ public class StartBeaconChain(BeaconChainService service, IEngineDriver engine, 
         // on the interface's throwing default for the envelope overload.
         INewPayloadNotifier.RequireEnvelopeSupport(engine);
 
-        _ = service.Start(); // NOTE: Fire and forget, exception handling must be done inside `Start`
+        // Throws synchronously on a database or anchor the driver refuses; the returned run handles its own failures.
+        _ = service.Start();
 
         ILogger logger = logManager.GetClassLogger<StartBeaconChain>();
         if (logger.IsInfo) logger.Info("Embedded beacon chain driver has been enabled and started");

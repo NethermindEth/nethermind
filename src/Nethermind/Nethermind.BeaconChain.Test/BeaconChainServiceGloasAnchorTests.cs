@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
@@ -21,6 +24,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Network;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -41,9 +46,9 @@ public class BeaconChainServiceGloasAnchorTests
         BeaconChainConfig config = new() { CheckpointStateFile = files.StateFile, CheckpointSyncUrl = "http://invalid.localhost:1" };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
 
-        (TestErrorLogManager.Error[] fresh, int freshPubkeys) = await StartAsync(config, store);
+        (_, TestErrorLogManager.Error[] fresh, int freshPubkeys) = await StartAsync(config, store);
         bool anchored = store.TryGetAnchor(out Hash256? anchorRoot, out _);
-        (TestErrorLogManager.Error[] resumed, int resumedPubkeys) = await StartAsync(config, store);
+        (_, TestErrorLogManager.Error[] resumed, int resumedPubkeys) = await StartAsync(config, store);
 
         using (Assert.EnterMultipleScope())
         {
@@ -59,8 +64,61 @@ public class BeaconChainServiceGloasAnchorTests
     }
 
     /// <summary>
-    /// A resumed database whose anchor state and block are of different forks cannot seed the importer. The refusal
-    /// names the block by its own slot, which differs from the state's, so an operator is not sent after the wrong block.
+    /// The production graph up to its first network use: the service checkpoint-syncs a Gloas anchor, the orchestrator builds
+    /// its importer through the factory, kicks the execution layer at the anchor's bid <c>parent_block_hash</c>, replays a
+    /// stored child through that importer, and starts the P2P host. The run is stopped when discovery resolves its address.
+    /// </summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Start_runs_a_gloas_anchor_through_the_importer_factory_to_the_p2p_start()
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        ForkCrossingChain.ChainBlock first = chain.First;
+        ForkCrossingChain.ChainBlock child = chain.Voting[0];
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(first.PostState, new ForkedSignedBeaconBlock.OfGloas(first.Block));
+        BeaconChainSpec spec = GloasCheckpointFiles.Spec;
+        TestErrorLogManager logManager = new();
+        IEngineDriver engine = Substitute.For<IEngineDriver>();
+        engine.ForkchoiceUpdated(Arg.Any<Hash256>(), Arg.Any<Hash256>(), Arg.Any<Hash256>()).Returns(new PayloadStatusV1 { Status = PayloadStatus.Syncing });
+        BeaconChainService? service = null;
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            service!.Stop();
+            return ValueTask.FromCanceled<IIPResolver.NethermindIp>(new CancellationToken(canceled: true));
+        });
+        // The wall clock past the stored child by more than the 64 slots within which a head step starts gossip, so the replay reaches it and gossip waits.
+        ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(spec.GenesisTime + (child.Block.Message!.Slot + 65) * spec.SecondsPerSlot));
+        await using IContainer container = BeaconChainTestContainer.Builder(logManager: logManager, config: new BeaconChainConfig { CheckpointStateFile = files.StateFile, CheckpointSyncUrl = "http://invalid.localhost:1", P2PPort = 0 })
+            .AddSingleton(spec)
+            .AddSingleton<ITimestamper>(timestamper)
+            .AddSingleton(engine)
+            .AddSingleton(ipResolver)
+            .Build();
+        BeaconChainStore store = container.Resolve<BeaconChainStore>();
+        store.PutForkedBlock(child.Root, new ForkedSignedBeaconBlock.OfGloas(child.Block));
+        store.SetCanonicalRoot(child.Block.Message.Slot, child.Root);
+        service = container.Resolve<BeaconChainService>();
+
+        await service.Start();
+
+        Hash256 anchorExecutionHash = first.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logManager.Errors, Is.Empty);
+            Assert.That(container.Resolve<PubkeyCache>().Count, Is.EqualTo(first.PostState.Validators!.Length));
+            object[] anchorUpdate = [anchorExecutionHash, anchorExecutionHash, anchorExecutionHash];
+            Assert.That(engine.ReceivedCalls().Select(static c => c.GetArguments()), Is.EqualTo(new[] { anchorUpdate, anchorUpdate }),
+                "the anchor kick, then the head update after the replay imported the child, which builds on the anchor's empty payload");
+            Assert.That(container.Resolve<BeaconP2P>().LocalPeerId, Is.Not.Null, "the P2P host started");
+            await ipResolver.Received(1).Resolve(Arg.Any<CancellationToken>());
+        }
+    }
+
+    /// <summary>
+    /// A resumed database whose anchor state and block are of different forks cannot seed the importer, so it fails startup
+    /// as a newer schema does. The refusal names the block by its own slot, which differs from the state's, so an operator
+    /// is not sent after the wrong block.
     /// </summary>
     [Test]
     public async Task Start_refuses_a_resumed_anchor_whose_state_and_block_are_of_different_forks([Values] bool gloasBlock)
@@ -75,19 +133,18 @@ public class BeaconChainServiceGloasAnchorTests
             : new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = chain.AnchorBlock, Signature = default }));
         store.SetAnchor(chain.AnchorRoot, blockSlot);
 
-        (TestErrorLogManager.Error[] errors, int pubkeys) = await StartAsync(new BeaconChainConfig { CheckpointSyncUrl = "http://invalid.localhost:1" }, store);
+        (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await StartAsync(new BeaconChainConfig { CheckpointSyncUrl = "http://invalid.localhost:1" }, store);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(blockSlot, Is.Not.EqualTo(stateSlot), "fixture: the block slot must be told apart from the state slot");
-            Assert.That(errors, Has.Length.EqualTo(1));
-            Assert.That(errors.Single().Exception, Is.Null, "a named refusal, not a crash");
-            Assert.That(errors.Single().Text, Does.Contain($"at slot {blockSlot} is a {(gloasBlock ? BeaconFork.Gloas : BeaconFork.Fulu)} block"));
+            Assert.That(refusal, Is.TypeOf<InvalidDataException>().And.Message.Contains($"at slot {blockSlot} is a {(gloasBlock ? BeaconFork.Gloas : BeaconFork.Fulu)} block"));
+            Assert.That(errors, Is.Empty, "the background run never started");
             Assert.That(pubkeys, Is.Zero, "refused before the pubkey cache is built");
         }
     }
 
-    private static async Task<(TestErrorLogManager.Error[] Errors, int PubkeyCount)> StartAsync(BeaconChainConfig config, BeaconChainStore store)
+    private static async Task<(Exception? Refusal, TestErrorLogManager.Error[] Errors, int PubkeyCount)> StartAsync(BeaconChainConfig config, BeaconChainStore store)
     {
         BeaconChainSpec spec = GloasCheckpointFiles.Spec;
         TestErrorLogManager logManager = new();
@@ -109,7 +166,17 @@ public class BeaconChainServiceGloasAnchorTests
             logManager);
         using CheckpointSync checkpointSync = new(config, spec, store, logManager);
         using BeaconChainService service = new(config, spec, store, pubkeyCache, checkpointSync, orchestrator, new ExternalClDetector(config, new Lazy<IEngineRpcModule>(() => Substitute.For<IEngineRpcModule>()), logManager), logManager);
-        await service.Start();
-        return ([.. logManager.Errors], pubkeyCache.Count);
+        Task run;
+        try
+        {
+            run = service.Start();
+        }
+        catch (InvalidDataException e)
+        {
+            return (e, [.. logManager.Errors], pubkeyCache.Count);
+        }
+
+        await run;
+        return (null, [.. logManager.Errors], pubkeyCache.Count);
     }
 }

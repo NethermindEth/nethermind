@@ -137,13 +137,13 @@ public sealed class BlockImporter : IBlockImporter
         switch (anchorState, anchorBlock)
         {
             case (ForkedBeaconState.OfFulu { State: BeaconStateFulu fuluState }, ForkedSignedBeaconBlock.OfFulu { Block: SignedBeaconBlock fuluBlock }):
-                _states = new PostStateCache(store, spec, anchorRoot, fuluState, IsGloasBlock, GetJustifiedRoot, logManager);
+                _states = new PostStateCache(store, spec, anchorRoot, fuluState, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized);
                 _runner = new ForkChoiceRunner(spec, fuluState, fuluBlock.Message!, _states, pubkeys, _states);
                 _lastSnapshotEpoch = fuluState.GetCurrentEpoch();
                 break;
             case (ForkedBeaconState.OfGloas { State: BeaconStateGloas gloasState }, ForkedSignedBeaconBlock.OfGloas { Block: SignedBeaconBlockGloas gloasBlock }):
                 // specs/gloas/fork-choice.md get_forkchoice_store: block_states holds the anchor state, the finalized checkpoint's.
-                _states = new PostStateCache(store, spec, null, null, IsGloasBlock, GetJustifiedRoot, logManager);
+                _states = new PostStateCache(store, spec, null, null, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized);
                 _states.PinGloas(anchorRoot, gloasState);
                 _runner = new ForkChoiceRunner(spec, gloasState, gloasBlock.Message!, _states, pubkeys, _states);
                 _gloasAnchorRoot = anchorRoot;
@@ -167,6 +167,13 @@ public sealed class BlockImporter : IBlockImporter
     private bool IsGloasBlock(Hash256 blockRoot) => _runner.GetBlockSlot(blockRoot) is ulong slot && SignedBeaconBlockCodec.IsGloasSlot(slot, _spec);
 
     private Hash256 GetJustifiedRoot() => _runner.JustifiedCheckpoint.Root;
+
+    private bool IsAboveFinalized(Hash256 blockRoot) => IsAboveFinalized(_runner, blockRoot);
+
+    /// <summary>Whether <paramref name="runner"/> holds <paramref name="blockRoot"/> above the finalized epoch's start slot, so the block can still become justified.</summary>
+    /// <remarks>A block at or below that slot is the finalized checkpoint block or off its chain, and a block fork choice pruned is off it too.</remarks>
+    internal static bool IsAboveFinalized(ForkChoiceRunner runner, Hash256 blockRoot) =>
+        runner.GetBlockSlot(blockRoot) is ulong slot && slot > BeaconStateAccessors.ComputeStartSlotAtEpoch(runner.FinalizedCheckpoint.Epoch);
 
     /// <inheritdoc/>
     public bool IsExpectedProposer(ForkedSignedBeaconBlock block)
@@ -865,7 +872,9 @@ public sealed class BlockImporter : IBlockImporter
     /// <remarks>A Gloas head has no Fulu lineage to adopt; the Fulu lineage stays on the last Fulu block it followed.</remarks>
     private void AdoptHeadLineage(Hash256 head)
     {
-        if (head == _states.LineageRoot || _runner.GetBlockSlot(head) is ulong headSlot && SignedBeaconBlockCodec.IsGloasSlot(headSlot, _spec))
+        // Without a Fulu lineage (a Gloas anchor) there is none to move.
+        if (_states.LineageRoot is not { } lineageRoot || _states.LineageState is not { } lineageState
+            || head == lineageRoot || _runner.GetBlockSlot(head) is ulong headSlot && SignedBeaconBlockCodec.IsGloasSlot(headSlot, _spec))
         {
             return;
         }
@@ -874,12 +883,12 @@ public sealed class BlockImporter : IBlockImporter
         if (headState is null)
         {
             // Imports building on this head fall back to the fork path until its state is seen again.
-            if (_logger.IsWarn) _logger.Warn($"Reorg to {head} whose post-state is not retained; lineage stays at {_states.LineageRoot}");
+            if (_logger.IsWarn) _logger.Warn($"Reorg to {head} whose post-state is not retained; lineage stays at {lineageRoot}");
             return;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Beacon chain reorg: adopting head {head} at slot {_runner.GetBlockSlot(head)} (was {_states.LineageRoot})");
-        _states.Retain(_states.LineageRoot!, _states.LineageState!);
+        if (_logger.IsInfo) _logger.Info($"Beacon chain reorg: adopting head {head} at slot {_runner.GetBlockSlot(head)} (was {lineageRoot})");
+        _states.Retain(lineageRoot, lineageState);
         _states.SetLineage(head, headState.Clone());
         _lineageCache = new EpochCache { Hasher = new CachedBeaconStateHasher() };
         // Unknown here; forces retention at the next epoch advance, which is harmless.

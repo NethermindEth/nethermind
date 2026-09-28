@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -80,19 +79,16 @@ public class BeaconChainServiceTests
     }
 
     [Test]
-    public async Task Start_stamps_an_unversioned_database_before_reading_its_anchor()
+    public void Start_stamps_an_unversioned_database_before_reading_its_anchor()
     {
-        TestErrorLogManager logManager = new();
-        using IContainer container = BuildContainer(logManager);
+        using IContainer container = BuildContainer();
         BeaconChainStore store = container.Resolve<BeaconChainStore>();
-        // An anchor without its state stops the driver right after the version check, before any network access.
+        // An anchor without its state fails the start right after the version check, before any network access.
         store.SetAnchor(TestItem.KeccakA, 1);
 
-        await container.Resolve<BeaconChainService>().Start();
-
+        Assert.That(() => container.Resolve<BeaconChainService>().Start(), Throws.InvalidOperationException.With.Message.Contains("anchor state"), "the driver went on to read the anchor");
         Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
         Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
-        Assert.That(logManager.Errors.Single().Exception?.Message, Does.Contain("anchor state"), "the driver went on to read the anchor");
     }
 
     // Regression for gap 113: ServiceStopper.StopAllServices() resolves every registered
