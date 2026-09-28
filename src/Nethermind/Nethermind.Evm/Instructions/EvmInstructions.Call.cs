@@ -552,6 +552,9 @@ public static partial class EvmInstructions
             goto StackUnderflow;
 
         // Update the memory cost for the region being returned.
+        if (DispatchFlags.ConstTracing && vm.TxTracer.IsTracingInstructions)
+            vm.TraceMemoryOperationGasCost(in position, in length);
+
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory))
         {
             goto OutOfGas;

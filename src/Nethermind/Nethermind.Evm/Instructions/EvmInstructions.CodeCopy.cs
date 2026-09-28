@@ -51,6 +51,8 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
+        if (TTracingInst.IsActive && !outOfGas && words <= (ulong.MaxValue - GasCostOf.VeryLow) / GasCostOf.Memory)
+            vm.TraceMemoryOperationGasCost(in a, in result, GasCostOf.VeryLow + GasCostOf.Memory * words);
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
@@ -93,6 +95,8 @@ public static partial class EvmInstructions
     {
         ulong traceInitialGas = TTracingInst.IsActive && traceReturnData ? TGasPolicy.GetRemainingGas(in gas) : 0;
         ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
+        if (TTracingInst.IsActive && traceReturnData && !outOfGas && words <= (ulong.MaxValue - GasCostOf.VeryLow) / GasCostOf.Memory)
+            vm.TraceMemoryOperationGasCost(in destOffset, in size, GasCostOf.VeryLow + GasCostOf.Memory * words);
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) goto OutOfGas;
         if (outOfGas) goto OutOfGas;
 

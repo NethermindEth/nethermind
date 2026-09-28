@@ -142,6 +142,13 @@ public static partial class EvmInstructions
             return EvmExceptionType.OutOfGas;
         }
 
+        if (TTracingInst.IsActive && stack.EnsureDepth(2))
+        {
+            // The word pop below reverses its slot in place; trace before that changes the stack view.
+            EvmStack.ReadMemoryPositionFromSlot(ref stack.PeekBytesByRefUnchecked(), out UInt256 tracePosition);
+            vm.TraceMemoryOperationGasCost(in tracePosition, EvmStack.WordSize, GasCostOf.VeryLow);
+        }
+
         // Single bounds check covering both the offset and the word.
         UInt256 result;
         Span<byte> bytes;
@@ -228,6 +235,9 @@ public static partial class EvmInstructions
 
         VmState<TGasPolicy> vmState = vm.VmState;
 
+        if (TTracingInst.IsActive)
+            vm.TraceMemoryOperationGasCost(in result, UInt256.One, GasCostOf.VeryLow);
+
         // Update the memory cost for a single-byte extension; if insufficient, signal out-of-gas.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 1UL, ref vmState.Memory))
         {
@@ -272,6 +282,9 @@ public static partial class EvmInstructions
         EvmStack.ReadMemoryPositionFromSlot(ref stack.PeekBytesByRefUnchecked(), out UInt256 result);
 
         VmState<TGasPolicy> vmState = vm.VmState;
+
+        if (TTracingInst.IsActive)
+            vm.TraceMemoryOperationGasCost(in result, EvmStack.WordSize, GasCostOf.VeryLow);
 
         // Update memory cost for a 32-byte load.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, ref vmState.Memory))
@@ -741,8 +754,12 @@ public static partial class EvmInstructions
         Address executingAccount = vm.VmState.Env.ExecutingAccount;
         StorageCell storageCell = new(executingAccount, in value);
 
+        ulong traceGasCost = TTracingInst.IsActive ? vm.GetStorageLoadTraceGasCost(in storageCell) : 0;
         // Charge additional gas based on whether the storage cell is hot or cold.
-        if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
+        bool gasAvailable = TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec);
+        if (TTracingInst.IsActive)
+            vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
+        if (!gasAvailable)
             goto OutOfGas;
 
         vm.WorldState.Get(in storageCell, out value);
