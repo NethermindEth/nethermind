@@ -174,6 +174,11 @@ public class SszStaticTests
         Map<PayloadAttestation>("PayloadAttestation", GloasOnly, presetDependent: true);
         Map<IndexedPayloadAttestation>("IndexedPayloadAttestation", GloasOnly, presetDependent: true);
 
+        // A Container since v1.7.0-beta.2; it embeds the preset-dependent ExecutionPayload. No Bellatrix or Capella payload shape is modeled.
+        Map<NewPayloadRequestDeneb>("NewPayloadRequest", ["deneb"], presetDependent: true);
+        Map<NewPayloadRequest>("NewPayloadRequest", ElectraFulu, presetDependent: true);
+        Map<NewPayloadRequestGloas>("NewPayloadRequest", GloasOnly, presetDependent: true);
+
         Dictionary<string, IReadOnlyDictionary<string, Entry>> result = new(StringComparer.Ordinal);
         foreach (KeyValuePair<string, Dictionary<string, Entry>> kv in r)
             result[kv.Key] = kv.Value;
@@ -190,19 +195,11 @@ public class SszStaticTests
         ["altair"] = 17,
         ["bellatrix"] = 17,
         ["capella"] = 21,
-        ["deneb"] = 23,
-        ["electra"] = 39,
-        ["fulu"] = 39,
-        ["gloas"] = 52,
+        ["deneb"] = 24,
+        ["electra"] = 40,
+        ["fulu"] = 40,
+        ["gloas"] = 53,
     };
-
-    /// <summary>Containers the archive has ssz_static vectors for that are not consensus objects, so they are not enumerated.</summary>
-    /// <remarks>
-    /// <c>NewPayloadRequest</c> is only the argument of <c>execution_engine.verify_and_notify_new_payload</c>
-    /// (specs/bellatrix/beacon-chain.md and specs/gloas/beacon-chain.md, "NewPayloadRequest"); consensus never
-    /// serializes it or takes its <c>hash_tree_root</c>.
-    /// </remarks>
-    private static readonly string[] OutOfScopeContainers = ["NewPayloadRequest"];
 
     [TestCaseSource(nameof(MinimalCases))]
     public void Vector(SszStaticCase testCase) => Execute(testCase);
@@ -222,12 +219,6 @@ public class SszStaticTests
             Assert.That(cases.Select(static testCase => testCase.Fork).Distinct(), Is.EquivalentTo(ArchiveForks));
             Assert.That(registered.Select(static pair => PairKey(pair.Fork, pair.Container)).Where(pair => !enumerated.Contains(pair)), Is.Empty, "registered containers with no vectors");
             Assert.That(registered.GroupBy(static pair => pair.Fork).ToDictionary(static byFork => byFork.Key, static byFork => byFork.Count()), Is.EquivalentTo(RegisteredContainerCounts));
-            Assert.That(cases.Select(static testCase => testCase.ContainerName).Intersect(OutOfScopeContainers), Is.Empty, "out-of-scope containers are enumerated");
-            foreach (string container in OutOfScopeContainers)
-            {
-                bool inArchive = ArchiveForks.Any(fork => ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(preset, fork, "ssz_static")).Any(dir => Path.GetFileName(dir) == container));
-                Assert.That(inArchive, Is.True, $"{container} is no longer in the archive; drop it from the out-of-scope list");
-            }
         }
     }
 
@@ -296,9 +287,6 @@ public class SszStaticTests
             foreach (string containerDir in Directory.GetDirectories(sszStaticDir))
             {
                 string containerName = Path.GetFileName(containerDir);
-                if (Array.IndexOf(OutOfScopeContainers, containerName) >= 0)
-                    continue;
-
                 foreach (string caseDir in ConsensusSpecArchive.LeafDirs(containerDir, "serialized.ssz_snappy"))
                 {
                     string vectorName = $"{preset}/{fork}/ssz_static/{containerName}/{Path.GetRelativePath(containerDir, caseDir).Replace('\\', '/')}";
