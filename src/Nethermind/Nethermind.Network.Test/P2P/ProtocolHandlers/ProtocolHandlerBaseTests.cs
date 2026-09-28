@@ -139,8 +139,14 @@ public class ProtocolHandlerBaseTests
     {
         NameCapturingBackgroundTaskScheduler scheduler = new();
         TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
-        TestRequestMessage request = new();
 
+        Schedule(handler, path, new TestRequestMessage());
+
+        Assert.That(scheduler.ReportedName, Is.EqualTo(nameof(TestRequestMessage)));
+    }
+
+    private static void Schedule(TestProtocolHandler handler, SchedulingPath path, TestRequestMessage request)
+    {
         switch (path)
         {
             case SchedulingPath.SyncServeTask:
@@ -156,8 +162,6 @@ public class ProtocolHandlerBaseTests
                 handler.ScheduleBackgroundTaskFor(request);
                 break;
         }
-
-        Assert.That(scheduler.ReportedName, Is.EqualTo(nameof(TestRequestMessage)));
     }
 
     private sealed class TestResponseMessage : P2PMessage
@@ -205,33 +209,22 @@ public class ProtocolHandlerBaseTests
     }
 
     [Test]
-    public void Sync_serve_task_scheduling_does_not_allocate_wrapper_delegate()
+    public void Scheduling_does_not_allocate_wrapper_delegate([Values] SchedulingPath path)
     {
         RunnerCapturingBackgroundTaskScheduler scheduler = new();
         TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), scheduler);
         TestRequestMessage request = new();
 
-        handler.ScheduleSyncServeTask(request, SyncServeTaskHandler);
+        Schedule(handler, path, request);
         Delegate? firstRunner = scheduler.CapturedRunner;
 
-        handler.ScheduleSyncServeTask(request, SyncServeTaskHandler);
+        Schedule(handler, path, request);
 
-        Assert.That(scheduler.CapturedRunner, Is.SameAs(firstRunner));
-    }
-
-    [Test]
-    public void Sync_serve_value_task_scheduling_does_not_allocate_wrapper_delegate()
-    {
-        RunnerCapturingBackgroundTaskScheduler scheduler = new();
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), scheduler);
-        TestRequestMessage request = new();
-
-        handler.ScheduleSyncServeValueTask(request, SyncServeValueTaskHandler);
-        Delegate? firstRunner = scheduler.CapturedRunner;
-
-        handler.ScheduleSyncServeValueTask(request, SyncServeValueTaskHandler);
-
-        Assert.That(scheduler.CapturedRunner, Is.SameAs(firstRunner));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstRunner, Is.Not.Null);
+            Assert.That(scheduler.CapturedRunner, Is.SameAs(firstRunner));
+        }
     }
 
     [Test]
