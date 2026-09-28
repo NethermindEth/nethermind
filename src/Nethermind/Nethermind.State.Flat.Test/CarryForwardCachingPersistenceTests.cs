@@ -7,6 +7,7 @@ using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -282,7 +283,7 @@ public class CarryForwardCachingPersistenceTests
         const int capacity = CarryForwardSlotTable.Ways;
         FakePersistence inner = new();
         await using IContainer container = CreateCacheContainer();
-        CarryForwardCachingPersistence cache = ResolveCache(container, inner, maxEntriesPerKind: capacity);
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner, slotCapacity: capacity);
         try
         {
             cache.Clear();
@@ -318,6 +319,50 @@ public class CarryForwardCachingPersistenceTests
 
         Assert.Throws<InvalidOperationException>(reader.Dispose);
         Assert.That(cache.SlotTable.IsAllocated, Is.False);
+    }
+
+    [Test]
+    public void TryGetSlot_WorkingSetOfAQuarterOfTheCapacity_IsServedFromTheCache()
+    {
+        const int slots = 131072;
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner);
+        using IPersistence.IPersistenceReader reader = cache.CreateReader();
+        UInt256 value = default;
+
+        for (int pass = 0; pass < 2; pass++)
+        {
+            for (ulong slot = 0; slot < slots; slot++) reader.TryGetSlot(Address, slot, ref value);
+        }
+
+        // Full sets make about 0.8% of the second pass miss at the default capacity, and 6.5% at half of it.
+        Assert.That(inner.SlotReads - slots, Is.LessThan(slots / 50));
+    }
+
+    [Test]
+    public void TryGetSlot_WhileTheCacheLockIsHeld_ReadsWithoutWaitingOrCaching()
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner);
+        using IPersistence.IPersistenceReader reader = cache.CreateReader();
+        UInt256 value = default;
+        bool completed;
+
+        using (cache.CacheLock.EnterScope())
+        {
+            Thread read = new(() => reader.TryGetSlot(Address, 1, ref value));
+            read.Start();
+            completed = read.Join(TimeSpan.FromSeconds(10));
+        }
+
+        reader.TryGetSlot(Address, 1, ref value);
+        reader.TryGetSlot(Address, 1, ref value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True, "a read does not wait for the lock to cache what it read");
+            Assert.That(inner.SlotReads, Is.EqualTo(2), "the read under the held lock was not cached, the next one was");
+        }
     }
 
     [Test]
@@ -374,7 +419,7 @@ public class CarryForwardCachingPersistenceTests
 
     [TestCase(4, TestName = "capacity_4")]
     [TestCase(8, TestName = "capacity_8")]
-    [TestCase(262144, TestName = "default_capacity")]
+    [TestCase(CarryForwardCachingPersistence.DefaultSlotCapacity, TestName = "default_capacity")]
     public void RandomOperations_EveryReadMatchesThePersistenceAtTheReaderState(int capacity)
     {
         const int operations = 1_000_000;
@@ -384,7 +429,7 @@ public class CarryForwardCachingPersistenceTests
         long hitsBefore = Metrics.CarryForwardSlotHits;
         Random random = new(capacity);
         ModelPersistence model = new(addresses: 4, slotsPerAddress: 8);
-        CarryForwardCachingPersistence cache = new(model, capacity);
+        CarryForwardCachingPersistence cache = new(model, capacity, capacity);
         List<(IPersistence.IPersistenceReader Reader, ModelPersistence.State State)> readers = [];
         int reads = 0;
         List<string> mismatches = [];
@@ -447,9 +492,9 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [TestCase(3, 64)]
-    [TestCase(3, 262144)]
+    [TestCase(3, CarryForwardCachingPersistence.DefaultSlotCapacity)]
     [TestCase(30, 64, Explicit = true, Reason = "Long stress run")]
-    [TestCase(30, 262144, Explicit = true, Reason = "Long stress run")]
+    [TestCase(30, CarryForwardCachingPersistence.DefaultSlotCapacity, Explicit = true, Reason = "Long stress run")]
     public void ConcurrentReadersAndCommitter_ReadEachReaderState(int seconds, int capacity)
     {
         const int readerThreads = 16;
@@ -458,7 +503,7 @@ public class CarryForwardCachingPersistenceTests
         Db.Metrics.DetailedMetricsEnabled = true;
         long hitsBefore = Metrics.CarryForwardSlotHits;
         ModelPersistence model = new(addresses: 8, slotsPerAddress: 16);
-        CarryForwardCachingPersistence cache = new(model, capacity);
+        CarryForwardCachingPersistence cache = new(model, capacity, capacity);
         using CancellationTokenSource stop = new(TimeSpan.FromSeconds(seconds));
         long reads = 0;
         long commits = 0;
@@ -576,16 +621,12 @@ public class CarryForwardCachingPersistenceTests
         .AddModule(new FlatWorldStateModule(new FlatDbConfig()))
         .Build();
 
-    private static CarryForwardCachingPersistence ResolveCache(IContainer container, FakePersistence inner, int? maxEntriesPerKind = null)
+    private static CarryForwardCachingPersistence ResolveCache(IContainer container, FakePersistence inner, int? maxEntriesPerKind = null, int? slotCapacity = null)
     {
-        if (maxEntriesPerKind is int capacity)
-        {
-            return container.Resolve<CarryForwardCachingPersistence>(
-                TypedParameter.From<IPersistence>(inner),
-                new NamedParameter("maxEntriesPerKind", capacity));
-        }
-
-        return container.Resolve<CarryForwardCachingPersistence>(TypedParameter.From<IPersistence>(inner));
+        List<Parameter> parameters = [TypedParameter.From<IPersistence>(inner)];
+        if (maxEntriesPerKind is int capacity) parameters.Add(new NamedParameter("maxEntriesPerKind", capacity));
+        if (slotCapacity is int slots) parameters.Add(new NamedParameter("slotCapacity", slots));
+        return container.Resolve<CarryForwardCachingPersistence>(parameters);
     }
 
     private static IEnumerable<TestCaseData> CacheReadCases()

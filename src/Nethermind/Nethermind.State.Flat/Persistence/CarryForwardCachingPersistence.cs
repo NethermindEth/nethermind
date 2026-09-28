@@ -19,6 +19,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 {
     private const int DefaultMaxEntriesPerKind = 262144;
 
+    // With 4 ways, sets fill up and replace entries well before the table does. At twice the account cap, a hot working
+    // set with a cold tail hits at least as often as in the 262,144-entry map this replaced, which was wiped at its cap.
+    internal const int DefaultSlotCapacity = 2 * DefaultMaxEntriesPerKind;
+
     private readonly IPersistence _inner;
     private readonly int _maxEntriesPerKind;
 
@@ -61,17 +65,17 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     internal bool HasSpareWrittenSlots => Volatile.Read(ref _spareWrittenSlots) is not null;
 
     /// <param name="inner">The persistence to cache reads of.</param>
-    /// <param name="maxEntriesPerKind">
-    /// The account cap, and the slot table's capacity rounded up to a power of two of at least
-    /// <see cref="CarryForwardSlotTable.Ways"/>.
+    /// <param name="maxEntriesPerKind">The account cap.</param>
+    /// <param name="slotCapacity">
+    /// The slot table's capacity, rounded up to a power of two of at least <see cref="CarryForwardSlotTable.Ways"/>.
     /// </param>
-    public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind)
+    public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind, int slotCapacity = DefaultSlotCapacity)
     {
         _inner = inner;
         _maxEntriesPerKind = maxEntriesPerKind;
         using IPersistence.IPersistenceReader reader = inner.CreateReader();
         _basis = reader.CurrentState;
-        _slots = new CarryForwardSlotTable(maxEntriesPerKind);
+        _slots = new CarryForwardSlotTable(slotCapacity);
     }
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
@@ -116,6 +120,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     internal CarryForwardSlotTable SlotTable => _slots;
 
+    internal Lock CacheLock => _lock;
+
     private bool IsCurrent(long readerGeneration) => Volatile.Read(ref _generation) == readerGeneration;
 
     private void TryCacheAccount(Address address, Account? account, long readerGeneration)
@@ -141,7 +147,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private void TryCacheSlot(ulong hash, Address address, in UInt256 slot, bool found, in UInt256 value, long readerGeneration)
     {
         if (_slots.TryGet(hash, address, slot, out _, out _)) return;
-        using (_lock.EnterScope())
+        // Best effort: under many threads the reads a full set loses would otherwise queue here, and a skipped insert
+        // only costs a later miss.
+        if (!_lock.TryEnter()) return;
+        try
         {
             if (_generation != readerGeneration) return;
             switch (_slots.AddNoLock(hash, address, slot, found, value))
@@ -153,6 +162,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                     Metrics.IncrementCarryForwardSlotEvictions();
                     break;
             }
+        }
+        finally
+        {
+            _lock.Exit();
         }
     }
 
