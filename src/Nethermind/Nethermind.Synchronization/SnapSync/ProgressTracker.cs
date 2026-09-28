@@ -192,6 +192,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             Interlocked.Increment(ref _reqCount);
+            TempTrackAccountGate(); // TEMP(snap-account-gate)
             TempLogStorageTail(); // TEMP(snap-storage-split)
 
             BlockHeader? pivotHeader = _pivot.GetPivotHeader();
@@ -684,6 +685,78 @@ namespace Nethermind.Synchronization.SnapSync
         private long _tempLastTailLogTimestamp;
         private bool _tempSummaryLogged;
 
+        // TEMP(snap-account-gate): measurement only, remove after the sync. Measures how long a ready account
+        // partition waits because ShouldRequestAccountRequests is closed, per reason. Reasons overlap, so the
+        // per-reason times can add up to more than the total. Runs on the single PrepareRequest thread.
+        private const int TempGateContinuations = 1;
+        private const int TempGateStorageQueue = 2;
+        private const int TempGateCodeQueue = 4;
+        private long _tempGateLastTimestamp;
+        private int _tempGateLastReasons;
+        private long _tempGateBlockedTicks;
+        private long _tempGateContinuationsTicks;
+        private long _tempGateStorageQueueTicks;
+        private long _tempGateCodeQueueTicks;
+        private long _tempGateEpisodes;
+        private long _tempGateLastLogTimestamp;
+        private int _tempPeakContinuations;
+        private int _tempPeakStorageQueue;
+        private int _tempPeakCodeQueue;
+
+        private void TempTrackAccountGate()
+        {
+            if (_tempAccountRangesDoneTimestamp != 0) return;
+
+            long now = Stopwatch.GetTimestamp();
+            if (_tempGateLastTimestamp != 0 && _tempGateLastReasons != 0)
+            {
+                long elapsed = now - _tempGateLastTimestamp;
+                _tempGateBlockedTicks += elapsed;
+                if ((_tempGateLastReasons & TempGateContinuations) != 0) _tempGateContinuationsTicks += elapsed;
+                if ((_tempGateLastReasons & TempGateStorageQueue) != 0) _tempGateStorageQueueTicks += elapsed;
+                if ((_tempGateLastReasons & TempGateCodeQueue) != 0) _tempGateCodeQueueTicks += elapsed;
+            }
+
+            int continuations = NextSlotRange.Count;
+            int storageQueue = StoragesToRetrieve.Count;
+            int codeQueue = CodesToRetrieve.Count;
+            _tempPeakContinuations = Math.Max(_tempPeakContinuations, continuations);
+            _tempPeakStorageQueue = Math.Max(_tempPeakStorageQueue, storageQueue);
+            _tempPeakCodeQueue = Math.Max(_tempPeakCodeQueue, codeQueue);
+
+            // Mirrors ShouldRequestAccountRequests, but only counts while a partition is actually ready to be requested.
+            int reasons = 0;
+            if (!AccountRangeReadyForRequest.IsEmpty)
+            {
+                if (continuations >= 10) reasons |= TempGateContinuations;
+                if (storageQueue >= HIGH_STORAGE_QUEUE_SIZE) reasons |= TempGateStorageQueue;
+                if (codeQueue >= HIGH_CODES_QUEUE_SIZE) reasons |= TempGateCodeQueue;
+            }
+
+            if (reasons != 0 && _tempGateLastReasons == 0) _tempGateEpisodes++;
+            _tempGateLastTimestamp = now;
+            _tempGateLastReasons = reasons;
+
+            if (_tempGateLastLogTimestamp == 0) _tempGateLastLogTimestamp = now;
+            if (Stopwatch.GetElapsedTime(_tempGateLastLogTimestamp, now) < TempTailLogInterval) return;
+
+            _tempGateLastLogTimestamp = now;
+            if (_logger.IsInfo) _logger.Info($"[SNAP-ACCOUNT-GATE] account phase +{Stopwatch.GetElapsedTime(_tempStartTimestamp, now).TotalMinutes:N1} min - {TempAccountGateState(now)}, now: continuations {continuations}, storage queue {storageQueue:N0}, code queue {codeQueue:N0}");
+        }
+
+        private string TempAccountGateState(long now)
+        {
+            double accountPhaseMinutes = Stopwatch.GetElapsedTime(_tempStartTimestamp, now).TotalMinutes;
+            double Minutes(long ticks) => Stopwatch.GetElapsedTime(0, ticks).TotalMinutes;
+            string Share(long ticks) => accountPhaseMinutes > 0 ? $"{Minutes(ticks) / accountPhaseMinutes:P0}" : "n/a";
+
+            return $"blocked: {Minutes(_tempGateBlockedTicks):N1} min ({Share(_tempGateBlockedTicks)} of {accountPhaseMinutes:N1} min), episodes: {_tempGateEpisodes} | " +
+                   $"by reason (overlapping): continuations>=10: {Minutes(_tempGateContinuationsTicks):N1} min ({Share(_tempGateContinuationsTicks)}), " +
+                   $"storage queue>={HIGH_STORAGE_QUEUE_SIZE:N0}: {Minutes(_tempGateStorageQueueTicks):N1} min ({Share(_tempGateStorageQueueTicks)}), " +
+                   $"code queue>={HIGH_CODES_QUEUE_SIZE:N0}: {Minutes(_tempGateCodeQueueTicks):N1} min ({Share(_tempGateCodeQueueTicks)}) | " +
+                   $"peaks: continuations {_tempPeakContinuations}, storage queue {_tempPeakStorageQueue:N0}, code queue {_tempPeakCodeQueue:N0}";
+        }
+
         private sealed class TempLargeStorageStats
         {
             public readonly long StartTimestamp = Stopwatch.GetTimestamp();
@@ -726,6 +799,7 @@ namespace Nethermind.Synchronization.SnapSync
                 Volatile.Write(ref _tempAccountRangesDoneTimestamp, now);
                 _tempLastTailLogTimestamp = now;
                 if (_logger.IsInfo) _logger.Info($"[SNAP-STORAGE-SPLIT] account ranges finished after {Stopwatch.GetElapsedTime(_tempStartTimestamp, now).TotalMinutes:N1} min - {TempQueueState()}");
+                if (_logger.IsInfo) _logger.Info($"[SNAP-ACCOUNT-GATE] account phase done - {TempAccountGateState(now)}"); // TEMP(snap-account-gate)
                 return;
             }
 
