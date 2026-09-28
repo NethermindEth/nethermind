@@ -64,12 +64,11 @@ internal sealed class ResultTracer : TxTracer
     }
 }
 
-/// <summary>One EVM and the state scope it runs in. Not thread-safe; the host owns one per thread.</summary>
+/// <summary>One EVM over the host's state. Not thread-safe; the host owns one per thread.</summary>
 internal sealed class Engine
 {
     public required ITransactionProcessor Processor { get; init; }
     public required IWorldState State { get; init; }
-    public required IDisposable Scope { get; init; }
     public required ISpecProvider Specs { get; init; }
     public required Diff Diff { get; init; }
     public required ResultTracer Tracer { get; init; }
@@ -115,7 +114,6 @@ public static unsafe class Abi
             {
                 Processor = processor,
                 State = state,
-                Scope = state.BeginScope(null),
                 Specs = specs,
                 Diff = diff,
                 Tracer = new ResultTracer(),
@@ -133,9 +131,7 @@ public static unsafe class Abi
     public static void EngineFree(IntPtr handle)
     {
         if (handle == IntPtr.Zero) return;
-        GCHandle h = GCHandle.FromIntPtr(handle);
-        (h.Target as Engine)?.Scope.Dispose();
-        h.Free();
+        GCHandle.FromIntPtr(handle).Free();
     }
 
     [UnmanagedCallersOnly(EntryPoint = "nm_evm_set_block")]
@@ -183,6 +179,10 @@ public static unsafe class Abi
 
         try
         {
+            // A fresh scope per call: the host may discard any result, so nothing this call read
+            // or wrote may survive into the next one. Closing the scope resets the world state's
+            // caches and drops the backend's read cache with it.
+            using IDisposable scope = engine.State.BeginScope(null);
             engine.Diff.Clear();
             engine.Tracer.Reset();
 

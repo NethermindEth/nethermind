@@ -12,6 +12,10 @@
  * account may appear more than once, and a deletion may be followed by writes to the same
  * address.
  *
+ * Every nm_evm_execute reads the host's state afresh and the engine keeps nothing between calls.
+ * A result the host discards therefore needs no undo, and a transaction that depends on an
+ * earlier one sees its effects only once the host has applied that earlier result.
+ *
  * Threading: an engine is NOT thread-safe. Create one per thread; they share nothing.
  * Strings and buffers handed to the engine are borrowed for the duration of the call only.
  * Buffers handed back live until nm_evm_result_free.

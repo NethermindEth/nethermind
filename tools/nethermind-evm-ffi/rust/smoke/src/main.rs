@@ -34,10 +34,46 @@ fn keccak(bytes: &[u8]) -> [u8; 32] {
 /// The state the engine borrows. A real host would be rbuilder's `State<DB>`.
 struct Host {
     accounts: HashMap<[u8; 20], (u64, [u8; 32], [u8; 32])>, // nonce, balance LE, code hash
+    storage: HashMap<([u8; 20], [u8; 32]), [u8; 32]>,       // (address, key LE) -> value LE
     code: HashMap<[u8; 32], Vec<u8>>,
     account_calls: u64,
     storage_calls: u64,
     code_calls: u64,
+}
+
+impl Host {
+    /// Applies a result's changes in the order the engine returned them.
+    fn apply(&mut self, result: &NmEvmResult) {
+        let accounts = unsafe { slice(result.accounts, result.account_count) };
+        for a in accounts {
+            if a.exists == 0 {
+                self.accounts.remove(&a.address);
+                self.storage.retain(|(address, _), _| *address != a.address);
+            } else {
+                self.accounts.insert(a.address, (a.nonce, a.balance, a.code_hash));
+            }
+        }
+        for s in unsafe { slice(result.storage, result.storage_count) } {
+            if s.value == [0u8; 32] {
+                self.storage.remove(&(s.address, s.key));
+            } else {
+                self.storage.insert((s.address, s.key), s.value);
+            }
+        }
+        for c in unsafe { slice(result.code, result.code_count) } {
+            let code = unsafe { slice(c.code, c.code_len) };
+            self.code.insert(c.code_hash, code.to_vec());
+        }
+    }
+}
+
+/// A result's array as a slice; an empty result may carry a null pointer.
+unsafe fn slice<'a, T>(ptr: *const T, len: i32) -> &'a [T] {
+    if ptr.is_null() || len <= 0 {
+        &[]
+    } else {
+        std::slice::from_raw_parts(ptr, len as usize)
+    }
 }
 
 unsafe extern "C" fn get_account(
@@ -63,14 +99,21 @@ unsafe extern "C" fn get_account(
 
 unsafe extern "C" fn get_storage(
     ctx: *mut c_void,
-    _address: *const u8,
-    _key: *const u8,
+    address: *const u8,
+    key: *const u8,
     out_value: *mut u8,
 ) -> i32 {
     let host = &mut *(ctx as *mut Host);
     host.storage_calls += 1;
-    std::ptr::write_bytes(out_value, 0, 32);
-    0 // every slot starts empty
+    let addr: [u8; 20] = std::slice::from_raw_parts(address, 20).try_into().unwrap();
+    let key: [u8; 32] = std::slice::from_raw_parts(key, 32).try_into().unwrap();
+    match host.storage.get(&(addr, key)) {
+        Some(value) => {
+            std::ptr::copy_nonoverlapping(value.as_ptr(), out_value, 32);
+            1
+        }
+        None => 0,
+    }
 }
 
 unsafe extern "C" fn get_code(
@@ -122,6 +165,7 @@ fn main() {
             (SENDER, (0u64, u256(10u128.pow(21)), empty_code_hash)),
             (CONTRACT_ADDR, (0u64, u256(0), code_hash)),
         ]),
+        storage: HashMap::new(),
         code: HashMap::from([(code_hash, CONTRACT.to_vec())]),
         account_calls: 0,
         storage_calls: 0,
@@ -174,6 +218,7 @@ fn main() {
     assert_eq!(result.success, 1);
     assert_eq!(result.gas_used, 21_000, "a plain transfer costs 21000");
     assert!(result.account_count >= 2, "sender and recipient must both change");
+    host.apply(&result);
     unsafe { nm_evm_result_free(&mut result) };
 
     // ---- 2. call the contract ----------------------------------------------------
@@ -188,9 +233,23 @@ fn main() {
         has_to: 1,
         ..Default::default()
     };
+
+    // A builder simulates and throws most results away. Discard this one: the engine must not
+    // remember it, or the same transaction is rejected next time as a replayed nonce.
     let mut result = NmEvmResult::default();
     let rc = unsafe { nm_evm_execute(engine, &tx, NM_EXEC_DEFAULT, &mut result) };
-    assert_eq!(rc, NM_OK, "execute returned {rc}: {}", last_error(engine));
+    assert_eq!(rc, NM_OK, "speculative execute returned {rc}: {}", last_error(engine));
+    assert_eq!(result.storage_count, 1, "speculative run should write one slot");
+    unsafe { nm_evm_result_free(&mut result) };
+    println!("speculative  discarded");
+
+    let mut result = NmEvmResult::default();
+    let rc = unsafe { nm_evm_execute(engine, &tx, NM_EXEC_DEFAULT, &mut result) };
+    assert_eq!(
+        rc, NM_OK,
+        "re-executing a discarded transaction returned {rc}; the engine kept its state: {}",
+        last_error(engine)
+    );
     println!(
         "contract     success={} gas_used={} accounts={} storage={} logs={}",
         result.success, result.gas_used, result.account_count, result.storage_count, result.log_count
@@ -217,7 +276,10 @@ fn main() {
             hex20(&a.address), a.exists, a.nonce, &a.balance[..4]
         );
     }
+    host.apply(&result);
     unsafe { nm_evm_result_free(&mut result) };
+    assert_eq!(host.accounts[&SENDER].0, 2, "the host should hold the sender at nonce 2");
+    assert_eq!(host.storage[&(CONTRACT_ADDR, u256(1))], u256(42), "the host should hold slot 1 = 42");
 
     // ---- 3. the boundary actually got crossed ------------------------------------
     println!(

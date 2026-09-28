@@ -35,8 +35,8 @@ internal sealed class Diff
 /// <remarks>
 /// It builds no trie and returns no meaningful state root: the caller owns the state and derives
 /// roots itself, so hashing here would be work nobody consumes. Reads are cached for the life of
-/// the scope, which is what keeps the callback count at roughly one per account the transaction
-/// has not already touched.
+/// the scope, which is one <c>nm_evm_execute</c> call; that keeps the callback count at roughly
+/// one per account the transaction touches, and lets no read outlive the call.
 /// </remarks>
 internal sealed unsafe class HostScopeProvider(NmEvmHost host, Diff diff) : IWorldStateScopeProvider
 {
