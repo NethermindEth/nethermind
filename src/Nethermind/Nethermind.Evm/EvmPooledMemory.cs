@@ -490,6 +490,40 @@ public struct EvmPooledMemory
         return GetBackingSpan(offset, intLength);
     }
 
+    /// <summary>
+    /// Variant of <see cref="TryLoadSpan(in UInt256, in UInt256, out Span{byte})"/> requiring the caller to have
+    /// already charged memory expansion for exactly this range; a zero length yields an empty span at any location.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal Span<byte> LoadSpanAfterGas(in UInt256 location, in UInt256 length)
+    {
+        if (length.IsZero)
+        {
+            return [];
+        }
+
+        Debug.Assert(length.IsUint64);
+        return LoadSpanAfterGas(in location, length.u0);
+    }
+
+    /// <summary>
+    /// Variant of <see cref="TryLoad"/> requiring the caller to have already charged memory expansion for exactly
+    /// this range; a zero length yields an empty result at any location.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ReadOnlyMemory<byte> LoadAfterGas(in UInt256 location, in UInt256 length)
+    {
+        if (length.IsZero)
+        {
+            return default;
+        }
+
+        Debug.Assert(location.IsUint64);
+        Debug.Assert(length.IsUint64);
+        PrepareAccessAfterGas(location.u0 + length.u0);
+        return GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void CopyAfterGas(in UInt256 destination, in UInt256 source, ulong length)
     {
