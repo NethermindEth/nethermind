@@ -232,6 +232,10 @@ public class ResourcePool : IResourcePool
 
     public record PooledResourceLabel(string Category, string ResourceType) : IMetricLabels
     {
+        // Get-only rather than init, so a `with` copy cannot change a value under the cached hash.
+        public string Category { get; } = Category;
+        public string ResourceType { get; } = ResourceType;
+
         // Every rent and return keys a metric by this label on the block processing thread; hash its fixed strings once.
         private readonly int _hashCode = HashCode.Combine(Category, ResourceType);
 
