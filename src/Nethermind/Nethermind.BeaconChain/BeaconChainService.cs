@@ -65,16 +65,22 @@ public sealed class BeaconChainService(
             }
 
             if (_logger.IsInfo) _logger.Info($"Starting embedded beacon chain driver. Checkpoint sync URL: {checkpointSync.EffectiveCheckpointSyncUrl}");
-            (ForkedBeaconState forkedState, ForkedSignedBeaconBlock? forkedBlock, Hash256 blockRoot) = await InitializeAnchorAsync(_cancellationTokenSource.Token);
-            if (forkedState is not ForkedBeaconState.OfFulu { State: BeaconStateFulu state } || forkedBlock is ForkedSignedBeaconBlock.OfGloas)
+            (ForkedBeaconState state, ForkedSignedBeaconBlock? block, Hash256 blockRoot) = await InitializeAnchorAsync(_cancellationTokenSource.Token);
+            if (block is not null && (state, block) is not ((ForkedBeaconState.OfFulu, ForkedSignedBeaconBlock.OfFulu) or (ForkedBeaconState.OfGloas, ForkedSignedBeaconBlock.OfGloas)))
             {
-                // Checked before the pubkey cache is built: the orchestrator and importer take only a Fulu anchor.
-                if (_logger.IsError) _logger.Error($"The anchor block {blockRoot} at slot {forkedState.Slot} is a {BeaconFork.Gloas} checkpoint, and the embedded beacon chain driver cannot yet sync from one. Run an external consensus client instead, or set BeaconChain.Enabled=false.");
+                // Checked before the pubkey cache is built: the importer takes only an anchor state and block of the same fork.
+                BeaconFork blockFork = block is ForkedSignedBeaconBlock.OfGloas ? BeaconFork.Gloas : BeaconFork.Fulu;
+                if (_logger.IsError) _logger.Error($"The anchor block {blockRoot} at slot {block.Slot} is a {blockFork} block, but the anchor state at slot {state.Slot} is a {state.Fork} state. Delete the beaconChain database to checkpoint-sync again.");
                 return;
             }
 
-            InitializePubkeyCache(state);
-            if (forkedBlock is not ForkedSignedBeaconBlock.OfFulu { Block: SignedBeaconBlock block })
+            InitializePubkeyCache(state switch
+            {
+                ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
+                ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
+                _ => throw new NotSupportedException($"Unhandled anchor state {state.GetType().Name}"),
+            });
+            if (block is null)
             {
                 if (_logger.IsWarn) _logger.Warn("Anchor block is unavailable (state-file-only bootstrap); the sync orchestrator cannot start.");
                 return;
@@ -118,9 +124,8 @@ public sealed class BeaconChainService(
         return (state, block, blockRoot);
     }
 
-    private void InitializePubkeyCache(BeaconStateFulu state)
+    private void InitializePubkeyCache(Validator[] validators)
     {
-        Validator[] validators = state.Validators!;
         Stopwatch stopwatch = Stopwatch.StartNew();
         if (pubkeyCache.TryLoad(store, validators))
         {
