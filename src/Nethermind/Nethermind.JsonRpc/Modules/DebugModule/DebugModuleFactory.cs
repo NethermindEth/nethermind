@@ -2,29 +2,34 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory(
-    IOverridableEnvFactory envFactory,
+    ITraceEnvFactory envFactory,
     ILifetimeScope rootLifetimeScope,
-    IBlockValidationModule[] validationBlockProcessingModules
+    IBlockValidationModule[] validationBlockProcessingModules,
+    IPrefixStateSeedSource prefixSeeds,
+    ParallelTraceBudgets parallelBudgets,
+    ILogManager logManager
 ) : IRpcModuleFactory<IDebugRpcModule>
 {
-    private ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder) =>
+    private readonly SharedParallelBlockTracer _parallelTracer = new(envFactory, rootLifetimeScope, prefixSeeds, parallelBudgets, logManager,
+        builder => ConfigureTracerContainer(builder, validationBlockProcessingModules));
+
+    private static ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder, IBlockValidationModule[] validationBlockProcessingModules) =>
         builder
             // Standard configuration
             // Note: Not overriding `IReceiptStorage` to null.
             .AddModule(validationBlockProcessingModules)
             .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
 
             // So the debug rpc change the adapter sometime.
             .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
@@ -36,11 +41,14 @@ public class DebugModuleFactory(
 
     public IDebugRpcModule Create()
     {
-        IOverridableEnv env = envFactory.Create();
+        IOverridableEnv env = envFactory.CreateForTracing();
+        IParallelBlockTracer? parallelTracer = _parallelTracer.Get();
 
         ILifetimeScope tracerLifecycle = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureTracerContainer(builder)
-                .AddModule(env));
+        {
+            ConfigureTracerContainer(builder, validationBlockProcessingModules).AddModule(env);
+            if (parallelTracer is not null) builder.AddScoped<IParallelBlockTracer>(parallelTracer);
+        });
 
         // Pass only `IGethStyleTracer` into the debug rpc lifetime.
         // This is to prevent leaking processor or world state accidentally.

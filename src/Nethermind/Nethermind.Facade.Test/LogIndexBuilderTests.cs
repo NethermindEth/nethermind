@@ -63,7 +63,7 @@ public class LogIndexBuilderTests
         public string GetDbSize() => 0L.SizeToString();
 
         public virtual LogIndexAggregate Aggregate(IReadOnlyList<BlockReceipts> batch, bool isBackwardSync, LogIndexUpdateStats? stats = null) =>
-            new(batch);
+            new(batch, isBackwardSync);
 
         public virtual Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
         {

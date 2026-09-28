@@ -2,22 +2,30 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.ClearScript;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Test.Tracing;
+
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 {
@@ -84,8 +92,24 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "0:PUSH32:0:79000:0", "33:PUSH1:0:78997:0", "35:MSTORE:0:78994:0", "36:PUSH32:0:78988:0", "69:PUSH1:0:78985:0", "71:MSTORE:0:78982:0", "72:STOP:0:78976:0" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
+
+    [TestCase("flatCallTracer")]
+    [TestCase("noSuchTracer.js")]
+    [TestCase("_bigInteger")]
+    [TestCase("../JSTracers/callTracer_legacy")]
+    [TestCase("callTracer_legacy.tracer")]
+    [TestCase(null)]
+    [TestCase("{ ) }")]
+    public void Unusable_tracer_is_refused_on_construction(string? tracer) =>
+        Assert.That(() => GetTracer(tracer!).Dispose(), Throws.ArgumentException);
+
+    [TestCase("callTracer_legacy")]
+    [TestCase(" opcountTracer.js ")]
+    [TestCase("{ result: function(ctx, db) { return null } }")]
+    public void Usable_tracer_is_accepted_on_construction(string tracer) =>
+        Assert.That(() => GetTracer(tracer).Dispose(), Throws.Nothing);
 
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
@@ -105,7 +129,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "PUSH32 : 127 : true", "PUSH1 : 96 : true", "MSTORE : 82 : false", "PUSH32 : 127 : true", "PUSH1 : 96 : true", "MSTORE : 82 : false", "STOP : 0 : false" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [TestCase(Instruction.PREVRANDAO, "DIFFICULTY")]
@@ -132,7 +156,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         int[] expected = { 0, 1, 2, 0, 1, 2, 0 };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expected));
+        AssertResult(traces, expected);
     }
 
     [Test]
@@ -156,7 +180,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         int[] expectedResult = { 0, 32, 64 };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedResult));
+        AssertResult(traces, expectedResult);
     }
 
     [Test]
@@ -173,7 +197,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo("942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099:"));
+        AssertResult(traces, "942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099:");
     }
 
     [Test]
@@ -203,16 +227,12 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string caller = "1:942921b14f1b1c385cd7e0cc2ef7abe5598c8358";
         string callee = "2:76e68a8696537e4141926f3e528733af9e237d69";
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(new[] { caller, callee, caller }));
+        AssertResult(traces, new[] { caller, callee, caller });
     }
 
     [Test]
     public void post_step_fires_once_per_step()
     {
-        // postStep runs from ReportOperationRemainingGas. The interpreter reports that once per
-        // instruction, and the CALL handler reports it once more itself before the child frame runs, so
-        // the one CALL below is the only step that fires postStep twice. Both frames halt on an explicit
-        // opcode, so no instruction picks up the extra end-of-code report either.
         string userTracer = @"{
                     steps: 0,
                     postSteps: 0,
@@ -238,10 +258,46 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        string[] counts = ((string)traces.CustomTracerResult!.Value!).Split(':');
+        string[] counts = ResultJson(traces).Trim('"').Split(':');
         int steps = int.Parse(counts[0]);
         Assert.That(steps, Is.GreaterThan(0));
-        Assert.That(int.Parse(counts[1]), Is.EqualTo(steps + 1), "postStep must fire once per step, plus the CALL's own report");
+        Assert.That(int.Parse(counts[1]), Is.EqualTo(steps), "postStep must fire once per step");
+    }
+
+    [TestCase("5f5f20", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:KECCAK256,P2:KECCAK256,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_fallthrough_to_implicit_stop")]
+    // A PUSH truncated by the end of code moves the counter past the code length; the implicit STOP is traced at that counter.
+    [TestCase("5f61ff", "S0:PUSH0,P0:PUSH0,S1:PUSH2,P1:PUSH2,S4:STOP,P4:STOP", 0, TestName = "Callbacks_ordered_truncated_push_to_implicit_stop")]
+    [TestCase("5f5f205000", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:KECCAK256,P2:KECCAK256,S3:POP,P3:POP,S4:STOP,P4:STOP", 0, TestName = "Callbacks_ordered_mid_code_opcode")]
+    [TestCase("00", "S0:STOP,P0:STOP", 0, TestName = "Callbacks_ordered_explicit_stop")]
+    [TestCase("5f5ff3", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:RETURN,P2:RETURN", 0, TestName = "Callbacks_ordered_explicit_return")]
+    // REVERT faults from SetOperationStack, so its marker lands between step and postStep;
+    // every other failure faults from EndInstructionTrace, i.e. after postStep.
+    [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,F2:REVERT,P2:REVERT", 1, TestName = "Callbacks_ordered_explicit_revert")]
+    [TestCase("5fff", "S0:PUSH0,P0:PUSH0,S1:SELFDESTRUCT,P1:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_explicit_self_destruct")]
+    // Other implementations call only step (with the error set) and no fault for stack underflow and out of gas; these rows pin current behaviour.
+    [TestCase("20", "S0:KECCAK256,P0:KECCAK256,F0:KECCAK256", 1, TestName = "Callbacks_ordered_stack_underflow")]
+    [TestCase("63ffffffff5f20", "S0:PUSH4,P0:PUSH4,S5:PUSH0,P5:PUSH0,S6:KECCAK256,P6:KECCAK256,F6:KECCAK256", 1, TestName = "Callbacks_ordered_out_of_gas")]
+    [TestCase("5f5f57", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:JUMPI,P2:JUMPI,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_jumpi_falls_off_code")]
+    [TestCase("fe", "S0:INVALID,P0:INVALID,F0:INVALID", 1, TestName = "Callbacks_ordered_invalid_opcode")]
+    [TestCase("0f", "S0:opcode 0xf not defined,P0:opcode 0xf not defined,F0:opcode 0xf not defined", 1, TestName = "Callbacks_ordered_undefined_opcode")]
+    public void Step_post_step_and_fault_callbacks_are_ordered(string codeHex, string sequence, int faults)
+    {
+        string userTracer = @"{
+                    sequence: [],
+                    faults: 0,
+                    step: function(log, db) { this.sequence.push('S' + log.getPC() + ':' + log.op.toString()) },
+                    postStep: function(log, db) { this.sequence.push('P' + log.getPC() + ':' + log.op.toString()) },
+                    fault: function(log, db) { this.sequence.push('F' + log.getPC() + ':' + log.op.toString()); this.faults++ },
+                    result: function(ctx, db) { return this.sequence.join(',') + '|' + this.faults }
+                }";
+
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+            GetTracer(userTracer),
+            Bytes.FromHexString(codeHex),
+            MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+
+        AssertResult(traces, $"{sequence}|{faults}");
     }
 
     [Test]
@@ -261,7 +317,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "0:PUSH32", "33:PUSH1", "35:MSTORE", "36:PUSH32", "69:PUSH1", "71:MSTORE", "72:STOP" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [Test]
@@ -285,7 +341,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "33: PUSH1", "35: MSTORE", "69: PUSH1", "71: MSTORE" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [Test]
@@ -314,7 +370,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "35: SSTORE 0", "71: SSTORE 20", "107: SLOAD 0", "108: STOP a01234 <- a01234" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [Test]
@@ -340,7 +396,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { SampleHexData1.PadLeft(64, '0'), SampleHexData2.PadLeft(64, '0') };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [Test]
@@ -376,7 +432,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "68 SSTORE 1 <- a01234", "104 SLOAD 1", "Result: a01234" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [Test]
@@ -443,18 +499,18 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
         string[] expectedStrings = { "68: SSTORE 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:1 <- a01234", "104: SLOAD 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:1", "Result: 1" };
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
+        AssertResult(traces, expectedStrings);
     }
 
     [Test]
     public void noop_tracer_legacy()
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-                GetTracer("noopTracer"),
+                GetTracer("noopTracer_legacy"),
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
-        Assert.That(traces.CustomTracerResult?.Value, Has.All.Empty);
+        AssertResult(traces, new { });
     }
 
     [Test]
@@ -465,7 +521,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
-        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(7));
+        AssertResult(traces, 7);
     }
 
     [Test]
@@ -604,6 +660,253 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         TestContext.Out.WriteLine(GetEthereumJsonSerializer().Serialize(traces.CustomTracerResult));
     }
 
+    [Test]
+    public void Completed_results_keep_big_integer_values_after_repeated_disposal()
+    {
+        const string valueTracer = """
+            {
+                fault: function(log, db) { },
+                result: function(ctx, db) { return { value: ctx.value.add(1).toString(), bytes: toHex(toWord('1')) }; }
+            }
+            """;
+
+        for (int i = 0; i < 3; i++)
+        {
+            using Engine engine = new(Shanghai.Instance);
+            using GethLikeJavaScriptTxTracer tracer = new(engine, new Db(TestState),
+                new Context { Value = UInt256.MaxValue }, GethTraceOptions.Default with { Tracer = valueTracer });
+            using GethLikeTxTrace trace = tracer.BuildResult();
+            tracer.Dispose();
+            tracer.Dispose();
+
+            AssertResult(trace, new
+            {
+                value = "115792089237316195423570985008687907853269984665640564039457584007913129639936",
+                bytes = "0000000000000000000000000000000000000000000000000000000000000001"
+            });
+        }
+    }
+
+    [Test]
+    public void Result_failure_does_not_prevent_the_next_trace_from_using_host_helpers()
+    {
+        const string failingTracer = "{ fault: function() { }, result: function() { throw new Error('result failed'); } }";
+        using (GethLikeBlockJavaScriptTracer tracer = GetTracer(failingTracer))
+        {
+            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.InstanceOf(typeof(IScriptEngineException)));
+        }
+
+        const string recoveringTracer = "{ fault: function() { }, result: function() { return toHex(toWord('1')); } }";
+        using GethLikeBlockJavaScriptTracer recovered = ExecuteBlock(GetTracer(recoveringTracer), MStore());
+        using GethLikeTxTrace trace = recovered.BuildResult().First();
+
+        AssertResult(trace, "0000000000000000000000000000000000000000000000000000000000000001");
+    }
+
+    [Test]
+    public void Block_trace_gives_every_transaction_a_fresh_script_scope()
+    {
+        const string countingTracer = @"{
+                    step: function(log, db) { },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { globalThis.traced = (globalThis.traced || 0) + 1; return globalThis.traced; }
+                }";
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteTwoTransactionBlock(GetTracer(countingTracer));
+
+        string[] results = ResultJsons(tracer.BuildResult());
+
+        Assert.That(results, Is.EqualTo(new[] { "1", "1" }));
+    }
+
+    [Test]
+    public void Tracer_reused_across_block_traces_traces_every_block()
+    {
+        const string stepAndIndexTracer = @"{
+                    steps: 0,
+                    step: function(log, db) { this.steps++; },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return { steps: this.steps, txIndex: ctx.txIndex }; }
+                }";
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(stepAndIndexTracer);
+
+        for (int block = 0; block < 2; block++)
+        {
+            ExecuteTwoTransactionBlock(tracer);
+
+            Assert.That(ResultJsons(tracer.BuildResult()),
+                Is.EqualTo(new[] { """{"steps":7,"txIndex":0}""", """{"steps":7,"txIndex":1}""" }), $"block {block}");
+        }
+    }
+
+    [Test]
+    public void Disposing_one_transaction_trace_keeps_the_sibling_result_readable()
+    {
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteTwoTransactionBlock(GetTracer(StepCountingTracer));
+        GethLikeTxTrace[] traces = tracer.BuildResult().ToArray();
+
+        traces[0].Dispose();
+        using GethLikeTxTrace survivor = traces[1];
+
+        Assert.That(GetEthereumJsonSerializer().Serialize(survivor.CustomTracerResult), Is.EqualTo("""{"steps":7}"""));
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Heap_limit_violation_fails_the_trace_and_later_traces_recover()
+    {
+        Action hoardingTrace = () =>
+        {
+            using GethLikeBlockJavaScriptTracer tracer = GetTracer(HoardingTracer);
+            ExecuteBlock(tracer, PushPopSequence(400));
+        };
+
+        Assert.That(hoardingTrace, Throws.InstanceOf(typeof(IScriptEngineException)));
+
+        using GethLikeBlockJavaScriptTracer recovered = ExecuteBlock(GetTracer(StepCountingTracer), MStore());
+        using GethLikeTxTrace trace = recovered.BuildResult().First();
+
+        Assert.That(GetEthereumJsonSerializer().Serialize(trace.CustomTracerResult), Is.EqualTo("""{"steps":7}"""));
+    }
+
+    [Test]
+    public void Block_trace_does_not_carry_a_failed_transaction_error_into_the_next()
+    {
+        const string errorTracer = @"{
+                    step: function(log, db) { },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return ctx.error === undefined ? 'none' : 'error'; }
+                }";
+        byte[] failingCode = Prepare.EvmCode.Op(Instruction.REVERT).Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteTwoTransactionBlock(GetTracer(errorTracer), failingCode, MStore());
+
+        string[] results = ResultJsons(tracer.BuildResult());
+
+        Assert.That(results, Is.EqualTo(new[] { "\"error\"", "\"none\"" }));
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Heap_limit_violation_still_trips_after_an_earlier_transaction_re_armed_it()
+    {
+        Action hoardingSecondTransaction = () =>
+        {
+            using GethLikeBlockJavaScriptTracer tracer = GetTracer(HoardingTracer);
+            ExecuteTwoTransactionBlock(tracer, MStore(), PushPopSequence(400));
+        };
+
+        Assert.That(hoardingSecondTransaction, Throws.InstanceOf(typeof(IScriptEngineException)));
+    }
+
+    [Test]
+    public void Rendered_result_respects_the_response_serializer_depth_limit()
+    {
+        const string nestedTracer = @"{
+                    step: function(log, db) { },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return { a: { b: { c: { d: 1 } } } }; }
+                }";
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(nestedTracer), MStore());
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        JsonSerializerOptions shallow = new(EthereumJsonSerializer.JsonOptions) { MaxDepth = 3 };
+
+        Assert.That(() => JsonSerializer.Serialize(trace.CustomTracerResult, shallow), Throws.InstanceOf<JsonException>());
+    }
+
+    [Test]
+    public void Engine_in_another_runtime_stays_usable_while_a_violation_is_pending()
+    {
+        using Engine hoarder = new(Shanghai.Instance);
+        dynamic hoardingTracer = hoarder.CreateTracer(HoardingTracer);
+        try
+        {
+            Action hoard = () =>
+            {
+                for (int i = 0; i < 400; i++)
+                {
+                    hoardingTracer.step(null, null);
+                }
+            };
+            Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
+
+            using Engine bystander = new(Shanghai.Instance);
+            dynamic probe = bystander.CreateTracer("{ result: function(ctx, db) { return 7; } }");
+
+            Assert.That((int)probe.result(), Is.EqualTo(7), "an engine in another runtime is unaffected");
+            Assert.That(() => hoarder.CreateTracer("{ result: function(ctx, db) { return 1; } }"), Throws.InstanceOf(typeof(IScriptEngineException)),
+                "the violation stands in the hoarder's own runtime while it is alive");
+        }
+        finally
+        {
+            ((object)hoardingTracer as IDisposable)?.Dispose();
+        }
+    }
+
+    private const string HoardingTracer = @"{
+                    hoard: [],
+                    step: function(log, db) { this.hoard.push(new Array(524288).fill(1)); },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.hoard.length; }
+                }";
+
+    private GethLikeBlockJavaScriptTracer ExecuteTwoTransactionBlock(GethLikeBlockJavaScriptTracer tracer) =>
+        ExecuteTwoTransactionBlock(tracer, MStore(), MStore());
+
+    private GethLikeBlockJavaScriptTracer ExecuteTwoTransactionBlock(GethLikeBlockJavaScriptTracer tracer, byte[] firstCode, byte[] secondCode)
+    {
+        (Block block, Transaction first) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000UL, firstCode);
+        tracer.StartNewBlockTrace(block);
+        ExecuteTraced(tracer, block, first);
+        (_, Transaction second) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000UL, secondCode);
+        ExecuteTraced(tracer, block, second);
+        tracer.EndBlockTrace();
+        return tracer;
+    }
+
+    private void ExecuteTraced(IBlockTracer tracer, Block block, Transaction transaction)
+    {
+        ITxTracer txTracer = tracer.StartNewTxTrace(transaction);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
+        tracer.EndTxTrace();
+    }
+
+    private static byte[] PushPopSequence(int count)
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < count; i++)
+        {
+            code = code.PushData(1).Op(Instruction.POP);
+        }
+
+        return code.Op(Instruction.STOP).Done;
+    }
+
+    private const string StepCountingTracer = @"{
+                    steps: 0,
+                    step: function(log, db) { this.steps++; },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return { steps: this.steps }; }
+                }";
+
+    private static readonly JsonSerializerOptions ExpectedResultOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    private static string ResultJson(GethLikeTxTrace trace) => JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions);
+
+    private static string[] ResultJsons(IReadOnlyCollection<GethLikeTxTrace> traces)
+    {
+        string[] results = new string[traces.Count];
+        int index = 0;
+        foreach (GethLikeTxTrace trace in traces)
+        {
+            results[index++] = ResultJson(trace);
+        }
+
+        return results;
+    }
+
+    private static void AssertResult(GethLikeTxTrace trace, object expected) =>
+        Assert.That(
+            ResultJson(trace),
+            Is.EqualTo(JsonSerializer.Serialize(expected, ExpectedResultOptions)));
 
     private static EthereumJsonSerializer GetEthereumJsonSerializer() => new();
 

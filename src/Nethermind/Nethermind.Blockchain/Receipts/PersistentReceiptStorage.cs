@@ -557,27 +557,23 @@ namespace Nethermind.Blockchain.Receipts
             Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
 
             Func<IReceiptsRecovery.IRecoveryContext?> recoveryContextFactory = () => null;
+            Func<IReceiptsRecovery.IRecoveryContext?>? logRecoveryContextFactory = null;
 
             if (ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
             {
-                recoveryContextFactory = () =>
-                {
-                    ReceiptRecoveryBlock? block = _blockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
-
-                    if (!block.HasValue)
-                    {
-                        throw new InvalidOperationException($"Unable to recover receipts for block {blockHash} because of missing block data.");
-                    }
-
-                    return _receiptsRecovery.CreateRecoveryContext(block.Value);
-                };
+                recoveryContextFactory = () => _receiptsRecovery.CreateRecoveryContext(GetRecoveryBlock(blockNumber, blockHash));
+                logRecoveryContextFactory = () => _receiptsRecovery.CreateLogRecoveryContext(GetRecoveryBlock(blockNumber, blockHash));
             }
 
             IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
 
-            iterator = new ReceiptsIterator(receiptsData, _receiptsDb, recoveryContextFactory, refDecoder);
+            iterator = new ReceiptsIterator(receiptsData, _receiptsDb, recoveryContextFactory, refDecoder, logRecoveryContextFactory);
             return true;
         }
+
+        private ReceiptRecoveryBlock GetRecoveryBlock(ulong blockNumber, Hash256 blockHash) =>
+            _blockStore.GetReceiptRecoveryBlock(blockNumber, blockHash)
+            ?? throw new InvalidOperationException($"Unable to recover receipts for block {blockHash} because of missing block data.");
 
         public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
             => Insert(block, txReceipts, _specProvider.GetSpec(block.Header), ensureCanonical, writeFlags, lastBlockNumber);

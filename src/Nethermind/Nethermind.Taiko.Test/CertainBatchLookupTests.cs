@@ -340,6 +340,7 @@ public class CertainBatchLookupTests
         Substitute.For<IBlobCustodyTracker>(),
         specProvider,
         null!,
+        Substitute.For<Nethermind.Consensus.Processing.IBlockProcessingQueue>(),
         Substitute.For<ILogManager>(),
         Substitute.For<ITxPool>(),
         blockFinder ?? Substitute.For<IBlockFinder>(),

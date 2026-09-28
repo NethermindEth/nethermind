@@ -17,15 +17,20 @@ namespace Nethermind.Serialization.Json
             Type typeToConvert,
             JsonSerializerOptions options) => reader.GetDouble();
 
-        [SkipLocalsInit]
         public override void Write(
             Utf8JsonWriter writer,
             double value,
-            JsonSerializerOptions options)
+            JsonSerializerOptions options) => WriteFinite(writer, value);
+
+        [SkipLocalsInit]
+        internal static void WriteFinite(Utf8JsonWriter writer, double value)
         {
             if (double.IsNaN(value) || double.IsInfinity(value))
                 ThrowNotFiniteJsonException(value);
-            writer.WriteRawValue(value.ToString("R", CultureInfo.InvariantCulture), skipInputValidation: true);
+
+            Span<byte> buffer = stackalloc byte[32];
+            value.TryFormat(buffer, out int written, "R", CultureInfo.InvariantCulture);
+            writer.WriteRawValue(buffer[..written], skipInputValidation: true);
         }
 
         [DoesNotReturn]

@@ -13,7 +13,7 @@ internal static class BlobProofsTranslator
 {
     public static bool TryTranslateToCurrentProofVersion(Transaction tx, ProofVersion currentProofVersion)
     {
-        if (tx is not { SupportsBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper wrapper }
+        if (tx is not { CarriesBlobs: true, NetworkWrapper: ShardBlobNetworkWrapper wrapper }
             || wrapper.Version == currentProofVersion)
         {
             return true;
@@ -62,6 +62,7 @@ internal static class BlobProofsTranslator
         }
 
         tx.NetworkWrapper = wrapper with { Proofs = cellProofs, Version = ProofVersion.V1 };
+        tx.ClearLengthCache();
         return true;
     }
 
@@ -84,6 +85,7 @@ internal static class BlobProofsTranslator
         }
 
         tx.NetworkWrapper = wrapper with { Proofs = proofs, Version = ProofVersion.V0 };
+        tx.ClearLengthCache();
         return true;
     }
 

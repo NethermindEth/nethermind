@@ -46,6 +46,12 @@ namespace Nethermind.Db
         void InterruptCompactions() { }
         void SetWriteBuffer(long sizeBytes) { }
 
+        /// <summary>True when this store ran RocksDB repair during the current process open, or a persisted <c>repaired.marker</c> was found.</summary>
+        bool WasRepairedOnOpen => false;
+
+        /// <summary>Clears <see cref="WasRepairedOnOpen"/> and deletes <c>repaired.marker</c>.</summary>
+        void AcknowledgeRepair() { }
+
         readonly struct DbMetric
         {
             public long Size { get; init; }

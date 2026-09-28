@@ -34,7 +34,9 @@ internal class TaikoForkchoiceUpdatedHandler(
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
-    ILogManager logManager) : ForkchoiceUpdatedHandler(
+    ILogManager logManager,
+    IBlockProcessingPauseControl pauseControl,
+    BlockTreeMutationLock mutationLock) : ForkchoiceUpdatedHandler(
     blockTree,
     poSSwitcher,
     payloadPreparationService,
@@ -47,7 +49,9 @@ internal class TaikoForkchoiceUpdatedHandler(
     specProvider,
     syncPeerPool,
     mergeConfig,
-    logManager)
+    logManager,
+    pauseControl,
+    mutationLock)
 {
     protected override bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
         [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)

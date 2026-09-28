@@ -426,6 +426,7 @@ public class ProofRpcModuleCallTests
             new TrieStoreScopeProvider(
                 new RawTrieStore(proof.Witness.CreateNodeStorage()),
                 proof.Witness.CreateCodeDb(),
+                UnavailableStateHeaderProvider.Instance,
                 blockchain.LogManager),
             blockchain.LogManager);
 
@@ -562,6 +563,7 @@ public class ProofRpcModuleCallTests
             new TrieStoreScopeProvider(
                 new RawTrieStore(proof.Witness.CreateNodeStorage()),
                 proof.Witness.CreateCodeDb(),
+                UnavailableStateHeaderProvider.Instance,
                 blockchain.LogManager),
             blockchain.LogManager);
         using IDisposable scope = statelessWorld.BeginScope(witnessHeader);

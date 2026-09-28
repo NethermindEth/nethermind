@@ -5,6 +5,7 @@
 
 using Nethermind.Core.Extensions;
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -67,6 +68,180 @@ public class BlockAccessListBasedWorldStateTests
         // — reads against it answer pre-block state directly from the trie.
         bws.SetParentReader(decorateParent?.Invoke(inner) ?? inner);
         return (bws, scope);
+    }
+
+    /// <summary>Shape of the pre-block account backing a <see cref="PhysicalCreationCases"/> row.</summary>
+    public enum ParentAccount { Missing, Empty, Balance, Nonce, Code }
+
+    private const uint ParentBalance = 7;
+    private const uint BalanceCredit = 5;
+
+    /// <summary>
+    /// Rows for <see cref="AddToBalanceAndCreateIfNotExists_returns_physical_creation"/>, each carrying its own
+    /// expectations rather than re-deriving them from the condition the implementation uses.
+    /// </summary>
+    /// <remarks>
+    /// Every shape other than <see cref="ParentAccount.Missing"/> and <see cref="ParentAccount.Empty"/> is declared
+    /// in the suggested BAL with its change at index 1, so index 1 answers from the parent while index 2 reads
+    /// through the change and sees an account EIP-161 has emptied — hence physically recreated.
+    /// <see cref="ParentAccount.Empty"/> declares no change at all, so both indices fall through to the parent and
+    /// find the account physically present, however empty — no recreation at either index.
+    /// </remarks>
+    private static IEnumerable<TestCaseData> PhysicalCreationCases()
+    {
+        (ParentAccount Parent, uint Index, bool Created, uint OldBalance, bool Exists)[] rows =
+        [
+            (ParentAccount.Missing, 1, true, 0, false),
+            (ParentAccount.Missing, 2, true, 0, false),
+            (ParentAccount.Empty, 1, false, 0, false),
+            (ParentAccount.Empty, 2, false, 0, false),
+            (ParentAccount.Balance, 1, false, ParentBalance, true),
+            (ParentAccount.Balance, 2, true, 0, false),
+            (ParentAccount.Nonce, 1, false, 0, true),
+            (ParentAccount.Nonce, 2, true, 0, false),
+            (ParentAccount.Code, 1, false, 0, true),
+            (ParentAccount.Code, 2, true, 0, false),
+        ];
+
+        foreach ((ParentAccount parent, uint index, bool created, uint oldBalance, bool exists) in rows)
+        {
+            // The decorated parent exercises the IWorldState fallback arms; the direct one the WorldState fast paths.
+            foreach (bool decorate in (bool[])[false, true])
+            {
+                yield return new TestCaseData(parent, index, decorate, created, oldBalance, exists)
+                    .SetName($"{{m}}({parent}, index {index}, {(decorate ? "decorated" : "direct")} parent)");
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(PhysicalCreationCases))]
+    public void AddToBalanceAndCreateIfNotExists_returns_physical_creation(
+        ParentAccount parentState, uint index, bool decorate, bool expectedCreated, uint expectedOldBalance, bool expectedExists)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(parentState == ParentAccount.Balance ? [new BalanceChange(1, 0)] : [])
+                .WithNonceChanges(parentState == ParentAccount.Nonce ? [new NonceChange(1, 0)] : [])
+                .WithCodeChanges(parentState == ParentAccount.Code ? [new CodeChange(1, [])] : [])
+                .TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(index, bal,
+            ws =>
+            {
+                if (parentState == ParentAccount.Missing) return;
+                ws.CreateAccount(TestItem.AddressA, parentState == ParentAccount.Balance ? ParentBalance : 0u, parentState == ParentAccount.Nonce ? 1UL : 0UL);
+                if (parentState == ParentAccount.Code) ws.InsertCode(TestItem.AddressA, new byte[] { 0x00 }, Spec);
+            }, ws => decorate ? new ParentDecorator(ws) : ws);
+        using (scope)
+        {
+            bool created = bws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, BalanceCredit, Spec, out UInt256 oldBalance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created, Is.EqualTo(expectedCreated));
+                Assert.That(oldBalance, Is.EqualTo(new UInt256(expectedOldBalance)));
+                Assert.That(bws.AccountExists(TestItem.AddressA), Is.EqualTo(expectedExists));
+            }
+        }
+    }
+
+    [Test]
+    public void Traced_balance_creation_preserves_existence_across_repeated_touches(
+        [Values("missing", "empty", "funded")] string parentState,
+        [Values(0u, 5u)] uint balanceChange)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject).TestObject;
+        UInt256 initialBalance = parentState == "funded" ? 7u : 0u;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws =>
+            {
+                if (parentState != "missing") ws.CreateAccount(TestItem.AddressA, initialBalance);
+            });
+        using (scope)
+        {
+            TracedAccessWorldState traced = new(bws, parallel: true);
+            traced.SetGeneratingBlockAccessList(new() { Index = 1 });
+            for (uint touch = 0; touch < 3; touch++)
+            {
+                bool created = traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out UInt256 oldBalance);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(created, Is.EqualTo(touch == 0 && parentState == "missing"));
+                    Assert.That(oldBalance, Is.EqualTo(initialBalance + touch * balanceChange));
+                    Assert.That(traced.GetBalance(TestItem.AddressA), Is.EqualTo(initialBalance + (touch + 1) * balanceChange));
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void Traced_balance_creation_restores_physical_existence(
+        [Values] bool initiallyExists, [Values(0u, 5u)] uint balanceChange)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal,
+            ws =>
+            {
+                if (initiallyExists) ws.CreateAccount(TestItem.AddressA, 0);
+            });
+        using (scope)
+        {
+            TracedAccessWorldState traced = new(bws, parallel: true);
+            traced.SetGeneratingBlockAccessList(new() { Index = 1 });
+            Snapshot beforeCreate = traced.TakeSnapshot();
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.EqualTo(!initiallyExists));
+
+            Snapshot afterCreate = traced.TakeSnapshot();
+            traced.DeleteAccount(TestItem.AddressA);
+            Snapshot afterDelete = traced.TakeSnapshot();
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.True);
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.False, "recreation after a same-index delete must be recorded");
+
+            traced.Restore(afterDelete);
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.True);
+
+            traced.Restore(afterCreate);
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out UInt256 oldBalance), Is.False);
+            Assert.That(oldBalance, Is.EqualTo(new UInt256(balanceChange)));
+
+            traced.Restore(beforeCreate);
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec), Is.EqualTo(!initiallyExists));
+
+            traced.Clear();
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out oldBalance), Is.EqualTo(!initiallyExists));
+            Assert.That(oldBalance, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void Traced_explicit_creation_preserves_physical_existence(
+        [Values] bool ifNotExists, [Values(0u, 5u)] uint balance)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject).TestObject;
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(1, bal);
+        using (scope)
+        {
+            TracedAccessWorldState traced = new(bws, parallel: true);
+            traced.SetGeneratingBlockAccessList(new() { Index = 1 });
+            Snapshot beforeCreate = traced.TakeSnapshot();
+            if (ifNotExists)
+                traced.CreateAccountIfNotExists(TestItem.AddressA, balance);
+            else
+                traced.CreateAccount(TestItem.AddressA, balance);
+
+            bool created = traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balance, Spec, out UInt256 oldBalance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created, Is.False);
+                Assert.That(oldBalance, Is.EqualTo(new UInt256(balance)));
+                Assert.That(traced.GetBalance(TestItem.AddressA), Is.EqualTo(new UInt256(2 * balance)));
+            }
+
+            traced.Restore(beforeCreate);
+            Assert.That(traced.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balance, Spec, out oldBalance), Is.True);
+            Assert.That(oldBalance, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]

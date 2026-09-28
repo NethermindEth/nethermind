@@ -42,16 +42,15 @@ public class BlockhashProviderTests
         return (worldState, worldState.StateRoot);
     }
 
-    private static IWorldState CreateWorldStateWithHistoryContract(IReleaseSpec spec)
+    private static (IWorldState, Hash256) CreateWorldStateWithHistoryContract(IReleaseSpec spec)
     {
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
-        byte[] code = [1, 2, 3];
-        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, spec);
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, spec);
         worldState.Commit(spec);
         worldState.CommitTree(0);
-        return worldState;
+        return (worldState, worldState.StateRoot);
     }
 
 
@@ -522,13 +521,13 @@ public class BlockhashProviderTests
             Assert.That(fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _), Is.True, $"number {n} should resolve");
         }
 
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (ulong n = 1; n < 42; n++)
+        AssertNoPerLookupAllocation(100, 41, () =>
         {
-            fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _);
-        }
-
-        Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero);
+            for (ulong n = 1; n < 42; n++)
+            {
+                fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _);
+            }
+        });
     }
 
     /// <summary>The memo must hit for the header the block actually executes with, which is a
@@ -548,13 +547,8 @@ public class BlockhashProviderTests
 
         Assert.That(fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _), Is.True, "warm the memo via the clone");
 
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1000; i++)
-        {
-            fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _);
-        }
-
-        Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero, "the clone must hit the armed memo");
+        AssertNoPerLookupAllocation(1000, 1, () => fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _),
+            "the clone must hit the armed memo");
     }
 
     /// <summary>An unarmed provider (one that never prefetched) must never serve the memo — it re-reads
@@ -601,26 +595,35 @@ public class BlockhashProviderTests
             fixture.Provider.GetBlockhash(header, number, fixture.Spec);
         }
 
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Iterations; i++)
-        {
-            fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out _);
-        }
-        long spanAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
-
-        start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Iterations; i++)
-        {
-            fixture.Provider.GetBlockhash(header, number, fixture.Spec);
-        }
-        long hashAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        long spanAllocated = AllocatedBy(Iterations, () => fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out _));
+        long hashAllocated = AllocatedBy(Iterations, () => fixture.Provider.GetBlockhash(header, number, fixture.Spec));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spanAllocated, Is.Zero, $"span={spanAllocated} hash={hashAllocated}");
-            Assert.That(hashAllocated, blockHashInState ? Is.GreaterThan(Iterations * 8) : Is.Zero,
+            Assert.That(spanAllocated, Is.LessThan(Iterations * MaxBytesPerLookup), $"span={spanAllocated} hash={hashAllocated}");
+            Assert.That(hashAllocated, blockHashInState ? Is.GreaterThan(Iterations * 8) : Is.LessThan(Iterations * MaxBytesPerLookup),
                 "only the storage-backed path materialises a Hash256 per lookup");
         }
+    }
+
+    /// <summary>Allocation budget per lookup, below the 24-byte minimum object size on 64-bit.</summary>
+    /// <remarks>Any per-lookup allocation exceeds it on every call, while a rare one-off allocation by the runtime on
+    /// the test thread (2,112 bytes over 1,000 lookups has been seen in CI) stays inside it.</remarks>
+    private const int MaxBytesPerLookup = 8;
+
+    /// <summary>Asserts that <paramref name="lookups"/> allocates less than <see cref="MaxBytesPerLookup"/> per lookup.</summary>
+    private static void AssertNoPerLookupAllocation(int repeats, int lookupsPerRepeat, Action lookups, string? message = null) =>
+        Assert.That(AllocatedBy(repeats, lookups), Is.LessThan(repeats * lookupsPerRepeat * MaxBytesPerLookup), message);
+
+    private static long AllocatedBy(int repeats, Action action)
+    {
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < repeats; i++)
+        {
+            action();
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - start;
     }
 
     /// <summary>The span overload must left-pad exactly as the <see cref="Hash256"/> overload does.</summary>
@@ -685,18 +688,19 @@ public class BlockhashProviderTests
     public void BlockAccessListManager_blockhash_state_changes_match_BlockhashStore()
     {
         IReleaseSpec spec = Amsterdam.Instance;
-        IWorldState legacyWorldState = CreateWorldStateWithHistoryContract(spec);
-        IWorldState balWorldState = CreateWorldStateWithHistoryContract(spec);
-        Block parent = Build.A.Block.WithNumber(41).TestObject;
+        // The direct write equals running the contract only for the canonical bytecode.
+        (IWorldState legacyWorldState, Hash256 stateRoot) = CreateWorldStateWithHistoryContract(spec);
+        (IWorldState balWorldState, _) = CreateWorldStateWithHistoryContract(spec);
+        Block parent = Build.A.Block.WithNumber(41).WithStateRoot(stateRoot).TestObject;
         Block current = Build.A.Block.WithParent(parent).TestObject;
         UInt256 parentBlockIndex = new((current.Number - 1) % spec.Eip2935RingBufferSize);
         StorageCell storageCell = new(Eip2935Constants.BlockHashHistoryAddress, parentBlockIndex);
 
-        using IDisposable legacyScope = legacyWorldState.BeginScope(current.Header);
+        using IDisposable legacyScope = legacyWorldState.BeginScope(parent.Header);
         new BlockhashStore(legacyWorldState).ApplyBlockhashStateChanges(current.Header, spec);
         legacyWorldState.Get(in storageCell, out UInt256 expectedStoredHash);
 
-        using IDisposable balScope = balWorldState.BeginScope(current.Header);
+        using IDisposable balScope = balWorldState.BeginScope(parent.Header);
         TestSingleReleaseSpecProvider specProvider = new(spec);
         BlockAccessListManager balManager = new(
             balWorldState,
@@ -712,7 +716,11 @@ public class BlockhashProviderTests
         balManager.NextTransaction();
 
         balWorldState.Get(in storageCell, out UInt256 actualStoredHash);
-        Assert.That(actualStoredHash, Is.EqualTo(expectedStoredHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedStoredHash, Is.EqualTo(parent.Hash!.ToUInt256()), "the direct write must store the parent hash");
+            Assert.That(actualStoredHash, Is.EqualTo(expectedStoredHash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
@@ -14,7 +13,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -76,11 +74,6 @@ namespace Nethermind.Consensus.Producers
                 comparer,
                 pendingTxFilter,
                 gasLimit);
-            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(
-                pendingBlobTransactionsEquivalences,
-                comparer,
-                BlobFilter,
-                maxBlobCount);
             if (_logger.IsTrace) _logger.Trace($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
@@ -88,8 +81,18 @@ namespace Nethermind.Consensus.Producers
 
             using ArrayPoolList<Transaction> selectedBlobTxs = new((int)maxBlobCount);
 
-            Dictionary<Hash256, Transaction>? fullBlobTxs = SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount, !isRevalidatedForTarget);
+            Dictionary<Hash256, Transaction>? fullBlobTxs = null;
+            if (pendingBlobTransactionsEquivalences.Count > 0)
+            {
+                IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(
+                    pendingBlobTransactionsEquivalences,
+                    comparer,
+                    BlobFilter,
+                    maxBlobCount);
+                fullBlobTxs = SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount, !isRevalidatedForTarget);
+            }
 
+            int selectedBlobIndex = 0;
             foreach (Transaction tx in transactions)
             {
                 checkedTransactions++;
@@ -101,8 +104,9 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                foreach (Transaction blobTx in PickBlobTxsBetterThanCurrentTx(selectedBlobTxs, tx, comparer))
+                while (selectedBlobIndex < selectedBlobTxs.Count && comparer.Compare(selectedBlobTxs[selectedBlobIndex], tx) < Equal)
                 {
+                    Transaction blobTx = selectedBlobTxs[selectedBlobIndex++];
                     if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
                     {
                         yield return fullBlobTx;
@@ -115,14 +119,12 @@ namespace Nethermind.Consensus.Producers
                 yield return tx;
             }
 
-            if (selectedBlobTxs.Count > 0)
+            while (selectedBlobIndex < selectedBlobTxs.Count)
             {
-                foreach (Transaction blobTx in selectedBlobTxs)
+                Transaction blobTx = selectedBlobTxs[selectedBlobIndex++];
+                if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
                 {
-                    if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
-                    {
-                        yield return fullBlobTx;
-                    }
+                    yield return fullBlobTx;
                 }
             }
 
@@ -147,23 +149,6 @@ namespace Nethermind.Consensus.Producers
             { NetworkWrapper: ShardBlobNetworkWrapper wrapper } => wrapper.HasFullBlobs(),
             _ => false
         };
-
-        private static IEnumerable<Transaction> PickBlobTxsBetterThanCurrentTx(ArrayPoolList<Transaction> selectedBlobTxs, Transaction tx, IComparer<Transaction> comparer)
-        {
-            while (selectedBlobTxs.Count > 0)
-            {
-                Transaction blobTx = selectedBlobTxs[0];
-                if (comparer.Compare(blobTx, tx) < Equal)
-                {
-                    yield return blobTx;
-                    selectedBlobTxs.Remove(blobTx);
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
 
         private Dictionary<Hash256, Transaction>? SelectBlobTransactions(
             IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions,
@@ -191,74 +176,82 @@ namespace Nethermind.Consensus.Producers
             }
 
             ArrayPoolList<(Transaction tx, ulong blobChain)>? candidates = null;
-            foreach ((Transaction blobTx, ulong blobChain) in blobTransactions)
+            try
             {
-                ulong txBlobCount = (ulong)blobTx.GetBlobCount();
-                if (txBlobCount > maxBlobs)
+                foreach ((Transaction blobTx, ulong blobChain) in blobTransactions)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
-                    continue;
-                }
-
-                if (feePerBlobGas > blobTx.MaxFeePerBlobGas)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, data gas fee is too low.");
-                    continue;
-                }
-
-                if (validateForkSensitiveState)
-                {
-                    if (blobTx is LightTransaction lightTransaction
-                        && lightTxValidator is not null
-                        && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
+                    ulong txBlobCount = (ulong)blobTx.GetBlobCount();
+                    if (txBlobCount > maxBlobs)
                     {
+                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
                         continue;
                     }
 
-                    if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
-                        || !IsForkSensitiveStateValid(fullBlobTx, spec))
+                    if (feePerBlobGas > blobTx.MaxFeePerBlobGas)
                     {
-                        rejectedBlobCount += txBlobCount;
-                        if (rejectedBlobCount > maxRejectedBlobsToConsider)
+                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, data gas fee is too low.");
+                        continue;
+                    }
+
+                    if (validateForkSensitiveState)
+                    {
+                        if (blobTx is LightTransaction lightTransaction
+                            && lightTxValidator is not null
+                            && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
                         {
-                            break;
+                            continue;
                         }
 
-                        continue;
+                        if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
+                            || !IsForkSensitiveStateValid(fullBlobTx, spec))
+                        {
+                            rejectedBlobCount += txBlobCount;
+                            if (rejectedBlobCount > maxRejectedBlobsToConsider)
+                            {
+                                break;
+                            }
+
+                            continue;
+                        }
+
+                        if (blobTx.Hash is Hash256 hash)
+                        {
+                            (fullBlobTxs ??= [])[hash] = fullBlobTx;
+                        }
                     }
 
-                    if (blobTx.Hash is Hash256 hash)
+                    consideredBlobCount += txBlobCount;
+                    bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
+
+                    if (txBlobCount == 1UL && candidates is null)
                     {
-                        (fullBlobTxs ??= [])[hash] = fullBlobTx;
+                        selectedBlobTxs.Add(blobTx);
+                        if ((ulong)selectedBlobTxs.Count == maxBlobs)
+                        {
+                            // Early exit, have complete set of 1 blob txs with maximal priority fees
+                            // No need to consider other tx.
+                            return GetSelectedFullBlobTransactions();
+                        }
                     }
-                }
-
-                consideredBlobCount += txBlobCount;
-                bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
-
-                if (txBlobCount == 1UL && candidates is null)
-                {
-                    selectedBlobTxs.Add(blobTx);
-                    if ((ulong)selectedBlobTxs.Count == maxBlobs)
+                    else
                     {
-                        // Early exit, have complete set of 1 blob txs with maximal priority fees
-                        // No need to consider other tx.
-                        return GetSelectedFullBlobTransactions();
+                        candidates ??= new(16);
+
+                        candidates.Add((blobTx, blobChain));
+                        countOfRemainingBlobs += txBlobCount;
+                    }
+
+                    if (reachedConsiderationLimit)
+                    {
+                        // Reached max blobs to consider, should have enough to fill the block.
+                        break;
                     }
                 }
-                else
-                {
-                    candidates ??= new(16);
-
-                    candidates.Add((blobTx, blobChain));
-                    countOfRemainingBlobs += txBlobCount;
-                }
-
-                if (reachedConsiderationLimit)
-                {
-                    // Reached max blobs to consider, should have enough to fill the block.
-                    break;
-                }
+            }
+            catch
+            {
+                candidates?.Dispose();
+                throw;
             }
 
             // No leftover candidates
@@ -491,78 +484,129 @@ namespace Nethermind.Consensus.Producers
             Order(pendingTransactions, comparer, filter, gasLimit);
 
         private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong maxBlobs = 0ul) =>
-            OrderCore(pendingTransactions, comparer, static tx => (ulong)tx.GetBlobCount(), filter, maxBlobs, enforceSequentialNonces: true);
+            OrderCore<(Transaction tx, ulong resource), BlobOrdering>(pendingTransactions, comparer, filter, maxBlobs);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         internal static IEnumerable<Transaction> Order(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
-            OrderCore(pendingTransactions, comparer, static tx => tx.BlockGasUsed, filter, gasLimit, enforceSequentialNonces: false).Select(static tx => tx.tx);
+            OrderCore<Transaction, TransactionOrdering>(pendingTransactions, comparer, filter, gasLimit);
 
-        private static IEnumerable<(Transaction tx, ulong resource)> OrderCore(
+        private interface IOrdering<TResult>
+        {
+            static abstract TResult Select(Transaction transaction, ulong resource);
+            static abstract ulong GetResource(Transaction transaction);
+            static abstract bool EnforceSequentialNonces { get; }
+        }
+
+        private readonly struct TransactionOrdering : IOrdering<Transaction>
+        {
+            public static Transaction Select(Transaction transaction, ulong resource) => transaction;
+            public static ulong GetResource(Transaction transaction) => transaction.BlockGasUsed;
+            public static bool EnforceSequentialNonces => false;
+        }
+
+        private readonly struct BlobOrdering : IOrdering<(Transaction, ulong)>
+        {
+            public static (Transaction, ulong) Select(Transaction transaction, ulong resource) => (transaction, resource);
+            public static ulong GetResource(Transaction transaction) => (ulong)transaction.GetBlobCount();
+            public static bool EnforceSequentialNonces => true;
+        }
+
+        private static IEnumerable<TResult> OrderCore<TResult, TOrdering>(
             IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions,
             IComparer<Transaction> comparer,
-            Func<Transaction, ulong> resourceSelector,
             Func<Transaction, bool> filter,
-            ulong resourceLimit,
-            bool enforceSequentialNonces)
+            ulong resourceLimit)
+            where TOrdering : struct, IOrdering<TResult>
         {
-            using ArrayPoolList<IEnumerator<Transaction>> bySenderEnumerators = pendingTransactions
-                .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(static g => g.Value)
-                .Select(static g => g.GetEnumerator())
-                .ToPooledList(pendingTransactions.Count);
-
-            try
+            using ArrayPoolList<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries = new(pendingTransactions.Count);
+            foreach (Transaction[] bucket in pendingTransactions.Values)
             {
-                DictionarySortedSet<Transaction, (IEnumerator<Transaction>, ulong)> transactions = SortEnumerators(bySenderEnumerators, comparer);
-
-                while (transactions.Count > 0)
-                {
-                    (Transaction candidateTx, (IEnumerator<Transaction> enumerator, ulong resourceChain)) = transactions.Min;
-
-                    transactions.Remove(candidateTx);
-
-                    ulong totalResource = resourceChain + resourceSelector(candidateTx);
-                    if (totalResource > resourceLimit)
-                        continue;
-
-                    if (!filter(candidateTx))
-                        continue;
-
-                    if (enumerator.MoveNext()
-                        && (!enforceSequentialNonces
-                            || candidateTx.Nonce != ulong.MaxValue
-                            && enumerator.Current!.Nonce == candidateTx.Nonce + 1))
-                    {
-                        transactions.Add(enumerator.Current!, (enumerator, totalResource));
-                    }
-
-                    yield return (candidateTx, resourceChain);
-                }
+                if (bucket.Length > 0) entries.Add((bucket, 0, entries.Count, 0));
             }
-            finally
+
+            // Heap slots store indices into stationary sender entries; sifting moves no managed references.
+            int count = entries.Count;
+            for (int i = count / 2 - 1; i >= 0; i--) SiftDown(entries.AsSpan(), count, entries[i].heapIndex, i, comparer);
+            while (count > 0)
             {
-                foreach (IEnumerator<Transaction> t in bySenderEnumerators.AsSpan())
+                int entryIndex = entries[0].heapIndex;
+                (Transaction[] bucket, int index, _, ulong resource) = entries[entryIndex];
+                Transaction candidateTx = bucket[index];
+                ulong totalResource = resource + TOrdering.GetResource(candidateTx);
+                bool accepted = totalResource <= resourceLimit && filter(candidateTx);
+                int nextIndex = index + 1;
+                if (accepted && nextIndex < bucket.Length
+                    && (!TOrdering.EnforceSequentialNonces
+                        || candidateTx.Nonce != ulong.MaxValue
+                        && bucket[nextIndex].Nonce == candidateTx.Nonce + 1))
                 {
-                    t.Dispose();
+                    entries.AsSpan()[entryIndex].index = nextIndex;
+                    entries.AsSpan()[entryIndex].resource = totalResource;
+                    SiftDown(entries.AsSpan(), count, entryIndex, 0, comparer);
                 }
+                else
+                {
+                    count--;
+                    if (count > 0) SiftAfterRemoval(entries.AsSpan(), count, entries[count].heapIndex, comparer);
+                    entries.AsSpan()[entryIndex].bucket = null!;
+                }
+
+                if (accepted) yield return TOrdering.Select(candidateTx, resource);
             }
         }
 
-        private static DictionarySortedSet<Transaction, (IEnumerator<Transaction>, ulong)> SortEnumerators(ArrayPoolList<IEnumerator<Transaction>> bySenderEnumerators, IComparer<Transaction> comparerWithIdentity)
+        private static void SiftDown(
+            Span<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries,
+            int count,
+            int item,
+            int index,
+            IComparer<Transaction> comparer)
         {
-            DictionarySortedSet<Transaction, (IEnumerator<Transaction>, ulong)> transactions = new(comparerWithIdentity);
-
-            foreach (IEnumerator<Transaction> enumerator in bySenderEnumerators.AsSpan())
+            Transaction tx = entries[item].bucket[entries[item].index];
+            while (index < count / 2)
             {
-                if (enumerator.MoveNext())
-                {
-                    Transaction current = enumerator.Current!;
-                    transactions.Add(current, (enumerator, 0));
-                }
+                int child = index * 2 + 1;
+                if (child + 1 < count && comparer.Compare(GetHeapTransaction(entries, child + 1), GetHeapTransaction(entries, child)) < 0) child++;
+                if (comparer.Compare(tx, GetHeapTransaction(entries, child)) <= 0) break;
+                entries[index].heapIndex = entries[child].heapIndex;
+                index = child;
+            }
+            entries[index].heapIndex = item;
+        }
+
+        private static void SiftAfterRemoval(
+            Span<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries,
+            int count,
+            int item,
+            IComparer<Transaction> comparer)
+        {
+            Transaction tx = entries[item].bucket[entries[item].index];
+            int index = 0;
+            // The last heap item usually belongs near the bottom; compare it only on the ascent.
+            while (index < count / 2)
+            {
+                int child = index * 2 + 1;
+                if (child + 1 < count && comparer.Compare(GetHeapTransaction(entries, child + 1), GetHeapTransaction(entries, child)) < 0) child++;
+                entries[index].heapIndex = entries[child].heapIndex;
+                index = child;
             }
 
-            return transactions;
+            while (index > 0)
+            {
+                int parent = (index - 1) / 2;
+                if (comparer.Compare(tx, GetHeapTransaction(entries, parent)) > 0) break;
+                entries[index].heapIndex = entries[parent].heapIndex;
+                index = parent;
+            }
+            entries[index].heapIndex = item;
+        }
+
+        private static Transaction GetHeapTransaction(Span<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries, int index)
+        {
+            ref (Transaction[] bucket, int index, int heapIndex, ulong resource) entry = ref entries[entries[index].heapIndex];
+            return entry.bucket[entry.index];
         }
 
         public bool SupportsBlobs => _transactionPool.SupportsBlobs;

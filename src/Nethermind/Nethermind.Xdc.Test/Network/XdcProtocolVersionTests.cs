@@ -91,7 +91,7 @@ public class XdcProtocolVersionTests
     {
         using Peer peer = Peer.Create(XdcProtocolVersions.Xdc165);
         peer.ReceiveStatus();
-        peer.TxPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+        peer.TxPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
         peer.Serializer.Deserialize<NewPooledTransactionHashesMessage>(Arg.Any<IByteBuffer>())
             .Returns(new NewPooledTransactionHashesMessage(new[] { TestItem.KeccakA }.ToPooledList()));

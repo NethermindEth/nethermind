@@ -15,11 +15,11 @@ on:
           - producer-retry
           - prefix-retry
         default: both
-      groth16_artifacts:
+      groth16_artifacts_version:
         description: >-
-          Absolute path on the runner to the Groth16 sweep artifacts. Unset, the privacy-workload cases
-          self-ignore. A relative path is not equivalent: this workflow resolves one against src/Nethermind
-          while the harness resolves it against the test assembly's output directory.
+          NethermindEth/frame-verify-gas release tag (vMAJOR.MINOR.PATCH) to download the Groth16 sweep artifacts
+          from. Required for both, mempool and flood; ignored by the other harnesses. Drafts and prereleases are
+          refused.
         required: false
         type: string
         default: ''
@@ -56,6 +56,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Fetch the Groth16 sweep artifacts
+        if: inputs.harness == 'both' || inputs.harness == 'mempool' || inputs.harness == 'flood'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_VERSION: ${{ inputs.groth16_artifacts_version }}
+        run: scripts/frame-verify-gas/fetch-artifacts.sh
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
@@ -64,7 +71,6 @@ jobs:
         working-directory: src/Nethermind
         env:
           HARNESS: ${{ inputs.harness }}
-          FRAME_GROTH16_ARTIFACTS: ${{ inputs.groth16_artifacts }}
           RAISE_VERIFY_GAS: ${{ inputs.raise_verify_gas_const }}
         run: |
           set -uo pipefail
@@ -82,14 +88,6 @@ jobs:
             *)              echo "::error::no build mapping for harness '${HARNESS}'"; exit 1 ;;
           esac
 
-          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" || "${HARNESS}" == "flood" ]] && [[ ! -d "${FRAME_GROTH16_ARTIFACTS}" ]]; then
-            if [[ -z "${FRAME_GROTH16_ARTIFACTS//[[:space:]]/}" ]]; then
-              echo "::error::groth16_artifacts is empty, so FrameTxMempoolDosMeasurement would measure only the adversarial shapes. Supply the artifact path."
-            else
-              echo "::error::groth16_artifacts '${FRAME_GROTH16_ARTIFACTS}' is not a directory on this runner, so the privacy cases would self-ignore and the run would report only the adversarial shapes."
-            fi
-            exit 1
-          fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]] && ! command -v taskset >/dev/null; then
             echo "::error::taskset is not available, so FrameTxFloodMeasurement cannot be confined to one CPU and its figures would describe an uncontended node."
             exit 1
@@ -101,6 +99,12 @@ jobs:
             echo "ref=${GITHUB_REF_NAME}"
             echo "sha=${GITHUB_SHA}"
           } > "${OUTPUT_DIR}/PROVENANCE.txt"
+          if [[ -n "${GROTH16_ARTIFACTS_VERSION:-}" ]]; then
+            {
+              echo "groth16_artifacts=NethermindEth/frame-verify-gas@${GROTH16_ARTIFACTS_VERSION} sha256sums_sha256=${GROTH16_ARTIFACTS_SHA256SUMS_DIGEST}"
+              cat "${GROTH16_ARTIFACTS_SHA256SUMS}"
+            } >> "${OUTPUT_DIR}/PROVENANCE.txt"
+          fi
           RAISE_VERIFY_GAS="${RAISE_VERIFY_GAS//[[:space:]]/}"
           if [[ -n "${RAISE_VERIFY_GAS}" ]]; then
             if [[ ! "${RAISE_VERIFY_GAS}" =~ ^[1-9][0-9]{5,8}$ ]]; then
@@ -208,7 +212,7 @@ jobs:
             run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement "${producer_retry_markers[@]}" || status=1
           fi
           if [[ "${HARNESS}" == "prefix-retry" ]]; then
-            run_harness Nethermind.TxPool.Test FrameTxPrefixRetryMeasurement || status=1
+            run_harness Nethermind.TxPool.Test FrameTxPoolRetentionMeasurement || status=1
           fi
 
           if [[ "${ran}" -eq 0 ]]; then

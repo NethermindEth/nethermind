@@ -488,6 +488,23 @@ public class EthereumGasPolicyTests
         Assert.That(intrinsic.MinRequiredGasLimit, Is.EqualTo(EthereumGasPolicy.GetRemainingGas(intrinsic.MinimalGas)));
     }
 
+    [TestCase(20_000UL, false)]
+    [TestCase(30_000UL, false)]
+    [TestCase(40_000UL, true)]
+    public void MinimalGas_preserves_selected_policy(ulong floorValue, bool selectFloor)
+    {
+        EthereumGasPolicy standard = new() { Value = 30_000, StateReservoir = 100, StateGasUsed = 200, StateGasSpill = 300, StateGasSpillRefunded = 400 };
+        EthereumGasPolicy floor = new() { Value = floorValue, StateReservoir = 500, StateGasUsed = 600, StateGasSpill = 700, StateGasSpillRefunded = 800 };
+        IntrinsicGas<EthereumGasPolicy> intrinsic = new(standard, floor);
+        EthereumGasPolicy expected = selectFloor ? floor : standard;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(intrinsic.MinimalGas, Is.EqualTo(expected));
+            Assert.That((EthereumGasPolicy)intrinsic, Is.EqualTo(expected));
+        }
+    }
+
     [TestCase(100UL, 40UL, 10L, 50UL, TestName = "positive_reservoir_is_subtracted")]
     [TestCase(100UL, 40UL, -10L, 70UL, TestName = "negative_reservoir_spill_is_added_back")]
 #if !DEBUG

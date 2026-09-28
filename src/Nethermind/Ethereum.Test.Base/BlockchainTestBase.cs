@@ -55,6 +55,7 @@ public abstract class BlockchainTestBase
     private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
     private static readonly ILogger _logger = _logManager.GetClassLogger<BlockchainTestBase>();
     private const int _genesisProcessingTimeoutMs = 30000;
+    private static readonly TimeSpan EngineProcessingTimeout = TimeSpan.FromMinutes(10);
 
     /// <summary>
     /// Override to force parallel or sequential BAL execution in tests.
@@ -161,7 +162,7 @@ public abstract class BlockchainTestBase
 
         if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
         {
-            mergeConfig.NewPayloadBlockProcessingTimeout = (int)TimeSpan.FromMinutes(10).TotalMilliseconds;
+            mergeConfig.NewPayloadBlockProcessingTimeout = (int)EngineProcessingTimeout.TotalMilliseconds;
         }
 
         ILogManager componentLogManager = ComponentLogManagerOverride ?? _logManager;
@@ -198,9 +199,10 @@ public abstract class BlockchainTestBase
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = mainBlockProcessingContext.WorldState;
         BlockchainProcessor blockchainProcessor = (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor;
+        IBlockProcessingQueue blockchainProcessingQueue = mainBlockProcessingContext.BlockProcessingQueue;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
-        blockchainProcessor.Start();
+        blockchainProcessingQueue.Start();
 
         try
         {
@@ -276,7 +278,7 @@ public abstract class BlockchainTestBase
                 IJsonRpcService rpcService = container.Resolve<IJsonRpcService>();
                 JsonRpcUrl engineUrl = new(Uri.UriSchemeHttp, "localhost", 8551, RpcEndpoint.Http, true, ["engine"]);
                 JsonRpcContext rpcContext = new(RpcEndpoint.Http, url: engineUrl);
-                Result<string> payloadResult = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, parentHeader.Hash!, engineWitnessDifferences);
+                Result<string> payloadResult = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, blockchainProcessingQueue, parentHeader.Hash!, engineWitnessDifferences);
                 lastPayloadStatus = payloadResult.Data ?? "";
                 lastValidationError = payloadResult.Error;
             }
@@ -287,7 +289,7 @@ public abstract class BlockchainTestBase
 
             // NOTE: Tracer removal must happen AFTER StopAsync to ensure all blocks are traced
             // Blocks are queued asynchronously, so we need to wait for processing to complete
-            await blockchainProcessor.StopAsync(true);
+            await blockchainProcessingQueue.StopAsync(true);
             lastValidationError ??= asyncBlockError;
             stopwatch?.Stop();
 
@@ -342,7 +344,7 @@ public abstract class BlockchainTestBase
         }
         catch (Exception)
         {
-            await blockchainProcessor.StopAsync(true);
+            await blockchainProcessingQueue.StopAsync(true);
             throw;
         }
     }
@@ -434,7 +436,7 @@ public abstract class BlockchainTestBase
     /// carried a validation error, that error in <see cref="Result{TData}.Error"/> (an expected
     /// rejection does not fail the test, so the status is still populated).
     /// </returns>
-    private static async Task<Result<string>> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash, List<string> witnessDifferences)
+    private static async Task<Result<string>> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, IBlockProcessingQueue processingQueue, Hash256 initialHeadHash, List<string> witnessDifferences)
     {
         if (newPayloads is null || newPayloads.Length == 0) return Result<string>.Success("");
 
@@ -496,7 +498,7 @@ public abstract class BlockchainTestBase
                             CompareWitnesses(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
                         }
 
-                        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash.ToString()));
+                        await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash);
                     }
                 }
                 else
@@ -510,8 +512,8 @@ public abstract class BlockchainTestBase
                     // The block is committed even when unsatisfied, so the head must still advance.
                     if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
                     {
-                        string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
-                        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
+                        Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
+                        await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash);
                     }
                 }
             }
@@ -667,6 +669,7 @@ public abstract class BlockchainTestBase
         ("BlockException.INCORRECT_BLOB_GAS_USED", "HeaderBlobGasMismatch:"),
         ("BlockException.BLOB_GAS_USED_ABOVE_LIMIT", "HeaderBlobGasMismatch:"),
         ("BlockException.INVALID_REQUESTS", "InvalidRequestsHash: Requests hash mismatch in block"),
+        ("BlockException.INVALID_GAS_USED", "HeaderGasUsedMismatch:"),
         ("BlockException.INVALID_GAS_USED_ABOVE_LIMIT", "ExceededGasLimit:"),
         ("BlockException.GAS_USED_OVERFLOW", "ExceededGasLimit:"),
         ("BlockException.RLP_BLOCK_LIMIT_EXCEEDED", "ExceededBlockSizeLimit: Exceeded block size limit"),
@@ -682,18 +685,42 @@ public abstract class BlockchainTestBase
         ("BlockException.GAS_USED_OVERFLOW", "Block gas limit exceeded"), // alternate error string
         ("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "BlockAccessListGasLimitExceeded:"),
+        // EIP-7825's per-transaction gas cap, which a frame transaction reports against its own budget.
+        ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", "exceeds the transaction gas cap of"),
+        // Reached only when gasLimit * price (+ value) overflows, never on a plain balance shortfall.
+        ("TransactionException.GASLIMIT_PRICE_PRODUCT_OVERFLOW", "required balance exceeds 256 bits"),
+        .. Eip8141Mappings(),
     ];
+
+    // EIP-8141 splits a rejected frame transaction three ways, and the fixtures name each separately.
+    private static IEnumerable<(string, string)> Eip8141Mappings()
+    {
+        foreach (string fragment in FrameExceptionFragments.Format)
+            yield return ("TransactionException.TYPE_6_INVALID_FRAME_FORMAT", fragment);
+        foreach (string fragment in FrameExceptionFragments.Signature)
+            yield return ("TransactionException.TYPE_6_INVALID_SIGNATURE", fragment);
+        foreach (string fragment in FrameExceptionFragments.Execution)
+            yield return ("TransactionException.TYPE_6_INVALID_FRAME_EXECUTION", fragment);
+        foreach (string fragment in FrameExceptionFragments.Decode)
+            yield return ("TransactionException.TYPE_6_INVALID_FRAME_FORMAT", fragment);
+        foreach (string fragment in FrameExceptionFragments.FeeOverflow)
+        {
+            yield return ("TransactionException.GASPRICE_OVERFLOW", fragment);
+            yield return ("TransactionException.PRIORITY_OVERFLOW", fragment);
+        }
+    }
 
     private const RegexOptions ValidationErrorRegexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;
 
     private static readonly (string ExpectedError, Regex Pattern)[] ValidationErrorRegexMappings =
     [
+        // An in-range r that is not an x-coordinate on the curve leaves the transaction without a recovered sender.
+        ("TransactionException.INVALID_SIGNATURE_VRS", ValidationErrorRegex(@"failed with error sender not specified")),
         ("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS", ValidationErrorRegex(@"insufficient funds for gas \* price \+ value|insufficient funds for transfer|insufficient funds for gas|insufficient sender balance|insufficient MaxFeePerGas for sender balance")),
         ("TransactionException.TYPE_3_TX_WITH_FULL_BLOBS", ValidationErrorRegex(@"Transaction \d+ is not valid")),
         ("TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"BlockBlobGasExceeded: A block cannot have more than \d+ blob gas, blobs count \d+, blobs gas used: \d+")),
         ("TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED", ValidationErrorRegex(@"BlobTxGasLimitExceeded: Transaction's totalDataGas=\d+ exceeded MaxBlobGas per transaction=\d+")),
         ("TransactionException.GAS_LIMIT_EXCEEDS_MAXIMUM", ValidationErrorRegex(@"TxGasLimitCapExceeded:")),
-        ("TransactionException.INTRINSIC_GAS_TOO_LOW", ValidationErrorRegex(@"TxGasLimitCapExceeded: Intrinsic gas")),
         ("BlockException.INCORRECT_EXCESS_BLOB_GAS", ValidationErrorRegex(@"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated|Overflow in excess blob gas")),
         ("BlockException.INVALID_BLOCK_HASH", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
         ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"Invalid block hash 0x[0-9a-f]+ does not match calculated hash 0x[0-9a-f]+")),
@@ -729,6 +756,28 @@ public abstract class BlockchainTestBase
 
     private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
         SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion, $$"""[{"headBlockHash":"{{blockHash}}","safeBlockHash":"{{blockHash}}","finalizedBlockHash":"{{blockHash}}"},null]""");
+
+    /// <summary>
+    /// VALID arrives before the block is committed, and forkchoice gives a committing head only a short wait before
+    /// answering SYNCING; a slow commit on a loaded runner must not leave the head on the parent, so the head moves
+    /// once the block has left the queue and anything but VALID fails here rather than as a post-state diff.
+    /// </summary>
+    private static async Task MoveHeadToCommitted(IJsonRpcService rpcService, JsonRpcContext context, IBlockProcessingQueue processingQueue, int fcuVersion, Hash256 blockHash)
+    {
+        await processingQueue.WaitUntilRemovedAsync(blockHash).AsTask().WaitAsync(EngineProcessingTimeout);
+        JsonRpcResponse response = await SendFcu(rpcService, context, fcuVersion, blockHash.ToString());
+        AssertRpcSuccess(response);
+        string? status = response switch
+        {
+            ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper => resultWrapper.Data?.PayloadStatus.Status,
+            // engine_forkchoiceUpdatedV5 returns ForkchoiceUpdatedV2Result, which does not derive from V1.
+            ResultWrapper<ForkchoiceUpdatedV2Result> v2Wrapper => v2Wrapper.Data?.PayloadStatus.Status,
+            JsonRpcSuccessResponse { Result: ForkchoiceUpdatedV1Result result } => result.PayloadStatus.Status,
+            JsonRpcSuccessResponse { Result: ForkchoiceUpdatedV2Result v2Result } => v2Result.PayloadStatus.Status,
+            _ => null
+        };
+        Assert.That(status, Is.EqualTo(PayloadStatus.Valid), $"engine_forkchoiceUpdatedV{fcuVersion} to {blockHash} answered {response.GetType().Name}");
+    }
 
     private static void AssertRpcSuccess(JsonRpcResponse response)
     {

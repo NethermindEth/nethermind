@@ -544,6 +544,43 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Ripemd_out_of_gas_restores_empty_account_touch_after_balance_overlay()
+    {
+        Address address = Ripemd160Precompile.Address;
+        TestState.CreateAccount(address, UInt256.One);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        TracedAccessWorldState tracedState = new(TestState, parallel);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SubtractFromBalance(address, UInt256.One, Byzantium.Instance, out _);
+        // Retain the balance overlay while clearing setup touches, so only the restored EIP-161 touch can delete the account.
+        TestState.Commit(SpecProvider.GenesisSpec);
+        Snapshot snapshot = tracedState.TakeSnapshot();
+        Assert.That(TestState.AccountExists(address), Is.True);
+
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
+            new CodeInfo(Ripemd160Precompile.Instance), address, Sender, address, 0,
+            UInt256.Zero, ReadOnlyMemory<byte>.Empty);
+        using StackAccessTracker accessTracker = new();
+        using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
+            EthereumGasPolicy.FromULong(0), ExecutionType.TRANSACTION, env, in accessTracker, in snapshot);
+        Machine.SetBlockExecutionContext(new BlockExecutionContext(Build.A.Block.TestObject.Header, Byzantium.Instance));
+        Machine.SetTxExecutionContext(new TxExecutionContext(Sender, new EthereumCodeInfoRepository(tracedState), null, UInt256.Zero));
+
+        TransactionSubstate substate = Machine.ExecuteTransaction<OffFlag>(vmState, tracedState, NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(substate.EvmExceptionType, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(substate.ShouldRestoreRipemdTouch, Is.True);
+        }
+        tracedState.Restore(snapshot);
+        VirtualMachineStatics.RestoreRipemdTouch(tracedState, Byzantium.Instance, substate.ShouldRestoreRipemdTouch);
+        tracedState.Commit(Byzantium.Instance);
+        Assert.That(TestState.AccountExists(address), Is.False);
+    }
+
+    [Test]
     public void Delegated_precompile_target_is_recorded_in_BAL_under_PrecompileCachedCodeInfoRepository()
     {
         Address precompileAddress = Sha256Precompile.Address;

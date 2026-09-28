@@ -25,15 +25,15 @@ namespace Nethermind.Merge.Plugin
         // https://eips.ethereum.org/EIPS/eip-3675#constants
         private const int MaxExtraDataBytes = 32;
 
-        protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+        protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash)
         {
             error = null;
             return poSSwitcher.IsPostMerge(header)
-                ? ValidateTheMergeChecks(header) && base.Validate<TOrphaned>(header, parent, isUncle, out error)
+                ? ValidateTheMergeChecks(header) && base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash)
                 : ValidatePoWTotalDifficulty(header) && (
                     typeof(TOrphaned) == typeof(OnFlag)
                         ? preMergeHeaderValidator.ValidateOrphaned(header, out error)
-                        : preMergeHeaderValidator.Validate(header, parent!, isUncle, out error)
+                        : preMergeHeaderValidator.Validate(header, parent!, isUncle, out error, validateHash)
                 );
         }
 

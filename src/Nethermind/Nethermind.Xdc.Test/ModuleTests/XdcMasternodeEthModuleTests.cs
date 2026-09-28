@@ -11,6 +11,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -411,7 +412,7 @@ public class XdcMasternodeEthModuleTests
         scope.WorldState.Returns(worldState);
         scope.TransactionProcessor.Returns(transactionProcessor);
         IReadOnlyTxProcessorSource source = Substitute.For<IReadOnlyTxProcessorSource>();
-        source.Build(Arg.Any<BlockHeader>()).Returns(scope);
+        source.TryBuild(Arg.Any<BlockHeader>(), out Arg.Any<IReadOnlyTxProcessingScope?>()).Returns(call => call.Succeed(1, scope));
         IReadOnlyTxProcessingEnvFactory factory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         factory.Create().Returns(source);
         return factory;

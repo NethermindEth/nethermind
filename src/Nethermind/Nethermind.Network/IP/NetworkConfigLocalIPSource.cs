@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -13,7 +14,7 @@ namespace Nethermind.Network.IP
         private readonly INetworkConfig _config = config;
         private readonly ILogger _logger = logManager.GetClassLogger<NetworkConfigLocalIPSource>();
 
-        public Task<(bool, IPAddress)> TryGetIP()
+        public Task<(bool, IPAddress)> TryGetIP(CancellationToken cancellationToken = default)
         {
             if (_config.LocalIp is not null)
             {
@@ -21,7 +22,7 @@ namespace Nethermind.Network.IP
 
                 if (result)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Using the local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_config.LocalIp}");
+                    if (_logger.IsInfo) _logger.Info($"Using the local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_config.LocalIp}");
                 }
                 else
                 {

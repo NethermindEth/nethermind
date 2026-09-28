@@ -35,9 +35,10 @@ namespace Nethermind.Xdc.TxPool;
 /// for; that is also why <c>Blocks.MinGasPrice</c> cannot carry this value, and why the shipped XDC configs set it
 /// to zero.</item>
 /// <item>The exemption is <see cref="XdcExtensions.IsSpecialTransaction"/>, narrower than the
-/// <see cref="XdcExtensions.RequiresSpecialHandling"/> set that <see cref="XdcTransactionProcessor.BuyGas"/> gives
-/// free gas to. The reference keeps XDCX order and lending traffic in its own pools, and both shipped chainspecs
-/// disable it outright, so those transactions never reach this one.</item>
+/// <see cref="XdcExtensions.RequiresSpecialHandling"/> set, which pays nothing at all because
+/// <see cref="XdcTransactionProcessor.Execute"/> routes it to <c>ExecuteSpecialTransaction</c> with an empty
+/// intrinsic gas, before any charge is made. The reference keeps XDCX order and lending traffic in its own pools,
+/// and both shipped chainspecs disable it outright, so those transactions never reach this one.</item>
 /// </list>
 /// </para>
 /// </remarks>

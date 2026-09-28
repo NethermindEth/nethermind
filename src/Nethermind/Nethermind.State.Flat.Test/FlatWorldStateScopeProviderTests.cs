@@ -3,13 +3,17 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -21,6 +25,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -31,6 +36,126 @@ namespace Nethermind.State.Flat.Test;
 
 public class FlatWorldStateScopeProviderTests
 {
+    [Test]
+    public void TryBeginScope_ReturnsFalseWhenStateIsRemovedAfterAdvisoryCheck()
+    {
+        bool stateAvailable = true;
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(1234).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+
+        using TestContext context = new(blockTree);
+        IWorldStateManager manager = context.WorldStateManager;
+        context.FlatDbManager.HasStateForBlock(Arg.Any<StateId>()).Returns(_ => stateAvailable);
+        context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>()).Returns(_ =>
+        {
+            if (!stateAvailable) throw CreateStateUnavailableException();
+            return CreateSnapshotBundle(context.ResourcePool);
+        });
+
+        IWorldStateScopeProvider provider = manager.GlobalWorldState;
+        Assert.That(provider.HasStateForTargetBlock(target), Is.True);
+
+        stateAvailable = false;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
+            Assert.That(scope, Is.Null);
+        }
+    }
+
+    [Test]
+    public void ManagerCreatedProviders_OpenTargetAtSameParent()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(1).TestObject;
+        BlockHeader sameParentDifferentTimestamp = Build.A.BlockHeader.WithParent(parent).WithTimestamp(2).TestObject;
+        // Only the exact parent lookup answers, so a provider resolving anything else gets no parent at all.
+        blockTree.FindHeader(parent.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, parent.Number).Returns(parent);
+
+        using TestContext context = new(blockTree);
+        IWorldStateManager manager = context.WorldStateManager;
+        IWorldStateScopeProvider[] providers =
+        [
+            manager.GlobalWorldState,
+            manager.CreateResettableWorldState(),
+        ];
+        using IOverridableWorldScope overridable = manager.CreateOverridableWorldScope();
+        providers = [.. providers, overridable.WorldState];
+
+        foreach (IWorldStateScopeProvider provider in providers)
+        {
+            Assert.That(provider.HasStateForTargetBlock(target), Is.True);
+            Assert.That(provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
+            scope!.Dispose();
+        }
+
+        Assert.That(manager.GlobalWorldState.HasStateForTargetBlock(sameParentDifferentTimestamp), Is.True);
+        Assert.That(manager.GlobalWorldState.TryBeginScopeAtTarget(sameParentDifferentTimestamp, new LocalMetrics(), out IWorldStateScopeProvider.IScope? secondScope), Is.True);
+        secondScope!.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            context.FlatDbManager.Received().GatherSnapshotBundle(new StateId(parent), Arg.Any<ResourcePool.Usage>());
+            context.FlatDbManager.DidNotReceive().GatherSnapshotBundle(new StateId(target), Arg.Any<ResourcePool.Usage>());
+        }
+    }
+
+    [Test]
+    public void TryBeginScope_RetainsReaderUntilActiveScopeIsDisposed()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(5678).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+        IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
+        bool readerDisposed = false;
+        persistenceReader.When(reader => reader.Dispose()).Do(_ => readerDisposed = true);
+
+        using TestContext context = new(blockTree);
+        context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>())
+            .Returns(_ => CreateSnapshotBundle(context.ResourcePool, persistenceReader));
+
+        Assert.That(context.WorldStateManager.GlobalWorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
+        Assert.That(readerDisposed, Is.False);
+
+        scope!.Dispose();
+        Assert.That(readerDisposed, Is.True);
+    }
+
+    [Test]
+    public void TargetAcquisitionFailureAfterLocalLeaseReleasesSnapshots()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithParent(parent).TestObject;
+        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent);
+        using TestContext context = new(blockTree);
+        Snapshot local = context.ResourcePool.CreateSnapshot(StateId.PreGenesis, new StateId(parent), ResourcePool.Usage.MainBlockProcessing);
+        TransientResource resource = context.ResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        IOverridableWorldScope overridable = context.WorldStateManager.CreateOverridableWorldScope();
+        ((FlatOverridableWorldScope)overridable).AddSnapshot(local, resource);
+        context.FlatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
+            .Returns(_ => throw CreateStateUnavailableException());
+
+        Assert.That(overridable.WorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out _), Is.False);
+        Assert.That(local.ToString(), Is.EqualTo("Leases: 1"));
+        overridable.Dispose();
+    }
+
+    private static Exception CreateStateUnavailableException() => new StateUnavailableException("state removed during acquisition");
+
+    private static SnapshotBundle CreateSnapshotBundle(ResourcePool resourcePool, IPersistence.IPersistenceReader? persistenceReader = null)
+    {
+        persistenceReader ??= Substitute.For<IPersistence.IPersistenceReader>();
+        return new SnapshotBundle(
+            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), persistenceReader, false, PersistedSnapshotStack.Empty()),
+            Substitute.For<ITrieNodeCache>(),
+            resourcePool,
+            ResourcePool.Usage.ReadOnlyProcessingEnv);
+    }
 
     private class TestContext : IDisposable
     {
@@ -41,21 +166,34 @@ public class FlatWorldStateScopeProviderTests
         private IContainer Container => _container ??= _containerBuilder.Build();
 
         public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
+        public IFlatDbManager FlatDbManager => field ??= Container.Resolve<IFlatDbManager>();
+        public IWorldStateManager WorldStateManager => field ??= Container.Resolve<IWorldStateManager>();
         public SnapshotBundle SnapshotBundle => Container.Resolve<SnapshotBundle>();
         public SnapshotPooledList ReadOnlySnapshots = new(0);
+        public List<Snapshot> LocalSnapshots { get; } = [];
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false)
         {
             config ??= new FlatDbConfig();
 
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
+                    .Bind<IWorldStateManager, FlatWorldStateManager>()
+                    .AddSingleton<IPersistence>(Substitute.For<IPersistence>())
+                    .AddSingleton<IFlatStateRootIndex>(Substitute.For<IFlatStateRootIndex>())
+                    .AddSingleton<IStateHeaderProvider>(new ReorgDepthStateHeaderProvider(blockTree ?? Substitute.For<IBlockTree>()))
+                    .AddKeyedSingleton<IDb>(DbNames.Code, new TestMemDb())
+                    .AddSingleton<IBlockTree>(blockTree ?? Substitute.For<IBlockTree>())
+                    .AddSingleton<ITrieWarmer, NoopTrieWarmer>()
                     .AddSingleton<IPersistence.IPersistenceReader>(_ => Substitute.For<IPersistence.IPersistenceReader>())
                     .AddSingleton<IFlatDbManager>(_ =>
                     {
                         IFlatDbManager flatDiff = Substitute.For<IFlatDbManager>();
+                        // NSubstitute does not run default interface members, so route the usage overload to the stubbed one.
+                        flatDiff.HasStateForBlock(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>())
+                            .Returns(c => flatDiff.HasStateForBlock(c.ArgAt<StateId>(0)));
                         flatDiff.When(it => it.AddSnapshot(Arg.Any<Snapshot>(), Arg.Any<TransientResource>()))
                             .Do(c =>
                             {
@@ -74,6 +212,11 @@ public class FlatWorldStateScopeProviderTests
                                 transientResource.ReleaseLease();
                             });
 
+                        flatDiff.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>())
+                            .Returns(_ => CreateSnapshotBundle(Container.Resolve<ResourcePool>()));
+                        flatDiff.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
+                            .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty()));
+                        flatDiff.HasStateForBlock(Arg.Any<StateId>()).Returns(true);
                         return flatDiff;
                     })
                     .Bind<IFlatCommitTarget, IFlatDbManager>()
@@ -91,7 +234,8 @@ public class FlatWorldStateScopeProviderTests
 
             // Externally owned because snapshot bundle take ownership
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
-                .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
+                .WithParameter(new NamedParameter("recordDetailedMetrics", false))
+                .WithParameter(new NamedParameter("isHistorical", historical))
                 .WithParameter(TypedParameter.From(ReadOnlySnapshots))
                 .WithParameter(TypedParameter.From(PersistedSnapshotStack.Empty()))
                 .ExternallyOwned();
@@ -118,6 +262,7 @@ public class FlatWorldStateScopeProviderTests
             _cancellationTokenSource.Cancel();
 
             LastCommittedSnapshot?.Dispose();
+            foreach (Snapshot snapshot in LocalSnapshots) snapshot.Dispose();
 
             _container?.Dispose();
             _cancellationTokenSource.Dispose();
@@ -186,6 +331,22 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
         storageTree.Get(slotIndex, out UInt256 slotRead186);
         Assert.That(slotRead186, Is.EqualTo(new UInt256(newerSlotValue, isBigEndian: true)));
+    }
+
+    [Test]
+    public void ClearStorage_empties_the_storage_root([Values] bool historical)
+    {
+        using TestContext ctx = new(historical: historical);
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(new Account(1, 2, TestItem.KeccakA, Keccak.OfAnEmptyString));
+        Assume.That(ctx.Scope.Trieless, Is.EqualTo(historical));
+        ctx.Scope.Get(address);
+        FlatStorageTree storageTree = (FlatStorageTree)ctx.Scope.CreateStorageTree(address);
+        Assume.That(storageTree.RootHash, Is.EqualTo(TestItem.KeccakA));
+
+        storageTree.ClearStorage();
+
+        Assert.That(storageTree.RootHash, Is.EqualTo(Keccak.EmptyTreeHash));
     }
 
     [Test]
@@ -359,6 +520,38 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(committedSlot!.Value.ToMinimalBigEndian(), Is.EqualTo(slotValue));
     }
 
+    [Test]
+    public void WriteBatch_DeletingAccountHeldByTrie_WithVerifyWithTrie_DoesNotThrow([Values] bool hasStorage)
+    {
+        // Deleting an account deletes it from the flat snapshot at once but from the trie only when the batch is
+        // disposed. The storage-tree lookup the delete makes in between reads the account back, and with
+        // VerifyWithTrie that read used to be compared against the trie, which still held it: the EIP-161
+        // clearing of any pre-existing empty account (e.g. the identity precompile at the Spurious Dragon block)
+        // threw "Incorrect account ... vs flat:".
+        using TestContext ctx = new(config: new FlatDbConfig { VerifyWithTrie = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        Account account = hasStorage ? new Account(nonce: 1, balance: 5) : Account.TotallyEmpty;
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            // storage before the account, as block processing flushes it
+            if (hasStorage)
+            {
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+                storageBatch.Set((UInt256)1, (UInt256)0xCAFE);
+            }
+            writeBatch.Set(address, account);
+        }
+
+        Assert.That(() =>
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            writeBatch.Set(address, null);
+        }, Throws.Nothing);
+        Assert.That(scope.Get(address), Is.Null);
+    }
+
     #endregion
 
     #region Selfdestruct Interaction Tests
@@ -513,8 +706,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void StorageRootAfterParallelCommitMatchesRawTrie()
+    public void StorageRootAfterParallelCommitMatchesRawTrie([Values(1, 2, 4)] int concurrency)
     {
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
         const int slotsPerCommit = 1024;
         const int commitCount = 2;
         using TestContext ctx = new();
@@ -973,6 +1167,148 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(disposeCompleted, Is.True, "Dispose should complete after the outstanding warmup finishes");
     }
 
+    /// <summary>A job still queued when the scope is disposed must skip its walk, so the wait covers only walks in flight.</summary>
+    [Test]
+    public async Task Dispose_QueuedWarmup_SkipsItsWalk()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        // A job queued before disposal carries the sequence id it was queued under.
+        int queuedSequenceId = scope.HintSequenceId;
+        scope.IncrementOutstandingWarmups();
+        using ManualResetEventSlim waitEntered = new(false);
+        // Holds dispose before its wait, so the bundle is still live when the job runs.
+        using ManualResetEventSlim jobRan = new(false);
+        scope.OnWaitingForWarmups = () =>
+        {
+            waitEntered.Set();
+            jobRan.Wait();
+        };
+
+        Task disposeTask = Task.Run(() => scope.Dispose());
+        bool walked;
+        try
+        {
+            Assert.That(waitEntered.Wait(5000), Is.True, "Dispose should enter the wait loop");
+            // The warmer dequeues it only now, as it would behind a backlog.
+            walked = scope.WarmUpStateTrie(TestItem.AddressA, queuedSequenceId);
+        }
+        finally
+        {
+            jobRan.Set();
+        }
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(walked, Is.False, "a job dequeued after disposal began must not walk the trie");
+    }
+
+    /// <summary>Dispose must return when the last warmup completes, not when its timeout expires.</summary>
+    [Test]
+    public async Task Dispose_ReturnsWhenTheLastWarmupCompletes()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        scope.IncrementOutstandingWarmups();
+        long completed = 0;
+        // The last job completes after dispose has re-read the count and just before it blocks.
+        scope.OnBlockingForWarmups = () =>
+        {
+            scope.DecrementOutstandingWarmups();
+            completed = Stopwatch.GetTimestamp();
+        };
+
+        // Measured on the disposing thread, so scheduling of this test's continuations is not counted.
+        TimeSpan blocked = await Task.Run(() =>
+        {
+            scope.Dispose();
+            return Stopwatch.GetElapsedTime(completed);
+        }).WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Without the wake, dispose returns only when its one-second timeout expires.
+        Assert.That(blocked, Is.LessThan(TimeSpan.FromMilliseconds(900)),
+            "the completing job must wake dispose rather than leave it to time out");
+    }
+
+    /// <summary>A wake from a job that reached zero before more were queued must not end the wait while one is still in flight.</summary>
+    [Test]
+    public async Task Dispose_StaleWake_KeepsWaitingForTheJobInFlight()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        scope.IncrementOutstandingWarmups();
+        int blocks = 0;
+        scope.OnBlockingForWarmups = () =>
+        {
+            if (Interlocked.Increment(ref blocks) == 1)
+            {
+                // One job completes to zero and sets the event, then another is counted: the wake is stale.
+                scope.DecrementOutstandingWarmups();
+                scope.IncrementOutstandingWarmups();
+            }
+            else
+            {
+                // Blocking again proves the stale wake did not end the wait; the job in flight completes now.
+                scope.DecrementOutstandingWarmups();
+            }
+        };
+
+        await Task.Run(() => scope.Dispose()).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(Volatile.Read(ref blocks), Is.EqualTo(2), "dispose must wait again after a stale wake instead of returning");
+    }
+
+    public enum WarmupHint
+    {
+        Account,
+        BalAccount,
+        StorageSlot,
+        HintSlot,
+        BalSlot,
+    }
+
+    /// <summary>
+    /// A job may complete before its push returns. Counting it only afterwards drives the count below zero, and then a
+    /// later increment can bring it to zero with no completion to wake a disposing scope, which waits out its timeout.
+    /// </summary>
+    [Test]
+    public async Task Warmup_CompletingDuringItsPush_NeverDrivesTheCountBelowZero([Values] WarmupHint hint)
+    {
+        InlineTrieWarmer warmer = new();
+        using TestContext ctx = new(trieWarmer: warmer);
+        // The slot hints warm only an account whose storage trie is not empty.
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(new Account(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString));
+        FlatWorldStateScope scope = ctx.Scope;
+        warmer.Scope = scope;
+
+        switch (hint)
+        {
+            case WarmupHint.Account:
+                scope.HintWarmAccount(TestItem.AddressA);
+                break;
+            case WarmupHint.BalAccount:
+                await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA)));
+                break;
+            case WarmupHint.StorageSlot:
+                scope.CreateStorageTree(TestItem.AddressA).HintSet((UInt256)1);
+                break;
+            case WarmupHint.HintSlot:
+                scope.HintWarmSlot(TestItem.AddressA, (UInt256)1);
+                break;
+            case WarmupHint.BalSlot:
+                await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, BalWriteKind.Storage)));
+                break;
+        }
+
+        int expectedJobs = hint is WarmupHint.Account or WarmupHint.BalAccount ? warmer.AddressJobs : warmer.SlotJobs;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedJobs, Is.EqualTo(1), "precondition: the hint must have run its job inside its push");
+            Assert.That(warmer.LowestCountAfterCompletion, Is.GreaterThanOrEqualTo(0));
+            Assert.That(scope.OutstandingWarmups, Is.Zero);
+        }
+    }
+
     [Test]
     public async Task Dispose_CompletesImmediately_WhenNoOutstandingWarmups()
     {
@@ -1007,7 +1343,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
         // simulating the slow cold read that is in flight when a restart-replay scope is disposed.
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
         Assert.That(reader.ReadEntered.Wait(30_000), Is.True, "Warmup job should reach the persistence reader");
 
         Task disposeTask = Task.Run(() => scope.Dispose());
@@ -1127,7 +1463,7 @@ public class FlatWorldStateScopeProviderTests
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
         await scope.HintBal(CreateBal());
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }
@@ -1140,9 +1476,9 @@ public class FlatWorldStateScopeProviderTests
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)));
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes)); // read-only in BAL
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressC.Bytes)); // not in BAL
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes)); // written, but already pushed by HintBal (bloom dedupe)
+        scope.HintWarmAccount(TestItem.AddressA); // read-only in BAL
+        scope.HintWarmAccount(TestItem.AddressC); // not in BAL
+        scope.HintWarmAccount(TestItem.AddressB); // written, but already pushed by HintBal (bloom dedupe)
 
         Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
     }
@@ -1156,7 +1492,7 @@ public class FlatWorldStateScopeProviderTests
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
         scope.StartWriteBatch(0).Dispose();
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.Empty);
     }
@@ -1174,7 +1510,7 @@ public class FlatWorldStateScopeProviderTests
 
         await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressB)));
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.Empty);
     }
@@ -1185,7 +1521,7 @@ public class FlatWorldStateScopeProviderTests
         using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
         FlatWorldStateScope scope = ctx.Scope;
 
-        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        scope.HintWarmAccount(TestItem.AddressA);
 
         Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }
@@ -1254,6 +1590,45 @@ public class FlatWorldStateScopeProviderTests
                 if (path is not null) _addressJobPushes.Add(path);
             }
             return false;
+        }
+
+        public void OnEnterScope() { }
+
+        public void OnExitScope() { }
+    }
+
+    /// <summary>Runs each job inside its push, as a worker that dequeues it at once would, and records the count after.</summary>
+    private sealed class InlineTrieWarmer : ITrieWarmer
+    {
+        public FlatWorldStateScope? Scope { get; set; }
+        public int AddressJobs { get; private set; }
+        public int SlotJobs { get; private set; }
+        public int LowestCountAfterCompletion { get; private set; } = int.MaxValue;
+
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+            => PushSlotJobMpmc(storageTree, index, sequenceId);
+
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        {
+            // The mocked persistence holds no trie nodes; the real warmer drops the same exception.
+            try { storageTree.WarmUpStorageTrie(index, sequenceId); }
+            catch (TrieNodeException) { }
+            SlotJobs++;
+            return Record();
+        }
+
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+        {
+            try { scope.WarmUpStateTrie(path!, sequenceId); }
+            catch (TrieNodeException) { }
+            AddressJobs++;
+            return Record();
+        }
+
+        private bool Record()
+        {
+            LowestCountAfterCompletion = Math.Min(LowestCountAfterCompletion, Scope!.OutstandingWarmups);
+            return true;
         }
 
         public void OnEnterScope() { }

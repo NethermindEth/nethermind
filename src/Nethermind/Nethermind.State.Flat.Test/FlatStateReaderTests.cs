@@ -48,10 +48,11 @@ public class FlatStateReaderTests
     private class ThrowingFlatDbManager : IFlatDbManager
     {
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
-            throw new StateUnavailableException($"State {baseBlock} no longer exists; concurrently removed.");
+            throw new StateNotRetainedException($"State {baseBlock} no longer exists; concurrently removed.");
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
+        public void DropStateNotReachableFrom(in StateId head) { }
         public bool HasStateForBlock(in StateId stateId) => false;
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }
@@ -63,6 +64,7 @@ public class FlatStateReaderTests
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
+        public void DropStateNotReachableFrom(in StateId head) { }
         public bool HasStateForBlock(in StateId stateId) => true;
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -25,7 +26,19 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     // For scope to create genesis.
     const BlockHeader? PreGenesis = null;
 
-    IDisposable BeginScope(BlockHeader? baseBlock);
+    /// <summary>Attempts to open the state committed at <paramref name="baseBlock"/> (pre-genesis when <c>null</c>).</summary>
+    /// <param name="scopeCloser">The disposable scope closer when acquisition succeeds.</param>
+    /// <returns><c>true</c> when the state was acquired; <c>false</c> when it is unavailable.</returns>
+    bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser);
+
+    /// <summary>
+    /// Attempts to open the state required to execute <paramref name="targetBlock"/>.
+    /// </summary>
+    /// <param name="targetBlock">The target block; its parent state is opened.</param>
+    /// <param name="scopeCloser">The disposable scope closer when acquisition succeeds.</param>
+    /// <returns><c>true</c> when the parent state was acquired; otherwise <c>false</c>.</returns>
+    bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser);
+
     Task HintBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
@@ -33,19 +46,16 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     new ref readonly ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);
 
+    /// <summary>Checks whether the parent state required to execute <paramref name="targetBlock"/> is available.</summary>
+    /// <remarks>This check is advisory and does not reserve or pin state.</remarks>
+    bool HasStateForTargetBlock(BlockHeader targetBlock);
+
     /// <summary>
     /// Return the original persistent storage value from the storage cell.
     /// </summary>
     /// <param name="storageCell">Storage location.</param>
     /// <param name="value">Original value at the cell.</param>
     void GetOriginal(in StorageCell storageCell, out UInt256 value);
-
-    /// <summary>
-    /// Get the persistent storage value at the specified storage cell
-    /// </summary>
-    /// <param name="storageCell">Storage location</param>
-    /// <param name="value">Value at cell</param>
-    void Get(in StorageCell storageCell, out UInt256 value);
 
     /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
@@ -95,6 +105,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void WarmUp(Address address);
 
+    /// <summary>Applies prefix account changes to block-start caches. False leaves state unchanged and requires ordinary replay.</summary>
+    bool TryApplyAccountOverlay(IStateReadOverlay overlay) => false;
+
     /// <summary>
     /// Clear all storage at specified address
     /// </summary>
@@ -129,6 +142,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
+    /// <summary>Credits the account balance, creating the account if it does not physically exist.</summary>
+    /// <returns>True if this operation created the account; false if it already existed, even when empty.</returns>
     bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
