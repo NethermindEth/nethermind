@@ -154,11 +154,11 @@ public class ImportPbtFromPreimageFlatTests
         {
             for (int page = 1; page <= 2; page++)
             {
-                byte[] key = new byte[zone == 0 ? 32 : 34];
+                byte[] key = new byte[zone == 0 ? 32 : Eip8297KeyDerivation.StorageKeyLength];
                 key[0] = (byte)(partition * 16 + page * 4);
                 key[1] = 3;
                 key[2] = 0xFF;
-                if (zone != 0) key[^1] = PbtKeyDerivation.HeaderStorageOffset;
+                if (zone != 0) key[ValueHash256.MemorySize] = Eip8297KeyDerivation.StorageZone;
                 byte[] value = zone == 0
                     ? Nethermind.Serialization.Rlp.Rlp.Encode(new Account(1, 100)).Bytes
                     : SlotRunTestExtensions.SingleSlotRow(TestItem.KeccakA.Bytes);
@@ -862,7 +862,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtConfig config = new() { ImportStorageReadConcurrency = workers, ImportWindowSize = 3 };
         PbtRocksDbPersistence target = new(pbtDb, config);
         Dictionary<string, byte[]> model = [];
-        HashSet<string> expectedRows = [];
+        Dictionary<string, int> expectedReads = [];
         int partitionCount = workers * 16;
         using Barrier overlap = new(workers);
         int gatedViews = 0;
@@ -872,7 +872,7 @@ public class ImportPbtFromPreimageFlatTests
             if (column == PbtColumns.Accounts && Interlocked.Increment(ref gatedViews) <= workers)
                 Assert.That(overlap.SignalAndWait(TimeSpan.FromSeconds(20)), Is.True, "configured workers must enter separate range views concurrently");
             Assert.That(start.AsSpan().SequenceCompareTo(end), Is.LessThan(0));
-            Assert.That(start.Length, Is.EqualTo(2).Or.EqualTo(column == PbtColumns.Accounts ? 33 : start.Length > 32 && start[32] == Eip8297KeyDerivation.AccountZone ? 35 : 67), "views begin at a partition boundary or immediately after the last complete key");
+            Assert.That(start.Length, Is.EqualTo(2).Or.EqualTo(column == PbtColumns.Accounts || start.Length > 32 && start[32] == Eip8297KeyDerivation.AccountZone ? 33 : 67), "views begin at a partition boundary, immediately after the last complete key or at an account's header slots");
             if (start.Length == 2)
             {
                 Interlocked.Increment(ref partitionViews);
@@ -897,9 +897,9 @@ public class ImportPbtFromPreimageFlatTests
                     BinaryPrimitives.WriteUInt16BigEndian(hashBytes, (ushort)prefix);
                     if (!hashes.Add(Convert.ToHexString(hashBytes))) continue;
                     ValueHash256 hash = new(hashBytes);
-                    Account account = new(1, 100);
+                    Account account = new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA);
                     staging.SetAccount(hash, account);
-                    expectedRows.Add($"{PbtColumns.Accounts}:{Convert.ToHexString(hashBytes)}");
+                    expectedReads[$"{PbtColumns.Accounts}:{Convert.ToHexString(hashBytes)}"] = 1;
                     foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(hash, account, null))
                         model[Convert.ToHexString(key.Bytes)] = value.Bytes.ToArray();
                     foreach (byte zone in new byte[] { 0, 0xFF })
@@ -911,7 +911,8 @@ public class ImportPbtFromPreimageFlatTests
                         if (zone == 0xFF) storageKey.AsSpan(33).Fill(0xFF);
                         ValueHash256 value = TestItem.KeccakA.ValueHash256;
                         staging.SetSlot(new PbtStorageTreeKey(storageKey), EvmWordSlot.FromStripped(value.Bytes));
-                        expectedRows.Add($"{PbtColumns.Storages}:{Convert.ToHexString(PbtStorageKeyLayout.Encode(SlotRun.RunKey(new PbtStorageTreeKey(storageKey)), new byte[PbtStorageTreeKey.MaxLength]))}");
+                        // Header rows are read with their account, then passed over by the storage scan.
+                        expectedReads[$"{PbtColumns.Storages}:{Convert.ToHexString(PbtStorageKeyLayout.Encode(SlotRun.RunKey(new PbtStorageTreeKey(storageKey)), new byte[PbtStorageTreeKey.MaxLength]))}"] = zone == 0 ? 2 : 1;
                         model[Convert.ToHexString(storageKey)] = value.Bytes.ToArray();
                     }
                 }
@@ -922,17 +923,11 @@ public class ImportPbtFromPreimageFlatTests
 
         await step.Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
 
-        HashSet<string> actualRows = [];
-        foreach ((string key, int count) in pbtDb.Rows)
-        {
-            actualRows.Add(key);
-            Assert.That(count, Is.EqualTo(1), "range ends and resumed pages cannot duplicate a row");
-        }
         using IPbtPersistence.IReader reader = target.CreateReader();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(actualRows, Is.EquivalentTo(expectedRows));
+            Assert.That(pbtDb.Rows, Is.EquivalentTo(expectedReads), "range ends and resumed pages cannot duplicate a row");
             Assert.That(pbtDb.ActiveViews, Is.Zero);
             Assert.That(partitionViews, Is.EqualTo(partitionCount * 2), "accounts and storage each use disjoint partitions");
             Assert.That(pbtDb.GroupCommits, Is.GreaterThan(1));
@@ -959,7 +954,7 @@ public class ImportPbtFromPreimageFlatTests
             // One slot per run, so every storage row is one leaf and one page.
             for (uint index = 0; index < 100; index++)
             {
-                UInt256 slot = index * SlotRun.Width;
+                UInt256 slot = PbtKeyDerivation.HeaderStorageOffset + index * SlotRun.Width;
                 batch.SetStorage(TestItem.AddressA, slot, (UInt256)0x01);
                 PbtReferenceModel.SetSlot(model, TestItem.AddressA, slot, 1);
             }

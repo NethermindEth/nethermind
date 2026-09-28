@@ -558,11 +558,17 @@ public class ImportPbtFromPreimageFlat(
         return (start, end);
     }
 
+    /// <remarks>
+    /// Header slots are emitted with their account because they share its stem and node groups;
+    /// <see cref="EmitStorage"/> skips them.
+    /// </remarks>
     private async Task EmitAccounts(byte[] cursor, byte[] end, EntrySink sink, ScanProgress progress, int partition, CancellationToken cancellationToken)
     {
         ISortedKeyValueStore accounts = (ISortedKeyValueStore)pbtDb.GetColumnDb(PbtColumns.Accounts);
+        ISortedKeyValueStore storage = (ISortedKeyValueStore)pbtDb.GetColumnDb(PbtColumns.Storages);
         IDb codes = pbtDb.GetColumnDb(PbtColumns.Codes);
         using ArrayPoolList<KeyValuePair<ValueHash256, Account>> buffered = new(EntryChunkSize);
+        using ArrayPoolList<RebuildEntry> headerSlots = new(PbtKeyDerivation.HeaderStorageOffset);
         while (true)
         {
             byte[]? resumeFrom = null;
@@ -597,6 +603,11 @@ public class ImportPbtFromPreimageFlat(
                     cancellationToken.ThrowIfCancellationRequested();
                     await sink.Add(new RebuildEntry((PbtStorageTreeKey)key, value));
                 }
+
+                if (!account.HasStorage) continue;
+                ReadHeaderSlots(storage, addressHash, headerSlots);
+                for (int slot = 0; slot < headerSlots.Count; slot++) await sink.Add(headerSlots[slot]);
+                headerSlots.Clear();
             }
             buffered.Clear();
             if (resumeFrom is null) return;
@@ -616,15 +627,8 @@ public class ImportPbtFromPreimageFlat(
                 while (buffered.Count < EntryChunkSize && view.MoveNext())
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    PbtStorageTreeKey runKey = PbtStorageKeyLayout.Decode(view.CurrentKey);
-                    ISlotRun run = SlotRunCodec.Decode(view.CurrentValue);
-                    for (int index = 0; index < SlotRun.Width; index++)
-                    {
-                        if ((run.Mask & (1 << index)) == 0) continue;
-                        EvmWord slot = run.Get(index);
-                        buffered.Add(new(SlotRun.SlotKey(runKey, index), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in slot))));
-                    }
-                    SlotRun.Return(run);
+                    if (view.CurrentKey[ValueHash256.MemorySize] == Eip8297KeyDerivation.AccountZone) continue;
+                    AddSlots(view.CurrentKey, view.CurrentValue, buffered);
                 }
                 // A row holds up to a run of slots, so a chunk may overshoot its size.
                 if (buffered.Count >= EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
@@ -636,6 +640,32 @@ public class ImportPbtFromPreimageFlat(
             if (resumeFrom is null) return;
             cursor = resumeFrom;
         }
+    }
+
+    /// <summary>Adds the staged header-region slots of the account keyed by <paramref name="addressHash"/>.</summary>
+    private static void ReadHeaderSlots(ISortedKeyValueStore storage, in ValueHash256 addressHash, ArrayPoolList<RebuildEntry> destination)
+    {
+        Span<byte> lower = stackalloc byte[ValueHash256.MemorySize + 1];
+        addressHash.Bytes.CopyTo(lower);
+        lower[^1] = Eip8297KeyDerivation.AccountZone;
+        Span<byte> upper = stackalloc byte[ValueHash256.MemorySize + 1];
+        lower.CopyTo(upper);
+        upper[^1]++;
+        using ISortedView view = storage.GetViewBetween(lower, upper);
+        while (view.MoveNext()) AddSlots(view.CurrentKey, view.CurrentValue, destination);
+    }
+
+    private static void AddSlots(ReadOnlySpan<byte> persistedRunKey, ReadOnlySpan<byte> encodedRun, ArrayPoolList<RebuildEntry> destination)
+    {
+        PbtStorageTreeKey runKey = PbtStorageKeyLayout.Decode(persistedRunKey);
+        ISlotRun run = SlotRunCodec.Decode(encodedRun);
+        for (int index = 0; index < SlotRun.Width; index++)
+        {
+            if ((run.Mask & (1 << index)) == 0) continue;
+            EvmWord slot = run.Get(index);
+            destination.Add(new(SlotRun.SlotKey(runKey, index), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in slot))));
+        }
+        SlotRun.Return(run);
     }
 
     /// <summary>Buffers leaves into pooled chunks and hands each full chunk to the rebuilder.</summary>
