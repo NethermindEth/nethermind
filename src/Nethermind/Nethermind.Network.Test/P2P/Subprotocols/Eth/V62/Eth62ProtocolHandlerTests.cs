@@ -547,11 +547,39 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             return false;
         }
 
+        /// <summary>Decodes transaction messages as usual, attaching a witness to every transaction it decodes.</summary>
+        private sealed class WitnessingTransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
+        {
+            private readonly TransactionsMessageSerializer _serializer = new();
+
+            public List<RecycledTransactionWitness> Witnesses { get; } = [];
+
+            public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message) => _serializer.Serialize(byteBuffer, message);
+
+            public int GetLength(TransactionsMessage message, out int contentLength) => _serializer.GetLength(message, out contentLength);
+
+            public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
+            {
+                TransactionsMessage message = _serializer.Deserialize(byteBuffer);
+                IOwnedReadOnlyList<Transaction> transactions = message.Transactions;
+                for (int i = 0; i < transactions.Count; i++)
+                {
+                    // Releases the decoder's pre-hash buffer, which the witness then replaces.
+                    transactions[i].ClearPreHash();
+                    Witnesses.Add(new RecycledTransactionWitness(transactions[i], (byte)(i + 1)));
+                }
+
+                return message;
+            }
+        }
+
         [Test, NonParallelizable]
         public void Dropped_transaction_batch_is_returned_without_rescheduling([Values] bool reject)
         {
             _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
             using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
+            WitnessingTransactionsMessageSerializer serializer = new();
+            _svc = Build.A.SerializationService().WithEth().With(serializer).TestObject;
 
             AlwaysTimeoutBackgroundTaskScheduler taskScheduler = new(reject);
             _handler = new Eth62ProtocolHandler(
@@ -567,15 +595,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.Init();
 
             HandleIncomingStatusMessage();
-            Transaction reusable = TxDecoder.TxObjectPool.Get();
-            TxDecoder.TxObjectPool.Return(reusable);
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(taskScheduler.ScheduledTasks, Is.EqualTo(1));
-                Assert.That(reusable.Signature, Is.Null);
-                Assert.That(reusable.GasLimit, Is.Zero);
+                Assert.That(serializer.Witnesses, Has.Count.EqualTo(3));
+                Assert.That(serializer.Witnesses, Has.All.Property(nameof(RecycledTransactionWitness.WasRecycled)).True);
             }
             _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
         }
