@@ -1343,6 +1343,7 @@ namespace Nethermind.Trie.Test
             CommitRecorder parallel = new(parallel: true);
             PatriciaTree expected = CreateCommitTree(serial, count, sharedPrefix);
             PatriciaTree actual = CreateCommitTree(parallel, count, sharedPrefix);
+            TrieNode root = actual.RootRef!;
             expected.Commit(skipRoot);
             actual.Commit(skipRoot);
 
@@ -1356,6 +1357,30 @@ namespace Nethermind.Trie.Test
                 Assert.That(parallel.ActiveAtDispose, Is.Zero);
                 Assert.That(parallel.Disposed, Is.True);
                 Assert.That(serial.Threads.Count, Is.EqualTo(1));
+            }
+
+            // The tree must keep the committer's sealed replacements, not the nodes it handed over.
+            // Commit reloads RootRef from the store, so walk the children of the root held before it.
+            int reachable = 0;
+            AssertKeepsReplacements(root, TreePath.Empty);
+            Assert.That(reachable, Is.EqualTo(parallel.Replacements.Count - (skipRoot ? 0 : 1)));
+
+            void AssertKeepsReplacements(TrieNode node, TreePath path)
+            {
+                if (path.Length > 0)
+                {
+                    if (parallel.Replacements.ContainsKey(node)) reachable++;
+                    Assert.That(parallel.Originals.ContainsKey(node), Is.False, $"Committed original kept at {path}");
+                }
+
+                int children = node.IsBranch ? 16 : node.NodeType == NodeType.Extension ? 1 : 0;
+                for (int i = 0; i < children; i++)
+                {
+                    TreePath childPath = path;
+                    node.AppendChildPath(ref childPath, i);
+                    if (node.GetChildWithChildPath(actual.TrieStore, ref childPath, i, keepChildRef: true) is { } child)
+                        AssertKeepsReplacements(child, childPath);
+                }
             }
         }
 
@@ -1401,6 +1426,8 @@ namespace Nethermind.Trie.Test
         {
             public readonly ConcurrentDictionary<TreePath, byte[]> Nodes = new();
             public readonly ConcurrentDictionary<int, byte> Threads = new();
+            public readonly ConcurrentDictionary<TrieNode, byte> Originals = new(ReferenceEqualityComparer.Instance);
+            public readonly ConcurrentDictionary<TrieNode, byte> Replacements = new(ReferenceEqualityComparer.Instance);
             public int DuplicateWrites;
             public int ActiveAtDispose;
             public int MaxActive;
@@ -1426,6 +1453,8 @@ namespace Nethermind.Trie.Test
                     TrieNode replacement = node.Clone();
                     replacement.Keccak = node.Keccak;
                     replacement.Seal();
+                    Originals.TryAdd(node, 0);
+                    Replacements.TryAdd(replacement, 0);
                     return replacement;
                 }
                 finally
