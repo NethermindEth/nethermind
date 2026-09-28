@@ -11,6 +11,7 @@ Blocks, execution witnesses and chain configurations recorded from EEZ deploymen
 | `nonzero-outbound-630` | window 626..630, chain id 1 | final post-state root |
 | `captured-devnet-window-84` | window 79..84, EEZ genesis chain id 6290 | window pre and post block hashes |
 | `captured-devnet-window-438` | window 433..438 whose settling block carries outbound calls and an inbound delivery, chain id 6290 | block hashes, the attested public inputs hash, the mined proof |
+| `captured-devnet-anchor-43722` | window 43717..43722 settled by an anchor-only postBatch, a pure L2 transfer in its first block, chain id 6290 | window pre and post block hashes, the attested public inputs hash |
 
 The chain id 1 recordings predate the native system transaction type: their system calls are ordinary signed
 transactions.
@@ -24,3 +25,9 @@ cross-chain wave workload. Every value is read back rather than computed by the 
 `debug_getRawBlock`, witnesses from `debug_executionWitness`, `postbatch.hex` from the mined L1 transaction named in
 `oracle.json`, `public_inputs_hash` from the reference signer's `window_signed` record for the same window endpoints,
 and `mined_proof` from the proof that transaction carried.
+
+`captured-devnet-anchor-43722` was recorded on 2026-09-28 from the same Kurtosis devnet, with the same read-back
+rule: calldata from the mined L1 transaction, window endpoints from L1's `L2ExecutionPerformed` logs, blocks and
+witnesses from the reference L2 node, and the public inputs hash from the reference signer's `window_signed` record.
+The devnet settles with two attesters, so the mined batch names two proof systems; `proof_system` in `oracle.json` is
+the reference signer's, whose request named only its own.
