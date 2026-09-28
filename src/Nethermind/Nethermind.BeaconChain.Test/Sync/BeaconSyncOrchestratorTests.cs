@@ -63,6 +63,31 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>
+    /// Slot ticks pile up while an import holds the worker; answering each would send the execution layer a burst of
+    /// identical forkchoiceUpdated calls, so the backlog collapses into the newest tick.
+    /// </summary>
+    [Test]
+    public async Task Slot_ticks_queued_behind_a_newer_tick_collapse_into_one_head_step()
+    {
+        Harness harness = CreateHarness();
+        int ticksBefore = harness.Importer.Ticks.Count;
+        int fcusBefore = harness.Engine.FcuCalls.Count;
+        for (ulong slot = WallSlot + 1; slot <= WallSlot + 6; slot++)
+        {
+            await harness.Orchestrator.EnqueueSlotTickAsync(slot, CancellationToken.None);
+        }
+
+        harness.Orchestrator.WorkWriter.Complete();
+        await harness.Orchestrator.RunWorkerAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Importer.Ticks.Skip(ticksBefore), Is.EqualTo((ulong[])[WallSlot + 6]), "only the newest tick reaches fork choice");
+            Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(fcusBefore + 1), "one forkchoiceUpdated for the whole backlog");
+        }
+    }
+
     /// <summary>An operator must see sync move without a line per block: at most one a second, only when the slot moved, saying how far.</summary>
     [Test]
     public void Sync_progress_is_logged_at_most_once_a_second_and_only_when_the_slot_moves()
