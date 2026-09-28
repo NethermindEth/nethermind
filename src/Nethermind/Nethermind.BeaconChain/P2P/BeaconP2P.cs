@@ -391,16 +391,23 @@ public sealed class BeaconP2P : IAsyncDisposable
         return cts;
     }
 
+    /// <summary>Loads a stored secp256k1 private key as the libp2p identity whose public key discovery derives from the same bytes.</summary>
+    /// <remarks>The pinned libp2p reads the key as a signed big-endian integer, so a key with the top bit set would load as a different key and change the peer id away from the ENR's.</remarks>
+    internal static Identity IdentityFromStoredKey(byte[] privateKey) =>
+        new(privateKey.Length > 0 && privateKey[0] >= 0x80 ? [0, .. privateKey] : privateKey, KeyType.Secp256K1);
+
     private Identity LoadOrCreateIdentity()
     {
         byte[]? privateKey = _store.GetMetadata(IdentityMetadataKey);
         if (privateKey is not null)
         {
-            return new Identity(privateKey, KeyType.Secp256K1);
+            return IdentityFromStoredKey(privateKey);
         }
 
-        Identity identity = new(privateKey: null, KeyType.Secp256K1);
-        _store.PutMetadata(IdentityMetadataKey, identity.PrivateKey!.Data.ToByteArray());
+        // Loaded back from the stored bytes, like after a restart: the freshly generated object can disagree with them.
+        byte[] generated = new Identity(privateKey: null, KeyType.Secp256K1).PrivateKey!.Data.ToByteArray();
+        _store.PutMetadata(IdentityMetadataKey, generated);
+        Identity identity = IdentityFromStoredKey(generated);
         if (_logger.IsInfo) _logger.Info($"Generated new beacon chain P2P identity {identity.PeerId}");
         return identity;
     }
