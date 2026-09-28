@@ -21,8 +21,7 @@ namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(
         typeof(InitializeBlockTree),
-        typeof(SetupKeyStore),
-        typeof(InitializePrecompiles)
+        typeof(SetupKeyStore)
     )]
     public class InitializeBlockchain(
         INethermindApi api,
