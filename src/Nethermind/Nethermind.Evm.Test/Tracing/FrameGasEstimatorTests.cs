@@ -31,6 +31,28 @@ public class FrameGasEstimatorTests
     public void EstimateFrameGas_FillsFramesThatFailedTheirReservationAfterTheProbeCap() =>
         AssertFills(static i => (i % 2 == 0 ? 400_000UL : 20_000UL, 0), errorMargin: 0);
 
+    [TestCase(0)]
+    [TestCase(Eip8141Constants.MaxFrames + 1)]
+    public void EstimateFrameGas_FrameCountOutOfRange_Fails(int frameCount)
+    {
+        FixedNeedProcessor processor = new(static _ => (0, 0));
+        GasEstimator estimator = new(processor, Substitute.For<IReadOnlyStateProvider>());
+        TxFrame[] frames = new TxFrame[frameCount];
+        for (int i = 0; i < frames.Length; i++)
+            frames[i] = new TxFrame(FrameMode.Sender, default, TestItem.AddressB, 0, 0, UInt256.Zero, default);
+        Transaction tx = new() { Type = TxType.FrameTx, SenderAddress = TestItem.AddressA, Frames = frames };
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithGasLimit(60_000_000).TestObject;
+        bool[] fill = new bool[frames.Length];
+
+        Result<TxFrame[]> result = estimator.EstimateFrameGas(tx, new BlockExecutionContext(header, Eip8141Prototype.Instance), fill, fill, GasCap, 0, CancellationToken.None, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(FrameTxValidation.MissingFrames));
+            Assert.That(processor.Probes, Is.Zero);
+        }
+    }
+
     private static void AssertFills(Func<int, (ulong Execution, ulong State)> need, int errorMargin)
     {
         FixedNeedProcessor processor = new(need);

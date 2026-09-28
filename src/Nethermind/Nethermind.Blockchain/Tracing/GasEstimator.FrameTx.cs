@@ -34,16 +34,16 @@ public partial class GasEstimator
         executionReverted = false;
         if (errorMargin < 0 || errorMargin >= MaxErrorMargin)
             return Result<TxFrame[]>.Fail(errorMargin < 0 ? InvalidErrorMarginNegative : InvalidErrorMarginTooHigh);
+        if (transaction.Frames is not { Length: > 0 and <= Eip8141Constants.MaxFrames })
+            return Result<TxFrame[]>.Fail(FrameTxValidation.MissingFrames);
         Transaction tx = new();
         transaction.CopyTo(tx, copyHash: false);
-        TxFrame[] frames = (TxFrame[])transaction.Frames!.Clone();
+        TxFrame[] frames = (TxFrame[])transaction.Frames.Clone();
         tx.Frames = frames;
         tx.SenderAddress ??= Address.Zero;
         tx.Nonce = stateProvider.GetNonce(tx.SenderAddress);
 
-        Span<FrameReservation> reservations = frames.Length <= Eip8141Constants.MaxFrames
-            ? stackalloc FrameReservation[Eip8141Constants.MaxFrames]
-            : new FrameReservation[frames.Length];
+        Span<FrameReservation> reservations = stackalloc FrameReservation[Eip8141Constants.MaxFrames];
         FrameGasSearch search = new(transactionProcessor, tx, context, fillExecution, fillState, gasCap, errorMargin, token,
             reservations[..frames.Length]);
         if (!search.TryPartitionRooms()) return Result<TxFrame[]>.Fail(CannotEstimateGasExceeded);
