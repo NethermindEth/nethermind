@@ -29,6 +29,10 @@ public partial class FrameTxProcessorTests
     private static readonly Address ParitySponsor = TestItem.AddressD;
     private static readonly Address ParityReverter = TestItem.AddressF;
     private static readonly Address ParityTailCaller = TestItem.Addresses[10];
+    private const string RevertOutput = "0x00";
+
+    /// <summary>Reverts with one byte of untouched memory, so its output is not empty.</summary>
+    private static readonly byte[] RevertingWithOutput = Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.REVERT).Done;
 
     /// <summary>Frame transactions covering nested calls, a skipped frame, a frame that never enters the VM, a
     /// sponsored payer, a frame ending on a CALL, a reverted POST_TX frame, a static frame calling a
@@ -51,7 +55,7 @@ public partial class FrameTxProcessorTests
                 break;
             case "skipped":
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-                DeployContract(ParityReverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+                DeployContract(ParityReverter, RevertingWithOutput);
                 frames =
                 [
                     SelfVerifyFrame(),
@@ -68,7 +72,7 @@ public partial class FrameTxProcessorTests
                 break;
             case "postTxReverted":
                 DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-                DeployContract(ParityReverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+                DeployContract(ParityReverter, RevertingWithOutput);
                 frames =
                 [
                     SelfVerifyFrame(),
@@ -143,16 +147,10 @@ public partial class FrameTxProcessorTests
             Assert.That(root.To, Is.EqualTo(Eip8141Constants.EntryPointAddress));
             Assert.That(root.Gas, Is.EqualTo(FrameGasBudget(tx)), "root gas");
             Assert.That(root.Result?.GasUsed ?? 0, Is.LessThanOrEqualTo(root.Gas), "root gasUsed");
-            if (scenario != "postTxReverted")
-            {
-                Assert.That(root.Error, Is.Null, "root error");
-                Assert.That(root.Result?.GasUsed, Is.EqualTo(receipt.GasUsed), "root gasUsed");
-            }
-            else
-            {
-                Assert.That(root.Error, Is.EqualTo("POST_TX frame reverted"), "root error");
-                Assert.That(root.Result, Is.Null, "root result");
-            }
+            Assert.That(root.Result?.GasUsed, Is.EqualTo(receipt.GasUsed), "root gasUsed");
+            // The receipt's status is derived from the frames, and the root's error follows it.
+            Assert.That(root.Error, Is.EqualTo(scenario == "postTxReverted" ? "POST_TX frame reverted"
+                : receipt.StatusCode == StatusCode.Success ? null : "frame failed"), "root error");
 
             Assert.That(root.Subtraces, Has.Count.EqualTo(frames.Length));
             Assert.That(frameReceipts.Count(static r => r.Status == TxFrameReceipt.StatusSkipped), Is.EqualTo(scenario is "skipped" or "postTxReverted" ? 1 : 0), "skipped frames");
@@ -177,11 +175,23 @@ public partial class FrameTxProcessorTests
                         break;
                     default:
                         Assert.That(frame.Error, Is.Not.Null, $"frame {i} error");
+                        if (frame.Error == "Reverted")
+                        {
+                            Assert.That(frame.Result?.GasUsed, Is.EqualTo(frameReceipts[i].GasUsed), $"frame {i} reverted gasUsed");
+                            Assert.That(frame.Result?.Output?.ToHexString(true), Is.EqualTo(RevertOutput), $"frame {i} revert output");
+                        }
+                        else
+                        {
+                            Assert.That(frame.Result, Is.Null, $"frame {i} result");
+                        }
+
                         break;
                 }
             }
 
             Assert.That(flat.Count(static t => t.TraceAddress.Length == 1), Is.EqualTo(frames.Length), "every frame is rendered");
+            Assert.That(RevertedFrameOutputs(trace), Is.EqualTo(root.Subtraces.Where(static f => f.Error == "Reverted").Select(static _ => RevertOutput)),
+                "a reverted frame's replay entry keeps its result");
             Assert.That(flat.Count(t => t.TraceAddress.ToArray().SequenceEqual(nestedCall) && t.Action.To == Recipient), Is.EqualTo(1), "nested call");
             Assert.That(trace.VmTrace!.Code ?? [], Is.Empty, "root code");
             Assert.That(trace.VmTrace.Operations.Select(static o => o.Pc), Is.EqualTo(framesInVm), "one root operation per frame that entered the VM");
@@ -287,6 +297,16 @@ public partial class FrameTxProcessorTests
         Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out _, out ulong maxGas), Is.True);
         Assert.That(maxGas, Is.GreaterThan(tx.GasLimit), "the budget exceeds the frame limits");
         return maxGas;
+    }
+
+    /// <summary>The <c>result.output</c> of each <c>trace_replay*</c> entry with error <c>Reverted</c>, or <c>null</c> without one.</summary>
+    private static string?[] RevertedFrameOutputs(ParityLikeTxTrace trace)
+    {
+        using JsonDocument replay = JsonDocument.Parse(JsonSerializer.Serialize(new ParityTxTraceFromReplay(trace), EthereumJsonSerializer.JsonOptions));
+        return replay.RootElement.GetProperty("trace").EnumerateArray()
+            .Where(static t => t.TryGetProperty("error", out JsonElement error) && error.GetString() == "Reverted")
+            .Select(static t => t.TryGetProperty("result", out JsonElement result) ? result.GetProperty("output").GetString() : null)
+            .ToArray();
     }
 
     private (ParityLikeTxTrace Trace, TxReceipt Receipt) TraceParity(Transaction tx, ParityTraceTypes types)

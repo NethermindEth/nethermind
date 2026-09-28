@@ -48,12 +48,16 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
     {
         private const string SkippedFrameError = "frame skipped";
 
+        /// <summary>The root's error when a frame failed, which the receipt reports as a failed transaction.</summary>
+        private const string FrameFailedError = "frame failed";
+
         private readonly TxFrame[] _frames = tx.Frames ?? [];
         private ParityTraceAction? _root;
         private ParityTraceAction? _lastFrameAction;
         private ParityVmOperationTrace? _lastFrameOperation;
         private ParityTraceAction?[]? _frameActions;
         private EvmExceptionType?[]? _frameErrors;
+        private TxFrameReceipt[]? _frameReceipts;
         private ulong _failedActionGasLeft;
         private bool _framesOrdered;
 
@@ -77,15 +81,22 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             EnsureRoot();
             CloseRoot();
             _root!.Result!.GasUsed = gasSpent.SpentGas;
+            // The processor marks an included frame transaction successful whatever its frames did; its receipt
+            // derives the status from the frames instead.
+            if (_frameReceipts is not null && TxFrameReceipt.AggregateStatus(_frameReceipts) != TxFrameReceipt.StatusSuccess)
+            {
+                _root.Error = FrameFailedError;
+            }
         }
 
-        public void MarkFailed(string? error)
+        public void MarkFailed(in GasConsumed gasSpent, byte[] output, string? error)
         {
             EnsureRoot();
             CloseRoot();
-            // A frame transaction fails at the transaction level, so the reason is the root's.
+            // A frame transaction fails at the transaction level, so the reason is the root's; its figures stay.
             _root!.Error = error;
-            _root.Result = null;
+            _root.Result!.GasUsed = gasSpent.SpentGas;
+            _root.Result.Output = output;
         }
 
         public void OnChildPushed(ParityTraceAction parent, ParityTraceAction child)
@@ -101,13 +112,26 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             }
         }
 
-        public void OnActionFailed(ulong gasLeft) => _failedActionGasLeft = gasLeft;
+        /// <summary>The result a failed action keeps: a reverted frame keeps its gasUsed and revert output, as a
+        /// REVERT frame does in the execution-apis trace profile; anything else keeps none.</summary>
+        public ParityTraceResult? FailedActionResult(ParityTraceAction action, EvmExceptionType error, ulong gasLeft, ReadOnlyMemory<byte> output)
+        {
+            _failedActionGasLeft = gasLeft;
+            if (error != EvmExceptionType.Revert || !IsFrame(action)) return null;
+
+            ParityTraceResult result = action.Result!;
+            result.GasUsed = action.Gas - gasLeft;
+            result.Output = output.ToArray();
+            return result;
+        }
 
         public void OnPopped(ParityTraceAction action)
         {
-            if (_root is null || action.TraceAddress.Length != 1 || !tracer.IsTracingInstructions) return;
+            if (!IsFrame(action) || !tracer.IsTracingInstructions) return;
             tracer.OnLeaveFrame(action.Result is null ? _failedActionGasLeft : action.Gas - action.Result.GasUsed);
         }
+
+        private bool IsFrame(ParityTraceAction action) => _root is not null && action.TraceAddress.Length == 1;
 
         public void AddFrameOperation(ParityTraceAction frame)
         {
@@ -146,6 +170,7 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             // The validation-prefix simulation reports no receipts, which pin no frame's outcome.
             if (frameReceipts.Length == 0 || _framesOrdered) return;
             _framesOrdered = true;
+            _frameReceipts = frameReceipts;
 
             EnsureRoot();
             int frameCount = Math.Min(frameReceipts.Length, _frames.Length);

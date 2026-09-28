@@ -268,7 +268,7 @@ public partial class ParityLikeTxTracer : TxTracer
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
         Hash256? stateRoot = null)
     {
-        _frameTx?.MarkFailed(error);
+        _frameTx?.MarkFailed(gasSpent, output, error);
 
         if (_currentAction is not null)
         {
@@ -491,12 +491,11 @@ public partial class ParityLikeTxTracer : TxTracer
 
     public override void ReportActionError(EvmExceptionType evmExceptionType) => HandleActionError(evmExceptionType);
 
-    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => HandleActionError(EvmExceptionType.Revert, gas);
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => HandleActionError(EvmExceptionType.Revert, gas, output);
 
-    private void HandleActionError(EvmExceptionType evmExceptionType, ulong gasLeft = 0)
+    private void HandleActionError(EvmExceptionType evmExceptionType, ulong gasLeft = 0, ReadOnlyMemory<byte> output = default)
     {
-        _frameTx?.OnActionFailed(gasLeft);
-        _currentAction!.Result = null;
+        _currentAction!.Result = _frameTx?.FailedActionResult(_currentAction, evmExceptionType, gasLeft, output);
         _currentAction.Error = GetErrorDescription(evmExceptionType);
         PopAction();
     }

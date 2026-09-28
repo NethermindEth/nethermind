@@ -75,12 +75,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("action"u8);
             ParityTraceActionConverter.Instance.Write(writer, value, options);
 
-            if (value.Error is null)
+            // A reverted frame keeps its result next to its error, as the trace_* profile requires of a REVERT.
+            if (value.Error is null || value.Result is not null)
             {
                 writer.WritePropertyName("result"u8);
                 JsonSerializer.Serialize(writer, value.Result, options);
             }
-            else
+
+            if (value.Error is not null)
             {
                 writer.WritePropertyName("error"u8);
                 JsonSerializer.Serialize(writer, value.Error, options);

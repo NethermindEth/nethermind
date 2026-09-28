@@ -101,12 +101,14 @@ public static class ParityReplayEnvelopeWriter
         writer.WritePropertyName("action"u8);
         ParityTraceActionConverter.Instance.Write(writer, action, options);
 
-        if (action.Error is null)
+        // A reverted frame keeps its result next to its error, as the trace_* profile requires of a REVERT.
+        if (action.Error is null || action.Result is not null)
         {
             writer.WritePropertyName("result"u8);
             JsonSerializer.Serialize(writer, action.Result, options);
         }
-        else
+
+        if (action.Error is not null)
         {
             writer.WritePropertyName("error"u8);
             JsonSerializer.Serialize(writer, action.Error, options);
