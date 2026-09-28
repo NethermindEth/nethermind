@@ -21,8 +21,8 @@ namespace Nethermind.JsonRpc;
 /// past saturation, wastes work on requests that are rejected anyway. An explicitly configured pool size is used as is;
 /// queueing and shedding start only when more than that many requests are in flight, so a pool at or above the peak
 /// concurrency turns them off. A priority request may also take one slot above <see cref="Permits"/>, so it waits only
-/// while another priority request holds a slot and every other slot is busy. Priority waiters are served first, in order
-/// of arrival. The others are served in order of
+/// while another priority request holds a slot and every other slot is busy, and it is never refused for a full queue.
+/// Priority waiters are served first, in order of arrival. The others are served in order of
 /// arrival plus a penalty that grows with their <c>params</c> size up to half of what they may wait, so a smaller request
 /// overtakes a larger one that arrived shortly before it. A waiter that has waited half the budget is served before any
 /// later arrival without priority, so sustained light traffic cannot starve a heavy request.
@@ -87,7 +87,8 @@ internal sealed class EvmAdmissionGate
     /// <summary>Acquires an execution slot, waiting up to <paramref name="maxWait"/> for one if every slot is busy.</summary>
     /// <param name="paramsUtf8Length">Byte length of the request's raw <c>params</c>; see <see cref="Weigh"/>.</param>
     /// <param name="maxWait">How long the request may wait for a slot, capped at <see cref="Budget"/>; zero or less rejects it at once.</param>
-    /// <param name="priority">Serves the request ahead of every waiter without priority and lets it take one slot above <see cref="Permits"/>.</param>
+    /// <param name="priority">Serves the request ahead of every waiter without priority, lets it take one slot above
+    /// <see cref="Permits"/> and lets it queue past the queue limit.</param>
     /// <param name="cancellationToken">Abandons the wait.</param>
     /// <returns>A lease to dispose exactly once, after the execution, including any task it returned, has completed.</returns>
     /// <exception cref="LimitExceededException">No slot was free and the request could not queue, or none was granted within <paramref name="maxWait"/>.</exception>
@@ -112,7 +113,8 @@ internal sealed class EvmAdmissionGate
                 throw new LimitExceededException(BusyMessage);
             }
 
-            if (_queueLimit > 0 && _waiters.Count >= _queueLimit)
+            // Priority callers are the operator's own, which bounds their number without the limit.
+            if (!priority && _queueLimit > 0 && _waiters.Count >= _queueLimit)
             {
                 Metrics.RpcAdmissionQueueFullRejections++;
                 QueueFullRejections++;

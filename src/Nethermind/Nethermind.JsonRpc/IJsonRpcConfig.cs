@@ -209,7 +209,7 @@ public interface IJsonRpcConfig : IConfig
 
     /// <summary>Maximum number of EVM-executing requests waiting for an execution slot. Defaults to 500; 0 or less removes the limit.</summary>
     [ConfigItem(
-        Description = "The max number of EVM-executing JSON-RPC requests waiting for an execution slot; further requests are answered with `LimitExceeded` (HTTP 503) at once. Each waiting request keeps its request body in memory. `0` or a negative value removes the limit.",
+        Description = "The max number of EVM-executing JSON-RPC requests waiting for an execution slot; further requests are answered with `LimitExceeded` (HTTP 503) at once. Authenticated (Engine API / JWT) and IPC requests are not limited, but count towards the limit while they wait. Each waiting request keeps its request body in memory. `0` or a negative value removes the limit.",
         DefaultValue = "500")]
     int EvmExecutionQueueLimit { get; set; }
 

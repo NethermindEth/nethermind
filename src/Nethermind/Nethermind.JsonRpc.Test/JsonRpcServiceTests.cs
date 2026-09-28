@@ -1412,18 +1412,24 @@ public class JsonRpcServiceTests
 
     [TestCase(RpcEndpoint.Http, true, TestName = "Authenticated HTTP")]
     [TestCase(RpcEndpoint.IPC, false, TestName = "IPC")]
-    public async Task Trusted_evm_request_waits_ahead_of_every_queued_request_while_every_slot_is_taken(RpcEndpoint endpoint, bool authenticatedUrl)
+    public async Task Trusted_evm_request_waits_ahead_of_every_queued_request_while_every_slot_is_taken_even_past_a_full_queue(
+        RpcEndpoint endpoint, bool authenticatedUrl)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        JsonRpcService service = CreateGatedService(ethRpcModule);
+        JsonRpcService service = CreateGatedService(ethRpcModule, queueLimit: 1);
         List<(ulong? Nonce, int InFlight, int Queued)> calls = RecordEthCalls(ethRpcModule, service);
         using JsonRpcContext trusted = CreateTrustedContext(endpoint, authenticatedUrl);
         EvmAdmissionGate.Lease publicSlot = await HoldSlot(service);
         EvmAdmissionGate.Lease slotAbove = await HoldSlot(service, priority: true);
 
         Task<JsonRpcResponse> queuedPublic = service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 1 }), _context).AsTask();
+        using (JsonRpcResponse refused = await service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 3 }), _context))
+        {
+            AssertJsonRpcError(refused, ErrorCodes.LimitExceeded, "Too many requests");
+        }
+
         Task<JsonRpcResponse> queuedTrusted = service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 2 }), trusted).AsTask();
-        Assert.That(service.EvmGate.Queued, Is.EqualTo(2), "the trusted request waits too");
+        Assert.That((service.EvmGate.Queued, service.EvmGate.QueueFullRejections), Is.EqualTo((2, 1)), "the trusted request waits too, past the full queue");
 
         publicSlot.Dispose();
         using (JsonRpcResponse completed = await queuedTrusted.WaitAsync(TestTimeout))
@@ -1532,13 +1538,14 @@ public class JsonRpcServiceTests
         Assert.That(service.EvmGate.InFlight, Is.Zero);
     }
 
-    private JsonRpcService CreateGatedService(IEthRpcModule ethRpcModule, int maxQueueWaitMs = 60_000, int webSocketsProcessingConcurrency = 1) =>
+    private JsonRpcService CreateGatedService(IEthRpcModule ethRpcModule, int maxQueueWaitMs = 60_000, int webSocketsProcessingConcurrency = 1, int queueLimit = 500) =>
         CreateService(
             new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(ethRpcModule), true),
             new JsonRpcConfig
             {
                 EthModuleConcurrentInstances = 1,
                 EvmExecutionMaxQueueWaitMs = maxQueueWaitMs,
+                EvmExecutionQueueLimit = queueLimit,
                 WebSocketsProcessingConcurrency = webSocketsProcessingConcurrency,
             });
 

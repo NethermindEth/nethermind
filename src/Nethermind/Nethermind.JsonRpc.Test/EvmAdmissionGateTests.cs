@@ -114,6 +114,24 @@ public class EvmAdmissionGateTests
     }
 
     [Test]
+    public async Task Priority_request_queues_past_a_full_queue_and_goes_first()
+    {
+        EvmAdmissionGate gate = CreateGate(queueLimit: 2);
+        Lease held = await Admit(gate);
+        Lease above = await Admit(gate, priority: true);
+        List<(string Name, Task<Lease> Admission)> waiters = [("public 1", Admit(gate).AsTask()), ("public 2", Admit(gate).AsTask())];
+        Assert.That(async () => await Admit(gate), Throws.InstanceOf<LimitExceededException>(), "the queue is full");
+
+        waiters.Add(("priority", Admit(gate, priority: true).AsTask()));
+        Assert.That((gate.Queued, gate.QueueFullRejections), Is.EqualTo((3, 1)), "a priority request queues all the same");
+
+        held.Dispose();
+        List<string> order = [await DisposeNextGrant(waiters)];
+        order.AddRange(await ReleaseAndRecordGrantOrder(above, waiters));
+        Assert.That(order, Is.EqualTo(new[] { "priority", "public 1", "public 2" }));
+    }
+
+    [Test]
     public async Task Smaller_requests_go_first_but_never_ahead_of_one_that_arrived_its_size_penalty_earlier()
     {
         ManualClock clock = new();
