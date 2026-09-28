@@ -108,7 +108,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     /// <summary>The guest's dispatch handlers, each of which ends in a tail call through the opcode table.</summary>
     /// <remarks>
-    /// See the host's <c>RawCalliHelper</c> in <c>VirtualMachine.Dispatch.cs</c> for the name. The handlers take eight
+    /// See the host's <c>RawCalliHelper</c> in <c>VirtualMachine.Dispatch.std.cs</c> for the name. The handlers take eight
     /// arguments, all of which RV64 passes in registers: the remaining execution gas, the stack head, the table, the
     /// bytecode and its length ride from handler to handler, so a handler whose body stays inline neither loads nor
     /// stores them. x64 passes only four (Windows) or six (SysV) in registers, which is why the host keeps five.
