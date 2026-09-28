@@ -19,14 +19,18 @@ public class MemoizingCodeInfoRepositoryTests
 {
     private static readonly IReleaseSpec Spec = Substitute.For<IReleaseSpec>();
 
-    private static (MemoizingCodeInfoRepository repository, ResolvedCodeMemo memo, ICodeInfoRepository inner) Build(byte[] code) =>
-        Build(() => new CodeInfo(code));
+    private static (MemoizingCodeInfoRepository repository, ResolvedCodeMemo memo, ICodeInfoRepository inner) Build(byte[] code, Address delegation = null) =>
+        Build(() => new CodeInfo(code), delegation);
 
-    private static (MemoizingCodeInfoRepository repository, ResolvedCodeMemo memo, ICodeInfoRepository inner) Build(Func<CodeInfo> codeInfo)
+    private static (MemoizingCodeInfoRepository repository, ResolvedCodeMemo memo, ICodeInfoRepository inner) Build(Func<CodeInfo> codeInfo, Address delegation = null)
     {
         ICodeInfoRepository inner = Substitute.For<ICodeInfoRepository>();
         inner.GetCachedCodeInfo(Arg.Any<Address>(), Arg.Any<bool>(), Arg.Any<IReleaseSpec>(), out Arg.Any<Address>())
-            .Returns(_ => codeInfo());
+            .Returns(call =>
+            {
+                call[3] = delegation;
+                return codeInfo();
+            });
         ResolvedCodeMemo memo = new();
         return (new MemoizingCodeInfoRepository(inner, memo), memo, inner);
     }
@@ -117,6 +121,15 @@ public class MemoizingCodeInfoRepositoryTests
     {
         byte[] designator = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes];
         (MemoizingCodeInfoRepository repository, _, ICodeInfoRepository inner) = Build(designator);
+        Lookup(repository, TestItem.AddressA, 3);
+        Assert.That(InnerLookups(inner), Is.EqualTo(3));
+    }
+
+    [Test]
+    public void Code_reached_through_a_delegation_is_not_remembered()
+    {
+        // The delegate's code: remembered for the authority, it would answer a later EXTCODE* on the authority.
+        (MemoizingCodeInfoRepository repository, _, ICodeInfoRepository inner) = Build([0x60, 0x00], delegation: TestItem.AddressC);
         Lookup(repository, TestItem.AddressA, 3);
         Assert.That(InnerLookups(inner), Is.EqualTo(3));
     }
