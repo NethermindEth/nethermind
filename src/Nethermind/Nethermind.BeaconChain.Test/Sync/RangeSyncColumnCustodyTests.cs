@@ -122,7 +122,8 @@ public class RangeSyncColumnCustodyTests
         serving = true;
         BlockImportResult sameSlot = await orchestrator.ImportBlockAsync(block, token);
         int requestsBeforeTick = custodian.RootColumnRequests;
-        await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot + 1, token);
+        fixture.AdvanceSlots(1);
+        await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
 
         using (Assert.EnterMultipleScope())
         {
@@ -140,6 +141,7 @@ public class RangeSyncColumnCustodyTests
     {
         private readonly BeaconChainStore _store = new(new MemColumnsDb<BeaconChainDbColumns>());
         private BeaconDiscovery _discovery = null!;
+        private ManualTimestamper _time = null!;
 
         public ImportableBlobBlock Chain { get; } = ImportableBlobBlock.Create();
         public DataColumnSidecarPool SidecarPool { get; } = new();
@@ -159,11 +161,14 @@ public class RangeSyncColumnCustodyTests
             // Resolves the identity and local custody exactly as Start does, without binding a socket.
             fixture._discovery.CreateDiscv5Services(IPAddress.Loopback);
             fixture.Sampled = [.. new DiscoveryNodeCustodySource(fixture._discovery).Current!.SampledColumns];
-            fixture.Clock = fixture.Chain.ClockAtEpoch(1);
+            fixture._time = new ManualTimestamper(DateTimeOffset.FromUnixTimeSeconds((long)(fixture.Chain.Spec.GenesisTime + fixture.Chain.Spec.SlotsPerEpoch * fixture.Chain.Spec.SecondsPerSlot)).UtcDateTime);
+            fixture.Clock = new SlotClock(fixture.Chain.Spec, fixture._time);
             fixture.Importer = new BlockImporterFactory(fixture.Chain.Spec, fixture._store, fixture.Chain.Pubkeys, new NoOpEngineDriver(), new BeaconChainConfig(), LimboLogs.Instance, fixture.SidecarPool, fixture.Clock, fixture._discovery)
                 .Create(new ForkedBeaconState.OfFulu(fixture.Chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.AnchorBlock), fixture.Chain.AnchorRoot);
             return fixture;
         }
+
+        public void AdvanceSlots(ulong slots) => _time.Add(TimeSpan.FromSeconds(slots * Chain.Spec.SecondsPerSlot));
 
         /// <summary>An honest peer: it serves the chain's block, and of the columns asked only those it custodies.</summary>
         public StubPeer Peer(string id, ulong[]? custodied = null, PeerColumnCustody? custody = null)
