@@ -42,7 +42,8 @@ public class GethStyleTracer(
     IOverridableEnv<GethStyleTracer.BlockProcessingComponents> blockProcessingEnv,
     IPrefixStateSeedSource prefixSeeds,
     IOverridableCodeInfoRepository codeInfoRepository,
-    IParallelBlockTracer? parallelTracer = null
+    IParallelBlockTracer? parallelTracer = null,
+    GethStyleTracer.TraceCallRequestState? callRequestState = null
 ) : IGethStyleTracer
 {
     public GethLikeTxTrace? Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
@@ -69,18 +70,21 @@ public class GethStyleTracer(
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
         TransactionProcessorAdapterFactory previousAdapterFactory = transactionProcessorAdapter.CurrentAdapterFactory;
         (BlockHeader callHeader, IReleaseSpec callSpec) = PrepareCallHeader(block, options);
+        UInt256? blobBaseFee = GetCallBlobBaseFee(tx, options);
         transactionProcessorAdapter.CurrentAdapterFactory = processor =>
-            options.BlockOverrides is { BlobBaseFee: not null } or { PrevRandao: not null }
-                ? CreateCallAdapter(processor, callHeader, callSpec, options.BlockOverrides)
-                : new TraceCallTransactionProcessorAdapter(processor, options.BlockOverrides);
+            blobBaseFee is not null || options.BlockOverrides?.PrevRandao is not null
+                ? CreateCallAdapter(processor, callHeader, callSpec, options.BlockOverrides, blobBaseFee)
+                : new TraceCallTransactionProcessorAdapter(processor, options.BlockOverrides, blobBaseFee);
 
         try
         {
+            if (callRequestState is not null) callRequestState.BlobBaseFee = blobBaseFee;
             return TraceImpl(block, tx.Hash, cancellationToken, options, useBlockAsBase: true, writer, pipeWriter);
         }
         finally
         {
             transactionProcessorAdapter.CurrentAdapterFactory = previousAdapterFactory;
+            if (callRequestState is not null) callRequestState.BlobBaseFee = null;
         }
     }
 
@@ -98,7 +102,7 @@ public class GethStyleTracer(
         {
             // Prefix execution uses canonical state and block context. Overrides belong only to the synthetic call.
             CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), callHeader, call,
-                tracedBlock => PrepareIndexedCall(tracedBlock, options, state, callSpec));
+                tracedBlock => PrepareIndexedCall(tracedBlock, call, options, state, callSpec));
             IBlockTracer boundary = TransactionTraceBoundary.Wrap(callTracer, call.Hash);
             scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
             if (!callTracer.IsPrepared) throw new InvalidOperationException($"The synthetic call at index {index} in block {block.Hash} was not prepared for tracing.");
@@ -112,6 +116,7 @@ public class GethStyleTracer(
         finally
         {
             transactionProcessorAdapter.CurrentAdapterFactory = previous;
+            if (callRequestState is not null) callRequestState.BlobBaseFee = null;
         }
     }
 
@@ -145,8 +150,10 @@ public class GethStyleTracer(
         return block.WithReplacedBodyCloned(block.Body.WithChangedTransactions(transactions));
     }
 
-    private void PrepareIndexedCall(Block tracedBlock, GethTraceOptions options, IWorldState state, IReleaseSpec callSpec)
+    private void PrepareIndexedCall(Block tracedBlock, Transaction call, GethTraceOptions options, IWorldState state, IReleaseSpec callSpec)
     {
+        UInt256? blobBaseFee = GetCallBlobBaseFee(call, options);
+        if (callRequestState is not null) callRequestState.BlobBaseFee = blobBaseFee;
         options.BlockOverrides?.ApplyOverrides(tracedBlock.Header);
         if (options.NoBaseFee) tracedBlock.Header.BaseFeePerGas = UInt256.Zero;
         IReleaseSpec overrideSpec = callSpec.WithoutEip158();
@@ -155,28 +162,31 @@ public class GethStyleTracer(
         transactionProcessorAdapter.CurrentAdapterFactory = processor =>
         {
             // This Ethereum context does not invoke chain-specific BlockProcessor context overrides (for example XDC).
-            return CreateCallAdapter(processor, tracedBlock.Header, callSpec, options.BlockOverrides);
+            return CreateCallAdapter(processor, tracedBlock.Header, callSpec, options.BlockOverrides, blobBaseFee);
         };
     }
 
+    private static UInt256? GetCallBlobBaseFee(Transaction call, GethTraceOptions options) =>
+        call.MaxFeePerBlobGas is { IsZero: true } ? UInt256.Zero : options.BlockOverrides?.BlobBaseFee;
+
     private static TraceCallTransactionProcessorAdapter CreateCallAdapter(ITransactionProcessor processor,
-        BlockHeader header, IReleaseSpec spec, BlockOverride? overrides)
+        BlockHeader header, IReleaseSpec spec, BlockOverride? overrides, UInt256? blobBaseFee)
     {
-        TraceCallTransactionProcessorAdapter adapter = new(processor, overrides);
+        TraceCallTransactionProcessorAdapter adapter = new(processor, overrides, blobBaseFee);
         adapter.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
         return adapter;
     }
 
-    private sealed class TraceCallTransactionProcessorAdapter(ITransactionProcessor processor, BlockOverride? overrides) : ITransactionProcessorAdapter
+    private sealed class TraceCallTransactionProcessorAdapter(ITransactionProcessor processor, BlockOverride? overrides, UInt256? blobBaseFee) : ITransactionProcessorAdapter
     {
         public TransactionResult Execute(Transaction transaction, ITxTracer tracer) => processor.Trace(transaction, tracer);
 
         public void SetBlockExecutionContext(in BlockExecutionContext context)
         {
-            if (overrides?.BlobBaseFee is { } blobBaseFee)
+            if (blobBaseFee is { } fee)
             {
                 processor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(
-                    context.Header, context.Spec, overrides.PrevRandao?.ValueHash256 ?? context.PrevRandao, blobBaseFee));
+                    context.Header, context.Spec, overrides?.PrevRandao?.ValueHash256 ?? context.PrevRandao, fee));
             }
             else if (overrides?.PrevRandao is { } prevRandao)
             {
@@ -468,6 +478,13 @@ public class GethStyleTracer(
         }
 
         return block;
+    }
+
+    /// <summary>Holds fee overrides while executing a synthetic trace call.</summary>
+    public sealed class TraceCallRequestState
+    {
+        /// <summary>The synthetic call blob fee, or null during canonical execution.</summary>
+        public UInt256? BlobBaseFee { get; set; }
     }
 
     public record BlockProcessingComponents(IWorldState WorldState, BlockchainProcessorFacade BlockchainProcessor);

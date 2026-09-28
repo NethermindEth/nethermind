@@ -18,6 +18,12 @@ public class BlockOverride
     public UInt256? BaseFeePerGas { get; set; }
     public UInt256? BlobBaseFee { get; set; }
 
+    /// <summary>Gets or sets the requested beacon root, which debug_traceCall rejects as unsupported.</summary>
+    public Hash256? BeaconRoot { get; set; }
+
+    /// <summary>Gets or sets the requested withdrawals, which debug_traceCall rejects as unsupported.</summary>
+    public Withdrawal[]? Withdrawals { get; set; }
+
     public void ApplyOverrides(BlockHeader result)
     {
         if (Time is not null) result.Timestamp = Time.Value;
