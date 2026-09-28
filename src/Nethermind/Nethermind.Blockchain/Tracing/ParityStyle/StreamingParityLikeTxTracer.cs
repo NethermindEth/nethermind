@@ -423,24 +423,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             return;
         }
 
-        if (IsFrameLevel(action))
-        {
-            // Each frame hangs off a synthetic operation of the root, as a callee hangs off its CALL.
-            FinalizePendingOp(closeWithNullSub: true);
-            VmFrame root = PeekLast(_streamingFrames);
-            if (!root.JsonObjectOpened)
-            {
-                OpenFrameJson(root);
-            }
-
-            ReleaseOpBuffers();
-            _hasPendingOp = true;
-            _pushAssigned = false;
-            _pendingPc = action.TraceAddress.AsSpan()[0];
-            _pendingCost = action.Gas;
-            _pendingUsed = 0;
-        }
-
         if (_hasPendingOp)
         {
             _writer.WriteStartObject();
@@ -481,7 +463,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         bool hadPendingParent = frame.HasPendingParentOpToClose;
         int outerPc = frame.OuterPendingPc;
         ulong outerCost = frame.OuterPendingCost;
-        bool isFrameLevel = IsFrameLevel(action);
         ReturnFrame(frame);
 
         if (hadPendingParent)
@@ -494,16 +475,40 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             _gasAlreadySetForCurrentOp = false;
             _hasPendingOp = true;
             _outerOpHasSubWritten = true;
-            if (isFrameLevel)
-            {
-                _pendingUsed = _actionGasLeft;
-            }
         }
 
         _gasAlreadySetForCurrentOp = false;
-        _treatGasParityStyle = !isFrameLevel;
+        _treatGasParityStyle = true;
 
         MaybeFlushToWire();
+    }
+
+    private protected override void OnEnterFrame(ParityTraceAction frame)
+    {
+        if (!_streamVmTrace) { base.OnEnterFrame(frame); return; }
+
+        FinalizePendingOp(closeWithNullSub: true);
+        VmFrame root = PeekLast(_streamingFrames);
+        if (!root.JsonObjectOpened)
+        {
+            OpenFrameJson(root);
+        }
+
+        // Pending, so the frame's vmTrace is written as its sub, as a callee's is under its CALL.
+        ReleaseOpBuffers();
+        _hasPendingOp = true;
+        _pushAssigned = false;
+        _pendingPc = frame.TraceAddress.AsSpan()[0];
+        _pendingCost = frame.Gas;
+        _pendingUsed = 0;
+    }
+
+    private protected override void OnLeaveFrame(ulong gasLeft)
+    {
+        if (!_streamVmTrace) { base.OnLeaveFrame(gasLeft); return; }
+
+        _pendingUsed = gasLeft;
+        _treatGasParityStyle = false;
     }
 
     private protected override void OnFrameEnd(int frameIndex)

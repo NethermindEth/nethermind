@@ -16,12 +16,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
-public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
+public partial class ParityLikeTxTracer : TxTracer
 {
-    private const string SkippedFrameError = "frame skipped";
-
     private Transaction? _tx;
-    private readonly IReleaseSpec? _spec;
     private readonly ParityTraceTypes _parityTraceTypes;
     protected readonly ParityLikeTxTrace _trace;
 
@@ -36,15 +33,6 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
 
     protected bool _treatGasParityStyle;
     protected bool _gasAlreadySetForCurrentOp;
-    private protected ulong _actionGasLeft;
-
-    private bool _isFrameTx;
-    private ParityTraceAction? _frameTxRoot;
-    private ParityTraceAction? _lastFrameAction;
-    private ParityVmOperationTrace? _lastFrameOperation;
-    private ParityTraceAction?[]? _frameActions;
-    private EvmExceptionType?[]? _frameErrors;
-    private bool _framesOrdered;
 
     /// <param name="spec">The block's spec, which prices an EIP-8141 frame transaction's gas budget for its root;
     /// without it the root reports only the frame limits.</param>
@@ -54,7 +42,6 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
         _spec = spec;
 
         _tx = tx;
-        _isFrameTx = tx?.Type == TxType.FrameTx;
         _trace = new ParityLikeTxTrace
         {
             TransactionHash = tx?.Hash,
@@ -81,6 +68,8 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
             IsTracingInstructions = true;
             IsTracingCode = true;
         }
+
+        _frameTx = CreateFrameTxTraceBuilder(tx);
     }
 
     public sealed override bool IsTracingActions { get; protected set; }
@@ -123,7 +112,7 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
 
     public virtual ParityLikeTxTrace BuildResult()
     {
-        CloseFrameTxRoot();
+        _frameTx?.CloseRoot();
 
         if ((_parityTraceTypes & ParityTraceTypes.Trace) == ParityTraceTypes.None)
         {
@@ -159,7 +148,6 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
     protected void ResetTracerState(Block block, Transaction? tx)
     {
         _tx = tx;
-        _isFrameTx = tx?.Type == TxType.FrameTx;
         _trace.TransactionHash = tx?.Hash;
         _trace.TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx);
         _trace.BlockNumber = block.Number;
@@ -177,13 +165,7 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
         _currentVmTrace = (null!, null!);
         _treatGasParityStyle = false;
         _gasAlreadySetForCurrentOp = false;
-        _actionGasLeft = 0;
-        _frameTxRoot = null;
-        _lastFrameAction = null;
-        _lastFrameOperation = null;
-        _frameActions = null;
-        _frameErrors = null;
-        _framesOrdered = false;
+        _frameTx = CreateFrameTxTraceBuilder(tx);
     }
 
     private void PushAction(ParityTraceAction action)
@@ -197,13 +179,7 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
             parentSpan.CopyTo(childSpan);
             childSpan[parentLen] = _currentAction.Subtraces.Count;
             action.TraceAddress = traceAddress;
-            if (_currentAction == _frameTxRoot)
-            {
-                // A frame is a top-level invocation, so a precompile frame is kept like a top-level precompile call.
-                action.IncludeInTrace = true;
-                _lastFrameAction = action;
-            }
-
+            _frameTx?.OnChildPushed(_currentAction, action);
             if (action.IncludeInTrace)
             {
                 _currentAction.Subtraces.Add(action);
@@ -225,14 +201,6 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
     {
         if (!IsTracingInstructions) return;
 
-        if (IsFrameLevel(action))
-        {
-            // Each frame hangs off a synthetic operation of the root, as a callee hangs off its CALL.
-            _lastFrameOperation = new ParityVmOperationTrace { Pc = action.TraceAddress.AsSpan()[0], Cost = action.Gas };
-            _currentVmTrace.Ops.Add(_lastFrameOperation);
-            _currentOperation = _lastFrameOperation;
-        }
-
         (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) currentVmTrace = (new ParityVmTrace(),
             new List<ParityVmOperationTrace>());
         if (_currentOperation is not null && action.Type != "suicide")
@@ -249,6 +217,7 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
     {
         ParityTraceAction popped = _actionStack.Peek();
         OnLeaveVmFrame(popped);
+        _frameTx?.OnPopped(popped);
 
         _actionStack.Pop();
         _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
@@ -264,128 +233,16 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
         _currentOperation = _currentVmTrace.Ops?.Last();
         _gasAlreadySetForCurrentOp = false;
 
-        if (IsFrameLevel(action))
-        {
-            _lastFrameOperation!.Used = _actionGasLeft;
-            _treatGasParityStyle = false;
-        }
-        else if (action.Type != "suicide")
+        if (action.Type != "suicide")
         {
             _treatGasParityStyle = true;
-        }
-    }
-
-    /// <summary>Whether <paramref name="action"/> is an EIP-8141 frame, the child of the synthetic transaction root.</summary>
-    private protected bool IsFrameLevel(ParityTraceAction action) => _frameTxRoot is not null && action.TraceAddress.Length == 1;
-
-    /// <summary>Opens the synthetic root an EIP-8141 frame transaction's frames hang off, as it has no single top-level call.</summary>
-    private void EnsureFrameTxRoot()
-    {
-        if (_frameTxRoot is not null) return;
-        _frameTxRoot = CreateRootActionFromTx();
-        PushAction(_frameTxRoot);
-    }
-
-    private void CloseFrameTxRoot()
-    {
-        if (_frameTxRoot is not null && _currentAction == _frameTxRoot)
-        {
-            PopAction();
-        }
-    }
-
-    /// <inheritdoc/>
-    void IFrameTxReceiptTracer.ReportFrameEnd(int frameIndex, EvmExceptionType? error)
-    {
-        TxFrame[]? frames = _tx?.Frames;
-        if (!_isFrameTx || !IsTracingActions || frames is null || (uint)frameIndex >= (uint)frames.Length) return;
-
-        _frameActions ??= new ParityTraceAction?[frames.Length];
-        _frameErrors ??= new EvmExceptionType?[frames.Length];
-        _frameActions[frameIndex] = _lastFrameAction;
-        _frameErrors[frameIndex] = error;
-        _lastFrameAction = null;
-        OnFrameEnd(frameIndex);
-    }
-
-    /// <summary>Called once the frame at <paramref name="frameIndex"/> completes, whether or not it entered the VM.</summary>
-    private protected virtual void OnFrameEnd(int frameIndex)
-    {
-        if (_lastFrameOperation is null) return;
-        _lastFrameOperation.Pc = frameIndex;
-        _lastFrameOperation = null;
-    }
-
-    /// <inheritdoc/>
-    /// <remarks>Places frame <c>i</c> at trace address <c>[i]</c>, rebuilding from the transaction the frames that
-    /// never entered the VM; gas and gasUsed are the frame's limit and its receipt's spend, as in callTracer.</remarks>
-    void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
-    {
-        // The validation-prefix simulation reports no receipts, which pin no frame's outcome.
-        if (!_isFrameTx || !IsTracingActions || frameReceipts.Length == 0 || _framesOrdered) return;
-        _framesOrdered = true;
-
-        EnsureFrameTxRoot();
-        TxFrame[] frames = _tx!.Frames!;
-        int frameCount = Math.Min(frameReceipts.Length, frames.Length);
-        // The processor reports every frame's end before the receipts, so each dispatched frame is claimed here.
-        List<ParityTraceAction> ordered = new(frameCount);
-        for (int i = 0; i < frameCount; i++)
-        {
-            ParityTraceAction action = _frameActions?[i] ?? BuildUndispatchedFrameAction(frames[i], frameReceipts[i], _frameErrors?[i]);
-            action.Gas = frames[i].GasLimit;
-            action.Result?.GasUsed = frameReceipts[i].GasUsed;
-            MoveToFramePosition(action, i);
-            ordered.Add(action);
-        }
-
-        _frameTxRoot!.Subtraces = ordered;
-    }
-
-    private ParityTraceAction BuildUndispatchedFrameAction(TxFrame frame, TxFrameReceipt receipt, EvmExceptionType? error)
-    {
-        ParityTraceAction action = RentAction();
-        action.TraceAddress = RentTraceAddress(1);
-        action.Type = "call";
-        action.CallType = frame.Mode is FrameMode.Verify or FrameMode.PostTx ? "staticcall" : "call";
-        action.From = frame.Mode == FrameMode.Sender ? _tx!.SenderAddress : Eip8141Constants.EntryPointAddress;
-        action.To = frame.Target ?? _tx!.SenderAddress;
-        action.Value = frame.Value;
-        action.Input = CopyInput(frame.Data);
-        action.Error = receipt.Status switch
-        {
-            TxFrameReceipt.StatusSuccess => null,
-            TxFrameReceipt.StatusSkipped => SkippedFrameError,
-            _ => GetErrorDescription(error ?? EvmExceptionType.Revert)
-        };
-
-        if (action.Error is null)
-        {
-            action.Result!.Output = [];
-        }
-        else
-        {
-            action.Result = null;
-        }
-
-        return action;
-    }
-
-    private static void MoveToFramePosition(ParityTraceAction action, int position)
-    {
-        Span<int> traceAddress = action.TraceAddress.AsSpan();
-        if (traceAddress[0] == position) return;
-        traceAddress[0] = position;
-        foreach (ParityTraceAction subtrace in action.Subtraces)
-        {
-            MoveToFramePosition(subtrace, position);
         }
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
         Hash256? stateRoot = null)
     {
-        FinishFrameTxRoot();
+        _frameTx?.MarkSucceeded(gasSpent);
 
         if (_currentAction is not null)
         {
@@ -406,16 +263,12 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
         }
 
         _trace.Action.Result!.Output = output;
-        if (_isFrameTx)
-        {
-            _trace.Action.Result.GasUsed = gasSpent.SpentGas;
-        }
     }
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
         Hash256? stateRoot = null)
     {
-        FinishFrameTxRoot();
+        _frameTx?.MarkFailed(error);
 
         if (_currentAction is not null)
         {
@@ -432,36 +285,11 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
             action.Error = error;
             _trace.Action = action;
         }
-        else if (_isFrameTx)
-        {
-            // A frame transaction fails at the transaction level, so the reason is the root's.
-            _trace.Action.Error = error;
-            _trace.Action.Result = null;
-        }
-    }
-
-    private void FinishFrameTxRoot()
-    {
-        if (!_isFrameTx || !IsTracingActions) return;
-        EnsureFrameTxRoot();
-        CloseFrameTxRoot();
     }
 
     private ParityTraceAction CreateRootActionFromTx()
     {
         ParityTraceAction action = RentAction();
-        if (_isFrameTx)
-        {
-            action.Type = "call";
-            action.CallType = "call";
-            action.From = _tx!.SenderAddress;
-            action.To = Eip8141Constants.EntryPointAddress;
-            action.Input = CappedArray<byte>.Empty;
-            // GasLimit carries only the frame limits, short of the intrinsic gas the transaction also spends.
-            action.Gas = _spec is not null && FrameTxValidation.TryCalculateGasBudget(_tx, _spec, out _, out _, out ulong maxGas) ? maxGas : _tx.GasLimit;
-            return action;
-        }
-
         action.From = _tx!.SenderAddress;
         action.To = _tx.To;
         action.Value = _tx.Value;
@@ -606,10 +434,7 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
-        if (_isFrameTx && _currentAction is null)
-        {
-            EnsureFrameTxRoot();
-        }
+        _frameTx?.EnsureRoot();
 
         ParityTraceAction action = RentAction();
         action.IsPrecompiled = isPrecompileCall;
@@ -661,24 +486,16 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
 
         _currentAction.Result.Output = output.ToArray();
         _currentAction.Result.GasUsed = _currentAction.Gas - gas;
-        _actionGasLeft = gas;
         PopAction();
     }
 
-    public override void ReportActionError(EvmExceptionType evmExceptionType)
-    {
-        _actionGasLeft = 0;
-        HandleActionError(evmExceptionType);
-    }
+    public override void ReportActionError(EvmExceptionType evmExceptionType) => HandleActionError(evmExceptionType);
 
-    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
-    {
-        _actionGasLeft = gas;
-        HandleActionError(EvmExceptionType.Revert);
-    }
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => HandleActionError(EvmExceptionType.Revert, gas);
 
-    private void HandleActionError(EvmExceptionType evmExceptionType)
+    private void HandleActionError(EvmExceptionType evmExceptionType, ulong gasLeft = 0)
     {
+        _frameTx?.OnActionFailed(gasLeft);
         _currentAction!.Result = null;
         _currentAction.Error = GetErrorDescription(evmExceptionType);
         PopAction();
@@ -695,7 +512,6 @@ public class ParityLikeTxTracer : TxTracer, IFrameTxReceiptTracer
         _currentAction.Result.Address = deploymentAddress;
         _currentAction.Result.Code = deployedCode.ToArray();
         _currentAction.Result.GasUsed = _currentAction.Gas - gas;
-        _actionGasLeft = gas;
         PopAction();
     }
 
