@@ -381,10 +381,11 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         FundedWithStorage
     }
 
-    /// <summary>A CREATE or CREATE2 onto an address that already exists, with only a balance or storage (neither
-    /// collides under EIP-684), creates the contract but not the account, so diffMode keeps the account's pre-state.</summary>
+    /// <summary>A CREATE or CREATE2 that lands on an existing account (a balance or storage alone does not collide
+    /// under EIP-684) keeps that account in diffMode's pre when it held a balance, while an absent or empty target,
+    /// where emptiness ignores storage, is dropped.</summary>
     [Test]
-    public void Test_PrestateTrace_CreateOntoExistingAccount_KeepsItsPrestate(
+    public void Test_PrestateTrace_CreateTarget_IsKeptInPreOnlyWhenNonEmpty(
         [Values(Instruction.CREATE, Instruction.CREATE2)] Instruction opcode, [Values] CreateTargetState targetState)
     {
         byte[] salt = { 4, 5, 6 };
@@ -413,7 +414,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             Assert.That(document.RootElement.GetProperty("post").GetProperty(created.ToString()).GetProperty("code").GetString(),
                 Is.EqualTo("0x010203"), "the creation must not have collided");
             Assert.That(pre.TryGetProperty(created.ToString(), out JsonElement account) ? account.GetProperty("balance").GetString() : null,
-                Is.EqualTo(targetState == CreateTargetState.Absent ? null : balance.ToHexString(true)));
+                Is.EqualTo(balance.IsZero ? null : balance.ToHexString(true)));
         }
     }
 
