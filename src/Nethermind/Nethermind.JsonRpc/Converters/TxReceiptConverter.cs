@@ -24,7 +24,7 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
         try
         {
             writer.WriteStartObject();
-            ReceiptForRpc receipt = new(value.TxHash!, value, 0, default);
+            using ReceiptForRpc receipt = new(value.TxHash!, value, 0, default);
             if (receipt.Type != TxType.Legacy)
             {
                 writer.WritePropertyName("type");
@@ -49,7 +49,7 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
             writer.WritePropertyName("logsBloom");
             JsonSerializer.Serialize(writer, receipt.LogsBloom, options);
             writer.WritePropertyName("logs");
-            JsonSerializer.Serialize(writer, receipt.Logs!.Length == 0 ? null : receipt.Logs, options);
+            JsonSerializer.Serialize(writer, receipt.Logs!.Count == 0 ? null : receipt.Logs, options);
             // EIP-8141: emitted only for frame transactions, so other receipts keep their existing shape.
             if (receipt.Type == TxType.FrameTx)
             {

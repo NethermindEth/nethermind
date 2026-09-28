@@ -38,24 +38,34 @@ namespace Nethermind.Evm.Test
             AssertGas(result, GasCostOf.Transaction + expectedGasExcludingTx);
         }
 
+        /// <remarks>The halted frame must leave slot 1 cold, so both runs pay the same gas.</remarks>
         [Test]
-        public void Cold_sload_that_runs_out_of_gas_leaves_the_slot_cold_for_the_next_call([Values] bool firstCallAffordsTheSlot)
+        public void Cold_sload_out_of_gas_in_a_sub_call_leaves_the_slot_cold()
         {
-            // The child costs 3 for the push, then 2100 for the cold slot or 100 once it is warm.
-            byte[] child = Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD).Op(Instruction.POP).Done;
-            TestState.CreateAccount(TestItem.AddressC, UInt256.Zero);
-            TestState.InsertCode(TestItem.AddressC, child, SpecProvider.GenesisSpec);
+            ulong gasWhenSubCallTouchesTheSlot = GasOfSloadAfterHaltedSubCall(TestItem.AddressD, subCallSlot: 1);
+            ulong gasWhenSubCallTouchesAnotherSlot = GasOfSloadAfterHaltedSubCall(TestItem.AddressE, subCallSlot: 2);
 
-            // The second call can afford the slot only if the first one left it warm.
+            Assert.That(gasWhenSubCallTouchesTheSlot, Is.EqualTo(gasWhenSubCallTouchesAnotherSlot),
+                "the out-of-gas sub call must not leave the caller's slot warm");
+        }
+
+        private ulong GasOfSloadAfterHaltedSubCall(Address subCall, int subCallSlot)
+        {
+            byte[] subCallCode = Prepare.EvmCode.PushData(subCallSlot).Op(Instruction.SLOAD).Done;
+            TestState.CreateAccount(subCall, 1.Ether);
+            TestState.InsertCode(subCall, subCallCode, Spec);
+
             byte[] code = Prepare.EvmCode
-                .Call(TestItem.AddressC, firstCallAffordsTheSlot ? 5_000 : 2_000).Op(Instruction.POP)
-                .Call(TestItem.AddressC, 1_000)
-                .PushData(0).Op(Instruction.SSTORE)
+                .DelegateCall(subCall, 1000)
+                .Op(Instruction.POP)
+                .PushData(1)
+                .Op(Instruction.SLOAD)
+                .Op(Instruction.POP)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-            AssertStorage((UInt256)0, firstCallAffordsTheSlot ? UInt256.One : UInt256.Zero);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success), "precondition: only the sub call halts");
+            return result.GasSpent;
         }
 
         private sealed class StorageObservationTracer(bool storage) : TestAllTracerWithOutput

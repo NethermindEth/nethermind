@@ -142,10 +142,32 @@ public class OpcodeWeaverTests
         }
     }
 
-    private static (MethodDefinition Factory, MethodDefinition Table) SetUpOpcodeTable(ModuleDefinition module, string[] opcodeNames)
+    [Test]
+    public void Opcode_weaver_names_handlers_beside_the_dispatch_template([Values] bool nestedDispatch)
+    {
+        using ModuleDefinition module = ModuleDefinition.CreateModule("Test", ModuleKind.Dll);
+        (MethodDefinition factory, _) = SetUpOpcodeTable(module, ["BadInstructionOpcode"], nestedDispatch);
+        module.Types.Add(new TypeDefinition("Nethermind.Evm", "Instruction", TypeAttributes.Class, module.TypeSystem.Object));
+        TypeDefinition vm = module.GetType("Nethermind.Evm.VirtualMachine`1");
+        TypeDefinition dispatch = nestedDispatch ? vm.NestedTypes[0] : vm;
+        ModuleWeaver weaver = new() { ModuleDefinition = module };
+
+        weaver.Execute();
+
+        Assert.That(dispatch.Methods, Has.Some.Matches<MethodDefinition>(method => method.Name == "OpBadInstruction"));
+    }
+
+    private static (MethodDefinition Factory, MethodDefinition Table) SetUpOpcodeTable(ModuleDefinition module, string[] opcodeNames, bool nestedDispatch = false)
     {
         MethodDefinition handler = CreateWeaverMethod(module, "ExecuteOpcode");
         TypeDefinition vm = handler.DeclaringType;
+        if (nestedDispatch)
+        {
+            TypeDefinition dispatch = new("", "RawCalliHelper", TypeAttributes.NestedPrivate | TypeAttributes.Class, module.TypeSystem.Object);
+            vm.NestedTypes.Add(dispatch);
+            vm.Methods.Remove(handler);
+            dispatch.Methods.Add(handler);
+        }
         handler.Body.Instructions.Insert(0, CilInstruction.Create(OpCodes.Tail));
         MethodDefinition factory = new("OpcodeHandler", MethodAttributes.Static, module.TypeSystem.Void);
         vm.Methods.Add(factory);

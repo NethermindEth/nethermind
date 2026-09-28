@@ -577,6 +577,48 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Reads_after_writes_in_later_transactions_see_the_journal([Values] bool discardSecondTransaction)
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell slot1 = new(ctx.Address1, 1);
+        StorageCell slot2 = new(ctx.Address1, 2);
+        StorageCell other = new(ctx.Address2, 1);
+        provider.Set(slot1, (UInt256)1);
+        provider.Commit(Frontier.Instance);
+
+        Assert.That(ReadSlot(provider, slot1), Is.EqualTo((UInt256)1), "precondition: tx1 committed slot 1");
+        int beforeSlot2 = provider.TakeSnapshot().StorageSnapshot.PersistentStorageSnapshot;
+        provider.Set(slot2, (UInt256)5);
+        provider.Set(other, (UInt256)9);
+        Assert.That(ReadSlot(provider, slot2), Is.EqualTo((UInt256)5), "a write in the same transaction is read back");
+        provider.Restore(Snapshot.EmptyPosition, beforeSlot2, Snapshot.EmptyPosition);
+        Assert.That(ReadSlot(provider, slot2), Is.EqualTo(UInt256.Zero), "the reverted write is gone");
+        Assert.That(ReadSlot(provider, slot1), Is.EqualTo((UInt256)1), "the committed slot is unaffected by the revert");
+        if (discardSecondTransaction) provider.Reset(resetBlockChanges: false);
+        else provider.Commit(Frontier.Instance);
+
+        Assert.That(ReadSlot(provider, slot1), Is.EqualTo((UInt256)1), "precondition: tx3 starts from the committed slot");
+        provider.Set(slot1, (UInt256)7);
+        Assert.That(ReadSlot(provider, slot1), Is.EqualTo((UInt256)7), "a later transaction's write must win over the committed value");
+        provider.Set(other, (UInt256)3);
+        Assert.That(ReadSlot(provider, slot1), Is.EqualTo((UInt256)7), "still the journalled value after touching another contract");
+        provider.Commit(Frontier.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSlot(provider, slot1), Is.EqualTo((UInt256)7), "the committed overwrite");
+            Assert.That(ReadSlot(provider, slot2), Is.EqualTo(UInt256.Zero), "the reverted write never lands");
+        }
+    }
+
+    private static UInt256 ReadSlot(WorldState provider, in StorageCell cell)
+    {
+        provider.Get(cell, out UInt256 value);
+        return value;
+    }
+
+    [Test]
     public void Original_value_tracks_transaction_start_across_stacked_writes()
     {
         using Context ctx = new(useFlat, preBlockCaches: null);
@@ -606,6 +648,37 @@ public class StorageProviderTests(bool useFlat)
         provider.Restore(Snapshot.EmptyPosition, mid, Snapshot.EmptyPosition);
         provider.GetOriginal(in cell, out originalValue);
         Assert.That(originalValue, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
+    }
+
+    [Test]
+    public void Original_value_after_transaction_snapshots_unwind_is_the_block_original()
+    {
+        // 1. Block original 1 is committed.
+        // 2. tx0 writes 2 without a transaction snapshot, tx1 stacks on it and writes 3: its original is 2.
+        // 3. Reverting to before tx0 drops every transaction snapshot; a new write must meter against 1.
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        provider.Set(cell, (UInt256)1);
+        provider.Commit(Frontier.Instance);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Get(cell, out _);
+        provider.Set(cell, (UInt256)2);
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.GetOriginal(in cell, out UInt256 stackedOriginal);
+        Assert.That(stackedOriginal, Is.EqualTo((UInt256)2), "a stacked transaction starts from the value tx0 left");
+        provider.Set(cell, (UInt256)3);
+        provider.GetOriginal(in cell, out stackedOriginal);
+        Assert.That(stackedOriginal, Is.EqualTo((UInt256)2), "a same-transaction write keeps the transaction original");
+
+        provider.Restore(Snapshot.EmptyPosition, Snapshot.EmptyPosition, Snapshot.EmptyPosition);
+        provider.Get(cell, out UInt256 afterRevert);
+        Assert.That(afterRevert, Is.EqualTo((UInt256)1), "precondition: both writes are reverted");
+        provider.Set(cell, (UInt256)4);
+        provider.Set(cell, (UInt256)5);
+        provider.GetOriginal(in cell, out UInt256 blockOriginal);
+        Assert.That(blockOriginal, Is.EqualTo((UInt256)1), "without transaction snapshots the original is the block original");
     }
 
     [Test]
@@ -935,6 +1008,32 @@ public class StorageProviderTests(bool useFlat)
 
         provider.GetTransientState(cell, out UInt256 restored);
         Assert.That(restored, Is.EqualTo((UInt256)1));
+    }
+
+    /// <summary>A zero write to an absent cell journals nothing and must not cost a later revert.</summary>
+    [Test]
+    public void Transient_zero_write_to_absent_cell_journals_nothing()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell written = new(ctx.Address1, 1);
+        StorageCell absent = new(ctx.Address1, 2);
+
+        provider.SetTransientState(written, (UInt256)1);
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.SetTransientState(absent, UInt256.Zero);
+        Assert.That(provider.TakeSnapshot(), Is.EqualTo(snapshot), "a zero write to an absent cell adds no journal entry");
+
+        provider.SetTransientState(written, (UInt256)2);
+        provider.Restore(snapshot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            provider.GetTransientState(written, out UInt256 restored);
+            Assert.That(restored, Is.EqualTo((UInt256)1), "the later write is reverted");
+            provider.GetTransientState(absent, out UInt256 zero);
+            Assert.That(zero, Is.EqualTo(UInt256.Zero), "the absent cell still reads zero");
+        }
     }
 
     /// <summary>A rewrite of the value already there journals nothing, and must not cost a later revert.</summary>
@@ -2358,9 +2457,9 @@ public class StorageProviderTests(bool useFlat)
         ctx.StateProvider.Set(new StorageCell(ctx.Address1, 42), new UInt256(_values[1], isBigEndian: true));
 
         if (populator)
-            mainScope.Received(1).HintWarmSlot(new ValueAddress(ctx.Address1.Bytes), (UInt256)42);
+            mainScope.Received(1).HintWarmSlot(ctx.Address1, (UInt256)42);
         else
-            mainScope.DidNotReceiveWithAnyArgs().HintWarmSlot(default, default);
+            mainScope.DidNotReceiveWithAnyArgs().HintWarmSlot(null!, default);
     }
 
     internal class Context : IDisposable

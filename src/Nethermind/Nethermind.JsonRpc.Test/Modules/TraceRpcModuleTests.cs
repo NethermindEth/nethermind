@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -150,6 +151,33 @@ public class TraceRpcModuleTests
             Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
             Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("Invalid trace types"), response);
         }
+    }
+
+    // No pending block is built for RPC: pending resolves to the head, so tracing it would silently trace latest.
+    [Test]
+    public async Task Rejects_pending_block_as_invalid_params(
+        [Values("trace_call", "trace_callMany", "trace_block", "trace_replayBlockTransactions", "trace_filter fromBlock", "trace_filter toBlock")] string request,
+        [Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        string[] traceTypes = ["trace"];
+        // NUMBER, so a call evaluated at the head would return the head number.
+        object transaction = new { from = TestItem.AddressA, gas = "0x927c0", data = "0x4360005260206000f3" };
+        object[] parameters = request switch
+        {
+            "trace_call" => [transaction, traceTypes, "pending"],
+            "trace_callMany" => [new[] { new object[] { transaction, traceTypes } }, "pending"],
+            "trace_block" => ["pending"],
+            "trace_replayBlockTransactions" => ["pending", traceTypes],
+            "trace_filter fromBlock" => [new { fromBlock = "pending", toBlock = "latest" }],
+            _ => [new { fromBlock = "0x1", toBlock = "pending" }],
+        };
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, request.Split(' ')[0], parameters);
+        Assert.That(response, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":{{ErrorCodes.InvalidParams}},"message":"Pending block is not supported for tracing"},"id":67}"""));
     }
 
     [Test]
@@ -305,6 +333,48 @@ public class TraceRpcModuleTests
                 Assert.Throws<OperationCanceledException>(() => result.Data.ToArray());
             }
             Assert.That(timeout.DisposeCount, Is.EqualTo(1));
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    // The timeout is already cancelled when the result is produced, so executing any block would fail: a filter
+    // that can accept nothing more must leave the blocks unexecuted on both the buffered and the streamed path.
+    [Test]
+    [NonParallelizable]
+    public async Task Trace_filter_WhenCountIsZero_ExecutesNoBlock([Values] bool streamed)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        try
+        {
+            using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_filter(new TraceFilterForRpc
+            {
+                FromBlock = new BlockParameter(1),
+                ToBlock = BlockParameter.Latest,
+                Count = 0
+            });
+            timeout.Cancel();
+
+            if (streamed)
+            {
+                ArrayBufferWriter<byte> buffer = new();
+                using (Utf8JsonWriter writer = new(buffer))
+                {
+                    ((JsonStreamingResultBase)result.Data).WriteAsJson(writer);
+                }
+
+                Assert.That(Encoding.UTF8.GetString(buffer.WrittenSpan), Is.EqualTo("[]"), "no trace is requested, so the stream must finish without executing a block");
+            }
+            else
+            {
+                Assert.That(result.Data.ToArray(), Is.Empty, "no trace is requested, so no block may be executed");
+            }
         }
         finally
         {
@@ -1580,6 +1650,33 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public async Task Trace_rawTransaction_rejection_returns_complete_error(
+        [Values] bool streaming, [Values("trace", "vmTrace")] string traceType)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Transaction transaction = Build.A.Transaction
+            .WithTo(TestItem.AddressC)
+            .WithGasLimit(100_000)
+            .WithValue(10_000.Ether)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        string serialized = await RpcTest.TestSerializedRequest(context.TraceRpcModule,
+            "trace_rawTransaction", TxDecoder.Instance.Encode(transaction).Bytes, new[] { traceType });
+        using JsonDocument document = JsonDocument.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.GetProperty("id").GetInt32(), Is.EqualTo(67));
+            Assert.That(document.RootElement.GetProperty("error").GetProperty("message").GetString(),
+                Does.Contain("insufficient"));
+            Assert.That(document.RootElement.TryGetProperty("result", out _), Is.False);
+        }
+    }
+
+    [Test]
     public async Task Trace_rawTransaction_caps_gas_to_gas_cap()
     {
         Context context = new();
@@ -1965,8 +2062,17 @@ public class TraceRpcModuleTests
             using CancellationTokenSource cts = new();
             cts.Cancel();
             System.IO.Pipelines.Pipe pipe = new();
-            await streaming.WriteToAsync(pipe.Writer, cts.Token);
-        })).SetName("Pre-cancelled token: WriteToAsync swallows OperationCanceledException");
+            try
+            {
+                Assert.ThrowsAsync<OperationCanceledException>(async () => await streaming.WriteToAsync(pipe.Writer, cts.Token));
+            }
+            finally
+            {
+                await pipe.Writer.CompleteAsync();
+                await pipe.Reader.CompleteAsync();
+                (streaming as IDisposable)?.Dispose();
+            }
+        })).SetName("Pre-cancelled token: WriteToAsync propagates OperationCanceledException");
 
         yield return new TestCaseData((Func<Task>)(() =>
         {
