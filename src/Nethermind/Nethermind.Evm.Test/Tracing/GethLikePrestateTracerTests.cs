@@ -7,6 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
@@ -24,6 +26,49 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture]
 public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 {
+    private static IEnumerable<TestCaseData> AuthoritySignatureCases()
+    {
+        yield return new TestCaseData(UInt256.One, UInt256.One, 0, true, true);
+        yield return new TestCaseData(UInt256.One, SecP256k1Curve.HalfN, 1, true, true);
+        yield return new TestCaseData(UInt256.Zero, UInt256.One, 0, true, false);
+        yield return new TestCaseData(SecP256k1Curve.N, UInt256.One, 0, true, false);
+        yield return new TestCaseData(UInt256.One, UInt256.Zero, 0, true, false);
+        yield return new TestCaseData(UInt256.One, SecP256k1Curve.HalfNPlusOne, 0, true, false);
+        yield return new TestCaseData(UInt256.One, UInt256.One, 2, true, false);
+        yield return new TestCaseData(UInt256.One, UInt256.One, 0, false, false);
+    }
+
+    [TestCaseSource(nameof(AuthoritySignatureCases))]
+    public void Prestate_captures_only_signature_valid_recovered_authorities(UInt256 r, UInt256 s, int parity, bool recovered, bool captured)
+    {
+        TestState.CreateAccount(TestItem.AddressD, UInt256.One);
+        AuthorizationTuple authorization = new(9999, TestItem.AddressE, ulong.MaxValue, (byte)parity, r, s,
+            recovered ? TestItem.AddressD : null);
+        Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithTo(TestItem.AddressB)
+            .WithAuthorizationCode(authorization).TestObject;
+        Block block = Build.A.Block.WithBeneficiary(TestItem.AddressC).TestObject;
+        using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            GetGethTraceOptions(), block, transaction, TestState, Prague.Instance);
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> accounts =
+            (Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!;
+        Assert.That(accounts.ContainsKey(TestItem.AddressD), Is.EqualTo(captured));
+    }
+
+    [Test]
+    public void Prestate_filters_empty_authorities_using_configuration([Values] bool includeEmpty, [Values] bool disableCode)
+    {
+        TestState.CreateAccount(TestItem.AddressD, UInt256.Zero);
+        AuthorizationTuple authorization = new(0, TestItem.AddressE, 0, 0, UInt256.One, UInt256.One, TestItem.AddressD);
+        Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithTo(TestItem.AddressB)
+            .WithAuthorizationCode(authorization).TestObject;
+        Block block = Build.A.Block.WithBeneficiary(TestItem.AddressC).TestObject;
+        using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            GetGethTraceOptions(JsonSerializer.Serialize(new { includeEmpty, disableCode })), block, transaction, TestState, Prague.Instance);
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> accounts =
+            (Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!;
+        Assert.That(accounts.ContainsKey(TestItem.AddressD), Is.EqualTo(includeEmpty));
+    }
+
     [Test]
     public void Execute_WhenPrestateIsFiltered_ObservesOnlyRequiredOpcodes([Values] bool fullTrace)
     {
