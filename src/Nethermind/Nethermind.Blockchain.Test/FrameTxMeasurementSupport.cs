@@ -4,7 +4,6 @@
 #nullable enable
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -15,11 +14,9 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -38,7 +35,7 @@ namespace Nethermind.Blockchain.Test;
 /// </summary>
 /// <remarks>
 /// A frame-tx measurement taken on a contended core is not comparable with one taken on an idle core: the
-/// storage ladder has been observed to swing by 80% between repeats when other work shared core 0. Rows
+/// ladder measurement has been observed to swing by 80% between repeats when other work shared core 0. Rows
 /// therefore carry <c>cpus=</c> and <c>single_core=</c>, and harnesses whose quantity only means anything
 /// under contention refuse to run without a single-core affinity.
 /// </remarks>
@@ -362,43 +359,6 @@ internal static class FrameTxPrefixShapes
             .Op(Instruction.POP)
             .Op(Instruction.STOP)
             .Done,
-        "sload-cold" => ColdSloadPrefix.Code(),
         _ => throw new ArgumentOutOfRangeException(nameof(shape), shape, "unknown prefix shape")
     };
-
-    /// <summary>
-    /// Builds a never-approving frame transaction for one shape. <paramref name="slotBase"/> selects the
-    /// storage range a <c>sload-cold</c> prefix reads; <paramref name="uniqueSalt"/> only keeps hashes
-    /// distinct, so a caller that deliberately replays one range is not refused as already known.
-    /// </summary>
-    public static Transaction FrameTx(Address sender, string shape, ulong ceiling, int slotBase, int uniqueSalt)
-    {
-        bool stuffed = shape == "signature-stuffed";
-
-        byte[] data = new byte[64];
-        BinaryPrimitives.WriteInt32BigEndian(data.AsSpan(28), slotBase);
-        BinaryPrimitives.WriteInt32BigEndian(data.AsSpan(60), uniqueSalt);
-
-        // Block production does not set ExecutionOptions.FrameSignaturesPreValidated, so every attempt
-        // re-runs the recoveries. Validation rejects before the frame loop, so the prefix never runs.
-        TxFrameSignature[] signatures = stuffed
-            ? FrameTxTestFrames.RecoveredSecp256k1Signatures(
-                new EthereumEcdsa(TestBlockchainIds.ChainId), StuffedSignatureCount(ceiling))
-            : [];
-
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = TestBlockchainIds.ChainId,
-            Nonce = 0,
-            SenderAddress = sender,
-            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: stuffed ? MinimalFrameGas : ceiling, UInt256.Zero, data)],
-            FrameSignatures = signatures,
-            GasLimit = 1_000_000,
-            GasPrice = 1.GWei,
-            DecodedMaxFeePerGas = 1.GWei,
-        };
-        tx.Hash = tx.CalculateHash();
-        return tx;
-    }
 }
