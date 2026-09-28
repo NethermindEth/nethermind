@@ -133,5 +133,7 @@ public class XdcHeaderValidator(
         return true;
     }
 
-    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
+    protected override bool ValidateBlobGasFields(BlockHeader header, IReleaseSpec spec, ref string? error) => true;
+
+    protected override bool ValidateExcessBlobGas(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 }

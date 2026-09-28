@@ -10,6 +10,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -210,6 +211,60 @@ public class HeaderValidatorTests
         {
             Assert.That(result, Is.False);
             Assert.That(error, Is.EqualTo(BlockErrorMessages.SlotNumberNotEnabled));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> OrphanedBlobGasFieldCases()
+    {
+        const ulong lastPreCancun = MainnetSpecProvider.CancunBlockTimestamp - 1;
+        const ulong firstCancun = MainnetSpecProvider.CancunBlockTimestamp;
+        const ulong firstPrague = MainnetSpecProvider.PragueBlockTimestamp;
+        Hash256 requestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+
+        yield return new TestCaseData(firstCancun, 0ul, null, null, BlockErrorMessages.MissingExcessBlobGas)
+            .SetName("Cancun_null_excess_blob_gas_is_rejected");
+        yield return new TestCaseData(firstCancun, null, 0ul, null, BlockErrorMessages.MissingBlobGasUsed)
+            .SetName("Cancun_null_blob_gas_used_is_rejected");
+        yield return new TestCaseData(lastPreCancun, null, 0ul, null, BlockErrorMessages.NotAllowedExcessBlobGas)
+            .SetName("Pre_Cancun_excess_blob_gas_is_rejected");
+        yield return new TestCaseData(lastPreCancun, 0ul, null, null, BlockErrorMessages.NotAllowedBlobGasUsed)
+            .SetName("Pre_Cancun_blob_gas_used_is_rejected");
+        yield return new TestCaseData(lastPreCancun, null, null, requestsHash, BlockErrorMessages.RequestsNotEnabled)
+            .SetName("Pre_Prague_requests_hash_is_rejected");
+        yield return new TestCaseData(firstCancun, 0ul, 0ul, null, null)
+            .SetName("First_Cancun_header_is_accepted");
+        yield return new TestCaseData(lastPreCancun, null, null, null, null)
+            .SetName("Last_pre_Cancun_header_is_accepted");
+        // Values no parent could produce: the ExcessBlobGas comparison must still be skipped when orphaned.
+        yield return new TestCaseData(firstCancun, 131072ul, 393216ul, null, null)
+            .SetName("Cancun_header_with_arbitrary_blob_gas_values_is_accepted");
+        yield return new TestCaseData(firstPrague, 0ul, 0ul, requestsHash, null)
+            .SetName("Prague_header_is_accepted");
+    }
+
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(OrphanedBlobGasFieldCases))]
+    public void When_orphaned_header_blob_gas_presence_matches_fork(
+        ulong timestamp, ulong? blobGasUsed, ulong? excessBlobGas, Hash256? requestsHash, string? expectedError)
+    {
+        _validator = new HeaderValidator(_blockTree, Always.Valid, MainnetSpecProvider.Instance,
+            new OneLoggerLogManager(new(_testLogger)));
+
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(MainnetSpecProvider.ParisBlockNumber + 1)
+            .WithTimestamp(timestamp)
+            .WithBlobGasUsed(blobGasUsed)
+            .WithExcessBlobGas(excessBlobGas)
+            .WithRequestsHash(requestsHash)
+            .TestObject;
+        header.Hash = header.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedError is null));
+            Assert.That(error, Is.EqualTo(expectedError));
         }
     }
 
