@@ -129,6 +129,10 @@ namespace Nethermind.TxPool
         public static long FrameTxSimulationsPreempted;
 
         [CounterMetric]
+        [Description("Number of gossiped EIP-8141 frame transactions resubmitted on a new chain head after this node deferred their validation-prefix simulation.")]
+        public static long FrameTxSimulationsResubmitted;
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were deferred because this node had spent its own validation-prefix simulation bounds, not because the prefix was judged.")]
         public static long PendingTransactionsFrameTxSimulationDeferred;
 

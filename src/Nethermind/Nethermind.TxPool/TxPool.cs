@@ -80,6 +80,9 @@ namespace Nethermind.TxPool
         private Dictionary<ValueHash256, int> _frameTxsDeferredToNextHead = [];
         private Dictionary<ValueHash256, int> _frameTxDeferralsCarried = [];
         private readonly int _frameRevalidationDeferralBudget;
+        private const int DeferredGossipFrameTxCapacity = 256;
+        private readonly ConcurrentDictionary<ValueHash256, (Transaction Tx, int Heads)> _deferredGossipFrameTxs = new();
+        private readonly ConcurrentDictionary<ValueHash256, int> _resubmittingFrameTxHeads = new();
         private readonly ConcurrentDictionary<ValueHash256, (long Head, int Heads)> _frameEvictionAttempts = new();
         // Above one is the predicate for "the retry ledger can hold an entry", read by insert, removal and
         // eviction alike, so it is snapshot here rather than dispatched through the config interface.
@@ -866,6 +869,8 @@ namespace Nethermind.TxPool
                             RequestRevalidation(headChange.Generation);
                         }
 
+                        ResubmitDeferredGossipFrameTxs();
+
                         // Subscribers can re-enter the pool, so invoke them after releasing _newHeadLock.
                         TxPoolHeadChanged?.Invoke(this, args.Block);
                         Metrics.TransactionCount = _transactions.Count;
@@ -879,6 +884,47 @@ namespace Nethermind.TxPool
             }
 
             bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges) => accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
+        }
+
+        /// <summary>Holds a gossiped frame transaction whose simulation this node deferred, so the next head
+        /// judges it instead of leaving it to a peer's resend.</summary>
+        /// <remarks>A deferral is a bound this node spent on itself, such as block processing preempting the
+        /// simulation, so it says nothing about the transaction. Blob-carrying transactions are not held, which keeps
+        /// the held set small. A transaction is carried across at most
+        /// <see cref="ITxPoolConfig.FrameTxRevalidationDeferralBudget"/> consecutive heads.</remarks>
+        private bool TryHoldDeferredGossipFrameTx(Transaction tx, TxHandlingOptions handlingOptions)
+        {
+            if (handlingOptions != TxHandlingOptions.None || tx.CarriesBlobs || tx.Hash is null) return false;
+
+            ValueHash256 hash = tx.Hash.ValueHash256;
+            int heads = _resubmittingFrameTxHeads.TryGetValue(hash, out int spentHeads) ? spentHeads + 1 : 1;
+            if (heads > _frameRevalidationDeferralBudget || _deferredGossipFrameTxs.Count >= DeferredGossipFrameTxCapacity) return false;
+
+            return _deferredGossipFrameTxs.TryAdd(hash, (tx, heads));
+        }
+
+        /// <summary>Resubmits the gossiped frame transactions held by <see cref="TryHoldDeferredGossipFrameTx"/>.</summary>
+        /// <remarks>Runs outside <c>_newHeadLock</c>, once the head's hash cache is cleared, so a held transaction is
+        /// not rejected as already known.</remarks>
+        private void ResubmitDeferredGossipFrameTxs()
+        {
+            if (_deferredGossipFrameTxs.IsEmpty) return;
+
+            foreach (KeyValuePair<ValueHash256, (Transaction Tx, int Heads)> held in _deferredGossipFrameTxs.ToArray())
+            {
+                if (!_deferredGossipFrameTxs.TryRemove(held)) continue;
+
+                _resubmittingFrameTxHeads[held.Key] = held.Value.Heads;
+                try
+                {
+                    Interlocked.Increment(ref Metrics.FrameTxSimulationsResubmitted);
+                    SubmitTx(held.Value.Tx, TxHandlingOptions.None);
+                }
+                finally
+                {
+                    _resubmittingFrameTxHeads.TryRemove(held.Key, out _);
+                }
+            }
         }
 
         private void RequestRevalidation(long generation)
@@ -1557,6 +1603,10 @@ namespace Nethermind.TxPool
                     if (accepted == AcceptTxResult.IncompleteBlobData && tx.Hash is not null)
                     {
                         _hashCache.DeleteFromCurrentBlock(tx.Hash);
+                    }
+                    else if (accepted == AcceptTxResult.FrameSimulationDeferred && TryHoldDeferredGossipFrameTx(tx, handlingOptions))
+                    {
+                        canRecycle = false;
                     }
 
                     Metrics.PendingTransactionsDiscarded++;

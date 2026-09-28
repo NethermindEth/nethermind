@@ -5022,6 +5022,65 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [TestCase(2, 1)]
+        [TestCase(0, 0)]
+        public async Task Gossiped_frame_tx_whose_simulation_was_deferred_is_resubmitted_on_the_next_head(int deferralBudget, int pooledAfterHead)
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectIndeterminate("preempted by block processing"));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxRevalidationDeferralBudget = deferralBudget },
+                new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(pooledAfterHead));
+        }
+
+        [Test]
+        public async Task Gossiped_frame_tx_deferred_on_every_head_is_resubmitted_only_within_the_deferral_budget()
+        {
+            const int deferralBudget = 2;
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectIndeterminate("preempted by block processing"));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxRevalidationDeferralBudget = deferralBudget },
+                new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+            for (int head = 1; head <= deferralBudget + 2; head++)
+            {
+                await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(head).TestObject);
+            }
+
+            Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(1 + deferralBudget));
+        }
+
+        [Test]
+        public void Local_frame_tx_whose_simulation_was_deferred_is_not_held()
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectIndeterminate("simulator unavailable"));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+            Assert.That(HeldDeferredGossipFrameTxs(), Is.Zero);
+        }
+
+        private int HeldDeferredGossipFrameTxs() => ((System.Collections.ICollection)typeof(TxPool)
+            .GetField("_deferredGossipFrameTxs", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(_txPool)!).Count;
+
         private int TrackedFrameTxDependencies() => ((FrameTxDependencyIndex)typeof(TxPool)
             .GetField("_frameDependencies", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(_txPool)!).Count;
