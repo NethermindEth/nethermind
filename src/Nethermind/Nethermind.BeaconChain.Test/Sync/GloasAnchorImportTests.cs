@@ -10,10 +10,12 @@ using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.ForkChoice;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -176,6 +178,260 @@ public class GloasAnchorImportTests
 
         importer.OnFinalized(new CheckpointRef(justifiedEpoch, justified.Root));
         Assert.That(importer.ImportEnvelope(anchor.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.UnknownBlock), "finalizing a later checkpoint releases the anchor state");
+    }
+
+    /// <summary>
+    /// specs/phase0/fork-choice.md <c>on_block</c> adopts the pulled-up justification of a block from a past epoch at once, so a
+    /// branch arriving late can justify a checkpoint whose state already left both tiers and was never pinned while held. That
+    /// root is above the finalized checkpoint when the boundary tier evicts it, so its state was persisted and is read back.
+    /// </summary>
+    [Test]
+    public void Justified_gloas_root_first_adopted_after_leaving_both_tiers_is_read_back_from_the_store()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        const ulong justifiedEpoch = 2;
+        const ulong forkSlot = 3 * ForkSlot + 24;
+        const ulong lastSlot = 13 * ForkSlot;
+        BeaconChainStore store = chain.CreateStore();
+        SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (lastSlot + 1) * chain.Spec.SecondsPerSlot)));
+        IBlockImporter importer = CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), store, clock);
+
+        SignedGloasChain.Block justified = Import(importer, chain.Next(anchor, justifiedEpoch * ForkSlot, full: false, 0xA2));
+
+        // No votes: two epochs of blocks push the epoch 2 checkpoint out of the per-block tier, and nine later epoch starts out of the boundary tier.
+        ulong[] slots = [.. Enumerable.Range(2 * (int)ForkSlot + 1, 2 * (int)ForkSlot).Select(static s => (ulong)s), .. Enumerable.Range(5, 9).Select(static e => (ulong)e * ForkSlot)];
+        SignedGloasChain.Block tip = justified;
+        SignedGloasChain.Block? forkParent = null;
+        foreach (ulong slot in slots)
+        {
+            tip = Import(importer, chain.Next(tip, slot, full: false, (byte)(slot % 100)));
+            if (slot == forkSlot)
+            {
+                forkParent = tip;
+            }
+        }
+
+        // The late branch forks in epoch 3 from a block the per-block tier still holds; its votes (1536 of 2048 validators) justify epoch 2.
+        SignedGloasChain.Block branch = forkParent!;
+        for (int group = 0; group < 3; group++)
+        {
+            int voteGroup = group;
+            branch = Import(importer, chain.Next(branch, forkSlot + 1 + (ulong)group, full: false, (byte)(0xC0 + group), attestations: (state, cache) => TargetVotes(state, cache, justifiedEpoch, justified.Root, voteGroup)));
+        }
+
+        HeadView? head = null;
+        Assert.DoesNotThrow(() => head = importer.ComputeHead(), "the justified balances resolve the epoch 2 checkpoint state");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(head!.Justified, Is.EqualTo(new CheckpointRef(justifiedEpoch, justified.Root)), "fixture: the late branch justifies epoch 2");
+            Assert.That(head.Finalized, Is.EqualTo(new CheckpointRef(1, anchor.Root)), "fixture: the root is above the finalized checkpoint");
+            Assert.That(store.TryGetState(justified.Root, out _), Is.True);
+        }
+    }
+
+    /// <summary>
+    /// The boundary tier persists a checkpoint candidate it evicts only while the root can still become justified; with
+    /// finality keeping up it is finalized by then, and nothing is written. Retaining a held root again evicts nothing.
+    /// </summary>
+    [Test]
+    public void Evicted_checkpoint_candidate_is_persisted_only_while_above_the_finalized_checkpoint([Values] bool aboveFinalized)
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block block = chain.Next(null, ForkSlot, full: false, 0xA1);
+        BeaconChainStore store = chain.CreateStore();
+        PostStateCache states = new(store, chain.Spec, null, null, isAboveFinalized: _ => aboveFinalized);
+
+        states.RetainGloas(block.Root, block.PostState, checkpointCandidate: true);
+        states.RetainGloas(block.Root, block.PostState, checkpointCandidate: true);
+        bool persistedWhileHeld = store.TryGetState(block.Root, out _);
+        RetainDistinct(states, block.PostState, 8, checkpointCandidate: true, seed: 0);
+        bool persisted = store.TryGetState(block.Root, out byte[]? ssz);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedWhileHeld, Is.False);
+            Assert.That(persisted, Is.EqualTo(aboveFinalized));
+            Assert.That(ssz is null ? null : BeaconStateCodec.DecodeForked(ssz, chain.Spec) is ForkedBeaconState.OfGloas { State: { } gloas } ? SszRoots.HashTreeRoot(gloas) : null,
+                Is.EqualTo(aboveFinalized ? block.Signed.Message!.StateRoot : null));
+        }
+    }
+
+    /// <summary>
+    /// specs/phase0/beacon-chain.md <c>weigh_justification_and_finalization</c>: epochs 2 and 3, each justified by votes in its
+    /// own blocks, finalize epoch 2. The boundary tier then evicts both checkpoints, but only the one above the finalized start
+    /// slot can still become justified, so only its state is written.
+    /// </summary>
+    [Test]
+    public void Evicted_checkpoint_candidate_at_the_finalized_start_slot_is_not_persisted()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        const ulong lastSlot = 11 * ForkSlot;
+        BeaconChainStore store = chain.CreateStore();
+        SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (lastSlot + 1) * chain.Spec.SecondsPerSlot)));
+        IBlockImporter importer = CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), store, clock);
+
+        SignedGloasChain.Block finalized = Import(importer, chain.Next(anchor, 2 * ForkSlot, full: false, 0xA2));
+        SignedGloasChain.Block justified = Import(importer, chain.Next(ImportVotingBlocks(importer, chain, finalized, 2, finalized.Root), 3 * ForkSlot, full: false, 0xA3));
+        SignedGloasChain.Block tip = ImportVotingBlocks(importer, chain, justified, 3, justified.Root);
+
+        // Eight later epoch starts evict both checkpoints from the boundary tier.
+        foreach (int epoch in Enumerable.Range(4, 8))
+        {
+            tip = Import(importer, chain.Next(tip, (ulong)epoch * ForkSlot, full: false, (byte)epoch));
+        }
+
+        HeadView head = importer.ComputeHead();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(head.Finalized, Is.EqualTo(new CheckpointRef(2, finalized.Root)), "fixture: epoch 2 is finalized");
+            Assert.That(head.Justified, Is.EqualTo(new CheckpointRef(3, justified.Root)), "fixture: epoch 3 is justified");
+            Assert.That(store.TryGetState(finalized.Root, out _), Is.False);
+            Assert.That(store.TryGetState(justified.Root, out _), Is.True);
+        }
+    }
+
+    /// <summary>A Gloas record found by the Fulu getter is refused by its slot, never decoded: a malformed body a full decode would log answers unknown silently.</summary>
+    [Test]
+    public void Gloas_record_under_a_fulu_lookup_is_refused_by_its_slot_without_a_full_decode([Values(48, 49, 200)] int length)
+    {
+        SignedGloasChain chain = new();
+        BeaconChainStore store = chain.CreateStore();
+        store.PutState(TestItem.KeccakA, CorruptRecord(length, ForkSlot + 1));
+        TestLogger logger = new();
+        PostStateCache states = new(store, chain.Spec, null, null, logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        BeaconStateFulu? state = null;
+        Assert.DoesNotThrow(() => state = states.GetBlockState(TestItem.KeccakA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state, Is.Null);
+            Assert.That(logger.LogList.Where(static l => l.Contains(TestItem.KeccakA.ToString())), Is.Empty, "no decode was attempted");
+        }
+    }
+
+    /// <summary>
+    /// A persisted state is served only by the getter of its own fork. The Fulu getter tells the fork by the slot that follows
+    /// <c>genesis_time</c> and <c>genesis_validators_root</c>, so a nonzero <c>genesis_validators_root</c>, as on every real
+    /// network, must not read as a Gloas slot and hide every Fulu snapshot.
+    /// </summary>
+    [Test]
+    public void Persisted_state_is_served_only_by_the_getter_of_its_fork()
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        BeaconStateFulu fulu = chain.AnchorState.Clone();
+        fulu.GenesisValidatorsRoot = TestItem.KeccakB;
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), chain.Spec);
+        store.PutState(TestItem.KeccakA, BeaconStateFulu.Encode(fulu));
+        store.PutState(TestItem.KeccakC, BeaconStateGloas.Encode(chain.First.PostState));
+        TestLogger logger = new();
+        PostStateCache states = new(store, chain.Spec, null, null, _ => true, logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(states.GetBlockState(TestItem.KeccakA) is { } fuluRead ? SszRoots.HashTreeRoot(fuluRead) : null, Is.EqualTo(SszRoots.HashTreeRoot(fulu)));
+            Assert.That(states.GetGloasBlockState(TestItem.KeccakA), Is.Null);
+            Assert.That(states.GetBlockState(TestItem.KeccakC), Is.Null);
+            Assert.That(states.GetGloasBlockState(TestItem.KeccakC) is { } gloasRead ? SszRoots.HashTreeRoot(gloasRead) : null, Is.EqualTo(chain.First.Block.Message!.StateRoot));
+            Assert.That(logger.LogList.Where(static l => l.Contains("undecodable")), Is.Empty);
+        }
+    }
+
+    /// <summary>
+    /// A checkpoint candidate can become justified only while fork choice holds it above the finalized epoch's start slot.
+    /// Once fork choice prunes it, its evicted state is useless, so it must not be persisted.
+    /// </summary>
+    [Test]
+    public void Checkpoint_candidate_can_become_justified_only_while_fork_choice_holds_it_above_the_finalized_start_slot()
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        const ulong finalizedEpoch = 9;
+        ulong finalizedSlot = finalizedEpoch * Presets.SlotsPerEpoch;
+        ulong lastSlot = finalizedSlot + 1;
+        ForkChoiceRunner runner = chain.CreateRunner();
+        runner.OnTick(runner.GenesisTime + lastSlot * Presets.SecondsPerSlot);
+        runner.OnBlock(chain.First.Block, chain.First.PostState);
+
+        BeaconStateGloas templateState = chain.First.PostState.Clone();
+        GloasSlotProcessing.ProcessSlots(templateState, BoundarySlot + 1, new EpochCache());
+        SignedBeaconBlockGloas template = MinimalBlock(templateState, SelfBuildBid(templateState, chain.First.PostState.LatestBlockHash!, Hash(0xE1)));
+        Hash256 early = Hash256.Zero;
+        Hash256 finalized = Hash256.Zero;
+        Hash256 parentRoot = chain.First.Root;
+        bool earlyBeforeFinality = false;
+        // Fork choice reads only the checkpoints and registry of a post-state, so the blocks share one; the last carries the finality.
+        for (ulong slot = BoundarySlot + 1; slot <= lastSlot; slot++)
+        {
+            BeaconBlockGloas message = template.Message!;
+            SignedBeaconBlockGloas block = new()
+            {
+                Message = new BeaconBlockGloas { Slot = slot, ProposerIndex = message.ProposerIndex, ParentRoot = parentRoot, StateRoot = message.StateRoot, Body = message.Body },
+                Signature = template.Signature,
+            };
+            BeaconStateGloas postState = chain.First.PostState;
+            if (slot == lastSlot)
+            {
+                postState = chain.First.PostState.Clone();
+                postState.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = finalizedEpoch, Root = finalized };
+                postState.FinalizedCheckpoint = new Checkpoint { Epoch = finalizedEpoch, Root = finalized };
+                earlyBeforeFinality = BlockImporter.IsAboveFinalized(runner, early);
+            }
+
+            runner.OnBlock(block, postState);
+            parentRoot = SszRoots.HashTreeRoot(block.Message);
+            if (slot == BoundarySlot + 1)
+                early = parentRoot;
+            if (slot == finalizedSlot)
+                finalized = parentRoot;
+        }
+
+        Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(finalizedEpoch, finalized)), "fixture: epoch 9 is finalized");
+        bool earlyHeldBelowFinality = BlockImporter.IsAboveFinalized(runner, early);
+        runner.Prune();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(earlyBeforeFinality, Is.True, "held above the anchor's finalized start slot");
+            Assert.That(earlyHeldBelowFinality, Is.False, "held below the finalized start slot");
+            Assert.That(runner.ContainsBlock(early), Is.False, "fixture: fork choice pruned the early block");
+            Assert.That(BlockImporter.IsAboveFinalized(runner, early), Is.False, "pruned");
+            Assert.That(BlockImporter.IsAboveFinalized(runner, finalized), Is.False, "the finalized checkpoint block itself");
+            Assert.That(BlockImporter.IsAboveFinalized(runner, parentRoot), Is.True, "the tip above the finalized start slot");
+        }
+    }
+
+    /// <summary>
+    /// A node anchored on a Gloas checkpoint has no Fulu lineage, so a reorg between Gloas branches moves only the canonical
+    /// index: the head leaves a lone block for a branch its own body votes carry.
+    /// </summary>
+    [Test]
+    public void Gloas_anchor_importer_reorgs_between_gloas_branches()
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.Block anchor = chain.Next(null, ForkSlot, full: false, 0xA1);
+        BeaconChainStore store = chain.CreateStore();
+        // Near the chain, so every leaf is viable for the head and no block is timely enough for the proposer boost.
+        SlotClock clock = new(chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (ForkSlot + 4) * chain.Spec.SecondsPerSlot)));
+        IBlockImporter importer = CreateFactoryImporter(chain, anchor, new SignedGloasChain.EnvelopeEngine(), store, clock);
+        SignedGloasChain.Block lone = chain.Next(anchor, ForkSlot + 1, full: false, 0xB1);
+        SignedGloasChain.Block branch = chain.Next(anchor, ForkSlot + 1, full: false, 0xC1);
+        SignedGloasChain.Block branchTip = chain.Next(branch, ForkSlot + 2, full: false, 0xC2, attestations: (state, cache) =>
+            [CommitteeAttestation(state, VoteFor(state, ForkSlot + 1, 1, branch.Root), cache.GetCommitteeCache(state, 1), 0, sign: false)]);
+
+        Assert.That(importer.Import(lone.Forked, lone.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        HeadView before = importer.ComputeHead();
+        Assert.That(importer.Import(branch.Forked, branch.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(importer.Import(branchTip.Forked, branchTip.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        HeadView after = importer.ComputeHead();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before.HeadRoot, Is.EqualTo(lone.Root));
+            Assert.That(after.HeadRoot, Is.EqualTo(branchTip.Root));
+            Assert.That(store.TryGetCanonicalRoot(ForkSlot + 1, out Hash256? atFirstSlot) ? atFirstSlot : null, Is.EqualTo(branch.Root));
+            Assert.That(store.TryGetCanonicalRoot(ForkSlot + 2, out Hash256? atSecondSlot) ? atSecondSlot : null, Is.EqualTo(branchTip.Root));
+        }
     }
 
     /// <summary>A node anchored on a Gloas checkpoint follows no Fulu lineage, so a Fulu block's proposer is left to the transition, which refuses it.</summary>
@@ -463,32 +719,37 @@ public class GloasAnchorImportTests
 
     /// <summary>
     /// A corrupt persisted snapshot that still passes the store's length checks must not throw out of every import,
-    /// envelope and proposer check that names its root; it is logged and treated as absent.
+    /// envelope, proposer check or fork choice lookup that names its root; it is logged and treated as absent.
     /// </summary>
-    [TestCase(10, TestName = "Corrupt_persisted_gloas_state_is_absent(too short for a slot)")]
-    [TestCase(200, TestName = "Corrupt_persisted_gloas_state_is_absent(malformed body)")]
-    public void Corrupt_persisted_gloas_state_is_absent(int length)
+    [Test]
+    public void Corrupt_persisted_state_is_absent([Values(10, 200)] int length, [Values] bool gloas)
     {
         SignedGloasChain chain = new();
-        byte[] ssz = new byte[length];
-        new Random(length).NextBytes(ssz);
-        if (length >= 48)
-        {
-            BitConverter.TryWriteBytes(ssz.AsSpan(40), ForkSlot + 1);
-        }
-
         BeaconChainStore store = chain.CreateStore();
-        store.PutState(TestItem.KeccakA, ssz);
+        store.PutState(TestItem.KeccakA, CorruptRecord(length, gloas ? ForkSlot + 1 : ForkSlot - 1));
         TestLogger logger = new();
         PostStateCache states = new(store, chain.Spec, null, null, _ => true, logManager: new OneLoggerLogManager(new ILogger(logger)));
 
-        BeaconStateGloas? state = null;
-        Assert.DoesNotThrow(() => state = states.GetGloasBlockState(TestItem.KeccakA));
+        object? state = null;
+        Assert.DoesNotThrow(() => state = gloas ? states.GetGloasBlockState(TestItem.KeccakA) : states.GetBlockState(TestItem.KeccakA));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(state, Is.Null);
             Assert.That(logger.LogList.Where(static l => l.Contains(TestItem.KeccakA.ToString())), Is.Not.Empty);
         }
+    }
+
+    /// <summary>Random bytes that, when long enough to carry a slot, carry <paramref name="slot"/> at the state's slot offset.</summary>
+    private static byte[] CorruptRecord(int length, ulong slot)
+    {
+        byte[] ssz = new byte[length];
+        new Random(length).NextBytes(ssz);
+        if (length >= 48)
+        {
+            BitConverter.TryWriteBytes(ssz.AsSpan(40), slot);
+        }
+
+        return ssz;
     }
 
     private static void RetainDistinct(PostStateCache states, BeaconStateGloas state, int count, bool checkpointCandidate, int seed)
@@ -508,6 +769,26 @@ public class GloasAnchorImportTests
         ForkedSignedBeaconBlock block = gloasState ? new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock) : gloas.Forked;
 
         Assert.Throws<ArgumentException>(() => CreateFactory(chain, gloas.PostState.Validators!, new SignedGloasChain.EnvelopeEngine(), chain.CreateStore(), new SlotClock(chain.Spec, Timestamper.Default)).Create(state, block, gloas.Root));
+    }
+
+    private static SignedGloasChain.Block Import(IBlockImporter importer, SignedGloasChain.Block block)
+    {
+        Assert.That(importer.Import(block.Forked, block.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        return block;
+    }
+
+    /// <summary>Imports three blocks late in <paramref name="epoch"/> whose votes (1536 of 2048 validators) for its checkpoint justify it at the epoch's end.</summary>
+    /// <returns>The last of the three.</returns>
+    private static SignedGloasChain.Block ImportVotingBlocks(IBlockImporter importer, SignedGloasChain chain, SignedGloasChain.Block parent, ulong epoch, Hash256 checkpointRoot)
+    {
+        for (int group = 0; group < 3; group++)
+        {
+            int voteGroup = group;
+            parent = Import(importer, chain.Next(parent, epoch * ForkSlot + 24 + (ulong)group, full: false, (byte)(0x40 + 4 * (int)epoch + group),
+                attestations: (state, cache) => TargetVotes(state, cache, epoch, checkpointRoot, voteGroup)));
+        }
+
+        return parent;
     }
 
     private static IBlockImporter CreateFactoryImporter(SignedGloasChain chain, SignedGloasChain.Block anchor, IEngineDriver engine, BeaconChainStore store, SlotClock? clock = null)
