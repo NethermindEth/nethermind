@@ -26,6 +26,10 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     private readonly Transaction _tx;
     private readonly bool _isTracingTransfers;
     private bool _hasFrameReceipts;
+    private FrameResult[]? _frameResults;
+    private byte[]?[]? _frameOutputs;
+    private int[]? _frameLogCounts;
+    private byte[]? _frameOutput;
     private int[]? _frameLogStarts;
     private int _framesEnded;
     private int _frameLogEnd;
@@ -96,6 +100,24 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         if (frameReceipts.Length == 0) return;
 
         _hasFrameReceipts = true;
+        List<Log> logs = BuildLogs();
+        int logOffset = 0;
+        _frameResults = new FrameResult[frameReceipts.Length];
+        for (int i = 0; i < frameReceipts.Length; i++)
+        {
+            TxFrameReceipt receipt = frameReceipts[i];
+            int logCount = _frameLogCounts?[i] ?? 0;
+            _frameResults[i] = new FrameResult
+            {
+                Status = receipt.Status,
+                GasUsed = receipt.GasUsed,
+                ExecutionGasUsed = receipt.ExecutionGasUsed,
+                StateGasUsed = receipt.StateGasUsed,
+                Logs = logs.GetRange(logOffset, logCount),
+                ReturnData = _frameOutputs?[i] ?? []
+            };
+            logOffset += logCount;
+        }
     }
 
     /// <inheritdoc/>
@@ -122,6 +144,11 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
             TruncateLogs(_frameLogStarts[frameIndex]);
         }
 
+        _frameOutputs ??= new byte[]?[_frameLogStarts.Length];
+        _frameLogCounts ??= new int[_frameLogStarts.Length];
+        _frameOutputs[frameIndex] = _frameOutput;
+        _frameLogCounts[frameIndex] = _logs.Count - _frameLogStarts[frameIndex];
+        _frameOutput = null;
         _frameRevertData = null;
         _frameLogEnd = _logs.Count;
     }
@@ -131,6 +158,8 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     {
         if (_frameLogStarts is null || (uint)fromFrameIndex >= (uint)_framesEnded) return;
 
+        if (_frameLogCounts is not null)
+            Array.Clear(_frameLogCounts, fromFrameIndex, toFrameIndex - fromFrameIndex);
         TruncateLogs(_frameLogStarts[fromFrameIndex]);
         _frameLogEnd = _logs.Count;
     }
@@ -141,7 +170,8 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     {
         GasUsed = gasSpent.SpentGas,
         MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
-        ReturnData = output,
+        ReturnData = _frameResults is { Length: > 0 } ? _frameResults[^1].ReturnData : output,
+        FrameResults = _frameResults,
         Status = StatusCode.Success,
         Logs = BuildLogs()
     };
@@ -158,7 +188,8 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
             // The processor reports no output for a frame transaction, so the revert data is the frame's own.
             Data = _frameError is null ? output : _frameErrorData ?? []
         },
-        ReturnData = [],
+        ReturnData = _frameResults?.FirstOrDefault(static frame => frame.Status == TxFrameReceipt.StatusFailure)?.ReturnData ?? [],
+        FrameResults = _frameResults,
         Status = StatusCode.Failure,
         // A failed frame transaction keeps the logs of the frames that committed, as its receipt does.
         Logs = _hasFrameReceipts ? BuildLogs() : []
@@ -186,7 +217,8 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
         base.ReportActionEnd(gas, output);
-        _callLogStarts?.TryPop(out _);
+        if (_callLogStarts is not null && _callLogStarts.TryPop(out _) && _callLogStarts.Count == 0)
+            _frameOutput = output.ToArray();
     }
 
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
@@ -216,7 +248,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         TruncateLogs(logStart);
         if (_callLogStarts.Count == 0)
         {
-            _frameRevertData = output.ToArray();
+            _frameOutput = _frameRevertData = output.ToArray();
         }
     }
 }
