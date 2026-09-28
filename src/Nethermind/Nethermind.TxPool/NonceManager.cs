@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using Nethermind.Trie;
 
@@ -31,12 +32,12 @@ public class NonceManager(
 
     internal int TrackedAddressCount => _addressNonceManagers.Count;
 
-    public NonceLocker ReserveNonce(Address address, out ulong reservedNonce)
+    public NonceLocker ReserveNonce(Address address, IPendingTxsBySender pendingTxs, out ulong reservedNonce)
     {
         while (true)
         {
             AddressNonceManager addressNonceManager = GetAddressNonceManager(address);
-            NonceLocker locker = addressNonceManager.ReserveNonce(_accounts.GetNonce(address), out reservedNonce);
+            NonceLocker locker = addressNonceManager.ReserveNonce(address, _accounts.GetNonce(address), pendingTxs, out reservedNonce);
             if (!addressNonceManager.IsRetired) return locker;
             locker.Dispose();
         }
@@ -143,13 +144,13 @@ public class NonceManager(
 
         public bool HasAcceptedNonce => _highestAcceptedNonce.HasValue;
 
-        public NonceLocker ReserveNonce(ulong accountNonce, out ulong reservedNonce)
+        public NonceLocker ReserveNonce(Address address, ulong accountNonce, IPendingTxsBySender pendingTxs, out ulong reservedNonce)
         {
             NonceLocker locker = new(_accountLock, _txAccepted);
             ReleaseNonces(accountNonce);
             _currentNonce = ulong.Max(_currentNonce, accountNonce);
-            _reservedNonce = _currentNonce;
-            reservedNonce = _currentNonce;
+            _reservedNonce = FirstNonceNotPending(address, pendingTxs);
+            reservedNonce = _reservedNonce;
             return locker;
         }
 
@@ -157,6 +158,47 @@ public class NonceManager(
         {
             _usedNonces.Add(_reservedNonce);
             _highestAcceptedNonce = ulong.Max(_highestAcceptedNonce ?? 0, _reservedNonce);
+            SkipUsedNonces();
+        }
+
+        private ulong FirstNonceNotPending(Address address, IPendingTxsBySender pendingTxs)
+        {
+            ulong nonce = _currentNonce;
+            if (!_usedNonces.Contains(nonce))
+            {
+                return nonce;
+            }
+
+            Transaction[] pending = pendingTxs.GetPendingTransactionsBySender(address);
+            Transaction[] pendingBlobs = pendingTxs.GetPendingLightBlobTransactionsBySender(address);
+            while (_usedNonces.Contains(nonce))
+            {
+                if (!HoldsAccountNonce(pending, nonce) && !HoldsAccountNonce(pendingBlobs, nonce))
+                {
+                    return nonce;
+                }
+
+                nonce++;
+            }
+
+            return nonce;
+        }
+
+        private static bool HoldsAccountNonce(Transaction[] transactions, ulong nonce)
+        {
+            foreach (Transaction transaction in transactions)
+            {
+                if (transaction.Nonce == nonce && !KeyedNonceManager.UsesKeyedNonce(transaction))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void SkipUsedNonces()
+        {
             while (_usedNonces.Contains(_currentNonce))
             {
                 _currentNonce++;
