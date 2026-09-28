@@ -4796,16 +4796,8 @@ public class FrameTxProcessorTests
 
     /// <summary>A frame transaction has no <c>to</c> and creates nothing: prestateTracer has to record every
     /// frame target and the payer, whose storage and fee charge it otherwise misses or crashes on.</summary>
-    [TestCase(FramePayer.Sender, false, 0)]
-    [TestCase(FramePayer.Sponsor, false, 0)]
-    [TestCase(FramePayer.CodelessSponsor, false, 0)]
-    [TestCase(FramePayer.Sender, true, 0)]
-    [TestCase(FramePayer.Sponsor, true, 0)]
-    [TestCase(FramePayer.CodelessSponsor, true, 0)]
-    [TestCase(FramePayer.Sender, true, 1)]
-    [TestCase(FramePayer.Sponsor, true, 1)]
-    [TestCase(FramePayer.CodelessSponsor, true, 1)]
-    public void Execute_FrameTxTracedWithPrestateTracer_RecordsFrameTargetsAndPayer(FramePayer framePayer, bool diffMode, int baseFeePerGas)
+    [Test]
+    public void Execute_FrameTxTracedWithPrestateTracer_RecordsFrameTargetsAndPayer([Values] FramePayer framePayer, [Values] bool diffMode, [Values(0, 1)] int baseFeePerGas)
     {
         Address sponsor = TestItem.AddressF;
         Address storageHelper = TestItem.AddressD;
