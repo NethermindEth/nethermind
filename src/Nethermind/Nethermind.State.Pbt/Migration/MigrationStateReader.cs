@@ -22,7 +22,7 @@ internal sealed class MigrationStateReader(FlatStateReader flat, PbtStateReader 
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => selector.IsBinary(baseBlock, null)
         ? pbt.HasStateForBlock(baseBlock)
-        : flat.HasStateForBlock(baseBlock) && (selector.PbtHas(baseBlock) || selector.PbtAhead(baseBlock));
+        : flat.HasStateForBlock(baseBlock);
 
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) =>
         Select(baseBlock).TryGetAccount(baseBlock, address, out account);

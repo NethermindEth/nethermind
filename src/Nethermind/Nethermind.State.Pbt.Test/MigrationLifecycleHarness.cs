@@ -97,7 +97,13 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
                 tree.TryUpdateMainChain(blocks["anchor"].Header, true, true, [blocks["anchor"]]);
                 manager.FlushCache(CancellationToken.None);
             }
-            if (migration) await container.Resolve<InitializePbtMigration>().Execute(CancellationToken.None);
+            if (migration)
+            {
+                await container.Resolve<InitializePbtMigration>().Execute(CancellationToken.None);
+                PbtMigrationImport import = container.Resolve<PbtMigrationImport>();
+                await import.Completion;
+                Assert.That(import.Error, Is.Null);
+            }
             return new(container, blocks, expected, fixtures);
         }
         catch

@@ -101,6 +101,35 @@ public class MigrationRestartE2ETests
     }
 
     [Test]
+    public async Task Flat_processes_alone_while_pbt_lacks_the_base()
+    {
+        string directory = CreateTestDirectory();
+        try
+        {
+            await using (MigrationLifecycleHarness flatOnly = await MigrationLifecycleHarness.Create(Path.Combine(directory, "db"), portable: true,
+                builder => ConfigureRocks(builder), Path.Combine(MigrationLifecycleHarness.Fixtures, "builder-predeploys"), migration: false))
+            {
+                ProcessBranch(flatOnly, ["a1", "a2"], expectPbt: false);
+                Promote(flatOnly, "a2");
+                Persist(flatOnly);
+            }
+            // A follower that never runs keeps PBT at the anchor, behind the flat head.
+            await using MigrationLifecycleHarness migrating = await MigrationLifecycleHarness.Create(Path.Combine(directory, "db"), portable: true,
+                builder => ConfigureRocks(builder).AddSingleton<PbtBalFollowerScheduler>(_ => new PbtBalFollowerScheduler((_, _) => Task.FromResult(false), () => null, () => null)),
+                Path.Combine(MigrationLifecycleHarness.Fixtures, "builder-predeploys"));
+            ProcessBranch(migrating, ["a3"], expectPbt: false);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(migrating.Pbt.HasStateForBlock(new StateId(migrating.Blocks["a2"].Header)), Is.False);
+                Assert.That(migrating.Pbt.HasStateForBlock(new StateId(migrating.Blocks["a3"].Header)), Is.False, "a3 ran on flat alone");
+                Assert.That(migrating.Reader.HasStateForBlock(migrating.Blocks["a3"].Header), Is.True);
+            }
+        }
+        catch { TestContext.Out.WriteLine($"Retained failed restart datadir: {directory}"); throw; }
+        Directory.Delete(directory, recursive: true);
+    }
+
+    [Test]
     public async Task External_offline_preimage_database_bootstraps_standard_flat_and_reopens()
     {
         string directory = CreateTestDirectory();

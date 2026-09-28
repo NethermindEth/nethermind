@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Pbt;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Pbt.Migration;
 
 namespace Nethermind.State.Pbt.Persistence;
 
@@ -40,7 +41,7 @@ public class PbtRocksDbPersistence(
     internal const int StemTopDepth = 260;
     private const byte ValidState = 1;
 
-    private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.ImportFromPreimageFlat);
+    private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.ImportFromPreimageFlat || PbtMigrationBootstrap.HasSource(config));
 
     internal bool IsValid => _db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey) is not null;
 
@@ -104,7 +105,7 @@ public class PbtRocksDbPersistence(
 
         if (HasPopulatedDataColumn(db) && !allowInterruptedImport)
         {
-            throw new InvalidDataException($"The epoch-{SchemaEpoch} PBT database contains an interrupted initialization. Rebuild into a new pbt database, or enable the preimage-flat import to clear and retry it.");
+            throw new InvalidDataException($"The epoch-{SchemaEpoch} PBT database contains an interrupted initialization. Rebuild into a new pbt database, or enable the preimage-flat import or configure the migration source to clear and retry it.");
         }
     }
 

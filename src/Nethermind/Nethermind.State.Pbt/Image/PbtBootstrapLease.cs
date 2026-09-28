@@ -7,12 +7,11 @@ using Nethermind.State.Flat.Persistence;
 namespace Nethermind.State.Pbt.Image;
 
 /// <summary>Owns exclusively pinned bootstrap inputs for the native PBT anchor import.</summary>
-/// <remarks>The module's factory must pin the standard-flat anchor and keep source DBs immutable.
+/// <remarks>The module's factory must keep source DBs immutable.
 /// A null portable stream pair selects the offline source.</remarks>
 internal abstract class PbtBootstrapLease : IDisposable
 {
     public abstract PbtImageAnchor Anchor { get; }
-    public abstract IPersistence.IPersistenceReader MptAnchor { get; }
     public abstract string ScratchDirectory { get; }
     public virtual Stream? Snapshot => null;
     public virtual Stream? Preimages => null;

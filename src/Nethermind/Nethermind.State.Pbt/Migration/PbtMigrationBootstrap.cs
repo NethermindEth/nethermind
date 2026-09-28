@@ -45,7 +45,7 @@ internal sealed class PbtMigrationBootstrap(
         if (genesis.Hash is null || initConfiguration.GenesisHash is { } expectedGenesis && new Hash256(expectedGenesis) != genesis.Hash)
             throw new InvalidDataException("Configured genesis hash differs from the loaded chain.");
 
-        if (!HasSource())
+        if (!HasSource(configuration))
         {
             VerifyAlignment();
             return;
@@ -57,7 +57,7 @@ internal sealed class PbtMigrationBootstrap(
         VerifyAlignment();
     }
 
-    private bool HasSource() => configuration.MigrationSnapshotPath is not null || configuration.MigrationPreimageSourcePath is not null || configuration.MigrationGenesisBootstrap;
+    internal static bool HasSource(IPbtConfig configuration) => configuration.MigrationSnapshotPath is not null || configuration.MigrationPreimageSourcePath is not null || configuration.MigrationGenesisBootstrap;
 
     private async Task Import(PbtBootstrapLease lease, CancellationToken cancellationToken)
     {
@@ -65,8 +65,9 @@ internal sealed class PbtMigrationBootstrap(
         if (header.StateRoot is null || header.Hash is null ||
             lease.Anchor.ActivationTimestamp is { } activation && header.Timestamp >= activation)
             throw new InvalidDataException("Migration requires a trusted pre-activation anchor.");
-        if (lease.MptAnchor.IsPreimageMode)
-            throw new InvalidDataException("Migration requires a standard-flat target; preimage-flat is an offline source only.");
+        using (IPersistence.IPersistenceReader flatReader = flatPersistence.CreateReader())
+            if (flatReader.IsPreimageMode)
+                throw new InvalidDataException("Migration requires a standard-flat target; preimage-flat is an offline source only.");
         if (!lease.IsAnchorCurrent()) throw new InvalidOperationException("Migration anchor is no longer available.");
         if (lease.Snapshot is { } snapshot && lease.Preimages is { } preimages)
         {
@@ -118,7 +119,7 @@ internal sealed class PbtMigrationBootstrap(
         bool IsCurrent() => blockTree.IsMainChain(header);
         PbtImageAnchor anchor = PbtMigrationAnchor.Create(chainSpec, genesis, header);
         string scratch = Path.Combine(dbFactory.GetFullDbPath(new DbSettings("migration-work", "migration-work")), "bootstrap");
-        return RuntimeBootstrapLease.Create(anchor, flatPersistence, scratch, IsCurrent,
+        return RuntimeBootstrapLease.Create(anchor, scratch, IsCurrent,
             configuration, genesisBootstrap?.Source, dbProvider.CodeDb, logManager);
     }
 }

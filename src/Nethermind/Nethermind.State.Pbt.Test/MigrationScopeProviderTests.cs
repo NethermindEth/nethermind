@@ -77,7 +77,7 @@ public class MigrationScopeProviderTests
     }
 
     [Test]
-    public async Task Main_provider_mirrors_in_lockstep_and_runs_flat_alone_below_a_pbt_pointer_that_got_ahead()
+    public async Task Main_provider_mirrors_in_lockstep_and_runs_flat_alone_while_pbt_lacks_the_base()
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }))
@@ -85,7 +85,7 @@ public class MigrationScopeProviderTests
             .Build();
         await using PbtTestContext pbt = new();
         FlatWorldStateManager flat = container.Resolve<FlatWorldStateManager>();
-        MigrationBackendSelector selector = new(Specs(), pbt.Manager, pbt.Coordinator);
+        MigrationBackendSelector selector = new(Specs(), pbt.Manager);
         MigrationScopeProvider provider = new(flat, pbt.WorldStateManager, pbt.Manager, pbt.ResourcePool, selector, pbt.Config, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
         BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).WithTimestamp(0).TestObject;
         BlockHeader block1 = Build.A.BlockHeader.WithParent(genesis).WithTimestamp(12).TestObject;
@@ -112,8 +112,7 @@ public class MigrationScopeProviderTests
         {
             Assert.That(selector.PbtHas(genesis), Is.True);
             Assert.That(provider.Select(genesis, block1), Is.TypeOf<PbtMirrorScopeProvider>(), "PBT holds the base: lockstep");
-            Assert.That(selector.PbtAhead(block1), Is.False);
-            Assert.That(provider.Select(block1, parentOfBehind), Is.TypeOf<PbtMirrorScopeProvider>(), "PBT behind the base: wait for the follower");
+            Assert.That(provider.Select(block1, parentOfBehind), Is.TypeOf<FlatScopeProvider>(), "PBT behind the base: flat alone while the follower catches up");
         }
         // Persist a second PBT state so the pointer is above block 0.
         using (IWorldStateScopeProvider.IScope scope = pbt.WorldStateManager.GlobalWorldState.BeginScope(genesis, new LocalMetrics()))
@@ -125,7 +124,6 @@ public class MigrationScopeProviderTests
         pbt.Manager.FlushCache(CancellationToken.None);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(selector.PbtAhead(behind), Is.True);
             Assert.That(provider.Select(behind, parentOfBehind), Is.TypeOf<FlatScopeProvider>(), "PBT persisted past the base: flat alone");
             Assert.That(provider.Select(block1, activation), Is.TypeOf<PbtScopeProvider>());
         }

@@ -30,8 +30,7 @@ internal sealed class MigrationScopeProvider(
     internal IWorldStateScopeProvider Select(BlockHeader? baseBlock, BlockHeader? targetBlock)
     {
         if (selector.IsBinary(baseBlock, targetBlock)) return _pbt;
-        if (selector.PbtHas(baseBlock)) return _mirror;
-        return selector.PbtAhead(baseBlock) ? _flat : _mirror;
+        return selector.PbtHas(baseBlock) ? _mirror : _flat;
     }
 
     public bool HasRoot(BlockHeader? baseBlock) => Select(baseBlock, null).HasRoot(baseBlock);

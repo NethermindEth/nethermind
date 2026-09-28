@@ -10,11 +10,11 @@ namespace Nethermind.State.Pbt.Migration;
 /// <remarks>
 /// The backend is chosen by the block about to be executed (or, for a pure read, by the block whose state is
 /// read): PBT once EIP-8347 is active, the flat MPT before. Pre-activation, PBT is kept in lockstep as a mirror
-/// whenever it holds the base state; when it does not, either the BAL follower still has to catch it up, or
-/// (after a crash) its persisted pointer is already above the base, in which case flat runs alone until the
-/// branch reaches it, since <see cref="PbtDbManager.AddSnapshot"/> rejects states below the pointer.
+/// whenever it holds the base state. When it does not (the anchor import is still running, the BAL follower still
+/// has to catch it up, or after a crash its persisted pointer is already above the base, which
+/// <see cref="PbtDbManager.AddSnapshot"/> rejects), flat runs alone until PBT holds the base again.
 /// </remarks>
-internal sealed class MigrationBackendSelector(ISpecProvider specProvider, IPbtDbManager pbtManager, PbtPersistenceCoordinator pbtPersistence)
+internal sealed class MigrationBackendSelector(ISpecProvider specProvider, IPbtDbManager pbtManager)
 {
     public bool IsBinary(BlockHeader? baseBlock, BlockHeader? targetBlock)
     {
@@ -23,11 +23,4 @@ internal sealed class MigrationBackendSelector(ISpecProvider specProvider, IPbtD
     }
 
     public bool PbtHas(BlockHeader? baseBlock) => pbtManager.HasStateForBlock(new StateId(baseBlock));
-
-    public bool PbtAhead(BlockHeader? baseBlock)
-    {
-        if (baseBlock is null) return false;
-        StateId persisted = pbtPersistence.GetCurrentPersistedStateId();
-        return persisted != StateId.PreGenesis && persisted.BlockNumber > baseBlock.Number;
-    }
 }

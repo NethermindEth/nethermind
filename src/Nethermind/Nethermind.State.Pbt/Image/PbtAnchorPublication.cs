@@ -218,7 +218,7 @@ internal sealed class PbtAnchorPublication(
                 foreach (byte[] recordKey in records.GetAllKeys())
                 {
                     token.ThrowIfCancellationRequested();
-                    if (column == PbtColumns.Metadata && recordKey.AsSpan().SequenceEqual(key)) continue;
+                    if (column == PbtColumns.Metadata && (recordKey.AsSpan().SequenceEqual(key) || PbtRocksDbPersistence.IsSchemaStamp(recordKey))) continue;
                     keys.Add(recordKey);
                     if (keys.Count == 4096) Delete();
                 }

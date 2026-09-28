@@ -8,7 +8,7 @@ using Nethermind.State.Pbt.Image;
 
 namespace Nethermind.State.Pbt.Migration;
 
-/// <summary>Keeps the exact native anchor snapshot and bootstrap inputs alive through publication.</summary>
+/// <summary>Keeps the bootstrap inputs alive through publication.</summary>
 internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
 {
     private readonly List<IDisposable> _owned = [];
@@ -18,21 +18,18 @@ internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
     private IPersistence.IPersistenceReader? _source;
     private IReadOnlyKeyValueStore? _code;
 
-    private RuntimeBootstrapLease(PbtImageAnchor anchor, IPersistence flatPersistence,
-        string scratchDirectory, Func<bool> isCurrent)
+    private RuntimeBootstrapLease(PbtImageAnchor anchor, string scratchDirectory, Func<bool> isCurrent)
     {
         Anchor = anchor;
-        MptAnchor = flatPersistence.CreateReader();
-        _owned.Add(MptAnchor);
         ScratchDirectory = scratchDirectory;
         _isCurrent = isCurrent;
     }
 
-    public static RuntimeBootstrapLease Create(PbtImageAnchor anchor, IPersistence flatPersistence,
+    public static RuntimeBootstrapLease Create(PbtImageAnchor anchor,
         string scratchDirectory, Func<bool> isCurrent, IPbtConfig configuration,
         MigrationGenesisSource? genesisSource, IReadOnlyKeyValueStore code, ILogManager logManager)
     {
-        RuntimeBootstrapLease lease = new(anchor, flatPersistence, scratchDirectory, isCurrent);
+        RuntimeBootstrapLease lease = new(anchor, scratchDirectory, isCurrent);
         try
         {
             if (configuration.MigrationSnapshotPath is { } snapshot)
@@ -61,7 +58,6 @@ internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
     }
 
     public override PbtImageAnchor Anchor { get; }
-    public override IPersistence.IPersistenceReader MptAnchor { get; }
     public override string ScratchDirectory { get; }
     public override Stream? Snapshot => _snapshot;
     public override Stream? Preimages => _preimages;

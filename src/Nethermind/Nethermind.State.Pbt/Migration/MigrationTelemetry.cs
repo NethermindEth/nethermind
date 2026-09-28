@@ -16,13 +16,15 @@ namespace Nethermind.State.Pbt.Migration;
 /// window the header commits to PBT, the binary direction parks at the activation parent and the Merkle direction
 /// reports the MPT root <see cref="MerkleShadowFollower"/> computed for the block.
 /// </remarks>
-internal sealed class MigrationTelemetry(IBlockTree blockTree, IPbtDbManager manager, PbtBalFollowerScheduler scheduler, IMerkleShadowFollower merkle, ISpecProvider specProvider)
+internal sealed class MigrationTelemetry(IBlockTree blockTree, IPbtDbManager manager, PbtMigrationImport import, PbtBalFollowerScheduler scheduler, IMerkleShadowFollower merkle, ISpecProvider specProvider)
     : IMigrationTelemetry
 {
     private BlockHeader? _activationParent;
 
     public MigrationProgressForRpc GetProgress()
     {
+        if (import.IsPending) return new("importing", null, null);
+        if (import.Error is not null) return new("importFailed", null, null);
         if (MigrationActivation.IsFinal(blockTree, specProvider)) return new("done", null, null);
         BlockHeader? head = blockTree.Head?.Header;
         if (head is not null && specProvider.GetSpec(head).IsEip8347Enabled)

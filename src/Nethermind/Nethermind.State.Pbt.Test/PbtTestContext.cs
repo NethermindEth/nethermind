@@ -58,7 +58,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
 
         // Production randomizes this offset; tests must use stable compaction boundaries.
         if (Config.CompactionOffset < 0) Config.CompactionOffset = 0;
-        _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(Db, new PbtConfig()), new TestProcessExitSource(_cts));
+        _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(Db, Config), new TestProcessExitSource(_cts));
         Persistence = Config.CarryForwardCache ? new PbtCarryForwardCachingPersistence(_cachedReaderPersistence) : _cachedReaderPersistence;
         ResourcePool = new PbtResourcePool(Config, nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance);
         Schedule = new PbtCompactionSchedule(MetadataDb, Config, LimboLogs.Instance);

@@ -7,14 +7,27 @@ using Nethermind.State.Pbt.Migration;
 
 namespace Nethermind.State.Pbt.Steps;
 
-/// <summary>Seeds the native PBT anchor and starts the BAL followers before networking, RPC or production.</summary>
+/// <summary>Starts seeding the native PBT anchor and the BAL followers before networking, RPC or production.</summary>
+/// <remarks>A configured anchor import runs in the background; the BAL follower starts once it lands.</remarks>
 [RunnerStepDependencies(dependencies: [typeof(LoadGenesisBlock)], dependents: [typeof(InitializeNetwork)])]
-internal sealed class InitializePbtMigration(PbtMigrationBootstrap bootstrap, PbtBalFollowerScheduler follower, MerkleShadowFollower merkleShadow) : IStep
+internal sealed class InitializePbtMigration(
+    PbtMigrationBootstrap bootstrap,
+    PbtMigrationImport import,
+    PbtBalFollowerScheduler follower,
+    MerkleShadowFollower merkleShadow,
+    IPbtConfig config) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
     {
-        await bootstrap.Initialize(cancellationToken);
-        follower.Start();
+        if (PbtMigrationBootstrap.HasSource(config))
+        {
+            import.Start();
+        }
+        else
+        {
+            await bootstrap.Initialize(cancellationToken);
+            follower.Start();
+        }
         merkleShadow.Start();
     }
 }

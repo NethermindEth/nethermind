@@ -74,6 +74,7 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
             .AddSingleton<MigrationFlatFinalizedStateProvider>()
             .AddSingleton<PbtAnchorPublication>()
             .AddSingleton<PbtMigrationBootstrap>()
+            .AddSingleton<PbtMigrationImport>()
             .AddSingleton<PbtBalReplay>()
             .AddSingleton<PbtBalFollower>()
             .AddSingleton<PbtBalFollowerScheduler>()

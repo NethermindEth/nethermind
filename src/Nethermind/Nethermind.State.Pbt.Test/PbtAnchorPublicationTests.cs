@@ -149,16 +149,24 @@ public class PbtAnchorPublicationTests
     }
 
     [Test]
-    public async Task Interrupted_native_anchor_recovers_only_matching_prepared_source([Values] bool changeSource)
+    public async Task Interrupted_native_anchor_recovers_only_matching_prepared_source([Values] bool changeSource, [Values] bool duringStaging)
     {
-        using Harness harness = new("a4");
+        PbtConfig config = new() { MigrationSnapshotPath = "snapshot.pbt" };
+        using Harness harness = new("a4", config);
         using CancellationTokenSource cancellation = new();
         harness.Target.OnSync = () =>
         {
-            if (harness.Target.GetColumnDb(PbtColumns.Metadata).Get("validState"u8) is not null) cancellation.Cancel();
+            if (duringStaging || harness.Target.GetColumnDb(PbtColumns.Metadata).Get("validState"u8) is not null) cancellation.Cancel();
         };
         Assert.ThrowsAsync<OperationCanceledException>(() => harness.Publish(cancellation.Token));
         harness.Target.OnSync = () => { };
+        if (duringStaging)
+        {
+            // A crash mid-staging leaves staged rows without a validity marker.
+            using IPbtPersistence.IWriteBatch batch = new PbtRocksDbPersistence(harness.Target, config).CreateStagingWriteBatch(WriteFlags.None);
+            batch.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), Account.TotallyEmpty);
+            batch.Commit();
+        }
         harness.Reopen();
         if (changeSource)
         {
@@ -353,12 +361,16 @@ public class PbtAnchorPublicationTests
         private PbtAnchorPublication? _publication;
         // Created on first use so the initializer's MaxBufferedRuns applies.
         public PbtAnchorPublication Publication => _publication ??=
-            new PbtAnchorPublication(new PbtRocksDbPersistence(Target, new PbtConfig()), Target, Pbt.Persistence, Pbt.Manager, Pbt.Coordinator, new PbtConfig(), LimboLogs.Instance) { MaxBufferedRuns = MaxBufferedRuns };
+            new PbtAnchorPublication(new PbtRocksDbPersistence(Target, _config), Target, Pbt.Persistence, Pbt.Manager, Pbt.Coordinator, _config, LimboLogs.Instance) { MaxBufferedRuns = MaxBufferedRuns };
         private readonly string _name;
+        private readonly PbtConfig _config;
 
-        public Harness(string name)
+        public Harness(string name) : this(name, new PbtConfig()) { }
+
+        public Harness(string name, PbtConfig config)
         {
             _name = name;
+            _config = config;
             Directory.CreateDirectory(Scratch.Path);
             JsonElement metadata = Metadata(name);
             BlockHeader header = Build.A.BlockHeader.WithNumber(metadata.GetProperty("number").GetUInt64())
@@ -381,7 +393,7 @@ public class PbtAnchorPublicationTests
 
         private void Open()
         {
-            Pbt = new PbtTestContext(Target);
+            Pbt = new PbtTestContext(Target, _config);
             _publication = null;
         }
 
@@ -403,23 +415,15 @@ public class PbtAnchorPublicationTests
     private sealed class BootstrapLease : PbtBootstrapLease
     {
         private readonly Harness _harness;
-        private readonly SnapshotableMemColumnsDb<FlatDbColumns> _mptDatabase = new(), _sourceDatabase = new();
+        private readonly SnapshotableMemColumnsDb<FlatDbColumns> _sourceDatabase = new();
         private readonly MemDb _code = new();
-        private readonly IPersistence.IPersistenceReader _mptReader;
         private readonly IPersistence.IPersistenceReader? _sourceReader;
         private readonly FileStream? _snapshot, _preimages;
         public bool Disposed { get; private set; }
 
-        public BootstrapLease(Harness harness, string name, bool offline, string? mismatch = null)
+        public BootstrapLease(Harness harness, string name, bool offline)
         {
             _harness = harness;
-            IPersistence mpt = mismatch == "preimage"
-                ? new PreimageRocksdbPersistence(_mptDatabase, LimboLogs.Instance, FlatLayout.PreimageFlat)
-                : new RocksDbPersistence(_mptDatabase, LimboLogs.Instance);
-            FlatStateId state = new(mismatch == "number" ? Anchor.Header.Number + 1 : Anchor.Header.Number,
-                mismatch == "root" ? default : Anchor.Header.StateRoot!.ValueHash256);
-            using (IPersistence.IWriteBatch batch = mpt.CreateWriteBatch(FlatStateId.PreGenesis, state, WriteFlags.None)) { }
-            _mptReader = mpt.CreateReader();
             if (offline)
             {
                 PreimageRocksdbPersistence source = new(_sourceDatabase, LimboLogs.Instance, FlatLayout.PreimageFlat);
@@ -442,7 +446,6 @@ public class PbtAnchorPublicationTests
         }
 
         public override PbtImageAnchor Anchor => _harness.Anchor;
-        public override IPersistence.IPersistenceReader MptAnchor => _mptReader;
         public override string ScratchDirectory => _harness.Scratch.Path;
         public override Stream? Snapshot => _snapshot;
         public override Stream? Preimages => _preimages;
@@ -453,8 +456,8 @@ public class PbtAnchorPublicationTests
         {
             if (Disposed) return;
             Disposed = true;
-            _snapshot?.Dispose(); _preimages?.Dispose(); _mptReader.Dispose(); _sourceReader?.Dispose();
-            _code.Dispose(); _sourceDatabase.Dispose(); _mptDatabase.Dispose();
+            _snapshot?.Dispose(); _preimages?.Dispose(); _sourceReader?.Dispose();
+            _code.Dispose(); _sourceDatabase.Dispose();
         }
     }
 

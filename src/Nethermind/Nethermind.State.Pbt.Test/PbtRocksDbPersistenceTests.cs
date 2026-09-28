@@ -684,6 +684,7 @@ public class PbtRocksDbPersistenceTests
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()),
             Throws.TypeOf<InvalidDataException>().With.Message.Contains("interrupted initialization"));
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { ImportFromPreimageFlat = true }), Throws.Nothing);
+        Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { MigrationSnapshotPath = "snapshot.pbt" }), Throws.Nothing);
     }
 
     [Test]
