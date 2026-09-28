@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Linq;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -252,5 +253,33 @@ public class RandaoMixAndEpochCacheTests
         byte[] bytes = new byte[32];
         bytes[0] = b;
         return new Hash256(bytes);
+    }
+
+    /// <summary>Sync rewards go to the validators behind each committee pubkey; a stale memo would pay the previous period's committee.</summary>
+    [Test]
+    public void Sync_committee_indices_map_repeated_members_and_follow_a_new_committee()
+    {
+        Validator[] validators = [.. new[] { 1, 2, 3, 4 }.Select(static b => new Validator { Pubkey = Pubkey((byte)b) })];
+        SyncCommittee first = new() { Pubkeys = [Pubkey(3), Pubkey(1), Pubkey(3)] };
+        SyncCommittee second = new() { Pubkeys = [Pubkey(4), Pubkey(2)] };
+        EpochCache cache = new();
+
+        int[] firstIndices = cache.GetSyncCommitteeIndices(first, validators);
+        int[] secondIndices = cache.GetSyncCommitteeIndices(second, validators);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstIndices, Is.EqualTo(new[] { 2, 0, 2 }));
+            Assert.That(secondIndices, Is.EqualTo(new[] { 3, 1 }));
+            Assert.That(cache.GetSyncCommitteeIndices(second, validators), Is.SameAs(secondIndices), "the same committee reuses its indices");
+            Assert.Throws<BeaconStateException>(() => cache.GetSyncCommitteeIndices(new SyncCommittee { Pubkeys = [Pubkey(9)] }, validators));
+        }
+    }
+
+    private static BlsPublicKey Pubkey(byte b)
+    {
+        byte[] bytes = new byte[48];
+        bytes[0] = b;
+        return new BlsPublicKey(bytes);
     }
 }
