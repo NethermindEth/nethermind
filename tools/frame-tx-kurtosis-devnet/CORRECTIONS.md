@@ -1,5 +1,12 @@
 # Corrections to the MAX_VERIFY_GAS campaign results
 
+> **Historical (v1 profile, 322,800).** This file records how the September 2026 devnet results
+> were withdrawn and re-measured on a two-Nethermind, Osaka-based devnet. It predates the v2
+> profile and the Nethermind + ethrex topology. Some interpretations below are superseded by the
+> campaign's later findings (FINDINGS F-39: gas is not a uniform CPU proxy across shapes; F-03:
+> signature stuffing binds the producer). Use it for the generator fixes C1 to C3, not for
+> current numbers.
+
 Status: **the pre-2026-09-19 devnet results are withdrawn.** Two defects in the traffic
 generator, not in Nethermind, produced the reported finding. Both are fixed; re-measurement is
 in progress. Do not cite the earlier numbers or the first two published reports.

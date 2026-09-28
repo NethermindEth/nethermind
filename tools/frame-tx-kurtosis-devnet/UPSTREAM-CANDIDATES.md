@@ -32,9 +32,9 @@ genesis hash 0xba50bcfd… identical on both clients
 ```
 
 **Devnet patch.** `images/nethermind/patch.sh` adds a `HezeTime` property and makes both the
-`BogotaTime` and `HezeTime` setters also write the `Eip8141Prototype` key. The mapping has to
-live in the setter, not the getter: `HardforkLabels.ExpandAll` reads the named-fork dictionary,
-not the properties.
+`BogotaTime` and `HezeTime` setters write only the `Eip8141Prototype` key (see item 5 for why
+not the Bogota fork too). The mapping has to live in the setter, not the getter:
+`HardforkLabels.ExpandAll` reads the named-fork dictionary, not the properties.
 
 **Why it is not a straight upstream.** The decoupling is deliberate. The property's own
 `<remarks>` says EIP-8141 schedules separately because the expiry-verifier predeploy shifts
@@ -84,44 +84,41 @@ filing either way.
 
 ---
 
-## 4. Nethermind and ethrex implement different EIP-8141 frame layouts
+## 4. Nethermind and ethrex frame layouts
 
-**Status:** campaign blocker. Not a Nethermind bug, but it decides what the devnet can claim.
+**Status:** resolved for this devnet by pinning ethrex `frames-devnet-0`.
 
-The two clients cannot decode each other's frame transactions:
+ethrex `main` (checked at `4f257f98`, 2026-09-26) still decodes a frame as
+`[mode, flags, target, gas_limit, value, data]` with flat fee fields, which Nethermind cannot
+read. ethrex `frames-devnet-0` (`52c2e626`) decodes `[mode, flags, target, [execution, state],
+value, data]` with a nested `fees` list, the same envelope as Nethermind and soispoke v2. The
+devnet builds ethrex from that commit. Verified 2026-09-28: both clients build blocks carrying
+frame transactions and import each other's.
 
-| Client | Frame tuple | Source |
-|---|---|---|
-| Nethermind | `[mode, flags, target, [execution, state], value, data]` | `TxFrameDecoder.cs:33-37`, reads `limits` as a sequence |
-| ethrex | `[mode, flags, target, gas_limit, value, data]` | `transaction.rs:1879`, `pub gas_limit: u64` |
+## 5. `-38005` on `engine_newPayload` when the genesis carries `bogotaTime`
 
-ethrex's own comment states the 6-tuple with a scalar `gas_limit`; Nethermind has the
-EIP-8037 state-gas split. Confirmed at runtime: ethrex rejects Nethermind's form with
-`Error decoding field 'gas_limit' of type u64: UnexpectedList`.
+**Status:** explained; devnet-only fix in `images/nethermind/patch.sh`.
 
-No single transaction satisfies both. Encoding per-client is not a way out either, because
-baseline transactions have to be *included in blocks*, so a block one client cannot decode
-splits the chain.
+Nethermind reads `bogotaTime` as its Bogota fork class, which is Amsterdam plus EIP-7805
+(inclusion lists) and moves `engine_newPayload` to V6. The frames devnet's generator uses
+`bogotaTime` to mean Amsterdam plus EIP-8141, and the consensus layer sends V5, so every payload
+is rejected with `-38005`. Upstream's frames-devnet-0 deployment carries the same fix as a
+deployment-only commit (`3c210d3c`, "route the genesis bogotaTime label to frame
+transactions"), because on master Bogota is a mainnet fork name.
 
-Consequence: a cross-client frame-transaction devnet needs the two implementations on the same
-EIP revision first. Until then the campaign can run single-client.
+This, not Gloas itself, is what stalled the earlier attempts to schedule Gloas. Items 3 and the
+previous version of this item, which blamed Gloas, are withdrawn.
 
-## 5. `engine_newPayloadV5` rejected with `Unsupported fork`
+## 6. Admission and queued nonces
 
-**Status:** probably expected, not a bug. Supersedes item 3.
+**Status:** observation, not filed.
 
-With Gloas scheduled at epoch 1, the chain stalled at block 1 and Nethermind answered every
-payload with `-38005 Unsupported fork`. EIP-8141 activates by head timestamp, so a stalled head
-also meant the fork never arrived, which is the real reason the fork gate saw
-`unsupported transaction type` for 600s rather than anything to do with EIP-8141.
-
-Context that makes this look expected rather than broken: the real `ethpandaops/glamsterdam-devnets`
-devnet-11 config still sets `GLOAS_FORK_EPOCH: 1125` and `HEZE_FORK_EPOCH: never`. No public
-devnet runs Gloas yet, so Nethermind not serving `newPayloadV5` for it is unfinished work on a
-future fork, not a regression. The devnet configuration was at fault for forcing it.
-
-Item 3 above is withdrawn: the `PayloadAttributesV5 expected` messages were the same
-misconfiguration seen earlier in the sequence.
+ethrex simulates a frame transaction at admission only if its nonce equals the sender's state
+nonce and refuses any other as `Nonce mismatch`, before the validation prefix runs. Nethermind
+admits a frame transaction with a queued nonce. The traffic generator now works under the
+stricter rule: attack transactions carry the attacker's state nonce, and honest traffic keeps at
+most one transaction in flight per sender. Which behaviour EIP-8141's mempool rules require was
+not checked here.
 
 ## Not Nethermind
 
@@ -134,4 +131,5 @@ Recorded so the campaign's own bugs are not mistaken for client bugs.
 | Fork-activation gate | this tool | Without it every scenario measured the pre-fork rejection path. |
 | `kurtosis service logs` line prefix | this tool | Result rows arrive prefixed with `[service] `, so an anchored filter dropped them all. |
 | Frame-tx envelope dialect | this tool | The vendored soispoke encoder always writes EIP-8250's `nonce_keys`; the deployed envelope omits it when empty. Encoder-side, not a client bug. Both clients agree with each other. |
-| Gloas at genesis | this tool | Breaks Lighthouse's genesis SSZ decode. Devnet keeps genesis on Fulu. |
+| Gloas at genesis | this tool | Broke genesis SSZ decode with `sigp/lighthouse:v8.2.2`. `ethpandaops/lighthouse:unstable-4b1f3c2`, the build frames-devnet-0 runs, handles it. |
+| Fixture deployment gas | this tool | Amsterdam's EIP-8037 prices contract creation by state growth; the Groth16 verifier no longer fits a fixed 2M gas. Deployments use `eth_estimateGas`. |

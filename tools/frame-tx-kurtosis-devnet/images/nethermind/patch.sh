@@ -16,8 +16,7 @@
 #      engine_newPayload to V6 and has every payload rejected with -38005. So bogotaTime and
 #      hezeTime are routed to EIP-8141 alone, as the upstream frames-devnet-0 deployment commit
 #      3c210d3c does. HardforkLabels.ExpandAll reads the named-fork dictionary rather than the
-#      property, so the mapping has to happen in the setter. An environment variable can instead
-#      schedule EIP-8141 relative to genesis on a base that emits no such key.
+#      property, so the mapping has to happen in the setter.
 #
 # Usage: patch.sh <source-root> <max-verify-gas>
 set -euo pipefail
@@ -32,7 +31,6 @@ fi
 
 readonly CONSTANTS="${SRC_ROOT}/Nethermind.Core/Eip8141Constants.cs"
 readonly GENESIS="${SRC_ROOT}/Nethermind.Specs/ChainSpecStyle/Json/GethGenesisConfigJson.cs"
-readonly LOADER="${SRC_ROOT}/Nethermind.Specs/ChainSpecStyle/GethGenesisLoader.cs"
 
 # Every edit below asserts its anchor is unique first: a silent no-op here produces an image
 # that looks patched and measures the wrong ceiling.
@@ -73,27 +71,8 @@ replace "${GENESIS}" "${STOCK_BOGOTA}" "$(printf '%s\n%s' \
 assert_count "${GENESIS}" 'public ulong? HezeTime' 1 "the added HezeTime property"
 assert_count "${GENESIS}" 'set => SetTime(value, "Eip8141Prototype");' 2 "the EIP-8141 activation mapping"
 
-# A devnet that keeps genesis on Fulu (which is what public devnets actually run: glamsterdam
-# devnet-11 still has GLOAS_FORK_EPOCH 1125 and HEZE never) emits neither hezeTime nor
-# bogotaTime, so the mapping above has nothing to fire on. Scheduling EIP-8141 relative to
-# genesis avoids depending on a fork label the generator does not write, and avoids activating
-# at genesis itself, where the expiry-verifier predeploy would have to be in the generated
-# genesis state. ExpandAll runs inside LoadParameters, which only sees the config and the chain
-# spec, so the genesis time is read back from the already-loaded genesis block.
-readonly STOCK_EXPAND='        HardforkLabels.ExpandAll(chainSpec.Parameters, config);'
-assert_count "${LOADER}" "${STOCK_EXPAND}" 1 "the ExpandAll call"
-replace "${LOADER}" "${STOCK_EXPAND}" "${STOCK_EXPAND}
-
-        if (Environment.GetEnvironmentVariable(\"NETHERMIND_EIP8141_ACTIVATION_OFFSET_SECONDS\") is { Length: > 0 } eip8141Offset
-            && ulong.TryParse(eip8141Offset, out ulong eip8141OffsetSeconds))
-        {
-            chainSpec.Parameters.Eip8141TransitionTimestamp = (chainSpec.Genesis?.Timestamp ?? 0) + eip8141OffsetSeconds;
-        }"
-assert_count "${LOADER}" "NETHERMIND_EIP8141_ACTIVATION_OFFSET_SECONDS" 1 "the EIP-8141 activation override"
-
 cat <<EOF
 Nethermind devnet patch applied:
   Eip8141Constants.MaxVerifyGas = ${CEILING}
   bogotaTime / hezeTime activate EIP-8141 alone (not EIP-7805)
-  NETHERMIND_EIP8141_ACTIVATION_OFFSET_SECONDS schedules EIP-8141 relative to genesis
 EOF

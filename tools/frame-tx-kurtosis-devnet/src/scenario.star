@@ -21,7 +21,6 @@ DEFAULTS = {
     "ethrex_image": "",
     "groth16_artifacts_path": "",
     "traffic_enabled": True,
-    "eip8141_activation_offset_seconds": 0,
     "split_traffic": False,
     "extra_el_params": [],
 }
@@ -108,7 +107,6 @@ def _with_defaults(plan, raw):
         nethermind_image=merged["nethermind_image"],
         ethrex_image=merged["ethrex_image"],
         groth16_artifacts_path=merged["groth16_artifacts_path"],
-        eip8141_activation_offset_seconds=merged["eip8141_activation_offset_seconds"],
         split_traffic=merged["split_traffic"],
         extra_el_params=merged["extra_el_params"],
     )
@@ -138,24 +136,14 @@ def _apply_client_overrides(plan, ethereum_args, scenario):
             saw_nethermind = True
             if updated.get("el_image", "") == "":
                 updated["el_image"] = scenario.nethermind_image
-            # Runtime half of the ceiling. The other half is the compile-time constant baked
-            # into the image: raising this flag alone leaves simulated prefixes and signature
-            # verification pinned to Eip8141Constants.MaxVerifyGas. See README "Gas ceiling".
+            # Runtime half of the ceiling: it bounds the declared validation gas at admission.
+            # The simulated prefix stays capped at the compile-time Eip8141Constants.MaxVerifyGas
+            # baked into the image, so both must carry the ceiling.
             extra.append("--TxPool.FrameTxMaxVerifyGas={0}".format(scenario.max_verify_gas))
             # Per-scenario client tuning, used to probe which admission limit drives the cliff.
             for param in scenario.extra_el_params:
                 extra.append(param)
             updated["el_extra_params"] = extra
-            # With heze_fork_epoch set, the genesis carries bogotaTime and every client activates
-            # EIP-8141 from it at the same instant. Only a base without that key needs the patched
-            # image to schedule EIP-8141 this many seconds after genesis instead.
-            if scenario.eip8141_activation_offset_seconds > 0:
-                env = {}
-                for key in updated.get("el_extra_env_vars", {}):
-                    env[key] = updated["el_extra_env_vars"][key]
-                env["NETHERMIND_EIP8141_ACTIVATION_OFFSET_SECONDS"] = str(
-                    scenario.eip8141_activation_offset_seconds)
-                updated["el_extra_env_vars"] = env
         elif el_type == "ethrex":
             saw_ethrex = True
             if updated.get("el_image", "") == "":

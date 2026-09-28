@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Runs one scenario end to end: render args, start the enclave, wait, collect, tear down.
 
-    runner/run_scenario.py --ceiling 235800 --attacker-role keccak-wide --k-retry 4
+    runner/run_scenario.py --ceiling 235800 --attacker-role keccak-wide
 
 Raw output lands under results/<scenario-id>/ with enough provenance to reproduce the run.
 No analysis happens here: this task collects, a later one interprets.
@@ -410,14 +410,18 @@ def main(argv: list[str] | None = None) -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ceiling", type=int, default=235800,
                         help="MAX_VERIFY_GAS; campaign set: {0}".format(CAMPAIGN_CEILINGS))
-    parser.add_argument("--k-retry", type=int, default=1, choices=K_RETRIES)
+    parser.add_argument("--k-retry", type=int, default=1, choices=K_RETRIES,
+                        help="label only: attack transactions are refused at admission and no "
+                             "transaction carries an expiry deadline, so it changes nothing on the wire")
     parser.add_argument("--attacker-role", default="keccak-wide",
                         choices=ATTACKER_ROLES + ["none"])
     parser.add_argument("--attacker-rate", type=float, default=25.0)
     parser.add_argument("--baseline-rate", type=float, default=2.0)
     parser.add_argument("--warmup", type=float, default=30.0)
     parser.add_argument("--duration", type=float, default=240.0)
-    parser.add_argument("--privacy-inclusion", action="store_true")
+    parser.add_argument("--privacy-inclusion", action="store_true",
+                        help="probe for a valid privacy transaction; no valid proof ships, so it "
+                             "reports available=no")
     parser.add_argument("--split-traffic", action="store_true",
                         help="attack the first node, observe honest traffic on the second")
     parser.add_argument("--el-param", action="append", default=[],
