@@ -12,12 +12,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
         Address[]? fromAddresses,
         Address[]? toAddresses,
         int after,
-        int? count)
+        int? count,
+        TraceFilterMode mode)
     {
-        private readonly Address[]? _fromAddresses = fromAddresses;
-        private readonly Address[]? _toAddresses = toAddresses;
+        // An empty list is read as an omitted one, as in eth_getLogs: it does not restrict the match.
+        private readonly Address[]? _fromAddresses = fromAddresses is { Length: > 0 } ? fromAddresses : null;
+        private readonly Address[]? _toAddresses = toAddresses is { Length: > 0 } ? toAddresses : null;
         private int _after = after;
         private int? _count = count;
+        private readonly TraceFilterMode _mode = mode;
 
         /// <summary>No further trace can be accepted, so the blocks left in the range cannot change the result.</summary>
         public bool IsExhausted => _count <= 0;
@@ -56,7 +59,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return false;
         }
 
-        private bool MatchAddresses(Address? fromAddress, Address? toAddress) =>
-            _fromAddresses?.Contains(fromAddress) != false && _toAddresses?.Contains(toAddress) != false;
+        private bool MatchAddresses(Address? fromAddress, Address? toAddress)
+        {
+            bool? fromMatch = _fromAddresses?.Contains(fromAddress);
+            bool? toMatch = _toAddresses?.Contains(toAddress);
+            return _mode == TraceFilterMode.Union && (fromMatch.HasValue || toMatch.HasValue)
+                ? fromMatch == true || toMatch == true
+                : fromMatch != false && toMatch != false;
+        }
     }
 }
