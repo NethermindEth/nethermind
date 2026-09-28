@@ -81,6 +81,85 @@ Same as `PLAN.md`'s original scoping, still valid:
   `Nethermind.Db.Btdb.csproj`'s shape (references `LightningDB`, `Nethermind.Api`, `Nethermind.Db`).
   Add to `Nethermind.slnx` under a new `/Plugins/Lmdb/` folder, alongside the existing `/Plugins/Btdb/`.
 
+## Spike findings (2026-09-28, LightningDB 0.23.0, net10.0)
+
+A throwaway console spike (not committed — built against the installed `LightningDB` 0.23.0
+package under `net10.0`) empirically verified the semantics the "LMDB-specific, needing
+verification" list below called out, rather than trusting documentation excerpts. Two results
+contradict what the package's own shipped XML doc comments claim; the rest confirm the plan's
+assumptions. All six are settled enough to design against now:
+
+1. **Write-transaction acquire semantics: blocks, does not throw.** With one write transaction
+   held open on thread A, `env.BeginTransaction()` (no `ReadOnly` flag) called from thread B
+   blocked for the full duration thread A's transaction stayed open (measured: thread A held its
+   transaction 500ms, thread B's call returned at the 501ms mark) and then succeeded — no
+   busy-error, no exception, no polling needed. This mirrors BTDB's `StartWritingTransaction`
+   (the *correct* one of BTDB's two options, per BTDB bug #2) — the group-commit coordinator's
+   `DrainIfLeader` can call `BeginTransaction()` directly and rely on the runtime to serialize
+   writers; no retry-on-busy loop is needed.
+
+2. **Cross-thread transaction/cursor safety is real but not caught by an exception —
+   `NoThreadLocalStorage` matters for the *pool handoff*, not for whether it throws.** Calling
+   `.Get()` on the *same* read transaction object from a thread other than the one that created it
+   did not throw, with or without `EnvironmentOpenFlags.NoThreadLocalStorage` — contradicting the
+   shipped doc's warning ("a transaction must only be used by a single thread"). This is **not**
+   evidence that it's safe: it only proves the library doesn't guard against it with an exception,
+   which is exactly the shape of BTDB bug #7 (silent corruption under concurrent multi-threaded
+   cursor use, not a thrown error). Do not read anything into the absence of an exception here.
+   What *is* confirmed as the right pattern: two **independently-opened** read transactions, each
+   used from its own thread concurrently, worked cleanly. This validates the plan's design
+   as-is — a pool of independently-opened read transactions (not one shared instance handed
+   across threads) — and `NoThreadLocalStorage` should still be set on the column's environment,
+   because the pool's rent/return pattern means a given pooled transaction's *owning* thread can
+   legitimately change between rentals, which the default TLS-slot-per-thread binding is not
+   designed for even though this narrow test didn't surface an immediate failure from it.
+
+3. **Per-transaction `NoSync`/`NoMetaSync` — the plan's environment-wide-only assumption was
+   wrong; LightningDB 0.23.0 supports a genuine per-commit durability toggle.** The shipped XML
+   doc states plainly: "As of LMDB 1.0 this flag is honored per-transaction when passed to
+   BeginTransaction" — and empirically, `env.BeginTransaction(TransactionBeginFlags.NoSync)` and
+   `env.BeginTransaction(TransactionBeginFlags.None)` both succeeded against the same
+   environment (opened either with or without the env-wide `NoSync` flag), each committing fine.
+   This directly mirrors BTDB's per-commit durability knob (bug #3's fix,
+   `NextCommitTemporaryCloseTransactionLog`) — **no manual-sync-after-the-fact strategy is
+   needed**. Revised design: open the environment *without* the env-wide `NoSync` flag (safe
+   default), and have `DrainIfLeader` pass `TransactionBeginFlags.NoSync` on the physical write
+   transaction for any drained wave where *none* of the coalesced writes requested durability, or
+   `TransactionBeginFlags.None` when at least one does — the same per-wave decision BTDB made,
+   just via a begin-flag instead of a pre/post-commit call. `LightningEnvironment.Flush(force:
+   bool)` (maps to `mdb_env_sync`) is also confirmed present and callable on demand, for a manual
+   sync point if one is ever needed outside the per-transaction mechanism.
+
+4. **`MapSize` resize: the shipped doc comment ("may only be called before the environment is
+   opened") is wrong; the real constraint is LMDB's native one (no active write transaction).**
+   Empirically: setting `env.MapSize` after `Open()` succeeded with no transactions active, and
+   *also* succeeded with an active **read** transaction open. It threw
+   `LightningException: "Invalid argument"` only when a **write** transaction was active at the
+   time — a clean, catchable native rejection, not corruption. Data written before and after a
+   resize both read back correctly afterward. This confirms the plan's proposed design point
+   exactly: perform the resize inside the group-commit coordinator's leader-exclusive section
+   (`DrainIfLeader`, where no write transaction can be active by construction) and it's safe to do
+   so even in the presence of concurrent readers from the snapshot pool. (`LightningDB.Native.Lmdb`
+   is a public type exposing `mdb_env_set_mapsize` directly too, but the managed `MapSize` property
+   already does the right thing — no need to drop to the native P/Invoke.)
+
+5. **Delete API confirmed**: `LightningTransaction.Delete(LightningDatabase, byte[])` and the
+   `ReadOnlySpan<byte>` overload both exist, return `MDBResultCode.Success` on a real delete, and a
+   subsequent `Get` correctly returns `MDBResultCode.NotFound`.
+
+6. **Cursor navigation confirmed, with one signature gotcha**: `First()`/`Next()`/`Previous()`/
+   `Last()` all return `(MDBResultCode, MDBValue key, MDBValue value)` tuples directly. The
+   seek-to-greater-or-equal primitive `GetViewBetween`'s lower bound needs is
+   `LightningCursor.SetRange(key)` — but unlike the others, **it returns only an `MDBResultCode`**,
+   not a tuple; the key/value the cursor landed on must be read back with a follow-up
+   `cursor.GetCurrent()` call. Verified this lands on the correct next key and returns
+   `NotFound` cleanly when seeking past the end of the keyspace.
+
+Not spiked (deliberately out of scope for this pass, needs real snap-sync write volume to mean
+anything): `WriteMap` mode's actual corruption-blast-radius/performance tradeoff under load — still
+treat with the suspicion the plan describes; a lightweight spike wouldn't have caught BTDB's
+equivalent issue (bug #5) either.
+
 ## Architecture — reuse the proven BTDB shapes, adapted to LMDB's API and semantics
 
 The class structure that worked for BTDB carries over almost unchanged in shape (`LmdbDb`,
