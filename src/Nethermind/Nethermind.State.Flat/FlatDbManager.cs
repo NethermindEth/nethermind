@@ -27,6 +27,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     /// </summary>
     internal static bool NoTimedClears { get; } = Environment.GetEnvironmentVariable("NETHERMIND_FLAT_NO_TIMED_CLEARS") == "1";
 
+    /// <summary>
+    /// Benchmark switch (<c>NETHERMIND_FLAT_INLINE_PERSISTENCE=1</c>, with <c>FlatDb.InlineCompaction</c>): run each
+    /// block's persistence job on the committing thread instead of the persistence worker, so the bundle-cache clear it
+    /// ends with lands at the same point of every run. Persisting inline stalls block processing, so pair it with a
+    /// reorg depth that keeps the run in memory.
+    /// </summary>
+    internal static bool InlinePersistence { get; } = Environment.GetEnvironmentVariable("NETHERMIND_FLAT_INLINE_PERSISTENCE") == "1";
+
     private readonly ILogger _logger;
     private readonly IPersistenceManager _persistenceManager;
     private readonly ISnapshotCompactor _snapshotCompactor;
@@ -155,7 +163,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             ClearReadOnlyBundleCache();
         }
 
-        // Trigger persistence job.
+        // Trigger persistence job. Inline compaction under the benchmark switch runs the job on this thread too, since
+        // it clears the read-only bundle cache, which the next block's bundle assembly otherwise races.
+        if (_inlineCompaction && InlinePersistence)
+        {
+            await PersistIfNeeded(stateId);
+            return;
+        }
+
         await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
     }
 
