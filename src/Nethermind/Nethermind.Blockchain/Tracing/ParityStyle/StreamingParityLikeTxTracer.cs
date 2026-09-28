@@ -356,9 +356,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _hasMemory = true;
     }
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
-        if (!_streamVmTrace) { base.ReportStorageChange(key, value); return; }
+        if (!_streamVmTrace) { base.ReportOperationStorageChange(key, value); return; }
 
         EnsureBuffer(ref _storageKeyBuffer, key.Length);
         key.CopyTo(_storageKeyBuffer);
@@ -388,7 +388,15 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (!_streamVmTrace) { base.ReportGasUpdateForVmTrace(refund, gasAvailable); return; }
 
-        if (_hasPendingOp) _pendingUsed = gasAvailable;
+        if (!_hasPendingOp) return;
+
+        _pendingUsed = gasAvailable;
+        if (!_gasAlreadySetForCurrentOp)
+        {
+            _gasAlreadySetForCurrentOp = true;
+            _pushAssigned = true;
+            _treatGasParityStyle = false;
+        }
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,

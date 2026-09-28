@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -756,12 +757,48 @@ internal static partial class RlpHelpers
             return position + 1;
         }
 
-        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> span, RlpLimit.L32);
         Span<byte> bytes = stackalloc byte[Hash256.Size];
-        bytes.Clear();
-        span.CopyTo(bytes[(Hash256.Size - span.Length)..]);
+        position = DecodeZeroPrefixKeccakBytes(data, position, bytes);
         keccak = new Hash256(bytes);
         return position;
+    }
+
+    /// <summary>Decodes a log's topic 0 stored without its leading zero bytes, sharing the instance through <see cref="LogTopicCache"/>.</summary>
+    /// <returns>The position past the item.</returns>
+    /// <exception cref="RlpException">The item is an RLP null.</exception>
+    public static int DecodeZeroPrefixLogTopic0(ReadOnlySpan<byte> data, int position, out Hash256 topic)
+    {
+        if (data[position] == Rlp.EmptyByteArrayByte)
+        {
+            ThrowNullDecodedValue<Hash256>();
+        }
+
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        position = DecodeZeroPrefixKeccakBytes(data, position, bytes);
+        topic = LogTopicCache.Get(bytes);
+        return position;
+    }
+
+    private static int DecodeZeroPrefixKeccakBytes(ReadOnlySpan<byte> data, int position, Span<byte> bytes)
+    {
+        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> span, RlpLimit.L32);
+        bytes.Clear();
+        span.CopyTo(bytes[(Hash256.Size - span.Length)..]);
+        return position;
+    }
+
+    /// <summary>Decodes a log's topic 0, sharing the instance through <see cref="LogTopicCache"/>.</summary>
+    /// <returns>The position past the hash.</returns>
+    public static int DecodeLogTopic0(ReadOnlySpan<byte> data, int position, out Hash256 topic)
+    {
+        int prefix = data[position++];
+        if (prefix != KeccakRlpPrefix)
+        {
+            ThrowKeccakDecode(prefix, position, data.Length);
+        }
+
+        topic = LogTopicCache.Get(data.Slice(position, Hash256.Size));
+        return position + Hash256.Size;
     }
 
     /// <summary>Decodes a 32-byte hash that must be present.</summary>

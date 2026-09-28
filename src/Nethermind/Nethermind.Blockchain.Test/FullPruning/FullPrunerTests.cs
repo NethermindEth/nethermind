@@ -11,7 +11,6 @@ using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -219,9 +218,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         TestFullPruningDb.TestPruningContext ctx = await test.WaitForPruningStart();
         byte[] key = { 1, 2, 3 };
         test.FullPruningDb[key] = key;
-        test.FullPruningDb.Context.WaitForFinish.Set();
 
-        await test.WaitForPruningEnd(ctx);
+        Assert.That(await test.WaitForPruningEnd(ctx), Is.True);
         Assert.That(test.FullPruningDb[key], Is.EqualTo(key));
     }
 
@@ -336,12 +334,12 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
 
         public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
         {
-            while (!await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(1), CancellationToken.None))
+            while (await Task.WhenAny(context.WaitForFinish.Task, Task.Delay(1)) != context.WaitForFinish.Task)
             {
                 AddBlocks(1);
             }
             AddBlocks(1);
-            return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
+            return await Task.WhenAny(context.DisposeEvent.Task, Task.Delay(Timeout.MaxWaitTime * 5)) == context.DisposeEvent.Task;
         }
 
         public async Task<TestFullPruningDb.TestPruningContext> WaitForPruningStart()
@@ -435,13 +433,13 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             private readonly IPruningContext _context = context;
             private readonly bool _successfulPruning = successfulPruning;
 
-            public ManualResetEvent DisposeEvent { get; } = new(false);
-            public ManualResetEvent WaitForFinish { get; } = new(false);
+            public TaskCompletionSource DisposeEvent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            public TaskCompletionSource WaitForFinish { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             public void Dispose()
             {
                 _context.Dispose();
-                DisposeEvent.Set();
+                DisposeEvent.TrySetResult();
                 CancellationTokenSource.Dispose();
             }
 
@@ -459,7 +457,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
 
             public void Commit()
             {
-                WaitForFinish.Set();
+                WaitForFinish.TrySetResult();
                 if (_successfulPruning)
                 {
                     _context.Commit();

@@ -25,8 +25,8 @@ internal static class CommittedLogs
     public static IEnumerable<LogEntryForRpc> Of(ReceiptForRpc receipt)
     {
         // An L1 node omits "logs" or sends null for a receipt with no logs.
-        LogEntryForRpc[] logs = receipt.Logs ?? [];
-        for (int i = 0; i < logs.Length; i++)
+        IReadOnlyList<LogEntryForRpc> logs = receipt.Logs ?? [];
+        for (int i = 0; i < logs.Count; i++)
         {
             if (logs[i] is null) throw new ArgumentException($"Log entry {i} of receipt {receipt.TransactionHash} is null");
         }
@@ -36,7 +36,7 @@ internal static class CommittedLogs
 
     /// <summary>The committed subset of <paramref name="logs"/>, split out so <see cref="Of"/> can reject a
     /// malformed receipt at the call rather than on the first <c>MoveNext</c>.</summary>
-    private static IEnumerable<LogEntryForRpc> Committed(ReceiptForRpc receipt, LogEntryForRpc[] logs)
+    private static IEnumerable<LogEntryForRpc> Committed(ReceiptForRpc receipt, IReadOnlyList<LogEntryForRpc> logs)
     {
         if (TryGetAttributableFrames(receipt, logs, out FrameReceiptForRpc[]? frames))
         {
@@ -58,7 +58,7 @@ internal static class CommittedLogs
         }
     }
 
-    private static bool TryGetAttributableFrames(ReceiptForRpc receipt, LogEntryForRpc[] logs, [NotNullWhen(true)] out FrameReceiptForRpc[]? frames)
+    private static bool TryGetAttributableFrames(ReceiptForRpc receipt, IReadOnlyList<LogEntryForRpc> logs, [NotNullWhen(true)] out FrameReceiptForRpc[]? frames)
     {
         frames = receipt.FrameReceipts;
         if (receipt.Type != TxType.FrameTx || frames is not { Length: > 0 }) return false;
@@ -70,12 +70,12 @@ internal static class CommittedLogs
 
             foreach (LogEntry frameLog in frame.Logs ?? [])
             {
-                if (matched == logs.Length || !IsSameLog(logs[matched], frameLog)) return false;
+                if (matched == logs.Count || !IsSameLog(logs[matched], frameLog)) return false;
                 matched++;
             }
         }
 
-        return matched == logs.Length;
+        return matched == logs.Count;
     }
 
     /// <summary>Whether the receipt log is the frame log the concatenation puts at its position.</summary>

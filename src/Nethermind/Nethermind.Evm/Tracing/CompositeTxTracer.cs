@@ -320,7 +320,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
-    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    public void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -356,14 +356,14 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    public void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingStorage)
+            if (innerTracer.IsTracingInstructions)
             {
-                innerTracer.ReportStorageChange(key, value);
+                innerTracer.ReportOperationStorageChange(key, value);
             }
         }
     }

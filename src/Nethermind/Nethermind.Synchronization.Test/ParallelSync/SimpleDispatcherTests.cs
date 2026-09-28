@@ -241,11 +241,12 @@ public class SimpleDispatcherTests
         {
             // Processing is stalled, yet the single peer must still serve every in-flight request.
             await downloader.WaitForStarted(InFlightCap, cancellationToken);
-            while (peerPool.AvailablePeers == 0)
+            // A dispatch frees its peer before it takes a processing slot, so the second handler may
+            // still be on its way into HandleResponse once the last download has started.
+            while (peerPool.AvailablePeers == 0 || feed.CurrentlyHandling < MaxThreads)
             {
                 await Task.Delay(10, cancellationToken);
             }
-            Assert.That(feed.CurrentlyHandling, Is.EqualTo(MaxThreads));
         }
         finally
         {
@@ -254,6 +255,7 @@ public class SimpleDispatcherTests
         await runTask.WaitAsync(cancellationToken);
 
         Assert.That(feed.HandledCount, Is.EqualTo(InFlightCap));
+        Assert.That(feed.MaxConcurrentHandling, Is.EqualTo(MaxThreads));
         Assert.That(peerPool.FreedCount, Is.EqualTo(InFlightCap));
     }
 

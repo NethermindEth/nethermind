@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Threading;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -58,13 +57,10 @@ public class GuestJumpDestinationTests
     public void Scan_matches_the_reference(byte[] code) => AssertMatchesReference(code);
 
     [Test]
-    public void Full_analysis_reuses_the_completed_bitmap([Values] bool executeFirst)
+    public void Full_analysis_reuses_the_completed_bitmap()
     {
         CodeInfo codeInfo = new(new byte[] { PUSH1, JUMPDEST, JUMPDEST });
-        if (executeFirst) ((IThreadPoolWorkItem)codeInfo).Execute();
-
         long[] bitmap = codeInfo.JumpDestinationBitmap;
-        ((IThreadPoolWorkItem)codeInfo).Execute();
 
         using (Assert.EnterMultipleScope())
         {
@@ -145,6 +141,25 @@ public class GuestJumpDestinationTests
         return code;
     }
 
+    [Test]
+    public void Known_jump_destination_is_answered_only_for_scanned_code()
+    {
+        byte[] code = [JUMPDEST, PUSH1, JUMPDEST, JUMPDEST];
+        CodeInfo codeInfo = new(code);
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, code, codeInfo);
+
+        Assert.That(stack.IsKnownJumpDestination(3), Is.False, "not scanned yet");
+        Assert.That(stack.IsJumpDestination(3), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stack.IsKnownJumpDestination(3), Is.True, "scanned by the jump above");
+            Assert.That(stack.IsKnownJumpDestination(2), Is.False, "push data");
+            Assert.That(stack.IsKnownJumpDestination(4), Is.False, "past the end");
+        }
+    }
+
     private static void AssertMatchesReference(byte[] code)
     {
         long[] expected = Reference(code);
@@ -159,12 +174,12 @@ public class GuestJumpDestinationTests
         for (int i = 0; i < code.Length; i++)
         {
             Assert.That(stack.IsJumpDestination(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"stack forward {i}");
-            Assert.That(incremental.AnalyzeJump(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"forward {i}");
+            Assert.That(incremental.AnalyzeJump(i, code), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"forward {i}");
         }
         for (int i = code.Length - 1; i >= 0; i--)
         {
             Assert.That(stack.IsJumpDestination(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"stack backward {i}");
-            Assert.That(incremental.AnalyzeJump(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"backward {i}");
+            Assert.That(incremental.AnalyzeJump(i, code), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"backward {i}");
         }
     }
 

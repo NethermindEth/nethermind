@@ -12,11 +12,6 @@ public sealed partial class JumpDestinationAnalyzer
     // Guest execution is single-threaded; no cross-thread bitmap publication is needed.
     private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private long[] CreateOrWaitForJumpDestinationBitmap() => CreateJumpDestinationBitmap();
-
-    public void Execute() => _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
-
     /// <summary>The scan's two comparands, in the order it reads them: <c>JUMPDEST</c> then <c>PUSH1</c>.</summary>
     /// <remarks>
     /// ILC re-materialises a compared-against constant at every use inside a loop, and the preinitialiser
@@ -48,8 +43,8 @@ public sealed partial class JumpDestinationAnalyzer
         long currentFlags = 0;
         nuint flagsPosition = 0;
         ref int thresholds = ref MemoryMarshal.GetArrayDataReference(_byteScanThresholds);
-        int jumpDest = thresholds;
-        int push1 = Unsafe.Add(ref thresholds, 1);
+        nint jumpDest = thresholds;
+        nint push1 = Unsafe.Add(ref thresholds, 1);
         // The PUSH skip below steps up to 32 bytes past the end of the code, so the walk pins and moves
         // an unmanaged pointer: the same overshoot on a `ref byte` is a managed pointer outside its
         // object, which a relocating GC may adjust wrongly even though it is only ever compared - and
@@ -63,7 +58,7 @@ public sealed partial class JumpDestinationAnalyzer
             {
                 // Sign extension folds everything above PUSH32 below JUMPDEST, so one signed comparison
                 // covers the whole [JUMPDEST, PUSH32] window that the rebase-and-range-test needed two for.
-                int op = (sbyte)*position;
+                nint op = (sbyte)*position;
                 if (op >= jumpDest)
                 {
                     if (op >= push1)

@@ -222,14 +222,14 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public void SetOperationMemorySize(ulong newSize) =>
         _currentTxTracer.SetOperationMemorySize(newSize);
 
-    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData) =>
+    public void SetOperationReturnData(ReadOnlySpan<byte> returnData) =>
         _currentTxTracer.SetOperationReturnData(returnData);
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) =>
         _currentTxTracer.ReportMemoryChange(offset, data);
 
-    public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
-        _currentTxTracer.ReportStorageChange(key, value);
+    public void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
+        _currentTxTracer.ReportOperationStorageChange(key, value);
 
     public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) =>
         _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);

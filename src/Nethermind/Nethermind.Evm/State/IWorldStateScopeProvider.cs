@@ -17,6 +17,8 @@ namespace Nethermind.Evm.State;
 /// </summary>
 public interface IWorldStateScopeProvider
 {
+    /// <summary>Checks root availability, respecting processing usage where the backend distinguishes it.</summary>
+    /// <remarks>Does not verify the integrity or availability of every descendant trie node.</remarks>
     bool HasRoot(BlockHeader? baseBlock);
 
     /// <summary>
@@ -59,10 +61,10 @@ public interface IWorldStateScopeProvider
         /// Advisory trie warm-up hints pushed concurrently by speculative (prewarm) execution so the
         /// commit-path trie nodes load ahead of the final commit. No-op for backends without trie warm-up.
         /// </summary>
-        void HintWarmAccount(in ValueAddress address) { }
+        void HintWarmAccount(Address address) { }
 
-        /// <inheritdoc cref="HintWarmAccount"/>
-        void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
+        /// <inheritdoc cref="HintWarmAccount(Address)"/>
+        void HintWarmSlot(Address address, in UInt256 index) { }
 
         /// <summary>
         /// Get the account information for the following address.

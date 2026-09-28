@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Core;
@@ -154,6 +156,44 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         }
     }
 
+    // One position per sub-frame recorded before finalization: three CREATEs and six CALLs.
+    private const ulong MultiDestroyFinalizationPosition = 9UL;
+
+    [Test(Description = "Multiple finalization logs must be reported in the order the accounts were destroyed")]
+    public void FinalizationSelfDestructLogs_WithLog_FollowDestroyOrder()
+    {
+        Eip7708SelfDestructScenario.MultiDestroy scenario = Eip7708SelfDestructScenario.BuildMultiDestroy(Recipient, TestItem.AddressC);
+
+        (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, scenario.FactoryCode, value: 0);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        using NativeCallTracer tracer = new(tx, spec, GetGethTraceOptions(WithLog));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+
+        NativeCallTracerLogEntry[] expected = Array.ConvertAll(scenario.InDestroyOrder, static destroyed =>
+            ExpectedSelfDestructLog(destroyed.Account, destroyed.Funds, MultiDestroyFinalizationPosition));
+
+        Assert.That(topFrame.Logs, Is.EqualTo(expected).UsingPropertiesComparer(), "finalization logs must be reported in destroy order");
+    }
+
+    [Test(Description = "The receipt logs, not just the tracer stream, must carry finalization logs in destroy order")]
+    public void FinalizationSelfDestructLogs_FollowDestroyOrderInReceipt()
+    {
+        Eip7708SelfDestructScenario.MultiDestroy scenario = Eip7708SelfDestructScenario.BuildMultiDestroy(Recipient, TestItem.AddressC);
+
+        (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, scenario.FactoryCode, value: 0);
+        TxReceipt receipt = Eip7708SelfDestructScenario.ExecuteForReceipt(block, tx, _processor, SpecProvider.GetSpec(block.Header));
+
+        // Order-independent, so checked first: it must still hold when the log order check fails.
+        foreach ((Address account, byte _) in scenario.InDestroyOrder)
+        {
+            Assert.That(TestState.AccountExists(account), Is.False, $"destroyed account {account} must be gone regardless of finalization order");
+        }
+
+        Eip7708SelfDestructScenario.AssertReceiptFinalizationOrder(receipt, TransferLog.SelfDestructSignature, scenario);
+    }
+
     private static IEnumerable<TestCaseData> TransferLogCases()
     {
         yield return new TestCaseData(new TransferLogScenario(null, false))
@@ -207,6 +247,17 @@ public class GethLikeCallTracerEip7708DeferredTests : VirtualMachineTestsBase
             Assert.That(topFrame.Logs, Is.EqualTo([ExpectedBurnLog(contractA, Eip7708SelfDestructScenario.FundedAfter, 3UL)]).UsingPropertiesComparer(), "deferred Burn log must be reported to log tracers on the top frame");
         }
     }
+
+    [Test(Description = "The deferred path must order its Burn logs by destroy order like the inline path")]
+    public void FinalizationBurnLogs_FollowDestroyOrderInReceipt()
+    {
+        Eip7708SelfDestructScenario.MultiDestroy scenario = Eip7708SelfDestructScenario.BuildMultiDestroy(Recipient, TestItem.AddressC);
+
+        (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, scenario.FactoryCode, value: 0);
+        TxReceipt receipt = Eip7708SelfDestructScenario.ExecuteForReceipt(block, tx, _processor, SpecProvider.GetSpec(block.Header));
+
+        Eip7708SelfDestructScenario.AssertReceiptFinalizationOrder(receipt, TransferLog.BurnSignature, scenario);
+    }
 }
 
 file static class Eip7708SelfDestructScenario
@@ -239,4 +290,58 @@ file static class Eip7708SelfDestructScenario
         .CallWithValue(contract, CallGas, FundedAfter)
         .STOP()
         .Done;
+
+    /// <param name="FactoryCode">Factory creating, destroying and then re-funding three contracts.</param>
+    /// <param name="InDestroyOrder">The destroyed accounts and their residual balances, in the order they were destroyed.</param>
+    public readonly record struct MultiDestroy(byte[] FactoryCode, (Address Account, byte Funds)[] InDestroyOrder);
+
+    /// <summary>Builds a transaction that leaves three destroyed accounts, each with a distinct residual balance.</summary>
+    /// <remarks>Destroyed in descending address order, so neither destroy nor address order can pass for the other.</remarks>
+    public static MultiDestroy BuildMultiDestroy(Address creator, Address inheritor)
+    {
+        byte[] funds = [11, 22, 33];
+        Address[] created = [ContractAddress.From(creator, 0), ContractAddress.From(creator, 1), ContractAddress.From(creator, 2)];
+        Address[] descending = [.. created];
+        Array.Sort(descending);
+        Array.Reverse(descending);
+        Assert.That(created, Is.Not.EqualTo(descending), "scenario must have creation order differ from destroy order to discriminate the ordering");
+
+        byte[] initCode = InitCode(inheritor);
+        Prepare factory = Prepare.EvmCode;
+        foreach (Address _ in created) factory = factory.Create(initCode, InitBalance);
+        foreach (Address account in descending) factory = factory.Call(account, CallGas);
+        for (int i = 0; i < created.Length; i++) factory = factory.CallWithValue(created[i], CallGas, funds[i]);
+
+        (Address Account, byte Funds)[] inDestroyOrder = new (Address, byte)[descending.Length];
+        for (int i = 0; i < descending.Length; i++)
+        {
+            inDestroyOrder[i] = (descending[i], funds[Array.IndexOf(created, descending[i])]);
+        }
+
+        return new MultiDestroy(factory.STOP().Done, inDestroyOrder);
+    }
+
+    /// <summary>Executes <paramref name="tx"/> as the only transaction of <paramref name="block"/> and returns its receipt.</summary>
+    public static TxReceipt ExecuteForReceipt(Block block, Transaction tx, ITransactionProcessor processor, IReleaseSpec spec)
+    {
+        block.Header.GasUsed = 0;
+        using BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+        tracer.StartNewTxTrace(tx);
+        processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        return tracer.TxReceipts[0];
+    }
+
+    /// <summary>Asserts that the receipt's finalization logs carrying <paramref name="signature"/> follow destroy order.</summary>
+    public static void AssertReceiptFinalizationOrder(TxReceipt receipt, Hash256 signature, MultiDestroy scenario)
+    {
+        LogEntry[] finalizationLogs = Array.FindAll(receipt.Logs!, log => log.Topics[0] == signature);
+        LogEntry[] expected = Array.ConvertAll(scenario.InDestroyOrder, destroyed => new LogEntry(
+            TransferLog.Sender, Hash256.FromBytesWithPadding([destroyed.Funds]).BytesToArray(),
+            [signature, destroyed.Account.ToHash().ToHash256()]));
+
+        Assert.That(finalizationLogs, Is.EqualTo(expected).UsingPropertiesComparer(), "receipt log order must follow destroy order");
+    }
 }
