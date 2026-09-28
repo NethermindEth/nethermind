@@ -108,6 +108,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.EngineUnavailable"/> or <see cref="BlockImportResult.ParentPayloadUnverified"/>, keyed by block root, awaiting a retry.</summary>
     private readonly Dictionary<Hash256, PendingRetry> _pendingRetry = [];
 
+    /// <summary>Blocks whose missing columns were already fetched by root this slot; cleared on every slot tick.</summary>
+    private readonly HashSet<Hash256> _columnsFetchedThisSlot = [];
+
     /// <summary>The roots of the blocks in <see cref="_pendingByParent"/> held for a parent waiting on a payload.</summary>
     private readonly HashSet<Hash256> _heldForPayload = [];
 
@@ -390,6 +393,12 @@ public sealed class BeaconSyncOrchestrator(
         Hash256 root = block.ComputeMessageRoot();
         long startMs = Environment.TickCount64;
         BlockImportResult result = _importer!.Import(block, root, verifySignatures: true);
+        if (result == BlockImportResult.DataUnavailable && await FetchMissingColumnsAsync(block, root, token))
+        {
+            startMs = Environment.TickCount64;
+            result = _importer.Import(block, root, verifySignatures: true);
+        }
+
         // These results come after the importer verified the proposer signature.
         if (result is BlockImportResult.Imported or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified)
         {
@@ -437,6 +446,16 @@ public sealed class BeaconSyncOrchestrator(
 
         return result;
     }
+
+    /// <summary>
+    /// Fetches a deferred Fulu block's missing sampled columns by root from peers custodying them, at most once per
+    /// slot per block, which bounds the requests a block stuck on its columns can cause.
+    /// </summary>
+    /// <returns>Whether every sampled column is now held, so a re-import can pass the availability gate.</returns>
+    private async Task<bool> FetchMissingColumnsAsync(ForkedSignedBeaconBlock block, Hash256 root, CancellationToken token) =>
+        block is ForkedSignedBeaconBlock.OfFulu { Block.Message: { Body.BlobKzgCommitments.Length: > 0 } message }
+        && _columnsFetchedThisSlot.Add(root)
+        && await rangeSync.FetchColumnsByRootAsync(root, message, token);
 
     /// <summary>Remembers a block for <see cref="DrainPendingRetriesAsync"/>; silently drops it once <see cref="MaxPendingRetryBlocks"/> is reached, same as <see cref="QueuePendingGossipBlock"/> does for its list.</summary>
     /// <returns>Whether the block is held for a retry.</returns>
@@ -1112,6 +1131,7 @@ public sealed class BeaconSyncOrchestrator(
     internal async Task ProcessSlotAsync(ulong slot, CancellationToken token)
     {
         gossipRouter.ReleaseDueMessages();
+        _columnsFetchedThisSlot.Clear();
         _importer!.OnSlotTick(slot);
         await RunHeadStepAsync(token);
         await DrainPendingRetriesAsync(token);
