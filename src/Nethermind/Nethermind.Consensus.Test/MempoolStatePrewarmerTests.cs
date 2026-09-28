@@ -242,6 +242,30 @@ public class MempoolStatePrewarmerTests
     }
 
     /// <summary>
+    /// A newer head's session replaces the running one, which must stop at once: only the newest session is cancelled
+    /// when a block is queued, and starting the new session does not join the old one when the new spec skips warming.
+    /// </summary>
+    [Test]
+    public void NewHead_CancelsThePreviousSession()
+    {
+        BlockHeader oldHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(30_000_000).TestObject;
+        BlockHeader newHeader = Build.A.BlockHeader.WithNumber(11).WithTimestamp(100).WithGasLimit(30_000_000).WithParent(oldHeader).TestObject;
+        TokenCapturingPreWarmer preWarmer = new();
+        using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, oldHeader, out IBlockTree blockTree, out _, out _);
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(oldHeader)));
+        CancellationToken first = preWarmer.NextSession();
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(newHeader)));
+        CancellationToken second = preWarmer.NextSession();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.IsCancellationRequested, Is.True, "the replaced session must be cancelled");
+            Assert.That(second.IsCancellationRequested, Is.False, "the new session must be running");
+        }
+    }
+
+    /// <summary>
     /// A queued block cancels the session, but may leave the queue without success, some before any processing scope
     /// opens; no new head follows, so warming must start again from the unchanged head. A processed block is followed
     /// by its own head's session instead.
@@ -271,22 +295,6 @@ public class MempoolStatePrewarmerTests
             Assert.That(restarted, Is.EqualTo(!processed), "only a block that was not processed restarts warming");
             if (restarted) Assert.That(second.IsCancellationRequested, Is.False, "the new session must be running");
         }
-    }
-
-    /// <summary>
-    /// Subscribing to the queue is best effort: if resolving it fails, head notifications must not throw, and the
-    /// session still starts, to be joined when a processing scope opens.
-    /// </summary>
-    [Test]
-    public void QueueResolutionFailure_DoesNotThrowIntoHeadNotifications()
-    {
-        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(30_000_000).TestObject;
-        TokenCapturingPreWarmer preWarmer = new();
-        using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, headHeader, out IBlockTree blockTree, out _, out _,
-            new Lazy<IBlockProcessingQueue>(() => throw new InvalidOperationException("scope disposed")));
-
-        Assert.That(() => blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(headHeader))), Throws.Nothing);
-        Assert.That(preWarmer.NextSession().IsCancellationRequested, Is.False, "the session must still start");
     }
 
     /// <summary>
@@ -326,7 +334,7 @@ public class MempoolStatePrewarmerTests
 
     /// <summary>A prewarmer whose clock reads the head's timestamp, so the head is fresh enough to warm from.</summary>
     private static MempoolStatePrewarmer CreatePrewarmer(IBlockCachePreWarmer preWarmer, BlockHeader head, out IBlockTree blockTree,
-        out ITxSource txSource, out IBlockProcessingQueue processingQueue, Lazy<IBlockProcessingQueue> lazyQueue = null)
+        out ITxSource txSource, out IBlockProcessingQueue processingQueue)
     {
         txSource = Substitute.For<ITxSource>();
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
@@ -349,7 +357,7 @@ public class MempoolStatePrewarmerTests
         blocksConfig.PreWarming.Returns(PreWarmMode.BlockAndMempool);
         blocksConfig.SecondsPerSlot.Returns(SecondsPerSlot);
 
-        return new MempoolStatePrewarmer(preWarmer, txSourceFactory, blockTree, lazyQueue ?? new Lazy<IBlockProcessingQueue>(() => queue), specProvider, timestamper, blocksConfig, LimboLogs.Instance);
+        return new MempoolStatePrewarmer(preWarmer, txSourceFactory, blockTree, new Lazy<IBlockProcessingQueue>(() => queue), specProvider, timestamper, blocksConfig, LimboLogs.Instance);
     }
 
     // Stands in for a chain-specific header subtype (e.g. XdcBlockHeader) whose CreateSimulatedChild returns its own type.

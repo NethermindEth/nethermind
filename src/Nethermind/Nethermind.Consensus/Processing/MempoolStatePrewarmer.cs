@@ -34,7 +34,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private readonly Lazy<IBlockProcessingQueue> _processingQueue;
     private const int QueueNotSubscribed = 0;
     private const int QueueSubscribed = 1;
-    // Disposed, or the queue could not be resolved; either way never subscribed again.
+    // Disposed: never subscribed again.
     private const int QueueClosed = 2;
     private int _queueSubscription;
     private readonly ISpecProvider _specProvider;
@@ -91,20 +91,10 @@ public sealed class MempoolStatePrewarmer : IDisposable
         using (_sessionLock.EnterScope())
         {
             if (_queueSubscription != QueueNotSubscribed) return;
-            try
-            {
-                IBlockProcessingQueue queue = _processingQueue.Value;
-                queue.BlockAdded += OnBlockQueued;
-                queue.BlockRemoved += OnBlockRemoved;
-                _queueSubscription = QueueSubscribed;
-            }
-            catch (Exception ex)
-            {
-                // Best effort, and the lazy caches a failed resolution: stay unsubscribed, so sessions are joined when a
-                // processing scope opens, rather than throw into every head notification.
-                _queueSubscription = QueueClosed;
-                if (_logger.IsDebug) _logger.Debug($"Mempool pre-warming could not subscribe to the processing queue: {ex}");
-            }
+            IBlockProcessingQueue queue = _processingQueue.Value;
+            queue.BlockAdded += OnBlockQueued;
+            queue.BlockRemoved += OnBlockRemoved;
+            _queueSubscription = QueueSubscribed;
         }
     }
 
@@ -163,16 +153,17 @@ public sealed class MempoolStatePrewarmer : IDisposable
 
             // Not linked or disposed: it only carries this session's cancellation, and holds no registration or timer.
             CancellationTokenSource session = new();
+            CancellationTokenSource? replaced;
             using (_sessionLock.EnterScope())
             {
-                if (Volatile.Read(ref _disposed) != 0) session.Cancel();
                 // A pass for an older head that ran late must not displace the newer head's session.
-                else if (generation > _sessionGeneration)
-                {
-                    _sessionGeneration = generation;
-                    _session = session;
-                }
+                if (Volatile.Read(ref _disposed) != 0 || generation <= _sessionGeneration) return;
+                replaced = _session;
+                _sessionGeneration = generation;
+                _session = session;
             }
+            // Starting the new session joins the replaced one only when the new head's spec warms at all.
+            replaced?.Cancel();
 
             _preWarmer.StartSpeculativePreWarm(
                 headHeader,
