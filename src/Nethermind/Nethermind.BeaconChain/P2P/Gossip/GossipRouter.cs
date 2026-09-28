@@ -77,14 +77,11 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private const int MaxSignedAggregateAndProofSizeGloas = 16829;
     private const int MaxAttesterSlashingSizeGloas = 2097616;
 
-    private static readonly int MaxCompressedGossipSize = Eth2MessageId.MaxCompressedLength(Eth2MessageId.MaxGossipSize);
-
     private const int SeenCacheSize = 2048;
     private const int SeenProposalCacheSize = 1024;
     private const int SeenEnvelopeCacheSize = 1024;
     private const int EnvelopeBlockCacheSize = 1024;
     private const int SeenSlashedIndexCacheSize = 8192;
-    private const int ParentSlotCacheSize = 1024;
     private const int MaxDeferredMessages = 64;
 
     /// <summary>The most stored blocks decoded per slot for envelopes whose block is not cached and not canonical at a recent slot.</summary>
@@ -97,6 +94,9 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     /// <summary>The most stored blocks decoded per slot to read the slot of a gossip block's held, uncached parent.</summary>
     internal const int ParentSlotReadsPerSlot = 16;
+
+    /// <summary>The most stored blocks decoded per slot to read the slot of the held, uncached block a Gloas aggregate with a non-zero index votes for.</summary>
+    internal const int VotedBlockSlotReadsPerSlot = 16;
 
     private readonly ILogger _logger = logManager.GetClassLogger<GossipRouter>();
     private readonly LruKeyCache<ValueHash256> _seenMessages = new(SeenCacheSize, "beacon gossip seen messages");
@@ -113,17 +113,15 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     // Written once an attester slashing verifies; read on the network thread. An evicted index only makes a later slashing consumed again.
     private readonly LruKeyCache<ulong> _seenSlashedIndices = new(SeenSlashedIndexCacheSize, "beacon gossip slashed indices");
 
-    // A stored block never changes, so its slot is decoded once per root.
-    private readonly LruCache<Hash256, ulong> _parentSlots = new(ParentSlotCacheSize, "beacon gossip parent slots");
+    private readonly StoredBlockSlots? _storedBlockSlots = store is null ? null : new(store, slotClock, logManager.GetClassLogger<GossipRouter>(), "beacon gossip stored block slots");
 
-    // Apart from the envelope budget, so blocks naming held parents cannot starve envelope checks, nor envelopes the parent-slot rule.
+    // One budget per rule, so messages naming held blocks under one rule cannot starve the store reads of another.
     private readonly PerSlotBudget _parentSlotReads = new(ParentSlotReadsPerSlot);
+    private readonly PerSlotBudget _votedBlockSlotReads = new(VotedBlockSlotReadsPerSlot);
+    private readonly PerSlotBudget _envelopeBlockDecodes = new(StoreDecodesPerSlot);
 
     // A held block never changes, so its bid is decoded once, not once per envelope; a root not held is never cached, as it may arrive a moment later.
     private readonly LruCache<Hash256, EnvelopeBlock> _envelopeBlocks = new(EnvelopeBlockCacheSize, "beacon gossip envelope blocks");
-    private readonly Lock _storeDecodeLock = new();
-    private ulong _storeDecodeSlot;
-    private int _storeDecodesThisSlot;
     private readonly Lock _deferredLock = new();
     private readonly List<(ulong Slot, Action Raise)> _deferred = [];
     private int _deferredCount;
@@ -296,14 +294,14 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         Handle(GossipTopics.AttesterSlashing, message,
             static payload => { AttesterSlashing.Decode(payload, out AttesterSlashing slashing); return slashing; },
             slashing => ValidateAttesterSlashing(
-                slashing.Attestation1!.AttestingIndices!, slashing.Attestation1.Data!, slashing.Attestation2!.AttestingIndices!, slashing.Attestation2.Data!),
+                slashing.Attestation1!.AttestingIndices!, slashing.Attestation1.Data!, slashing.Attestation2!.AttestingIndices!, slashing.Attestation2.Data!, gloas: false),
             slashing => AttesterSlashingReceived?.Invoke(slashing));
 
     private MessageValidity HandleGloasAttesterSlashing(byte[] message) =>
         Handle(GossipTopics.AttesterSlashing, message,
             static payload => { AttesterSlashingGloas.Decode(payload, out AttesterSlashingGloas slashing); return slashing; },
             slashing => ValidateAttesterSlashing(
-                slashing.Attestation1!.AttestingIndices!, slashing.Attestation1.Data!, slashing.Attestation2!.AttestingIndices!, slashing.Attestation2.Data!),
+                slashing.Attestation1!.AttestingIndices!, slashing.Attestation1.Data!, slashing.Attestation2!.AttestingIndices!, slashing.Attestation2.Data!, gloas: true),
             slashing => GloasAttesterSlashingReceived?.Invoke(slashing),
             MaxAttesterSlashingSizeGloas);
 
@@ -323,7 +321,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         Metrics.BeaconChainGossipReceivedByTopic.Increment(new StringLabel(name));
 
         // phase0 p2p "Gossipsub size limits": the compressed payload is bounded by max_compressed_len(MAX_PAYLOAD_SIZE); the type bound caps only the uncompressed size.
-        if (message.Length > MaxCompressedGossipSize)
+        if (message.Length > Eth2MessageId.MaxCompressedGossipSize)
         {
             return Drop(name, GossipDropReason.Oversized, MessageValidity.Rejected);
         }
@@ -423,7 +421,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
         // The store holds only blocks fork choice accepted, so a held parent has been seen and passed validation.
         bool parentHeld = store?.HasBlock(block.ParentRoot) == true;
-        if (parentHeld && TryReadStoredSlot(block.ParentRoot, out ulong parentSlot) && slot <= parentSlot)
+        if (parentHeld && _storedBlockSlots!.TryRead(block.ParentRoot, _parentSlotReads, out ulong parentSlot) && slot <= parentSlot)
         {
             return Invalid(GossipDropReason.NotAboveParentSlot);
         }
@@ -459,67 +457,6 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
         // An early next-slot block has not yet passed the future-slot IGNORE ordered before every REJECT.
         Verdict Invalid(GossipDropReason reason) => timing is null ? Verdict.Reject(reason) : Verdict.Ignore(reason);
-    }
-
-    // Within the per-slot decode budget only; a slot left unread skips the parent-slot rule, which the state transition asserts again.
-    private bool TryReadStoredSlot(Hash256 root, out ulong slot)
-    {
-        if (_parentSlots.TryGet(root, out slot))
-        {
-            return true;
-        }
-
-        if (!_parentSlotReads.TryTake(slotClock.CurrentSlot))
-        {
-            return false;
-        }
-
-        try
-        {
-            if (!store!.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? stored))
-            {
-                return false;
-            }
-
-            slot = stored.Slot;
-        }
-        // A read failure must not turn a valid block into an SSZ REJECT in Handle.
-        catch (Exception e)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Unreadable stored block {root} named as a gossip block's parent: {e.Message}");
-            return false;
-        }
-
-        _parentSlots.Set(root, slot);
-        return true;
-    }
-
-    /// <summary>A count of work items allowed per wall-clock slot, renewed when the slot changes; safe to call from several network threads.</summary>
-    private sealed class PerSlotBudget(int perSlot)
-    {
-        private readonly Lock _lock = new();
-        private ulong _slot;
-        private int _taken;
-
-        public bool TryTake(ulong currentSlot)
-        {
-            lock (_lock)
-            {
-                if (currentSlot != _slot)
-                {
-                    _slot = currentSlot;
-                    _taken = 0;
-                }
-
-                if (_taken >= perSlot)
-                {
-                    return false;
-                }
-
-                _taken++;
-                return true;
-            }
-        }
     }
 
     private static ForkedSignedBeaconBlock DecodeBlock(byte[] payload, bool gloasTopic)
@@ -560,7 +497,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             return Verdict.Ignore(GossipDropReason.StaleSlot);
         }
 
-        if (data.Target!.Epoch != epoch || CountSetBits(aggregationBits) == 0)
+        if (data.Target!.Epoch != epoch || CountSetBits(aggregationBits) == 0 || (gloas && data.Index != 0 && IsVoteForHeldBlockAtItsSlot(data)))
         {
             // An early next-slot aggregate has not yet passed the future-slot IGNORE ordered before these REJECTs.
             return timing is null ? Verdict.Reject(GossipDropReason.InvalidField) : Verdict.Ignore(GossipDropReason.InvalidField);
@@ -569,8 +506,13 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         return timing;
     }
 
+    // gloas verify_attestation_payload_status: a same-slot vote cannot see the payload yet. A block not held is left to fork choice.
+    private bool IsVoteForHeldBlockAtItsSlot(AttestationData data) =>
+        _storedBlockSlots?.TryRead(data.BeaconBlockRoot!, _votedBlockSlotReads, out ulong blockSlot) == true
+        && blockSlot == data.Slot;
+
     // phase0 attester_slashing: IGNORE unless an intersecting index is not in the seen set, then REJECT non-slashable data.
-    private Verdict? ValidateAttesterSlashing(ulong[] indices1, AttestationData data1, ulong[] indices2, AttestationData data2)
+    private Verdict? ValidateAttesterSlashing(ulong[] indices1, AttestationData data1, ulong[] indices2, AttestationData data2, bool gloas)
     {
         HashSet<ulong> second = [.. indices2];
         bool intersects = false;
@@ -593,7 +535,31 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             return Verdict.Ignore(intersects ? GossipDropReason.Duplicate : GossipDropReason.InvalidField);
         }
 
-        return BeaconStateAccessors.IsSlashableAttestationData(data1, data2) ? null : Verdict.Reject(GossipDropReason.InvalidField);
+        if (!BeaconStateAccessors.IsSlashableAttestationData(data1, data2))
+        {
+            return Verdict.Reject(GossipDropReason.InvalidField);
+        }
+
+        return HasValidIndices(indices1, gloas) && HasValidIndices(indices2, gloas) ? null : Verdict.Reject(GossipDropReason.InvalidField);
+
+        // is_valid_indexed_attestation index rules needing no state: sorted and unique, and in Gloas (EIP-7688) within the committee bound.
+        static bool HasValidIndices(ulong[] indices, bool gloas)
+        {
+            if (gloas && indices.Length > Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot)
+            {
+                return false;
+            }
+
+            for (int i = 1; i < indices.Length; i++)
+            {
+                if (indices[i] <= indices[i - 1])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
     }
 
     // validate_execution_payload_envelope_gossip (gloas/p2p-interface.md). verify_execution_requests_limits MAY run at
@@ -662,7 +628,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             return EnvelopeBlockLookup.NotHeld;
         }
 
-        if (!IsCanonicalAtRecentSlot(blockRoot, payloadSlot) && !TryTakeStoreDecode())
+        if (!IsCanonicalAtRecentSlot(blockRoot, payloadSlot) && !_envelopeBlockDecodes.TryTake(slotClock.CurrentSlot))
         {
             return EnvelopeBlockLookup.BudgetSpent;
         }
@@ -687,27 +653,6 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             : EnvelopeBlock.NotGloas;
         _envelopeBlocks.Set(blockRoot, block);
         return EnvelopeBlockLookup.Found;
-    }
-
-    private bool TryTakeStoreDecode()
-    {
-        ulong currentSlot = slotClock.CurrentSlot;
-        lock (_storeDecodeLock)
-        {
-            if (currentSlot != _storeDecodeSlot)
-            {
-                _storeDecodeSlot = currentSlot;
-                _storeDecodesThisSlot = 0;
-            }
-
-            if (_storeDecodesThisSlot >= StoreDecodesPerSlot)
-            {
-                return false;
-            }
-
-            _storeDecodesThisSlot++;
-            return true;
-        }
     }
 
     // Only exempts a decode from the budget: the decoded block is still checked against the envelope.

@@ -174,9 +174,9 @@ public class ReqRespFramingTests
         Assert.That(stream.Position, Is.LessThan(128), "the read stops at the bound, not at the end of the input");
     }
 
-    // A 10-byte stream identifier plus a padding frame of 4 header bytes and this much data: 64 bytes is the most an empty request reads.
-    [TestCase(50, false)]
-    [TestCase(51, true)]
+    // A 10-byte stream identifier plus a padding frame of 4 header bytes and this much data: max_compressed_len(0) = 32 bytes is the most an empty request reads.
+    [TestCase(18, false)]
+    [TestCase(19, true)]
     public async Task Empty_request_framing_is_read_up_to_its_byte_bound(int paddingLength, bool rejected)
     {
         byte[] wire = [.. Bytes.FromHexString("0x00ff060000734e61507059"), 0xfe, (byte)paddingLength, 0, 0, .. new byte[paddingLength]];

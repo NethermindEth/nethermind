@@ -34,6 +34,9 @@ public static class Eth2MessageId
     /// <summary>The spec <c>GOSSIP_MAX_SIZE</c>: the maximum allowed uncompressed gossip payload in bytes.</summary>
     public const int MaxGossipSize = 10 * 1024 * 1024;
 
+    /// <summary>phase0 p2p "Gossipsub size limits": a compressed gossip payload must not exceed <c>max_compressed_len(MAX_PAYLOAD_SIZE)</c>.</summary>
+    internal static readonly int MaxCompressedGossipSize = MaxCompressedLength(MaxGossipSize);
+
     private const int MessageIdLength = 20;
 
     /// <summary>More than the most a snappy element emits per byte of input: a 3-byte copy of 64 bytes.</summary>
