@@ -159,7 +159,8 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            int offset = index / 2;
+            // Unsigned, so the halving is a single shift and every negative index, -1 included, falls outside the span.
+            int offset = (int)((uint)index / 2);
             Span<byte> theSpan = Span;
             int b = theSpan[offset];
             if ((index & 1) == 0)
@@ -174,7 +175,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         set
         {
-            int offset = index / 2;
+            int offset = (int)((uint)index / 2);
             Span<byte> theSpan = Span;
             ref byte b = ref theSpan[offset];
             if ((index & 1) == 0)
