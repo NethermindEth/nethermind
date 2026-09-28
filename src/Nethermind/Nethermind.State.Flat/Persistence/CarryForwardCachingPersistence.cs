@@ -224,7 +224,6 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 _slots.Dispose();
             }
         }
-        Metrics.IncrementCarryForwardSlotWipes();
         Metrics.PublishCarryForwardAccountCount(0);
         Metrics.PublishCarryForwardSlotCount(0);
     }

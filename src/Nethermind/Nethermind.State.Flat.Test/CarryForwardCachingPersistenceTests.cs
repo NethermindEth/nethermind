@@ -255,19 +255,19 @@ public class CarryForwardCachingPersistenceTests
         try
         {
             cache.Clear();
-            long wipesBefore = GetWipes(kind);
-            long otherWipesBefore = GetWipes(GetOtherKind(kind));
+            long wipesBefore = Metrics.CarryForwardAccountWipes;
+            long slotEvictionsBefore = Metrics.CarryForwardSlotEvictions;
 
             Read(kind, cache, 1);
             Read(kind, cache, 2);
 
-            long wipesDelta = GetWipes(kind) - wipesBefore;
-            long otherWipesDelta = GetWipes(GetOtherKind(kind)) - otherWipesBefore;
+            long wipesDelta = Metrics.CarryForwardAccountWipes - wipesBefore;
+            long slotEvictionsDelta = Metrics.CarryForwardSlotEvictions - slotEvictionsBefore;
             long countAfterRefill = GetCount(kind);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(wipesDelta, Is.EqualTo(1));
-                Assert.That(otherWipesDelta, Is.Zero);
+                Assert.That(slotEvictionsDelta, Is.Zero);
                 Assert.That(countAfterRefill, Is.EqualTo(1), "the gauge is published after the overflowing fill");
             }
         }
@@ -287,7 +287,6 @@ public class CarryForwardCachingPersistenceTests
         try
         {
             cache.Clear();
-            long wipesBefore = Metrics.CarryForwardSlotWipes;
             long evictionsBefore = Metrics.CarryForwardSlotEvictions;
 
             for (int slot = 0; slot <= capacity; slot++) ReadSlot(cache, (ulong)slot);
@@ -296,7 +295,6 @@ public class CarryForwardCachingPersistenceTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(Metrics.CarryForwardSlotWipes - wipesBefore, Is.Zero);
                 Assert.That(Metrics.CarryForwardSlotEvictions - evictionsBefore, Is.EqualTo(1));
                 Assert.That(Metrics.CarryForwardSlotCount, Is.EqualTo(capacity), "a full table stays full");
                 Assert.That(inner.SlotReads, Is.EqualTo(innerReadsAfterFill), "the newest slot is served from the cache");
@@ -703,14 +701,6 @@ public class CarryForwardCachingPersistenceTests
     private static long GetCount(CacheKind kind) => kind == CacheKind.Account
         ? Metrics.CarryForwardAccountCount
         : Metrics.CarryForwardSlotCount;
-
-    private static long GetWipes(CacheKind kind) => kind == CacheKind.Account
-        ? Metrics.CarryForwardAccountWipes
-        : Metrics.CarryForwardSlotWipes;
-
-    private static CacheKind GetOtherKind(CacheKind kind) => kind == CacheKind.Account
-        ? CacheKind.Slot
-        : CacheKind.Account;
 
     private static int GetInnerReads(CacheKind kind, FakePersistence inner) => kind == CacheKind.Account
         ? inner.AccountReads

@@ -142,12 +142,6 @@ public static class Metrics
     internal static void IncrementCarryForwardAccountWipes() => Interlocked.Increment(ref _carryForwardAccountWipes.Value);
 
     [CounterMetric]
-    [Description("Times the carry-forward slot cache was cleared wholesale: by a self-destruct, a raw or range write, or a clear of the persistence")]
-    public static long CarryForwardSlotWipes => Volatile.Read(ref _carryForwardSlotWipes.Value);
-    private static CacheLinePaddedLong _carryForwardSlotWipes;
-    internal static void IncrementCarryForwardSlotWipes() => Interlocked.Increment(ref _carryForwardSlotWipes.Value);
-
-    [CounterMetric]
     [Description("Carry-forward slot cache entries replaced to make room in a full set")]
     public static long CarryForwardSlotEvictions => Volatile.Read(ref _carryForwardSlotEvictions.Value);
     private static CacheLinePaddedLong _carryForwardSlotEvictions;
