@@ -62,6 +62,45 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>An operator must see sync move without a line per block: at most one a second, only when the slot moved, saying how far.</summary>
+    [Test]
+    public void Sync_progress_is_logged_at_most_once_a_second_and_only_when_the_slot_moves()
+    {
+        Nethermind.Core.Test.TestLogger logger = new();
+        Harness harness = CreateHarness(logManager: new OneLoggerLogManager(new ILogger(logger)));
+
+        harness.Orchestrator.LogSyncProgress(110); // within the first second
+        harness.Timestamper.Add(TimeSpan.FromSeconds(1));
+        harness.Orchestrator.LogSyncProgress(120);
+        harness.Orchestrator.LogSyncProgress(121); // same second
+        harness.Timestamper.Add(TimeSpan.FromSeconds(1));
+        harness.Orchestrator.LogSyncProgress(120); // the slot did not move past the last line
+
+        string[] lines = [.. logger.LogList.Where(static l => l.StartsWith("Beacon sync:"))];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lines, Has.Length.EqualTo(1));
+            Assert.That(lines[0], Does.Contain("slot 120 (+20 slots, 2.0 blocks/s), 80 behind wall slot 200"));
+        }
+    }
+
+    [TestCase(false, true, TestName = "Sync progress is logged near head while the execution layer syncs")]
+    [TestCase(true, false, TestName = "Sync progress is not logged once following head in sync")]
+    public async Task Sync_progress_stops_once_the_node_follows_head_in_sync(bool elValid, bool expectLine)
+    {
+        Nethermind.Core.Test.TestLogger logger = new();
+        Harness harness = CreateHarness(logManager: new OneLoggerLogManager(new ILogger(logger)));
+        harness.Orchestrator.GossipStarted = true;
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, WallSlot - 1, finalizedEpoch: 1);
+        if (elValid) harness.Engine.FcuResponses.Enqueue(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakG });
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        harness.Timestamper.Add(TimeSpan.FromSeconds(1));
+        harness.Orchestrator.LogSyncProgress(WallSlot - 1);
+
+        Assert.That(logger.LogList.Count(static l => l.StartsWith("Beacon sync:")), Is.EqualTo(expectLine ? 1 : 0));
+    }
+
     [Test]
     public async Task Head_step_invalidates_payload_recomputes_head_and_retries_fcu_once_on_invalid()
     {
@@ -339,7 +378,7 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    private static Harness CreateHarness(ulong anchorSlot = AnchorSlot, ulong wallSlot = WallSlot, BeaconChainStore? store = null, IBeaconSyncPeer[]? peers = null)
+    private static Harness CreateHarness(ulong anchorSlot = AnchorSlot, ulong wallSlot = WallSlot, BeaconChainStore? store = null, IBeaconSyncPeer[]? peers = null, ILogManager? logManager = null)
     {
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + wallSlot * Spec.SecondsPerSlot).AddSeconds(6);
         ManualTimestamper timestamper = new(now);
@@ -361,7 +400,7 @@ public partial class BeaconSyncOrchestratorTests
             slotClock,
             router,
             statusHolder,
-            LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance);
 
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
         orchestrator.Initialize(importer, anchorBlock, anchorRoot);
