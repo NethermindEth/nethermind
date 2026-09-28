@@ -34,7 +34,10 @@ public class GuestDispatchDifferentialTests
     private const int ProgramsPerSeed = 1500;
 
     private static readonly IReleaseSpec ReleaseSpec = Osaka.Instance;
-    private static readonly ISpecProvider SpecProvider = new SingleReleaseSpecProvider(ReleaseSpec, BlockchainIds.Mainnet, BlockchainIds.Mainnet);
+
+    /// <summary>Forks either side of the gates on the opcodes the guest handlers cover, and the next one.</summary>
+    /// <remarks>The guest installs its handlers on every spec, so a fork that gates or reprices one of them has to be here.</remarks>
+    private static readonly IReleaseSpec[] Forks = [Byzantium.Instance, Constantinople.Instance, Shanghai.Instance, ReleaseSpec, Amsterdam.Instance];
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
 
     public enum Table { Untraced, Cancelable, Traced }
@@ -42,7 +45,7 @@ public class GuestDispatchDifferentialTests
     private readonly record struct Outcome(EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize);
 
     [Test]
-    public void Random_programs_match_the_shared_handlers([Range(0, 7)] int seed)
+    public void Random_programs_match_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec, [Range(0, 7)] int seed)
     {
         List<string> mismatches = [];
         for (int i = 0; i < ProgramsPerSeed && mismatches.Count < 5; i++)
@@ -63,15 +66,15 @@ public class GuestDispatchDifferentialTests
                 if (pass >= 2)
                 {
                     // Gas boundaries: exactly what a fresh run uses, then one short of it.
-                    Outcome fresh = Run(gas, input, head, new CodeInfo(code), Table.Traced);
+                    Outcome fresh = Run(gas, input, head, new CodeInfo(code), Table.Traced, spec);
                     if (IsFault(fresh.Exception)) break;
                     ulong used = gas - fresh.GasLeft;
                     gas = used - Math.Min(used, (ulong)(pass - 2));
                 }
 
-                Outcome untraced = Run(gas, input, head, untracedInfo, Table.Untraced);
-                Outcome cancelable = Run(gas, input, head, cancelableInfo, Table.Cancelable);
-                Outcome traced = Run(gas, input, head, tracedInfo, Table.Traced);
+                Outcome untraced = Run(gas, input, head, untracedInfo, Table.Untraced, spec);
+                Outcome cancelable = Run(gas, input, head, cancelableInfo, Table.Cancelable, spec);
+                Outcome traced = Run(gas, input, head, tracedInfo, Table.Traced, spec);
                 if (!Matches(untraced, cancelable) || !Matches(untraced, traced))
                     mismatches.Add($"program {i} pass {pass} gas {gas} head {head} code {Convert.ToHexString(code)} input {Convert.ToHexString(input)}\n untraced   {untraced}\n cancelable {cancelable}\n traced     {traced}");
             }
@@ -242,9 +245,9 @@ public class GuestDispatchDifferentialTests
         _ => (byte)random.Next(256),
     };
 
-    private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table)
+    private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null)
     {
-        DispatchingVirtualMachine vm = new();
+        DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData);
         using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default);
@@ -320,12 +323,13 @@ public class GuestDispatchDifferentialTests
         opcode is >= Instruction.LOG0 and <= Instruction.LOG4 ||
         (opcode >= Instruction.CREATE && opcode != Instruction.INVALID);
 
-    /// <summary>A virtual machine over a block of <see cref="ReleaseSpec"/>, whose current frame a test can set.</summary>
+    /// <summary>A virtual machine over a block of <paramref name="spec"/>, whose current frame a test can set.</summary>
     private sealed class DispatchingVirtualMachine : VirtualMachine<EthereumGasPolicy>
     {
-        public DispatchingVirtualMachine() : base(new NoBlockhashProvider(), SpecProvider, LimboLogs.Instance)
+        public DispatchingVirtualMachine(IReleaseSpec spec)
+            : base(new NoBlockhashProvider(), new SingleReleaseSpecProvider(spec, BlockchainIds.Mainnet, BlockchainIds.Mainnet), LimboLogs.Instance)
         {
-            SetBlockExecutionContext(new BlockExecutionContext(Header, ReleaseSpec));
+            SetBlockExecutionContext(new BlockExecutionContext(Header, spec));
             _txTracer = new SilentTracer();
         }
 

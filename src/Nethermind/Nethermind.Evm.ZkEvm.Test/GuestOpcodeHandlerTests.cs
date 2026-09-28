@@ -292,6 +292,9 @@ public class GuestOpcodeHandlerTests
         yield return Fails("PUSH1 onto a full stack", Code([.. Filled(1024, PUSH0), PUSH1, 0, STOP]), EvmExceptionType.StackOverflow);
         // The branch's PUSH2 overflows the stack an ISZERO leaves full, so the comparison runs unfused before it faults.
         yield return Fails("ISZERO PUSH2 JUMPI on a full stack", Code([.. Filled(1024, PUSH0), ISZERO, PUSH2, 0, 0x3f, JUMPI, STOP]), EvmExceptionType.StackOverflow);
+        // A non-zero top leaves the branch not taken, which would fuse if the full stack did not stop it first.
+        yield return Fails("ISZERO PUSH2 JUMPI not taken on a full stack",
+            Code([.. Filled(1023, PUSH0), PUSH1, 1, ISZERO, PUSH2, 0, 0x3f, JUMPI, STOP]), EvmExceptionType.StackOverflow);
         yield return Fails("EQ PUSH2 JUMPI taken onto a non-JUMPDEST byte", Code(PUSH1, 2, PUSH1, 2, EQ, PUSH2, 0, 9, JUMPI, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("ISZERO on an empty stack", Code(ISZERO), EvmExceptionType.StackUnderflow);
         yield return Fails("DUP1 on an empty stack", Code(DUP1), EvmExceptionType.StackUnderflow);
@@ -368,6 +371,26 @@ public class GuestOpcodeHandlerTests
     }
 
     /// <remarks>
+    /// Freshly allocated memory counts as initialized before any of it is active, so only the active size keeps a range
+    /// there from skipping its expansion charge. With gas for the hash but not the expansion, a hash would mean the
+    /// charge was skipped; it would also reach the precompile, which throws.
+    /// </remarks>
+    [Test]
+    public void Keccak256_past_the_active_size_of_fresh_memory_charges_its_expansion()
+    {
+        const ulong operands = 3 + 3;
+        const ulong hash = GasCostOf.Sha3 + GasCostOf.Sha3Word;
+        byte[] code = Code(PUSH1, 32, PUSH1, 0, KECCAK256, STOP);
+
+        Assert.That(Run(code, operands + hash, freshMemory: true).Exception, Is.EqualTo(EvmExceptionType.OutOfGas));
+    }
+
+    /// <remarks>As for <see cref="Keccak256_past_the_active_size_of_fresh_memory_charges_its_expansion"/>.</remarks>
+    [Test]
+    public void MLoad_past_the_active_size_of_fresh_memory_charges_its_expansion() =>
+        AssertSucceedsOnExactlyItsGas(Code(PUSH1, 0, MLOAD, STOP), 3 + (3 + 3), new byte[32], [], freshMemory: true);
+
+    /// <remarks>
     /// Once the first pass has analyzed the destination, every later iteration runs the fused step, and the range
     /// of gas lets it run out at each of the charges inside it.
     /// </remarks>
@@ -387,9 +410,9 @@ public class GuestOpcodeHandlerTests
         Assert.That(Run(code, (ulong)gas).Exception, Is.EqualTo(EvmExceptionType.OutOfGas));
     }
 
-    private static void AssertSucceedsOnExactlyItsGas(byte[] code, ulong gasUsed, byte[] memory, byte[] inputData)
+    private static void AssertSucceedsOnExactlyItsGas(byte[] code, ulong gasUsed, byte[] memory, byte[] inputData, bool freshMemory = false)
     {
-        Outcome outcome = Run(code, gasUsed, inputData);
+        Outcome outcome = Run(code, gasUsed, inputData, freshMemory);
 
         using (Assert.EnterMultipleScope())
         {
@@ -399,10 +422,10 @@ public class GuestOpcodeHandlerTests
         }
 
         for (ulong gas = 0; gas < gasUsed; gas++)
-            Assert.That(Run(code, gas, inputData).Exception, Is.EqualTo(EvmExceptionType.OutOfGas), $"with {gas} gas");
+            Assert.That(Run(code, gas, inputData, freshMemory).Exception, Is.EqualTo(EvmExceptionType.OutOfGas), $"with {gas} gas");
     }
 
-    private static unsafe Outcome Run(byte[] code, ulong gas, byte[]? inputData = null)
+    private static unsafe Outcome Run(byte[] code, ulong gas, byte[]? inputData = null, bool freshMemory = false)
     {
         DispatchingVirtualMachine vm = new();
         CodeInfo codeInfo = new(code);
@@ -410,6 +433,7 @@ public class GuestOpcodeHandlerTests
         // Rented as a transaction's frame is, so its memory starts with nothing initialized, as the guest's does.
         using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
             EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default);
+        if (freshMemory) frame.Memory = new EvmPooledMemory(new EvmFrameMemory(), isFresh: true);
         vm.Enter(frame);
 
         // The dispatch loop hands the chain a 32-byte aligned stack.
