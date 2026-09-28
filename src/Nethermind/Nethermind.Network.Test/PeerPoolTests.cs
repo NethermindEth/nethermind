@@ -11,9 +11,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Config;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -332,14 +334,28 @@ public class PeerPoolTests
             "a peer trusted after it was pooled must gain the flag, or admin_addTrustedPeer never takes effect for an already known peer");
     }
 
-    [Test]
-    public void GetOrAdd_NetworkNode_accepts_enr_without_enode([Values] bool alreadyPooled)
+    [TestCase(false)]
+    [TestCase(true)]
+    public void GetOrAdd_NetworkNode_accepts_persisted_enr(bool alreadyPooled)
     {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using SimpleFilePublicKeyDb writerDb = new("peers", directory.Path, LimboLogs.Instance);
+        NetworkStorage writer = new(writerDb, LimboLogs.Instance);
+        writer.StartBatch();
+        writer.UpdateNode(new NetworkNode(TestEnrString));
+        writer.Commit();
+
+        using SimpleFilePublicKeyDb readerDb = new("peers", directory.Path, LimboLogs.Instance);
+        NetworkStorage reader = new(readerDb, LimboLogs.Instance);
+        NetworkNode[] storedNodes = reader.GetPersistedNodes();
+        Assert.That(storedNodes, Has.Length.EqualTo(1));
+        NetworkNode enrNode = storedNodes[0];
+        Assert.That(enrNode.IsEnr, Is.True);
+        Assert.That(enrNode.Enode, Is.Null);
+
         ITrustedNodesManager trustedNodesManager = new TrustedNodesManager("trusted-nodes.json", LimboLogs.Instance);
         TestNodeSource nodeSource = new();
-        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
-
-        NetworkNode enrNode = new(TestEnrString);
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10, reader);
         Peer? pooled = alreadyPooled ? pool.GetOrAdd(new Node(enrNode.NodeId, "1.2.3.4", 1234)) : null;
 
         Peer resolved = pool.GetOrAdd(enrNode);
@@ -361,10 +377,10 @@ public class PeerPoolTests
         "nrkTfj499SZuOh8R33Ls8RRcy5wBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQPK" +
         "Y0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCdl8";
 
-    private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(
+    private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount, INetworkStorage? peerStorage = null) => new(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
-            new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
+            peerStorage ?? new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
             new NetworkConfig
             {
                 MaxActivePeers = maxActivePeers,
