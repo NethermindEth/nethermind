@@ -3,6 +3,8 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -32,6 +34,17 @@ public class GethLikeNativeTracerFactoryTests
         GethLikeNativeTxTracer nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
 
         Assert.That(nativeTracer, Is.InstanceOf(expectedTracer));
+    }
+
+    [Test]
+    public void Preimage_tracer_filters_only_keccak_and_preserves_transaction_hash()
+    {
+        using NativeKeccakPreimageTracer tracer = new(_tx, new GethTraceOptions());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((IInstructionTracingFilter)tracer).InstructionMask, Is.EqualTo(UInt256.One << (int)Instruction.KECCAK256));
+            Assert.That(tracer.BuildResult().TxHash, Is.EqualTo(_tx.Hash));
+        }
     }
 
     [Test]

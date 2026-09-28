@@ -50,6 +50,13 @@ public sealed class NativeKeccakPreimageTracer : GethLikeNativeTxTracer, IInstru
 
         ulong offset = stack.PeekUInt256(0).u0;
         ulong length = stack.PeekUInt256(1).u0;
+        if (offset > long.MaxValue || length > long.MaxValue) return;
+        // Geth's signed offset-plus-length wrap selects an empty memory copy.
+        if (offset + length > long.MaxValue)
+        {
+            _preimages[Keccak.OfAnEmptyString] = [];
+            return;
+        }
         if (offset > int.MaxValue || length > int.MaxValue) return;
 
         ulong end = offset + length;
