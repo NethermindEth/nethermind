@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
@@ -148,6 +149,7 @@ internal sealed class EvmAdmissionGate
     {
         lock (_lock)
         {
+            Debug.Assert(_inFlight > 0, "a lease was released twice");
             // Waiters resume on the thread pool, so completing them under the lock never runs their continuations here.
             while (TryDequeue(out Waiter? next))
             {
