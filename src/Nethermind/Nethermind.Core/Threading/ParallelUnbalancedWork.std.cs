@@ -482,9 +482,11 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
                 lock (_completion) Monitor.PulseAll(_completion);
         }
 
+#if DEBUG
         // Tests publish descendant work after the readiness check, at the wait boundary.
         [ThreadStatic]
         internal static Action? BeforeJoinWait;
+#endif
 
         private void JoinScoped()
         {
@@ -507,7 +509,9 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
                     if (!_complete && !_scope!.HasReadyWork(_queue!) && (active == 0 || active >= _workers || (active > 0 &&
                         (Volatile.Read(ref _next.Value) >= _to || _abandoned || _token.IsCancellationRequested || _exception is not null))))
                     {
+#if DEBUG
                         BeforeJoinWait?.Invoke();
+#endif
                         Monitor.Wait(_completion);
                     }
                     Volatile.Write(ref _joinerWaiting, 0);

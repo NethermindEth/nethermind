@@ -1483,7 +1483,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
 
         public bool SupportsParallelCommit => true;
-
     }
 
     private class PruningTrieStoreCommitter(

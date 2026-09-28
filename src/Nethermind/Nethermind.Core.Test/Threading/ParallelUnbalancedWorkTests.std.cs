@@ -137,8 +137,13 @@ public partial class ParallelUnbalancedWorkTests
         Assert.That(calls, Is.All.EqualTo(1));
     }
 
-    [Test]
-    public void Background_join_assists_nested_loop_without_running_unrelated_work([Values] bool enqueueAfterWait, [Values(1, 2)] int depth)
+    [TestCase(false, 1)]
+    [TestCase(false, 2)]
+#if DEBUG
+    [TestCase(true, 1)]
+    [TestCase(true, 2)]
+#endif
+    public void Background_join_assists_nested_loop_without_running_unrelated_work(bool enqueueAfterWait, int depth)
     {
         using ParallelUnbalancedWork.WorkerScope scope = new(2, static _ => { });
         using ManualResetEventSlim entered = new();
@@ -179,8 +184,10 @@ public partial class ParallelUnbalancedWorkTests
             });
         }
         Task worker = Task.Run(() => work.TryHelp());
+#if DEBUG
         Action? previousHook = ParallelUnbalancedWork.BackgroundWork.BeforeJoinWait;
         if (enqueueAfterWait) ParallelUnbalancedWork.BackgroundWork.BeforeJoinWait = release.Set;
+#endif
         try
         {
             Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
@@ -200,7 +207,9 @@ public partial class ParallelUnbalancedWorkTests
         }
         finally
         {
+#if DEBUG
             ParallelUnbalancedWork.BackgroundWork.BeforeJoinWait = previousHook;
+#endif
             release.Set();
             assisted.Set();
             worker.GetAwaiter().GetResult();
