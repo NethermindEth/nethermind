@@ -106,6 +106,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         if (CurrentTraceEntry is not null && !returnData.IsEmpty)
             CurrentTraceEntry.ReturnData = returnData.ToHexString(true);
     }
+
     public override void Dispose()
     {
         if (_sizeStorageByAddress is not null)
@@ -117,5 +118,4 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         _sizeWriter?.Dispose();
         base.Dispose();
     }
-
 }
