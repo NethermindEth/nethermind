@@ -389,6 +389,13 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                                 throw new SubprotocolException("Peer returned no progress for partial receipts");
                             }
 
+                            // Without a local header gas limit nothing bounds EIP-7975 paging of this block,
+                            // so stop at the complete prefix; callers treat the short tail as pending.
+                            if (blockGasLimit == 0)
+                            {
+                                return (aggregated, (long)totalResponseSize);
+                            }
+
                             ReceiptsValidationResult validationResult = ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed,
                                 blockGasLimit, transactions, receiptBehaviors, validateGasUpperBound, validateGasEqual, firstBlockReceiptIndex,
                                 false, partialReceiptsGas, partialReceiptsLogsGas, partialReceiptsContentSize);

@@ -351,6 +351,40 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public async Task Should_not_page_receipts_of_block_with_unknown_header(
+        [Values(0, 1)] int knownLeadingBlocks,
+        [Values] bool unknownBlockIncomplete)
+    {
+        const int maxPeerResponses = 32;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
+
+        Hash256[] hashes = [Keccak.Zero, TestItem.KeccakA];
+        _syncManager.FindHeader(hashes[knownLeadingBlocks]).Returns((BlockHeader?)null);
+
+        int requestCount = 0;
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            requestCount++;
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            ulong offset = (ulong)sent.FirstBlockReceiptIndex;
+            TxReceipt[] page = [new() { GasUsedTotal = GasCostOf.Transaction / 2 * (offset + 1), Logs = [] }];
+            TxReceipt[][] payload = offset == 0 && knownLeadingBlocks > 0 ? [BuildSequentialReceipts(1), page] : [page];
+
+            using ReceiptsMessage70 response = new(sent.RequestId, payload.ToPooledList(), unknownBlockIncomplete && requestCount < maxPeerResponses);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(hashes.Take(knownLeadingBlocks + 1).ToArray(), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requestCount, Is.EqualTo(1));
+            Assert.That(result, Has.Count.EqualTo(unknownBlockIncomplete ? knownLeadingBlocks : knownLeadingBlocks + 1));
+        }
+    }
+
+    [Test]
     public async Task Should_accept_empty_receipts_block_when_requesting_from_peer()
     {
         TxReceipt[] block2Receipts =
