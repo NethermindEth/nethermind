@@ -46,6 +46,9 @@ namespace Nethermind.JsonRpc
 
         internal bool IsBatchItem { get; set; }
 
+        /// <summary>When the batch holding this item started, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp; zero outside a batch.</summary>
+        internal long BatchStartTimestamp { get; set; }
+
         /// <summary>Signals that the caller has gone, e.g. the connection was closed.</summary>
         internal CancellationToken CancellationToken { get; set; }
 

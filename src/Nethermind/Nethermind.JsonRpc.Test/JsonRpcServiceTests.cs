@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
@@ -1260,15 +1261,19 @@ public class JsonRpcServiceTests
     }
 
     [TestCaseSource(nameof(EvmQueueingCases))]
-    public async Task Evm_request_queues_only_where_waiting_holds_up_no_other_request(
-        RpcEndpoint endpoint, int webSocketsProcessingConcurrency, bool batchItem, bool queues)
+    public async Task Evm_request_queues_unless_its_wait_budget_is_spent(
+        RpcEndpoint endpoint, int webSocketsProcessingConcurrency, int? batchStartedSecondsAgo, bool queues)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
         JsonRpcService service = CreateGatedService(ethRpcModule, webSocketsProcessingConcurrency: webSocketsProcessingConcurrency);
         using JsonRpcContext context = new(endpoint);
         JsonRpcRequest request = EthCall();
-        request.IsBatchItem = batchItem;
+        if (batchStartedSecondsAgo is { } secondsAgo)
+        {
+            request.IsBatchItem = true;
+            request.BatchStartTimestamp = Stopwatch.GetTimestamp() - secondsAgo * Stopwatch.Frequency;
+        }
 
         Task<JsonRpcResponse> response;
         using (await HoldSlot(service))
@@ -1284,10 +1289,12 @@ public class JsonRpcServiceTests
 
     private static IEnumerable<TestCaseData> EvmQueueingCases()
     {
-        yield return new TestCaseData(RpcEndpoint.Http, 1, false, true).SetName("HTTP queues");
-        yield return new TestCaseData(RpcEndpoint.Http, 1, true, false).SetName("Batch item is rejected at once");
-        yield return new TestCaseData(RpcEndpoint.Ws, 1, false, false).SetName("Single-worker WebSocket is rejected at once");
-        yield return new TestCaseData(RpcEndpoint.Ws, 2, false, true).SetName("Multi-worker WebSocket queues");
+        // CreateGatedService gives a 60 s budget.
+        yield return new TestCaseData(RpcEndpoint.Http, 1, null, true).SetName("HTTP queues");
+        yield return new TestCaseData(RpcEndpoint.Http, 1, 0, true).SetName("Batch item queues within its batch budget");
+        yield return new TestCaseData(RpcEndpoint.Http, 1, 61, false).SetName("Batch item whose batch used its budget is rejected at once");
+        yield return new TestCaseData(RpcEndpoint.Ws, 1, null, true).SetName("Single-worker WebSocket queues");
+        yield return new TestCaseData(RpcEndpoint.Ws, 2, null, true).SetName("Multi-worker WebSocket queues");
     }
 
     [TestCase(RpcEndpoint.Http, true, TestName = "Authenticated HTTP")]
@@ -1388,7 +1395,7 @@ public class JsonRpcServiceTests
         RpcTest.BuildJsonRequest("eth_call", transaction ?? new LegacyTransactionForRpc());
 
     private static ValueTask<EvmAdmissionGate.Lease> HoldSlot(JsonRpcService service) =>
-        service.EvmGate.AdmitAsync(0, allowQueue: false, CancellationToken.None);
+        service.EvmGate.AdmitAsync(0, TimeSpan.Zero, CancellationToken.None);
 
     [RpcModule(ModuleType.Eth)]
     public interface IMetadataTestRpcModule : IRpcModule

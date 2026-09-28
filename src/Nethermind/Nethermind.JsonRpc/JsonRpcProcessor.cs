@@ -580,6 +580,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
                 batchRequestJsonLifetime.TrackUntilBatchEnd(request, ownedRequestDocument);
                 request.IsBatchItem = true;
+                request.BatchStartTimestamp = startTime;
 
                 JsonRpcResult.Entry response = isStopped
                     ? CreateBatchResponseLimitEntry(request)

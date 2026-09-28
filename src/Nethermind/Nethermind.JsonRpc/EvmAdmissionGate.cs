@@ -51,6 +51,7 @@ internal sealed class EvmAdmissionGate
     }
 
     internal int Permits { get; }
+    internal TimeSpan Budget => _budget;
     internal int InFlight => Volatile.Read(ref _inFlight);
 
     internal int Queued
@@ -67,14 +68,14 @@ internal sealed class EvmAdmissionGate
     /// <summary>Converts the byte length of a request's raw <c>params</c> into a weight from 1 to <see cref="MaxWeight"/>.</summary>
     internal static int Weigh(int paramsUtf8Length) => Math.Min(MaxWeight, 1 + paramsUtf8Length / BytesPerWeightUnit);
 
-    /// <summary>Acquires an execution slot, waiting for one if every slot is busy and <paramref name="allowQueue"/> is set.</summary>
+    /// <summary>Acquires an execution slot, waiting up to <paramref name="maxWait"/> for one if every slot is busy.</summary>
     /// <param name="paramsUtf8Length">Byte length of the request's raw <c>params</c>; see <see cref="Weigh"/>.</param>
-    /// <param name="allowQueue">Whether the request may wait for a slot rather than be rejected at once.</param>
+    /// <param name="maxWait">How long the request may wait for a slot, capped at <see cref="Budget"/>; zero or less rejects it at once.</param>
     /// <param name="cancellationToken">Abandons the wait.</param>
     /// <returns>A lease to dispose exactly once, after the execution, including any task it returned, has completed.</returns>
-    /// <exception cref="LimitExceededException">No slot was free and the request could not queue, or none was granted within the budget.</exception>
+    /// <exception cref="LimitExceededException">No slot was free and the request could not queue, or none was granted within <paramref name="maxWait"/>.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled before a slot was granted.</exception>
-    internal async ValueTask<Lease> AdmitAsync(int paramsUtf8Length, bool allowQueue, CancellationToken cancellationToken)
+    internal async ValueTask<Lease> AdmitAsync(int paramsUtf8Length, TimeSpan maxWait, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Waiter waiter;
@@ -86,7 +87,8 @@ internal sealed class EvmAdmissionGate
                 return new Lease(this);
             }
 
-            if (!allowQueue || _budget == TimeSpan.Zero)
+            if (maxWait > _budget) maxWait = _budget;
+            if (maxWait <= TimeSpan.Zero)
             {
                 Metrics.RpcAdmissionNotQueueableRejections++;
                 throw new LimitExceededException(BusyMessage);
@@ -99,7 +101,7 @@ internal sealed class EvmAdmissionGate
             }
 
             long now = _timeProvider.GetTimestamp();
-            waiter = new Waiter(now);
+            waiter = new Waiter(now, maxWait);
             _waiters.Enqueue(waiter, (now + (Weigh(paramsUtf8Length) - 1) * _weightPenalty, ++_sequence));
             waiter.Arrival = _arrivals.AddLast(waiter);
             Metrics.RpcAdmissionQueued = _waiters.Count;
@@ -108,7 +110,7 @@ internal sealed class EvmAdmissionGate
         Lease lease;
         try
         {
-            lease = await waiter.Task.WaitAsync(_budget, _timeProvider, cancellationToken);
+            lease = await waiter.Task.WaitAsync(waiter.MaxWait, _timeProvider, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -151,7 +153,7 @@ internal sealed class EvmAdmissionGate
             {
                 Metrics.RpcAdmissionQueued = _waiters.Count;
                 // Its timeout may not have fired yet, but a waiter past its budget must not be admitted.
-                if (_timeProvider.GetElapsedTime(next.EnqueuedTimestamp) < _budget)
+                if (_timeProvider.GetElapsedTime(next.EnqueuedTimestamp) < next.MaxWait)
                 {
                     next.SetResult(new Lease(this));
                     return;
@@ -197,9 +199,10 @@ internal sealed class EvmAdmissionGate
     }
 
     /// <summary>A queued admission, completed only by <see cref="Release"/> after dequeuing it.</summary>
-    private sealed class Waiter(long enqueuedTimestamp) : TaskCompletionSource<Lease>(TaskCreationOptions.RunContinuationsAsynchronously)
+    private sealed class Waiter(long enqueuedTimestamp, TimeSpan maxWait) : TaskCompletionSource<Lease>(TaskCreationOptions.RunContinuationsAsynchronously)
     {
         public long EnqueuedTimestamp { get; } = enqueuedTimestamp;
+        public TimeSpan MaxWait { get; } = maxWait;
         public LinkedListNode<Waiter>? Arrival;
     }
 }

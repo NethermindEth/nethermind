@@ -42,7 +42,7 @@ public class EvmAdmissionGateTests
         Assert.That((third.IsCompleted, gate.InFlight, gate.Queued), Is.EqualTo((false, 2, 1)));
 
         first.Dispose();
-        Assert.That(async () => await gate.AdmitAsync(0, allowQueue: false, CancellationToken.None), Throws.InstanceOf<LimitExceededException>(),
+        Assert.That(async () => await gate.AdmitAsync(0, TimeSpan.Zero, CancellationToken.None), Throws.InstanceOf<LimitExceededException>(),
             "a request that may not queue never gets a slot released while others wait");
         Lease granted = await third.AsTask().WaitAsync(TestTimeout);
         Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((2, 0)));
@@ -52,13 +52,13 @@ public class EvmAdmissionGateTests
         Assert.That(gate.InFlight, Is.Zero);
     }
 
-    [TestCase(0, 0, true, 0, 0, 1, TestName = "Zero budget disables queueing")]
-    [TestCase(BudgetMs, 2, true, 2, 1, 0, TestName = "Full queue")]
-    [TestCase(BudgetMs, 0, false, 0, 0, 1, TestName = "Request that may not queue")]
-    [TestCase(BudgetMs, 0, true, 3, 0, 0, TestName = "Zero queue limit leaves the queue uncapped")]
+    [TestCase(0, 0, BudgetMs, 0, 0, 1, TestName = "Zero budget disables queueing")]
+    [TestCase(BudgetMs, 2, BudgetMs, 2, 1, 0, TestName = "Full queue")]
+    [TestCase(BudgetMs, 0, 0, 0, 0, 1, TestName = "Request that may not queue")]
+    [TestCase(BudgetMs, 0, BudgetMs, 3, 0, 0, TestName = "Zero queue limit leaves the queue uncapped")]
     [NonParallelizable]
     public async Task Busy_gate_rejects_at_once_only_when_the_request_cannot_queue(
-        int maxQueueWaitMs, int queueLimit, bool allowQueue, int alreadyQueued, int queueFullRejections, int notQueueableRejections)
+        int maxQueueWaitMs, int queueLimit, int requestMaxWaitMs, int alreadyQueued, int queueFullRejections, int notQueueableRejections)
     {
         bool rejected = queueFullRejections + notQueueableRejections > 0;
         (long QueueFull, long NotQueueable) rejectionsBefore = (Metrics.RpcAdmissionQueueFullRejections, Metrics.RpcAdmissionNotQueueableRejections);
@@ -66,7 +66,7 @@ public class EvmAdmissionGateTests
         using Lease held = await Admit(gate);
         Task<Lease>[] queued = [.. Enumerable.Range(0, alreadyQueued).Select(_ => Admit(gate).AsTask())];
 
-        Task<Lease> admission = gate.AdmitAsync(0, allowQueue, CancellationToken.None).AsTask();
+        Task<Lease> admission = gate.AdmitAsync(0, TimeSpan.FromMilliseconds(requestMaxWaitMs), CancellationToken.None).AsTask();
 
         if (rejected)
         {
@@ -138,19 +138,24 @@ public class EvmAdmissionGateTests
         Assert.That(heavy.IsCompletedSuccessfully, Is.True, "granted within its budget");
     }
 
-    [TestCase(true, TestName = "Timer fires at the budget")]
-    [TestCase(false, TestName = "Late timer: rejected when a slot frees, which passes to the next waiter")]
+    // A late timer leaves the rejection to the next release, which passes the slot on to the next waiter.
+    [Test]
     [NonParallelizable]
-    public async Task Waiter_is_rejected_once_its_budget_has_elapsed(bool timerFires)
+    public async Task Waiter_is_rejected_once_its_budget_has_elapsed([Values] bool timerFires, [Values(100, BudgetMs, 2 * BudgetMs)] int maxWaitMs)
     {
+        TimeSpan maxWait = TimeSpan.FromMilliseconds(maxWaitMs);
+        // A request's own wait is capped at the gate's budget.
+        TimeSpan rejectedAfter = TimeSpan.FromMilliseconds(Math.Min(maxWaitMs, BudgetMs));
         long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
         ManualClock clock = new();
         EvmAdmissionGate gate = CreateGate(clock);
         Lease held = await Admit(gate);
-        Task<Lease> waiter = Admit(gate).AsTask();
+        Task<Lease> waiter = Admit(gate, maxWait: maxWait).AsTask();
 
-        clock.Advance(TimeSpan.FromMilliseconds(BudgetMs), timerFires);
-        Task<Lease> next = Admit(gate).AsTask();
+        clock.Advance(rejectedAfter - TimeSpan.FromMilliseconds(1), timerFires);
+        Assert.That(waiter.IsCompleted, Is.False, "still waiting 1 ms before its budget ends");
+        clock.Advance(TimeSpan.FromMilliseconds(1), timerFires);
+        Task<Lease> next = Admit(gate, maxWait: maxWait).AsTask();
         if (!timerFires)
         {
             Assert.That(waiter.IsCompleted, Is.False);
@@ -219,8 +224,8 @@ public class EvmAdmissionGateTests
     private static EvmAdmissionGate CreateGate(ManualClock? clock = null, int permits = 1, int maxQueueWaitMs = BudgetMs, int queueLimit = 0) =>
         new(new JsonRpcConfig { EthModuleConcurrentInstances = permits, EvmExecutionMaxQueueWaitMs = maxQueueWaitMs, EvmExecutionQueueLimit = queueLimit }, clock ?? new ManualClock());
 
-    private static ValueTask<Lease> Admit(EvmAdmissionGate gate, int paramsUtf8Length = 0, CancellationToken cancellationToken = default) =>
-        gate.AdmitAsync(paramsUtf8Length, allowQueue: true, cancellationToken);
+    private static ValueTask<Lease> Admit(EvmAdmissionGate gate, int paramsUtf8Length = 0, CancellationToken cancellationToken = default, TimeSpan? maxWait = null) =>
+        gate.AdmitAsync(paramsUtf8Length, maxWait ?? gate.Budget, cancellationToken);
 
     /// <summary>A clock that moves only when told to, firing the timers that fall due.</summary>
     private sealed class ManualClock : TimeProvider

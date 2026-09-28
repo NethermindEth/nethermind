@@ -345,19 +345,24 @@ public class JsonRpcProcessorTests
     {
         const string paramsJson = "[{\"parentHash\":\"0x0\"},[],null,null]";
         using CancellationTokenSource cancellation = new();
-        List<(int ParamsUtf8Length, bool IsBatchItem, CancellationToken CancellationToken)> seen = [];
+        List<(int ParamsUtf8Length, bool IsBatchItem, long BatchStartTimestamp, CancellationToken CancellationToken)> seen = [];
         IJsonRpcService service = CreateService(request =>
         {
-            seen.Add((request.ParamsUtf8Length, request.IsBatchItem, request.CancellationToken));
+            seen.Add((request.ParamsUtf8Length, request.IsBatchItem, request.BatchStartTimestamp, request.CancellationToken));
             return new JsonRpcSuccessResponse { Id = request.Id };
         });
         string request = CreateRequest("1", "eth_call", paramsJson);
         using JsonRpcContext context = new(endpoint);
 
         using CollectedJsonRpcResponses _ = await ProcessAsync(
-            CreateProcessor(service), inBatch ? CreateBatchRequest(request) : request, context, cancellationToken: cancellation.Token);
+            CreateProcessor(service),
+            inBatch ? CreateBatchRequest(request, CreateRequest("2", "eth_call", paramsJson)) : request,
+            context,
+            cancellationToken: cancellation.Token);
 
-        Assert.That(seen, Is.EqualTo(new[] { (Encoding.UTF8.GetByteCount(paramsJson), inBatch, cancellation.Token) }));
+        long batchStart = inBatch ? seen[0].BatchStartTimestamp : 0;
+        Assert.That(seen, Is.EqualTo(Enumerable.Repeat((Encoding.UTF8.GetByteCount(paramsJson), inBatch, batchStart, cancellation.Token), inBatch ? 2 : 1)));
+        if (inBatch) Assert.That(batchStart, Is.Not.Zero, "every item carries the start of their batch");
     }
 
     [Test]

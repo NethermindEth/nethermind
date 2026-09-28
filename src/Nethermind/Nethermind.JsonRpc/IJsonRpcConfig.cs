@@ -189,7 +189,8 @@ public interface IJsonRpcConfig : IConfig
             this budget, up to half of it; a request that has waited half this budget is served before any later arrival.
             The budget bounds only the wait for a slot, not the response time. `0` or a negative value disables queueing.
             Authenticated (Engine API / JWT) and IPC requests do not take a slot, so they never wait.
-            Batch items and WebSocket requests with `WebSocketsProcessingConcurrency` of 1 never queue.
+            Items of one batch share one budget, counted from the start of the batch; once it is spent, a later item is
+            rejected at once if every slot is busy.
             """,
         DefaultValue = "500")]
     int EvmExecutionMaxQueueWaitMs { get; set; }

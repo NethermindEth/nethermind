@@ -37,7 +37,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
     private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
-    private readonly bool _webSocketsCanQueue = jsonRpcConfig.WebSocketsProcessingConcurrency > 1;
 
     internal EvmAdmissionGate EvmGate { get; } = new(jsonRpcConfig);
 
@@ -123,19 +122,18 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private async ValueTask<JsonRpcResponse> ExecuteGatedAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
         // Admitted before binding, so a rejected request never pays for deserializing its parameters.
-        using EvmAdmissionGate.Lease lease = await EvmGate.AdmitAsync(request.ParamsUtf8Length, CanQueue(request, context), request.CancellationToken);
+        using EvmAdmissionGate.Lease lease = await EvmGate.AdmitAsync(request.ParamsUtf8Length, MaxQueueWait(request, context), request.CancellationToken);
         request.CancellationToken.ThrowIfCancellationRequested();
         return await ExecuteAsync(request, methodName, method, context);
     }
 
-    // Waiting would hold up the requests behind this one: the rest of its batch or a connection served one request at a time.
-    private bool CanQueue(JsonRpcRequest request, JsonRpcContext context) =>
-        !request.IsBatchItem && context.RpcEndpoint switch
-        {
-            RpcEndpoint.Http => true,
-            RpcEndpoint.Ws => _webSocketsCanQueue,
-            _ => false,
-        };
+    // Items of one batch run one after another, so they share one budget counted from the start of the batch.
+    private TimeSpan MaxQueueWait(JsonRpcRequest request, JsonRpcContext context) => context.RpcEndpoint switch
+    {
+        RpcEndpoint.Http or RpcEndpoint.Ws when request.IsBatchItem => EvmGate.Budget - Stopwatch.GetElapsedTime(request.BatchStartTimestamp),
+        RpcEndpoint.Http or RpcEndpoint.Ws => EvmGate.Budget,
+        _ => TimeSpan.Zero,
+    };
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
