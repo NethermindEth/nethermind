@@ -124,6 +124,10 @@ def render_args_file(args, sid: str, destination: str) -> str:
             block.append("    - {0}".format(param))
     if args.groth16_artifacts:
         block.append("  groth16_artifacts_path: {0}".format(args.groth16_artifacts))
+    if args.nethermind_image:
+        block.append("  nethermind_image: {0}".format(args.nethermind_image))
+    if args.ethrex_image:
+        block.append("  ethrex_image: {0}".format(args.ethrex_image))
 
     rendered = base + "\n" + "\n".join(block) + "\n"
     with open(destination, "w") as handle:
@@ -152,7 +156,7 @@ def wait_for_completion(enclave: str, timeout: float, poll: float = 10.0) -> tup
     deadline = time.monotonic() + timeout
     logs = ""
     while time.monotonic() < deadline:
-        logs = capture(["kurtosis", "service", "logs", enclave, TRAFFIC_SERVICE], check=False)
+        logs = capture(["kurtosis", "service", "logs", "--all", enclave, TRAFFIC_SERVICE], check=False)
         if "case=scenario_complete" in logs:
             return True, logs
         if "case=scenario_aborted" in logs:
@@ -225,10 +229,30 @@ def collect(enclave: str, sid: str, results_root: str, logs: str, started: float
         enclave, os.path.join(out_dir, "metrics"), started, finished, metrics_step
     )
 
+    health_lines = []
+    el_images = {}
     for service_name in _el_service_names(enclave):
-        service_logs = capture(["kurtosis", "service", "logs", enclave, service_name], check=False)
+        service_logs = capture(["kurtosis", "service", "logs", "--all", enclave, service_name], check=False)
         with open(os.path.join(out_dir, "{0}.log".format(service_name)), "w") as handle:
             handle.write(service_logs)
+        counts = {key: len(re.findall(pattern, service_logs)) for key, pattern in LOG_ALARMS.items()}
+        health_lines.append("RESULT case=client_log_health scenario={0} node={1} lines={2} {3}".format(
+            sid, service_name, service_logs.count("\n"),
+            " ".join("{0}={1}".format(k, v) for k, v in counts.items())))
+        image = _container_image(service_name)
+        labels = _image_labels(image) if image else {}
+        label_ceiling = labels.get("org.nethermind.frame_tx.max_verify_gas", "")
+        el_images[service_name] = {"image": image, "labels": labels}
+        health_lines.append(
+            "RESULT case=image_ceiling scenario={0} node={1} image={2} label_max_verify_gas={3} "
+            "revision={4} matches={5}".format(
+                sid, service_name, image or "unknown", label_ceiling or "none",
+                labels.get("org.opencontainers.image.revision", "unknown"),
+                "yes" if label_ceiling == str(args.ceiling) else "no"))
+    health_lines.append(_chain_agreement(enclave, sid, _el_service_names(enclave)))
+    result_lines.extend(health_lines)
+    with open(os.path.join(out_dir, "{0}.result".format(sid)), "a") as handle:
+        handle.write("\n".join(health_lines) + ("\n" if health_lines else ""))
 
     manifest_path = os.path.join(DEVNET_ROOT, "images", "build-manifest.json")
     images = []
@@ -254,9 +278,12 @@ def collect(enclave: str, sid: str, results_root: str, logs: str, started: float
             "duration_seconds": args.duration,
             "privacy_inclusion": args.privacy_inclusion,
             "groth16_artifacts": getattr(args, "groth16_artifacts_source", args.groth16_artifacts),
+            "nethermind_image": args.nethermind_image,
+            "ethrex_image": args.ethrex_image,
         },
         "topology_file": os.path.abspath(args.base_args),
-        "nethermind_commit": _git_commit(REPO_ROOT),
+        "checkout_commit": _git_commit(REPO_ROOT),
+        "el_images": el_images,
         "images": [i for i in images if i.get("max_verify_gas") in (None, str(args.ceiling))],
         "metrics": metrics,
         "result_lines": len(result_lines),
@@ -297,6 +324,63 @@ def _strip_service_prefix(line: str) -> str:
     return line[index:] if index >= 0 else line
 
 
+# Log lines a healthy run must not contain, per execution client log.
+LOG_ALARMS = {
+    "exception": r"Exception",
+    "invalid_block": r"[Ii]nvalid [Bb]lock",
+    "unhandled": r"Unhandled",
+    "fatal": r"\bFATAL\b|\bFatal\b",
+}
+
+
+def _container_image(service_name: str) -> str:
+    """The image the service's container actually ran, so a stale or stock tag is visible."""
+    listing = capture(["docker", "ps", "-a", "--format", "{{.Names}}\t{{.Image}}"], check=False)
+    for line in listing.splitlines():
+        name, _, image = line.partition("\t")
+        if name.startswith(service_name + "--"):
+            return image
+    return ""
+
+
+def _image_labels(image: str) -> dict:
+    raw = capture(["docker", "image", "inspect", "--format", "{{json .Config.Labels}}", image], check=False)
+    try:
+        return json.loads(raw) or {}
+    except ValueError:
+        return {}
+
+
+def _rpc(url: str, method: str, params: list):
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.loads(response.read()).get("result")
+
+
+def _chain_agreement(enclave: str, sid: str, services: list[str]) -> str:
+    """Compares one block's hash across every execution client.
+
+    Two slots below the lowest head, so a block still propagating does not read as a split. A
+    client that diverged on a frame transaction reports a different hash, or none."""
+    urls = {}
+    for service in services:
+        url = port_of(enclave, service, "rpc")
+        if url:
+            urls[service] = url if url.startswith("http") else "http://" + url
+    try:
+        heads = {s: int(_rpc(u, "eth_blockNumber", []), 16) for s, u in urls.items()}
+        height = min(heads.values()) - 2
+        hashes = {s: (_rpc(u, "eth_getBlockByNumber", [hex(height), False]) or {}).get("hash", "none")
+                  for s, u in urls.items()}
+    except (urllib.error.URLError, OSError, ValueError, TypeError) as error:
+        return "RESULT case=chain_agreement scenario={0} agree=unknown reason=\"{1}\"".format(sid, error)
+    agree = len(hashes) >= 2 and len(set(hashes.values())) == 1
+    return "RESULT case=chain_agreement scenario={0} nodes={1} block={2} agree={3} {4}".format(
+        sid, len(hashes), height, "yes" if agree else "no",
+        " ".join("hash_{0}={1}".format(s, h) for s, h in sorted(hashes.items())))
+
+
 def _el_service_names(enclave: str) -> list[str]:
     listing = capture(["kurtosis", "enclave", "inspect", enclave], check=False)
     return sorted({m.group(0) for m in re.finditer(r"\bel-\d+-[a-z0-9-]+\b", listing)})
@@ -326,6 +410,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="extra Nethermind CLI param, repeatable")
     parser.add_argument("--groth16-artifacts", default="",
                         help="package-relative path to a frame-verify-gas sweep tree")
+    parser.add_argument("--nethermind-image", default="",
+                        help="override frame-tx-devnet/nethermind:vg<ceiling>, e.g. a stock-ceiling image "
+                             "to show the compiled constant is what moved a result")
+    parser.add_argument("--ethrex-image", default="",
+                        help="override frame-tx-devnet/ethrex:vg<ceiling>")
     parser.add_argument("--scenario-id", default="")
     parser.add_argument("--enclave", default="")
     parser.add_argument("--base-args", default=os.path.join(DEVNET_ROOT, "scenarios", "base.yaml"))

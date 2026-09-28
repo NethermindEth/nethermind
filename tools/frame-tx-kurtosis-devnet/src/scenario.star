@@ -21,7 +21,7 @@ DEFAULTS = {
     "ethrex_image": "",
     "groth16_artifacts_path": "",
     "traffic_enabled": True,
-    "eip8141_activation_offset_seconds": 120,
+    "eip8141_activation_offset_seconds": 0,
     "split_traffic": False,
     "extra_el_params": [],
 }
@@ -146,14 +146,16 @@ def _apply_client_overrides(plan, ethereum_args, scenario):
             for param in scenario.extra_el_params:
                 extra.append(param)
             updated["el_extra_params"] = extra
-            # A Fulu-era genesis carries no hezeTime, so the patched image schedules EIP-8141
-            # this many seconds after genesis instead of reading it from a fork label.
-            env = {}
-            for key in updated.get("el_extra_env_vars", {}):
-                env[key] = updated["el_extra_env_vars"][key]
-            env["NETHERMIND_EIP8141_ACTIVATION_OFFSET_SECONDS"] = str(
-                scenario.eip8141_activation_offset_seconds)
-            updated["el_extra_env_vars"] = env
+            # With heze_fork_epoch set, the genesis carries bogotaTime and every client activates
+            # EIP-8141 from it at the same instant. Only a base without that key needs the patched
+            # image to schedule EIP-8141 this many seconds after genesis instead.
+            if scenario.eip8141_activation_offset_seconds > 0:
+                env = {}
+                for key in updated.get("el_extra_env_vars", {}):
+                    env[key] = updated["el_extra_env_vars"][key]
+                env["NETHERMIND_EIP8141_ACTIVATION_OFFSET_SECONDS"] = str(
+                    scenario.eip8141_activation_offset_seconds)
+                updated["el_extra_env_vars"] = env
         elif el_type == "ethrex":
             saw_ethrex = True
             if updated.get("el_image", "") == "":
@@ -174,9 +176,6 @@ def _apply_client_overrides(plan, ethereum_args, scenario):
     if not saw_nethermind:
         fail("no nethermind participant; this campaign measures Nethermind's admission path")
     if not saw_ethrex:
-        # Deliberate for now: ethrex decodes a frame as [mode, flags, target, gas_limit, value,
-        # data] while Nethermind expects limits = [execution, state], so the two cannot share a
-        # chain. See UPSTREAM-CANDIDATES.md.
         plan.print("single-client topology: Nethermind only, no ethrex participant")
 
     ethereum_args["participants"] = patched

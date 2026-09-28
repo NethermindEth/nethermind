@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Raises ethrex's MAX_VERIFY_GAS to the scenario's ceiling, in a throwaway clone.
+# Raises ethrex's MAX_VERIFY_GAS to the scenario's ceiling, in a throwaway clone. Runs on the
+# host, so it avoids GNU-only tools.
 #
 # ethrex hardcodes the ceiling as a `pub const` and exposes no CLI flag or config for it
 # (crates/common/types/transaction.rs; see docs/eip-8141.md). Every scenario above 100_000 gas
@@ -32,7 +33,15 @@ if [[ "${count}" != "1" ]]; then
   exit 1
 fi
 
-sed -i "s|${STOCK}|pub const FRAME_TX_MAX_VERIFY_GAS: u64 = ${CEILING};|" "${FILE}"
+# python3 rather than sed -i, which differs between GNU and BSD (macOS).
+python3 - "${FILE}" "${STOCK}" "pub const FRAME_TX_MAX_VERIFY_GAS: u64 = ${CEILING};" <<'PY'
+import sys
+path, old, new = sys.argv[1:4]
+with open(path) as handle:
+    text = handle.read()
+with open(path, "w") as handle:
+    handle.write(text.replace(old, new, 1))
+PY
 
 patched=$(grep -cF -- "pub const FRAME_TX_MAX_VERIFY_GAS: u64 = ${CEILING};" "${FILE}" || true)
 if [[ "${patched}" != "1" ]]; then

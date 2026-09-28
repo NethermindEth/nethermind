@@ -47,7 +47,11 @@ if ! fetch "${REQUIRED_PATH}" "${out}"; then
   exit 1
 fi
 
-actual=$(sha256sum "${out}" | cut -d' ' -f1)
+if command -v sha256sum >/dev/null; then
+  actual=$(sha256sum "${out}" | cut -d' ' -f1)
+else
+  actual=$(shasum -a 256 "${out}" | cut -d' ' -f1)
+fi
 if [[ "${actual}" != "${REQUIRED_SHA256}" ]]; then
   if [[ "${FRAME_TX_VENDOR_ALLOW_DRIFT:-0}" == "1" ]]; then
     echo "warning: ${REQUIRED_PATH} is ${actual}, pinned ${REQUIRED_SHA256}; accepted via FRAME_TX_VENDOR_ALLOW_DRIFT" >&2

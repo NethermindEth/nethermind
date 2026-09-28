@@ -1,22 +1,20 @@
 #!/usr/bin/env bash
 # Builds the client images one scenario ceiling needs, plus the traffic generator.
 #
-#   images/build.sh 235800                  # Nethermind at that ceiling, and the generator
-#   images/build.sh 235800 --only traffic   # just the generator (ceiling-independent)
-#   images/build.sh --all                   # every predefined campaign ceiling
-#   images/build.sh 235800 --only ethrex    # ethrex at that ceiling (not in the default topology)
+#   images/build.sh 235800                     # Nethermind and ethrex at that ceiling, and the generator
+#   images/build.sh 235800 --only nethermind   # one of: nethermind, ethrex, traffic
+#   images/build.sh --all                      # every predefined campaign ceiling
 #
-# Nethermind carries the ceiling as a compile-time constant, so a ceiling change means an image
-# change: its runtime --TxPool.FrameTxMaxVerifyGas bounds the declared-gas check only. Images
-# are tagged by ceiling and reused across every (role, K_retry) cell of the matrix.
+# Both clients carry the ceiling as a compile-time constant, so a ceiling change means an image
+# change. Nethermind's runtime --TxPool.FrameTxMaxVerifyGas bounds admission only; ethrex has no
+# runtime knob. Images are tagged by ceiling and reused across every scenario at that ceiling.
 #
-# The Nethermind image is the repository's own Dockerfile, built from an export of HEAD with
-# patch.sh applied. Uncommitted changes are therefore never in the image, and the recorded
-# commit is exactly what was built.
-#
-# ethrex is opt-in: its main branch still decodes the older frame envelope, which Nethermind
-# does not read, so the two cannot share a chain (see UPSTREAM-CANDIDATES.md). The ethrex build
-# clones upstream into a scratch directory and drives ethrex's own Dockerfile.
+# Nethermind: the repository's own Dockerfile, built from `git archive` of NETHERMIND_REF
+# (default HEAD) with images/nethermind/patch.sh applied. Uncommitted changes are never in the
+# image, and the recorded commit is exactly what was built.
+# ethrex: ETHREX_REF (default: a pinned frames-devnet-0 commit) fetched into a scratch directory,
+# patched by images/ethrex/patch.sh, built with ethrex's own Dockerfile. The first ethrex build
+# compiles Rust and takes 15 to 30 minutes.
 set -euo pipefail
 
 readonly HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,12 +24,16 @@ readonly REPO_ROOT="$(cd "${DEVNET_ROOT}/../.." && pwd)"
 readonly CAMPAIGN_CEILINGS=(100000 235800 250000 300000 400000 500000)
 
 ETHREX_REPO="${ETHREX_REPO:-https://github.com/lambdaclass/ethrex}"
-ETHREX_REF="${ETHREX_REF:-main}"
+# frames-devnet-0 decodes the same frame envelope as Nethermind (limits list, nested fees); main
+# still decodes the older one. Pinned by commit so a rebuild is the same client.
+ETHREX_REF="${ETHREX_REF:-52c2e626c004852c35513ed64084c53dd94d6a97}"
+# The Nethermind commit to build. Defaults to this checkout's HEAD.
+NETHERMIND_REF="${NETHERMIND_REF:-HEAD}"
 WORK_DIR="${FRAME_TX_BUILD_DIR:-${TMPDIR:-/tmp}/frame-tx-devnet-build}"
 MANIFEST="${DEVNET_ROOT}/images/build-manifest.json"
 
 usage() {
-  sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
+  sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -52,13 +54,7 @@ if [[ ${#ceilings[@]} -eq 0 && "${only}" != "traffic" ]]; then
   usage 1
 fi
 
-wants() {
-  if [[ -n "${only}" ]]; then
-    [[ "${only}" == "$1" ]]
-  else
-    [[ "$1" != "ethrex" ]]
-  fi
-}
+wants() { [[ -z "${only}" || "${only}" == "$1" ]]; }
 
 record() {
   # Append-only build provenance, so a results directory can be traced back to an image.
@@ -96,8 +92,8 @@ build_nethermind() {
   local ceiling="$1"
   local tag="frame-tx-devnet/nethermind:vg${ceiling}"
   local commit
-  commit=$(git -C "${REPO_ROOT}" rev-parse HEAD)
-  if [[ -n "$(git -C "${REPO_ROOT}" status --porcelain -- src/Nethermind)" ]]; then
+  commit=$(git -C "${REPO_ROOT}" rev-parse "${NETHERMIND_REF}^{commit}")
+  if [[ "${NETHERMIND_REF}" == "HEAD" && -n "$(git -C "${REPO_ROOT}" status --porcelain -- src/Nethermind)" ]]; then
     echo "note: src/Nethermind has uncommitted changes; the image is built from ${commit} without them"
   fi
 
@@ -125,13 +121,13 @@ build_ethrex() {
   local checkout="${WORK_DIR}/ethrex"
 
   mkdir -p "${WORK_DIR}"
-  if [[ -d "${checkout}/.git" ]]; then
-    git -C "${checkout}" fetch --depth 1 origin "${ETHREX_REF}"
-  else
+  if [[ ! -d "${checkout}/.git" ]]; then
     rm -rf "${checkout}"
-    git clone --depth 1 --branch "${ETHREX_REF}" "${ETHREX_REPO}" "${checkout}"
-    git -C "${checkout}" fetch --depth 1 origin "${ETHREX_REF}"
+    git init -q "${checkout}"
+    git -C "${checkout}" remote add origin "${ETHREX_REPO}"
   fi
+  # fetch rather than clone --branch, which cannot take a commit.
+  git -C "${checkout}" fetch --depth 1 origin "${ETHREX_REF}"
   # Hard reset rather than pull: the previous ceiling's patch is still in the tree.
   git -C "${checkout}" reset --hard FETCH_HEAD
   git -C "${checkout}" clean -fd
@@ -146,6 +142,8 @@ build_ethrex() {
     -f "${checkout}/Dockerfile" \
     --build-arg "GIT_SHA=${sha}" \
     --build-arg "GIT_BRANCH=${ETHREX_REF}" \
+    --label "org.nethermind.frame_tx.max_verify_gas=${ceiling}" \
+    --label "org.opencontainers.image.revision=${sha}" \
     -t "${tag}" \
     "${checkout}"
   record "${MANIFEST}" "${tag}" "kind=ethrex" "max_verify_gas=${ceiling}" \
@@ -156,7 +154,8 @@ if wants traffic; then
   build_traffic
 fi
 
-for ceiling in "${ceilings[@]}"; do
+# The +-expansion keeps bash 3.2 (macOS) from failing on an empty array under set -u.
+for ceiling in ${ceilings[@]+"${ceilings[@]}"}; do
   if ! [[ "${ceiling}" =~ ^[1-9][0-9]*$ ]]; then
     echo "error: '${ceiling}' is not a positive integer ceiling" >&2
     exit 1

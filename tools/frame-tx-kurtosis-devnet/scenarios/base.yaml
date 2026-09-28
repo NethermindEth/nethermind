@@ -1,37 +1,34 @@
-# Topology: two Nethermind nodes. ethrex is absent on purpose, not by oversight: it decodes a
-# frame as [mode, flags, target, gas_limit, value, data] while Nethermind expects
-# limits = [execution, state], so the two cannot share a chain until they agree on one EIP
-# revision. See UPSTREAM-CANDIDATES.md. Two nodes keep gossip, mempool propagation and block
-# production real rather than single-process.
+# Two execution clients, one Nethermind and one ethrex, each with its own Lighthouse beacon node
+# and validators, on the fork schedule of the public frames-devnet-0
+# (ethpandaops/frames-devnets): Amsterdam/Gloas from genesis, EIP-8141 on the execution layer
+# only from bogotaTime.
 #
-# el_image is left unset on purpose: the wrapper pins the ceiling-specific image
-# (frame-tx-devnet/nethermind:vg<ceiling>) built by images/build.sh.
+# el_image is left unset: the wrapper pins the ceiling-specific images
+# (frame-tx-devnet/{nethermind,ethrex}:vg<ceiling>) built by images/build.sh.
 
 participants:
   - el_type: nethermind
     cl_type: lighthouse
-    cl_image: sigp/lighthouse:v8.2.2
+    # The Lighthouse build frames-devnet-0 runs; release tags do not yet follow Gloas.
+    cl_image: ethpandaops/lighthouse:unstable-4b1f3c2
     validator_count: 32
     # Fulu at epoch 0 is PeerDAS; the package refuses to start without a supernode.
     supernode: true
-  - el_type: nethermind
+  - el_type: ethrex
     cl_type: lighthouse
-    cl_image: sigp/lighthouse:v8.2.2
+    cl_image: ethpandaops/lighthouse:unstable-4b1f3c2
     validator_count: 32
-    # Fulu at epoch 0 is PeerDAS; the package refuses to start without a supernode.
     supernode: true
 
 network_params:
   seconds_per_slot: 6
-  # Genesis stays on Fulu, which is what public devnets actually run: glamsterdam devnet-11
-  # still has GLOAS_FORK_EPOCH 1125 and HEZE never. Scheduling Gloas earlier stalls the chain,
-  # because Nethermind answers engine_newPayloadV5 with "Unsupported fork", and it also breaks
-  # Lighthouse's genesis SSZ decode when placed at epoch 0.
   fulu_fork_epoch: 0
-
-# EIP-8141 is therefore not scheduled by a fork label at all. The patched Nethermind image
-# reads frame_tx.eip8141_activation_offset_seconds and activates that many seconds after
-# genesis.
+  gloas_fork_epoch: 0
+  # Written into the execution genesis as bogotaTime: both clients enable EIP-8141 there, at
+  # 32 slots x 6 s = 192 s after genesis. frames_enabled keeps the consensus layer off Heze:
+  # there it means inclusion lists (EIP-7805), which frames-devnet-0 does not run.
+  heze_fork_epoch: 1
+  frames_enabled: true
 
 additional_services:
   - prometheus
