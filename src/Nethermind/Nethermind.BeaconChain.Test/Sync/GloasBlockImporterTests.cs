@@ -817,8 +817,8 @@ public class GloasBlockImporterTests
             ReplayedBlockAvailability.Instance,
             static (_, _) => true,
             new SlotClock(chain.Spec, Timestamper.Default),
-            anchorState,
-            anchorBlock,
+            new ForkedBeaconState.OfFulu(anchorState),
+            new ForkedSignedBeaconBlock.OfFulu(anchorBlock),
             anchorRoot);
         long refusedBefore = RefusedByForkChoice("body_attester_slashing");
 
