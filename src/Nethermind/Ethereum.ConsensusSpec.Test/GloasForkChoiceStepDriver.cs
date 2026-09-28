@@ -21,14 +21,12 @@ namespace Ethereum.ConsensusSpec.Test;
 /// <summary>
 /// Replays one Gloas <c>fork_choice</c> vector's <c>steps.yaml</c> against a <see cref="ForkChoiceRunner"/> rooted at the
 /// vector's Gloas anchor: on_tick, on_block through the Gloas state transition, on_execution_payload_envelope, on_attestation,
-/// on_attester_slashing and the time, head root and slot, checkpoint and proposer boost checks, honoring each step's
-/// <c>valid</c> flag.
+/// on_attester_slashing, on_payload_attestation_message and the time, head node, checkpoint, proposer boost and PTC vote checks,
+/// honoring each step's <c>valid</c> flag.
 /// </summary>
 /// <remarks>
-/// The runner's head is a block root, whereas the Gloas <c>get_head</c> returns a <c>ForkChoiceNode</c> with a payload status,
-/// and it has no <c>on_payload_attestation_message</c> or PTC vote store (specs/gloas/fork-choice.md). Steps and checks that
-/// need these are recorded in <see cref="GloasForkChoiceRun.Unsupported"/> and every other step still runs, so a caller can
-/// report the vector not implemented only after the rest of it has been checked.
+/// A block's payload attestations are not replayed here: the Gloas <c>on_block</c> applies them itself (specs/gloas/fork-choice.md
+/// <c>notify_ptc_messages</c>), and the pyspec harness's own replay of them repeats the same writes.
 /// </remarks>
 internal static class GloasForkChoiceStepDriver
 {
@@ -52,7 +50,7 @@ internal static class GloasForkChoiceStepDriver
             ExecutionStatus.Valid;
     }
 
-    private sealed class Context(string casePath, BeaconChainSpec spec, ForkChoiceRunner runner, InMemoryStateProvider states, BeaconStateGloas anchorState, PubkeyCache pubkeys, bool verifySignatures, bool headNeedsPayloadStatus)
+    private sealed class Context(string casePath, BeaconChainSpec spec, ForkChoiceRunner runner, InMemoryStateProvider states, BeaconStateGloas anchorState, PubkeyCache pubkeys, bool verifySignatures)
     {
         public BeaconChainSpec Spec => spec;
         public ForkChoiceRunner Runner => runner;
@@ -60,20 +58,14 @@ internal static class GloasForkChoiceStepDriver
         public BeaconStateGloas AnchorState => anchorState;
         public PubkeyCache Pubkeys => pubkeys;
         public bool VerifySignatures => verifySignatures;
-        public bool HeadNeedsPayloadStatus => headNeedsPayloadStatus;
-        public readonly SortedSet<string> Unsupported = new(StringComparer.Ordinal);
-        public readonly List<int> HeadDivergences = [];
 
         public byte[] Read(string key) => SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, key + ".ssz_snappy"));
     }
 
     private static readonly ForkDriver<BeaconStateGloas> Transition = (ForkDriver<BeaconStateGloas>)ForkDriver.ByName["gloas"];
 
-    /// <param name="headNeedsPayloadStatus">
-    /// The vector's head checks name a block the Gloas <c>get_head</c> reaches only by weighing EMPTY against FULL nodes, so a
-    /// head root or slot that differs is recorded in <see cref="GloasForkChoiceRun.HeadDivergences"/> instead of failing.
-    /// </param>
-    public static GloasForkChoiceRun Run(string casePath, bool headNeedsPayloadStatus = false)
+    /// <returns>The fork choice store after the last step, for callers that inspect more than the vector's own checks.</returns>
+    public static ForkChoiceRunner Run(string casePath)
     {
         BeaconStateGloas.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "anchor_state.ssz_snappy")), out BeaconStateGloas anchorState);
         BeaconBlockGloas.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "anchor_block.ssz_snappy")), out BeaconBlockGloas anchorBlock);
@@ -83,13 +75,13 @@ internal static class GloasForkChoiceStepDriver
         InMemoryStateProvider states = new();
         states.States[SszRoots.HashTreeRoot(anchorBlock)] = anchorState;
         ForkChoiceRunner runner = new(spec, anchorState, anchorBlock, states, pubkeys, states);
-        Context context = new(casePath, spec, runner, states, anchorState, pubkeys, FuluDriverSupport.ShouldVerifySignatures(casePath), headNeedsPayloadStatus);
+        Context context = new(casePath, spec, runner, states, anchorState, pubkeys, FuluDriverSupport.ShouldVerifySignatures(casePath));
 
         YamlSequenceNode steps = LoadSteps(Path.Combine(casePath, "steps.yaml"));
         for (int i = 0; i < steps.Children.Count; i++)
             RunStep(context, (YamlMappingNode)steps.Children[i], i);
 
-        return new GloasForkChoiceRun(runner, context.Unsupported, context.HeadDivergences);
+        return runner;
     }
 
     /// <summary>The vector's own <c>config.yaml</c> when present, otherwise the mainnet config with Gloas live from genesis, the fork the vector's spec module is.</summary>
@@ -109,8 +101,8 @@ internal static class GloasForkChoiceStepDriver
             RunAttestationStep(context, attestationKey!, valid, stepIndex);
         else if (TryGetScalar(step, "attester_slashing", out string? slashingKey))
             RunAttesterSlashingStep(context, slashingKey!, valid, stepIndex);
-        else if (TryGetScalar(step, "payload_attestation_message", out _))
-            context.Unsupported.Add("on_payload_attestation_message");
+        else if (TryGetScalar(step, "payload_attestation_message", out string? messageKey))
+            RunPayloadAttestationStep(context, messageKey!, valid, stepIndex);
         else if (TryGetChild(step, "checks", out YamlNode? checks))
             RunChecksStep(context, (YamlMappingNode)checks!, stepIndex);
         else
@@ -163,9 +155,6 @@ internal static class GloasForkChoiceStepDriver
             if (Attempt(() => context.Runner.OnAttesterSlashing(slashing, verifySignatures: false)) is { } ex)
                 Assert.Fail($"{subject}: body attester slashing {i} rejected: {ex.Message}");
         }
-
-        if (block.Body!.PayloadAttestations!.Length > 0)
-            context.Unsupported.Add("on_payload_attestation_message (body payload attestations)");
     }
 
     /// <summary>
@@ -193,6 +182,13 @@ internal static class GloasForkChoiceStepDriver
         AttestationGloas.Decode(context.Read(key), out AttestationGloas attestation);
         AssertVerdict($"step {stepIndex}: attestation {key}", expectedValid,
             Attempt(() => context.Runner.OnAttestation(attestation, isFromBlock: false, verifySignature: true)));
+    }
+
+    private static void RunPayloadAttestationStep(Context context, string key, bool expectedValid, int stepIndex)
+    {
+        PayloadAttestationMessage.Decode(context.Read(key), out PayloadAttestationMessage message);
+        AssertVerdict($"step {stepIndex}: payload_attestation_message {key}", expectedValid,
+            Attempt(() => context.Runner.OnPayloadAttestationMessage(message, isFromBlock: false, verifySignature: context.VerifySignatures)));
     }
 
     private static void RunAttesterSlashingStep(Context context, string key, bool expectedValid, int stepIndex)
@@ -242,20 +238,10 @@ internal static class GloasForkChoiceStepDriver
                 case "head":
                     TryGetChild(checks, key, out YamlNode? headNode);
                     YamlMappingNode head = (YamlMappingNode)headNode!;
-                    Hash256 actualHead = runner.GetHead();
-                    Hash256 expectedHead = new(GetScalar(head, "root"));
-                    if (context.HeadNeedsPayloadStatus && actualHead != expectedHead)
-                    {
-                        AssertFullAncestorHead(context, stepIndex, head, expectedHead, actualHead);
-                        context.HeadDivergences.Add(stepIndex);
-                        context.Unsupported.Add("get_head over EMPTY and FULL nodes");
-                        break;
-                    }
-
-                    AssertEqual(stepIndex, "head.root", expectedHead, actualHead);
-                    AssertEqual(stepIndex, "head.slot", (ulong?)ulong.Parse(GetScalar(head, "slot")), runner.GetBlockSlot(actualHead));
-                    if (TryGetScalar(head, "payload_status", out string? payloadStatus))
-                        CheckHeadPayloadStatus(context, stepIndex, actualHead, byte.Parse(payloadStatus!));
+                    ForkChoiceNode actualHead = runner.GetHeadNode();
+                    AssertEqual(stepIndex, "head.root", new Hash256(GetScalar(head, "root")), actualHead.Root);
+                    AssertEqual(stepIndex, "head.slot", (ulong?)ulong.Parse(GetScalar(head, "slot")), runner.GetBlockSlot(actualHead.Root));
+                    AssertEqual(stepIndex, "head.payload_status", (ForkChoicePayloadStatus)byte.Parse(GetScalar(head, "payload_status")), actualHead.PayloadStatus);
                     break;
                 case "justified_checkpoint":
                 case "finalized_checkpoint":
@@ -267,7 +253,8 @@ internal static class GloasForkChoiceStepDriver
                     break;
                 case "payload_timeliness_vote":
                 case "payload_data_availability_vote":
-                    context.Unsupported.Add($"store.{key}");
+                    TryGetChild(checks, key, out YamlNode? voteNode);
+                    AssertPtcVotes(runner, stepIndex, key, (YamlMappingNode)voteNode!);
                     break;
                 default:
                     throw new NotImplementedInDriverException($"step {stepIndex}: check '{key}' has no entry point in this driver.");
@@ -275,58 +262,22 @@ internal static class GloasForkChoiceStepDriver
         }
     }
 
-    private static void AssertFullAncestorHead(Context context, int stepIndex, YamlMappingNode head, Hash256 expectedHead, Hash256 actualHead)
+    /// <summary>A <c>store.payload_timeliness_vote</c> or <c>store.payload_data_availability_vote</c> check: every seat's vote, <c>null</c> for no vote.</summary>
+    private static void AssertPtcVotes(ForkChoiceRunner runner, int stepIndex, string key, YamlMappingNode check)
     {
-        bool full = TryGetScalar(head, "payload_status", out string? status) && byte.Parse(status!) == PayloadStatusFull;
-        if (!IsWaivedHeadDivergence(context.Runner, full, expectedHead, actualHead))
+        Hash256 root = new(GetScalar(check, "block_root"));
+        if (runner.GetPtcVotes(root) is not { } votes)
         {
-            Assert.Fail($"step {stepIndex}: checks.head expected {expectedHead}, actual {actualHead}; the waiver covers only the FULL node of a verified ancestor " +
-                $"(payload_status FULL {full}, payload verified {context.Runner.IsPayloadVerified(expectedHead)})");
+            Assert.Fail($"step {stepIndex}: checks.{key} names {root}, for which fork choice keeps no PTC votes");
+            return;
         }
+
+        TryGetChild(check, "votes", out YamlNode? expectedNode);
+        string[] expected = [.. ((YamlSequenceNode)expectedNode!).Children.Select(static v => ((YamlScalarNode)v).Value!)];
+        IReadOnlyList<bool?> actual = key == "payload_timeliness_vote" ? votes.Timeliness : votes.DataAvailability;
+        string[] actualText = [.. actual.Select(static v => v is bool b ? (b ? "true" : "false") : "null")];
+        Assert.That(actualText, Is.EqualTo(expected), $"step {stepIndex}: checks.{key} for {root}");
     }
-
-    /// <summary>
-    /// Whether a waived head check may name <paramref name="expectedHead"/> instead of the runner's <paramref name="actualHead"/>:
-    /// only the FULL node of a verified strict ancestor. Any other divergence is a head the runner got wrong for a reason the
-    /// waiver does not cover.
-    /// </summary>
-    internal static bool IsWaivedHeadDivergence(ForkChoiceRunner runner, bool expectsFull, Hash256 expectedHead, Hash256 actualHead)
-    {
-        bool ancestor = runner.EnumerateAncestors(actualHead).Skip(1).Any(node => node.Root == expectedHead);
-        return expectsFull && runner.IsPayloadVerified(expectedHead) && ancestor;
-    }
-
-    private static void CheckHeadPayloadStatus(Context context, int stepIndex, Hash256 head, byte expected)
-    {
-        switch (DecideHeadPayloadStatus(expected, context.Runner.IsPayloadVerified(head)))
-        {
-            case PayloadStatusVerdict.Undecided:
-                context.Unsupported.Add(expected == PayloadStatusFull ? "get_head FULL over EMPTY" : "get_head EMPTY over FULL");
-                break;
-            case PayloadStatusVerdict.Contradicted:
-                Assert.Fail($"step {stepIndex}: checks.head.payload_status {expected} cannot be the status of head {head}, whose payload verified is {context.Runner.IsPayloadVerified(head)}");
-                break;
-        }
-    }
-
-    internal const byte PayloadStatusEmpty = 0;
-    internal const byte PayloadStatusFull = 1;
-    internal const byte PayloadStatusPending = 2;
-
-    internal enum PayloadStatusVerdict { Holds, Undecided, Contradicted }
-
-    /// <summary>Whether the runner's store decides a head's expected payload status, given whether the head's payload is verified.</summary>
-    /// <remarks>
-    /// A root absent from <c>store.payloads</c> has no FULL node, so its head node is EMPTY; with both nodes present the
-    /// choice weighs PTC votes the runner does not keep. <c>get_head</c> never returns a PENDING node (specs/gloas/fork-choice.md
-    /// get_node_children, get_head).
-    /// </remarks>
-    internal static PayloadStatusVerdict DecideHeadPayloadStatus(byte expected, bool payloadVerified) => expected switch
-    {
-        PayloadStatusEmpty => payloadVerified ? PayloadStatusVerdict.Undecided : PayloadStatusVerdict.Holds,
-        PayloadStatusFull => payloadVerified ? PayloadStatusVerdict.Undecided : PayloadStatusVerdict.Contradicted,
-        _ => PayloadStatusVerdict.Contradicted,
-    };
 
     private static void AssertEqual<T>(int stepIndex, string check, T expected, T actual)
     {
@@ -334,8 +285,3 @@ internal static class GloasForkChoiceStepDriver
             Assert.Fail($"step {stepIndex}: checks.{check} expected {expected}, actual {actual}");
     }
 }
-
-/// <summary>The outcome of a Gloas fork_choice vector whose every step ran without a failed check.</summary>
-/// <param name="Unsupported">The spec functions and store fields the vector needed that the runner has no entry point for.</param>
-/// <param name="HeadDivergences">The steps whose head check named another block than the runner's head.</param>
-internal sealed record GloasForkChoiceRun(ForkChoiceRunner Runner, IReadOnlyCollection<string> Unsupported, IReadOnlyList<int> HeadDivergences);

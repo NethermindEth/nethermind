@@ -85,8 +85,12 @@ public sealed class ProtoArrayForkChoice
 
     /// <summary>Records the latest message of a validator, keeping only the vote with the highest target epoch.</summary>
     /// <remarks>A pre-Gloas vote: see <see cref="ProcessAttestation(ulong, Hash256, ulong, ulong, bool?)"/> with no payload presence, at the target epoch's first slot.</remarks>
-    public void ProcessAttestation(ulong validatorIndex, Hash256 blockRoot, ulong targetEpoch) =>
+    public void ProcessAttestation(ulong validatorIndex, Hash256 blockRoot, ulong targetEpoch)
+    {
+        if (targetEpoch > ulong.MaxValue / _slotsPerEpoch)
+            throw new ProtoArrayException($"Target epoch {targetEpoch} has no start slot below 2^64");
         ProcessAttestation(validatorIndex, blockRoot, targetEpoch * _slotsPerEpoch, targetEpoch, payloadPresent: null);
+    }
 
     /// <summary>Records the latest message of a validator: the spec's <c>update_latest_messages</c> for one attester.</summary>
     /// <remarks>
@@ -171,6 +175,13 @@ public sealed class ProtoArrayForkChoice
     public void MaybePrune(Hash256 finalizedRoot) => _protoArray.Prune(finalizedRoot);
 
     public bool ContainsBlock(Hash256 blockRoot) => _protoArray.Indices.ContainsKey(blockRoot);
+
+    /// <summary>The index of <paramref name="blockRoot"/> in <see cref="Nodes"/>, or <c>null</c> when the block is unknown.</summary>
+    internal int? IndexOf(Hash256 blockRoot) => _protoArray.Indices.TryGetValue(blockRoot, out int index) ? index : null;
+
+    /// <inheritdoc cref="ProtoArray.FilterBlockTree"/>
+    internal bool[] FilterBlockTree(ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint) =>
+        _protoArray.FilterBlockTree(currentSlot, justifiedCheckpoint, finalizedCheckpoint);
 
     public ulong? GetWeight(Hash256 blockRoot) =>
         _protoArray.Indices.TryGetValue(blockRoot, out int index) ? _protoArray.Nodes[index].Weight : null;
