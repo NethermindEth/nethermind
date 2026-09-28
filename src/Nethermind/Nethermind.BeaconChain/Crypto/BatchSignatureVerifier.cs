@@ -10,11 +10,10 @@ using Nethermind.Crypto;
 namespace Nethermind.BeaconChain.Crypto;
 
 /// <summary>
-/// Randomized batch BLS verification over <see cref="BlsSignatureSet"/>. This adds the capability
-/// only: <see cref="SignatureSets"/> still verifies every block-processing signature one at a time
-/// via <see cref="BlsSigner"/>, and that eager path remains the correctness oracle - it is what
-/// <see cref="FindInvalid"/> below calls to attribute a batch failure. Wiring block processing to
-/// call <see cref="VerifyBatch"/> instead is separate, later work.
+/// Randomized batch BLS verification over <see cref="BlsSignatureSet"/>. Block processing verifies
+/// its operation signatures through it via <see cref="BlockSignatureBatch"/>; the serial
+/// <see cref="BlsSigner"/> path that <see cref="SignatureSets"/> runs without a batch remains the
+/// correctness oracle - it is what <see cref="FindInvalid"/> below calls to attribute a batch failure.
 /// </summary>
 /// <remarks>
 /// A batch is accumulated as one running pairing product and finished with a single final

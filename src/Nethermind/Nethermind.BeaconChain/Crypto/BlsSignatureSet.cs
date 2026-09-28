@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 using G2Affine = Nethermind.Crypto.Bls.P2Affine;
 
@@ -68,6 +69,22 @@ public sealed class BlsSignatureSet
         }
 
         set = new BlsSignatureSet(publicKey, signature, message.ToArray());
+        return true;
+    }
+
+    /// <summary>
+    /// Copies already-decoded points into a set when the public key is not infinity and both points
+    /// are in their prime-order subgroups, the conditions <see cref="BatchSignatureVerifier.VerifyBatch"/> is sound under.
+    /// </summary>
+    internal static bool TryCreate(G1Affine publicKey, G2Affine signature, ReadOnlySpan<byte> message, [NotNullWhen(true)] out BlsSignatureSet? set)
+    {
+        if (publicKey.IsInf() || !publicKey.InGroup() || !signature.InGroup())
+        {
+            set = null;
+            return false;
+        }
+
+        set = new BlsSignatureSet(publicKey.Point.ToArray(), signature.Point.ToArray(), message.ToArray());
         return true;
     }
 
