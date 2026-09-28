@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Core.Crypto;
 
@@ -14,16 +15,8 @@ public sealed partial class KeccakHash
     private static partial void KeccakF(Span<ulong> st)
     {
         Debug.Assert(st.Length == STATE_LANES);
-        SyscallKeccakF(ref MemoryMarshal.GetReference(st));
+        Accelerators.KeccakF(ref MemoryMarshal.GetReference(st));
     }
-
-    /// <summary>The zkVM's Keccak-f[1600] precompile, applied in place to the 25 lanes at <paramref name="state"/>.</summary>
-    /// <remarks>The entry point <c>Accelerators.KeccakF</c> binds to, imported here so that it can suppress the
-    /// GC transition: the precompile can neither block nor call back, while a transitioning P/Invoke makes its
-    /// caller save every callee-saved register and spill its live GC refs around each permutation.</remarks>
-    [LibraryImport("__Internal", EntryPoint = "syscall_keccak_f")]
-    [SuppressGCTransition]
-    private static partial void SyscallKeccakF(ref ulong state);
 
     /// <inheritdoc cref="KeccakHash.InitializeState" />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
