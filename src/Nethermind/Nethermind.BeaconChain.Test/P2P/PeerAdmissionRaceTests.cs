@@ -16,7 +16,6 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core;
-using Nethermind.Libp2p.Core.Dto;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
 
@@ -220,7 +219,7 @@ public class PeerAdmissionRaceTests
         Node local = Create(privateKey: lowerKey);
         Node remote = Create(privateKey: higherKey);
         await using ServiceProvider services = new ServiceCollection().AddLibp2p(static builder => builder).BuildServiceProvider();
-        await using ILocalPeer oldSession = services.GetRequiredService<IPeerFactory>().Create(new Identity(lowerKey, KeyType.Secp256K1));
+        await using ILocalPeer oldSession = services.GetRequiredService<IPeerFactory>().Create(BeaconP2P.IdentityFromStoredKey(lowerKey));
         await using (local.P2P)
         await using (remote.P2P)
         {
@@ -412,7 +411,7 @@ public class PeerAdmissionRaceTests
         return string.CompareOrdinal(PeerIdOf(first).ToString(), PeerIdOf(second).ToString()) < 0 ? (first, second) : (second, first);
     }
 
-    private static PeerId PeerIdOf(byte[] privateKey) => new Identity(privateKey, KeyType.Secp256K1).PeerId;
+    private static PeerId PeerIdOf(byte[] privateKey) => BeaconP2P.IdentityFromStoredKey(privateKey).PeerId;
 
     /// <summary>
     /// A dial address without <c>/p2p/</c> is keyed by the address, so the session-established event admits the dialed
