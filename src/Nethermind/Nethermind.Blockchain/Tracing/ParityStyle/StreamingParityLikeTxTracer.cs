@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -82,8 +83,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         PipeWriter? pipeWriter,
         CancellationToken cancellationToken,
         bool fillVmTraceSlot,
-        int flushIntervalEntries = DefaultFlushIntervalEntries)
-        : base(block, tx, parityTraceTypes)
+        int flushIntervalEntries = DefaultFlushIntervalEntries,
+        IReleaseSpec? spec = null)
+        : base(block, tx, parityTraceTypes, spec)
     {
         ArgumentNullException.ThrowIfNull(writer);
         if (flushIntervalEntries <= 0) throw new ArgumentOutOfRangeException(nameof(flushIntervalEntries));
@@ -479,6 +481,45 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _treatGasParityStyle = true;
 
         MaybeFlushToWire();
+    }
+
+    private protected override void OnEnterFrame(ParityTraceAction frame)
+    {
+        if (!_streamVmTrace) { base.OnEnterFrame(frame); return; }
+
+        FinalizePendingOp(closeWithNullSub: true);
+        VmFrame root = PeekLast(_streamingFrames);
+        if (!root.JsonObjectOpened)
+        {
+            OpenFrameJson(root);
+        }
+
+        // Pending, so the frame's vmTrace is written as its sub, as a callee's is under its CALL.
+        ReleaseOpBuffers();
+        _hasPendingOp = true;
+        _pushAssigned = false;
+        _pendingPc = frame.TraceAddress.AsSpan()[0];
+        _pendingCost = frame.Gas;
+        _pendingUsed = 0;
+    }
+
+    private protected override void OnLeaveFrame(ulong gasLeft)
+    {
+        if (!_streamVmTrace) { base.OnLeaveFrame(gasLeft); return; }
+
+        _pendingUsed = gasLeft;
+        _treatGasParityStyle = false;
+    }
+
+    private protected override void OnFrameEnd(int frameIndex)
+    {
+        if (!_streamVmTrace) { base.OnFrameEnd(frameIndex); return; }
+
+        if (_hasPendingOp && _outerOpHasSubWritten)
+        {
+            _pendingPc = frameIndex;
+            FinalizePendingOp(closeWithNullSub: true);
+        }
     }
 
     public override ParityLikeTxTrace BuildResult()
