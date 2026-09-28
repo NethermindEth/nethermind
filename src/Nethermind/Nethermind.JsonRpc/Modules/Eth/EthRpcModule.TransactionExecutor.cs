@@ -103,13 +103,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             /// <param name="requestToken">Cancels this execution along with work the request did before it, so both share one timeout.</param>
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null,
-                BlockOverride? blockOverride = null, CancellationToken requestToken = default)
+                BlockOverride? blockOverride = null, CancellationToken requestToken = default, SearchResult<BlockHeader>? searchResult = null)
             {
                 if (blockOverride?.GasLimit > _rpcConfig.GasCap!.Value)
                     return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {_rpcConfig.GasCap.Value}", ErrorCodes.InvalidInput);
                 _blockOverride = blockOverride;
                 _requestToken = requestToken;
-                return Execute(transactionCall, blockParameter, stateOverride);
+                return Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -12,6 +13,30 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 
 public partial class EthRpcModule
 {
+    private ResultWrapper<TResult> ExecuteWithFrameGas<TResult>(TxExecutor<TResult> executor, SignableTransactionForRpc request,
+        BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride = null)
+    {
+        if (request is not FrameTransactionForRpc frameTx || !NeedsFrameGas(frameTx))
+            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride);
+
+        SearchResult<BlockHeader> search = _blockFinder.SearchForHeader(blockParameter);
+        if (search.IsError) return ResultWrapper<TResult>.Fail(search);
+        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, timeout.Token, out int errorCode, stateOverride, blockOverride);
+        if (!result) return ResultWrapper<TResult>.Fail(result.Error!, errorCode);
+
+        FrameForRpc[]? originalFrames = frameTx.Frames;
+        frameTx.Frames = result.Data;
+        try
+        {
+            return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, timeout.Token, search);
+        }
+        finally
+        {
+            frameTx.Frames = originalFrames;
+        }
+    }
+
     private static bool NeedsFrameGas(FrameTransactionForRpc transaction)
     {
         foreach (FrameForRpc? frame in transaction.Frames ?? [])
