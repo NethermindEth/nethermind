@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Threading;
 
@@ -70,7 +71,9 @@ public static class TypeDiscovery
                 }
             }
 
-            LoadOnce(loadedAssemblies, considered);
+            // NativeAOT cannot load assemblies at runtime, so everything that survived trimming is already
+            // enumerated above; GetReferencedAssemblies() also throws PlatformNotSupportedException there.
+            if (RuntimeFeature.IsDynamicCodeSupported) LoadOnce(loadedAssemblies, considered);
 
             foreach (KeyValuePair<string, Assembly> kv in considered.Where(static kv =>
                 kv.Key.StartsWith("Nethermind") || (_pluginType is not null && FindNethermindBasedTypes(kv.Value, _pluginType).Any())))
