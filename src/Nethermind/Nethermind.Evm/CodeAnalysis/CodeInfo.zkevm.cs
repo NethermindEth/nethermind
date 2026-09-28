@@ -13,7 +13,8 @@ public sealed partial class CodeInfo
     private nint _analyzedUntil;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private byte[] GetExecutionCode() => _executionCode ??= CreatePaddedCode();
+    private byte[] GetExecutionCode() =>
+        _code is byte[] code && code.Length != _codeLength ? code : (byte[])(_code = CreatePaddedCode(ViewOf(_code).Span));
 
     /// <summary>The jump-destination bitmap of this code, populated only as far as the scan has reached.</summary>
     /// <remarks>
