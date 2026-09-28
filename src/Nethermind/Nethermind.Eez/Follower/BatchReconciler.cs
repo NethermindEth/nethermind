@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Logging;
@@ -15,25 +16,33 @@ using Nethermind.State;
 
 namespace Nethermind.Eez.Follower;
 
+/// <summary>Brings the local chain in line with what L1 settled.</summary>
+public interface IBatchReconciler
+{
+    /// <param name="cursor">The last L2 block the previous settled batch ended at.</param>
+    /// <returns>The L2 block L1's commitment now names: the new cursor.</returns>
+    /// <exception cref="EezFollowerException">The local chain cannot be brought in line with what L1 settled.</exception>
+    Task<BlockHeader> Reconcile(ScannedBatch scanned, BlockHeader cursor, FollowerHeads heads);
+}
+
 /// <summary>
 /// Brings the local chain in line with one settled batch: rebuilds the blocks it settles from its DA, keeps the local
 /// blocks that already match, replays the first one that does not and everything after it, and checks that L1's stored
 /// commitment is a block of the result. A batch whose first steps a competing batch in the same L1 block already made
-/// resumes: its settled effects are appended to the Sync block that batch committed.
+/// resumes: its settled effects are appended to the Sync block that batch committed. The head moves once per batch,
+/// to its last derived block.
 /// </summary>
 public sealed class BatchReconciler(
     IBlockTree blockTree,
     IStateReader stateReader,
     IDerivedBlockExecutor executor,
     IEezL2Engine engine,
+    ISpecProvider specProvider,
     EezSettlementContext context,
-    ILogManager logManager)
+    ILogManager logManager) : IBatchReconciler
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BatchReconciler>();
 
-    /// <param name="cursor">The last L2 block the previous settled batch ended at.</param>
-    /// <returns>The L2 block L1's commitment now names: the new cursor.</returns>
-    /// <exception cref="EezFollowerException">The local chain cannot be brought in line with what L1 settled.</exception>
     public async Task<BlockHeader> Reconcile(ScannedBatch scanned, BlockHeader cursor, FollowerHeads heads)
     {
         L1Settlement settlement = scanned.Settlement;
@@ -148,7 +157,7 @@ public sealed class BatchReconciler(
         {
             ulong number = from + (ulong)i;
             Block? local = replaying ? null : blockTree.FindBlock(number, BlockTreeLookupOptions.RequireCanonical);
-            if (local is not null && Matches(local, derived[i]))
+            if (local is not null && Matches(local, parent, derived[i]))
             {
                 parent = local.Header;
                 continue;
@@ -160,7 +169,12 @@ public sealed class BatchReconciler(
             }
 
             replaying = true;
-            parent = await Commit(session, parent, derived[i], heads, replayed);
+            parent = await Commit(session, parent, derived[i], replayed);
+        }
+
+        if (replaying)
+        {
+            await heads.SetHead(parent);
         }
     }
 
@@ -185,7 +199,7 @@ public sealed class BatchReconciler(
         Array.Copy(local, transactions, kept);
         content.Transactions.CopyTo(transactions, kept);
         if (_logger.IsInfo) _logger.Info($"Rewriting Sync block {height} with the {content.Transactions.Length} transactions a resumed batch settled.");
-        await Commit(session, parent, content with { Transactions = transactions }, heads, replayed);
+        await heads.SetHead(await Commit(session, parent, content with { Transactions = transactions }, replayed));
     }
 
     /// <summary>
@@ -204,13 +218,12 @@ public sealed class BatchReconciler(
             throw Diverged(height, $"replacing it would rewrite the chain at or below the finalized block {heads.Finalized.Number}");
         }
 
-        heads.Safe = parent;
-        await engine.UpdateForkchoice(parent.Hash!, parent.Hash!, heads.Finalized.Hash!);
+        await heads.RetreatSafe(parent);
         if (_logger.IsWarn) _logger.Warn($"Safe L2 head retreats to {parent.ToString(BlockHeader.Format.Short)} to replace block {height}.");
     }
 
-    private async Task<BlockHeader> Commit(IDerivedBlockSession session, BlockHeader parent, DerivedBlock derived, FollowerHeads heads,
-        Dictionary<ulong, Hash256> replayed)
+    /// <summary>Executes and inserts one derived block; it becomes canonical when the batch moves the head.</summary>
+    private async Task<BlockHeader> Commit(IDerivedBlockSession session, BlockHeader parent, DerivedBlock derived, Dictionary<ulong, Hash256> replayed)
     {
         Block block;
         try
@@ -223,7 +236,6 @@ public sealed class BatchReconciler(
         }
 
         await engine.Insert(block);
-        await engine.UpdateForkchoice(block.Hash!, heads.Safe.Hash!, heads.Finalized.Hash!);
         replayed[block.Number] = block.Hash!;
         if (_logger.IsDebug) _logger.Debug($"Derived L2 block {block.ToString(Block.Format.Short)}.");
         return block.Header;
@@ -257,10 +269,12 @@ public sealed class BatchReconciler(
     private BlockHeader Canonical(ulong number) =>
         blockTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical) ?? throw Diverged(number, "it is missing from the local chain");
 
-    private static bool Matches(Block local, DerivedBlock derived)
+    /// <summary>Whether <paramref name="local"/> is the block derivation builds, so a sequencer block with any other header is replaced.</summary>
+    private bool Matches(Block local, BlockHeader parent, DerivedBlock derived)
     {
         if (local.Beneficiary != derived.Beneficiary || !local.ExtraData.AsSpan().SequenceEqual(derived.ExtraData)
-            || local.Transactions.Length != derived.Transactions.Length)
+            || local.Transactions.Length != derived.Transactions.Length
+            || DerivedHeader.Mismatch(local, parent, specProvider.GetSpec(local.Header), context) is not null)
         {
             return false;
         }

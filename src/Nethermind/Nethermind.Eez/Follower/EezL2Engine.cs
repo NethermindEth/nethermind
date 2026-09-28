@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -13,13 +14,15 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Eez.Follower;
 
-/// <summary>The engine calls the follower makes on its own node: insert a derived block, then move the heads.</summary>
+/// <summary>The engine calls the follower makes on its own node: insert a block, then move the heads.</summary>
 public interface IEezL2Engine
 {
-    /// <exception cref="EezFollowerException">The node does not accept the block as valid.</exception>
+    /// <exception cref="EezFollowerException">The node finds the block invalid.</exception>
+    /// <exception cref="EezEngineUnavailableException">The node has not validated the block yet; retry.</exception>
     Task Insert(Block block);
 
-    /// <exception cref="EezFollowerException">The node does not accept the forkchoice.</exception>
+    /// <exception cref="EezFollowerException">The node finds the forkchoice invalid.</exception>
+    /// <exception cref="EezEngineUnavailableException">The node has not applied the forkchoice yet; retry.</exception>
     Task UpdateForkchoice(Hash256 head, Hash256 safe, Hash256 finalized);
 
     /// <exception cref="EezFollowerException">Something other than the follower moved the node's forkchoice.</exception>
@@ -28,16 +31,16 @@ public interface IEezL2Engine
 
 /// <summary>
 /// Drives the node's own engine API in process, as an external consensus client would over RPC. The follower must be
-/// the only driver: the engine endpoint stays open, as it does for the Optimism consensus layer, so a consensus
-/// client connected to it could move the heads too. Every forkchoice the node applies is checked against the one the
-/// follower sent, and one it did not send stops the follower.
+/// the only driver: the engine endpoint stays open, so a consensus client connected to it could move the heads too.
+/// Every forkchoice the node applies is checked against the one the follower sent, and one it did not send stops the
+/// follower. Only an invalid block or forkchoice is final; a node that is still processing, or busy, is asked again.
 /// </summary>
 public sealed class EezL2Engine : IEezL2Engine, IDisposable
 {
     private readonly IEngineRpcModule _engine;
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
-    private (Hash256 Head, Hash256 Safe, Hash256 Finalized)? _expected;
+    private Forkchoice? _expected;
     private volatile string? _foreignForkchoice;
 
     public EezL2Engine(IEngineRpcModule engine, IBlockTree blockTree, ILogManager logManager)
@@ -52,21 +55,23 @@ public sealed class EezL2Engine : IEezL2Engine, IDisposable
     {
         ResultWrapper<PayloadStatusV1> result = await _engine.engine_newPayloadV4(ExecutionPayloadV3.Create(block), [], block.ParentBeaconBlockRoot,
             block.ExecutionRequests ?? []);
-        if (result.Result.ResultType != ResultType.Success || result.Data.Status != PayloadStatus.Valid)
+        string? status = result.Result.ResultType == ResultType.Success ? result.Data.Status : null;
+        if (status != PayloadStatus.Valid)
         {
-            throw new EezFollowerException($"The node does not accept derived block {block.ToString(Block.Format.Short)}: " +
-                $"{result.Data?.Status ?? result.Result.Error} {result.Data?.ValidationError}");
+            throw Refusal(status, result.ErrorCode,
+                $"The node does not accept block {block.ToString(Block.Format.Short)}: {status ?? result.Result.Error} {result.Data?.ValidationError}");
         }
     }
 
     public async Task UpdateForkchoice(Hash256 head, Hash256 safe, Hash256 finalized)
     {
-        _expected = (head, safe, finalized);
+        Volatile.Write(ref _expected, new Forkchoice(head, safe, finalized));
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await _engine.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(head, finalized, safe));
-        if (result.Result.ResultType != ResultType.Success || result.Data.PayloadStatus.Status != PayloadStatus.Valid)
+        string? status = result.Result.ResultType == ResultType.Success ? result.Data.PayloadStatus.Status : null;
+        if (status != PayloadStatus.Valid)
         {
-            throw new EezFollowerException($"The node does not accept head {head}, safe {safe}, finalized {finalized}: " +
-                $"{result.Data?.PayloadStatus.Status ?? result.Result.Error} {result.Data?.PayloadStatus.ValidationError}");
+            throw Refusal(status, result.ErrorCode, $"The node does not accept head {head}, safe {safe}, finalized {finalized}: " +
+                $"{status ?? result.Result.Error} {result.Data?.PayloadStatus.ValidationError}");
         }
     }
 
@@ -78,9 +83,18 @@ public sealed class EezL2Engine : IEezL2Engine, IDisposable
         }
     }
 
+    /// <summary>
+    /// An invalid block or forkchoice, or a call the node rejects as malformed, is final. Anything else, a block still
+    /// processing, a forkchoice on a block not processed yet, or a timed out engine lock, clears on its own.
+    /// </summary>
+    private static Exception Refusal(string? status, int errorCode, string message) =>
+        status == PayloadStatus.Invalid || errorCode is ErrorCodes.InvalidParams or MergeErrorCodes.InvalidForkchoiceState
+            ? new EezFollowerException(message)
+            : new EezEngineUnavailableException(message);
+
     private void OnForkChoiceUpdated(object? sender, IBlockTree.ForkChoiceUpdateEventArgs e)
     {
-        if (_expected is not { } expected || _foreignForkchoice is not null)
+        if (Volatile.Read(ref _expected) is not { } expected || _foreignForkchoice is not null)
         {
             return;
         }
@@ -96,4 +110,9 @@ public sealed class EezL2Engine : IEezL2Engine, IDisposable
     }
 
     public void Dispose() => _blockTree.OnForkChoiceUpdated -= OnForkChoiceUpdated;
+
+    private sealed record Forkchoice(Hash256 Head, Hash256 Safe, Hash256 Finalized);
 }
+
+/// <summary>The node's engine has not settled a call yet: it is still processing, or busy. The follower asks again on its next poll.</summary>
+public sealed class EezEngineUnavailableException(string message) : Exception(message);

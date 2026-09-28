@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -47,7 +48,7 @@ public class L1BatchScannerTests
         Logs(L1BatchScanner.BatchPostedTopic, BatchPosted(TransactionIndex, TransactionHash));
         Logs(L1BatchScanner.L2ExecutionPerformedTopic, claimed.Select(static (root, i) => Settled(TransactionIndex, TransactionHash, (ulong)i, root)).ToArray());
 
-        ScannedBatch[] scanned = await Scanner().Scan(BlockNumber, BlockNumber);
+        ScannedBatch[] scanned = await ScanOnly(BlockNumber);
 
         Assert.That(scanned, Has.Length.EqualTo(1), "one batch in the block");
         Assert.That(scanned[0].Settlement, Is.EqualTo(new L1Settlement(0, claimed.Length, claimed[^1], scanned[0].Batch.ClaimedCurrentState!.Value)),
@@ -56,37 +57,59 @@ public class L1BatchScannerTests
     }
 
     [Test]
-    public async Task Scan_NodeRefusesTheRange_HalvesUntilItServesIt()
+    public async Task FindSettlingBlocks_NodeRefusesTheRange_HalvesUntilItServesIt()
     {
-        _l1.GetLogs(Registry, L1BatchScanner.BatchPostedTopic, null, Arg.Any<ulong>(), Arg.Any<ulong>())
+        _l1.GetLogs(Registry, L1BatchScanner.L2ExecutionPerformedTopic, Arg.Any<Hash256?>(), Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
             .Returns(call => call.ArgAt<ulong>(3) == call.ArgAt<ulong>(4)
-                ? [BatchPosted(TransactionIndex, TransactionHash, call.ArgAt<ulong>(3)) with { BlockHash = Keccak.Compute($"L1 block {call.ArgAt<ulong>(3)}") }]
+                ? [Settled(TransactionIndex, TransactionHash, 0, Keccak.Compute("root"), call.ArgAt<ulong>(3))]
                 : null);
-        _l1.GetTransactionByBlockHashAndIndex(Arg.Any<Hash256>(), TransactionIndex)
-            .Returns(new EezL1Transaction { Hash = TransactionHash, Input = _recordedBatch });
-        Logs(L1BatchScanner.L2ExecutionPerformedTopic);
+        Logs(L1BatchScanner.BatchPostedTopic);
 
-        ScannedBatch[] scanned = await Scanner().Scan(10, 13);
+        L1SettlingBlock[] blocks = await Scanner().FindSettlingBlocks(10, 13, CancellationToken.None);
 
-        Assert.That(scanned.Select(static s => s.Batch.BlockNumber), Is.EqualTo(new ulong[] { 10, 11, 12, 13 }), "every block of the refused range is read, in order");
-        Assert.That(scanned.All(static s => s.Settlement.IsEmpty), Is.True, "nothing settled our rollup");
+        Assert.That(blocks.Select(static b => b.Number), Is.EqualTo(new ulong[] { 10, 11, 12, 13 }), "every block of the refused range is read, in order");
     }
 
     [Test]
-    public void Scan_NodeRefusesOneBlock_Throws()
+    public void FindSettlingBlocks_NodeRefusesOneBlock_Throws()
     {
-        _l1.GetLogs(Registry, L1BatchScanner.BatchPostedTopic, null, BlockNumber, BlockNumber).Returns((EezL1Log[]?)null);
+        _l1.GetLogs(Registry, L1BatchScanner.L2ExecutionPerformedTopic, Arg.Any<Hash256?>(), BlockNumber, BlockNumber, Arg.Any<CancellationToken>())
+            .Returns((EezL1Log[]?)null);
 
-        Assert.ThrowsAsync<L1SourceIncompleteException>(() => Scanner().Scan(BlockNumber, BlockNumber), "a block that cannot be served is retried later");
+        Assert.ThrowsAsync<L1SourceIncompleteException>(() => Scanner().FindSettlingBlocks(BlockNumber, BlockNumber, CancellationToken.None),
+            "a block that cannot be served is retried later");
+    }
+
+    [Test]
+    public async Task FindSettlingBlocks_BlockThatDidNotSettleUs_IsNeverFetched()
+    {
+        Logs(L1BatchScanner.BatchPostedTopic, BatchPosted(TransactionIndex, TransactionHash));
+        Logs(L1BatchScanner.L2ExecutionPerformedTopic);
+
+        L1SettlingBlock[] blocks = await Scanner().FindSettlingBlocks(BlockNumber, BlockNumber, CancellationToken.None);
+
+        Assert.That(blocks, Is.Empty, "a block without our roots settled nothing for us");
+        Assert.That(_l1.ReceivedCalls().Count(static call => call.GetMethodInfo().Name == nameof(IEezL1Api.GetLogs)), Is.EqualTo(1),
+            "the batches of other rollups are not even listed");
+    }
+
+    [Test]
+    public void FindSettlingBlocks_LogsFromTwoForksOfABlock_Throws()
+    {
+        Logs(L1BatchScanner.BatchPostedTopic, BatchPosted(TransactionIndex, TransactionHash) with { BlockHash = Keccak.Compute("the other fork") });
+        Logs(L1BatchScanner.L2ExecutionPerformedTopic, Settled(TransactionIndex, TransactionHash, 0, Keccak.Compute("root")));
+
+        Assert.ThrowsAsync<L1SourceIncompleteException>(() => Scanner().FindSettlingBlocks(BlockNumber, BlockNumber, CancellationToken.None),
+            "the two reads straddled an L1 reorganization");
     }
 
     [Test]
     public void Scan_TransactionDiffersFromItsLog_Throws()
     {
         Logs(L1BatchScanner.BatchPostedTopic, BatchPosted(TransactionIndex, Keccak.Compute("replaced by a reorg")));
-        Logs(L1BatchScanner.L2ExecutionPerformedTopic);
+        Logs(L1BatchScanner.L2ExecutionPerformedTopic, Settled(TransactionIndex, TransactionHash, 0, Keccak.Compute("root")));
 
-        Assert.ThrowsAsync<L1SourceIncompleteException>(() => Scanner().Scan(BlockNumber, BlockNumber), "L1 reorganized between the log and the transaction read");
+        Assert.ThrowsAsync<L1SourceIncompleteException>(() => ScanOnly(BlockNumber), "L1 reorganized between the log and the transaction read");
     }
 
     [Test]
@@ -95,22 +118,33 @@ public class L1BatchScannerTests
         Hash256 foreign = Keccak.Compute("router call");
         Transaction(TransactionIndex + 1, foreign, [0xde, 0xad]);
         Logs(L1BatchScanner.BatchPostedTopic, BatchPosted(TransactionIndex + 1, foreign));
-        Logs(L1BatchScanner.L2ExecutionPerformedTopic);
+        Logs(L1BatchScanner.L2ExecutionPerformedTopic, Settled(TransactionIndex + 1, foreign, 0, Keccak.Compute("root")));
 
-        ScannedBatch[] scanned = await Scanner().Scan(BlockNumber, BlockNumber);
+        ScannedBatch[] scanned = await ScanOnly(BlockNumber);
 
-        Assert.That(scanned, Is.Empty, "a batch that did not settle our rollup cannot stop the follower");
+        Assert.That(scanned, Is.Empty, "a transaction that is not a postAndVerifyBatch call is no batch to derive");
     }
 
+    /// <summary>
+    /// Anyone can post a batch of their own through a contract that also calls <c>executeL2Txs</c> for our rollup:
+    /// 1. our batch runs its first steps in its own transaction;
+    /// 2. the wrapper, which does not decode, emits the rest of our steps;
+    /// 3. the wrapper is skipped and its roots are credited to our batch, which queued them.
+    /// </summary>
     [Test]
-    public void Scan_UndecodableBatchThatSettledUs_Throws()
+    public async Task Scan_WrapperRunningOurQueuedSteps_CreditsThemToOurBatch()
     {
-        Hash256 ours = Keccak.Compute("router call settling us");
-        Transaction(TransactionIndex + 1, ours, [0xde, 0xad]);
-        Logs(L1BatchScanner.BatchPostedTopic, BatchPosted(TransactionIndex + 1, ours));
-        Logs(L1BatchScanner.L2ExecutionPerformedTopic, Settled(TransactionIndex + 1, ours, 0, Keccak.Compute("root")));
+        ValueHash256[] claimed = ClaimedChain(_recordedBatch);
+        Hash256 wrapper = Keccak.Compute("wrapper calling executeL2Txs");
+        Transaction(TransactionIndex + 1, wrapper, [0xde, 0xad]);
+        Logs(L1BatchScanner.BatchPostedTopic, BatchPosted(TransactionIndex, TransactionHash), BatchPosted(TransactionIndex + 1, wrapper));
+        Logs(L1BatchScanner.L2ExecutionPerformedTopic,
+            [.. claimed[..^1].Select(static (root, i) => Settled(TransactionIndex, TransactionHash, (ulong)i, root)), Settled(TransactionIndex + 1, wrapper, 0, claimed[^1])]);
 
-        Assert.ThrowsAsync<EezFollowerException>(() => Scanner().Scan(BlockNumber, BlockNumber), "L1 settled our rollup with a batch the follower cannot derive");
+        ScannedBatch[] scanned = await ScanOnly(BlockNumber);
+
+        Assert.That(scanned.Select(static s => s.Batch.TransactionHash), Is.EqualTo(new[] { TransactionHash }), "only our batch is derived");
+        Assert.That(scanned[0].Settlement.FinalState, Is.EqualTo(claimed[^1]), "the step the wrapper ran still settles our batch");
     }
 
     [Test]
@@ -130,11 +164,19 @@ public class L1BatchScannerTests
 
     private L1BatchScanner Scanner() => new(_l1, Registry, RollupId, LimboLogs.Instance);
 
+    private async Task<ScannedBatch[]> ScanOnly(ulong block)
+    {
+        L1BatchScanner scanner = Scanner();
+        L1SettlingBlock[] blocks = await scanner.FindSettlingBlocks(block, block, CancellationToken.None);
+        Assert.That(blocks, Has.Length.EqualTo(1), "precondition: the block settled our rollup");
+        return await scanner.Scan(blocks[0], CancellationToken.None);
+    }
+
     private void Logs(Hash256 topic, params EezL1Log[] logs) =>
-        _l1.GetLogs(Registry, topic, Arg.Any<Hash256?>(), Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(logs);
+        _l1.GetLogs(Registry, topic, Arg.Any<Hash256?>(), Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>()).Returns(logs);
 
     private void Transaction(ulong index, Hash256 hash, byte[] input) =>
-        _l1.GetTransactionByBlockHashAndIndex(BlockHash, index).Returns(new EezL1Transaction { Hash = hash, Input = input });
+        _l1.GetTransactionByBlockHashAndIndex(BlockHash, index, Arg.Any<CancellationToken>()).Returns(new EezL1Transaction { Hash = hash, Input = input });
 
     private static ValueHash256[] ClaimedChain(byte[] calldata) =>
         L1Batch.Of(EezCalldata.DecodePostAndVerifyBatch(calldata), RollupId, BlockNumber, BlockHash, TransactionHash, TransactionIndex).ClaimedChain;
@@ -150,12 +192,12 @@ public class L1BatchScannerTests
         TransactionIndex = index,
     };
 
-    private static EezL1Log Settled(ulong index, Hash256 transaction, ulong logIndex, in ValueHash256 root) => new()
+    private static EezL1Log Settled(ulong index, Hash256 transaction, ulong logIndex, in ValueHash256 root, ulong block = BlockNumber) => new()
     {
         Address = Registry,
         Topics = [L1BatchScanner.L2ExecutionPerformedTopic],
         Data = root.ToByteArray(),
-        BlockNumber = BlockNumber,
+        BlockNumber = block,
         BlockHash = BlockHash,
         TransactionHash = transaction,
         TransactionIndex = index,

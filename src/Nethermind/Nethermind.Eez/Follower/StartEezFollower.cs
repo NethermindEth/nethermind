@@ -10,7 +10,10 @@ using Nethermind.Logging;
 namespace Nethermind.Eez.Follower;
 
 /// <summary>Starts the EEZ follower once the blockchain and the engine it drives are initialized.</summary>
-/// <remarks><see cref="EezFollower"/> runs in the background and handles its own failures; the container disposes it.</remarks>
+/// <remarks>
+/// <see cref="EezFollower"/> runs in the background and handles its own failures; the service stopper stops it with
+/// the other services, before anything is disposed.
+/// </remarks>
 [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(InitializeBlockProducer), typeof(InitializeNetwork))]
 public class StartEezFollower(EezFollower follower, ILogManager logManager) : IStep
 {

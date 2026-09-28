@@ -21,7 +21,6 @@ namespace Nethermind.Eez.Test;
 public class BatchReconcilerTests
 {
     private const ulong RollupId = SyncSettlementFixture.RollupId;
-    private static readonly EezSettlementContext Context = new(RollupId, SyncSettlementFixture.ChainId, Address.Zero, default, 2);
     private static readonly Address Beneficiary = SyncSettlementFixture.Beneficiary;
 
     private IBlockTree _chain = null!;
@@ -36,8 +35,9 @@ public class BatchReconcilerTests
         _chain = Build.A.BlockTree().OfChainLength(1).TestObject;
         _genesis = _chain.Genesis!;
         _engine = new ChainEngine(_chain);
-        _heads = new FollowerHeads(_genesis, _genesis);
-        _reconciler = new BatchReconciler(_chain, Substitute.For<IStateReader>(), new FakeExecutor(), _engine, Context, LimboLogs.Instance);
+        _heads = new FollowerHeads(_engine, _chain, _genesis);
+        _reconciler = new BatchReconciler(_chain, Substitute.For<IStateReader>(), new FakeExecutor(), _engine, DerivedChain.SpecProvider, DerivedChain.Context,
+            LimboLogs.Instance);
     }
 
     [Test]
@@ -120,19 +120,72 @@ public class BatchReconcilerTests
     public async Task Reconcile_ReplacingASafeBlock_RetreatsSafeFirst()
     {
         BlockHeader[] local = await Derive(_genesis, [Published(TestItem.PrivateKeyC, 0), Published(TestItem.PrivateKeyD, 0)]);
-        _heads.Safe = local[^1];
+        await _heads.AdvanceSafe(local[^1]);
+        _engine.Forkchoices.Clear();
         DaBlock[] published = [Published(TestItem.PrivateKeyA, 0), Published(TestItem.PrivateKeyB, 0)];
+        Hash256 settled = ExpectedHashes(_genesis, published)[^1];
 
-        await _reconciler.Reconcile(Batch(published, ExpectedHashes(_genesis, published)[^1], _genesis.Hash!), _genesis, _heads);
+        await _reconciler.Reconcile(Batch(published, settled, _genesis.Hash!), _genesis, _heads);
 
-        Assert.That(_engine.Forkchoices[0].Safe, Is.EqualTo(_genesis.Hash), "safe moves to the parent before the first replaced block");
+        Assert.That(_engine.Forkchoices[0], Is.EqualTo((_genesis.Hash!, _genesis.Hash!, _genesis.Hash!)), "safe and the head move to the parent before the first replaced block");
+        Assert.That(_heads.Safe.Hash, Is.EqualTo(_genesis.Hash), "safe stays at the parent until the follower settles the batch");
+        Assert.That(_heads.Head.Hash, Is.EqualTo(settled), "the head is the last replayed block");
+    }
+
+    [Test]
+    public async Task Reconcile_ReplayedBatch_MovesTheHeadOnce()
+    {
+        DaBlock[] published = [Published(TestItem.PrivateKeyA, 0), Published(TestItem.PrivateKeyB, 0), Published(TestItem.PrivateKeyC, 0)];
+        Hash256 settled = ExpectedHashes(_genesis, published)[^1];
+
+        await _reconciler.Reconcile(Batch(published, settled, _genesis.Hash!), _genesis, _heads);
+
+        Assert.That(_engine.Forkchoices, Is.EqualTo(new[] { (settled, _genesis.Hash!, _genesis.Hash!) }), "one forkchoice per batch, to its last block");
+    }
+
+    /// <summary>
+    /// A block with the batch's transactions but a header derivation would not build, as a sequencer could publish:
+    /// it does not count as derived, so the batch replaces it.
+    /// </summary>
+    [Test]
+    public async Task Reconcile_LocalBlockWithAnotherHeader_IsReplaced()
+    {
+        DaBlock published = Published(TestItem.PrivateKeyA, 0);
+        Block forged = Build.A.Block.WithParent(_genesis).WithBeneficiary(Beneficiary).WithExtraData(published.ExtraData).WithMixHash(Keccak.Compute("randao"))
+            .WithTransactions(published.Transactions.Select(SyncSettlementFixture.Decode).ToArray()).TestObject;
+        await _engine.Insert(forged);
+        await _heads.SetHead(forged.Header);
+        Hash256 settled = ExpectedHashes(_genesis, [published])[0];
+
+        BlockHeader end = await _reconciler.Reconcile(Batch([published], settled, _genesis.Hash!), _genesis, _heads);
+
+        Assert.That(end.Hash, Is.EqualTo(settled), "the settled block replaces the forged one");
+        Assert.That(_chain.Head!.Hash, Is.EqualTo(settled), "the forged block is no longer canonical");
+    }
+
+    /// <summary>
+    /// Replayed blocks that start one batch below the cursor, as a competing composer's batch may:
+    /// 1. the anchor is found below the cursor;
+    /// 2. the batch builds on it.
+    /// </summary>
+    [Test]
+    public async Task Reconcile_EntryStateBelowTheCursor_BuildsOnIt()
+    {
+        BlockHeader[] local = await Derive(_genesis, [Published(TestItem.PrivateKeyC, 0)]);
+        DaBlock[] published = [Published(TestItem.PrivateKeyA, 0)];
+        Hash256 settled = ExpectedHashes(_genesis, published)[0];
+
+        BlockHeader end = await _reconciler.Reconcile(Batch(published, settled, _genesis.Hash!), local[0], _heads);
+
+        Assert.That((end.Number, end.Hash), Is.EqualTo((1UL, settled)), "the batch replaces the cursor's block from the anchor below it");
     }
 
     [Test]
     public async Task Reconcile_ReplacingAFinalizedBlock_Throws()
     {
         BlockHeader[] local = await Derive(_genesis, [Published(TestItem.PrivateKeyC, 0)]);
-        _heads.Safe = _heads.Finalized = local[0];
+        await _heads.AdvanceSafe(local[0]);
+        await _heads.AdvanceFinalized(local[0]);
         DaBlock[] published = [Published(TestItem.PrivateKeyA, 0)];
         ScannedBatch batch = Batch(published, ExpectedHashes(_genesis, published)[^1], _genesis.Hash!);
 
@@ -165,7 +218,7 @@ public class BatchReconcilerTests
         {
             Block built = FakeExecutor.Build(parent, block);
             await _engine.Insert(built);
-            await _engine.UpdateForkchoice(built.Hash!, _heads.Safe.Hash!, _heads.Finalized.Hash!);
+            await _heads.SetHead(built.Header);
             headers.Add(parent = built.Header);
         }
 
@@ -204,8 +257,7 @@ public class BatchReconcilerTests
             Build(parent, new DaBlock(derived.Beneficiary, derived.ExtraData, derived.Transactions));
 
         public static Block Build(BlockHeader parent, DaBlock published) =>
-            Core.Test.Builders.Build.A.Block.WithParent(parent).WithBeneficiary(published.Beneficiary).WithExtraData(published.ExtraData)
-                .WithTransactions(published.Transactions.Select(SyncSettlementFixture.Decode).ToArray()).TestObject;
+            DerivedChain.Child(parent, published.Beneficiary, published.ExtraData, published.Transactions.Select(SyncSettlementFixture.Decode).ToArray());
 
         public void Dispose()
         {

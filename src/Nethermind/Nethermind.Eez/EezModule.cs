@@ -46,7 +46,6 @@ public class EezModule(IEezConfig config) : Module
 
     private void LoadFollower(ContainerBuilder builder)
     {
-        Address registry = new(config.RegistryAddress!);
         builder
             .AddKeyedSingleton<IJsonRpcClient>(L1RpcClientKey, static ctx =>
             {
@@ -59,10 +58,11 @@ public class EezModule(IEezConfig config) : Module
             .AddSingleton<DerivedBlockBuilder>()
             .AddSingleton<IDerivedBlockExecutor, DerivedBlockExecutor>()
             .AddSingleton<IEezL2Engine, EezL2Engine>()
-            .AddSingleton<L1BatchScanner, IEezL1Api, ILogManager>((l1, logManager) => new L1BatchScanner(l1, registry, config.RollupId, logManager))
+            .AddSingleton<IL1BatchScanner, IEezL1Api, ILogManager>((l1, logManager) =>
+                new L1BatchScanner(l1, new Address(config.RegistryAddress!), config.RollupId, logManager))
             .AddSingleton<ResumePointFinder, IEezL1Api, IBlockTree>((l1, blockTree) =>
-                new ResumePointFinder(l1, blockTree, registry, config.RollupId, config.RegistryDeployBlock, config.L1LogScanBlocks))
-            .AddSingleton<BatchReconciler>()
+                new ResumePointFinder(l1, blockTree, new Address(config.RegistryAddress!), config.RollupId, config.RegistryDeployBlock, config.L1LogScanBlocks))
+            .AddSingleton<IBatchReconciler, BatchReconciler>()
             .AddSingleton<IUnsafeHeadSource>(NullUnsafeHeadSource.Instance)
             .AddSingleton<EezFollower>()
             .AddStep(typeof(StartEezFollower));

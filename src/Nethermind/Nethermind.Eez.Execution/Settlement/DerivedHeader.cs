@@ -35,25 +35,28 @@ public static class DerivedHeader
     /// <exception cref="EezSettlementException">The header differs from the one derivation builds.</exception>
     public static void Ensure(Block block, BlockHeader parent, IReleaseSpec spec, EezSettlementContext context)
     {
+        if (Mismatch(block, parent, spec, context) is { } field)
+        {
+            throw new EezSettlementException($"Block {block.Number} has {field}, so derivation cannot rebuild it.");
+        }
+    }
+
+    /// <returns>The first header field that differs from the one derivation builds, or <see langword="null"/> when none does.</returns>
+    public static string? Mismatch(Block block, BlockHeader parent, IReleaseSpec spec, EezSettlementContext context)
+    {
         BlockHeader header = block.Header;
         BlockHeader derived = Build(parent, spec, context, header.Beneficiary!, header.ExtraData);
-        Require(header.Timestamp == derived.Timestamp, header, $"timestamp {header.Timestamp}, not {derived.Timestamp}");
-        Require(header.GasLimit == derived.GasLimit, header, $"gas limit {header.GasLimit}, not {derived.GasLimit}");
-        Require(header.MixHash == derived.MixHash, header, "a non-zero prevRandao");
-        Require(header.ParentBeaconBlockRoot == derived.ParentBeaconBlockRoot, header, "a parent beacon block root other than the fork's zero root");
-        Require(Withdrawals(spec) is null ? block.Withdrawals is null : block.Withdrawals is { Length: 0 }, header, "withdrawals other than the fork's empty list");
-        Require(header.Difficulty == derived.Difficulty && header.Nonce == derived.Nonce && header.UnclesHash == derived.UnclesHash, header, "proof-of-work fields");
+        bool derivedWithdrawals = Withdrawals(spec) is null ? block.Withdrawals is null : block.Withdrawals is { Length: 0 };
+        return header.Timestamp != derived.Timestamp ? $"timestamp {header.Timestamp}, not {derived.Timestamp}"
+            : header.GasLimit != derived.GasLimit ? $"gas limit {header.GasLimit}, not {derived.GasLimit}"
+            : header.MixHash != derived.MixHash ? "a non-zero prevRandao"
+            : header.ParentBeaconBlockRoot != derived.ParentBeaconBlockRoot ? "a parent beacon block root other than the fork's zero root"
+            : !derivedWithdrawals ? "withdrawals other than the fork's empty list"
+            : header.Difficulty != derived.Difficulty || header.Nonce != derived.Nonce || header.UnclesHash != derived.UnclesHash ? "proof-of-work fields"
+            : null;
     }
 
     /// <summary>The timestamp derivation gives the child of <paramref name="parent"/>.</summary>
     public static ulong Timestamp(BlockHeader parent, EezSettlementContext context) =>
         parent.Timestamp > ulong.MaxValue - context.BlockTimeSeconds ? ulong.MaxValue : parent.Timestamp + context.BlockTimeSeconds;
-
-    private static void Require(bool condition, BlockHeader header, string field)
-    {
-        if (!condition)
-        {
-            throw new EezSettlementException($"Block {header.Number} has {field}, so derivation cannot rebuild it.");
-        }
-    }
 }

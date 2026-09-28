@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
@@ -66,11 +67,49 @@ public class EezL2EngineTests
         Assert.DoesNotThrow(_l2.EnsureSoleDriver, "the node's own forkchoice before the follower starts is not a foreign one");
     }
 
+    [TestCaseSource(nameof(ForkchoiceOutcomes))]
+    public void UpdateForkchoice_NodeDoesNotApplyIt_ThrowsByWhetherItClears(ResultWrapper<ForkchoiceUpdatedV1Result> result, Type expected)
+    {
+        _engine.engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>()).Returns(result);
+
+        Assert.That(() => _l2.UpdateForkchoice(Head.Hash!, Safe, Finalized), Throws.TypeOf(expected),
+            "only an invalid forkchoice stops the follower; one the node has not processed yet is asked again");
+    }
+
+    [TestCaseSource(nameof(PayloadOutcomes))]
+    public void Insert_NodeDoesNotValidateIt_ThrowsByWhetherItClears(ResultWrapper<PayloadStatusV1> result, Type expected)
+    {
+        _engine.engine_newPayloadV4(Arg.Any<ExecutionPayloadV3>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>()).Returns(result);
+
+        Assert.That(() => _l2.Insert(Head), Throws.TypeOf(expected), "only an invalid block stops the follower; a busy node is asked again");
+    }
+
+    private static TestCaseData[] ForkchoiceOutcomes() =>
+    [
+        new TestCaseData(ForkchoiceUpdatedV1Result.Syncing, typeof(EezEngineUnavailableException))
+            { TestName = "Syncing" },
+        new TestCaseData(ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero), typeof(EezFollowerException))
+            { TestName = "Invalid" },
+        new TestCaseData(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("Timed out", ErrorCodes.Timeout), typeof(EezEngineUnavailableException))
+            { TestName = "LockTimedOut" },
+        new TestCaseData(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("not an ancestor", MergeErrorCodes.InvalidForkchoiceState), typeof(EezFollowerException))
+            { TestName = "InvalidForkchoiceState" },
+    ];
+
+    private static TestCaseData[] PayloadOutcomes() =>
+    [
+        new TestCaseData(ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Syncing), typeof(EezEngineUnavailableException)) { TestName = "Syncing" },
+        new TestCaseData(ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Accepted), typeof(EezEngineUnavailableException)) { TestName = "Accepted" },
+        new TestCaseData(ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(null, "bad state root")), typeof(EezFollowerException)) { TestName = "Invalid" },
+        new TestCaseData(ResultWrapper<PayloadStatusV1>.Fail("Timed out", ErrorCodes.Timeout), typeof(EezEngineUnavailableException)) { TestName = "LockTimedOut" },
+        new TestCaseData(ResultWrapper<PayloadStatusV1>.Fail("malformed", ErrorCodes.InvalidParams), typeof(EezFollowerException)) { TestName = "InvalidParams" },
+    ];
+
     private void Applied(Block head, Hash256 safe, Hash256 finalized)
     {
         _blockTree.SafeHash.Returns(safe);
         _blockTree.FinalizedHash.Returns(finalized);
-        _blockTree.OnForkChoiceUpdated += Raise.Event<System.EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>>(_blockTree,
+        _blockTree.OnForkChoiceUpdated += Raise.Event<EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>>(_blockTree,
             new IBlockTree.ForkChoiceUpdateEventArgs(head, head.Number, head.Number));
     }
 }

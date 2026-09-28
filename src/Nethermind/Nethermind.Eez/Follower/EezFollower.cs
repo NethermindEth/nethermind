@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Eez.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -20,45 +22,65 @@ namespace Nethermind.Eez.Follower;
 /// Follows the rollup from L1: scans L1 for the batches that settled it, derives every block they settle and moves
 /// the safe head to what L1 stores, and the finalized head to what a finalized L1 block stores. An L1 reorganization
 /// sends it back to the last settlement that survived. A settlement the local chain cannot reproduce stops the node,
-/// since serving blocks L1 disagrees with would be worse than serving none.
+/// since serving blocks L1 disagrees with would be worse than serving none. Progress is kept per L1 block, so a read
+/// that fails resumes at the block it failed in.
 /// </summary>
 public sealed class EezFollower(
     IEezL1Api l1,
-    L1BatchScanner scanner,
-    BatchReconciler reconciler,
+    IL1BatchScanner scanner,
+    IBatchReconciler reconciler,
     ResumePointFinder resumePoints,
     IUnsafeHeadSource unsafeHead,
     IBlockTree blockTree,
     IEezL2Engine engine,
     IEezConfig config,
     IProcessExitSource processExit,
-    ILogManager logManager) : IAsyncDisposable
+    ILogManager logManager) : IStoppableService, IAsyncDisposable
 {
+    /// <summary>
+    /// How many settling L1 blocks are kept while L1 finalizes none of them, as on a chain without a finalized tag; an
+    /// older one could only finalize an L2 block a newer one finalizes too.
+    /// </summary>
+    internal const int MaxPendingSettlements = 4096;
+
+    /// <summary>How long one poll may wait on the sequencer, so a slow one never holds back what L1 settled.</summary>
+    internal static readonly TimeSpan SequencerBudget = TimeSpan.FromSeconds(10);
+
     private readonly ILogger _logger = logManager.GetClassLogger<EezFollower>();
     private readonly CancellationTokenSource _cancellation = new();
-    private readonly List<SettledRecord> _settled = [];
+    private readonly Queue<SettledRecord> _settled = new();
 
     private FollowerHeads _heads = null!;
     private BlockHeader _cursor = null!;
     private EezL1Block _lastScanned;
+    private Hash256? _followedLatest;
     private ulong _nextL1;
     private Task? _running;
-    private int _disposed;
+    private int _stopped;
+
+    public string Description => "EEZ follower";
+
+    internal FollowerHeads Heads => _heads;
 
     /// <summary>Starts following; the returned task runs until the node stops.</summary>
     /// <remarks>Every failure is handled inside: transient ones are retried, the rest stop the node.</remarks>
-    public Task Start() => _running ??= Run();
+    public Task Start() => _running ??= Run(_cancellation.Token);
 
-    private async Task Run()
+    private async Task Run(CancellationToken token)
     {
-        CancellationToken token = _cancellation.Token;
         try
         {
-            await Retrying(Boot, token);
-            while (!token.IsCancellationRequested)
+            while (!await Attempt(Boot, token))
             {
-                await Retrying(Tick, token);
                 await Task.Delay(config.L1PollingIntervalMs, token);
+            }
+
+            while (true)
+            {
+                if (!await Poll(token))
+                {
+                    await Task.Delay(config.L1PollingIntervalMs, token);
+                }
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -76,162 +98,210 @@ public sealed class EezFollower(
         }
     }
 
-    /// <summary>Runs <paramref name="step"/> until L1 serves it: an incomplete read or an unreachable node is retried on the next poll.</summary>
-    private async Task Retrying(Func<Task> step, CancellationToken token)
+    /// <summary>Finds where to resume from, on L1 and on the local chain.</summary>
+    internal async Task Boot(CancellationToken token)
     {
-        while (true)
-        {
-            try
-            {
-                await step();
-                return;
-            }
-            catch (Exception e) when (e is L1SourceIncompleteException or HttpRequestException or DataException or TaskCanceledException
-                                      && !token.IsCancellationRequested)
-            {
-                if (_logger.IsWarn) _logger.Warn($"EEZ follower retries after an L1 read failed: {e.Message}");
-                await Task.Delay(config.L1PollingIntervalMs, token);
-            }
-        }
-    }
-
-    private async Task Boot()
-    {
-        ulong chainId = await l1.GetChainId() ?? throw new L1SourceIncompleteException(0, "L1 does not report its chain ID.");
+        ulong chainId = await l1.GetChainId(token) ?? throw new L1SourceIncompleteException(0, "L1 does not report its chain ID.");
         if (chainId != config.L1ChainId)
         {
             throw new EezFollowerException($"L1 reports chain {chainId}, not the configured chain {config.L1ChainId}.");
         }
 
         BlockHeader genesis = blockTree.Genesis ?? throw new EezFollowerException("The L2 chain has no genesis.");
-        BlockHeader finalized = Header(blockTree.FinalizedHash) ?? genesis;
-        _heads = new FollowerHeads(genesis, finalized);
-        await Resume(await Latest(), fromGenesis: Header(blockTree.SafeHash) is not { } safe || safe.Number == 0);
+        _heads = new FollowerHeads(engine, blockTree, Header(blockTree.FinalizedHash) ?? genesis);
+        await Resume(await Latest(token), fromGenesis: Header(blockTree.SafeHash) is not { } safe || safe.Number == 0, token);
     }
 
-    private async Task Tick()
+    /// <summary>One poll: what L1 settled since the last one, then the sequencer's head.</summary>
+    /// <returns>Whether L1 has more blocks to scan right away.</returns>
+    internal async Task<bool> Poll(CancellationToken token)
     {
         engine.EnsureSoleDriver();
-        EezL1Block latest = await Latest();
-        EezL1Block? scannedNow = await l1.GetBlockByNumber(_lastScanned.Number);
-        if (scannedNow?.Hash != _lastScanned.Hash)
+        bool behind = await Attempt(FollowL1, token) && _followedLatest is null;
+        await AdvanceUnsafeHead(token);
+        return behind;
+    }
+
+    /// <returns>Whether <paramref name="step"/> completed; a transient failure is logged and left to the next poll.</returns>
+    private async Task<bool> Attempt(Func<CancellationToken, Task> step, CancellationToken token)
+    {
+        try
+        {
+            await step(token);
+            return true;
+        }
+        catch (Exception e) when (IsTransient(e, token))
+        {
+            if (_logger.IsWarn) _logger.Warn($"EEZ follower retries on the next poll: {e.Message}");
+            return false;
+        }
+    }
+
+    private static bool IsTransient(Exception e, CancellationToken token) =>
+        !token.IsCancellationRequested
+        && e is L1SourceIncompleteException or EezEngineUnavailableException or HttpRequestException or DataException or OperationCanceledException;
+
+    private async Task FollowL1(CancellationToken token)
+    {
+        EezL1Block latest = await Latest(token);
+        if (latest.Hash == _followedLatest)
+        {
+            return;
+        }
+
+        _followedLatest = null;
+        if (await l1.GetBlockByNumber(_lastScanned.Number, token) is not { } scanned || scanned.Hash != _lastScanned.Hash)
         {
             if (_logger.IsWarn) _logger.Warn($"L1 reorganized at or below block {_lastScanned.Number}; resuming from the last settlement that survived.");
-            await Resume(latest, fromGenesis: false);
-            return;
+            await Resume(latest, fromGenesis: false, token);
         }
 
         if (latest.Number >= _nextL1)
         {
-            await Scan(Math.Min(latest.Number, _nextL1 + config.L1LogScanBlocks - 1));
+            await Scan(Math.Min(latest.Number, _nextL1 + config.L1LogScanBlocks - 1), token);
         }
 
-        await AdvanceFinalized();
-        await AdvanceUnsafeHead();
-    }
-
-    /// <summary>Takes the sequencer's blocks as the unsafe head; its failures never hold back what L1 settled.</summary>
-    private async Task AdvanceUnsafeHead()
-    {
-        try
+        await AdvanceFinalized(token);
+        if (_nextL1 > latest.Number)
         {
-            await unsafeHead.Advance(_heads);
-        }
-        catch (Exception e) when (e is L1SourceIncompleteException or HttpRequestException or DataException or RlpException)
-        {
-            if (_logger.IsWarn) _logger.Warn($"EEZ follower could not read the sequencer's head: {e.Message}");
+            _followedLatest = latest.Hash;
         }
     }
 
-    /// <summary>Derives what L1 settled in blocks <see cref="_nextL1"/> to <paramref name="to"/> and moves the safe head after each block.</summary>
-    private async Task Scan(ulong to)
+    /// <summary>Derives what L1 settled in blocks <see cref="_nextL1"/> to <paramref name="to"/>, one settling block at a time.</summary>
+    private async Task Scan(ulong to, CancellationToken token)
     {
-        EezL1Block end = await l1.GetBlockByNumber(to) ?? throw new L1SourceIncompleteException(to, $"L1 cannot serve block {to}.");
-        ScannedBatch[] batches = await scanner.Scan(_nextL1, to);
-        for (int i = 0; i < batches.Length; i++)
+        EezL1Block end = await Block(to, token);
+        foreach (L1SettlingBlock block in await scanner.FindSettlingBlocks(_nextL1, to, token))
         {
-            ScannedBatch scanned = batches[i];
-            if (!scanned.Settlement.IsEmpty)
-            {
-                _cursor = await reconciler.Reconcile(scanned, _cursor, _heads);
-            }
-
-            bool lastInBlock = i == batches.Length - 1 || batches[i + 1].Batch.BlockHash != scanned.Batch.BlockHash;
-            if (lastInBlock && _cursor.Number > _heads.Safe.Number)
-            {
-                _settled.Add(new SettledRecord(scanned.Batch.BlockNumber, scanned.Batch.BlockHash, _cursor));
-                _heads.Safe = _cursor;
-                await UpdateForkchoice();
-                if (_logger.IsInfo) _logger.Info($"L2 safe head {_cursor.ToString(BlockHeader.Format.Short)}, settled in L1 block {scanned.Batch.BlockNumber}.");
-            }
+            await Settle(block, token);
+            _lastScanned = new EezL1Block { Number = block.Number, Hash = block.Hash };
+            _nextL1 = block.Number + 1;
         }
 
         _lastScanned = end;
         _nextL1 = to + 1;
     }
 
-    /// <summary>Moves the finalized head to the last settlement in a finalized L1 block.</summary>
-    private async Task AdvanceFinalized()
+    /// <summary>
+    /// Reconciles every batch of <paramref name="block"/> and moves safe to where L1's commitment stands after it. The
+    /// cursor moves only once the whole block is settled, so a retry starts the block over.
+    /// </summary>
+    private async Task Settle(L1SettlingBlock block, CancellationToken token)
     {
-        if (await l1.GetFinalizedBlock() is not { } finalized)
+        ScannedBatch[] batches = await scanner.Scan(block, token);
+        BlockHeader cursor = _cursor;
+        try
+        {
+            foreach (ScannedBatch scanned in batches)
+            {
+                if (!scanned.Settlement.IsEmpty)
+                {
+                    cursor = await reconciler.Reconcile(scanned, cursor, _heads);
+                }
+            }
+        }
+        catch (EezFollowerException e)
+        {
+            if (await IsCanonical(block.Number, block.Hash, token))
+            {
+                throw;
+            }
+
+            throw new L1SourceIncompleteException(block.Number, $"L1 reorganized block {block.Number} while it was derived: {e.Message}");
+        }
+
+        if (cursor.Number > _heads.Safe.Number)
+        {
+            await _heads.AdvanceSafe(cursor);
+            Remember(new SettledRecord(block.Number, block.Hash, cursor));
+            if (_logger.IsInfo) _logger.Info($"L2 safe head {cursor.ToString(BlockHeader.Format.Short)}, settled in L1 block {block.Number}.");
+        }
+
+        _cursor = cursor;
+    }
+
+    private void Remember(SettledRecord record)
+    {
+        if (_settled.Count == MaxPendingSettlements)
+        {
+            _settled.Dequeue();
+        }
+
+        _settled.Enqueue(record);
+    }
+
+    /// <summary>Moves the finalized head to the last settlement in a finalized L1 block.</summary>
+    private async Task AdvanceFinalized(CancellationToken token)
+    {
+        if (await l1.GetFinalizedBlock(token) is not { } finalized)
         {
             return;
         }
 
-        int last = _settled.FindLastIndex(r => r.L1Number <= finalized.Number);
-        if (last < 0)
+        SettledRecord? last = null;
+        while (_settled.TryPeek(out SettledRecord? record) && record.L1Number <= finalized.Number)
         {
-            return;
+            last = _settled.Dequeue();
         }
 
-        SettledRecord record = _settled[last];
-        _settled.RemoveRange(0, last);
-        if (record.L2End.Number > _heads.Finalized.Number)
+        if (last is not null && last.L2End.Number > _heads.Finalized.Number && last.L2End.Number <= _heads.Safe.Number)
         {
-            _heads.Finalized = record.L2End;
-            await UpdateForkchoice();
+            await _heads.AdvanceFinalized(last.L2End);
         }
     }
 
     /// <summary>Continues from the last settlement L1 and the local chain agree on, or from genesis when there is none.</summary>
-    private async Task Resume(EezL1Block latest, bool fromGenesis)
+    private async Task Resume(EezL1Block latest, bool fromGenesis, CancellationToken token)
     {
-        SettledRecord? record = fromGenesis ? null : await resumePoints.Find(latest.Number);
-        _cursor = record?.L2End ?? blockTree.Genesis!;
-        if (_cursor.Number < _heads.Finalized.Number)
-        {
-            throw new EezFollowerException($"L1 no longer settles the finalized L2 block {_heads.Finalized.ToString(BlockHeader.Format.Short)}.");
-        }
+        SettledRecord? record = fromGenesis ? null : await resumePoints.Find(latest.Number, token);
+        BlockHeader cursor = record?.L2End ?? blockTree.Genesis!;
+        ulong next = record is null ? config.RegistryDeployBlock : record.L1Number + 1;
+        EezL1Block lastScanned = await Block(next - 1, token);
+        await _heads.Reset(cursor);
 
         _settled.Clear();
         if (record is not null)
         {
-            _settled.Add(record);
+            _settled.Enqueue(record);
         }
 
-        _heads.Safe = _cursor;
-        _nextL1 = record is null ? config.RegistryDeployBlock : record.L1Number + 1;
-        _lastScanned = await l1.GetBlockByNumber(_nextL1 - 1) ?? throw new L1SourceIncompleteException(_nextL1 - 1, $"L1 cannot serve block {_nextL1 - 1}.");
-        await UpdateForkchoice();
-        if (_logger.IsInfo) _logger.Info($"EEZ follower resumes from L2 block {_cursor.ToString(BlockHeader.Format.Short)} at L1 block {_nextL1}.");
+        _cursor = cursor;
+        _nextL1 = next;
+        _lastScanned = lastScanned;
+        _followedLatest = null;
+        if (_logger.IsInfo) _logger.Info($"EEZ follower resumes from L2 block {cursor.ToString(BlockHeader.Format.Short)} at L1 block {next}.");
     }
 
-    private Task UpdateForkchoice()
+    /// <summary>Takes the sequencer's blocks as the unsafe head; its failures never hold back what L1 settled.</summary>
+    private async Task AdvanceUnsafeHead(CancellationToken token)
     {
-        BlockHeader head = blockTree.Head?.Header is { } current && current.Number >= _heads.Safe.Number && blockTree.IsMainChain(_heads.Safe)
-            ? current
-            : _heads.Safe;
-        return engine.UpdateForkchoice(head.Hash!, _heads.Safe.Hash!, _heads.Finalized.Hash!);
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(SequencerBudget);
+        try
+        {
+            await unsafeHead.Advance(_heads, deadline.Token);
+        }
+        catch (Exception e) when (IsTransient(e, token) || (e is RlpException && !token.IsCancellationRequested))
+        {
+            if (_logger.IsWarn) _logger.Warn($"EEZ follower could not take the sequencer's head: {e.Message}");
+        }
     }
 
-    private async Task<EezL1Block> Latest() =>
-        await l1.GetLatestBlock() ?? throw new L1SourceIncompleteException(0, "L1 does not report its latest block.");
+    private async Task<bool> IsCanonical(ulong number, Hash256 hash, CancellationToken token) =>
+        (await l1.GetBlockByNumber(number, token))?.Hash == hash;
 
-    private BlockHeader? Header(Core.Crypto.Hash256? hash) => hash is null ? null : blockTree.FindHeader(hash);
+    private async Task<EezL1Block> Block(ulong number, CancellationToken token) =>
+        await l1.GetBlockByNumber(number, token) ?? throw new L1SourceIncompleteException(number, $"L1 cannot serve block {number}.");
 
-    public async ValueTask DisposeAsync()
+    private async Task<EezL1Block> Latest(CancellationToken token) =>
+        await l1.GetLatestBlock(token) ?? throw new L1SourceIncompleteException(0, "L1 does not report its latest block.");
+
+    private BlockHeader? Header(Hash256? hash) => hash is null ? null : blockTree.FindHeader(hash);
+
+    public async Task StopAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+        if (Interlocked.Exchange(ref _stopped, 1) == 1)
         {
             return;
         }
@@ -241,7 +311,11 @@ public sealed class EezFollower(
         {
             await _running;
         }
+    }
 
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync();
         _cancellation.Dispose();
     }
 }

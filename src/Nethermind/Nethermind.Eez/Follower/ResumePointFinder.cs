@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -24,15 +25,14 @@ public sealed class ResumePointFinder(IEezL1Api l1, IBlockTree blockTree, Addres
 
     /// <returns>The last settlement the local chain holds, or <see langword="null"/> when none does.</returns>
     /// <exception cref="L1SourceIncompleteException">L1 cannot serve the search yet, or reorganized during it.</exception>
-    public async Task<SettledRecord?> Find(ulong l1Head)
+    public async Task<SettledRecord?> Find(ulong l1Head, CancellationToken token)
     {
         ulong to = l1Head;
         while (to >= deployBlock)
         {
             ulong from = to - deployBlock + 1 > scanBlocks ? to - scanBlocks + 1 : deployBlock;
-            EezL1Log[] logs = await l1.GetLogs(registry, L1BatchScanner.L2ExecutionPerformedTopic, _rollupTopic, from, to)
-                ?? throw new L1SourceIncompleteException(from, $"L1 refuses the settlement logs of blocks {from} to {to}.");
-            if (await LastHeld(logs) is { } record)
+            List<EezL1Log> logs = await l1.GetAllLogs(registry, L1BatchScanner.L2ExecutionPerformedTopic, _rollupTopic, from, to, token);
+            if (await LastHeld(logs, token) is { } record)
             {
                 return record;
             }
@@ -49,7 +49,7 @@ public sealed class ResumePointFinder(IEezL1Api l1, IBlockTree blockTree, Addres
     }
 
     /// <summary>The latest L1 block among <paramref name="logs"/> whose last settled step is a block of the local chain.</summary>
-    private async Task<SettledRecord?> LastHeld(EezL1Log[] logs)
+    private async Task<SettledRecord?> LastHeld(List<EezL1Log> logs, CancellationToken token)
     {
         Dictionary<ulong, EezL1Log> lastPerBlock = [];
         foreach (EezL1Log log in logs)
@@ -72,7 +72,7 @@ public sealed class ResumePointFinder(IEezL1Api l1, IBlockTree blockTree, Addres
                 continue;
             }
 
-            EezL1Block canonical = await l1.GetBlockByNumber(log.BlockNumber)
+            EezL1Block canonical = await l1.GetBlockByNumber(log.BlockNumber, token)
                 ?? throw new L1SourceIncompleteException(log.BlockNumber, $"L1 cannot serve block {log.BlockNumber}.");
             if (canonical.Hash == log.BlockHash)
             {

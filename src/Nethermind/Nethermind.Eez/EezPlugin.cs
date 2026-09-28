@@ -5,6 +5,7 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
@@ -40,16 +41,19 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig) : INethermindP
         string? missing = config switch
         {
             { L1RpcUrl: null or "" } => nameof(IEezConfig.L1RpcUrl),
-            { RegistryAddress: null or "" } => nameof(IEezConfig.RegistryAddress),
+            { RegistryAddress: var registry } when !Address.TryParse(registry, out _) => nameof(IEezConfig.RegistryAddress),
+            { RegistryDeployBlock: 0 } => nameof(IEezConfig.RegistryDeployBlock),
             { RollupId: 0 } => nameof(IEezConfig.RollupId),
             { L1ChainId: 0 } => nameof(IEezConfig.L1ChainId),
             { L2BlockTimeSeconds: 0 } => nameof(IEezConfig.L2BlockTimeSeconds),
+            { L1LogScanBlocks: 0 } => nameof(IEezConfig.L1LogScanBlocks),
+            { L1PollingIntervalMs: <= 0 } => nameof(IEezConfig.L1PollingIntervalMs),
             _ => null,
         };
         if (missing is not null)
         {
-            throw new InvalidConfigurationException($"{nameof(IEezConfig)}.{nameof(IEezConfig.FollowerEnabled)} requires {nameof(IEezConfig)}.{missing}.",
-                ExitCodes.ConflictingConfigurations);
+            throw new InvalidConfigurationException(
+                $"{nameof(IEezConfig)}.{nameof(IEezConfig.FollowerEnabled)} requires a valid {nameof(IEezConfig)}.{missing}.", ExitCodes.ConflictingConfigurations);
         }
     }
 

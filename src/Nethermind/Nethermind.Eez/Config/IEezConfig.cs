@@ -12,26 +12,26 @@ public interface IEezConfig : IConfig
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "Whether to follow the rollup from L1: derive every L2 block from the batches L1 settled. Requires `Eez.Enabled`. " +
-        "The follower must be the only driver of the node's engine API: a consensus client that moves the forkchoice stops it.", DefaultValue = "false")]
+        "The follower must be the only driver of the node's engine API: a consensus client that moves the forkchoice shuts the node down.", DefaultValue = "false")]
     bool FollowerEnabled { get; set; }
 
     [ConfigItem(Description = "The JSON-RPC URL of the rollup's sequencer. When set, the follower also takes the sequencer's latest blocks as the " +
         "unsafe head before L1 settles them; the safe and finalized heads still follow L1 alone.", DefaultValue = "null")]
     string? SequencerRpcUrl { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC URL of the L1 execution client the follower reads batches from.", DefaultValue = "null")]
+    [ConfigItem(Description = "The JSON-RPC URL of the L1 execution client the follower reads batches from. Required when `Eez.FollowerEnabled` is set.", DefaultValue = "null")]
     string? L1RpcUrl { get; set; }
 
-    [ConfigItem(Description = "The chain ID the L1 execution client must report.", DefaultValue = "0")]
+    [ConfigItem(Description = "The chain ID the L1 execution client must report. Required when `Eez.FollowerEnabled` is set.", DefaultValue = "0")]
     ulong L1ChainId { get; set; }
 
-    [ConfigItem(Description = "The address of the EEZ registry contract on L1.", DefaultValue = "null")]
+    [ConfigItem(Description = "The address of the EEZ registry contract on L1. Required when `Eez.FollowerEnabled` is set.", DefaultValue = "null")]
     string? RegistryAddress { get; set; }
 
-    [ConfigItem(Description = "The L1 block the EEZ registry was deployed in; the follower scans L1 from it.", DefaultValue = "0")]
+    [ConfigItem(Description = "The L1 block the EEZ registry was deployed in; the follower scans L1 from it. Required when `Eez.FollowerEnabled` is set.", DefaultValue = "0")]
     ulong RegistryDeployBlock { get; set; }
 
-    [ConfigItem(Description = "The rollup ID of this L2 in the EEZ registry.", DefaultValue = "0")]
+    [ConfigItem(Description = "The rollup ID of this L2 in the EEZ registry. Required when `Eez.FollowerEnabled` is set.", DefaultValue = "0")]
     ulong RollupId { get; set; }
 
     [ConfigItem(Description = "The L2 block time, in whole seconds: derivation adds it to each parent's timestamp.", DefaultValue = "2")]
