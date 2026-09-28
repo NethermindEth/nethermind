@@ -715,6 +715,44 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    private static IEnumerable<TestCaseData> UnsupportedBlockOverrides()
+    {
+        (string Json, string? Field)[] cases =
+        [
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", "beaconRoot"),
+            ("{\"withdrawals\":[]}", "withdrawals"),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", "beaconRoot"),
+            ("{\"beaconRoot\":null,\"withdrawals\":null}", null)
+        ];
+        foreach ((string json, string? field) in cases)
+            foreach (string? tracer in new string?[] { null, "callTracer" })
+                yield return new TestCaseData(json, field, tracer);
+    }
+
+    [TestCaseSource(nameof(UnsupportedBlockOverrides))]
+    public async Task Debug_traceCall_validates_unsupported_block_overrides(string overrides, string? rejectedField, string? tracer)
+    {
+        using Context ctx = await Context.Create();
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest",
+            new { tracer, blockOverrides = JsonSerializer.Deserialize<JsonElement>(overrides) });
+        JToken json = JToken.Parse(response);
+        if (rejectedField is null)
+        {
+            Assert.That(json["error"], Is.Null);
+            Assert.That(json["result"], Is.Not.Null);
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(json["error"]?["message"]?.Value<string>(),
+                    Is.EqualTo($"block override \"{rejectedField}\" is not supported for this RPC method"));
+            }
+        }
+    }
+
     [TestCase("0x4a60005260206000f3", "blobBaseFee", "0x9", null)]
     [TestCase("0x4a60005260206000f3", "blobBaseFee", "0x9", "0x0")]
     [TestCase("0x4460005260206000f3", "prevRandao", "0x0000000000000000000000000000000000000000000000000000000000000000", null)]
