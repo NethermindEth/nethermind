@@ -76,7 +76,11 @@ public class GethStyleTracer(
         BlockHeader header = blockTree.FindHeader(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
         Block block = new(header.Clone(), BlockBody.WithOneTransactionOnly(tx));
         TransactionProcessorAdapterFactory previousAdapterFactory = transactionProcessorAdapter.CurrentAdapterFactory;
-        transactionProcessorAdapter.CurrentAdapterFactory = static processor => new TraceTransactionProcessorAdapter(processor);
+        (BlockHeader callHeader, IReleaseSpec callSpec) = PrepareCallHeader(block, options);
+        transactionProcessorAdapter.CurrentAdapterFactory = processor =>
+            options.BlockOverrides is { BlobBaseFee: not null } or { PrevRandao: not null }
+                ? CreateCallAdapter(processor, callHeader, callSpec, options.BlockOverrides)
+                : new TraceCallTransactionProcessorAdapter(processor, options.BlockOverrides);
 
         try
         {
@@ -157,9 +161,38 @@ public class GethStyleTracer(
         transactionProcessorAdapter.CurrentAdapterFactory = processor =>
         {
             // This Ethereum context does not invoke chain-specific BlockProcessor context overrides (for example XDC).
-            processor.SetBlockExecutionContext(new BlockExecutionContext(tracedBlock.Header, callSpec));
-            return new TraceTransactionProcessorAdapter(processor);
+            return CreateCallAdapter(processor, tracedBlock.Header, callSpec, options.BlockOverrides);
         };
+    }
+
+    private static TraceCallTransactionProcessorAdapter CreateCallAdapter(ITransactionProcessor processor,
+        BlockHeader header, IReleaseSpec spec, BlockOverride? overrides)
+    {
+        TraceCallTransactionProcessorAdapter adapter = new(processor, overrides);
+        adapter.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
+        return adapter;
+    }
+
+    private sealed class TraceCallTransactionProcessorAdapter(ITransactionProcessor processor, BlockOverride? overrides) : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer tracer) => processor.Trace(transaction, tracer);
+
+        public void SetBlockExecutionContext(in BlockExecutionContext context)
+        {
+            if (overrides?.BlobBaseFee is { } blobBaseFee)
+            {
+                processor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(
+                    context.Header, context.Spec, overrides.PrevRandao?.ValueHash256 ?? context.PrevRandao, blobBaseFee));
+            }
+            else if (overrides?.PrevRandao is { } prevRandao)
+            {
+                processor.SetBlockExecutionContext(BlockExecutionContext.WithPrevRandao(context.Header, context.Spec, prevRandao.ValueHash256));
+            }
+            else
+            {
+                processor.SetBlockExecutionContext(context);
+            }
+        }
     }
 
     private sealed class CallAtIndexBlockTracer(IBlockTracer inner, BlockHeader callHeader, Transaction call, Action<Block> prepareCall) : IBlockTracer
@@ -354,6 +387,8 @@ public class GethStyleTracer(
     public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider, Func<Block, Transaction, BlockLogIndex>? logIndex = null) =>
         options switch
         {
+            { Tracer: GethLikeBlockMuxTracer.TracerName } => new GethLikeBlockMuxTracer(options,
+                child => CreateOptionsTracer(block, child, worldState, specProvider, logIndex)),
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, CreateNativeTracerFactory(options, worldState, specProvider, logIndex)),
             { Tracer.Length: > 0, CaptureJavaScriptErrors: true } => new RecoveringJavaScriptBlockTracer(
                 () => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options), options.TxHash),
@@ -438,9 +473,18 @@ public class GethStyleTracer(
         }
     }
 
-    private static bool WantsLogIndex(GethTraceOptions options) =>
-        options.Tracer == NativeCallTracer.CallTracer
-        && NativeCallTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions).WithLog;
+    private static bool WantsLogIndex(GethTraceOptions options)
+    {
+        if (options.Tracer == GethLikeBlockMuxTracer.TracerName)
+        {
+            foreach ((string name, JsonElement childConfig) in GethLikeBlockMuxTracer.ParseConfig(options.TracerConfig))
+                if (WantsLogIndex(options with { Tracer = name, TracerConfig = childConfig })) return true;
+            return false;
+        }
+
+        return options.Tracer == NativeCallTracer.CallTracer
+            && NativeCallTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions).WithLog;
+    }
 
     private static List<GethLikeTxTrace> KeepTrace(IReadOnlyCollection<GethLikeTxTrace> traces, Hash256 txHash)
     {
