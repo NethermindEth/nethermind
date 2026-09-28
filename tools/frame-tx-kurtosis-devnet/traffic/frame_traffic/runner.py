@@ -175,11 +175,13 @@ class ChainWatcher:
                 owner, submitted_at = held
                 latency_ms = max(timestamp - submitted_at, 0.0) * 1000.0
                 self._resolved.setdefault(id(owner), []).append(latency_ms)
-                landed.append((key, latency_ms))
-        for key, latency_ms in landed:
+                landed.append((key, latency_ms, owner))
+        for key, latency_ms, owner in landed:
             self._recorder.event(kind="inclusion", tx_hash=key, node=self._node.name,
                                  included=True, block=number,
                                  inclusion_latency_ms=round(latency_ms, 1))
+            if hasattr(owner, "on_included"):
+                owner.on_included(key)
         return True
 
 
@@ -190,10 +192,12 @@ class Submitter:
     and never gossiped, so a node only pays for the shapes submitted to it directly. Both
     clients have to be submitted to for a cross-client claim to mean anything."""
 
-    def __init__(self, role, sender, ctx, rate: float, recorder, track_inclusion: bool = False,
+    def __init__(self, role, nonces, ctx, rate: float, recorder, track_inclusion: bool = False,
                  nodes=None, watcher=None):
         self.role = role
-        self.sender = sender
+        # Hands out (sender, nonce): accounts.FixedNonce for attackers, SenderRotation for
+        # honest traffic that has to land.
+        self.nonces = nonces
         self.ctx = ctx
         self.rate = rate
         self.recorder = recorder
@@ -216,13 +220,15 @@ class Submitter:
         # What the pacing loop asked for, against self.submitted, which is what was built and
         # sent. A gap means the generator could not keep up and the offered rate is fiction.
         self._scheduled = 0
+        # Slots skipped because every honest sender still had a transaction in flight.
+        self.starved = 0
         self._base_fee = 0
         self._base_fee_at = 0.0
 
     def start(self) -> None:
         if self.rate <= 0:
             return
-        self.sender.sync_nonce(self.ctx.submit_node)
+        self.nonces.sync(self.ctx.submit_node)
         self._started_at = time.monotonic()
         self._thread = threading.Thread(target=self._loop, name="submit-" + self.role.name, daemon=True)
         self._thread.start()
@@ -273,20 +279,29 @@ class Submitter:
                 deadline = self.ctx.deadline()
                 deadline_refreshed = now
 
+            picked = self.nonces.acquire()
+            if picked is None:
+                with self._lock:
+                    self.starved += 1
+                continue
+            sender, nonce = picked
             node = self.nodes[index % node_count]
             index += 1
-            nonce = self.sender.next_nonce()
             salt = self._next_salt()
             tx_deadline = deadline if getattr(self.role, "uses_deadline", True) else None
             base_fee = self._cached_base_fee()
             with self._lock:
                 self._scheduled += 1
-            self._pool.submit(self._submit_one, node, nonce, salt, base_fee, tx_deadline)
+            self._pool.submit(self._submit_one, node, sender, nonce, salt, base_fee, tx_deadline)
 
-    def _submit_one(self, node, nonce: int, salt: bytes, base_fee: int, deadline) -> None:
+    def on_included(self, tx_hash: str) -> None:
+        self.nonces.included(tx_hash)
+
+    def _submit_one(self, node, sender, nonce: int, salt: bytes, base_fee: int, deadline) -> None:
         try:
-            built = self.role.build(self.ctx, self.sender, nonce, base_fee, salt, deadline)
+            built = self.role.build(self.ctx, sender, nonce, base_fee, salt, deadline)
         except Exception as error:  # a build failure is a bug in the shape, not a measurement
+            self.nonces.submitted(sender, "", False)
             self.recorder.event(kind="build_error", role=self.role.name, error=str(error))
             return
 
@@ -304,6 +319,7 @@ class Submitter:
         except OSError as error:
             outcome, reason = "errored", "transport: {0}".format(error)
         micros = (time.perf_counter() - started) * 1e6
+        self.nonces.submitted(sender, tx_hash, outcome == "accepted")
 
         self.series[node.name].add(micros, outcome, reason)
         self.recorder.event(
@@ -312,6 +328,7 @@ class Submitter:
             shape=built.shape,
             node=node.name,
             client=node.client,
+            sender=sender.address,
             nonce=nonce,
             declared_verify_gas=built.declared_verify_gas,
             submit_us=round(micros, 1),
@@ -340,7 +357,7 @@ class Submitter:
                 **summary,
             )
         with self._lock:
-            submitted, scheduled = self.submitted, self._scheduled
+            submitted, scheduled, starved = self.submitted, self._scheduled, self.starved
         if scheduled > submitted:
             self.recorder.emit(
                 "generator_shortfall",
@@ -361,6 +378,7 @@ class Submitter:
                 ceiling=self.ctx.ceiling,
                 k_retry=self.ctx.k_retry,
                 submitted=submitted,
+                starved=starved,
                 included=len(inclusions),
                 # Still unincluded when the watcher stopped. Reported rather than folded into
                 # "not included", because the two differ: one is a verdict, the other is a

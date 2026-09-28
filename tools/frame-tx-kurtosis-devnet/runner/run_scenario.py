@@ -235,10 +235,6 @@ def collect(enclave: str, sid: str, results_root: str, logs: str, started: float
         service_logs = capture(["kurtosis", "service", "logs", "--all", enclave, service_name], check=False)
         with open(os.path.join(out_dir, "{0}.log".format(service_name)), "w") as handle:
             handle.write(service_logs)
-        counts = {key: len(re.findall(pattern, service_logs)) for key, pattern in LOG_ALARMS.items()}
-        health_lines.append("RESULT case=client_log_health scenario={0} node={1} lines={2} {3}".format(
-            sid, service_name, service_logs.count("\n"),
-            " ".join("{0}={1}".format(k, v) for k, v in counts.items())))
         image = _container_image(service_name)
         labels = _image_labels(image) if image else {}
         label_ceiling = labels.get("org.nethermind.frame_tx.max_verify_gas", "")
@@ -250,6 +246,7 @@ def collect(enclave: str, sid: str, results_root: str, logs: str, started: float
                 labels.get("org.opencontainers.image.revision", "unknown"),
                 "yes" if label_ceiling == str(args.ceiling) else "no"))
     health_lines.append(_chain_agreement(enclave, sid, _el_service_names(enclave)))
+    health_lines.extend(_block_builders(enclave, sid, _el_service_names(enclave)))
     result_lines.extend(health_lines)
     with open(os.path.join(out_dir, "{0}.result".format(sid)), "a") as handle:
         handle.write("\n".join(health_lines) + ("\n" if health_lines else ""))
@@ -324,15 +321,6 @@ def _strip_service_prefix(line: str) -> str:
     return line[index:] if index >= 0 else line
 
 
-# Log lines a healthy run must not contain, per execution client log.
-LOG_ALARMS = {
-    "exception": r"Exception",
-    "invalid_block": r"[Ii]nvalid [Bb]lock",
-    "unhandled": r"Unhandled",
-    "fatal": r"\bFATAL\b|\bFatal\b",
-}
-
-
 def _container_image(service_name: str) -> str:
     """The image the service's container actually ran, so a stale or stock tag is visible."""
     listing = capture(["docker", "ps", "-a", "--format", "{{.Names}}\t{{.Image}}"], check=False)
@@ -379,6 +367,32 @@ def _chain_agreement(enclave: str, sid: str, services: list[str]) -> str:
     return "RESULT case=chain_agreement scenario={0} nodes={1} block={2} agree={3} {4}".format(
         sid, len(hashes), height, "yes" if agree else "no",
         " ".join("hash_{0}={1}".format(s, h) for s, h in sorted(hashes.items())))
+
+
+def _block_builders(enclave: str, sid: str, services: list[str]) -> list[str]:
+    """Counts blocks and frame transactions per building client, read from extraData.
+
+    A multi-client claim needs each client to have built blocks carrying frame transactions
+    that the others then imported, not only to have followed a chain someone else built."""
+    url = port_of(enclave, services[0], "rpc") if services else None
+    if not url:
+        return ["RESULT case=block_builders scenario={0} builder=unknown reason=\"no rpc\"".format(sid)]
+    url = url if url.startswith("http") else "http://" + url
+    counts: dict[str, list[int]] = {}
+    try:
+        head = int(_rpc(url, "eth_blockNumber", []), 16)
+        for number in range(1, head + 1):
+            block = _rpc(url, "eth_getBlockByNumber", [hex(number), True]) or {}
+            extra = bytes.fromhex(block.get("extraData", "0x")[2:]).decode("utf-8", "replace")
+            builder = (extra.split()[0] if extra.strip() else "unknown").lower()
+            frame_txs = sum(1 for tx in block.get("transactions", []) if tx.get("type") == "0x6")
+            tally = counts.setdefault(builder, [0, 0])
+            tally[0] += 1
+            tally[1] += frame_txs
+    except (urllib.error.URLError, OSError, ValueError, TypeError) as error:
+        return ["RESULT case=block_builders scenario={0} builder=unknown reason=\"{1}\"".format(sid, error)]
+    return ["RESULT case=block_builders scenario={0} builder={1} blocks={2} frame_txs={3}".format(
+        sid, builder, tally[0], tally[1]) for builder, tally in sorted(counts.items())]
 
 
 def _el_service_names(enclave: str) -> list[str]:

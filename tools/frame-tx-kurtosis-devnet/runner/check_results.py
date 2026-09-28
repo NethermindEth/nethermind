@@ -15,6 +15,10 @@ import re
 import sys
 
 ROW = re.compile(r'(\w+)=("[^"]*"|\S+)')
+LOG_ALARM = re.compile(r"Exception|[Ii]nvalid [Bb]lock|Unhandled|\bFATAL\b|\bFatal\b|panicked")
+# Nethermind replays a synthetic payload at startup to warm its pipeline; the consensus layer
+# has not sent a head yet, so it is refused on its timestamp and the node carries on.
+BENIGN = re.compile(r"Startup payload pipeline warmup failed; RPC startup will continue")
 
 
 def rows(result_path: str) -> list[dict]:
@@ -73,11 +77,18 @@ def main(argv: list[str]) -> int:
     every_node("every client runs the image built for this ceiling", lambda n: case("image_ceiling", node=n),
                lambda r: r.get("matches") == "yes",
                lambda r: "{0} label={1}".format(r.get("image"), r.get("label_max_verify_gas")))
-    alarms = ("exception", "invalid_block", "unhandled", "fatal")
-    every_node("no exception, invalid block, unhandled or fatal line in any client log",
-               lambda n: case("client_log_health", node=n),
-               lambda r: all(r.get(a) == "0" for a in alarms),
-               lambda r: " ".join("{0}={1}".format(a, r.get(a)) for a in alarms))
+    for node in nodes:
+        log_path = os.path.join(out_dir, "{0}.log".format(node))
+        text = open(log_path, errors="replace").read() if os.path.exists(log_path) else None
+        if text is None:
+            check("{0} log collected".format(node), False, log_path)
+            continue
+        alarm_lines = [line for line in text.splitlines() if LOG_ALARM.search(line)]
+        benign = [line for line in alarm_lines if BENIGN.search(line)]
+        real = [line for line in alarm_lines if not BENIGN.search(line)]
+        check("{0}: no exception, invalid block, unhandled or fatal line ({1} lines read{2})".format(
+            node, text.count("\n"), ", {0} known-benign".format(len(benign)) if benign else ""),
+            not real, real[0][:300] if real else "")
 
     attack = case("admission", role=role, phase="measured")
     every_node("every attack transaction refused on every client",
@@ -88,13 +99,24 @@ def main(argv: list[str]) -> int:
                    r.get("samples"), r.get("accepted"), r.get("rejected"), r.get("errored")))
     for r in attack:
         print("         {0}: {1}".format(r["node"], r.get("top_reject_reason", "no reason recorded")))
+    # A nonce refusal comes before the validation prefix runs, so it measures nothing.
+    events_path = os.path.join(out_dir, "{0}.events.jsonl".format(sid))
+    nonce_refusals = 0
+    if os.path.exists(events_path):
+        with open(events_path) as handle:
+            for line in handle:
+                event = json.loads(line)
+                if event.get("role") == role and "nonce" in (event.get("reason") or "").lower():
+                    nonce_refusals += 1
+    check("no attack transaction refused on its nonce (the prefix ran)", nonce_refusals == 0,
+          "{0} refused on nonce".format(nonce_refusals))
 
     baseline = case("inclusion", role="baseline")
-    check("every baseline transaction included, none outstanding",
+    check("every baseline transaction included, none outstanding, no slot skipped",
           bool(baseline) and all(r.get("included") == r.get("submitted") and r.get("outstanding") == "0"
-                                 for r in baseline),
-          "; ".join("{0}: {1}/{2} outstanding={3}".format(r.get("phase"), r.get("included"),
-                                                          r.get("submitted"), r.get("outstanding"))
+                                 and r.get("starved", "0") == "0" for r in baseline),
+          "; ".join("{0}: {1}/{2} outstanding={3} starved={4}".format(
+              r.get("phase"), r.get("included"), r.get("submitted"), r.get("outstanding"), r.get("starved"))
                     for r in baseline))
     load = case("offered_load", role=role)
     offered = {float(r["offered_rate"]) for r in attack if "offered_rate" in r}
@@ -111,6 +133,11 @@ def main(argv: list[str]) -> int:
           len(agreement) == 1 and agreement[0].get("agree") == "yes"
           and agreement[0].get("nodes") == str(len(nodes)),
           str(agreement))
+    builders = {r.get("builder"): int(r.get("frame_txs", "0")) for r in case("block_builders")}
+    expected = {clients[n] for n in nodes}
+    check("every client built blocks carrying frame transactions",
+          expected.issubset(builders) and all(builders[c] > 0 for c in expected),
+          "builders {0}, clients {1}".format(builders, sorted(expected)))
     check("scenario completed", bool(case("scenario_complete")) and not case("scenario_aborted"),
           str(case("scenario_aborted")))
 

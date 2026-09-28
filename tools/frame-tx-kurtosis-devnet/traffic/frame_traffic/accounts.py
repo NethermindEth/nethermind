@@ -104,6 +104,87 @@ class AccountPool:
             self._assigned[role] = sender
             return sender
 
+    def assign_rest(self, role: str) -> list[Sender]:
+        """Hands every account not yet assigned to one role."""
+        with self._lock:
+            rest = self._senders[self._next:]
+            if not rest:
+                raise RuntimeError("out of prefunded accounts: none left for {0}".format(role))
+            self._next = len(self._senders)
+            self._assigned[role] = rest
+            return list(rest)
+
     def assigned(self) -> dict[str, Sender]:
         with self._lock:
             return dict(self._assigned)
+
+
+class FixedNonce:
+    """Every attack transaction carries the attacker's current state nonce.
+
+    ethrex runs the admission simulation only for a frame transaction whose nonce equals the
+    sender's state nonce, and refuses any other cheaply as a nonce mismatch. An attack
+    transaction is always refused, so the state nonce never moves and one value serves the whole
+    run, sending both clients down the expensive path."""
+
+    def __init__(self, sender: Sender):
+        self.sender = sender
+        self._nonce: int | None = None
+
+    def sync(self, rpc) -> None:
+        self._nonce = rpc.nonce(self.sender.address, "latest")
+
+    def acquire(self):
+        return self.sender, self._nonce
+
+    def submitted(self, sender: Sender, tx_hash: str, accepted: bool) -> None:
+        pass
+
+    def included(self, tx_hash: str) -> None:
+        pass
+
+
+class SenderRotation:
+    """Honest transactions from a set of accounts, each with at most one transaction in flight.
+
+    The same ethrex rule means a second pending transaction from one sender would be refused,
+    so a sender is handed out again only once its last transaction was included or refused.
+    When none is free the caller skips that slot and counts it, rather than sending a
+    transaction that is bound to be refused."""
+
+    def __init__(self, senders: list[Sender]):
+        self.senders = list(senders)
+        self._busy: dict[str, Sender] = {}
+        self._free: list[Sender] = []
+        self._synced = False
+        self._lock = threading.Lock()
+
+    def sync(self, rpc) -> None:
+        with self._lock:
+            if self._synced:
+                return
+            for sender in self.senders:
+                sender.sync_nonce(rpc)
+            self._free = list(self.senders)
+            self._synced = True
+
+    def acquire(self):
+        with self._lock:
+            if not self._free:
+                return None
+            sender = self._free.pop(0)
+            return sender, sender.peek_nonce()
+
+    def submitted(self, sender: Sender, tx_hash: str, accepted: bool) -> None:
+        with self._lock:
+            if accepted and tx_hash:
+                self._busy[tx_hash.lower()] = sender
+            else:
+                self._free.append(sender)
+
+    def included(self, tx_hash: str) -> None:
+        with self._lock:
+            sender = self._busy.pop(tx_hash.lower(), None)
+            if sender is not None:
+                sender.next_nonce()
+                self._free.append(sender)

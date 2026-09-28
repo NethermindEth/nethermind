@@ -53,11 +53,16 @@ def _deploy(ctx: Context, sender, init_code: bytes, label: str) -> bytes:
     node = ctx.submit_node
     nonce = node.nonce(sender.address, "pending")
     base_fee = node.base_fee()
+    # Estimated rather than fixed: Amsterdam's EIP-8037 prices contract creation by state growth,
+    # so a verifier that fit in 2M gas on Osaka runs out on Amsterdam and the deployment reverts.
+    estimate = int(node.call("eth_estimateGas", [{
+        "from": sender.address, "data": "0x" + init_code.hex(), "value": "0x0",
+    }]), 16)
     tx = {
         "type": 2,
         "chainId": ctx.chain_id,
         "nonce": nonce,
-        "gas": 2_000_000,
+        "gas": estimate * 5 // 4,
         "maxFeePerGas": max(base_fee * 2, 1) + 1_000_000_000,
         "maxPriorityFeePerGas": 1_000_000_000,
         "value": 0,

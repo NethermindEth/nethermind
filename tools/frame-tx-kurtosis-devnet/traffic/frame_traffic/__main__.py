@@ -10,6 +10,7 @@ import time
 
 from . import roles as roles_mod
 from . import runner, shapes
+from . import accounts as accounts_mod
 from .accounts import AccountPool, parse_accounts
 from .results import Recorder
 from .rpc import RpcClient
@@ -106,17 +107,21 @@ def main(argv: list[str] | None = None) -> int:
         recorder.close()
         return 1
 
-    baseline_sender = pool.assign("baseline")
     attacker_sender = pool.assign("attacker")
     probe_sender = pool.assign("privacy") if args.privacy_inclusion else None
+    fork_gate_sender = pool.assign("fork-gate")
+    ceiling_probe_sender = pool.assign("ceiling-probe")
+    # Every remaining account carries honest traffic, one transaction in flight each.
+    baseline_senders = accounts_mod.SenderRotation(pool.assign_rest("baseline"))
+    attacker_nonces = accounts_mod.FixedNonce(attacker_sender)
 
-    if not runner.wait_for_fork_activation(ctx, pool.assign("fork-gate"), args.fork_timeout):
+    if not runner.wait_for_fork_activation(ctx, fork_gate_sender, args.fork_timeout):
         recorder.emit("scenario_aborted", reason="frame transactions never became valid; "
                                                  "check the heze fork schedule")
         recorder.close()
         return 1
 
-    runner.verify_ceiling_is_active(ctx, pool.assign("ceiling-probe"))
+    runner.verify_ceiling_is_active(ctx, ceiling_probe_sender)
 
     baseline_role = roles_mod.BaselineRole()
     attacker_role = None
@@ -138,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     # costs more to build than the offered rate allows turns the generator into the bottleneck,
     # and for the signature-stuffed shape that cost scales with the ceiling under test, so the
     # limit would move with the independent variable and read as a result.
-    for role, rate, account in ((baseline_role, args.baseline_rate, baseline_sender),
+    for role, rate, account in ((baseline_role, args.baseline_rate, baseline_senders.senders[0]),
                                 (attacker_role, args.attacker_rate, attacker_sender)):
         if role is None:
             continue
@@ -161,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Warm-up: baseline only, so the attacker's effect is measured against a live chain that
     # is already carrying valid frame transactions rather than an idle one.
-    warm = runner.Submitter(baseline_role, baseline_sender, ctx, args.baseline_rate, recorder,
+    warm = runner.Submitter(baseline_role, baseline_senders, ctx, args.baseline_rate, recorder,
                             track_inclusion=True, nodes=honest_nodes, watcher=watcher)
     warm.start()
     time.sleep(args.warmup)
@@ -172,11 +177,11 @@ def main(argv: list[str] | None = None) -> int:
     watcher.settle(args.seconds_per_slot * 2)
     warm.report("warmup")
 
-    baseline = runner.Submitter(baseline_role, baseline_sender, ctx, args.baseline_rate, recorder,
+    baseline = runner.Submitter(baseline_role, baseline_senders, ctx, args.baseline_rate, recorder,
                                 track_inclusion=True, nodes=honest_nodes, watcher=watcher)
     attacker = None
     if attacker_role is not None:
-        attacker = runner.Submitter(attacker_role, attacker_sender, ctx, args.attacker_rate, recorder,
+        attacker = runner.Submitter(attacker_role, attacker_nonces, ctx, args.attacker_rate, recorder,
                                     nodes=attack_nodes)
 
     baseline.start()
@@ -232,7 +237,8 @@ def main(argv: list[str] | None = None) -> int:
             "seconds_per_slot": args.seconds_per_slot,
             "chain_id": args.chain_id,
             "nodes": [{"name": n.name, "client": n.client, "url": n.url} for n in nodes],
-            "accounts": {role: sender.address for role, sender in pool.assigned().items()},
+            "accounts": {role: ([s.address for s in held] if isinstance(held, list) else held.address)
+                         for role, held in pool.assigned().items()},
             "fixtures": {
                 key: ("0x" + value.hex() if isinstance(value, (bytes, bytearray)) else value)
                 for key, value in ctx.fixtures.items()
