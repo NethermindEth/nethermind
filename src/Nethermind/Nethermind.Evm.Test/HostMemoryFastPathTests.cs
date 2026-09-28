@@ -62,10 +62,9 @@ public class HostMemoryFastPathTests
     private const ulong AmpleGas = 1_000_000;
     /// <summary>The most gas a random program gets: enough to grow memory far, little enough to bound its loops.</summary>
     private const ulong ProgramGas = 200_000;
-    private const int ProgramsPerSeed = 6400;
+    private const int ProgramsPerFork = 4000;
 
     private static readonly IReleaseSpec ReleaseSpec = Osaka.Instance;
-    private static readonly ISpecProvider SpecProvider = new SingleReleaseSpecProvider(ReleaseSpec, BlockchainIds.Mainnet, BlockchainIds.Mainnet);
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
     private static readonly FieldInfo ThreadCacheField = typeof(EvmPooledMemory).GetField("_threadCache", BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("EvmPooledMemory's thread cache was renamed or removed.");
@@ -233,12 +232,33 @@ public class HostMemoryFastPathTests
         }
     }
 
-    [Test]
-    public void Random_programs_match_the_plain_handlers([Range(0, 15)] int seed)
+    /// <summary>Every mainnet fork, found by reflection so that a fork added later is swept too, with a seed of its own.</summary>
+    private static IEnumerable<TestCaseData> Forks()
     {
-        Harness harness = new();
+        Type[] forks = typeof(Osaka).Assembly.GetTypes()
+            .Where(static t => t.Namespace == typeof(Osaka).Namespace && !t.IsAbstract && t.IsSubclassOf(typeof(NamedReleaseSpec)))
+            .OrderBy(static t => t.Name, StringComparer.Ordinal)
+            .ToArray();
+        if (forks.Length < 2)
+            throw new InvalidOperationException("The forks are no longer found by their namespace, so the sweep would check almost nothing.");
+
+        for (int seed = 0; seed < forks.Length; seed++)
+        {
+            IReleaseSpec fork = (IReleaseSpec)forks[seed].GetProperty(nameof(Osaka.Instance), BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)!.GetValue(null)!;
+            yield return new TestCaseData(fork, seed).SetName($"{{m}}({forks[seed].Name})");
+        }
+    }
+
+    /// <summary>
+    /// Random programs on every fork: a fork that changes what the plain handlers charge must change the fast paths too,
+    /// or fail here.
+    /// </summary>
+    [TestCaseSource(nameof(Forks))]
+    public void Random_programs_match_the_plain_handlers(IReleaseSpec fork, int seed)
+    {
+        Harness harness = new(fork);
         List<string> mismatches = [];
-        for (int i = 0; i < ProgramsPerSeed && mismatches.Count < 5; i++)
+        for (int i = 0; i < ProgramsPerFork && mismatches.Count < 5; i++)
         {
             Random random = new(seed * 1_000_003 + i);
             byte[] code = Generate(random);
@@ -429,12 +449,13 @@ public class HostMemoryFastPathTests
         public const byte StaleByte = 0xa5;
         private const int CancellationPollInterval = 1024;
 
-        private readonly DispatchingVirtualMachine _vm = new();
+        private readonly DispatchingVirtualMachine _vm;
         private readonly byte[] _stackBytes = GC.AllocateArray<byte>((EvmStack.MaxStackSize + 1) * EvmStack.WordSize, pinned: true);
         private readonly int _stackStart;
 
-        public Harness()
+        public Harness(IReleaseSpec? spec = null)
         {
+            _vm = new DispatchingVirtualMachine(spec ?? ReleaseSpec);
             int alignment = (int)((nuint)Unsafe.AsPointer(ref _stackBytes[0]) & (EvmStack.WordSize - 1));
             _stackStart = alignment == 0 ? 0 : EvmStack.WordSize - alignment;
         }
@@ -575,12 +596,13 @@ public class HostMemoryFastPathTests
 
     private delegate void EvmPooledMemoryInspector(ref EvmPooledMemory memory);
 
-    /// <summary>A virtual machine over a block of <see cref="ReleaseSpec"/>, whose current frame a test can set.</summary>
+    /// <summary>A virtual machine over a block of one fork, whose current frame a test can set.</summary>
     private sealed class DispatchingVirtualMachine : VirtualMachine<EthereumGasPolicy>
     {
-        public DispatchingVirtualMachine() : base(new NoBlockhashProvider(), SpecProvider, LimboLogs.Instance)
+        public DispatchingVirtualMachine(IReleaseSpec spec)
+            : base(new NoBlockhashProvider(), new SingleReleaseSpecProvider(spec, BlockchainIds.Mainnet, BlockchainIds.Mainnet), LimboLogs.Instance)
         {
-            SetBlockExecutionContext(new BlockExecutionContext(Header, ReleaseSpec));
+            SetBlockExecutionContext(new BlockExecutionContext(Header, spec));
             _txTracer = new SilentTracer();
         }
 
