@@ -82,6 +82,32 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Depth_rejected_frame_preserves_call_type_and_value(
+        [Values(ExecutionType.CALL, ExecutionType.CALLCODE, ExecutionType.DELEGATECALL, ExecutionType.STATICCALL)] ExecutionType callType,
+        [Values(null, OnlyTopCall)] string? config)
+    {
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(config));
+        tracer.ReportAction(79000, 1, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        tracer.ReportRejectedCall(10000, 1, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, callType, EvmExceptionType.StackOverflow);
+        tracer.ReportActionEnd(70000, ReadOnlyMemory<byte>.Empty);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
+        Assert.That(root.Calls, Has.Count.EqualTo(config == OnlyTopCall ? 0 : 1));
+        if (config == OnlyTopCall) return;
+
+        NativeCallTracerCallFrame child = root.Calls[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(child.Type, Is.EqualTo(callType.ToInstruction()));
+            Assert.That(child.Error, Is.EqualTo("max call depth exceeded"));
+            Assert.That(child.GasUsed, Is.Zero);
+            Assert.That(child.Gas, Is.EqualTo(10000));
+            Assert.That(child.Value, callType == ExecutionType.STATICCALL ? Is.Null : Is.EqualTo((Nethermind.Int256.UInt256)1));
+        }
+    }
+
+    [Test]
     public void Rejected_call_preserves_parent_logs_and_following_sibling([Values] bool nested, [Values] bool wrapped)
     {
         byte[] rejectedCall = Bytes.FromHexString("60006000600060007fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff73000000000000000000000000000000000000beef61fffff150");
