@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
@@ -35,6 +36,10 @@ public class NonceManagerTests
     private ChainHeadInfoProvider _headInfo;
     private INonceManager _nonceManager;
     private IPendingTxsBySender _pendingTxs;
+    private readonly ConcurrentDictionary<Hash256, Transaction> _pending = new();
+    private readonly ConcurrentDictionary<Hash256, Transaction> _broadcastOnly = new();
+    private int _hashSeed;
+    private long _removals;
     private IReadOnlyStateProvider _headState;
     private IChainHeadInfoProvider _chainHead;
     private IStateHeaderProvider _stateHeaderProvider;
@@ -57,6 +62,11 @@ public class NonceManagerTests
             _stateProvider);
         _nonceManager = new NonceManager(_headInfo, Substitute.For<IStateHeaderProvider>(), Substitute.For<IStateReader>());
         _pendingTxs = Substitute.For<IPendingTxsBySender>();
+        _pendingTxs.ContainsTx(Arg.Any<Hash256>(), Arg.Any<TxType>())
+            .Returns(ci => _pending.ContainsKey(ci.ArgAt<Hash256>(0)) || _broadcastOnly.ContainsKey(ci.ArgAt<Hash256>(0)));
+        _pendingTxs.GetPendingTransactionsBySender(Arg.Any<Address>()).Returns(ci => Pending(ci.ArgAt<Address>(0), blobs: false));
+        _pendingTxs.GetPendingLightBlobTransactionsBySender(Arg.Any<Address>()).Returns(ci => Pending(ci.ArgAt<Address>(0), blobs: true));
+        _pendingTxs.GetRemovalGeneration(Arg.Any<Address>()).Returns(_ => Interlocked.Read(ref _removals));
 
         _headState = Substitute.For<IReadOnlyStateProvider>();
         _chainHead = Substitute.For<IChainHeadInfoProvider>();
@@ -76,7 +86,7 @@ public class NonceManagerTests
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
             Assert.That(nonce, Is.EqualTo(0UL));
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, nonce);
         }
 
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
@@ -87,19 +97,19 @@ public class NonceManagerTests
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
             Assert.That(nonce, Is.EqualTo(1UL));
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, nonce);
         }
 
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressB, _pendingTxs, out ulong nonce))
         {
             Assert.That(nonce, Is.EqualTo(0UL));
-            locker.Accept();
+            Accept(locker, TestItem.AddressB, nonce);
         }
 
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressB, _pendingTxs, out ulong nonce))
         {
             Assert.That(nonce, Is.EqualTo(1UL));
-            locker.Accept();
+            Accept(locker, TestItem.AddressB, nonce);
         }
 
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressB, _pendingTxs, out ulong nonce))
@@ -110,7 +120,7 @@ public class NonceManagerTests
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressB, _pendingTxs, out ulong nonce))
         {
             Assert.That(nonce, Is.EqualTo(2UL));
-            locker.Accept();
+            Accept(locker, TestItem.AddressB, nonce);
         }
     }
 
@@ -125,7 +135,7 @@ public class NonceManagerTests
         ParallelLoopResult result = Parallel.For(0, reservationsCount, i =>
         {
             using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, nonce);
             nonces.Enqueue(nonce);
         });
 
@@ -155,40 +165,58 @@ public class NonceManagerTests
     }
 
     [Test]
+    public void ReserveNonce_should_release_the_account_lock_when_the_reservation_throws()
+    {
+        _headState.GetNonce(TestItem.AddressA).Returns(_ => throw new InvalidOperationException(), _ => 3UL);
+        _nonceManager = CreateSweepingNonceManager();
+
+        Assert.Throws<InvalidOperationException>(() => _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out _));
+
+        Task<ulong> next = Task.Run(() =>
+        {
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
+            return nonce;
+        });
+
+        Assert.That(next.Wait(TimeSpan.FromSeconds(5)), Is.True, "a failed reservation must not keep the account locked");
+        Assert.That(next.Result, Is.EqualTo(3UL));
+    }
+
+    [Test]
     public void ReserveNonce_should_skip_nonce_if_TxWithNonceReceived()
     {
         using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 4))
         {
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, 4);
         }
 
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
             Assert.That(nonce, Is.EqualTo(0UL));
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, nonce);
         }
 
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
             Assert.That(nonce, Is.EqualTo(1UL));
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, nonce);
         }
 
         using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 2))
         {
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, 2);
         }
 
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
             Assert.That(nonce, Is.EqualTo(3UL));
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, nonce);
         }
 
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
             Assert.That(nonce, Is.EqualTo(5UL));
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, nonce);
         }
     }
 
@@ -205,8 +233,11 @@ public class NonceManagerTests
         foreach (ulong usedNonce in usedNonces)
         {
             using NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, usedNonce);
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, usedNonce);
         }
+
+        _pending.Clear();
+        Interlocked.Increment(ref _removals);
 
         Transaction[] pending = pendingNonces.Select(static n => Build.A.Transaction.WithNonce(n).TestObject).ToArray();
         if (blobPool)
@@ -237,30 +268,30 @@ public class NonceManagerTests
         _headState.GetNonce(TestItem.AddressA).Returns(0UL);
         _nonceManager = CreateSweepingNonceManager();
 
+        Transaction raw;
         using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 5))
         {
-            locker.Accept();
+            raw = Accept(locker, TestItem.AddressA, 5);
         }
 
-        _pendingTxs.GetPendingTransactionsBySender(TestItem.AddressA).Returns([Build.A.Transaction.WithNonce(5).TestObject]);
         _headState.GetNonce(TestItem.AddressA).Returns(5UL);
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong skippedNonce))
         {
             Assert.That(skippedNonce, Is.EqualTo(6UL), "precondition: nonce 5 is still pending so the reservation skips it");
             if (acceptSkip)
             {
-                locker.Accept();
+                Accept(locker, TestItem.AddressA, skippedNonce);
             }
         }
 
         if (!stillPending)
         {
-            _pendingTxs.GetPendingTransactionsBySender(TestItem.AddressA).Returns([]);
+            Remove(raw);
         }
 
         using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
-            Assert.That(nonce, Is.EqualTo(expectedNonce), "only an accepted reservation may move the nonce cursor past a pending nonce");
+            Assert.That(nonce, Is.EqualTo(expectedNonce), "a reservation disposed without Accept must not take a nonce");
         }
     }
 
@@ -274,19 +305,21 @@ public class NonceManagerTests
         _headState.GetNonce(TestItem.AddressA).Returns(0UL);
         _nonceManager = CreateSweepingNonceManager();
 
+        Transaction raw;
         using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 5))
         {
-            locker.Accept();
+            raw = Accept(locker, TestItem.AddressA, 5);
         }
 
-        _pendingTxs.GetPendingTransactionsBySender(TestItem.AddressA).Returns([]);
+        Remove(raw);
         _headState.GetNonce(TestItem.AddressA).Returns(5UL);
         using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong reusedNonce))
         {
             Assert.That(reusedNonce, Is.EqualTo(5UL), "precondition: tx 5 left the pool so its nonce is reused");
         }
 
-        _pendingTxs.GetPendingTransactionsBySender(TestItem.AddressA).Returns([Build.A.Transaction.WithNonce(5).TestObject]);
+        Transaction peer = BuildTx(TestItem.AddressA, 5, TxType.Legacy);
+        _pending[peer.Hash!] = peer;
         using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
             Assert.That(nonce, Is.EqualTo(6UL), "a reservation that was never accepted must not stop later ones from checking the pool at 5");
@@ -329,7 +362,7 @@ public class NonceManagerTests
         using (NonceLocker locker = nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong accepted))
         {
             Assert.That(accepted, Is.EqualTo(5UL), "precondition: the first reservation starts at the head nonce");
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, accepted);
         }
 
         _headState.GetNonce(TestItem.AddressA).Returns(6UL);
@@ -410,7 +443,7 @@ public class NonceManagerTests
         using (NonceLocker locker = nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong first))
         {
             Assert.That(first, Is.EqualTo(0UL), "the account nonce is still free");
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, first);
         }
 
         using (nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong second))
@@ -426,7 +459,7 @@ public class NonceManagerTests
     {
         NonceManager nonceManager = CreateSweepingNonceManager();
         using NonceLocker inProgress = nonceManager.TxWithNonceReceived(TestItem.AddressA, 0);
-        inProgress.Accept();
+        Accept(inProgress, TestItem.AddressA, 0);
         for (int i = 1; i < SweepThreshold; i++)
         {
             AcceptRawNonce(nonceManager, TestItem.Addresses[i], 0);
@@ -472,7 +505,7 @@ public class NonceManagerTests
         {
             Assert.That(swept, Is.True, "precondition: the sweep ran between adding the entry and locking it");
             Assert.That(first, Is.EqualTo(0UL), "the account nonce is free");
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, first);
         }
 
         using (nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong second))
@@ -561,6 +594,204 @@ public class NonceManagerTests
     }
 
     [Test]
+    public void ReserveNonce_should_reuse_nonce_after_its_accepted_tx_is_evicted([Values] bool managed)
+    {
+        Transaction accepted;
+        if (managed)
+        {
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
+            accepted = Accept(locker, TestItem.AddressA, nonce);
+        }
+        else
+        {
+            using NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 0);
+            accepted = Accept(locker, TestItem.AddressA, 0);
+        }
+
+        Remove(accepted);
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo(0UL));
+        }
+    }
+
+    [Test]
+    public void ReserveNonce_should_reuse_evicted_nonce_below_later_pending_ones()
+    {
+        Transaction[] accepted = new Transaction[3];
+        for (int i = 0; i < accepted.Length; i++)
+        {
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
+            accepted[i] = Accept(locker, TestItem.AddressA, nonce);
+        }
+
+        Remove(accepted[1]);
+
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo(1UL));
+            Accept(locker, TestItem.AddressA, nonce);
+        }
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo(3UL));
+        }
+    }
+
+    [Test]
+    public void ReserveNonce_should_resume_at_the_last_free_nonce_while_nothing_left_the_pool()
+    {
+        const int sends = 8;
+        for (int i = 0; i < sends; i++)
+        {
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
+            Accept(locker, TestItem.AddressA, nonce);
+        }
+
+        _pendingTxs.ClearReceivedCalls();
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo((ulong)sends));
+        }
+
+        _pendingTxs.ReceivedWithAnyArgs(1).ContainsTx(default!, default);
+        _pendingTxs.DidNotReceiveWithAnyArgs().GetPendingTransactionsBySender(default!);
+    }
+
+    [Test]
+    public void ReserveNonce_should_skip_nonce_held_only_by_persistent_broadcast()
+    {
+        Transaction accepted;
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            accepted = Accept(locker, TestItem.AddressA, nonce);
+        }
+
+        Remove(accepted);
+        _broadcastOnly[accepted.Hash!] = accepted;
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo(1UL));
+        }
+    }
+
+    [Test]
+    public void ReserveNonce_should_skip_nonce_whose_tx_was_replaced_in_the_pool([Values] bool blobPool)
+    {
+        Transaction accepted;
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            accepted = Accept(locker, TestItem.AddressA, nonce);
+        }
+
+        Remove(accepted);
+        Transaction replacement = BuildTx(TestItem.AddressA, accepted.Nonce, blobPool ? TxType.Blob : TxType.Legacy);
+        _pending[replacement.Hash!] = replacement;
+
+        for (int i = 0; i < 2; i++)
+        {
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
+            Assert.That(nonce, Is.EqualTo(1UL));
+        }
+
+        _pendingTxs.Received(1).GetPendingTransactionsBySender(TestItem.AddressA);
+    }
+
+    [Test]
+    public void ReserveNonce_should_skip_nonces_returned_to_the_pool_by_a_reorg()
+    {
+        _headState.GetNonce(TestItem.AddressA).Returns(0UL);
+        _nonceManager = CreateSweepingNonceManager();
+
+        for (int i = 0; i < 2; i++)
+        {
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
+            Accept(locker, TestItem.AddressA, nonce);
+        }
+
+        _headState.GetNonce(TestItem.AddressA).Returns(2UL);
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo(2UL), "precondition: the mined nonces are released");
+        }
+
+        _headState.GetNonce(TestItem.AddressA).Returns(0UL);
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            Assert.That(nonce, Is.EqualTo(2UL));
+        }
+    }
+
+    [Test]
+    public void ReserveNonce_should_not_hand_an_in_flight_nonce_to_a_concurrent_reservation()
+    {
+        using ManualResetEventSlim reserving = new();
+        Task<ulong> concurrent;
+        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
+        {
+            concurrent = Task.Run(() =>
+            {
+                reserving.Set();
+                using NonceLocker concurrentLocker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong concurrentNonce);
+                Accept(concurrentLocker, TestItem.AddressA, concurrentNonce);
+                return concurrentNonce;
+            });
+            Assert.That(reserving.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the concurrent reservation has started");
+            Assert.That(concurrent.Wait(100), Is.False, "the concurrent reservation must wait for the in-flight one");
+            Assert.That(nonce, Is.EqualTo(0UL));
+            Accept(locker, TestItem.AddressA, nonce);
+        }
+
+        Assert.That(concurrent.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(concurrent.Result, Is.EqualTo(1UL));
+    }
+
+    [Test]
+    public void ReserveNonce_should_read_account_nonce_after_waiting_for_the_account_lock()
+    {
+        _headState.GetNonce(TestItem.AddressA).Returns(5UL);
+        _nonceManager = CreateSweepingNonceManager();
+
+        Transaction mined;
+        using (NonceLocker locker = _nonceManager.TxWithNonceReceived(TestItem.AddressA, 5))
+        {
+            mined = Accept(locker, TestItem.AddressA, 5);
+        }
+
+        ulong waitingNonce = 0;
+        Thread waiting = new(() =>
+        {
+            using NonceLocker waitingLocker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out waitingNonce);
+        });
+
+        try
+        {
+            using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce);
+            Assert.That(nonce, Is.EqualTo(6UL), "precondition: nonce 5 is still pending");
+            waiting.Start();
+            Assert.That(SpinWait.SpinUntil(() => waiting.ThreadState == ThreadState.WaitSleepJoin, TimeSpan.FromSeconds(10)),
+                Is.True, "precondition: the reservation is waiting on the account lock");
+
+            _headState.GetNonce(TestItem.AddressA).Returns(6UL);
+            Remove(mined);
+            Accept(locker, TestItem.AddressA, nonce);
+        }
+        finally
+        {
+            if (waiting.IsAlive)
+            {
+                waiting.Join(TimeSpan.FromSeconds(10));
+            }
+        }
+
+        Assert.That(waiting.Join(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(waitingNonce, Is.EqualTo(7UL));
+    }
+
+    [Test]
     public void should_reuse_nonce_if_tx_rejected()
     {
         using (_nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
@@ -571,7 +802,7 @@ public class NonceManagerTests
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
             Assert.That(nonce, Is.EqualTo(0UL));
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, nonce);
         }
 
         using (_nonceManager.TxWithNonceReceived(TestItem.AddressA, 1)) { }
@@ -579,7 +810,7 @@ public class NonceManagerTests
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, _pendingTxs, out ulong nonce))
         {
             Assert.That(nonce, Is.EqualTo(1UL));
-            locker.Accept();
+            Accept(locker, TestItem.AddressA, nonce);
         }
     }
 
@@ -611,6 +842,34 @@ public class NonceManagerTests
         Assert.That(task.Wait(TimeSpan.FromMilliseconds(10_000)), Is.True);
     }
 
+    private Transaction Accept(NonceLocker locker, Address sender, ulong nonce)
+    {
+        Transaction transaction = BuildTx(sender, nonce, TxType.Legacy);
+        _pending[transaction.Hash!] = transaction;
+        locker.Accept(transaction);
+        return transaction;
+    }
+
+    private void Remove(Transaction transaction)
+    {
+        _pending.TryRemove(transaction.Hash!, out _);
+        Interlocked.Increment(ref _removals);
+    }
+
+    private Transaction BuildTx(Address sender, ulong nonce, TxType type) =>
+        Build.A.Transaction
+            .WithType(type)
+            .WithNonce(nonce)
+            .WithSenderAddress(sender)
+            .WithHash(Keccak.Compute(Interlocked.Increment(ref _hashSeed).ToString()))
+            .TestObject;
+
+    private Transaction[] Pending(Address sender, bool blobs) =>
+        _pending
+            .Select(static entry => entry.Value)
+            .Where(t => t.SenderAddress == sender && (t.Type == TxType.Blob) == blobs)
+            .OrderBy(static t => t.Nonce)
+            .ToArray();
     private void MakeReorgSafeStateUnavailable(ReorgSafeStateGap gap)
     {
         switch (gap)
@@ -638,10 +897,10 @@ public class NonceManagerTests
             return true;
         });
 
-    private static void AcceptRawNonce(NonceManager nonceManager, Address address, ulong nonce)
+    private void AcceptRawNonce(NonceManager nonceManager, Address address, ulong nonce)
     {
         using NonceLocker locker = nonceManager.TxWithNonceReceived(address, nonce);
-        locker.Accept();
+        Accept(locker, address, nonce);
     }
 
     private static void RejectRawNonce(NonceManager nonceManager, Address address, ulong nonce)

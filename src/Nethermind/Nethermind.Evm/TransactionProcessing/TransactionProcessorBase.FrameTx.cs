@@ -348,6 +348,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 // Body logs go with the state that produced them, and the bloom derives from these receipts.
                 FrameTxRollback.ScrubReceipts(frameReceipts, frameContext, prefixEnd.Index + 1, i);
+                frameReceiptTracer?.ReportFramesRolledBack(prefixEnd.Index + 1, i);
 
                 totalFrameGasUsed -= (ulong)(totalFrameStateGasUsed - prefixEnd.StateGas);
                 totalFrameStateGasUsed = prefixEnd.StateGas;
@@ -390,6 +391,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                     // Earlier frames' logs go with their state; status and gas_used stay.
                     FrameTxRollback.ScrubReceipts(frameReceipts, frameContext, batchStart.Index, i);
+                    frameReceiptTracer?.ReportFramesRolledBack(batchStart.Index, i);
 
                     // The unrolled frames' writes are gone with the snapshot, so their state charges
                     // are not owed either; the counter only grows, so the batch-start value undoes them.
@@ -569,7 +571,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
         else if (opts.HasFlag(ExecutionOptions.Commit))
         {
-            WorldState.Commit(spec, commitRoots: false);
+            WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
         }
 
         if (tracer.IsTracingFees)
