@@ -23,6 +23,7 @@ public sealed class ModuleWeaver : BaseModuleWeaver
     {
         TypeDefinition vm = ModuleDefinition.GetType("Nethermind.Evm.VirtualMachine`1")
             ?? throw new WeavingException("VirtualMachine type was not found.");
+        GuestDispatchRewriter.Rewrite(GetDispatchType(vm));
         MethodDefinition handler = GetMethod(GetDispatchType(vm), "ExecuteOpcode");
         bool hasTailCall = false;
         foreach (Instruction instruction in handler.Body.Instructions)
