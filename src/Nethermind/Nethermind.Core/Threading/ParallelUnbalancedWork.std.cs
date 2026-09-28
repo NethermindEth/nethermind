@@ -18,6 +18,14 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         int threads = GetWorkerCount(fromInclusive, toExclusive, parallelOptions);
         if (threads == 0) return;
 
+        if (threads == 1)
+        {
+            for (int i = fromInclusive; i < toExclusive && !parallelOptions.CancellationToken.IsCancellationRequested; i++)
+                action(i);
+            parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+            return;
+        }
+
         Data data = new(threads, fromInclusive, toExclusive, action, parallelOptions.CancellationToken);
 
         // Workers hold no state of their own, so one instance serves every slot.
@@ -226,6 +234,32 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
         {
             int threads = GetWorkerCount(fromInclusive, toExclusive, parallelOptions);
             if (threads == 0) return;
+
+            if (threads == 1)
+            {
+                TLocal value = init is not null ? init() : initValue!;
+                ExceptionDispatchInfo? failure = null;
+                try
+                {
+                    for (int i = fromInclusive; i < toExclusive && !parallelOptions.CancellationToken.IsCancellationRequested; i++)
+                        value = action(i, value);
+                }
+                catch (Exception ex)
+                {
+                    failure = ExceptionDispatchInfo.Capture(ex);
+                }
+                try
+                {
+                    @finally?.Invoke(value);
+                }
+                catch (Exception ex)
+                {
+                    failure ??= ExceptionDispatchInfo.Capture(ex);
+                }
+                failure?.Throw();
+                parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+                return;
+            }
 
             // Create shared data with thread-local initializers and finalizers
             Data<TLocal> data = new(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);

@@ -268,23 +268,30 @@ namespace Nethermind.Trie
 
         private void CommitSubtrees(ICommitter committer, TrieNode root, int maxLevel)
         {
-            using ArrayPoolList<CommitSubtree> subtrees = new(16);
-            Collect(root, TreePath.Empty);
-            if (subtrees.Count < 2 || !committer.TryEnableParallelCommit()) return;
+            ArrayPoolListRef<CommitSubtree> subtrees = new(16);
+            try
+            {
+                Collect(root, TreePath.Empty, maxLevel, ref subtrees);
+                if (subtrees.Count < 2 || !committer.TryEnableParallelCommit()) return;
 
-            using ParallelUnbalancedWork.WorkerScope scope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
-            ParallelUnbalancedWork.For(0, subtrees.Count, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
-                (Tree: this, Committer: committer, Subtrees: subtrees), static (i, state) =>
-                {
-                    CommitSubtree subtree = state.Subtrees[i];
-                    TreePath path = subtree.Path;
-                    TrieNode committed = state.Tree.Commit(state.Committer, ref path, subtree.Node);
-                    if (!ReferenceEquals(subtree.Node, committed)) subtree.Parent[subtree.Index] = committed;
-                    return state;
-                });
+                using ParallelUnbalancedWork.WorkerScope scope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+                ParallelUnbalancedWork.For(0, subtrees.Count, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
+                    (Tree: this, Committer: committer, Subtrees: subtrees.AsMemory()), static (i, state) =>
+                    {
+                        CommitSubtree subtree = state.Subtrees.Span[i];
+                        TreePath path = subtree.Path;
+                        TrieNode committed = state.Tree.Commit(state.Committer, ref path, subtree.Node);
+                        if (!ReferenceEquals(subtree.Node, committed)) subtree.Parent[subtree.Index] = committed;
+                        return state;
+                    });
+            }
+            finally
+            {
+                subtrees.Dispose();
+            }
 
             // Commit independent subtrees first; the serial walk then seals their ancestors.
-            void Collect(TrieNode node, TreePath path)
+            static void Collect(TrieNode node, TreePath path, int maxLevel, ref ArrayPoolListRef<CommitSubtree> subtrees)
             {
                 int children = node.IsBranch ? 16 : node.NodeType == NodeType.Extension ? 1 : 0;
                 for (int i = 0; i < children; i++)
@@ -295,7 +302,7 @@ namespace Nethermind.Trie
                     if (path.Length >= maxLevel || child.NodeType == NodeType.Leaf)
                         subtrees.Add(new(node, i, child, childPath));
                     else
-                        Collect(child, childPath);
+                        Collect(child, childPath, maxLevel, ref subtrees);
                 }
             }
         }

@@ -26,7 +26,7 @@ public partial class ParallelUnbalancedWork
             Volatile.Read(ref _root._first) is { } first && (!ReferenceEquals(first, own) || Volatile.Read(ref first.Next) is not null);
         private readonly WorkerScope? _previous;
         private readonly WorkerScope _root;
-        private readonly object _gate = new();
+        private readonly object _gate;
         private readonly Action<IThreadPoolWorkItem> _schedule;
         private WorkQueue? _first;
         private WorkQueue? _last;
@@ -41,6 +41,7 @@ public partial class ParallelUnbalancedWork
             ref WorkerContext context = ref _context;
             _previous = context.Scope;
             _root = _previous?._root ?? this;
+            _gate = _previous?._gate ?? new();
             Concurrency = _previous?.Concurrency ?? concurrency;
             _schedule = schedule ?? QueueToThreadPool;
             context.Scope = this;
