@@ -82,8 +82,8 @@ internal static class PbtImageVerifier
                     }
                 });
             }
-            ValueHash256 root = PbtImageRootCalculator.Calculate(
-                Leaves(leafPath, "PBT verify hash", count, logManager, cancellationToken), cancellationToken);
+            ValueHash256 root = PbtRightmostGroupStore.CalculateRoot(
+                Leaves(leafPath, "PBT verify hash", count, logManager, cancellationToken), PbtRightmostGroupStore.DefaultWindowSize, cancellationToken);
             if (root != claimedRoot) throw new InvalidDataException("PBT snapshot root mismatch.");
 
             using PbtSortedSpool results = new(directory, SortBufferBytes, writerCount: 1, logManager, cancellationToken);

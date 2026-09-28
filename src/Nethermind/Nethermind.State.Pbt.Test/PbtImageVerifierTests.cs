@@ -152,7 +152,7 @@ public class PbtImageVerifierTests
             default: throw new ArgumentOutOfRangeException(nameof(corruption));
         }
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
-        ValueHash256 attackerRoot = PbtImageRootCalculator.Calculate(leaves, CancellationToken.None);
+        ValueHash256 attackerRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, CancellationToken.None);
         using MemoryStream snapshot = new();
         PbtSnapshotCodec.Write(snapshot, attackerRoot, (ulong)leaves.Count, leaves);
         snapshot.Position = 0;
