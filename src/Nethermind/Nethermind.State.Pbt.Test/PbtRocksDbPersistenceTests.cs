@@ -68,7 +68,7 @@ public class PbtRocksDbPersistenceTests
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         metadata[SchemaEpochKey] = Epoch(21);
         if (stamp is not null) metadata[NodeGroupKeyLayoutKey] = stamp;
-        metadata[PrefixlessBranchOmissionKey] = [(byte)PbtPrefixlessBranchOmission.Interior];
+        metadata[PrefixlessBranchOmissionKey] = [1];
 
         using (Assert.EnterMultipleScope())
         {
@@ -80,13 +80,13 @@ public class PbtRocksDbPersistenceTests
         }
     }
 
-    [TestCase(null, PbtPrefixlessBranchOmission.OddLevels, PbtPrefixlessBranchOmission.Interior, TestName = "Unstamped_store_omits_odd_levels")]
-    [TestCase(new byte[] { 0 }, PbtPrefixlessBranchOmission.None, PbtPrefixlessBranchOmission.OddLevels, TestName = "None_stamp_rejects_odd_levels")]
-    [TestCase(new byte[] { 1 }, PbtPrefixlessBranchOmission.Interior, PbtPrefixlessBranchOmission.OddLevels, TestName = "Interior_stamp_rejects_odd_levels")]
-    [TestCase(new byte[] { 2 }, PbtPrefixlessBranchOmission.OddLevels, PbtPrefixlessBranchOmission.Interior, TestName = "Odd_levels_stamp_rejects_interior")]
-    [TestCase(new byte[] { 3 }, null, PbtPrefixlessBranchOmission.OddLevels, TestName = "Unknown_omission_stamp_is_rejected")]
-    [TestCase(new byte[] { 2, 2 }, null, PbtPrefixlessBranchOmission.OddLevels, TestName = "Malformed_omission_stamp_is_rejected")]
-    public void Prefixless_branch_omission_stamp_gates_the_configured_omission(byte[]? stamp, PbtPrefixlessBranchOmission? accepted, PbtPrefixlessBranchOmission rejected)
+    [TestCase(new byte[] { 1 }, true, TestName = "Interior_stamp_is_accepted")]
+    [TestCase(null, false, TestName = "Unstamped_store_is_rejected")]
+    [TestCase(new byte[] { 0 }, false, TestName = "None_stamp_is_rejected")]
+    [TestCase(new byte[] { 2 }, false, TestName = "Odd_levels_stamp_is_rejected")]
+    [TestCase(new byte[] { 3 }, false, TestName = "Unknown_omission_stamp_is_rejected")]
+    [TestCase(new byte[] { 1, 1 }, false, TestName = "Malformed_omission_stamp_is_rejected")]
+    public void Prefixless_branch_omission_stamp_must_be_interior(byte[]? stamp, bool accepted)
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
@@ -96,19 +96,17 @@ public class PbtRocksDbPersistenceTests
 
         using (Assert.EnterMultipleScope())
         {
-            if (accepted is not null)
-                Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { PrefixlessBranchOmission = accepted.Value }), Throws.Nothing);
-            Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { PrefixlessBranchOmission = rejected }),
-                Throws.TypeOf<InvalidDataException>().With.Message.Contains("omission"));
+            Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()),
+                accepted ? Throws.Nothing : Throws.TypeOf<InvalidDataException>().With.Message.Contains("omission"));
             Assert.That(metadata.Get(PrefixlessBranchOmissionKey), Is.EqualTo(stamp));
         }
     }
 
     [Test]
-    public void Fresh_store_is_stamped_with_the_configured_layout([Values] PbtNodeGroupKeyLayout layout, [Values] PbtPrefixlessBranchOmission omission)
+    public void Fresh_store_is_stamped_with_the_configured_layout([Values] PbtNodeGroupKeyLayout layout)
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        PbtRocksDbPersistence persistence = new(db, new PbtConfig { NodeGroupKeyLayout = layout, PrefixlessBranchOmission = omission });
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig { NodeGroupKeyLayout = layout });
         PbtNodePath groupKey = new(Bytes.FromHexString("80"), 8);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
         {
@@ -120,10 +118,10 @@ public class PbtRocksDbPersistenceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(NodeGroupKeyLayoutKey), Is.EqualTo(new[] { (byte)layout }));
-            Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(PrefixlessBranchOmissionKey), Is.EqualTo(new[] { (byte)omission }));
+            Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(PrefixlessBranchOmissionKey), Is.EqualTo(new byte[] { 1 }));
             Assert.That(db.GetColumnDb(PbtColumns.TopNodeGroups).Get(groupKey.ToStorageKey(PbtColumns.TopNodeGroups, layout)), Is.Not.Null);
             Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EqualTo(new[] { groupKey.ToPath<PbtStorageNodePath>() }));
-            Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { NodeGroupKeyLayout = layout, PrefixlessBranchOmission = omission }), Throws.Nothing);
+            Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { NodeGroupKeyLayout = layout }), Throws.Nothing);
         }
     }
 
@@ -872,7 +870,7 @@ public class PbtRocksDbPersistenceTests
         {
             db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(21));
             db.GetColumnDb(PbtColumns.Metadata).Set(NodeGroupKeyLayoutKey, [(byte)config.NodeGroupKeyLayout]);
-            db.GetColumnDb(PbtColumns.Metadata).Set(PrefixlessBranchOmissionKey, [(byte)config.PrefixlessBranchOmission]);
+            db.GetColumnDb(PbtColumns.Metadata).Set(PrefixlessBranchOmissionKey, [1]);
         }
 
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()),

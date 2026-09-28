@@ -26,7 +26,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly PbtResourcePool.Usage _usage;
     private readonly ConcurrencyController _foldQuota;
     private readonly FoldFanOut _foldFanOut;
-    private readonly PbtPrefixlessBranchOmission _prefixlessBranchOmission;
     private readonly IRefCountingMemoryProvider _nodeGroupMemory;
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
@@ -64,7 +63,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<PbtWorldStateScope>();
         _foldQuota = new ConcurrencyController(config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount);
         _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
-        _prefixlessBranchOmission = config.PrefixlessBranchOmission;
         _nodeGroupMemory = resourcePool.NodeGroupMemory;
         _usage = usage;
         _currentStateId = currentStateId;
@@ -179,7 +177,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
             long updaterStart = Stopwatch.GetTimestamp();
             using (PbtSnapshotStore store = new(Bundle))
-                _treeRoot = TrieUpdater.UpdateRoot(store, _treeRoot, changes, _foldQuota, _foldFanOut, _prefixlessBranchOmission, Metrics.PbtPartitionFoldTime, memoryProvider: _nodeGroupMemory);
+                _treeRoot = TrieUpdater.UpdateRoot(store, _treeRoot, changes, _foldQuota, _foldFanOut, Metrics.PbtPartitionFoldTime, memoryProvider: _nodeGroupMemory);
             Metrics.PbtTrieUpdaterTime.Observe(Stopwatch.GetTimestamp() - updaterStart);
             Bundle.CompleteLeafChanges();
         }

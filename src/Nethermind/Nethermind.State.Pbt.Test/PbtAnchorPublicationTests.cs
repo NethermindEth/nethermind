@@ -314,7 +314,7 @@ public class PbtAnchorPublicationTests
         using PbtNodeGroupStore oracle = new();
         List<(byte[] Key, byte[]? Value)> leaves = [];
         foreach (RebuildEntry leaf in PbtSnapshotCodec.ReadLeaves(snapshot, count)) leaves.Add((leaf.Key.Bytes.ToArray(), leaf.Leaf.ToByteArray()));
-        Assert.That(oracle.Fold(default, leaves, config.PrefixlessBranchOmission, PbtTreeHarness.DefaultFanOut, null), Is.EqualTo(expectedRoot.ValueHash256));
+        Assert.That(oracle.Fold(default, leaves, PbtTreeHarness.DefaultFanOut, null), Is.EqualTo(expectedRoot.ValueHash256));
         using IPbtIterator<PbtStorageNodePath> groupKeys = reader.EnumerateNodeGroupKeys();
         Assert.That(CanonicalGroups(groupKeys.Drain(), reader.GetNodeGroup),
             Is.EqualTo(CanonicalGroups(oracle.EnumerateNodeGroupKeys(), oracle.GetPhysicalNodeGroup)));

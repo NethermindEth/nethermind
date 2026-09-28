@@ -58,7 +58,7 @@ internal static class PbtNodeGroupEncoder
             PbtNodeCodec.ValidateExact(encoding);
             PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
             ValidateNodePath(node, record.Path);
-            if (PbtNodeGroupCodec.ShouldOmit(PbtPrefixlessBranchOmission.Interior, location.Position, encoding)) continue;
+            if (PbtNodeGroupCodec.ShouldOmit(location.Position, encoding)) continue;
             entriesLength = checked(entriesLength + encoding.Length);
             if (entriesLength > MaxOffset) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
             recordIndices[location.Position] = index;
@@ -114,7 +114,7 @@ internal static class PbtNodeGroupEncoder
             PbtNodeCodec.ValidateExact(encoding);
             PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
             ValidateNodePath(node, PbtFourLevelGroupGeometry.PathOf(groupKey, position));
-            if (PbtNodeGroupCodec.ShouldOmit(PbtPrefixlessBranchOmission.Interior, position, encoding)) continue;
+            if (PbtNodeGroupCodec.ShouldOmit(position, encoding)) continue;
             entriesLength = checked(entriesLength + encoding.Length);
             if (entriesLength > MaxOffset) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
             availability |= 1u << position;

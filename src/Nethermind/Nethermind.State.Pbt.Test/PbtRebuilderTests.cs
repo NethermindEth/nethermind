@@ -117,7 +117,7 @@ public class PbtRebuilderTests
         foreach ((PbtStorageTreeKey key, ValueHash256 value) in leaves)
         {
             incrementalRoot = incrementalStore.Fold(incrementalRoot, [(key.Bytes.ToArray(), value.ToByteArray())],
-                config.PrefixlessBranchOmission, PbtTreeHarness.DefaultFanOut, null);
+                PbtTreeHarness.DefaultFanOut, null);
         }
 
         int physicalNodeCount = 0;

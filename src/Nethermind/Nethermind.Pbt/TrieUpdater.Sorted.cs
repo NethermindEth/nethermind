@@ -136,7 +136,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int anchorDepth, scoped Span<byte> encoding)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        using PbtNodeGroupWriter<TPath> writer = PbtNodeGroupWriter<TPath>.Rent(bitDepth, context.MemoryProvider, context.PrefixlessBranchOmission);
+        using PbtNodeGroupWriter<TPath> writer = PbtNodeGroupWriter<TPath>.Rent(bitDepth, context.MemoryProvider);
         StoredGroupHashes.Open(out StoredGroupHashes hashes);
         ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path, default);
         SlotNode result = default;
@@ -383,8 +383,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             // size replaces the frame, which stays with the calling thread.
             AbsentGroupFrame<TKey, TPath> owner = new(bitDepth, Slot, descendantBytes);
             using IPbtConcurrentWriter writer = context.Store.CreateWriter();
-            FoldContext workerContext = new(context.Store, writer, context.MemoryProvider, context.FoldQuota, context.Operations, context.FanOut,
-                context.PrefixlessBranchOmission);
+            FoldContext workerContext = new(context.Store, writer, context.MemoryProvider, context.FoldQuota, context.Operations, context.FanOut);
             int slotDepth = bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
             Result = FoldSortedRange(workerContext, ref owner, boundary, context.Operations.AsSpan(offset, count), ref path,
                 slotDepth, slotDepth, foldedAhead.AsSpan(Slot * MaxNodeLength, MaxNodeLength));
@@ -580,7 +579,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             writer.DropLast(leftPosition);
             return false;
         }
-        if (writer.Omits(leftPosition, encoding))
+        if (PbtNodeGroupCodec.ShouldOmit(leftPosition, encoding))
         {
             bool pending = frame.LeftHash == default;
             if (pending) node.Preimage.CopyTo(omitted);
@@ -611,7 +610,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         ReadOnlySpan<byte> leftPreimage = !omittedLeft.IsEmpty ? omittedLeft
             : frame.LeftPreimageLength == 0 ? default : writer.Entry(frame.LeftPreimageOffset, frame.LeftPreimageLength).Span;
         HashPendingPair(leftPreimage, ref frame.LeftHash, rightPreimage, ref rightHash);
-        if (rightIsLeaf || writer.Omits(rightPosition, encoding))
+        if (rightIsLeaf || PbtNodeGroupCodec.ShouldOmit(rightPosition, encoding))
             writer.DropLast(rightPosition);
         else
             writer.ValidateEntry(path, rightPosition, encoding);
@@ -645,7 +644,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 PbtNodeCodec.CreateBranchEncoding(branch, 0, seeded, seeded);
                 PbtNodeCodec.WriteBranchTrailer(branch[PbtNodeCodec.BranchPreimageLength(0)..], 0, 0);
-                if (writer.Omits(position, branch)) return new(offset, length, seeded) { ChildHashesPending = true };
+                return new(offset, length, seeded) { ChildHashesPending = true };
             }
 
             hashes.GetChildHashesPaired(ref reader, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);

@@ -27,8 +27,7 @@ public static partial class TrieUpdater
     /// parts on the calling thread while no slot is free, and the first slot it takes admits a parallel loop over
     /// the parts still left, whose workers charge themselves as they start; a quota of one folds everything
     /// serially. Each zone's fold time is observed on <paramref name="partitionFoldTime"/> labelled by partition, so
-    /// an imbalance between them is visible. Groups rewritten by this fold leave prefixless interior branches
-    /// implicit as <paramref name="prefixlessBranchOmission"/> selects; untouched groups keep their layout.
+    /// an imbalance between them is visible.
     /// Each zone's shards are sorted in place, and the producer's shard counts serve as the zone group's slot ranges.
     /// The supplied store must support concurrent reads; each worker writes through its own <see cref="IPbtStore.CreateWriter"/>. Failed
     /// folds may leave partial writes; the caller owns failure isolation and must not reuse that state without
@@ -41,7 +40,6 @@ public static partial class TrieUpdater
         PbtPartitionBatches changes,
         ConcurrencyController foldQuota,
         FoldFanOut fanOut,
-        PbtPrefixlessBranchOmission prefixlessBranchOmission,
         IMetricObserver? partitionFoldTime,
         IRefCountingMemoryProvider? memoryProvider = null)
     {
@@ -71,11 +69,11 @@ public static partial class TrieUpdater
                 {
                     AbsentGroupFrame<PbtStorageTreeKey, PbtStorageNodePath> emptyRoot = new(0);
                     return FoldZones(store, ref emptyRoot, default, workers, sharedReaders.AsSpan(), sharedWriters.AsSpan(), zoneFrontiers.AsSpan(),
-                        touchedZoneMasks, storeWriter, foldQuota, memoryProvider, prefixlessBranchOmission);
+                        touchedZoneMasks, storeWriter, foldQuota, memoryProvider);
                 }
                 using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
                     return FoldZones(store, ref rootReader, rootReader.TakeRoot(), workers, sharedReaders.AsSpan(), sharedWriters.AsSpan(), zoneFrontiers.AsSpan(),
-                        touchedZoneMasks, storeWriter, foldQuota, memoryProvider, prefixlessBranchOmission);
+                        touchedZoneMasks, storeWriter, foldQuota, memoryProvider);
             }
             finally
             {
@@ -93,7 +91,7 @@ public static partial class TrieUpdater
                 if (batch is null) return;
                 ArgumentOutOfRangeException.ThrowIfNotEqual(batch.ShardNibbleIndex, 2);
                 batch.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
-                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, memoryProvider, foldQuota, fanOut, prefixlessBranchOmission,
+                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, memoryProvider, foldQuota, fanOut,
                     partitionFoldTime, foldLabel);
                 if (operations.Count != 0) workers.Add(worker);
                 else worker.Dispose();
@@ -106,10 +104,10 @@ public static partial class TrieUpdater
     private static ValueHash256 FoldZones<TRoot>(IPbtStore store, ref TRoot rootReader, BoundaryNode root, ArrayPoolList<PartitionFold> workers,
         Span<GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>> sharedReaders, Span<PbtNodeGroupWriter<PbtStorageNodePath>?> sharedWriters,
         Span<Frontier> zoneFrontiers, Span<int> touchedZoneMasks, IPbtConcurrentWriter storeWriter, ConcurrencyController foldQuota,
-        IRefCountingMemoryProvider memoryProvider, PbtPrefixlessBranchOmission prefixlessBranchOmission)
+        IRefCountingMemoryProvider memoryProvider)
         where TRoot : struct, IGroupFrame<PbtStorageTreeKey, PbtStorageNodePath>
     {
-        using PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(0, memoryProvider, prefixlessBranchOmission);
+        using PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(0, memoryProvider);
         PbtTraversalPath rootPath = new(Span<byte>.Empty);
         Span<byte> sharedPathBuffer = stackalloc byte[1];
         int touchedRootMask = 0;
@@ -134,7 +132,7 @@ public static partial class TrieUpdater
             if (sharedWriters[slot] is null)
             {
                 BoundaryNode boundary = TakeBoundary(ref rootReader, ref rootHashes, rootPath, ref rootFrontier, slot);
-                sharedWriters[slot] = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(4, memoryProvider, prefixlessBranchOmission);
+                sharedWriters[slot] = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(4, memoryProvider);
                 zoneHashes[slot] = default;
                 zoneFrontiers[slot] = new(touchedZoneMasks[slot]);
                 if (IsAbsentGroup(boundary, 4))
@@ -252,7 +250,7 @@ public static partial class TrieUpdater
     private sealed class PartitionFold<TKey, TPath>(IPbtStore store, byte zone,
         ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table,
         IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, FoldFanOut fanOut,
-        PbtPrefixlessBranchOmission prefixlessBranchOmission, IMetricObserver? foldTime, StringLabel foldLabel) : PartitionFold(zone)
+        IMetricObserver? foldTime, StringLabel foldLabel) : PartitionFold(zone)
         where TKey : unmanaged, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
     {
@@ -284,10 +282,10 @@ public static partial class TrieUpdater
             where TFrame : struct, IGroupFrame<TKey, TPath>
         {
             Span<byte> sourceBuffer = stackalloc byte[PbtStorageTreeKey.MaxLength];
-            using PbtNodeGroupWriter<TPath> writer = PbtNodeGroupWriter<TPath>.Rent(8, memoryProvider, prefixlessBranchOmission);
+            using PbtNodeGroupWriter<TPath> writer = PbtNodeGroupWriter<TPath>.Rent(8, memoryProvider);
             using IPbtConcurrentWriter concurrentWriter = store.CreateWriter();
             TrieUpdater<TKey, TPath>.FoldContext context = new(store, concurrentWriter, memoryProvider,
-                foldQuota, operations.UnsafeGetInternalArray(), fanOut, prefixlessBranchOmission);
+                foldQuota, operations.UnsafeGetInternalArray(), fanOut);
             TrieUpdater<TKey, TPath>.StoredGroupHashes hashes = default;
             TrieUpdater<TKey, TPath>.FoldResult result = default;
             // The producer grouped the zone by the slot nibble of this group, so sorted shards sort the zone and keep its slot ranges.

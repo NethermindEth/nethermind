@@ -26,7 +26,6 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     [ThreadStatic] private static Stack<PbtNodeGroupWriter<TPath>>? t_cache;
     private int _bitDepth;
     private IRefCountingMemoryProvider _memoryProvider;
-    private PbtPrefixlessBranchOmission _omission;
     /// <summary>The group composed so far, from <see cref="ArrayPool{T}.Shared"/>, with room for the header in front.</summary>
     private byte[]? _scratch;
     private OffsetBuffer _offsets;
@@ -42,26 +41,24 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     /// <summary>Whether <see cref="Dispose"/> hands this writer back to the calling thread's cache.</summary>
     private bool _rented;
 
-    internal PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider, PbtPrefixlessBranchOmission omission)
+    internal PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider)
     {
         ArgumentNullException.ThrowIfNull(memoryProvider);
         Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a four-level boundary.");
         _bitDepth = bitDepth;
         _memoryProvider = memoryProvider;
-        _omission = omission;
     }
 
     /// <summary>A writer as the constructor makes it, reused from the calling thread's cache, which <see cref="Dispose"/> returns it to.</summary>
     /// <remarks>A fold opens one writer per group it rewrites, so reusing them keeps the fold from allocating one per group.</remarks>
-    internal static PbtNodeGroupWriter<TPath> Rent(int bitDepth, IRefCountingMemoryProvider memoryProvider, PbtPrefixlessBranchOmission omission)
+    internal static PbtNodeGroupWriter<TPath> Rent(int bitDepth, IRefCountingMemoryProvider memoryProvider)
     {
-        if (t_cache is not { Count: > 0 } cache) return new(bitDepth, memoryProvider, omission) { _rented = true };
+        if (t_cache is not { Count: > 0 } cache) return new(bitDepth, memoryProvider) { _rented = true };
         PbtNodeGroupWriter<TPath> writer = cache.Pop();
         ArgumentNullException.ThrowIfNull(memoryProvider);
         Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a four-level boundary.");
         writer._bitDepth = bitDepth;
         writer._memoryProvider = memoryProvider;
-        writer._omission = omission;
         ((Span<long>)writer._descendantDeltas).Clear();
         writer._descendantDeltaMask = 0;
         writer._descendantDeltaTotal = 0;
@@ -120,7 +117,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         ValidateReservedNode();
         ReadOnlySpan<byte> encoding = _scratch.AsSpan(PbtNodeGroupCodec.HeaderLength + _written, _pendingLength);
         ValidateEncoding(path, _pendingPosition, encoding);
-        if (!PbtNodeGroupCodec.ShouldOmit(_omission, _pendingPosition, encoding))
+        if (!PbtNodeGroupCodec.ShouldOmit(_pendingPosition, encoding))
         {
             _offsets[_pendingPosition] = (ushort)_written;
             _availability |= 1u << _pendingPosition;
@@ -165,9 +162,6 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         // Every earlier entry sits below the dropped one, so its position may be written again.
         _lastPosition = position - 1;
     }
-
-    /// <summary>Whether <paramref name="encoding"/> at <paramref name="position"/> is left out of the group and rebuilt from its children.</summary>
-    internal bool Omits(int position, ReadOnlySpan<byte> encoding) => PbtNodeGroupCodec.ShouldOmit(_omission, position, encoding);
 
     /// <summary>Checks an appended entry once its position is final.</summary>
     [Conditional("DEBUG")]

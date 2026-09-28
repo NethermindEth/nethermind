@@ -82,7 +82,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                     // The link hash only stands in for the child hashes, which omission does not look at.
                     PbtNodeCodec.CreateBranchEncoding(branch, 0, linkHash, linkHash);
                     PbtNodeCodec.WriteBranchTrailer(branch[PbtNodeCodec.BranchPreimageLength(0)..], 0, 0);
-                    if (writer.Omits(position, branch)) return new(offset, length, linkHash) { ChildHashesPending = true };
+                    return new(offset, length, linkHash) { ChildHashesPending = true };
                 }
 
                 hashes.GetChildHashes(ref reader, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
@@ -253,7 +253,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 writer.DropLast(leftPosition);
                 return;
             }
-            if (writer.Omits(leftPosition, encoding))
+            if (PbtNodeGroupCodec.ShouldOmit(leftPosition, encoding))
             {
                 if (frame.LeftHash == default)
                 {
@@ -283,7 +283,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             ReadOnlySpan<byte> rightPreimage = rightHash == default ? node.Preimage : default;
             ReadOnlySpan<byte> leftPreimage = frame.LeftPreimageLength == 0 ? default : writer.Entry(frame.LeftPreimageOffset, frame.LeftPreimageLength).Span;
             HashPending(leftPreimage, ref frame.LeftHash, rightPreimage, ref rightHash);
-            if (rightIsLeaf || writer.Omits(rightPosition, encoding))
+            if (rightIsLeaf || PbtNodeGroupCodec.ShouldOmit(rightPosition, encoding))
                 writer.DropLast(rightPosition);
             else
                 writer.ValidateEntry(path, rightPosition, encoding);

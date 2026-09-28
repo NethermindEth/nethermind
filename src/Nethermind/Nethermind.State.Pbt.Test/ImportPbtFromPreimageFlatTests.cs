@@ -123,7 +123,7 @@ public class ImportPbtFromPreimageFlatTests
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         ValueHash256 remainingRoot;
         using (PbtSnapshotStore store = new(bundle))
-            remainingRoot = TrieUpdater.UpdateRoot(store, reader.CurrentRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
+            remainingRoot = TrieUpdater.UpdateRoot(store, reader.CurrentRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
         bundle.CompleteLeafChanges();
         PbtReferenceModel.SetAccount(model, TestItem.AddressB, 4, 43, bigCode);
         PbtReferenceModel.SetAccount(model, TestItem.AddressE, 2, 0);

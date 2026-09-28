@@ -24,8 +24,8 @@ namespace Nethermind.Pbt;
 /// section. The first offset is zero, and subsequent offsets strictly increase; a node ends at the next
 /// offset or the footer's beginning. Position 30 is reserved for the root and may only be present in
 /// the depth-zero root group. The group key is deliberately kept outside this payload. Prefixless
-/// branches at relative depths 1–3 may be omitted when neither child is an inline leaf: only their
-/// descendants need be stored (see <see cref="PbtPrefixlessBranchOmission"/>). Availability describes physical entries.
+/// branches at relative depths 1–3 are omitted when neither child is an inline leaf: only their
+/// descendants are stored. Availability describes physical entries.
 /// </remarks>
 public static class PbtNodeGroupCodec
 {
@@ -235,13 +235,8 @@ public static class PbtNodeGroupCodec
 
     /// <summary>A prefixless interior branch without inline leaves is reconstructed from its children, so it need not be stored.</summary>
     /// <remarks>Relative depth 1 is width 8, depth 2 width 4 and depth 3 width 2 in <see cref="PbtFourLevelGroupGeometry.WidthOf"/>.</remarks>
-    internal static bool ShouldOmit(PbtPrefixlessBranchOmission omission, int position, ReadOnlySpan<byte> encoding) =>
-        omission switch
-        {
-            PbtPrefixlessBranchOmission.Interior => PbtFourLevelGroupGeometry.WidthOf(position) is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots,
-            PbtPrefixlessBranchOmission.OddLevels => PbtFourLevelGroupGeometry.WidthOf(position) is 2 or 8,
-            _ => false,
-        }
+    internal static bool ShouldOmit(int position, ReadOnlySpan<byte> encoding) =>
+        PbtFourLevelGroupGeometry.WidthOf(position) is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots
         && encoding.Length == PrefixlessBranchLength && encoding[0] == 1 && encoding[1] == 0 && encoding[2] == 0
         && encoding[PrefixlessBranchLength - 2] == 0 && encoding[PrefixlessBranchLength - 1] == 0;
 }

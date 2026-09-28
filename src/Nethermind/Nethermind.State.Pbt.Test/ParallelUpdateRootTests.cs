@@ -130,7 +130,7 @@ public class ParallelUpdateRootTests
             (byte[] Key, byte[]? Value)[] writes = new (byte[], byte[]?)[mutations.Length];
             for (int index = 0; index < mutations.Length; index++)
                 writes[index] = (mutations[index].Key, zeroDeletes && mutations[index].Value is null ? new byte[32] : mutations[index].Value);
-            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
+            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
             sequential.ApplyBatch(mutations);
             foreach ((byte[] key, byte[]? value) in mutations)
             {
@@ -143,69 +143,10 @@ public class ParallelUpdateRootTests
                 Assert.That(root, Is.EqualTo(sequential.RootHash));
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
                 Assert.That(PhysicalRecords(store), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
-                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null), Is.EqualTo(root));
+                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null), Is.EqualTo(root));
                 Assert.That(PhysicalRecords(reopened), Is.EqualTo(PhysicalRecords(store)));
             }
         }
-    }
-
-    [Test]
-    public void Stored_prefixless_branches_are_hash_neutral_and_read_alongside_omitted_ones([Values] PbtPrefixlessBranchOmission omission)
-    {
-        using PbtNodeGroupStore store = new();
-        using PbtTreeHarness expected = new();
-        (byte[] Key, byte[]? Value)[] initial = RandomZoneEntries(new Random(42), 256);
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, omission, null);
-        int[] storedWidths = StoredPrefixlessBranchWidths(store);
-        int[] expectedWidths = omission switch
-        {
-            PbtPrefixlessBranchOmission.None => [2, 4, 8],
-            PbtPrefixlessBranchOmission.OddLevels => [4],
-            _ => [],
-        };
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(root, Is.EqualTo(expected.ApplyBatch(initial)));
-            Assert.That(storedWidths.Distinct(), Is.EquivalentTo(expectedWidths));
-        }
-
-        // Rewritten groups take the default layout while untouched ones keep theirs; both read alike.
-        (byte[] Key, byte[]? Value)[] changes = Changes(initial);
-        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(root, Is.EqualTo(expected.ApplyBatch(changes)));
-            // Depth-2 branches only occur in the dense top, which every batch rewrites, so OddLevels may convert entirely.
-            Assert.That(StoredPrefixlessBranchWidths(store), omission switch
-            {
-                PbtPrefixlessBranchOmission.None => Has.Length.InRange(1, storedWidths.Length - 1),
-                PbtPrefixlessBranchOmission.OddLevels => Has.Length.LessThan(storedWidths.Length),
-                _ => Is.Empty,
-            });
-            Assert.That(LogicalRecords(store.EnumerateRecords()), Is.EqualTo(LogicalRecords(expected.Nodes)));
-        }
-    }
-
-    /// <summary>The <see cref="PbtFourLevelGroupGeometry.WidthOf"/> of every stored branch that <see cref="PbtPrefixlessBranchOmission.Interior"/> would omit.</summary>
-    private static int[] StoredPrefixlessBranchWidths(PbtNodeGroupStore store)
-    {
-        List<int> widths = [];
-        foreach (PbtPhysicalPayload payload in store.ExportPhysicalPayloads())
-        {
-            PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(payload.Key, payload.Payload.Span);
-            for (int position = 0; position < PbtFourLevelGroupGeometry.RootPosition; position++)
-                if (reader.TryGetNode(position, out ReadOnlySpan<byte> encoding) && PbtNodeGroupCodec.ShouldOmit(PbtPrefixlessBranchOmission.Interior, position, encoding))
-                    widths.Add(PbtFourLevelGroupGeometry.WidthOf(position));
-        }
-        return [.. widths];
-    }
-
-    private static string[] LogicalRecords(IReadOnlyList<PbtNodeRecord> records)
-    {
-        string[] encoded = new string[records.Count];
-        for (int index = 0; index < records.Count; index++)
-            encoded[index] = Convert.ToHexString(records[index].Path.ToEncodedArray()) + Convert.ToHexString(records[index].Encoding.Span);
-        return encoded;
     }
 
     [Test]
@@ -234,7 +175,7 @@ public class ParallelUpdateRootTests
 
         void ApplyAndCompare(PbtNodeGroupStore target, List<(byte[] Key, byte[]? Value)> writes)
         {
-            root = target.Fold(root, writes, PbtPrefixlessBranchOmission.Interior, SplitFanOut(splitEveryFrame), null);
+            root = target.Fold(root, writes, SplitFanOut(splitEveryFrame), null);
             foreach ((byte[] key, byte[]? value) in writes)
             {
                 if (value is null)
@@ -293,7 +234,7 @@ public class ParallelUpdateRootTests
         void ApplyAndCompare(PbtNodeGroupStore target, (byte[] Key, byte[]? Value)[] changes)
         {
             using PbtPartitionBatches partitions = PreparePartitions(changes);
-            root = TrieUpdater.UpdateRoot(target, root, partitions, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
+            root = TrieUpdater.UpdateRoot(target, root, partitions, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
             sequential.ApplyBatch(changes);
             foreach ((byte[] key, byte[]? value) in changes)
             {
@@ -355,10 +296,10 @@ public class ParallelUpdateRootTests
         using BucketWorkerStore store = new();
         using PbtTreeHarness sequential = new();
         ConcurrencyController foldQuota = new(2);
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, PbtTreeHarness.DefaultFanOut, null);
         sequential.ApplyBatch(initial);
         store.Observe(coordinate: expectParallel);
-        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
+        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, PbtTreeHarness.DefaultFanOut, null);
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
@@ -399,7 +340,7 @@ public class ParallelUpdateRootTests
                 if (value is null) oracle.Delete(key);
                 else oracle.Insert(key, value);
             }
-            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, fanOut, PbtPrefixlessBranchOmission.Interior, null);
+            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, fanOut, null);
             sequential.ApplyBatch(changes);
             using (Assert.EnterMultipleScope())
             {
@@ -423,7 +364,7 @@ public class ParallelUpdateRootTests
         using CoordinatedStore store = new();
         using PbtTreeHarness sequential = new();
         ConcurrencyController foldQuota = new(foldConcurrency);
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, fanOut, PbtPrefixlessBranchOmission.Interior, null);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, fanOut, null);
         sequential.ApplyBatch(initial);
         string[] initialRecords = PhysicalRecords(store.Inner);
         (byte[] Key, byte[]? Value)[] changes = Changes(initial);
@@ -433,7 +374,7 @@ public class ParallelUpdateRootTests
         store.Writes = 0;
         if (failWorker)
         {
-            Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, fanOut, PbtPrefixlessBranchOmission.Interior, null));
+            Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, fanOut, null));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(store.Writes, Is.GreaterThan(0), "partial writes belong to the caller on failure");
@@ -445,7 +386,7 @@ public class ParallelUpdateRootTests
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
             return;
         }
-        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, fanOut, PbtPrefixlessBranchOmission.Interior, null);
+        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, fanOut, null);
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
@@ -455,7 +396,7 @@ public class ParallelUpdateRootTests
             Assert.That(store.ActiveReads, Is.Zero);
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
             Assert.That(AvailableWorkers(foldQuota), Is.EqualTo(foldConcurrency - 1), "completed folds return their quota");
-            Assert.Throws<InvalidOperationException>(() => TrieUpdater.UpdateRoot(store, result, prepared, foldQuota, fanOut, PbtPrefixlessBranchOmission.Interior, null));
+            Assert.Throws<InvalidOperationException>(() => TrieUpdater.UpdateRoot(store, result, prepared, foldQuota, fanOut, null));
         }
     }
 
@@ -470,10 +411,10 @@ public class ParallelUpdateRootTests
         using OverlapCountingStore store = new();
         using PbtTreeHarness sequential = new();
         ConcurrencyController foldQuota = new(foldConcurrency);
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, fanOut, PbtPrefixlessBranchOmission.Interior, null);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, fanOut, null);
         sequential.ApplyBatch(initial);
         (byte[] Key, byte[]? Value)[] changes = Changes(initial);
-        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, fanOut, PbtPrefixlessBranchOmission.Interior, null);
+        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, fanOut, null);
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
@@ -530,7 +471,7 @@ public class ParallelUpdateRootTests
         {
             store.Reads.Clear();
             store.Writes.Clear();
-            root = store.Fold(root, changes, PbtPrefixlessBranchOmission.Interior, SplitFanOut(splitEveryFrame), null);
+            root = store.Fold(root, changes, SplitFanOut(splitEveryFrame), null);
 
             foreach ((PbtStorageNodePath path, ValueHash256 hash) in store.Reads)
             {

@@ -25,6 +25,7 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
     private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
     private static ReadOnlySpan<byte> PrefixlessBranchOmissionKey => "prefixlessBranchOmission"u8;
+    private const byte InteriorOmissionStamp = 1;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
     internal static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
     private const int SchemaEpoch = 21;
@@ -34,7 +35,7 @@ public class PbtRocksDbPersistence(
     internal const int StemTopDepth = 260;
     private const byte ValidState = 1;
 
-    private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.NodeGroupKeyLayout, config.PrefixlessBranchOmission, config.ImportFromPreimageFlat);
+    private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.NodeGroupKeyLayout, config.ImportFromPreimageFlat);
     private readonly PbtNodeGroupKeyLayout _layout = config.NodeGroupKeyLayout;
 
     internal bool IsValid => _db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey) is not null;
@@ -43,15 +44,13 @@ public class PbtRocksDbPersistence(
     internal static bool IsSchemaStamp(ReadOnlySpan<byte> key) =>
         key.SequenceEqual(SchemaEpochKey) || key.SequenceEqual(NodeGroupKeyLayoutKey) || key.SequenceEqual(PrefixlessBranchOmissionKey);
 
-    private static IColumnsDb<PbtColumns> Initialize(IColumnsDb<PbtColumns> db, PbtNodeGroupKeyLayout layout, PbtPrefixlessBranchOmission omission,
-        bool allowInterruptedImport)
+    private static IColumnsDb<PbtColumns> Initialize(IColumnsDb<PbtColumns> db, PbtNodeGroupKeyLayout layout, bool allowInterruptedImport)
     {
-        EnsureSchema(db, layout, omission, allowInterruptedImport);
+        EnsureSchema(db, layout, allowInterruptedImport);
         return db;
     }
 
-    private static void EnsureSchema(IColumnsDb<PbtColumns> db, PbtNodeGroupKeyLayout layout, PbtPrefixlessBranchOmission omission,
-        bool allowInterruptedImport)
+    private static void EnsureSchema(IColumnsDb<PbtColumns> db, PbtNodeGroupKeyLayout layout, bool allowInterruptedImport)
     {
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         byte[]? storedEpoch = metadata.Get(SchemaEpochKey);
@@ -76,7 +75,7 @@ public class PbtRocksDbPersistence(
             BinaryPrimitives.WriteInt32BigEndian(value, SchemaEpoch);
             metadata.PutSpan(SchemaEpochKey, value, WriteFlags.None);
             metadata.PutSpan(NodeGroupKeyLayoutKey, [(byte)layout], WriteFlags.None);
-            metadata.PutSpan(PrefixlessBranchOmissionKey, [(byte)omission], WriteFlags.None);
+            metadata.PutSpan(PrefixlessBranchOmissionKey, [InteriorOmissionStamp], WriteFlags.None);
             return;
         }
 
@@ -86,7 +85,7 @@ public class PbtRocksDbPersistence(
             throw new InvalidDataException($"The pbt database uses schema epoch {epoch}, but this build reads epoch {SchemaEpoch}. Rebuild or re-import into a new pbt database.");
         }
         ValidateLayout(storedLayout, layout);
-        ValidateOmission(storedOmission, omission);
+        ValidateOmission(storedOmission);
 
         if ((storedCurrentState is null) != (storedValidity is null))
         {
@@ -167,17 +166,14 @@ public class PbtRocksDbPersistence(
     }
 
     /// <remarks>
-    /// Omission changes a group's bytes but not its hash, and the node-group caches key on the hash, so a database mixing
-    /// layouts can serve a group whose size no longer matches the one its ancestors recorded. Databases stamped before
-    /// the omission became pinned carry no stamp and use the former default <see cref="PbtPrefixlessBranchOmission.OddLevels"/>.
+    /// The stamp records that every interior prefixless branch is omitted. Omission changes a group's bytes but not its
+    /// hash, and the node-group caches key on the hash, so a database written with another omission can serve a group
+    /// whose size no longer matches the one its ancestors recorded.
     /// </remarks>
-    private static void ValidateOmission(byte[]? value, PbtPrefixlessBranchOmission configured)
+    private static void ValidateOmission(byte[]? value)
     {
-        if (value is not null && value is not [(byte)PbtPrefixlessBranchOmission.None or (byte)PbtPrefixlessBranchOmission.Interior or (byte)PbtPrefixlessBranchOmission.OddLevels])
-            throw new InvalidDataException("Malformed PBT prefixless-branch omission stamp. Rebuild or re-import into a new pbt database.");
-        PbtPrefixlessBranchOmission stored = value is null ? PbtPrefixlessBranchOmission.OddLevels : (PbtPrefixlessBranchOmission)value[0];
-        if (stored != configured)
-            throw new InvalidDataException($"The pbt database uses prefixless-branch omission {stored}, but {nameof(IPbtConfig.PrefixlessBranchOmission)} is {configured}. Match the setting, or rebuild or re-import into a new pbt database.");
+        if (value is not [InteriorOmissionStamp])
+            throw new InvalidDataException("The pbt database uses an unsupported prefixless-branch omission stamp. Rebuild or re-import into a new pbt database.");
     }
 
     internal static PbtColumns NodeGroupColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>

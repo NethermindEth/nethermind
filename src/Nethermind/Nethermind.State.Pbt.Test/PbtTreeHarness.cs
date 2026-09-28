@@ -240,14 +240,14 @@ internal static class PbtStoreTestExtensions
 
     /// <summary>Folds zone-key <paramref name="writes"/> into the tree at <paramref name="root"/> through the partitioned driver production folds with.</summary>
     internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes) =>
-        store.Fold(root, writes, PbtPrefixlessBranchOmission.Interior, PbtTreeHarness.DefaultFanOut, null);
+        store.Fold(root, writes, PbtTreeHarness.DefaultFanOut, null);
 
     /// <inheritdoc cref="Fold(IPbtStore, in ValueHash256, IEnumerable{ValueTuple{byte[], byte[]}})"/>
     internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes,
-        PbtPrefixlessBranchOmission omission, FoldFanOut fanOut, IRefCountingMemoryProvider? memoryProvider)
+        FoldFanOut fanOut, IRefCountingMemoryProvider? memoryProvider)
     {
         using PbtPartitionBatches changes = PreparePartitions(writes);
-        return TrieUpdater.UpdateRoot(store, root, changes, PbtTreeHarness.FoldQuota(), fanOut, omission, null, memoryProvider);
+        return TrieUpdater.UpdateRoot(store, root, changes, PbtTreeHarness.FoldQuota(), fanOut, null, memoryProvider);
     }
 
     internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)

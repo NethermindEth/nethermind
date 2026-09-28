@@ -178,7 +178,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// Groups are read from <see cref="Store"/> but published to <see cref="Writer"/>, which a concurrent bucket replaces
     /// with its own <see cref="IPbtStore.CreateWriter"/> so it never writes the store directly.
     /// </remarks>
-    internal sealed class FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, ConcurrencyController? foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut, PbtPrefixlessBranchOmission prefixlessBranchOmission)
+    internal sealed class FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, ConcurrencyController? foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut)
     {
         internal IPbtStore Store { get; } = store;
         internal IPbtNodeGroupSink Writer { get; } = writer;
@@ -186,8 +186,6 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal ConcurrencyController? FoldQuota { get; } = foldQuota;
         internal PbtWriteOperation<TKey>[]? Operations { get; } = operations;
         internal FoldFanOut FanOut { get; } = fanOut;
-        internal PbtPrefixlessBranchOmission PrefixlessBranchOmission { get; } = prefixlessBranchOmission;
-
     }
 
     internal static int BoundaryPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);

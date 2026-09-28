@@ -132,7 +132,7 @@ public class Eip8297CanonicalTreeTests
         table[0] = 1;
         table[1] = 1;
         using PbtWriteBatch<PbtPath> batch = new(operations, table, 2);
-        Action update = () => TrieUpdater.UpdateRoot(store, default, new PbtPartitionBatches { Account = batch }, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
+        Action update = () => TrieUpdater.UpdateRoot(store, default, new PbtPartitionBatches { Account = batch }, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
 
         // A single zone never fans out, so the failure surfaces unwrapped.
         if (fail) Assert.Throws<InvalidOperationException>(update);
@@ -1061,7 +1061,7 @@ public class Eip8297CanonicalTreeTests
             }
         }
         using PbtPartitionBatches accumulated = new() { Account = account.Build(), Code = code.Build(), Storage = storage.Build() };
-        ValueHash256 accumulatedRoot = TrieUpdater.UpdateRoot(accumulatedStore, initialRoot, accumulated, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, PbtPrefixlessBranchOmission.Interior, null);
+        ValueHash256 accumulatedRoot = TrieUpdater.UpdateRoot(accumulatedStore, initialRoot, accumulated, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
         ValueHash256 setRoot = setStore.Fold(initialRoot, writes);
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(accumulatedStore.ExportPhysicalPayloads());
         using (Assert.EnterMultipleScope())
@@ -1114,7 +1114,7 @@ public class Eip8297CanonicalTreeTests
 
             ApplyOracle(oracle, writes);
             defaultRoot = defaultStore.Fold(defaultRoot, writes);
-            fannedOutRoot = fannedOutStore.Fold(fannedOutRoot, writes, PbtPrefixlessBranchOmission.Interior, PbtTreeHarness.FanOut(1), null);
+            fannedOutRoot = fannedOutStore.Fold(fannedOutRoot, writes, PbtTreeHarness.FanOut(1), null);
             using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(defaultStore.ExportPhysicalPayloads());
             using (Assert.EnterMultipleScope())
             {
@@ -1575,7 +1575,7 @@ public class Eip8297CanonicalTreeTests
         }
 
         TrackingMemoryProvider memoryProvider = new();
-        Action update = () => store.Fold(root, [(AccountKey(0x12), Value(2))], PbtPrefixlessBranchOmission.Interior, PbtTreeHarness.DefaultFanOut, memoryProvider);
+        Action update = () => store.Fold(root, [(AccountKey(0x12), Value(2))], PbtTreeHarness.DefaultFanOut, memoryProvider);
         if (applyFailure) Assert.Throws<InvalidOperationException>(update);
         else Assert.Catch(update);
 
@@ -1598,7 +1598,7 @@ public class Eip8297CanonicalTreeTests
         store.OverrideNode = path => path.BitDepth == 0 ? store.Inner.GetNode(path) : null;
 
         TrackingMemoryProvider memoryProvider = new();
-        Assert.Throws<InvalidDataException>(() => store.Fold(root, [(AccountKey(0x12), Value(3))], PbtPrefixlessBranchOmission.Interior, PbtTreeHarness.DefaultFanOut, memoryProvider));
+        Assert.Throws<InvalidDataException>(() => store.Fold(root, [(AccountKey(0x12), Value(3))], PbtTreeHarness.DefaultFanOut, memoryProvider));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1793,7 +1793,7 @@ public class Eip8297CanonicalTreeTests
             Assert.That(TrackingMemoryProvider.CountUnreleased([promotedPayload!]), Is.Zero);
             checkedPromotion = true;
         };
-        root = store.Fold(root, [(ZoneKey("00123458"), null)], PbtPrefixlessBranchOmission.Interior, PbtTreeHarness.DefaultFanOut, nodeProvider);
+        root = store.Fold(root, [(ZoneKey("00123458"), null)], PbtTreeHarness.DefaultFanOut, nodeProvider);
         EipReferenceTree oracle = new();
         oracle.Insert(ZoneKey("00123450"), Value(1));
         oracle.Insert(ZoneKey("00123451"), Value(4));
@@ -1906,7 +1906,7 @@ public class Eip8297CanonicalTreeTests
     }
 
     private static ValueHash256 ApplyTracked(IPbtStore store, ValueHash256 root, (byte[] Key, byte[]? Value)[] changes, bool parallel, TrackingMemoryProvider memoryProvider) =>
-        store.Fold(root, changes, PbtPrefixlessBranchOmission.Interior, parallel ? PbtTreeHarness.FanOut(1) : PbtTreeHarness.DefaultFanOut, memoryProvider);
+        store.Fold(root, changes, parallel ? PbtTreeHarness.FanOut(1) : PbtTreeHarness.DefaultFanOut, memoryProvider);
 
     private static (List<(byte[] Key, byte[]? Value)> Initial, List<(byte[] Key, byte[]? Value)> Changes) Scenario(string name) => name switch
     {

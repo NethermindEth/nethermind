@@ -87,7 +87,7 @@ public class PbtSnapshotCompactorTests
         RefCountingMemory CreateStorageLeafGroup()
         {
             PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
-            using PbtNodeGroupWriter<TPath> writer = new(groupKey.BitDepth, memoryProvider, PbtPrefixlessBranchOmission.Interior);
+            using PbtNodeGroupWriter<TPath> writer = new(groupKey.BitDepth, memoryProvider);
             writer.Write(path, PbtFourLevelGroupGeometry.RootPosition, PbtNodeCodec.EncodeLeaf(key));
             return writer.Detach(default, ushort.MaxValue)!;
         }

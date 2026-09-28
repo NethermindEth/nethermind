@@ -16,11 +16,9 @@ namespace Nethermind.State.Pbt.Test;
 public class SortedTrieUpdaterTests
 {
     [Test]
-    public void Random_batches_match_reference(
-        [Values] PbtPrefixlessBranchOmission omission,
-        [Values(1, 2, 3)] int seed)
+    public void Random_batches_match_reference([Values(1, 2, 3)] int seed)
     {
-        using DifferentialTree tree = new(omission);
+        using DifferentialTree tree = new();
         foreach ((byte[] Key, byte[]? Value)[] writes in RandomRounds(new Random(seed), ZoneKey)) tree.Apply(writes);
     }
 
@@ -49,14 +47,13 @@ public class SortedTrieUpdaterTests
     public void Targeted_shapes_match_reference(string[][] batches)
     {
         foreach (string zone in new[] { "00", "01", "FF" })
-            foreach (PbtPrefixlessBranchOmission omission in Enum.GetValues<PbtPrefixlessBranchOmission>())
-            {
-                using DifferentialTree tree = new(omission);
-                foreach (string[] batch in batches)
-                    tree.Apply([.. batch.Select(write => write.Split('=') is [string key, string value]
-                        ? (PbtStoreTestExtensions.ZoneKey(zone + key), Value(Bytes.FromHexString(value)[0]))
-                        : (PbtStoreTestExtensions.ZoneKey(zone + write), (byte[]?)null))]);
-            }
+        {
+            using DifferentialTree tree = new();
+            foreach (string[] batch in batches)
+                tree.Apply([.. batch.Select(write => write.Split('=') is [string key, string value]
+                    ? (PbtStoreTestExtensions.ZoneKey(zone + key), Value(Bytes.FromHexString(value)[0]))
+                    : (PbtStoreTestExtensions.ZoneKey(zone + write), (byte[]?)null))]);
+        }
     }
 
     /// <summary>Rounds of distinct writes mixing inserts, updates, clustered keys and deletes, with every sixth round deleting everything.</summary>
@@ -144,7 +141,7 @@ public class SortedTrieUpdaterTests
     }
 
     /// <summary>Folds every batch through the partitioned driver serially and with every frame split across threads, each on its own store, and asserts identical roots and groups matching the reference tree.</summary>
-    private sealed class DifferentialTree(PbtPrefixlessBranchOmission omission) : IDisposable
+    private sealed class DifferentialTree : IDisposable
     {
         private readonly PbtNodeGroupStore _serialStore = new();
         private readonly PbtNodeGroupStore _parallelStore = new();
@@ -162,9 +159,9 @@ public class SortedTrieUpdaterTests
 
             // A quota of one folds every zone and frame on the calling thread.
             using (PbtPartitionBatches changes = PbtStoreTestExtensions.PreparePartitions(writes))
-                _serialRoot = TrieUpdater.UpdateRoot(_serialStore, _serialRoot, changes, new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut, omission, null);
+                _serialRoot = TrieUpdater.UpdateRoot(_serialStore, _serialRoot, changes, new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut, null);
             // A single-operation minimum splits every frame with two touched slots, so even small batches fold in parallel.
-            _parallelRoot = _parallelStore.Fold(_parallelRoot, writes, omission, PbtTreeHarness.FanOut(1), null);
+            _parallelRoot = _parallelStore.Fold(_parallelRoot, writes, PbtTreeHarness.FanOut(1), null);
 
             IReadOnlyList<PbtPhysicalPayload> expected = _serialStore.ExportPhysicalPayloads();
             IReadOnlyList<PbtPhysicalPayload> actual = _parallelStore.ExportPhysicalPayloads();
