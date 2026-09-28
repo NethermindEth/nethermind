@@ -336,7 +336,7 @@ public class BlockSignatureBatchProcessingTests
             FromBlsPubkey = new BlsPublicKey(new Bls.P1(DeriveKey(BlsChangeKeyIndex)).Compress()),
             ToExecutionAddress = new Address(Hash(0xCC).Bytes[12..]),
         };
-        Hash256 changeDomain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, Presets.GenesisForkVersion, pre.GenesisValidatorsRoot!);
+        Hash256 changeDomain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, BeaconChainSpec.ForGenesisValidatorsRoot(pre.GenesisValidatorsRoot!).GenesisForkVersion, pre.GenesisValidatorsRoot!);
         body.BlsToExecutionChanges = [new SignedBlsToExecutionChange { Message = change, Signature = Sign(DeriveKey(BlsChangeKeyIndex), Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), changeDomain)) }];
 
         BitArray bits = new(Presets.SyncCommitteeSize);
@@ -496,7 +496,7 @@ public class BlockSignatureBatchProcessingTests
             BeaconStateFulu state = SharedFulu.Value.Anchor.Clone();
             state.Slot = exitSlot;
             VoluntaryExit message = new() { Epoch = Presets.ShardCommitteePeriod, ValidatorIndex = exiter };
-            Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, Presets.CapellaForkVersion, state.GenesisValidatorsRoot!);
+            Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).CapellaForkVersion, state.GenesisValidatorsRoot!);
             SignedVoluntaryExit exit = new()
             {
                 Message = message,
