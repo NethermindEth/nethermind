@@ -133,12 +133,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
-        // Simulation accepts empty signature placeholders; supplied signatures and consensus execution remain fully validated.
-        bool allowEmptySignatures = !ShouldValidate(opts);
+        bool skipSignatureValidation = opts.HasFlag(ExecutionOptions.SkipFrameSignatureValidation);
+        bool allowEmptySignatures = skipSignatureValidation || !ShouldValidate(opts);
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         // EIP-7928: a tx that never takes the P256 branch never accesses the precompile, so no BAL entry.
         IPrecompile? p256Precompile = _codeInfoRepository.GetPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress, spec);
-        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError, allowEmptySignatures))
+        if (!FrameTxSignatureValidator.Validate(tx, in sigHash, Ecdsa, p256Precompile, spec, out string? signatureError, allowEmptySignatures, skipSignatureValidation))
         {
             WorldState.Restore(txSnapshot);
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(signatureError!);

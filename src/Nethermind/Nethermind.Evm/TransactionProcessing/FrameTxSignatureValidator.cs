@@ -36,16 +36,16 @@ public static class FrameTxSignatureValidator
         => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false);
 
     /// <summary>Same validation, optionally accepting a SECP256K1 or P256 entry with empty signature bytes as a
-    /// placeholder; only execution that skips validation may pass <paramref name="allowEmptySignatures"/>.</summary>
-    internal static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures)
-        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures);
+    /// placeholder. Simulation can also skip cryptographic verification while retaining structural checks.</summary>
+    internal static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification = false)
+        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures, skipVerification);
 
     /// <summary>Same validation for callers without a sig hash: computed lazily, so a transaction whose
     /// entries all carry an explicit digest never pays for it.</summary>
     public static bool Validate(Transaction tx, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
         => Validate(tx, default, sigHashComputed: false, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false);
 
-    private static bool Validate(Transaction tx, ValueHash256 sigHash, bool sigHashComputed, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures)
+    private static bool Validate(Transaction tx, ValueHash256 sigHash, bool sigHashComputed, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification = false)
     {
         error = null;
         TxFrameSignature[]? signatures = tx.FrameSignatures;
@@ -75,6 +75,23 @@ public static class FrameTxSignatureValidator
                     continue;
                 }
                 return Fail(InvalidSignature, out error);
+            }
+
+            if (skipVerification)
+            {
+                int expectedLength = signature.Scheme switch
+                {
+                    TxFrameSignature.SchemeSecp256k1 => TxFrameSignature.Secp256k1SignatureLength,
+                    TxFrameSignature.SchemeP256 => TxFrameSignature.P256SignatureLength,
+                    _ => 0
+                };
+                if (expectedLength == 0) return Fail(InvalidSignature, out error);
+                if (signature.Signature.Length != expectedLength) return Fail(InvalidSignatureLength, out error);
+                if (signature.Scheme == TxFrameSignature.SchemeSecp256k1 && signature.Signature.Span[0] > 1)
+                    return Fail(NonCanonicalSignature, out error);
+                if (signature.Scheme == TxFrameSignature.SchemeP256 && p256Precompile is null)
+                    return Fail(P256NotSupported, out error);
+                continue;
             }
 
             if (signature.Msg.IsEmpty && !sigHashComputed)
