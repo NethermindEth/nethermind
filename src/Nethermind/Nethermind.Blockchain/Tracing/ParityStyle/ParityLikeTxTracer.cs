@@ -26,6 +26,7 @@ public partial class ParityLikeTxTracer : TxTracer
     private ParityTraceAction? _currentAction;
 
     private ParityVmOperationTrace? _currentOperation;
+    private Instruction _currentOpcode;
     private readonly List<byte[]> _currentPushList = [];
 
     private readonly Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new();
@@ -66,6 +67,7 @@ public partial class ParityLikeTxTracer : TxTracer
         {
             IsTracingActions = true;
             IsTracingInstructions = true;
+            IsTracingCallOutputMemory = true;
             IsTracingCode = true;
         }
 
@@ -306,18 +308,38 @@ public partial class ParityLikeTxTracer : TxTracer
         operationTrace.Pc = pc;
         operationTrace.Cost = gas;
         _currentOperation = operationTrace;
+        _currentOpcode = opcode;
         _currentPushList.Clear();
         _currentVmTrace.Ops.Add(operationTrace);
     }
 
     public override void ReportOperationError(EvmExceptionType error)
     {
-        if (error != EvmExceptionType.InvalidJumpDestination &&
-            error != EvmExceptionType.NotEnoughBalance)
+        // A call or creation that fails its balance or depth precheck pushes 0 and execution continues.
+        if (error == EvmExceptionType.NotEnoughBalance) return;
+
+        // A failed precompile frame reports its error without an operation of its own.
+        List<ParityVmOperationTrace> ops = _currentVmTrace.Ops;
+        if (ops is not { Count: > 0 } || !ReferenceEquals(ops[^1], _currentOperation)) return;
+
+        if (IsRejectedBeforeExecution(_currentOpcode, error))
         {
-            _currentVmTrace.Ops.Remove(_currentOperation);
+            ops.RemoveAt(ops.Count - 1);
+        }
+        else
+        {
+            ops[^1].Halted = true;
         }
     }
+
+    /// <summary>
+    /// Undefined opcodes, the designated <c>INVALID</c> (which charges its gas first, so it can also run out of gas)
+    /// and stack underflow or overflow reject an operation before it executes, so it is omitted. Any other error
+    /// halts an operation that began executing, which is kept with a null <c>ex</c>.
+    /// </summary>
+    protected static bool IsRejectedBeforeExecution(Instruction opcode, EvmExceptionType error) =>
+        opcode == Instruction.INVALID ||
+        error is EvmExceptionType.BadInstruction or EvmExceptionType.StackUnderflow or EvmExceptionType.StackOverflow;
 
     public override void ReportOperationRemainingGas(ulong gas)
     {
@@ -326,13 +348,6 @@ public partial class ParityLikeTxTracer : TxTracer
             _gasAlreadySetForCurrentOp = true;
 
             _currentOperation.Cost -= (_treatGasParityStyle ? 0UL : gas);
-
-            // based on Parity behaviour - adding stipend to the gas cost
-            if (_currentOperation.Cost == 7400UL)
-            {
-                _currentOperation.Cost = 9700UL;
-            }
-
             _currentOperation.Push = _currentPushList.ToArray();
             _currentOperation.Used = gas;
 

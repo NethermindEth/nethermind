@@ -66,6 +66,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         : UInt256.MaxValue;
     public bool IsTracingRefunds => _currentTxTracer.IsTracingRefunds;
     public bool IsTracingReturnData => _currentTxTracer.IsTracingReturnData;
+    public bool IsTracingCallOutputMemory => _currentTxTracer.IsTracingCallOutputMemory;
     public bool IsTracingCode => _currentTxTracer.IsTracingCode;
     public bool IsTracingStack => _currentTxTracer.IsTracingStack;
     public bool IsTracingState => _currentTxTracer.IsTracingState;

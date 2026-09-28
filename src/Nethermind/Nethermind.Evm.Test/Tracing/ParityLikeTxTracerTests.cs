@@ -17,6 +17,7 @@ using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
 using Nethermind.Serialization.Json;
@@ -492,6 +493,28 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
     private IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> StreamVmTraceOperations(byte[] code)
     {
+        List<(ulong, bool, int)> operations = [];
+        foreach (JsonElement operation in TraceVmTraceJson(code, streaming: true).GetProperty("ops").EnumerateArray())
+        {
+            JsonElement push = operation.GetProperty("ex").GetProperty("push");
+            operations.Add((operation.GetProperty("cost").GetUInt64(),
+                operation.GetProperty("sub").ValueKind is not JsonValueKind.Null,
+                push.ValueKind is JsonValueKind.Array ? push.GetArrayLength() : 0));
+        }
+
+        return operations;
+    }
+
+    /// <summary>Serializes the buffered vmTrace, or streams it, so both tracers are checked on the wire shape.</summary>
+    private JsonElement TraceVmTraceJson(byte[] code, bool streaming)
+    {
+        if (!streaming)
+        {
+            (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(code);
+            using JsonDocument buffered = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace.VmTrace));
+            return buffered.RootElement.Clone();
+        }
+
         (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
         ArrayBufferWriter<byte> sink = new();
         using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
@@ -510,16 +533,269 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 
         writer.Flush();
         using JsonDocument document = JsonDocument.Parse(sink.WrittenMemory);
-        List<(ulong, bool, int)> operations = [];
-        foreach (JsonElement operation in document.RootElement.GetProperty("ops").EnumerateArray())
+        return document.RootElement.Clone();
+    }
+
+    [Test]
+    public void Vm_trace_does_not_rewrite_a_7400_cost([Values] bool streaming)
+    {
+        // CALLDATACOPY of 0x74e0 bytes to offset 0x180 costs exactly 7400: 3 + 3 * 935 words copied + 4592 for 947 words of memory.
+        byte[] code = Prepare.EvmCode
+            .PushData(0x74e0)
+            .PushData(0)
+            .PushData(0x180)
+            .Op(Instruction.CALLDATACOPY)
+            .Op(Instruction.STOP)
+            .Done;
+
+        JsonElement ops = TraceVmTraceJson(code, streaming).GetProperty("ops");
+        Assert.That(ops[3].GetProperty("cost").GetUInt64(), Is.EqualTo(7400));
+    }
+
+    public enum CallOutcome { Returns, Reverts, Halts, FailsPrecheck, Precompile, EmptyWindow, UntouchedWindow }
+
+    private const string Tail = "1111111111111111111111111111111111111111111111111111111111111111";
+
+    [Test]
+    public void Vm_trace_call_mem_is_the_output_window([Values] CallOutcome outcome, [Values] bool streaming)
+    {
+        // An untouched window lies beyond the memory written so far, and the empty-code callee returns nothing.
+        bool untouched = outcome == CallOutcome.UntouchedWindow;
+        int windowOffset = untouched ? 0x1000 : 0x100;
+
+        byte[] calleeCode = outcome switch
         {
-            JsonElement push = operation.GetProperty("ex").GetProperty("push");
-            operations.Add((operation.GetProperty("cost").GetUInt64(),
-                operation.GetProperty("sub").ValueKind is not JsonValueKind.Null,
-                push.ValueKind is JsonValueKind.Array ? push.GetArrayLength() : 0));
+            CallOutcome.Reverts => Prepare.EvmCode.StoreDataInMemory(0, "ffee").Revert(2, 0).Done,
+            CallOutcome.Halts => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+            _ => Prepare.EvmCode.StoreDataInMemory(0, "ffee").Return(2, 0).Done,
+        };
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+
+        Address target = outcome switch
+        {
+            CallOutcome.Precompile => IdentityPrecompile.Address,
+            CallOutcome.UntouchedWindow => TestItem.AddressD,
+            _ => TestItem.AddressC,
+        };
+        UInt256 value = outcome == CallOutcome.FailsPrecheck ? 1000000.Ether : UInt256.Zero;
+        int windowSize = outcome == CallOutcome.EmptyWindow ? 0 : 32;
+        byte[] code = (untouched ? Prepare.EvmCode : Prepare.EvmCode.StoreDataInMemory(windowOffset, Tail))
+            .StoreDataInMemory(0, "ffee")
+            .PushData(windowSize)
+            .PushData(windowOffset)
+            .PushData(2)
+            .PushData(0)
+            .PushData(value)
+            .PushData(target)
+            .PushData(50000)
+            .Op(Instruction.CALL)
+            .Op(Instruction.STOP)
+            .Done;
+
+        JsonElement call = TraceVmTraceJson(code, streaming).GetProperty("ops").EnumerateArray()
+            .Single(op => op.GetProperty("pc").GetInt32() == code.Length - 2);
+        JsonElement mem = call.GetProperty("ex").GetProperty("mem");
+
+        string? expected = outcome switch
+        {
+            CallOutcome.EmptyWindow => null,
+            CallOutcome.UntouchedWindow => "0x" + new string('0', 64),
+            CallOutcome.Halts or CallOutcome.FailsPrecheck => "0x" + Tail,
+            _ => "0xffee" + Tail[4..],
+        };
+
+        if (expected is null)
+        {
+            Assert.That(mem.ValueKind, Is.EqualTo(JsonValueKind.Null));
+            return;
         }
 
-        return operations;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mem.GetProperty("off").GetInt64(), Is.EqualTo(windowOffset));
+            Assert.That(mem.GetProperty("data").GetString(), Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Vm_trace_call_family_mem_is_the_output_window(
+        [Values(Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction opcode, [Values] bool streaming)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.StoreDataInMemory(0, "ffee").Return(2, 0).Done, Spec);
+
+        Prepare prepare = Prepare.EvmCode
+            .StoreDataInMemory(0x100, Tail)
+            .PushData(0x20)
+            .PushData(0x100)
+            .PushData(0)
+            .PushData(0);
+        if (opcode == Instruction.CALLCODE) prepare.PushData(0);
+        byte[] code = prepare
+            .PushData(TestItem.AddressC)
+            .PushData(50000)
+            .Op(opcode)
+            .Op(Instruction.STOP)
+            .Done;
+
+        JsonElement mem = TraceVmTraceJson(code, streaming).GetProperty("ops").EnumerateArray()
+            .Single(op => op.GetProperty("pc").GetInt32() == code.Length - 2)
+            .GetProperty("ex").GetProperty("mem");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mem.GetProperty("off").GetInt64(), Is.EqualTo(0x100));
+            Assert.That(mem.GetProperty("data").GetString(), Is.EqualTo("0xffee" + Tail[4..]));
+        }
+    }
+
+    /// <summary>
+    /// Only a tracer that sets <see cref="ITxTracer.IsTracingCallOutputMemory"/>, as the Parity tracers do, makes the VM
+    /// read the output window; other instruction tracers never receive it.
+    /// </summary>
+    [Test]
+    public void Call_output_window_is_read_only_for_tracers_that_ask_for_it(
+        [Values] bool tracingCallOutputMemory, [Values] bool failsPrecheck, [Values] bool wrapped)
+    {
+        const int windowOffset = 0x1000;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.StoreDataInMemory(0, "ffee").Return(2, 0).Done, Spec);
+        byte[] code = Prepare.EvmCode
+            .PushData(0x20)
+            .PushData(windowOffset)
+            .PushData(0)
+            .PushData(0)
+            .PushData(failsPrecheck ? 1000000.Ether : UInt256.Zero)
+            .PushData(TestItem.AddressC)
+            .PushData(50000)
+            .Op(Instruction.CALL)
+            .Op(Instruction.STOP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+        MemoryChangeRecorder tracer = new(tracingCallOutputMemory);
+        // The composite and cancellation wrappers used by the RPC paths forward the capability.
+        ITxTracer executed = wrapped ? new CancellationTxTracer(new CompositeTxTracer(tracer, new RefundTracer())) : tracer;
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), executed);
+
+        Assert.That(tracer.Offsets.Contains(windowOffset), Is.EqualTo(tracingCallOutputMemory));
+    }
+
+    private sealed class MemoryChangeRecorder : TxTracer
+    {
+        public MemoryChangeRecorder(bool tracingCallOutputMemory)
+        {
+            IsTracingInstructions = true;
+            IsTracingCallOutputMemory = tracingCallOutputMemory;
+        }
+
+        public List<long> Offsets { get; } = [];
+
+        public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) => Offsets.Add(offset);
+    }
+
+    /// <summary>A tracer that asks only for refunds, next to the tracer under test.</summary>
+    private sealed class RefundTracer : TxTracer
+    {
+        public RefundTracer() => IsTracingRefunds = true;
+    }
+
+    /// <summary>A refund tracer next to the Parity tracer (as in a composite) once made a failed CALL report 32 input bytes.</summary>
+    [Test]
+    public void Vm_trace_failed_precheck_call_without_output_window_has_no_mem()
+    {
+        byte[] code = Prepare.EvmCode
+            .StoreDataInMemory(0, Tail)
+            .PushData(0)
+            .PushData(0)
+            .PushData(32)
+            .PushData(0)
+            .PushData(1000000.Ether)
+            .PushData(TestItem.AddressC)
+            .PushData(50000)
+            .Op(Instruction.CALL)
+            .Op(Instruction.STOP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.VmTrace);
+        using CompositeTxTracer composite = new(tracer, new RefundTracer());
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), composite);
+
+        ParityVmOperationTrace call = tracer.BuildResult().VmTrace.Operations.Single(op => op.Pc == code.Length - 2);
+        Assert.That(call.Memory, Is.Null);
+    }
+
+    [Test]
+    public void Vm_trace_omits_an_invalid_opcode_that_runs_out_of_gas([Values] bool streaming)
+    {
+        // INVALID charges 10 gas before it reports a bad instruction; with no gas it fails out of gas instead.
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.INVALID).Done, Spec);
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 0).Op(Instruction.STOP).Done;
+
+        JsonElement call = TraceVmTraceJson(code, streaming).GetProperty("ops").EnumerateArray()
+            .Single(op => op.GetProperty("sub").ValueKind != JsonValueKind.Null);
+        Assert.That(call.GetProperty("sub").GetProperty("ops").GetArrayLength(), Is.Zero);
+    }
+
+    private static IEnumerable<TestCaseData> HaltedOperationCases()
+    {
+        (string Name, string Code, int Operations, bool LastIsHalted)[] cases =
+        [
+            // PUSH1 0, JUMP: 0 is not a JUMPDEST.
+            ("keeps_a_bad_jump_with_null_ex", "0x600056", 2, true),
+            // PUSH4 0xffffffff, MLOAD: the memory expansion runs out of gas.
+            ("keeps_an_out_of_gas_mload_with_null_ex", "0x63ffffffff51", 2, true),
+            // PUSH1 0, INVALID: the designated invalid opcode is rejected before it executes.
+            ("omits_the_invalid_opcode", "0x6000fe", 1, false),
+            // ADD with an empty stack underflows before it executes.
+            ("omits_a_stack_underflow", "0x01", 0, false),
+        ];
+
+        foreach ((string name, string code, int operations, bool lastIsHalted) in cases)
+        {
+            foreach (bool nested in new[] { false, true })
+            {
+                foreach (bool streaming in new[] { false, true })
+                {
+                    yield return new TestCaseData(code, operations, lastIsHalted, nested, streaming)
+                        .SetName($"Vm_trace_{name}{(nested ? "_in_a_child_frame" : "")}{(streaming ? "_streaming" : "")}");
+                }
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(HaltedOperationCases))]
+    public void Vm_trace_halted_operation(string haltingCode, int expectedOperations, bool lastIsHalted, bool nested, bool streaming)
+    {
+        byte[] code = Bytes.FromHexString(haltingCode);
+        if (nested)
+        {
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+            TestState.InsertCode(TestItem.AddressC, code, Spec);
+            code = Prepare.EvmCode.Call(TestItem.AddressC, 50000).Op(Instruction.STOP).Done;
+        }
+
+        JsonElement vmTrace = TraceVmTraceJson(code, streaming);
+        if (nested)
+        {
+            JsonElement call = vmTrace.GetProperty("ops").EnumerateArray().Single(op => op.GetProperty("sub").ValueKind != JsonValueKind.Null);
+            Assert.That(call.GetProperty("ex").ValueKind, Is.EqualTo(JsonValueKind.Object), "the calling operation completed");
+            vmTrace = call.GetProperty("sub");
+        }
+
+        JsonElement[] ops = [.. vmTrace.GetProperty("ops").EnumerateArray()];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ops, Has.Length.EqualTo(expectedOperations));
+            for (int i = 0; i < ops.Length; i++)
+            {
+                bool halted = lastIsHalted && i == ops.Length - 1;
+                Assert.That(ops[i].GetProperty("ex").ValueKind, Is.EqualTo(halted ? JsonValueKind.Null : JsonValueKind.Object), $"ops[{i}].ex");
+                Assert.That(ops[i].GetProperty("sub").ValueKind, Is.EqualTo(JsonValueKind.Null), $"ops[{i}].sub");
+            }
+        }
     }
 
     [Test]
@@ -667,7 +943,10 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         {
             Assert.That(trace.Action.Result, Is.Null, opcode.ToString());
             Assert.That(trace.Action.Error, Is.EqualTo(expectedError), opcode.ToString());
-            Assert.That(trace.VmTrace.Operations, Has.Count.EqualTo(suppliedOperands), opcode.ToString());
+            // An underflow rejects the operation before it executes; running out of gas halts it, and it is kept.
+            bool halted = expectedError == "Out of gas";
+            Assert.That(trace.VmTrace.Operations, Has.Count.EqualTo(halted ? suppliedOperands + 1 : suppliedOperands), opcode.ToString());
+            Assert.That(trace.VmTrace.Operations.Count(operation => operation.Halted), Is.EqualTo(halted ? 1 : 0), opcode.ToString());
             Assert.That(reportedPushes, Is.EqualTo(suppliedOperands), opcode.ToString());
         }
     }
