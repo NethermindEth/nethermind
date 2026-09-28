@@ -134,7 +134,7 @@ public class GethStyleTracer(
     {
         GethTraceOptions filtered = options with { TxHash = call.Hash };
         return writer is null
-            ? CreateOptionsTracer(header, filtered, state, specProvider)
+            ? CreateOptionsTracer(header, filtered, state, specProvider, isTraceCall: true)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, (long)spec.GasCosts.DestroyRefund);
     }
 
@@ -353,7 +353,7 @@ public class GethStyleTracer(
         GethTraceOptions filtered = options with { TxHash = txHash };
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider)
+            ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, isTraceCall: useBlockAsBase)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
@@ -372,10 +372,14 @@ public class GethStyleTracer(
     }
 
     public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider) =>
+        CreateOptionsTracer(block, options, worldState, specProvider, isTraceCall: false);
+
+    private static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider, bool isTraceCall) =>
         options switch
         {
             { Tracer: GethLikeBlockMuxTracer.TracerName } => new GethLikeBlockMuxTracer(options,
-                child => CreateOptionsTracer(block, child, worldState, specProvider)),
+                child => CreateOptionsTracer(block, child, worldState, specProvider, isTraceCall)),
+            { Tracer: GethLikeBlockFlatCallTracer.TracerName } => new GethLikeBlockFlatCallTracer(options, specProvider.GetSpec(block), isTraceCall),
             _ when RequiresLogIndices(options) => new GethLikeBlockCallTracer(options.TxHash, (b, tx) => new NativeCallTracer(tx, specProvider.GetSpec(b.Header), options)),
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
