@@ -589,8 +589,20 @@ public class ImportPbtFromPreimageFlatTests
             {
                 Assert.That(formatted, Does.Contain($"Node groups and contained nodes by bit depth ({label})"));
                 Assert.That(formatted, Does.Contain($"Node-group occupancy ({label})"));
+                Assert.That(formatted, Does.Contain($"Descendant sizes ({label})"));
             }
         }
+    }
+
+    [TestCase(new long[0], 0, 0, 0, 0, 0)]
+    [TestCase(new long[] { 1000, 1100, 900 }, 18, 7, 6, 7, 6)]
+    [TestCase(new long[] { 0x0100000000FF, 0x010000000001 }, 12, 13, 9, 8, 12)]
+    [TestCase(new long[] { 0xFFFF, 0x10000 }, 12, 7, 5, 7, 6)]
+    public void Scanner_measures_descendant_size_encodings(long[] sizes, long fixedBytes, long sharedWidth, long baseDelta, long frontCoded, long varint)
+    {
+        long[] bytesByEncoding = new long[Enum.GetValues<PbtScanReport.DescendantEncoding>().Length];
+        PbtScanner.AddDescendantEncodingBytes(sizes, bytesByEncoding);
+        Assert.That(bytesByEncoding, Is.EqualTo(new[] { fixedBytes, sharedWidth, baseDelta, frontCoded, varint }));
     }
 
     [Test]

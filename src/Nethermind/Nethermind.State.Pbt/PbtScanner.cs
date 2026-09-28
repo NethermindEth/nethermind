@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Numerics;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -175,7 +176,45 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             }
             stats.NodesByDepth[groupPath.BitDepth + PositionDepths[nodes.CurrentPosition]]++;
         }
+        Span<long> descendantSizes = stackalloc long[PbtNodeGroupCodec.DescendantSlots];
+        int descendantCount = 0;
+        for (int slot = 0; slot < PbtNodeGroupCodec.DescendantSlots; slot++)
+        {
+            long size = reader.DescendantBytes(slot);
+            if (size != 0) descendantSizes[descendantCount++] = size;
+        }
+        if (descendantCount != 0) stats.GroupsWithDescendants++;
+        AddDescendantEncodingBytes(descendantSizes[..descendantCount], stats.DescendantEncodingBytes);
     }
+
+    /// <summary>Adds the bytes one group's nonzero descendant sizes take under each <see cref="PbtScanReport.DescendantEncoding"/>.</summary>
+    /// <remarks>
+    /// The descendant mask is excluded, as every encoding keeps it. Each alternative spends one byte on its widths:
+    /// shared width stores every size in the largest one's width; base delta stores the smallest size, then every
+    /// size minus it; front coding stores the high bytes all sizes share once, then every size's remaining bytes;
+    /// varint stores every size as LEB128.
+    /// </remarks>
+    internal static void AddDescendantEncodingBytes(ReadOnlySpan<long> sizes, Span<long> bytesByEncoding)
+    {
+        if (sizes.IsEmpty) return;
+        long min = long.MaxValue, max = 0, differingBits = 0;
+        int varintBytes = 0;
+        foreach (long size in sizes)
+        {
+            min = Math.Min(min, size);
+            max = Math.Max(max, size);
+            differingBits |= size ^ sizes[0];
+            varintBytes += (64 - BitOperations.LeadingZeroCount((ulong)size) + 6) / 7;
+        }
+        int suffixWidth = ByteWidth(differingBits);
+        bytesByEncoding[(int)PbtScanReport.DescendantEncoding.Fixed] += sizes.Length * PbtNodeGroupCodec.DescendantBytesLength;
+        bytesByEncoding[(int)PbtScanReport.DescendantEncoding.SharedWidth] += 1 + sizes.Length * ByteWidth(max);
+        bytesByEncoding[(int)PbtScanReport.DescendantEncoding.BaseDelta] += 1 + ByteWidth(min) + sizes.Length * ByteWidth(max - min);
+        bytesByEncoding[(int)PbtScanReport.DescendantEncoding.FrontCoded] += 1 + ByteWidth(max) - suffixWidth + sizes.Length * suffixWidth;
+        bytesByEncoding[(int)PbtScanReport.DescendantEncoding.Varint] += varintBytes;
+    }
+
+    private static int ByteWidth(long value) => (64 - BitOperations.LeadingZeroCount((ulong)value) + 7) / 8;
 
     private static int[] CreatePositionDepths()
     {
@@ -233,6 +272,9 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 /// <summary>Inventory of persisted PBT records, without hash or reachability verification.</summary>
 public sealed class PbtScanReport
 {
+    /// <summary>Candidate encodings of a node group's descendant sizes, measured by <see cref="NodeGroupStats.DescendantEncodingBytes"/>.</summary>
+    public enum DescendantEncoding { Fixed, SharedWidth, BaseDelta, FrontCoded, Varint }
+
     /// <summary>Stored whole-account records.</summary>
     public ColumnStats Accounts { get; } = new();
     /// <summary>Stored storage-word records.</summary>
@@ -317,6 +359,11 @@ public sealed class PbtScanReport
         for (int occupancy = 0; occupancy < stats.GroupsByOccupancy.Length; occupancy++)
             if (stats.GroupsByOccupancy[occupancy] != 0)
                 report.AppendLine($"  {occupancy,6} {stats.GroupsByOccupancy[occupancy],15:N0}");
+        long descendantFields = stats.DescendantEncodingBytes[(int)DescendantEncoding.Fixed] / PbtNodeGroupCodec.DescendantBytesLength;
+        report.AppendLine($"Descendant sizes ({label}): {stats.GroupsWithDescendants:N0} groups, {descendantFields:N0} fields, bytes excluding the descendant mask");
+        report.AppendLine($"  {"encoding",-12} {"bytes",18}");
+        foreach (DescendantEncoding encoding in Enum.GetValues<DescendantEncoding>())
+            report.AppendLine($"  {encoding,-12} {stats.DescendantEncodingBytes[(int)encoding],18:N0}");
     }
 
     /// <summary>Actual persisted row sizes, with each key and value counted once.</summary>
@@ -360,6 +407,10 @@ public sealed class PbtScanReport
         public long[] NodesByDepth { get; } = new long[PbtFourLevelGroupGeometry.MaxPathDepth + 1];
         /// <summary>Stored groups by the number of nodes they contain.</summary>
         public long[] GroupsByOccupancy { get; } = new long[PbtFourLevelGroupGeometry.PositionCount + 1];
+        /// <summary>Stored groups with at least one nonzero descendant size.</summary>
+        public long GroupsWithDescendants { get; internal set; }
+        /// <summary>Descendant-size bytes by <see cref="DescendantEncoding"/>, excluding the descendant mask.</summary>
+        public long[] DescendantEncodingBytes { get; } = new long[Enum.GetValues<DescendantEncoding>().Length];
 
         internal void MergeFrom(NodeGroupStats other)
         {
@@ -372,6 +423,8 @@ public sealed class PbtScanReport
             AddInto(PayloadBytesByDepth, other.PayloadBytesByDepth);
             AddInto(NodesByDepth, other.NodesByDepth);
             AddInto(GroupsByOccupancy, other.GroupsByOccupancy);
+            GroupsWithDescendants += other.GroupsWithDescendants;
+            AddInto(DescendantEncodingBytes, other.DescendantEncodingBytes);
         }
 
         private static void AddInto(long[] target, long[] source)
