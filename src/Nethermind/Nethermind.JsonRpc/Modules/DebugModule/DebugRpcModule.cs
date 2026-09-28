@@ -238,13 +238,20 @@ public class DebugRpcModule(
     private UInt256? GetRejectedTraceCallBlobBaseFee(Transaction tx, BlockHeader header, GethTraceOptions options)
     {
         if (!tx.SupportsBlobs || tx.BlobVersionedHashes is not { Length: > 0 }
-            || tx.MaxFeePerBlobGas is not { IsZero: false } cap
-            || options.BlockOverrides?.BlobBaseFee is not { } fee || cap >= fee)
+            || tx.MaxFeePerBlobGas is not { IsZero: false } cap)
             return null;
 
         BlockHeader callHeader = header.Clone();
-        options.BlockOverrides.ApplyOverrides(callHeader);
-        return specProvider.GetSpec(callHeader).IsEip4844Enabled ? fee : null;
+        options.BlockOverrides?.ApplyOverrides(callHeader);
+        IReleaseSpec spec = specProvider.GetSpec(callHeader);
+        if (!spec.IsEip4844Enabled) return null;
+
+        UInt256 fee;
+        if (options.BlockOverrides?.BlobBaseFee is { } overrideFee)
+            fee = overrideFee;
+        else if (!BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, spec.BlobBaseFeeUpdateFraction, out fee))
+            return null;
+        return cap < fee ? fee : null;
     }
 
     private static ResultWrapper<GethLikeTxTrace> TraceCallBlobFeeFailure(Transaction tx, UInt256 fee) =>
