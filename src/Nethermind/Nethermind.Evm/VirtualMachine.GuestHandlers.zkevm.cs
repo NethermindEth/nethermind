@@ -4,15 +4,14 @@
 using System;
 using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using InlineIL;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using static Nethermind.Evm.GuestWord;
 
 namespace Nethermind.Evm;
 
@@ -69,15 +68,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     private static partial class RawCalliHelper
     {
-        /// <summary>Writes <paramref name="value"/>, zero-extended, into the slot whose low limb is <paramref name="word"/>.</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void SetWord(ref ulong word, ulong value)
-        {
-            word = value;
-            Unsafe.Add(ref word, 1) = 0;
-            Unsafe.Add(ref word, 2) = 0;
-            Unsafe.Add(ref word, 3) = 0;
-        }
+        /// <summary>Marks a direct tail transfer that the opcode weaver emits into the calling handler.</summary>
+        /// <remarks>The target is last to match the calli evaluation stack; this method must never survive weaving.</remarks>
+        private static EvmExceptionType TailDispatch(
+            ref EvmStack stack, ulong gas, ref DispatchState state, nint pc, nint head,
+            nint* handlers, ref byte code, nint codeLength, nint target) =>
+            throw new InvalidOperationException("Guest tail dispatch was not woven.");
 
         /// <summary>
         /// A comparison, fused with the branch after it - <c>PUSH2</c> <c>JUMPI</c>, or <c>ISZERO</c> <c>PUSH2</c> <c>JUMPI</c> -
@@ -172,10 +168,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 // Unfused: the result replaces the deepest input, in limb layout.
                 ref ulong result = ref Unsafe.Subtract(ref top, (TCondition.Inputs - 1) * (EvmStack.WordSize / sizeof(ulong)));
-                result = condition ? 1UL : 0UL;
-                Unsafe.Add(ref result, 1) = 0;
-                Unsafe.Add(ref result, 2) = 0;
-                Unsafe.Add(ref result, 3) = 0;
+                SetWord(ref result, condition ? 1UL : 0UL);
                 head -= TCondition.Inputs - 1;
                 gas -= VeryLowGasCost.GasCost;
                 pc++;
@@ -183,59 +176,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             }
 
             nint shared = TCondition.SharedHandler;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
 
         Dispatch:
             nint next = handlers[Unsafe.Add(ref code, pc)];
-            IL.EnsureLocal(in next);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(next);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
         }
 
         /// <summary>A comparison of the words on top of the stack, as <see cref="ExecuteCondition{TCondition}"/> runs it.</summary>
@@ -309,22 +254,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static bool Evaluate(ref ulong top) => IsBelow(ref Unsafe.Subtract(ref top, EvmStack.WordSize / sizeof(ulong)), ref top);
         }
 
-        /// <summary>Whether the word at <paramref name="left"/> is below the word at <paramref name="right"/>, both in limb layout.</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsBelow(ref ulong left, ref ulong right)
-        {
-            ulong leftLimb = Unsafe.Add(ref left, 3);
-            ulong rightLimb = Unsafe.Add(ref right, 3);
-            if (leftLimb != rightLimb) return leftLimb < rightLimb;
-            leftLimb = Unsafe.Add(ref left, 2);
-            rightLimb = Unsafe.Add(ref right, 2);
-            if (leftLimb != rightLimb) return leftLimb < rightLimb;
-            leftLimb = Unsafe.Add(ref left, 1);
-            rightLimb = Unsafe.Add(ref right, 1);
-            if (leftLimb != rightLimb) return leftLimb < rightLimb;
-            return left < right;
-        }
-
         /// <summary>
         /// DUP1, fused with a selector dispatch after it - <c>PUSH4</c> <c>EQ</c> <c>PUSH2</c> <c>JUMPI</c> - whenever that
         /// branch falls through or lands on a destination the incremental bitmap already holds.
@@ -396,59 +325,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 &ExecuteOpcode<DupOpcode<EvmInstructions.Op1, OffFlag>, OffFlag, OffFlag, OnFlag>;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
 
         Dispatch:
             nint next = handlers[Unsafe.Add(ref code, pc)];
-            IL.EnsureLocal(in next);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(next);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
         }
 
         /// <summary>PUSH1 with its immediate and the opcode after it read from one address.</summary>
@@ -475,59 +356,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 gas -= VeryLowGasCost.GasCost;
                 pc += 2;
                 head++;
-                IL.EnsureLocal(in next);
-
-                IL.Emit.Ldarg(nameof(stack));
-                IL.Emit.Ldarg(nameof(gas));
-                IL.Emit.Ldarg(nameof(state));
-                IL.Emit.Ldarg(nameof(pc));
-                IL.Emit.Ldarg(nameof(head));
-                IL.Emit.Ldarg(nameof(handlers));
-                IL.Emit.Ldarg(nameof(code));
-                IL.Emit.Ldarg(nameof(codeLength));
-                IL.Push(next);
-                IL.Emit.Tail();
-                IL.Emit.Calli(new StandAloneMethodSig(
-                    CallingConventions.Standard,
-                    TypeRef.Type<EvmExceptionType>(),
-                    TypeRef.Type<EvmStack>().MakeByRefType(),
-                    TypeRef.Type<ulong>(),
-                    TypeRef.Type<DispatchState>().MakeByRefType(),
-                    TypeRef.Type<nint>(),
-                    TypeRef.Type<nint>(),
-                    TypeRef.Type<nint>().MakePointerType(),
-                    TypeRef.Type<byte>().MakeByRefType(),
-                    TypeRef.Type<nint>()));
-                IL.Emit.Ret();
+                return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
             }
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 &ExecuteOpcode<PushOpcode<EvmInstructions.Op1, OffFlag>, OffFlag, OffFlag, OnFlag>;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 
         /// <summary>PUSH2, fused with a JUMP or JUMPI after it whenever <see cref="EvmInstructions.InstructionPush2{TGasPolicy, TTracingInst}"/> would fuse them.</summary>
@@ -606,86 +440,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             head++;
             // Read again rather than held: live through the JUMPI branch, the opcode takes a callee-saved register there.
             nint next = handlers[Unsafe.Add(ref code, pc)];
-            IL.EnsureLocal(in next);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(next);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
 
         Dispatch:
             nint target = handlers[Unsafe.Add(ref code, pc)];
-            IL.EnsureLocal(in target);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(target);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, target);
 
         Shared:
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 &ExecuteOpcode<Push2Opcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 
         /// <summary>MSTORE of a word that needs no clearing and no new backing, growing the active memory over it when it has to.</summary>
@@ -725,61 +489,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         gas = remaining;
                         pc++;
                         nint next = handlers[Unsafe.Add(ref code, pc)];
-                        IL.EnsureLocal(in next);
-
-                        IL.Emit.Ldarg(nameof(stack));
-                        IL.Emit.Ldarg(nameof(gas));
-                        IL.Emit.Ldarg(nameof(state));
-                        IL.Emit.Ldarg(nameof(pc));
-                        IL.Emit.Ldarg(nameof(head));
-                        IL.Emit.Ldarg(nameof(handlers));
-                        IL.Emit.Ldarg(nameof(code));
-                        IL.Emit.Ldarg(nameof(codeLength));
-                        IL.Push(next);
-                        IL.Emit.Tail();
-                        IL.Emit.Calli(new StandAloneMethodSig(
-                            CallingConventions.Standard,
-                            TypeRef.Type<EvmExceptionType>(),
-                            TypeRef.Type<EvmStack>().MakeByRefType(),
-                            TypeRef.Type<ulong>(),
-                            TypeRef.Type<DispatchState>().MakeByRefType(),
-                            TypeRef.Type<nint>(),
-                            TypeRef.Type<nint>(),
-                            TypeRef.Type<nint>().MakePointerType(),
-                            TypeRef.Type<byte>().MakeByRefType(),
-                            TypeRef.Type<nint>()));
-                        IL.Emit.Ret();
+                        return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
                     }
                 }
             }
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 &ExecuteOpcode<MStoreOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 
         /// <summary>MLOAD of a word inside the active, initialized memory.</summary>
@@ -809,72 +526,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!Unsafe.IsNullRef(ref source))
                     {
                         // Memory holds the word big-endian; the slot takes it in limb layout, over the offset it held.
-                        ulong limb3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
-                        ulong limb2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 8)));
-                        ulong limb1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 16)));
-                        ulong limb0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 24)));
-                        slot = limb0;
-                        Unsafe.Add(ref slot, 1) = limb1;
-                        Unsafe.Add(ref slot, 2) = limb2;
-                        Unsafe.Add(ref slot, 3) = limb3;
+                        LoadBigEndian(ref slot, ref source);
                         gas -= VeryLowGasCost.GasCost;
                         pc++;
                         nint next = handlers[Unsafe.Add(ref code, pc)];
-                        IL.EnsureLocal(in next);
-
-                        IL.Emit.Ldarg(nameof(stack));
-                        IL.Emit.Ldarg(nameof(gas));
-                        IL.Emit.Ldarg(nameof(state));
-                        IL.Emit.Ldarg(nameof(pc));
-                        IL.Emit.Ldarg(nameof(head));
-                        IL.Emit.Ldarg(nameof(handlers));
-                        IL.Emit.Ldarg(nameof(code));
-                        IL.Emit.Ldarg(nameof(codeLength));
-                        IL.Push(next);
-                        IL.Emit.Tail();
-                        IL.Emit.Calli(new StandAloneMethodSig(
-                            CallingConventions.Standard,
-                            TypeRef.Type<EvmExceptionType>(),
-                            TypeRef.Type<EvmStack>().MakeByRefType(),
-                            TypeRef.Type<ulong>(),
-                            TypeRef.Type<DispatchState>().MakeByRefType(),
-                            TypeRef.Type<nint>(),
-                            TypeRef.Type<nint>(),
-                            TypeRef.Type<nint>().MakePointerType(),
-                            TypeRef.Type<byte>().MakeByRefType(),
-                            TypeRef.Type<nint>()));
-                        IL.Emit.Ret();
+                        return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
                     }
                 }
             }
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 &ExecuteOpcode<MLoadOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 
         /// <summary>CALLDATALOAD of a word that lies wholly inside the input data.</summary>
@@ -906,71 +569,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     // The input holds the word big-endian; the slot takes it in limb layout, over the offset it held.
                     ref byte source = ref Unsafe.Add(ref MemoryMarshal.GetReference(inputData), (nint)offset);
-                    ulong limb3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
-                    ulong limb2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 8)));
-                    ulong limb1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 16)));
-                    ulong limb0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 24)));
-                    slot = limb0;
-                    Unsafe.Add(ref slot, 1) = limb1;
-                    Unsafe.Add(ref slot, 2) = limb2;
-                    Unsafe.Add(ref slot, 3) = limb3;
+                    LoadBigEndian(ref slot, ref source);
                     gas -= VeryLowGasCost.GasCost;
                     pc++;
                     nint next = handlers[Unsafe.Add(ref code, pc)];
-                    IL.EnsureLocal(in next);
-
-                    IL.Emit.Ldarg(nameof(stack));
-                    IL.Emit.Ldarg(nameof(gas));
-                    IL.Emit.Ldarg(nameof(state));
-                    IL.Emit.Ldarg(nameof(pc));
-                    IL.Emit.Ldarg(nameof(head));
-                    IL.Emit.Ldarg(nameof(handlers));
-                    IL.Emit.Ldarg(nameof(code));
-                    IL.Emit.Ldarg(nameof(codeLength));
-                    IL.Push(next);
-                    IL.Emit.Tail();
-                    IL.Emit.Calli(new StandAloneMethodSig(
-                        CallingConventions.Standard,
-                        TypeRef.Type<EvmExceptionType>(),
-                        TypeRef.Type<EvmStack>().MakeByRefType(),
-                        TypeRef.Type<ulong>(),
-                        TypeRef.Type<DispatchState>().MakeByRefType(),
-                        TypeRef.Type<nint>(),
-                        TypeRef.Type<nint>(),
-                        TypeRef.Type<nint>().MakePointerType(),
-                        TypeRef.Type<byte>().MakeByRefType(),
-                        TypeRef.Type<nint>()));
-                    IL.Emit.Ret();
+                    return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
                 }
             }
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 &ExecuteOpcode<CallDataLoadOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 
         /// <summary>KECCAK256 of a range inside the active, initialized memory.</summary>
@@ -1025,61 +634,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         Unsafe.Add(ref hash, 3) = limb3;
                         pc++;
                         nint next = handlers[Unsafe.Add(ref code, pc)];
-                        IL.EnsureLocal(in next);
-
-                        IL.Emit.Ldarg(nameof(stack));
-                        IL.Emit.Ldarg(nameof(gas));
-                        IL.Emit.Ldarg(nameof(state));
-                        IL.Emit.Ldarg(nameof(pc));
-                        IL.Emit.Ldarg(nameof(head));
-                        IL.Emit.Ldarg(nameof(handlers));
-                        IL.Emit.Ldarg(nameof(code));
-                        IL.Emit.Ldarg(nameof(codeLength));
-                        IL.Push(next);
-                        IL.Emit.Tail();
-                        IL.Emit.Calli(new StandAloneMethodSig(
-                            CallingConventions.Standard,
-                            TypeRef.Type<EvmExceptionType>(),
-                            TypeRef.Type<EvmStack>().MakeByRefType(),
-                            TypeRef.Type<ulong>(),
-                            TypeRef.Type<DispatchState>().MakeByRefType(),
-                            TypeRef.Type<nint>(),
-                            TypeRef.Type<nint>(),
-                            TypeRef.Type<nint>().MakePointerType(),
-                            TypeRef.Type<byte>().MakeByRefType(),
-                            TypeRef.Type<nint>()));
-                        IL.Emit.Ret();
+                        return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
                     }
                 }
             }
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 &ExecuteOpcode<KeccakOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 
         /// <summary>SHL with the shift in line; an amount of 256 or more clears the word.</summary>
@@ -1104,65 +666,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if ((Unsafe.Add(ref shift, 1) | Unsafe.Add(ref shift, 2) | Unsafe.Add(ref shift, 3) | (bits >> 8)) == 0)
                     ShiftLeft(ref value, (int)bits);
                 else
-                    ClearWord(ref value);
+                    SetWord(ref value, 0);
 
                 head--;
                 gas -= VeryLowGasCost.GasCost;
                 pc++;
                 nint next = handlers[Unsafe.Add(ref code, pc)];
-                IL.EnsureLocal(in next);
-
-                IL.Emit.Ldarg(nameof(stack));
-                IL.Emit.Ldarg(nameof(gas));
-                IL.Emit.Ldarg(nameof(state));
-                IL.Emit.Ldarg(nameof(pc));
-                IL.Emit.Ldarg(nameof(head));
-                IL.Emit.Ldarg(nameof(handlers));
-                IL.Emit.Ldarg(nameof(code));
-                IL.Emit.Ldarg(nameof(codeLength));
-                IL.Push(next);
-                IL.Emit.Tail();
-                IL.Emit.Calli(new StandAloneMethodSig(
-                    CallingConventions.Standard,
-                    TypeRef.Type<EvmExceptionType>(),
-                    TypeRef.Type<EvmStack>().MakeByRefType(),
-                    TypeRef.Type<ulong>(),
-                    TypeRef.Type<DispatchState>().MakeByRefType(),
-                    TypeRef.Type<nint>(),
-                    TypeRef.Type<nint>(),
-                    TypeRef.Type<nint>().MakePointerType(),
-                    TypeRef.Type<byte>().MakeByRefType(),
-                    TypeRef.Type<nint>()));
-                IL.Emit.Ret();
+                return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
             }
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 &ExecuteOpcode<ShiftOpcode<EvmInstructions.OpShl, OffFlag>, OffFlag, OffFlag, OnFlag>;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 
         /// <summary>SHR with the shift in line; an amount of 256 or more clears the word.</summary>
@@ -1187,172 +702,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 if ((Unsafe.Add(ref shift, 1) | Unsafe.Add(ref shift, 2) | Unsafe.Add(ref shift, 3) | (bits >> 8)) == 0)
                     ShiftRight(ref value, (int)bits);
                 else
-                    ClearWord(ref value);
+                    SetWord(ref value, 0);
 
                 head--;
                 gas -= VeryLowGasCost.GasCost;
                 pc++;
                 nint next = handlers[Unsafe.Add(ref code, pc)];
-                IL.EnsureLocal(in next);
-
-                IL.Emit.Ldarg(nameof(stack));
-                IL.Emit.Ldarg(nameof(gas));
-                IL.Emit.Ldarg(nameof(state));
-                IL.Emit.Ldarg(nameof(pc));
-                IL.Emit.Ldarg(nameof(head));
-                IL.Emit.Ldarg(nameof(handlers));
-                IL.Emit.Ldarg(nameof(code));
-                IL.Emit.Ldarg(nameof(codeLength));
-                IL.Push(next);
-                IL.Emit.Tail();
-                IL.Emit.Calli(new StandAloneMethodSig(
-                    CallingConventions.Standard,
-                    TypeRef.Type<EvmExceptionType>(),
-                    TypeRef.Type<EvmStack>().MakeByRefType(),
-                    TypeRef.Type<ulong>(),
-                    TypeRef.Type<DispatchState>().MakeByRefType(),
-                    TypeRef.Type<nint>(),
-                    TypeRef.Type<nint>(),
-                    TypeRef.Type<nint>().MakePointerType(),
-                    TypeRef.Type<byte>().MakeByRefType(),
-                    TypeRef.Type<nint>()));
-                IL.Emit.Ret();
+                return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
             }
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 &ExecuteOpcode<ShiftOpcode<EvmInstructions.OpShr, OffFlag>, OffFlag, OffFlag, OnFlag>;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
-        }
-
-        /// <summary>Shifts the word at <paramref name="value"/>, in limb layout, left by <paramref name="shift"/> bits, below 256.</summary>
-        /// <remarks>
-        /// Works from the top limb down, so every limb it reads is still an input limb. <c>(low &gt;&gt; 1) &gt;&gt; (63 - bits)</c>
-        /// is <c>low &gt;&gt; (64 - bits)</c> without the count of 64, which would keep <c>low</c> whole when <c>bits</c> is 0.
-        /// </remarks>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ShiftLeft(ref ulong value, int shift)
-        {
-            // The counts are used unmasked: a 64-bit shift takes its count modulo 64, and 63 ^ shift is 63 - bits.
-            int bits = shift;
-            int carry = 63 ^ shift;
-            int limbs = shift >> 6;
-            if (limbs == 0)
-            {
-                ulong limb3 = Unsafe.Add(ref value, 3);
-                ulong limb2 = Unsafe.Add(ref value, 2);
-                Unsafe.Add(ref value, 3) = (limb3 << bits) | ((limb2 >> 1) >> carry);
-                ulong limb1 = Unsafe.Add(ref value, 1);
-                Unsafe.Add(ref value, 2) = (limb2 << bits) | ((limb1 >> 1) >> carry);
-                ulong limb0 = value;
-                Unsafe.Add(ref value, 1) = (limb1 << bits) | ((limb0 >> 1) >> carry);
-                value = limb0 << bits;
-            }
-            else if (limbs == 1)
-            {
-                ulong limb2 = Unsafe.Add(ref value, 2);
-                ulong limb1 = Unsafe.Add(ref value, 1);
-                Unsafe.Add(ref value, 3) = (limb2 << bits) | ((limb1 >> 1) >> carry);
-                ulong limb0 = value;
-                Unsafe.Add(ref value, 2) = (limb1 << bits) | ((limb0 >> 1) >> carry);
-                Unsafe.Add(ref value, 1) = limb0 << bits;
-                value = 0;
-            }
-            else if (limbs == 2)
-            {
-                ulong limb1 = Unsafe.Add(ref value, 1);
-                ulong limb0 = value;
-                Unsafe.Add(ref value, 3) = (limb1 << bits) | ((limb0 >> 1) >> carry);
-                Unsafe.Add(ref value, 2) = limb0 << bits;
-                Unsafe.Add(ref value, 1) = 0;
-                value = 0;
-            }
-            else
-            {
-                Unsafe.Add(ref value, 3) = value << bits;
-                Unsafe.Add(ref value, 2) = 0;
-                Unsafe.Add(ref value, 1) = 0;
-                value = 0;
-            }
-        }
-
-        /// <summary>Shifts the word at <paramref name="value"/>, in limb layout, right by <paramref name="shift"/> bits, below 256.</summary>
-        /// <remarks>The mirror of <see cref="ShiftLeft"/>, working from the bottom limb up.</remarks>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ShiftRight(ref ulong value, int shift)
-        {
-            int bits = shift;
-            int carry = 63 ^ shift;
-            int limbs = shift >> 6;
-            if (limbs == 0)
-            {
-                ulong limb0 = value;
-                ulong limb1 = Unsafe.Add(ref value, 1);
-                value = (limb0 >> bits) | ((limb1 << 1) << carry);
-                ulong limb2 = Unsafe.Add(ref value, 2);
-                Unsafe.Add(ref value, 1) = (limb1 >> bits) | ((limb2 << 1) << carry);
-                ulong limb3 = Unsafe.Add(ref value, 3);
-                Unsafe.Add(ref value, 2) = (limb2 >> bits) | ((limb3 << 1) << carry);
-                Unsafe.Add(ref value, 3) = limb3 >> bits;
-            }
-            else if (limbs == 1)
-            {
-                ulong limb1 = Unsafe.Add(ref value, 1);
-                ulong limb2 = Unsafe.Add(ref value, 2);
-                value = (limb1 >> bits) | ((limb2 << 1) << carry);
-                ulong limb3 = Unsafe.Add(ref value, 3);
-                Unsafe.Add(ref value, 1) = (limb2 >> bits) | ((limb3 << 1) << carry);
-                Unsafe.Add(ref value, 2) = limb3 >> bits;
-                Unsafe.Add(ref value, 3) = 0;
-            }
-            else if (limbs == 2)
-            {
-                ulong limb2 = Unsafe.Add(ref value, 2);
-                ulong limb3 = Unsafe.Add(ref value, 3);
-                value = (limb2 >> bits) | ((limb3 << 1) << carry);
-                Unsafe.Add(ref value, 1) = limb3 >> bits;
-                Unsafe.Add(ref value, 2) = 0;
-                Unsafe.Add(ref value, 3) = 0;
-            }
-            else
-            {
-                value = Unsafe.Add(ref value, 3) >> bits;
-                Unsafe.Add(ref value, 1) = 0;
-                Unsafe.Add(ref value, 2) = 0;
-                Unsafe.Add(ref value, 3) = 0;
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ClearWord(ref ulong value)
-        {
-            value = 0;
-            Unsafe.Add(ref value, 1) = 0;
-            Unsafe.Add(ref value, 2) = 0;
-            Unsafe.Add(ref value, 3) = 0;
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 
         /// <summary>JUMP onto a destination the incremental bitmap already holds, with the JUMPDEST it lands on.</summary>
@@ -1386,90 +747,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         nint analyze = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                             &ExecuteJumpToUnanalyzedDestination<OffFlag>;
-                        IL.EnsureLocal(in analyze);
-
-                        IL.Emit.Ldarg(nameof(stack));
-                        IL.Emit.Ldarg(nameof(gas));
-                        IL.Emit.Ldarg(nameof(state));
-                        IL.Emit.Ldarg(nameof(pc));
-                        IL.Emit.Ldarg(nameof(head));
-                        IL.Emit.Ldarg(nameof(handlers));
-                        IL.Emit.Ldarg(nameof(code));
-                        IL.Emit.Ldarg(nameof(codeLength));
-                        IL.Push(analyze);
-                        IL.Emit.Tail();
-                        IL.Emit.Calli(new StandAloneMethodSig(
-                            CallingConventions.Standard,
-                            TypeRef.Type<EvmExceptionType>(),
-                            TypeRef.Type<EvmStack>().MakeByRefType(),
-                            TypeRef.Type<ulong>(),
-                            TypeRef.Type<DispatchState>().MakeByRefType(),
-                            TypeRef.Type<nint>(),
-                            TypeRef.Type<nint>(),
-                            TypeRef.Type<nint>().MakePointerType(),
-                            TypeRef.Type<byte>().MakeByRefType(),
-                            TypeRef.Type<nint>()));
-                        IL.Emit.Ret();
+                        return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, analyze);
                     }
 
                     head--;
                     gas -= jumpAndJumpDestGas;
                     pc = (nint)target + 1;
                     nint next = handlers[Unsafe.Add(ref code, pc)];
-                    IL.EnsureLocal(in next);
-
-                    IL.Emit.Ldarg(nameof(stack));
-                    IL.Emit.Ldarg(nameof(gas));
-                    IL.Emit.Ldarg(nameof(state));
-                    IL.Emit.Ldarg(nameof(pc));
-                    IL.Emit.Ldarg(nameof(head));
-                    IL.Emit.Ldarg(nameof(handlers));
-                    IL.Emit.Ldarg(nameof(code));
-                    IL.Emit.Ldarg(nameof(codeLength));
-                    IL.Push(next);
-                    IL.Emit.Tail();
-                    IL.Emit.Calli(new StandAloneMethodSig(
-                        CallingConventions.Standard,
-                        TypeRef.Type<EvmExceptionType>(),
-                        TypeRef.Type<EvmStack>().MakeByRefType(),
-                        TypeRef.Type<ulong>(),
-                        TypeRef.Type<DispatchState>().MakeByRefType(),
-                        TypeRef.Type<nint>(),
-                        TypeRef.Type<nint>(),
-                        TypeRef.Type<nint>().MakePointerType(),
-                        TypeRef.Type<byte>().MakeByRefType(),
-                        TypeRef.Type<nint>()));
-                    IL.Emit.Ret();
+                    return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
                 }
             }
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 &ExecuteOpcode<JumpOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 
         /// <summary>JUMPI that falls through, or that jumps onto a destination the incremental bitmap already holds.</summary>
@@ -1501,30 +792,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     gas -= JumpIGasCost.GasCost;
                     pc++;
                     nint notTaken = handlers[Unsafe.Add(ref code, pc)];
-                    IL.EnsureLocal(in notTaken);
-
-                    IL.Emit.Ldarg(nameof(stack));
-                    IL.Emit.Ldarg(nameof(gas));
-                    IL.Emit.Ldarg(nameof(state));
-                    IL.Emit.Ldarg(nameof(pc));
-                    IL.Emit.Ldarg(nameof(head));
-                    IL.Emit.Ldarg(nameof(handlers));
-                    IL.Emit.Ldarg(nameof(code));
-                    IL.Emit.Ldarg(nameof(codeLength));
-                    IL.Push(notTaken);
-                    IL.Emit.Tail();
-                    IL.Emit.Calli(new StandAloneMethodSig(
-                        CallingConventions.Standard,
-                        TypeRef.Type<EvmExceptionType>(),
-                        TypeRef.Type<EvmStack>().MakeByRefType(),
-                        TypeRef.Type<ulong>(),
-                        TypeRef.Type<DispatchState>().MakeByRefType(),
-                        TypeRef.Type<nint>(),
-                        TypeRef.Type<nint>(),
-                        TypeRef.Type<nint>().MakePointerType(),
-                        TypeRef.Type<byte>().MakeByRefType(),
-                        TypeRef.Type<nint>()));
-                    IL.Emit.Ret();
+                    return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, notTaken);
                 }
 
                 nuint target = (nuint)destination;
@@ -1536,90 +804,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         nint analyze = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                             &ExecuteJumpToUnanalyzedDestination<OnFlag>;
-                        IL.EnsureLocal(in analyze);
-
-                        IL.Emit.Ldarg(nameof(stack));
-                        IL.Emit.Ldarg(nameof(gas));
-                        IL.Emit.Ldarg(nameof(state));
-                        IL.Emit.Ldarg(nameof(pc));
-                        IL.Emit.Ldarg(nameof(head));
-                        IL.Emit.Ldarg(nameof(handlers));
-                        IL.Emit.Ldarg(nameof(code));
-                        IL.Emit.Ldarg(nameof(codeLength));
-                        IL.Push(analyze);
-                        IL.Emit.Tail();
-                        IL.Emit.Calli(new StandAloneMethodSig(
-                            CallingConventions.Standard,
-                            TypeRef.Type<EvmExceptionType>(),
-                            TypeRef.Type<EvmStack>().MakeByRefType(),
-                            TypeRef.Type<ulong>(),
-                            TypeRef.Type<DispatchState>().MakeByRefType(),
-                            TypeRef.Type<nint>(),
-                            TypeRef.Type<nint>(),
-                            TypeRef.Type<nint>().MakePointerType(),
-                            TypeRef.Type<byte>().MakeByRefType(),
-                            TypeRef.Type<nint>()));
-                        IL.Emit.Ret();
+                        return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, analyze);
                     }
 
                     head -= 2;
                     gas -= jumpIAndJumpDestGas;
                     pc = (nint)target + 1;
                     nint taken = handlers[Unsafe.Add(ref code, pc)];
-                    IL.EnsureLocal(in taken);
-
-                    IL.Emit.Ldarg(nameof(stack));
-                    IL.Emit.Ldarg(nameof(gas));
-                    IL.Emit.Ldarg(nameof(state));
-                    IL.Emit.Ldarg(nameof(pc));
-                    IL.Emit.Ldarg(nameof(head));
-                    IL.Emit.Ldarg(nameof(handlers));
-                    IL.Emit.Ldarg(nameof(code));
-                    IL.Emit.Ldarg(nameof(codeLength));
-                    IL.Push(taken);
-                    IL.Emit.Tail();
-                    IL.Emit.Calli(new StandAloneMethodSig(
-                        CallingConventions.Standard,
-                        TypeRef.Type<EvmExceptionType>(),
-                        TypeRef.Type<EvmStack>().MakeByRefType(),
-                        TypeRef.Type<ulong>(),
-                        TypeRef.Type<DispatchState>().MakeByRefType(),
-                        TypeRef.Type<nint>(),
-                        TypeRef.Type<nint>(),
-                        TypeRef.Type<nint>().MakePointerType(),
-                        TypeRef.Type<byte>().MakeByRefType(),
-                        TypeRef.Type<nint>()));
-                    IL.Emit.Ret();
+                    return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, taken);
                 }
             }
 
             nint shared = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 &ExecuteJumpIfOpcode<OffFlag, OffFlag>;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 
         /// <summary>
@@ -1652,59 +850,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 gas -= JumpAndJumpDestGas<TConditional>();
                 pc = target + 1;
                 nint next = handlers[Unsafe.Add(ref code, pc)];
-                IL.EnsureLocal(in next);
-
-                IL.Emit.Ldarg(nameof(stack));
-                IL.Emit.Ldarg(nameof(gas));
-                IL.Emit.Ldarg(nameof(state));
-                IL.Emit.Ldarg(nameof(pc));
-                IL.Emit.Ldarg(nameof(head));
-                IL.Emit.Ldarg(nameof(handlers));
-                IL.Emit.Ldarg(nameof(code));
-                IL.Emit.Ldarg(nameof(codeLength));
-                IL.Push(next);
-                IL.Emit.Tail();
-                IL.Emit.Calli(new StandAloneMethodSig(
-                    CallingConventions.Standard,
-                    TypeRef.Type<EvmExceptionType>(),
-                    TypeRef.Type<EvmStack>().MakeByRefType(),
-                    TypeRef.Type<ulong>(),
-                    TypeRef.Type<DispatchState>().MakeByRefType(),
-                    TypeRef.Type<nint>(),
-                    TypeRef.Type<nint>(),
-                    TypeRef.Type<nint>().MakePointerType(),
-                    TypeRef.Type<byte>().MakeByRefType(),
-                    TypeRef.Type<nint>()));
-                IL.Emit.Ret();
+                return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
             }
 
             nint scan = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                 &ExecuteJumpToScannedDestination<TConditional>;
-            IL.EnsureLocal(in scan);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(scan);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, scan);
         }
 
         /// <summary>The rest of <see cref="ExecuteJumpToUnanalyzedDestination{TConditional}"/> for a destination a single look-back cannot decide.</summary>
@@ -1737,30 +888,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 gas -= JumpAndJumpDestGas<TConditional>();
                 pc = target + 1;
                 nint next = handlers[Unsafe.Add(ref code, pc)];
-                IL.EnsureLocal(in next);
-
-                IL.Emit.Ldarg(nameof(stack));
-                IL.Emit.Ldarg(nameof(gas));
-                IL.Emit.Ldarg(nameof(state));
-                IL.Emit.Ldarg(nameof(pc));
-                IL.Emit.Ldarg(nameof(head));
-                IL.Emit.Ldarg(nameof(handlers));
-                IL.Emit.Ldarg(nameof(code));
-                IL.Emit.Ldarg(nameof(codeLength));
-                IL.Push(next);
-                IL.Emit.Tail();
-                IL.Emit.Calli(new StandAloneMethodSig(
-                    CallingConventions.Standard,
-                    TypeRef.Type<EvmExceptionType>(),
-                    TypeRef.Type<EvmStack>().MakeByRefType(),
-                    TypeRef.Type<ulong>(),
-                    TypeRef.Type<DispatchState>().MakeByRefType(),
-                    TypeRef.Type<nint>(),
-                    TypeRef.Type<nint>(),
-                    TypeRef.Type<nint>().MakePointerType(),
-                    TypeRef.Type<byte>().MakeByRefType(),
-                    TypeRef.Type<nint>()));
-                IL.Emit.Ret();
+                return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, next);
             }
 
             nint shared = TConditional.IsActive
@@ -1768,31 +896,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     &ExecuteJumpIfOpcode<OffFlag, OffFlag>
                 : (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
                     &ExecuteOpcode<JumpOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>;
-            IL.EnsureLocal(in shared);
-
-            IL.Emit.Ldarg(nameof(stack));
-            IL.Emit.Ldarg(nameof(gas));
-            IL.Emit.Ldarg(nameof(state));
-            IL.Emit.Ldarg(nameof(pc));
-            IL.Emit.Ldarg(nameof(head));
-            IL.Emit.Ldarg(nameof(handlers));
-            IL.Emit.Ldarg(nameof(code));
-            IL.Emit.Ldarg(nameof(codeLength));
-            IL.Push(shared);
-            IL.Emit.Tail();
-            IL.Emit.Calli(new StandAloneMethodSig(
-                CallingConventions.Standard,
-                TypeRef.Type<EvmExceptionType>(),
-                TypeRef.Type<EvmStack>().MakeByRefType(),
-                TypeRef.Type<ulong>(),
-                TypeRef.Type<DispatchState>().MakeByRefType(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>(),
-                TypeRef.Type<nint>().MakePointerType(),
-                TypeRef.Type<byte>().MakeByRefType(),
-                TypeRef.Type<nint>()));
-            IL.Emit.Ret();
-            throw IL.Unreachable();
+            return TailDispatch(ref stack, gas, ref state, pc, head, handlers, ref code, codeLength, shared);
         }
 
         /// <summary>The charge of a taken JUMP, or with <typeparamref name="TConditional"/> a taken JUMPI, and the JUMPDEST it lands on.</summary>
