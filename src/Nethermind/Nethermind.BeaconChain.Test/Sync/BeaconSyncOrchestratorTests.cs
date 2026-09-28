@@ -10,6 +10,7 @@ using Google.Protobuf;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -204,7 +205,7 @@ public partial class BeaconSyncOrchestratorTests
         // Importing the parent through range sync drains only the valid queued child.
         await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None);
 
-        Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[150, 151]), "parent imported, then the queued child — nothing else");
+        Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[150, 151]), "parent imported, then the queued child - nothing else");
     }
 
     /// <summary>
@@ -378,7 +379,15 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    private static Harness CreateHarness(ulong anchorSlot = AnchorSlot, ulong wallSlot = WallSlot, BeaconChainStore? store = null, IBeaconSyncPeer[]? peers = null, ILogManager? logManager = null)
+    private static Harness CreateHarness(
+        ulong anchorSlot = AnchorSlot,
+        ulong wallSlot = WallSlot,
+        BeaconChainStore? store = null,
+        IBeaconSyncPeer[]? peers = null,
+        DataColumnSidecarPool? sidecarPool = null,
+        BeaconDiscovery? discovery = null,
+        GossipRouter? router = null,
+        ILogManager? logManager = null)
     {
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + wallSlot * Spec.SecondsPerSlot).AddSeconds(6);
         ManualTimestamper timestamper = new(now);
@@ -387,8 +396,9 @@ public partial class BeaconSyncOrchestratorTests
         ScriptedImporter importer = new() { Head = CreateHead(TestItem.KeccakA, anchorSlot, finalizedEpoch: Spec.GetEpoch(anchorSlot)) };
         ScriptedEngine engine = new();
         StubPool pool = new(peers ?? []);
-        GossipRouter router = new(Spec, slotClock, LimboLogs.Instance);
+        router ??= new GossipRouter(Spec, slotClock, LimboLogs.Instance);
         BeaconChainStatusHolder statusHolder = new(Spec, timestamper);
+        ExecutionPayloadEnvelopePool envelopePool = new();
         BeaconSyncOrchestrator orchestrator = new(
             new BeaconChainConfig(),
             Spec,
@@ -396,15 +406,16 @@ public partial class BeaconSyncOrchestratorTests
             new ScriptedFactory(importer),
             engine,
             pool,
-            new RangeSync(pool, LimboLogs.Instance, new DataColumnSidecarPool(), Spec, RangeSyncTests.ClockAtGenesis(Spec)),
+            new RangeSync(pool, LimboLogs.Instance, sidecarPool ?? new DataColumnSidecarPool(), Spec, RangeSyncTests.ClockAtGenesis(Spec), discovery),
             slotClock,
             router,
             statusHolder,
-            logManager ?? LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance,
+            envelopePool: envelopePool);
 
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
         orchestrator.Initialize(importer, anchorBlock, anchorRoot);
-        return new Harness(orchestrator, importer, engine, pool, router, statusHolder, timestamper);
+        return new Harness(orchestrator, importer, engine, pool, router, statusHolder, timestamper, envelopePool);
     }
 
     private static HeadView CreateHead(Hash256 root, ulong slot, ulong finalizedEpoch, Hash256? execHash = null) => new(
@@ -423,7 +434,8 @@ public partial class BeaconSyncOrchestratorTests
         StubPool Pool,
         GossipRouter Router,
         BeaconChainStatusHolder StatusHolder,
-        ManualTimestamper Timestamper);
+        ManualTimestamper Timestamper,
+        ExecutionPayloadEnvelopePool EnvelopePool);
 
     private sealed class ScriptedFactory(IBlockImporter importer) : IBlockImporterFactory
     {
@@ -449,7 +461,13 @@ public partial class BeaconSyncOrchestratorTests
         /// <summary>The verdict <see cref="ImportEnvelope"/> answers; a recording verdict removes the root from <see cref="UnverifiedPayloads"/>.</summary>
         public ExecutionPayloadEnvelopeImportResult EnvelopeResult { get; set; } = ExecutionPayloadEnvelopeImportResult.Valid;
 
+        /// <summary>When set, answers <see cref="ImportEnvelope"/> in place of <see cref="EnvelopeResult"/>.</summary>
+        public Func<SignedExecutionPayloadEnvelope, ExecutionPayloadEnvelopeImportResult>? EnvelopeVerdict { get; set; }
+
         public List<Hash256> Envelopes { get; } = [];
+
+        /// <summary>Every block and envelope import in call order, each by the block root it names.</summary>
+        public List<(bool Envelope, Hash256 Root)> ImportOrder { get; } = [];
 
         public List<object> GossipOperations { get; } = [];
 
@@ -471,6 +489,7 @@ public partial class BeaconSyncOrchestratorTests
         public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
         {
             Imports.Add((block.Slot, blockRoot, verifySignatures));
+            ImportOrder.Add((false, blockRoot));
             _deferred.Remove(blockRoot);
             if (Known.Contains(blockRoot)) return BlockImportResult.AlreadyKnown;
             if (!Known.Contains(block.ParentRoot)) return _deferred.Contains(block.ParentRoot) ? Defer(blockRoot) : BlockImportResult.UnknownParent;
@@ -494,12 +513,14 @@ public partial class BeaconSyncOrchestratorTests
         {
             Hash256 blockRoot = envelope.Message!.BeaconBlockRoot!;
             Envelopes.Add(blockRoot);
-            if (EnvelopeResult is ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic)
+            ImportOrder.Add((true, blockRoot));
+            ExecutionPayloadEnvelopeImportResult result = EnvelopeVerdict?.Invoke(envelope) ?? EnvelopeResult;
+            if (result is ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic)
             {
                 UnverifiedPayloads.Remove(blockRoot);
             }
 
-            return EnvelopeResult;
+            return result;
         }
 
         public void OnSlotTick(ulong slot) => Ticks.Add(slot);
