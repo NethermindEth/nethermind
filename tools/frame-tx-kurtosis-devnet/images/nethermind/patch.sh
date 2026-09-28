@@ -57,10 +57,11 @@ assert_count "${GENESIS}" 'SetTime(value, "Eip8141Prototype");' 2 "the EIP-8141 
 # bogotaTime, so the mapping above has nothing to fire on. Scheduling EIP-8141 relative to
 # genesis avoids depending on a fork label the generator does not write, and avoids activating
 # at genesis itself, where the expiry-verifier predeploy would have to be in the generated
-# genesis state.
+# genesis state. ExpandAll runs inside LoadParameters, which only sees the config and the chain
+# spec, so the genesis time is read back from the already-loaded genesis block.
 readonly STOCK_EXPAND='        HardforkLabels.ExpandAll(chainSpec.Parameters, config);'
 assert_count "${LOADER}" "${STOCK_EXPAND}" 1 "the ExpandAll call"
-sed -i "s|^${STOCK_EXPAND}\$|${STOCK_EXPAND}\n\n        if (Environment.GetEnvironmentVariable(\"NETHERMIND_EIP8141_ACTIVATION_OFFSET_SECONDS\") is { Length: > 0 } eip8141Offset\n            \&\& ulong.TryParse(eip8141Offset, out ulong eip8141OffsetSeconds))\n        {\n            chainSpec.Parameters.Eip8141TransitionTimestamp = (gethGenesis.Timestamp ?? 0) + eip8141OffsetSeconds;\n        }|" "${LOADER}"
+sed -i "s|^${STOCK_EXPAND}\$|${STOCK_EXPAND}\n\n        if (Environment.GetEnvironmentVariable(\"NETHERMIND_EIP8141_ACTIVATION_OFFSET_SECONDS\") is { Length: > 0 } eip8141Offset\n            \&\& ulong.TryParse(eip8141Offset, out ulong eip8141OffsetSeconds))\n        {\n            chainSpec.Parameters.Eip8141TransitionTimestamp = (chainSpec.Genesis?.Timestamp ?? 0) + eip8141OffsetSeconds;\n        }|" "${LOADER}"
 assert_count "${LOADER}" "NETHERMIND_EIP8141_ACTIVATION_OFFSET_SECONDS" 1 "the EIP-8141 activation override"
 
 cat <<EOF

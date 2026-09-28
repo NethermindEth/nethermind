@@ -1,26 +1,29 @@
 #!/usr/bin/env bash
 # Builds the client images one scenario ceiling needs, plus the traffic generator.
 #
-#   images/build.sh 322800                  # both clients at that ceiling, and the generator
-#   images/build.sh 322800 --only traffic   # just the generator (ceiling-independent)
+#   images/build.sh 235800                  # Nethermind at that ceiling, and the generator
+#   images/build.sh 235800 --only traffic   # just the generator (ceiling-independent)
 #   images/build.sh --all                   # every predefined campaign ceiling
+#   images/build.sh 235800 --only ethrex    # ethrex at that ceiling (not in the default topology)
 #
-# Both clients carry the ceiling as a compile-time constant, so a ceiling change means an image
-# change: Nethermind's runtime --TxPool.FrameTxMaxVerifyGas bounds the declared-gas check only,
-# and ethrex has no runtime knob at all. Images are tagged by ceiling and reused across every
-# (role, K_retry) cell of the matrix, so the whole campaign costs one build per client per
-# ceiling.
+# Nethermind carries the ceiling as a compile-time constant, so a ceiling change means an image
+# change: its runtime --TxPool.FrameTxMaxVerifyGas bounds the declared-gas check only. Images
+# are tagged by ceiling and reused across every (role, K_retry) cell of the matrix.
 #
-# The ethrex build clones upstream into a scratch directory and drives ethrex's own Dockerfile,
-# so we inherit their build recipe instead of re-deriving it. Nothing outside that scratch
-# directory and the Docker daemon is written.
+# The Nethermind image is the repository's own Dockerfile, built from an export of HEAD with
+# patch.sh applied. Uncommitted changes are therefore never in the image, and the recorded
+# commit is exactly what was built.
+#
+# ethrex is opt-in: its main branch still decodes the older frame envelope, which Nethermind
+# does not read, so the two cannot share a chain (see UPSTREAM-CANDIDATES.md). The ethrex build
+# clones upstream into a scratch directory and drives ethrex's own Dockerfile.
 set -euo pipefail
 
 readonly HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly DEVNET_ROOT="$(cd "${HERE}/.." && pwd)"
 readonly REPO_ROOT="$(cd "${DEVNET_ROOT}/../.." && pwd)"
 
-readonly CAMPAIGN_CEILINGS=(100000 236285 300000 322800 500000)
+readonly CAMPAIGN_CEILINGS=(100000 235800 250000 300000 400000 500000)
 
 ETHREX_REPO="${ETHREX_REPO:-https://github.com/lambdaclass/ethrex}"
 ETHREX_REF="${ETHREX_REF:-main}"
@@ -28,7 +31,7 @@ WORK_DIR="${FRAME_TX_BUILD_DIR:-${TMPDIR:-/tmp}/frame-tx-devnet-build}"
 MANIFEST="${DEVNET_ROOT}/images/build-manifest.json"
 
 usage() {
-  sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
+  sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
   exit "${1:-0}"
 }
 
@@ -49,7 +52,13 @@ if [[ ${#ceilings[@]} -eq 0 && "${only}" != "traffic" ]]; then
   usage 1
 fi
 
-wants() { [[ -z "${only}" || "${only}" == "$1" ]]; }
+wants() {
+  if [[ -n "${only}" ]]; then
+    [[ "${only}" == "$1" ]]
+  else
+    [[ "$1" != "ethrex" ]]
+  fi
+}
 
 record() {
   # Append-only build provenance, so a results directory can be traced back to an image.
@@ -88,13 +97,25 @@ build_nethermind() {
   local tag="frame-tx-devnet/nethermind:vg${ceiling}"
   local commit
   commit=$(git -C "${REPO_ROOT}" rev-parse HEAD)
+  if [[ -n "$(git -C "${REPO_ROOT}" status --porcelain -- src/Nethermind)" ]]; then
+    echo "note: src/Nethermind has uncommitted changes; the image is built from ${commit} without them"
+  fi
+
+  local context="${WORK_DIR}/nethermind-${ceiling}"
+  rm -rf "${context}"
+  mkdir -p "${context}"
+  git -C "${REPO_ROOT}" archive "${commit}" Dockerfile global.json nuget.config Directory.Build.props \
+    Directory.Build.targets Directory.Packages.props src/Nethermind scripts/entrypoint.sh | tar -x -C "${context}"
+  bash "${DEVNET_ROOT}/images/nethermind/patch.sh" "${context}/src/Nethermind" "${ceiling}"
+
   echo "==> building ${tag} from ${REPO_ROOT} @ ${commit}"
   docker build \
-    -f "${DEVNET_ROOT}/images/nethermind/Dockerfile" \
-    --build-arg "MAX_VERIFY_GAS=${ceiling}" \
+    -f "${context}/Dockerfile" \
     --build-arg "COMMIT_HASH=${commit}" \
+    --label "org.nethermind.frame_tx.max_verify_gas=${ceiling}" \
     -t "${tag}" \
-    "${REPO_ROOT}"
+    "${context}"
+  rm -rf "${context}"
   record "${MANIFEST}" "${tag}" "kind=nethermind" "max_verify_gas=${ceiling}" "source_commit=${commit}"
 }
 
