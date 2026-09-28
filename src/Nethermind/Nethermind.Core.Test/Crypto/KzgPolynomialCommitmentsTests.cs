@@ -27,6 +27,11 @@ public class KzgPolynomialCommitmentsTests
     });
 
     [Test]
+    public void Setup_read_before_initialization_throws() => WithFreshSetupState(kzg =>
+        Assert.That(() => ReadSetup(kzg), Throws.InstanceOf<TargetInvocationException>()
+            .With.InnerException.TypeOf<InvalidOperationException>()));
+
+    [Test]
     public void Failed_load_is_not_reported_as_an_invalid_proof() => WithFreshSetupState(kzg =>
     {
         // A missing file makes the loader throw ArgumentException, the type proof verification maps to false.

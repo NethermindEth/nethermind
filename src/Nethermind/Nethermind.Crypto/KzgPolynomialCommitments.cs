@@ -29,8 +29,8 @@ public static partial class KzgPolynomialCommitments
     /// never observes an unloaded setup.
     /// </remarks>
     /// <exception cref="InvalidOperationException">
-    /// The load failed. Consumers map <see cref="ArgumentException"/> to an invalid proof, so a failed load
-    /// may not surface as one.
+    /// <see cref="InitializeAsync"/> was never called, or the load failed. Consumers map
+    /// <see cref="ArgumentException"/> to an invalid proof, so neither case may surface as one.
     /// </exception>
     internal static nint CkzgSetup
     {
@@ -43,9 +43,8 @@ public static partial class KzgPolynomialCommitments
 
     private static nint AwaitSetup()
     {
-        Task? initialization = Volatile.Read(ref _initializeTask);
-        if (initialization is null)
-            return nint.Zero;
+        Task initialization = Volatile.Read(ref _initializeTask)
+            ?? throw new InvalidOperationException($"KZG trusted setup is not loaded; call {nameof(InitializeAsync)} first");
 
         try
         {
