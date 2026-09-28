@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>nethermind-eez-attester</AssemblyName>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Eez.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Eez.Execution\Nethermind.Eez.Execution.csproj" />
+    <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.AspNetCore.Server" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Protos\prove.proto" GrpcServices="Both" />
+  </ItemGroup>
+
+</Project>

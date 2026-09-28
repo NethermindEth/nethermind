@@ -67,7 +67,7 @@ public static class EezSettlementVerifier
         }
         catch (EezAbiException e)
         {
-            throw new EezSettlementException(EezSettlementFailure.InvalidCalldata, $"Invalid postAndVerifyBatch calldata: {e.Message}");
+            throw new EezSettlementException(EezSettlementFailure.InvalidPostBatch, $"Invalid postAndVerifyBatch calldata: {e.Message}");
         }
     }
 }

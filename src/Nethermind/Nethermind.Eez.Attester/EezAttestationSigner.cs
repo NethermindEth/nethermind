@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
-namespace Nethermind.Eez.Attestation;
+namespace Nethermind.Eez.Attester;
 
 /// <summary>
 /// Signs public inputs hashes for an <c>ECDSAProofSystem</c>: the raw digest, without a message prefix, as

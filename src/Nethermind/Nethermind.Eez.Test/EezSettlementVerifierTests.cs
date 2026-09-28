@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.Linq;
 using System.Text.Json;
 using Nethermind.Core;
@@ -11,7 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Eez.Attestation;
+using Nethermind.Eez.Attester;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Logging;
@@ -156,18 +155,18 @@ public class EezSettlementVerifierTests
             "the batch starts at the parent of the window's first block");
 
     [Test]
-    public void Verify_MalformedCalldata_IsInvalidCalldata() =>
+    public void Verify_MalformedCalldata_IsInvalidPostBatch() =>
         Assert.That(Assert.Throws<EezSettlementException>(() => EezSettlementVerifier.Verify(RecordedBatch()[..^1], Window.Value, Context(), Spec.Value))!.Failure,
-            Is.EqualTo(EezSettlementFailure.InvalidCalldata));
+            Is.EqualTo(EezSettlementFailure.InvalidPostBatch));
 
     [Test]
-    public void Verify_MalformedDaPayload_IsInvalidCalldata()
+    public void Verify_MalformedDaPayload_IsInvalidDaPayload()
     {
         PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(RecordedBatch());
         byte[] calldata = EezCalldata.EncodePostAndVerifyBatch(batch with { CallData = [.. batch.CallData, 0x03] });
 
         Assert.That(Assert.Throws<EezSettlementException>(() => EezSettlementVerifier.Verify(calldata, Window.Value, Context(), Spec.Value))!.Failure,
-            Is.EqualTo(EezSettlementFailure.InvalidCalldata));
+            Is.EqualTo(EezSettlementFailure.InvalidDaPayload));
     }
 
     private static TestCaseData[] TamperedBatches() =>

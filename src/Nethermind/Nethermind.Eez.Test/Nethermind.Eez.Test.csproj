@@ -8,11 +8,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="..\Nethermind.Eez.Attester\Nethermind.Eez.Attester.csproj" />
     <ProjectReference Include="..\Nethermind.Eez.Execution\Nethermind.Eez.Execution.csproj" />
     <ProjectReference Include="..\Nethermind.Eez\Nethermind.Eez.csproj" />
     <ProjectReference Include="..\Nethermind.Evm.Test\Nethermind.Evm.Test.csproj" />

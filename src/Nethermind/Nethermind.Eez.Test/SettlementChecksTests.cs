@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
-using System.IO;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Stateless;

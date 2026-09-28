@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
-using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -415,13 +413,13 @@ public class SyncSettlementTests
     }
 
     [Test]
-    public void Verify_DaForAnotherRollup_IsInvalidCalldata()
+    public void Verify_DaForAnotherRollup_IsInvalidDaPayload()
     {
         SyncSettlementFixture fixture = new();
         byte[] payload = DaPayloadCodec.Encode(RollupId + 1, [new DaBlock(Beneficiary, [], [])], []);
 
         Assert.That(Assert.Throws<EezSettlementException>(() => DaVerification.Verify(payload, fixture.Window, fixture.Outbound, fixture.Inbound, ChainId, RollupId))!.Failure,
-            Is.EqualTo(EezSettlementFailure.InvalidCalldata));
+            Is.EqualTo(EezSettlementFailure.InvalidDaPayload));
     }
 
     [Test]

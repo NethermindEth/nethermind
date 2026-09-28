@@ -23,7 +23,7 @@ public static class DaVerification
         DaPayload decoded = DaPayloadCodec.Decode(payload);
         if (decoded.RollupId != rollupId)
         {
-            throw new EezSettlementException(EezSettlementFailure.InvalidCalldata, $"The DA payload carries rollup {decoded.RollupId}, not rollup {rollupId}.");
+            throw new EezSettlementException(EezSettlementFailure.InvalidDaPayload, $"The DA payload carries rollup {decoded.RollupId}, not rollup {rollupId}.");
         }
 
         DaSpan span = decoded.Span;

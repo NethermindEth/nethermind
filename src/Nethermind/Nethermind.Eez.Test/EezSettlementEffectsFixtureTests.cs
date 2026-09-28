@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Eez.Attestation;
+using Nethermind.Eez.Attester;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Stateless;
