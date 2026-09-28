@@ -99,6 +99,10 @@ public class Metrics
     public static ulong BeaconChainNewPayloadCalls { get; set; }
 
     [CounterMetric]
+    [Description("Milliseconds the embedded driver spent waiting on in-process engine_newPayload calls.")]
+    public static ulong BeaconChainNewPayloadMilliseconds { get; set; }
+
+    [CounterMetric]
     [Description("In-process engine_forkchoiceUpdated calls issued by the embedded driver.")]
     public static ulong BeaconChainForkchoiceUpdatedCalls { get; set; }
 }
