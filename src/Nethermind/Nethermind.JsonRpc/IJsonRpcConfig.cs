@@ -190,9 +190,12 @@ public interface IJsonRpcConfig : IConfig
             served before any of them that arrived later.
             The budget bounds only the wait for a slot, not the response time. `0` or a negative value disables queueing.
             Per-method JSON-RPC durations include this wait; the `RpcAdmissionQueuedGrants` and
-            `RpcAdmissionQueueWaitMicroseconds` metrics measure it.
+            `RpcAdmissionQueueWaitMicroseconds` metrics measure it for the requests that got a slot.
             Items of one batch share one budget: each may wait only what the earlier items did not, and once they have waited
             all of it, a later item is rejected at once if every slot is busy.
+            On a WebSocket or IPC connection served by one worker (`WebSocketsProcessingConcurrency` or
+            `IpcProcessingConcurrency` of 1, the default), a waiting request also holds up that connection's later requests;
+            raise the concurrency to avoid it.
             A request keeps its slot until it completes (up to `Timeout`), so `EthModuleConcurrentInstances` concurrent long
             calls, such as large `eth_simulateV1` or `eth_estimateGas`, make every other EVM-executing request wait or be rejected.
             `eth_fillTransaction` always takes a slot, even when gas is supplied.
