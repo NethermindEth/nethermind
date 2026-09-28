@@ -125,13 +125,12 @@ public class ForkChoiceRunnerReorgTests
     }
 
     /// <summary>
-    /// A block that <c>on_block</c> throws on after the proto-array inserted its node is still refused, so it cannot
-    /// make a second proposal of its slot either. A failed invalidation (the execution layer calls a valid block
-    /// invalid) leaves D optimistic under the invalid B, so a valid block E on D is inserted and then refused while
-    /// its validity is propagated up to B.
+    /// A block that <c>on_block</c> throws on leaves the store unchanged, so it cannot make a second proposal of its slot.
+    /// A failed invalidation (the execution layer calls a valid block invalid) leaves D optimistic under the invalid B,
+    /// so a valid block E on D is refused while its validity is propagated up to B.
     /// </summary>
     [Test]
-    public void Block_refused_after_its_node_is_inserted_is_not_a_second_proposal()
+    public void Block_refused_by_on_block_leaves_no_node_and_is_not_a_second_proposal()
     {
         UnsignedChain chain = UnsignedChain.Create();
         ForkChoiceRunner runner = CreateRunner(chain);
@@ -153,7 +152,7 @@ public class ForkChoiceRunnerReorgTests
         TickTo(runner, slot: 4);
         Import(runner, head);
         Assert.That(() => Import(runner, refused), Throws.TypeOf<ProtoArrayException>(), "fixture bug: E must be refused");
-        Assert.That(runner.ContainsBlock(refused.Root), Is.True, "fixture bug: E's node must be inserted before the refusal");
+        Assert.That(runner.ContainsBlock(refused.Root), Is.False, "a refused block leaves no node");
         TickTo(runner, slot: 5);
 
         Assert.That(runner.GetProposerHead(head.Root, proposalSlot: 5), Is.EqualTo(head.Root));
