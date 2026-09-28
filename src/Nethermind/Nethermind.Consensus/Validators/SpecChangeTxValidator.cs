@@ -15,9 +15,9 @@ namespace Nethermind.Consensus.Validators;
 public sealed class SpecChangeTxValidator(ulong chainId) :
     CompositeTxValidator([
         .. HeadTxValidator.Validators,
-        ContractSizeTxValidator.Instance,
+        new NonFrameTxValidator(ContractSizeTxValidator.Instance),
         new SpecChangeSignatureTxValidator(chainId),
-        IntrinsicGasTxValidator.Instance
+        new NonFrameTxValidator(IntrinsicGasTxValidator.Instance)
     ]), ILightTxValidator, ISpecChangeTxValidator
 {
     private static readonly HeadTxValidator LightTxValidator = new();

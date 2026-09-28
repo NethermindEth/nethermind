@@ -103,13 +103,17 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         AssertGas(r, 41023);
     }
 
+    /// <remarks>
+    /// A not-taken JUMPI never validates its destination, so the fused path must fall through the same way
+    /// whether it is the JUMPDEST, a byte that is not one, or beyond the code.
+    /// </remarks>
     [Test]
-    public void PUSH2_JUMPI_not_taken_falls_through()
+    public void PUSH2_JUMPI_not_taken_falls_through([Values(0x000C, 0x000D, 0xFFFF)] int destination)
     {
         // Condition = 0: the fused PUSH2+JUMPI path must skip over the 2-byte immediate
         // and the JUMPI opcode, resuming at the instruction that follows.
         //   [0] PUSH1 0x00       (condition = false)
-        //   [2] PUSH2 0x000C
+        //   [2] PUSH2 destination
         //   [5] JUMPI
         //   [6] PUSH1 0x11       (fall-through, MUST execute)
         //   [8] PUSH1 0x00
@@ -120,7 +124,7 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         //   [15] PUSH1 0x00
         //   [17] SSTORE
         //   [18] STOP
-        byte[] dest = [0x00, 0x0C];
+        byte[] dest = [(byte)(destination >> 8), (byte)destination];
         byte[] code = Prepare.EvmCode
             .PushData((byte)0x00)
             .PushData(dest)

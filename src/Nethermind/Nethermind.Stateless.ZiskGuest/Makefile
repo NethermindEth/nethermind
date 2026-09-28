@@ -14,7 +14,7 @@ GUEST_EXTLIB := libziskos
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
-ZISK_IMAGE ?= nethermindeth/zisk:1.2.0-alpha@sha256:7b3ea05815cf902f0bceb17458d9fbc36b34043b81370b69e57a18cbd91c2d1c
+ZISK_IMAGE ?= nethermindeth/zisk:1.3.0-alpha@sha256:0dbfd467305a76442b06a1c2c454ed50d3b34632e70247d71139b63519cff11f
 
 run:
 	@$(REQUIRE_INPUT)

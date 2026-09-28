@@ -88,15 +88,12 @@ public class HexPrefixTests
         Assert.That(bytes, Is.EqualTo(result).AsCollection);
     }
 
-    /// <remarks>
-    /// The packing loop behind all three encoders lives in <c>Nibbles.std.cs</c> on the host and is
-    /// replaced by a word-at-a-time body on the guest, whose scalar tail is selected by the byte count
-    /// modulo four. The lengths sweep every tail, both parities and the 64-nibble account path, against
-    /// the obvious scalar reference.
-    /// </remarks>
+    private static readonly int[] EncodeNibbleCounts = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 16, 17, 18, 19, 30, 31, 32, 33, 34, 35, 62, 63, 64, 65, 66, 67, 97, 128, 129, 130, 131, 200];
+
+    /// <remarks>Packing picks its path by length, so the lengths sit on and next to each path boundary.</remarks>
     [Test]
     public void Encode_matches_the_scalar_reference_over_every_length(
-        [Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65)] int nibbleCount,
+        [ValueSource(nameof(EncodeNibbleCounts))] int nibbleCount,
         [Values(false, true)] bool isLeaf)
     {
         byte[] nibbles = NibblePath(nibbleCount);
@@ -117,9 +114,11 @@ public class HexPrefixTests
         Assert.That(HexPrefix.ToBytes(nibbles, isLeaf), Is.EqualTo(expected).AsCollection);
     }
 
+    private static readonly int[] NibblesToBytesCounts = [0, 1, 2, 4, 6, 8, 9, 10, 14, 16, 18, 30, 32, 33, 34, 62, 64, 66, 96, 128, 130, 131, 200];
+
     [Test]
     public void Nibbles_to_bytes_matches_the_scalar_reference(
-        [Values(0, 1, 2, 3, 4, 5, 8, 9, 16, 17, 33, 64)] int nibbleCount)
+        [ValueSource(nameof(NibblesToBytesCounts))] int nibbleCount)
     {
         byte[] nibbles = NibblePath(nibbleCount);
         byte[] expected = new byte[nibbleCount / 2];
@@ -129,6 +128,40 @@ public class HexPrefixTests
         }
 
         Assert.That(Nibbles.ToBytes(nibbles), Is.EqualTo(expected).AsCollection);
+    }
+
+    private static readonly int[] DecodeByteCounts = [3, 4, 5, 6, 7, 8, 9, 10, 16, 17, 18, 32, 33, 34, 49, 65];
+
+    /// <remarks>Expanding picks its path by length, so the lengths sit on and next to each path boundary.</remarks>
+    [Test]
+    public void Decode_matches_the_scalar_reference_over_every_length(
+        [ValueSource(nameof(DecodeByteCounts))] int byteCount,
+        [Values] bool isOdd,
+        [Values] bool isLeaf)
+    {
+        byte[] encoded = ByteSequence(byteCount, first: 0x9C);
+        byte firstNibble = (byte)(encoded[0] & 0x0F);
+        encoded[0] = (byte)((isLeaf ? 0x20 : 0x00) | (isOdd ? 0x10 | firstNibble : 0x00));
+
+        byte[] expected = new byte[(byteCount - 1) * 2 + (isOdd ? 1 : 0)];
+        int index = 0;
+        if (isOdd)
+        {
+            expected[index++] = firstNibble;
+        }
+
+        for (int i = 1; i < byteCount; i++)
+        {
+            expected[index++] = (byte)(encoded[i] >> 4);
+            expected[index++] = (byte)(encoded[i] & 0x0F);
+        }
+
+        (byte[] key, bool decodedIsLeaf) = HexPrefix.FromBytes(encoded);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedIsLeaf, Is.EqualTo(isLeaf));
+            Assert.That(key, Is.EqualTo(expected).AsCollection);
+        }
     }
 
     [Test]
@@ -151,16 +184,28 @@ public class HexPrefixTests
         Assert.That(Nibbles.ToCompactHexEncoding(nibbles), Is.EqualTo(expected).AsCollection);
     }
 
-    /// <summary>Nibbles that repeat with an odd period, so a swapped or misordered pair cannot pass.</summary>
+    /// <summary>Nibbles where no 16-nibble window repeats within 256 nibbles, so a misplaced block cannot pass.</summary>
     private static byte[] NibblePath(int nibbleCount)
     {
         byte[] nibbles = new byte[nibbleCount];
         for (int i = 0; i < nibbleCount; i++)
         {
-            nibbles[i] = (byte)(((i * 7) + 3) & 15);
+            nibbles[i] = (byte)(((i * 7) + ((i >> 4) * 5) + 3) & 15);
         }
 
         return nibbles;
+    }
+
+    /// <summary>Every byte differs from its neighbours in both nibbles, so a misplaced byte cannot pass.</summary>
+    private static byte[] ByteSequence(int count, byte first)
+    {
+        byte[] bytes = new byte[count];
+        for (int i = 0; i < count; i++)
+        {
+            bytes[i] = (byte)(first + (i * 0x2B));
+        }
+
+        return bytes;
     }
 
     // Just pack nibbles to bytes

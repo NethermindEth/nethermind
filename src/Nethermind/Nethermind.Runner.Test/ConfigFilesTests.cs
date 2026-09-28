@@ -59,6 +59,23 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("archive")]
     public void Archive_configs_have_pruning_turned_off(string configWildcard) => Test<IPruningConfig, PruningMode>(configWildcard, static c => c.Mode, PruningMode.None);
 
+    [Test]
+    public void Fast_sync_without_snap_stays_on_patricia()
+    {
+        int fastWithoutSnapConfigs = 0;
+        foreach (string configFile in AllConfigFiles())
+        {
+            ISyncConfig sync = GetConfigFromFile<ISyncConfig>(configFile);
+            if (!sync.FastSync || sync.SnapSync)
+                continue;
+
+            fastWithoutSnapConfigs++;
+            Assert.That(GetConfigFromFile<IFlatDbConfig>(configFile).Enabled, Is.False, configFile);
+        }
+
+        Assert.That(fastWithoutSnapConfigs, Is.GreaterThan(0));
+    }
+
     [TestCase("archive", true)]
     [TestCase("fast", true)]
     [TestCase("spaceneth", false)]

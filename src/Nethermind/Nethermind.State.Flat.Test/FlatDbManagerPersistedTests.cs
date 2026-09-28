@@ -14,7 +14,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.Trie.Pruning;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
@@ -51,6 +50,26 @@ public class FlatDbManagerPersistedTests
         _cts.Dispose();
         if (Directory.Exists(_testDir))
             Directory.Delete(_testDir, recursive: true);
+    }
+
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_RemainsReadableAfterSourceSnapshotRemoval()
+    {
+        using FlatTestContainer tier = new(new FlatDbConfig { InlineCompaction = false, CompactSize = 1024 }, arenaFileSizeBytes: 4096);
+        StateId from = StateId.PreGenesis;
+        StateId to = new(1, new ValueHash256(Keccak.Compute("flat-removal").Bytes));
+        Snapshot snapshot = tier.ResourcePool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
+        snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 42);
+        SnapshotRepository repository = tier.Repository;
+        repository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
+        repository.AddStateId(to);
+
+        IFlatDbManager manager = tier.Resolve<IFlatDbManager>();
+        using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(to);
+        Assert.That(bundle.GetAccount(TestItem.AddressA), Is.Not.Null);
+
+        Assert.That(tier.Repository.RemoveAndReleaseInMemoryKnownState(to, SnapshotTier.InMemoryBase), Is.True);
+        Assert.That(bundle.GetAccount(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)42));
     }
 
     [Test]
@@ -241,7 +260,7 @@ public class FlatDbManagerPersistedTests
         using PersistenceManager persistenceManager = new(
             _config,
             tier.Resolve<ICompactionSchedule>(),
-            tier.Resolve<IFinalizedStateProvider>(),
+            tier.Resolve<IStateHeaderProvider>(),
             persistence,
             tier.Repository,
             NullStatePersistenceBarrier.Instance,

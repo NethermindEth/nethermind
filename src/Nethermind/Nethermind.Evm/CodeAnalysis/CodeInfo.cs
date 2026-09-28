@@ -6,14 +6,14 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Core.Cpu;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
+public sealed partial class CodeInfo : IEquatable<CodeInfo>
 {
     public static CodeInfo Empty { get; }
     // Empty code sentinel
@@ -33,6 +33,7 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
+        PadForDispatch(ref code);
         Code = code;
         if (code.Length == 0)
         {
@@ -53,6 +54,34 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public ReadOnlyMemory<byte> Code { get; }
     public ReadOnlySpan<byte> CodeSpan => Code.Span;
+
+    /// <summary>Copies the code into a buffer dispatch may read past its end, in builds that dispatch without end-of-code tests.</summary>
+    static partial void PadForDispatch(ref ReadOnlyMemory<byte> code);
+
+    private Address? _delegatedAddress;
+    internal Address? DelegatedAddress
+    {
+        get
+        {
+            if (Code.Length != Eip7702Constants.DelegationHeaderLength + Address.Size)
+            {
+                return null;
+            }
+
+            Address? delegatedAddress = Volatile.Read(ref _delegatedAddress);
+            if (delegatedAddress is not null)
+            {
+                return delegatedAddress;
+            }
+
+            if (!ICodeInfoRepository.TryGetDelegatedAddress(Code.Span, out Address? parsedAddress))
+            {
+                return null;
+            }
+
+            return Interlocked.CompareExchange(ref _delegatedAddress, parsedAddress, null) ?? parsedAddress;
+        }
+    }
 
     public IPrecompile? Precompile { get; }
 
@@ -97,18 +126,6 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
-    }
-
-    void IThreadPoolWorkItem.Execute()
-        => _analyzer?.Execute();
-
-    public void AnalyzeInBackgroundIfRequired()
-    {
-        // Analysis only runs ahead of execution on another processor; the guest folds the queue away.
-        if (RuntimeInformation.IsSingleProcessor) return;
-
-        if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
-            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
     }
 
     public override bool Equals(object? obj)

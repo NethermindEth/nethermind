@@ -4,6 +4,7 @@
 using System;
 using System.Net;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 
@@ -14,18 +15,27 @@ namespace Nethermind.Network.IP
         private readonly string _url = url;
         private readonly ILogger _logger = logManager.GetClassLogger<WebIPSource>();
 
-        public async Task<(bool, IPAddress)> TryGetIP()
+        public async Task<(bool, IPAddress)> TryGetIP(CancellationToken cancellationToken = default)
         {
             try
             {
-                using HttpClient httpClient = new() { Timeout = TimeSpan.FromSeconds(3) };
-                if (_logger.IsInfo) _logger.Info($"Using {_url} to get external ip");
-                string ip = (await httpClient.GetStringAsync(_url)).Trim();
+                using HttpClient httpClient = new(new HttpClientHandler
+                {
+                    // A proxy would report its own egress address, which is not necessarily reachable at this node.
+                    UseProxy = false
+                })
+                {
+                    Timeout = TimeSpan.FromSeconds(3),
+                    MaxResponseContentBufferSize = 64
+                };
+                if (_logger.IsDebug) _logger.Debug($"Using {_url} to get external ip");
+                string ip = (await httpClient.GetStringAsync(_url, cancellationToken)).Trim();
                 if (_logger.IsDebug) _logger.Debug($"External ip: {ip}");
                 bool result = IPAddress.TryParse(ip, out IPAddress ipAddress);
                 bool isExternal = result && !ipAddress.IsLoopbackOrPrivateOrLinkLocal;
                 return isExternal ? (true, ipAddress) : (false, (IPAddress)null);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception e)
             {
                 _logger.DebugError($"Error while getting external ip from {_url}", e);

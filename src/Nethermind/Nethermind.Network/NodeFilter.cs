@@ -81,6 +81,17 @@ public sealed class NodeFilter
         return true;
     }
 
+    /// <summary>
+    /// Checks whether an address would be accepted without recording it.
+    /// </summary>
+    internal bool WouldAccept(IPAddress ipAddress, bool exactOnly = false)
+    {
+        if (_cache is null) return true;
+
+        long now = Environment.TickCount64;
+        return !WasSeenRecently(GetKey(ipAddress, exactOnly), now);
+    }
+
     public void Touch(IPAddress ipAddress, bool exactOnly = false)
     {
         if (_cache is null)
@@ -113,6 +124,10 @@ public sealed class NodeFilter
             : (_parsedCurrentIp is { } current
                 ? IpSubnetKey.CreateNodeFilterKey(ipAddress, in current)
                 : IpSubnetKey.DefaultKey(ipAddress));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool WasSeenRecently(IpSubnetKey key, long now)
+        => _cache!.TryGet(key, out LastSeen lastSeen) && now - Volatile.Read(ref lastSeen.Timestamp) < _timeoutMs;
 
     /// <summary>
     /// Allocation-free key for an IP address or a masked subnet prefix, suitable for hash lookups and prefix checks.

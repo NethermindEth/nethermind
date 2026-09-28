@@ -33,6 +33,106 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsNotSupportedTxType { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their expiry deadline is already behind the current head.")]
+        public static long PendingTransactionsFrameTxExpired { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 blob-carrying frame transactions received that were ignored because they carry no blob sidecar.")]
+        public static long PendingTransactionsFrameTxMissingSidecar { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix exceeds MAX_VERIFY_GAS.")]
+        public static long PendingTransactionsFrameTxVerifyGasTooHigh { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix exceeds MAX_VERIFY_STATE_GAS.")]
+        public static long PendingTransactionsFrameTxVerifyStateGasTooHigh { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because one of their protocol-validated signatures does not verify.")]
+        public static long PendingTransactionsFrameTxSignatureInvalid { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix never approves a payer.")]
+        public static long PendingTransactionsFrameTxNoPayer { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because they carry a VERIFY frame after their validation prefix.")]
+        public static long PendingTransactionsFrameTxVerifyAfterPrefix { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their expiry verifier frame does not lead the frame list.")]
+        public static long PendingTransactionsFrameTxMisplacedExpiryFrame { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8250 transactions received that were ignored because a selected nonce key is not at the declared sequence.")]
+        public static long PendingTransactionsKeyedNonceUnmet { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their payer's summed pending maximum cost would exceed its balance.")]
+        public static long PendingTransactionsFrameTxPayerExposureExceeded;
+
+        [GaugeMetric]
+        [Description("Number of EIP-8141 frame-transaction payers currently holding a pending-cost reservation.")]
+        public static long FrameTxPayersWithReservedExposure;
+
+        [GaugeMetric]
+        [Description("Number of entries in the EIP-8141 frame-transaction eviction retry ledger, one per pending frame transaction while `TxPool.FrameTxEvictionRetryBudget` is above its default of `1` and zero otherwise. Entries are opened on pool insert and dropped on pool removal or pool disposal, so a floor above zero with no frame transactions pending is a leak.")]
+        public static long FrameTxEvictionRetryLedgerEntries;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their non-canonical paymaster already sponsors the maximum number of pending transactions.")]
+        public static long PendingTransactionsFrameTxPaymasterLimitReached;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because simulating their validation prefix rejected it.")]
+        public static long PendingTransactionsFrameTxSimulationFailed;
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 validation-prefix simulations run at mempool admission.")]
+        public static long FrameTxSimulations;
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 frame-transaction revalidations run against a new chain head.")]
+        public static long FrameTxRevalidations;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions evicted by the new-head revalidation sweep.")]
+        public static long FrameTxRevalidationEvictions;
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 frame-transaction revalidations that reached no verdict on a bound or fault of this node's own, and were deferred to the next chain head.")]
+        public static long FrameTxRevalidationsDeferred;
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 frame-transaction revalidations that reached no verdict on a bound or fault of this node's own and were not deferred, having already been carried across `TxPool.FrameTxRevalidationDeferralBudget` consecutive chain heads.")]
+        public static long FrameTxRevalidationDeferralsExhausted;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions shed because they were close to expiry while the pool was full.")]
+        public static long FrameTxExpiryShedEvictions;
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 validation-prefix simulations aborted by the per-simulation wall-clock bound.")]
+        public static long FrameTxSimulationsTimedOut;
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 frame transactions rejected because the validation-prefix simulator was busy.")]
+        public static long FrameTxSimulationsBusy;
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 frame transactions rejected because the per-head validation-prefix simulation budget was exhausted.")]
+        public static long FrameTxSimulationsBudgetExhausted;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were deferred because this node had spent its own validation-prefix simulation bounds, not because the prefix was judged.")]
+        public static long PendingTransactionsFrameTxSimulationDeferred;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions admitted with an unresolved payer because their validation prefix could not be simulated. A rising count means payer exposure is no longer being accounted for.")]
+        public static long PendingTransactionsFrameTxSimulationUndecided;
+
+        [CounterMetric]
         [Description(
             "Number of pending transactions received that were ignored because of not having preceding nonce of this sender in TxPool.")]
         public static long PendingTransactionsNonceGap { get; set; }

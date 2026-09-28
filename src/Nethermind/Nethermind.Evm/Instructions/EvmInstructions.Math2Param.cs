@@ -68,8 +68,10 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
-        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated &&
-            (typeof(TOpMath) == typeof(OpAdd) || typeof(TOpMath) == typeof(OpSub)))
+        // SUB takes the scalar limb path below even with Vector256: UInt256.Subtract reaches the
+        // out-of-line SubtractImpl, and that call makes the JIT save and restore the callee-saved
+        // registers on every SUB. UInt256.Add inlines fully, so ADD keeps the vector path.
+        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated && typeof(TOpMath) == typeof(OpAdd))
         {
             if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
             ref byte arithmeticTopRef = ref stack.Pop1Peek32BytesUnchecked();
@@ -163,10 +165,13 @@ public static partial class EvmInstructions
         // Pop a and peek the new top slot for in-place write; skips the push's overflow check
         // since the net stack delta (-1) cannot overflow a previously non-overflowing stack.
         if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
-        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked(out UInt256 a);
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
 
-        EvmStack.ReadUInt256FromSlot(ref topRef, out UInt256 b);
-        TOpMath.Operation(in a, in b, out UInt256 result);
+        // Operands are read in place: slots hold the UInt256 limb layout and the popped slot stays intact
+        // until the next push. The result goes to a local because the Int256 routines behind MUL/DIV/MOD
+        // are not guaranteed alias-safe.
+        ref UInt256 b = ref As<byte, UInt256>(ref topRef);
+        TOpMath.Operation(in Add(ref b, 1), in b, out UInt256 result);
         EvmStack.WriteUInt256ToSlot(ref topRef, in result);
 
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
@@ -222,6 +227,7 @@ public static partial class EvmInstructions
     /// </summary>
     public struct OpSub : IOpMath2Param
     {
+        /// <remarks>Not called: Math2ParamCore takes its scalar limb path for SUB on every target. Kept for the interface.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Operation(in UInt256 a, in UInt256 b, out UInt256 result)
             => UInt256.Subtract(in a, in b, out result);
@@ -409,18 +415,17 @@ public static partial class EvmInstructions
         // Charge the fixed gas cost for exponentiation.
         if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        // Pop the base value and exponent from the stack.
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 exponent))
-        {
-            goto StackUnderflow;
-        }
+        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
+        ref UInt256 exponent = ref As<byte, UInt256>(ref topRef);
+        ref UInt256 a = ref Add(ref exponent, 1);
 
         // Determine the effective byte-length of the exponent.
         int leadingZeros = exponent.CountLeadingZeros() >> 3;
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.
-            return stack.PushOne<TTracingInst>();
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, vm);
         }
 
         ulong expSize = (ulong)(32 - leadingZeros);
@@ -429,18 +434,30 @@ public static partial class EvmInstructions
 
         if (a.IsZero)
         {
-            return stack.PushZero<TTracingInst, OnFlag>();
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 0UL, vm);
         }
         if (a.IsOne)
         {
-            return stack.PushOne<TTracingInst>();
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, vm);
         }
 
-        // Perform exponentiation and push the 256-bit result onto the stack.
+        // The result goes to a local first: the exponent it overwrites is still an input.
         UInt256.Exp(in a, in exponent, out UInt256 expResult);
-        return stack.PushUInt256<TTracingInst>(in expResult);
+        EvmStack.WriteUInt256ToSlot(ref topRef, in expResult);
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
+        return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType WriteSmallExpResult<TGasPolicy, TTracingInst>(ref byte slot, ulong value, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        WriteSmallWordToSlot(ref slot, value);
+        if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(value == 0 ? Bytes.ZeroByteSpan : Bytes.OneByteSpan);
+        return EvmExceptionType.None;
     }
 }

@@ -21,6 +21,9 @@ namespace Nethermind.Blockchain.Test.Data;
 [Parallelizable(ParallelScope.All)]
 public class FileLocalDataSourceTests
 {
+    // Reloads run on timer ticks from the thread pool, which a parallel test run can starve for well over a second.
+    private const int ReloadWaitTime = 5_000;
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void correctly_reads_existing_file()
     {
@@ -55,25 +58,24 @@ public class FileLocalDataSourceTests
             handle.Release();
         };
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
-        await WaitForData(fileLocalDataSource, ["C", "B"], handle);
-        Assert.That(changedRaised, Is.GreaterThanOrEqualTo(1));
+        await WaitForData(fileLocalDataSource, ["C", "B"], handle, () => Volatile.Read(ref changedRaised) >= 1);
 
         int afterFirst = Volatile.Read(ref changedRaised);
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("E", "F"));
-        await WaitForData(fileLocalDataSource, ["E", "F"], handle);
-        Assert.That(Volatile.Read(ref changedRaised), Is.GreaterThan(afterFirst));
+        await WaitForData(fileLocalDataSource, ["E", "F"], handle, () => Volatile.Read(ref changedRaised) > afterFirst);
     }
 
-    private static async Task WaitForData(FileLocalDataSource<string[]> source, string[] expected, SemaphoreSlim handle)
+    // Data is published before Changed is raised, so converged data alone does not mean the event has fired yet.
+    private static async Task WaitForData(FileLocalDataSource<string[]> source, string[] expected, SemaphoreSlim handle, Func<bool>? changedRaised = null)
     {
-        if (!await WaitForCondition(handle, () => source.Data is { } data && data.SequenceEqual(expected)))
-            Assert.Fail($"Data did not converge to expected value within {Timeout.MaxWaitTime}ms");
+        if (!await WaitForCondition(handle, () => source.Data is { } data && data.SequenceEqual(expected) && (changedRaised is null || changedRaised())))
+            Assert.Fail($"Data did not converge to expected value with Changed raised within {ReloadWaitTime}ms");
     }
 
     private static async Task<bool> WaitForCondition(SemaphoreSlim handle, Func<bool> predicate)
     {
         TimeSpan slice = TimeSpan.FromMilliseconds(100);
-        TimeSpan budget = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
+        TimeSpan budget = TimeSpan.FromMilliseconds(ReloadWaitTime);
         while (budget > TimeSpan.Zero)
         {
             await handle.WaitAsync(slice);
@@ -96,8 +98,7 @@ public class FileLocalDataSourceTests
             handle.Release();
         };
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A", "B"));
-        await WaitForData(fileLocalDataSource, ["A", "B"], handle);
-        Assert.That(changedRaised, Is.GreaterThanOrEqualTo(1));
+        await WaitForData(fileLocalDataSource, ["A", "B"], handle, () => Volatile.Read(ref changedRaised) >= 1);
     }
 
     private static string GenerateStringJson(params string[] items) => $"[{string.Join(", ", items.Select(static i => $"\"{i}\""))}]";
@@ -172,7 +173,7 @@ public class FileLocalDataSourceTests
         Assert.That(fileLocalDataSource.Data, Is.EqualTo(initialValueIsDefault ? null : new[] { "A" }));
 
         state.File = state.File with { Exists = false };
-        Assert.That(await handle.WaitAsync(Timeout.MaxWaitTime), Is.True, "the deletion was not observed");
+        Assert.That(await handle.WaitAsync(ReloadWaitTime), Is.True, "the deletion was not observed");
         Assert.That(fileLocalDataSource.Data, Is.Null, "the deleted file must reset the data");
 
         state.File = state.File with { Json = GenerateStringJson("B"), Exists = true };
@@ -225,7 +226,7 @@ public class FileLocalDataSourceTests
         try
         {
             state.File = state.File with { Exists = true };
-            Assert.That(await readStarted.WaitAsync(Timeout.MaxWaitTime), Is.True, "the reload never started");
+            Assert.That(await readStarted.WaitAsync(ReloadWaitTime), Is.True, "the reload never started");
 
             // The read must stay blocked while the count is taken, so this cannot move earlier.
             await Task.Delay(20 * interval);
@@ -261,7 +262,7 @@ public class FileLocalDataSourceTests
         };
 
         state.File = state.File with { Exists = true };
-        Assert.That(await firstChanged.WaitAsync(Timeout.MaxWaitTime), Is.True, "the first change was not published");
+        Assert.That(await firstChanged.WaitAsync(ReloadWaitTime), Is.True, "the first change was not published");
         state.File = state.File with { Json = GenerateStringJson("B"), UtcWriteTime = utcT0.AddSeconds(1) };
 
         await WaitForData(fileLocalDataSource, ["B"], handle);
@@ -353,12 +354,11 @@ public class FileLocalDataSourceTests
             handle.Release();
         };
         await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
-        await WaitForData(fileLocalDataSource, ["C", "B"], handle);
-        Assert.That(changedRaised, Is.GreaterThanOrEqualTo(1));
+        await WaitForData(fileLocalDataSource, ["C", "B"], handle, () => Volatile.Read(ref changedRaised) >= 1);
 
         int afterFirst = Volatile.Read(ref changedRaised);
         File.Delete(tempFile.Path);
-        await WaitForCondition(handle, () => fileLocalDataSource.Data is null);
+        await WaitForCondition(handle, () => fileLocalDataSource.Data is null && Volatile.Read(ref changedRaised) > afterFirst);
         Assert.That(fileLocalDataSource.Data, Is.Null);
         Assert.That(Volatile.Read(ref changedRaised), Is.GreaterThan(afterFirst));
     }

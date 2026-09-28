@@ -21,13 +21,15 @@ public class WorldStateManager : IWorldStateManager
     private readonly IDbProvider _dbProvider;
     private readonly BlockingVerifyTrie _blockingVerifyTrie;
     private readonly ILastNStateRootTracker? _lastNStateRootTracker;
+    private readonly IStateHeaderProvider _stateHeaderProvider;
 
     public WorldStateManager(
         IWorldStateScopeProvider worldState,
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
-        ILogManager logManager,
         StateBoundaryStore boundaryStore,
+        IStateHeaderProvider stateHeaderProvider,
+        ILogManager logManager,
         ILastNStateRootTracker? lastNStateRootTracker = null
     )
     {
@@ -44,6 +46,7 @@ public class WorldStateManager : IWorldStateManager
         _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
         _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb, logManager);
+        _stateHeaderProvider = stateHeaderProvider;
         _lastNStateRootTracker = lastNStateRootTracker;
         SnapStateServer = trieStore.Scheme == INodeStorage.KeyScheme.Hash
             ? NoopSnapServer.Instance
@@ -58,11 +61,11 @@ public class WorldStateManager : IWorldStateManager
 
     public ISnapStateServer SnapStateServer { get; }
 
-    public IWorldStateScopeProvider CreateResettableWorldState() => new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
+    public IWorldStateScopeProvider CreateResettableWorldState() => new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _stateHeaderProvider, _logManager);
 
     public IReadOnlyTrieStore CreateReadOnlyTrieStore() => _readOnlyTrieStore;
 
-    public IOverridableWorldScope CreateOverridableWorldScope() => new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
+    public IOverridableWorldScope CreateOverridableWorldScope() => new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _stateHeaderProvider, _logManager);
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => _blockingVerifyTrie.VerifyTrie(stateAtBlock, cancellationToken);
 

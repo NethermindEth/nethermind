@@ -6,15 +6,19 @@
 
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
 
-WORKFLOW = Path(__file__).resolve().parents[2] / ".github/workflows/release-bootnode.yml"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WORKFLOW = REPO_ROOT / ".github/workflows/release-bootnode.yml"
+VERSION_SCRIPT = REPO_ROOT / "scripts/version.sh"
+BOOTNODE_PROJECT = "tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj"
 MOCK_COMMANDS = r"""
 sudo() { :; }
-xmlstarlet() { printf '%s\n' "$VERSION_PREFIX"; }
 git() {
   case "$1" in
     check-ref-format) command git "$@" ;;
@@ -64,7 +68,7 @@ gh() {
 
 
 class BootnodeReleaseTests(unittest.TestCase):
-    def run_step(self, step, **values):
+    def run_step(self, step, cwd=None, **values):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         match = re.search(
             rf"(?ms)^      - name: {step}\n.*?^        run: \|\n"
@@ -83,8 +87,25 @@ class BootnodeReleaseTests(unittest.TestCase):
         environment.update(values)
         return subprocess.run(
             ["bash", "-e"], input=MOCK_COMMANDS + script,
-            text=True, capture_output=True, env=environment, timeout=10,
+            text=True, capture_output=True, env=environment, timeout=10, cwd=cwd or REPO_ROOT,
         )
+
+    def run_detect_version(self, version):
+        # The step reads the version through scripts/version.sh from the Bootnode project file, so
+        # run it against a scratch checkout holding the real script and a project declaring it.
+        with tempfile.TemporaryDirectory() as root:
+            scripts = Path(root, "scripts")
+            scripts.mkdir()
+            shutil.copy2(VERSION_SCRIPT, scripts / "version.sh")
+            project = Path(root, BOOTNODE_PROJECT)
+            project.parent.mkdir(parents=True)
+            project.write_text(
+                "<Project>\n  <PropertyGroup>\n"
+                f"    <VersionPrefix>{version}</VersionPrefix>\n"
+                "  </PropertyGroup>\n</Project>\n",
+                encoding="utf-8",
+            )
+            return self.run_step("Detect version", cwd=root, VERSION_PREFIX=version)
 
     def test_version_validation(self):
         cases = [
@@ -104,7 +125,7 @@ class BootnodeReleaseTests(unittest.TestCase):
         ]
         for version, succeeds in cases:
             with self.subTest(version=version):
-                result = self.run_step("Detect version", VERSION_PREFIX=version)
+                result = self.run_detect_version(version)
                 output = result.stdout + result.stderr
                 self.assertEqual(result.returncode == 0, succeeds, output)
                 self.assertEqual("TAG_LOOKUP" in output, succeeds, output)
