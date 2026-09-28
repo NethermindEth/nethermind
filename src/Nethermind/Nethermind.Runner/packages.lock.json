@@ -754,7 +754,9 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Api": "[2.1.0-preview, )",
-          "Nethermind.Eez.Execution": "[2.1.0-preview, )"
+          "Nethermind.Eez.Execution": "[2.1.0-preview, )",
+          "Nethermind.Init": "[2.1.0-preview, )",
+          "Nethermind.Merge.Plugin": "[2.1.0-preview, )"
         }
       },
       "nethermind.eez.execution": {
