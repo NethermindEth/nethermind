@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
@@ -32,6 +33,50 @@ public sealed class EpochCache
 {
     private (ulong Epoch, ulong Balance, Hash256 BoundaryRoot)? _totalActiveBalance;
     private readonly CommitteeCacheLru _committees = new();
+    private (SyncCommittee Committee, int[] Indices)? _syncCommitteeIndices;
+
+    /// <summary>Returns the validator index of each member of <paramref name="committee"/>, in committee order.</summary>
+    /// <remarks>
+    /// Memoized per committee instance: a committee is fixed for its sync committee period and state clones share it, so the
+    /// registry scan that maps pubkeys to indices runs once per period instead of on every block. Members are registered
+    /// validators, whose indices never change.
+    /// </remarks>
+    /// <exception cref="BeaconStateException">A member's pubkey is not in <paramref name="validators"/>.</exception>
+    public int[] GetSyncCommitteeIndices(SyncCommittee committee, Validator[] validators)
+    {
+        if (_syncCommitteeIndices is { } memo && ReferenceEquals(memo.Committee, committee))
+        {
+            return memo.Indices;
+        }
+
+        BlsPublicKey[] pubkeys = committee.Pubkeys!;
+        Dictionary<BlsPublicKey, int> wanted = new(pubkeys.Length);
+        foreach (BlsPublicKey pubkey in pubkeys)
+        {
+            wanted.TryAdd(pubkey, -1);
+        }
+
+        int found = 0;
+        for (int i = 0; i < validators.Length && found < wanted.Count; i++)
+        {
+            if (wanted.TryGetValue(validators[i].Pubkey, out int index) && index < 0)
+            {
+                wanted[validators[i].Pubkey] = i;
+                found++;
+            }
+        }
+
+        int[] indices = new int[pubkeys.Length];
+        for (int i = 0; i < pubkeys.Length; i++)
+        {
+            indices[i] = wanted[pubkeys[i]] is var index and >= 0
+                ? index
+                : throw new BeaconStateException($"Sync committee member {pubkeys[i]} is not a registered validator");
+        }
+
+        _syncCommitteeIndices = (committee, indices);
+        return indices;
+    }
 
     /// <summary>
     /// The state hash-tree-root implementation used by slot processing and the post-state root

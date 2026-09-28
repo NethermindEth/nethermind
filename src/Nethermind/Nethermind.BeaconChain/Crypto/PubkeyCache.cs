@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -31,9 +32,53 @@ public class PubkeyCache
 
     public int Count { get; private set; }
 
+    /// <summary><c>blst_p1s_add(ret, points[], npoints)</c>, which the managed wrapper does not bind; resolved from the library it loads.</summary>
+    private static readonly unsafe delegate* unmanaged<long*, long**, nuint, void> BatchAdd =
+        (delegate* unmanaged<long*, long**, nuint, void>)NativeLibrary.GetExport(NativeLibrary.Load("blst", typeof(Bls).Assembly, null), "blst_p1s_add");
+
     /// <summary>Returns the decompressed G1 point of a validator, wrapping the backing buffer without copying.</summary>
     public G1Affine GetPublicKey(int validatorIndex) =>
         new(_points.AsSpan(checked(validatorIndex * G1Affine.Sz), G1Affine.Sz));
+
+    /// <summary>Writes the sum of the public keys of <paramref name="validatorIndices"/> into <paramref name="sum"/>, a Jacobian G1 point.</summary>
+    /// <remarks>
+    /// One batched affine addition shares a single field inversion across the batch; adding the keys one call at a time
+    /// costs a full point addition plus a native transition each, which is seconds per block for slot-wide Electra
+    /// aggregates on a registry of a million validators. The indices must be distinct.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">An index is not cached, or <paramref name="sum"/> is not a G1 point buffer.</exception>
+    public unsafe void SumPublicKeys(ReadOnlySpan<ulong> validatorIndices, Span<long> sum)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(sum.Length, Bls.P1.Sz);
+        long[] points = _points;
+        ulong count = (ulong)(points.Length / G1Affine.Sz);
+        nint[] addresses = ArrayPool<nint>.Shared.Rent(Math.Max(validatorIndices.Length, 1));
+        try
+        {
+            // The pointers are only dereferenced by the native call below, while points stays pinned.
+            fixed (long* pointsBase = points)
+            fixed (nint* addressesBase = addresses)
+            fixed (long* sumBase = sum)
+            {
+                for (int i = 0; i < validatorIndices.Length; i++)
+                {
+                    ulong index = validatorIndices[i];
+                    ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, count, nameof(validatorIndices));
+                    addresses[i] = (nint)(pointsBase + (long)index * G1Affine.Sz);
+                }
+
+                sum.Clear();
+                if (validatorIndices.Length > 0)
+                {
+                    BatchAdd(sumBase, (long**)addressesBase, (nuint)validatorIndices.Length);
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<nint>.Shared.Return(addresses);
+        }
+    }
 
     /// <summary>Decompresses all validator pubkeys into a fresh buffer.</summary>
     /// <exception cref="InvalidOperationException">A pubkey is not a valid G1 point, or the sample verification failed.</exception>

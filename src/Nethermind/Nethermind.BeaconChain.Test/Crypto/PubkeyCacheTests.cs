@@ -63,6 +63,39 @@ public class PubkeyCacheTests
             Throws.InvalidOperationException.With.Message.Contains("Validator 2"));
     }
 
+    /// <summary>The batched sum must be the same point the per-key aggregation produces, or every aggregate attestation check changes meaning.</summary>
+    [TestCase(1, 1)]
+    [TestCase(2, 1)]
+    [TestCase(160, 3)]
+    [TestCase(300, 1)]
+    public void Summed_public_keys_equal_the_one_at_a_time_aggregate(int count, int stride)
+    {
+        Validator[] validators = [.. Enumerable.Range(0, 600).Select(static i => new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(i)) })];
+        PubkeyCache cache = new();
+        cache.Build(validators);
+        ulong[] indices = [.. Enumerable.Range(0, count).Select(i => (ulong)(i * stride + 7))];
+
+        BlsSigner.AggregatedPublicKey oneAtATime = new(new long[Bls.P1.Sz]);
+        foreach (ulong index in indices)
+        {
+            oneAtATime.Aggregate(cache.GetPublicKey((int)index));
+        }
+
+        long[] sum = new long[Bls.P1.Sz];
+        cache.SumPublicKeys(indices, sum);
+
+        Assert.That(new BlsSigner.AggregatedPublicKey(sum).PublicKey.Compress(), Is.EqualTo(oneAtATime.PublicKey.Compress()));
+    }
+
+    [Test]
+    public void Summing_an_index_past_the_cache_throws()
+    {
+        PubkeyCache cache = new();
+        cache.Build([new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(0)) }]);
+
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => cache.SumPublicKeys([0, 1], new long[Bls.P1.Sz]));
+    }
+
     private static byte[] CompressedPubkey(int index)
     {
         Bls.P1 publicKey = new(new Bls.SecretKey(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), (uint)index));
