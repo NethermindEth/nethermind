@@ -22,6 +22,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
@@ -112,6 +113,25 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
+    private Result<Transaction> ToTraceCallTransaction(TransactionForRpc call, IReleaseSpec spec)
+    {
+        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true } blob)
+            return call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: spec);
+
+        // Geth permits a zero blob fee cap for simulated calls; retain all other RPC validation.
+        blob.MaxFeePerBlobGas = null;
+        try
+        {
+            Result<Transaction> result = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: spec);
+            if (result) result.Data.MaxFeePerBlobGas = UInt256.Zero;
+            return result;
+        }
+        finally
+        {
+            blob.MaxFeePerBlobGas = UInt256.Zero;
+        }
+    }
+
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         if (options?.BlockOverrides?.Withdrawals is not null)
@@ -131,6 +151,14 @@ public class DebugRpcModule(
 
         blockParameter = new BlockParameter(header!.Hash!);
 
+        if (options?.BlockOverrides is { } blockOverrides)
+        {
+            string? unsupported = blockOverrides.BeaconRoot is not null ? "beaconRoot"
+                : blockOverrides.Withdrawals is not null ? "withdrawals" : null;
+            if (unsupported is not null)
+                return ResultWrapper<GethLikeTxTrace>.Fail($"block override \"{unsupported}\" is not supported for this RPC method", ErrorCodes.InvalidInput);
+        }
+
         if (options?.StateOverrides is { } stateOverrides)
         {
             foreach ((Address address, AccountOverride accountOverride) in stateOverrides)
@@ -142,7 +170,7 @@ public class DebugRpcModule(
 
         // The call converts against the fork it runs in, which a block override can change.
         IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
-        Result<Transaction> txResult = call.ToCallTransaction(spec, jsonRpcConfig.GasCap);
+        Result<Transaction> txResult = ToTraceCallTransaction(call, spec);
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
