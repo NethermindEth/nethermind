@@ -4935,6 +4935,37 @@ public class FrameTxProcessorTests
         Assert.That(PrestateSlot(document.RootElement, Eip8272Constants.RecentRootAddress, cell.Index), Is.EqualTo(StorageWord(entry)));
     }
 
+    /// <summary>A deploy frame CREATE2-ing a sender that already holds its funds creates the code, not the account,
+    /// so diffMode has to keep the payer's pre balance for the fee debit to balance.</summary>
+    [Test]
+    public void Execute_DeployFrameCreatingAFundedSenderTracedWithPrestateTracer_KeepsThePayerPrestate([Values(0, 1)] int baseFeePerGas)
+    {
+        Address factory = TestItem.AddressF;
+        byte[] senderInit = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
+        byte[] salt = new byte[32];
+        Address smartSender = ContractAddress.From(factory, salt, senderInit);
+        DeployContract(factory, Prepare.EvmCode.Create2(senderInit, salt, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        _stateProvider.CreateAccount(smartSender, 1.Ether);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Default, 0, factory, executionGasLimit: 1_000_000,
+                stateGasLimit: (ulong)(GasCostOf.NewAccountState + GasCostOf.CodeDepositState * senderInit.Length), UInt256.Zero, default),
+            SelfVerifyFrame());
+        tx.SenderAddress = smartSender;
+        tx.DecodedMaxFeePerGas = 2;
+
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode: true), (UInt256)baseFeePerGas, out TxReceipt receipt);
+        JsonElement pre = document.RootElement.GetProperty("pre");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pre.TryGetProperty(smartSender.ToString(), out _), Is.True, "the sender existed before the transaction");
+            Assert.That(PrestateBalanceDelta(pre, document.RootElement.GetProperty("post")), Is.EqualTo(-(BigInteger)baseFeePerGas * receipt.GasUsed));
+        }
+    }
+
     private static GethTraceOptions PrestateOptions(bool diffMode) => GethTraceOptions.Default with
     {
         Tracer = NativePrestateTracer.PrestateTracer,

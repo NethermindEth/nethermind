@@ -290,6 +290,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         }
     }
 
+    private static bool IsEmpty(NativePrestateTracerAccount account) =>
+        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code is null;
+
     private void ProcessDiffState()
     {
         foreach ((AddressAsKey addr, NativePrestateTracerAccount prestateAccount) in _prestate)
@@ -352,8 +355,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             if (modified)
                 _poststate.Add(addr, diffAccount);
 
-            // If no account fields were modified or the account was created then remove it from the prestate trace
-            if (!modified || _createdAccounts.Contains(addr))
+            // If no account fields were modified or the account was created then remove it from the prestate trace;
+            // a contract created onto an address that already held state did not create the account.
+            if (!modified || (_createdAccounts.Contains(addr) && IsEmpty(prestateAccount)))
                 _prestate.Remove(addr);
         }
     }
