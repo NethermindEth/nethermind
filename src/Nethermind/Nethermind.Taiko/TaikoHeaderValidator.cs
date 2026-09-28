@@ -63,9 +63,9 @@ public class TaikoHeaderValidator(
     {
         ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
 
-        if (taikoSpec.IsShastaEnabled && header.ExtraData is { Length: < TaikoHeaderHelper.ShastaExtraDataLen })
+        if (taikoSpec.IsShastaEnabled && header.ExtraData.Length != TaikoHeaderHelper.ShastaExtraDataLen)
         {
-            error = $"ExtraData must be at least {TaikoHeaderHelper.ShastaExtraDataLen} bytes for Shasta, but got {header.ExtraData.Length}";
+            error = $"ExtraData must be {TaikoHeaderHelper.ShastaExtraDataLen} bytes for Shasta, but got {header.ExtraData.Length}";
             if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - {error}");
             return false;
         }
@@ -291,7 +291,7 @@ public class TaikoHeaderValidator(
         return base.ValidateRequestsHash(header, spec, ref error);
     }
 
-    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+    protected override bool ValidateBlobGasFields(BlockHeader header, IReleaseSpec spec, ref string? error)
     {
         ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
 
@@ -321,6 +321,9 @@ public class TaikoHeaderValidator(
             return true;
         }
 
-        return base.ValidateBlobGasFields(header, parent, spec, ref error);
+        return base.ValidateBlobGasFields(header, spec, ref error);
     }
+
+    protected override bool ValidateExcessBlobGas(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) =>
+        ((ITaikoReleaseSpec)spec).IsUnzenEnabled || base.ValidateExcessBlobGas(header, parent, spec, ref error);
 }

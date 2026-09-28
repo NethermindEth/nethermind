@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public TraceFilterMode Mode { get; set; }
 
-        public int After { get; set; }
+        public int? After { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public int? Count { get; set; }
