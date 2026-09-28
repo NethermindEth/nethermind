@@ -46,7 +46,13 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     }
 
     public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion)
-         => specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
+    {
+        IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
+        // V3 covers Cancun and V4 covers Prague until Amsterdam; Osaka added no newPayload version.
+        return spec.IsEip4844Enabled
+            && !spec.BlockLevelAccessListsEnabled
+            && spec.RequestsEnabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V4);
+    }
 
     /// <summary>
     /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in

@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -270,10 +271,9 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list([Values] bool blockAccessListsEnabled)
+    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(
-            blockAccessListsEnabled ? Amsterdam.Instance : Prague.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
         Block block = Build.A.Block
             .WithNumber(chain.BlockTree.Head!.Number + 1)
             .WithParentBeaconBlockRoot(Keccak.Zero)
@@ -379,6 +379,36 @@ public partial class EngineModuleTests
             Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
             Assert.That(response.Result.Error, Does.StartWith("Block access list"));
         }
+    }
+
+    [TestCaseSource(nameof(NewPayloadV3AndV4ForkWindowCases))]
+    public async Task<int> NewPayloadV3_and_V4_return_unsupported_fork_outside_their_fork_window(IReleaseSpec releaseSpec, int version)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec);
+        Block block = Build.A.Block
+            .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithWithdrawals([])
+            .TestObject;
+        ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(block);
+
+        ResultWrapper<PayloadStatusV1> response = version == EngineApiVersions.NewPayload.V3
+            ? await chain.EngineRpcModule.engine_newPayloadV3(executionPayload, [], Keccak.Zero)
+            : await chain.EngineRpcModule.engine_newPayloadV4(executionPayload, [], Keccak.Zero, []);
+
+        return response.ErrorCode;
+    }
+
+    private static IEnumerable<TestCaseData> NewPayloadV3AndV4ForkWindowCases()
+    {
+        yield return new TestCaseData(Cancun.Instance, EngineApiVersions.NewPayload.V3) { ExpectedResult = ErrorCodes.None };
+        yield return new TestCaseData(Prague.Instance, EngineApiVersions.NewPayload.V3) { ExpectedResult = MergeErrorCodes.UnsupportedFork };
+        yield return new TestCaseData(Cancun.Instance, EngineApiVersions.NewPayload.V4) { ExpectedResult = MergeErrorCodes.UnsupportedFork };
+        yield return new TestCaseData(Prague.Instance, EngineApiVersions.NewPayload.V4) { ExpectedResult = ErrorCodes.None };
+        yield return new TestCaseData(Osaka.Instance, EngineApiVersions.NewPayload.V4) { ExpectedResult = ErrorCodes.None };
+        yield return new TestCaseData(Amsterdam.Instance, EngineApiVersions.NewPayload.V4) { ExpectedResult = MergeErrorCodes.UnsupportedFork };
     }
 
     [TestCase(30)]
