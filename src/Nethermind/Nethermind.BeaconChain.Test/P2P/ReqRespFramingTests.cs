@@ -78,6 +78,7 @@ public class ReqRespFramingTests
     [TestCase("0x04ff060000734e61507059010c00000175de410100000000000000", 8, Description = "frames decode to more than declared")]
     [TestCase("0x08ff060000734e61507059020c00000175de410100000000000000", 8, Description = "unskippable reserved frame type")]
     [TestCase("0x08010c00000175de410100000000000000", 8, Description = "data frame before stream identifier")]
+    [TestCase("0x08ff060000734e61507059010c00000176de410100000000000000", 8, Description = "data frame with a bad CRC")]
     [TestCase("0x80808080808080808080808001", 8, Description = "varint longer than 10 bytes")]
     public void Rejects_truncated_oversized_and_malformed_requests(string wireHex, int maxSize)
     {
@@ -85,12 +86,31 @@ public class ReqRespFramingTests
         Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(stream, maxSize, default));
     }
 
-    // SSZ of an empty list is zero bytes; snappy framing of no data is nothing or one stream identifier.
+    // SSZ of an empty list is zero bytes; any snappy framing that decodes to no data is legal for it.
+    // An empty data frame carries the masked CRC32C of nothing, 0xa282ead8.
     [TestCase("0x00", false, Description = "empty list without framing")]
     [TestCase("0x00ff060000734e61507059", false, Description = "empty list with its stream identifier")]
+    [TestCase("0x00ff060000734e61507059ff060000734e61507059", false, Description = "a repeated stream identifier")]
+    [TestCase("0x00ff060000734e6150705900050000d8ea82a200", false, Description = "an empty compressed frame")]
+    [TestCase("0x00ff060000734e6150705901040000d8ea82a2", false, Description = "an empty uncompressed frame")]
+    [TestCase("0x00ff060000734e61507059fe030000000000", false, Description = "a padding frame")]
+    [TestCase("0x00ff060000734e6150705980000000", false, Description = "an empty skippable frame")]
+    [TestCase("0x00ff060000734e61507059fe03000000000000050000d8ea82a200", false, Description = "padding then an empty compressed frame")]
     [TestCase("0x00ff060000734e6150705900", true, Description = "a byte after the stream identifier")]
-    [TestCase("0x00ff060000734e61507059ff060000734e61507059", true, Description = "a second stream identifier")]
     [TestCase("0x00010c00000175de410100000000000000", true, Description = "a data frame")]
+    [TestCase("0x00ff060000734e61507059010c00000175de410100000000000000", true, Description = "a data frame after the stream identifier")]
+    [TestCase("0x00ff060000734e6150705901050000d8ea82a201", true, Description = "a data frame carrying the empty-data CRC")]
+    [TestCase("0x00ff060000734e6150705900050000d8ea82a300", true, Description = "an empty compressed frame with a bad CRC")]
+    [TestCase("0x00ff060000734e6150705901040000d8ea82a3", true, Description = "an empty uncompressed frame with a bad CRC")]
+    [TestCase("0x00fe030000000000ff060000734e61507059", true, Description = "padding before the stream identifier")]
+    [TestCase("0x00ff060000734e6150705902000000", true, Description = "an unskippable reserved frame")]
+    [TestCase("0x00ff060000734e6150705901080000d8ea82a2ab9be09b", true, Description = "an uncompressed frame whose data has the empty-data CRC")]
+    [TestCase("0x00ff060000734e61507059000a0000d8ea82a2040cab9be09b", true, Description = "a compressed frame whose data has the empty-data CRC")]
+    [TestCase("0x00ff060000734e6150705900060000d8ea82a20000", true, Description = "an empty compressed block with a trailing byte")]
+    [TestCase("0x00ff060000734e6150705900050000d8ea82a201", true, Description = "a compressed block declaring a byte it does not carry")]
+    [TestCase("0x00ff060000734e6150705900050000d8ea82a280", true, Description = "a compressed block whose length varint never ends")]
+    [TestCase("0x00ff060000734e61507058", true, Description = "a stream identifier with the wrong content")]
+    [TestCase("0x00ff000000", true, Description = "an empty stream identifier")]
     [TestCase("0x00ff060000734e", true, Description = "cut stream identifier")]
     public async Task Zero_length_request_is_read_as_empty_only_where_the_type_allows_it(string wireHex, bool malformed)
     {
@@ -130,6 +150,46 @@ public class ReqRespFramingTests
             () => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default));
         Assert.That(exception.Message, Does.Contain("bound"));
         Assert.That(stream.Position, Is.LessThan(stream.Length));
+    }
+
+    // Frames that decode to nothing never end an empty request on their own, so only the byte bound stops a peer that keeps sending them.
+    [TestCase("0xff060000734e61507059", Description = "repeated stream identifiers")]
+    [TestCase("0xfe030000000000", Description = "repeated padding frames")]
+    [TestCase("0x00050000d8ea82a200", Description = "repeated empty compressed frames")]
+    public void Rejects_endless_empty_frames_after_an_empty_request_before_exhausting_input(string repeatedFrameHex)
+    {
+        byte[] repeatedFrame = Bytes.FromHexString(repeatedFrameHex);
+        using MemoryStream stream = new();
+        stream.Write(Bytes.FromHexString("0x00ff060000734e61507059"));
+        for (int i = 0; i < 1_000; i++)
+        {
+            stream.Write(repeatedFrame);
+        }
+
+        stream.Position = 0;
+
+        Eth2ReqRespException exception = Assert.ThrowsAsync<Eth2ReqRespException>(
+            () => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default, allowEmpty: true));
+        Assert.That(exception.Message, Does.Contain("bound"));
+        Assert.That(stream.Position, Is.LessThan(128), "the read stops at the bound, not at the end of the input");
+    }
+
+    // A 10-byte stream identifier plus a padding frame of 4 header bytes and this much data: 64 bytes is the most an empty request reads.
+    [TestCase(50, false)]
+    [TestCase(51, true)]
+    public async Task Empty_request_framing_is_read_up_to_its_byte_bound(int paddingLength, bool rejected)
+    {
+        byte[] wire = [.. Bytes.FromHexString("0x00ff060000734e61507059"), 0xfe, (byte)paddingLength, 0, 0, .. new byte[paddingLength]];
+        using MemoryStream stream = new(wire);
+        if (rejected)
+        {
+            Eth2ReqRespException exception = Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default, allowEmpty: true));
+            Assert.That(exception.Message, Does.Contain("bound"));
+        }
+        else
+        {
+            Assert.That(await ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default, allowEmpty: true), Is.Empty);
+        }
     }
 
     private static Task<ResponseChunk?> ReadChunkAsync(Stream stream) =>
