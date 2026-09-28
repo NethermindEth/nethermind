@@ -17,7 +17,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
-public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperationStart, ITraceOperationGasCost, ITraceRevertFault
+public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperationStart, ITraceOperationGasCost, ITraceRevertFault, ITraceRejectedCall
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan MaxTimeout = TimeSpan.FromMinutes(2);
@@ -164,7 +164,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _failedBeforeExecution = false;
         _pendingStep = opcode is Instruction.RETURNDATACOPY or Instruction.RETURN or Instruction.REVERT
             or Instruction.MLOAD or Instruction.MSTORE or Instruction.MSTORE8 or Instruction.CALLDATACOPY or Instruction.CODECOPY
-            or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD or Instruction.SSTORE or Instruction.STATICCALL;
+            or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD or Instruction.SSTORE or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL;
     }
 
     /// <inheritdoc/>
@@ -209,6 +209,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportOperationError(EvmExceptionType error)
     {
         base.ReportOperationError(error);
+        if (error == EvmExceptionType.NotEnoughBalance && _log.op?.Value is
+            Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL)
+            return;
         if (_failedBeforeExecution)
             return;
         if (error == EvmExceptionType.BadInstruction)
@@ -260,6 +263,14 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     {
         base.ReportActionRevert(gasLeft, output);
         InvokeExit(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
+    }
+
+    /// <inheritdoc/>
+    public void ReportRejectedCall(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error)
+    {
+        ReportAction(gas, value, from, to, input, callType);
+        base.ReportActionError(error);
+        InvokeExit(gas, ReadOnlyMemory<byte>.Empty, error.GetEvmExceptionDescription());
     }
 
     public override void ReportActionError(EvmExceptionType evmExceptionType)
