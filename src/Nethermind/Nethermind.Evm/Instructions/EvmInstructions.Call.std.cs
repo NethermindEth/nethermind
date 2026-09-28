@@ -39,12 +39,7 @@ public static partial class EvmInstructions
             return false;
         }
 
-        if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
-        {
-            result = EvmExceptionType.OutOfGas;
-            return true;
-        }
-
+        ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadAfterGas(in dataOffset, in dataLength);
         TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
         IReleaseSpec spec = vm.Spec;
 
@@ -87,14 +82,7 @@ public static partial class EvmInstructions
         if (outputLength < (UInt256)copyLength)
             copyLength = (int)outputLength.ToLong();
 
-        if (copyLength > 0)
-        {
-            if (!vm.VmState.Memory.TrySave(in outputOffset, outputData.Span[..copyLength]))
-            {
-                result = EvmExceptionType.OutOfGas;
-                return true;
-            }
-        }
+        vm.VmState.Memory.SaveAfterGas(in outputOffset, outputData.Span[..copyLength]);
 
         result = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
         return true;

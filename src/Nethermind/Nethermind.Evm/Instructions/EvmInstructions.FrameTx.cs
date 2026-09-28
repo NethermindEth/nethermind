@@ -48,11 +48,12 @@ public static unsafe partial class EvmInstructions
         }
 
         // EIP-8141 APPROVE: the memory region becomes the frame's return data, following RETURN semantics.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory) ||
-            !vm.VmState.Memory.TryLoad(in offset, in length, out ReadOnlyMemory<byte> returnData))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory))
         {
             return EvmExceptionType.OutOfGas;
         }
+
+        Span<byte> returnData = vm.VmState.Memory.LoadSpanAfterGas(in offset, in length);
 
         // Charged immediately before the consumption that writes the new state, after every execution charge.
         long nonceStateGas = ctx.NonceStateGas<TGasPolicy>(in plan, vm.WorldState);

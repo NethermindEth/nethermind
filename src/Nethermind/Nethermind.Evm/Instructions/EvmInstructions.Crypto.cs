@@ -35,11 +35,12 @@ public static partial class EvmInstructions
 
         VmState<TGasPolicy> vmState = vm.VmState;
         // Charge gas for any required memory expansion.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, b, ref vmState.Memory) ||
-            !vmState.Memory.TryLoadSpan(in a, b, out Span<byte> bytes))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, b, ref vmState.Memory))
         {
             goto OutOfGas;
         }
+
+        Span<byte> bytes = vmState.Memory.LoadSpanAfterGas(in a, in b);
 
         // Compute the Keccak-256 hash.
         KeccakCache.ComputeTo(bytes, out ValueHash256 keccak);
