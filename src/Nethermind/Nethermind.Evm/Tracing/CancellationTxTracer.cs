@@ -86,6 +86,8 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         init => _isTracingReturnData = value;
     }
 
+    public bool IsTracingCallOutputMemory => innerTracer.IsTracingCallOutputMemory;
+
     public bool IsTracingCode
     {
         get => _isTracingCode || innerTracer.IsTracingCode;

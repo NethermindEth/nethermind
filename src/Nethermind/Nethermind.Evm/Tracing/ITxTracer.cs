@@ -106,6 +106,16 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     bool IsTracingReturnData { get; }
 
     /// <summary>
+    /// The memory in a CALL-family operation's output window after the call returns
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <c>ReportMemoryChange</c> for the output window, which is read only when this is set.
+    /// Depends on <see cref="IsTracingInstructions"/>.
+    /// </remarks>
+    bool IsTracingCallOutputMemory => false;
+
+    /// <summary>
     /// Code deployment
     /// </summary>
     /// <remarks>

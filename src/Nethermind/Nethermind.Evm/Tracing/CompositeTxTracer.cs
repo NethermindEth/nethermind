@@ -34,6 +34,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
             IsTracingInstructions |= t.IsTracingInstructions;
             IsTracingRefunds |= t.IsTracingRefunds;
             IsTracingReturnData |= t.IsTracingReturnData;
+            IsTracingCallOutputMemory |= t.IsTracingCallOutputMemory;
             IsTracingCode |= t.IsTracingCode;
             IsTracingStack |= t.IsTracingStack;
             IsTracingBlockHash |= t.IsTracingBlockHash;
@@ -69,6 +70,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
     public bool IsTracingInstructions { get; }
     public bool IsTracingRefunds { get; }
     public bool IsTracingReturnData { get; }
+    public bool IsTracingCallOutputMemory { get; }
     public bool IsTracingCode { get; }
     public bool IsTracingStack { get; private set; }
     public bool IsTracingBlockHash { get; }

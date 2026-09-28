@@ -24,6 +24,24 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
 
         writer.WriteNumber("cost"u8, value.Cost);
         writer.WritePropertyName("ex"u8);
+        if (value.Halted)
+        {
+            writer.WriteNullValue();
+        }
+        else
+        {
+            WriteExecuted(writer, value, options);
+        }
+
+        writer.WriteNumber("pc"u8, value.Pc);
+        writer.WritePropertyName("sub"u8);
+        JsonSerializer.Serialize(writer, value.Sub, options);
+
+        writer.WriteEndObject();
+    }
+
+    private static void WriteExecuted(Utf8JsonWriter writer, ParityVmOperationTrace value, JsonSerializerOptions options)
+    {
         writer.WriteStartObject();
         writer.WritePropertyName("mem"u8);
         if (value.Memory is not null)
@@ -31,8 +49,8 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             writer.WriteStartObject();
             writer.WritePropertyName("data"u8);
             JsonSerializer.Serialize(writer, value.Memory.Data, options);
-            writer.WritePropertyName("off"u8);
-            JsonSerializer.Serialize(writer, value.Memory.Offset, options);
+            // A plain number, as the streaming tracer writes it; a long would otherwise serialize as a hex string.
+            writer.WriteNumber("off"u8, value.Memory.Offset);
             writer.WriteEndObject();
         }
         else
@@ -72,12 +90,6 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
         }
 
         writer.WriteNumber("used"u8, value.Used);
-        writer.WriteEndObject();
-
-        writer.WriteNumber("pc"u8, value.Pc);
-        writer.WritePropertyName("sub"u8);
-        JsonSerializer.Serialize(writer, value.Sub, options);
-
         writer.WriteEndObject();
     }
 }
