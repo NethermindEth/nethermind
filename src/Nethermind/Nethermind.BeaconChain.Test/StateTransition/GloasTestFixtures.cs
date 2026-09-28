@@ -262,7 +262,7 @@ internal static class GloasTestFixtures
     public static SignedVoluntaryExit SignedExit(BeaconStateGloas state, int validatorIndex, ulong epoch)
     {
         VoluntaryExit exit = new() { Epoch = epoch, ValidatorIndex = (ulong)validatorIndex };
-        Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, Presets.CapellaForkVersion, state.GenesisValidatorsRoot!);
+        Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, BeaconChainSpec.Mainnet.CapellaForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain);
         return new SignedVoluntaryExit { Message = exit, Signature = Sign(ValidatorKey(validatorIndex), signingRoot) };
     }
@@ -276,7 +276,7 @@ internal static class GloasTestFixtures
             FromBlsPubkey = new BlsPublicKey(new Bls.P1(fromKey).Compress()),
             ToExecutionAddress = toAddress,
         };
-        Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, Presets.GenesisForkVersion, state.GenesisValidatorsRoot!);
+        Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, BeaconChainSpec.Mainnet.GenesisForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), domain);
         return new SignedBlsToExecutionChange { Message = change, Signature = Sign(fromKey, signingRoot) };
     }
@@ -522,7 +522,7 @@ internal static class GloasTestFixtures
         BlsPublicKey pubkey = new(new Bls.P1(DeriveKey(keyIndex)).Compress());
         Hash256 withdrawalCredentials = EthWithdrawalCredentials(0xEE);
         DepositMessage.Merkleize(new DepositMessage { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = amount }, out UInt256 root);
-        Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, Presets.GenesisForkVersion, Hash256.Zero);
+        Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, BeaconChainSpec.Mainnet.GenesisForkVersion, Hash256.Zero);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
         BlsSignature signature = new(BlsSigner.Sign(DeriveKey(signerKeyIndex ?? keyIndex), signingRoot.Bytes).Bytes);
         return new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = amount, Signature = signature, Slot = slot };

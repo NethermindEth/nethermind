@@ -592,7 +592,7 @@ public static class BlockProcessing
     {
         if (FindValidatorIndex(state, pubkey) is null)
         {
-            if (!DepositSignatureVerifier.IsValid(pubkey, withdrawalCredentials, amount, signature))
+            if (!DepositSignatureVerifier.IsValid(state.GenesisValidatorsRoot!, pubkey, withdrawalCredentials, amount, signature))
                 return;
             state.AddValidatorToRegistry(pubkey, withdrawalCredentials, 0);
         }
