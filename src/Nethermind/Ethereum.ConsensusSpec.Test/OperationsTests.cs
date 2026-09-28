@@ -91,7 +91,7 @@ public class OperationsTests
         ["sync_aggregate"] = ("sync_aggregate.ssz_snappy", (ctx, ssz) =>
         {
             SyncAggregate.Decode(ssz, out SyncAggregate value);
-            BlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.VerifySignatures);
+            BlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
         }
         ),
         ["voluntary_exit"] = ("voluntary_exit.ssz_snappy", (ctx, ssz) =>
@@ -196,7 +196,7 @@ public class OperationsTests
         ["sync_aggregate"] = ("sync_aggregate.ssz_snappy", (ctx, ssz) =>
         {
             SyncAggregate.Decode(ssz, out SyncAggregate value);
-            GloasBlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.VerifySignatures);
+            GloasBlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures);
         }
         ),
         ["voluntary_exit"] = ("voluntary_exit.ssz_snappy", ApplyGloasVoluntaryExit),

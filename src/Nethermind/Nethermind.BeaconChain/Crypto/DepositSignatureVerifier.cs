@@ -31,6 +31,6 @@ public static class DepositSignatureVerifier
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
 
         Bls.P1Affine publicKey = new(stackalloc long[Bls.P1Affine.Sz]);
-        return publicKey.TryDecode(pubkey.Bytes, out _) && BlsSigner.Verify(publicKey, signature.Bytes, signingRoot.Bytes);
+        return BlsSignatureSet.TryKeyValidate(pubkey.Bytes, publicKey) && BlsSigner.Verify(publicKey, signature.Bytes, signingRoot.Bytes);
     }
 }
