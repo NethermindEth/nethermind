@@ -7,6 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Facade;
+using Nethermind.Int256;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -30,6 +32,9 @@ public class DebugModuleFactory(
             // Note: Not overriding `IReceiptStorage` to null.
             .AddModule(validationBlockProcessingModules)
             .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
+            .AddScoped<GethStyleTracer.TraceCallRequestState>()
+            .AddScoped<IBlobBaseFeeOverrideProvider, TraceCallBlobBaseFeeOverrideProvider>()
+            .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
 
             // So the debug rpc change the adapter sometime.
             .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
@@ -38,6 +43,12 @@ public class DebugModuleFactory(
             // same ChangeableTransactionProcessorAdapter so they honour the tracer's runtime Execute↔Trace swap.
             .AddScoped<TransactionProcessorAdapterFactory, ChangeableTransactionProcessorAdapter>(
                 static changeable => changeable.ForProcessor);
+
+    private sealed class TraceCallBlobBaseFeeOverrideProvider(GethStyleTracer.TraceCallRequestState state) : IBlobBaseFeeOverrideProvider
+    {
+        /// <inheritdoc/>
+        public UInt256? BlobBaseFeeOverride => state.BlobBaseFee;
+    }
 
     public IDebugRpcModule Create()
     {
