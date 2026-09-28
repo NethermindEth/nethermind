@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Linq;
@@ -119,6 +120,18 @@ public class DebugRpcModule(
 
         if (options?.TxIndex is not null) blockParameter = new BlockParameter(header!.Hash!);
 
+        if (options?.StateOverrides is { } stateOverrides)
+        {
+            foreach (Address address in stateOverrides.Keys)
+            {
+                if (stateOverrides[address] is { State: not null, StateDiff: not null })
+                    return ResultWrapper<GethLikeTxTrace>.Fail($"account {address} has both 'state' and 'stateDiff'", ErrorCodes.InvalidInput);
+            }
+        }
+
+        if (call is LegacyTransactionForRpc { ChainId: { } requestedChainId } && requestedChainId != specProvider.ChainId)
+            return ResultWrapper<GethLikeTxTrace>.Fail($"chainId does not match node's (have={requestedChainId}, want={specProvider.ChainId})", ErrorCodes.InvalidInput);
+
         Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
@@ -148,6 +161,14 @@ public class DebugRpcModule(
         catch (InsufficientBalanceException ex)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(ex.Message), ErrorCodes.InvalidInput);
+        }
+        catch (InvalidDataException ex) when (effective.Tracer == "muxTracer")
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (ArgumentException ex) when (effective.Tracer == "prestateTracer" && ex.Message == "cannot use diffMode with includeEmpty")
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
 
         if (transactionTrace is null)
