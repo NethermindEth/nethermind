@@ -21,7 +21,7 @@ namespace Nethermind.Evm.GasPolicy;
 /// <remarks>
 /// The spill split fields below follow EIP-8037 block-gas accounting.
 /// </remarks>
-public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
+public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 {
     /// <summary>Execution gas budget (legacy gas_left).</summary>
     public ulong Value;

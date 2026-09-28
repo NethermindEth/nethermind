@@ -125,7 +125,7 @@ public static partial class EvmInstructions
                 programCounter += Size;
                 return EvmExceptionType.StackOverflow;
             }
-            if (remainingCode <= Size)
+            if (!DispatchFlags.PaddedCode && remainingCode <= Size)
             {
                 // Implicit STOP discards the stack, and no tracer or subsequent opcode can observe this push.
                 programCounter += Size;
@@ -149,12 +149,14 @@ public static partial class EvmInstructions
 
             if (nextInstruction == Instruction.JUMP)
             {
-                vm.OpCodeCount++;
+                if (DispatchFlags.CountOpcodes)
+                    vm.OpCodeCount++;
                 if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
             }
             else
             {
-                vm.OpCodeCount++;
+                if (DispatchFlags.CountOpcodes)
+                    vm.OpCodeCount++;
                 if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
                 if (!stack.EnsureDepth(1)) goto StackUnderflow;
                 if (EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
@@ -173,7 +175,8 @@ public static partial class EvmInstructions
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
             programCounter = jumpTarget + 1;
             PrefetchCodeAtDestination(ref stack, programCounter);
-            vm.OpCodeCount++;
+            if (DispatchFlags.CountOpcodes)
+                vm.OpCodeCount++;
             if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
             goto Success;
