@@ -16,6 +16,23 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private byte ReadBlockAndFlags() => _blockAndFlags;
 
+        /// <summary>Reads <c>_nodeData</c> directly &mdash; see the std counterpart for the acquire read this replaces.</summary>
+        /// <remarks>Read by every node type test, several times per node touched on a trie walk.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private INodeData? ReadNodeData() => _nodeData;
+
+        /// <summary>Whether this node is a leaf.</summary>
+        /// <remarks>
+        /// A type test rather than the std form's <see cref="NodeType"/> compare: the guest's whole-program
+        /// compilation sees no class derived from <see cref="LeafData"/>, so this is one method-table
+        /// compare instead of a dispatch over every node data class.
+        /// </remarks>
+        public bool IsLeaf => _nodeData is LeafData;
+
+        /// <summary>Whether this node is an extension.</summary>
+        /// <remarks><inheritdoc cref="IsLeaf" path="/remarks"/></remarks>
+        public bool IsExtension => _nodeData is ExtensionData;
+
         /// <summary>Stores <c>_blockAndFlags</c> and reports the exchange as having succeeded.</summary>
         /// <remarks>
         /// Keeps the shape of the compare-and-exchange it replaces &mdash; returning

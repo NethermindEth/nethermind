@@ -16,6 +16,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Crypto;
@@ -47,6 +48,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData("6003565b00", 21012UL, 4).SetName("Jump_to_next_instruction"),
         new TestCaseData("600456fe5b5b00", 21013UL, 5).SetName("Jump_to_consecutive_markers"),
         new TestCaseData("6003565b", 21012UL, 3).SetName("Jump_to_final_byte"),
+        // PUSH2 fuses with the following jump.
+        new TestCaseData("61000556005b00", 21012UL, 4).SetName("Push2_Jump_taken"),
+        new TestCaseData("60006100005700", 21016UL, 4).SetName("Push2_JumpI_not_taken_to_invalid_destination"),
     ];
 
     private static readonly TestCaseData[] JumpFailureCases =
@@ -57,6 +61,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData("6003565b", 21011UL, 3).SetName("JumpDest_charge_out_of_gas_after_Jump"),
         new TestCaseData("60016005575b", 21015UL, 3).SetName("JumpI_charge_out_of_gas"),
         new TestCaseData("60016005575b", 21016UL, 4).SetName("JumpDest_charge_out_of_gas_after_JumpI"),
+        new TestCaseData("600161000057", 100000UL, 3).SetName("Push2_JumpI_taken_to_invalid_destination"),
+        new TestCaseData("61000556605b00", 100000UL, 2).SetName("Push2_Jump_into_push_data"),
     ];
 
     private sealed class NoInstructionTracer : TestAllTracerWithOutput
@@ -1935,6 +1941,51 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.CancunActivation, bytecode);
 
         Assert.That(receipt.Error, Is.Null);
+    }
+
+    private static IEnumerable<TestCaseData> ZeroLengthMemoryRangeAtMaxOffsetCases()
+    {
+        yield return new TestCaseData((Func<UInt256, byte[]>)(static offset => Prepare.EvmCode.KECCAK256(offset, 0).STOP().Done), StatusCode.Success)
+            .SetName("Zero_length_KECCAK256_ignores_its_offset");
+        yield return new TestCaseData((Func<UInt256, byte[]>)(static offset => Prepare.EvmCode.LOGx(0, offset, 0).STOP().Done), StatusCode.Success)
+            .SetName("Zero_length_LOG0_ignores_its_offset");
+        yield return new TestCaseData((Func<UInt256, byte[]>)(static offset => Prepare.EvmCode.RETURN(offset, 0).Done), StatusCode.Success)
+            .SetName("Zero_length_RETURN_ignores_its_offset");
+        yield return new TestCaseData((Func<UInt256, byte[]>)(static offset => Prepare.EvmCode.REVERT(offset, 0).Done), StatusCode.Failure)
+            .SetName("Zero_length_REVERT_ignores_its_offset");
+        yield return new TestCaseData(
+                (Func<UInt256, byte[]>)(static offset => Prepare.EvmCode.CALL(50_000, TestItem.AddressC, 0, offset, 0, offset, 0).STOP().Done),
+                StatusCode.Success)
+            .SetName("Zero_length_CALL_input_and_output_ignore_their_offsets");
+        yield return new TestCaseData(
+                (Func<UInt256, byte[]>)(static offset => Prepare.EvmCode.STATICCALL(50_000, IdentityPrecompile.Address, offset, 0, offset, 0).STOP().Done),
+                StatusCode.Success)
+            .SetName("Zero_length_precompile_STATICCALL_input_and_output_ignore_their_offsets");
+    }
+
+    [TestCaseSource(nameof(ZeroLengthMemoryRangeAtMaxOffsetCases))]
+    public void Zero_length_memory_range_ignores_its_offset(Func<UInt256, byte[]> buildCode, byte expectedStatus)
+    {
+        byte[] code = buildCode(UInt256.MaxValue);
+        byte[] baselineCode = buildCode(UInt256.Zero);
+        CallOutputTracer untraced = Execute(new CallOutputTracer(), code, MainnetSpecProvider.CancunActivation);
+        TestAllTracerWithOutput traced = Execute(new TestAllTracerWithOutput(), code, MainnetSpecProvider.CancunActivation);
+        CallOutputTracer untracedBaseline = Execute(new CallOutputTracer(), baselineCode, MainnetSpecProvider.CancunActivation);
+        TestAllTracerWithOutput tracedBaseline = Execute(new TestAllTracerWithOutput(), baselineCode, MainnetSpecProvider.CancunActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(untraced.StatusCode, Is.EqualTo(expectedStatus), "the untraced run takes the inline fast paths");
+            Assert.That(traced.StatusCode, Is.EqualTo(expectedStatus), "the traced run creates full call frames");
+            if (expectedStatus == StatusCode.Failure)
+            {
+                Assert.That(untraced.Error, Is.EqualTo(TransactionSubstate.Revert), "an explicit revert, not an exceptional halt");
+                Assert.That(traced.Error, Is.EqualTo(TransactionSubstate.Revert), "an explicit revert, not an exceptional halt");
+            }
+
+            Assert.That(untraced.GasSpent, Is.EqualTo(untracedBaseline.GasSpent), "a zero-length range charges no memory expansion at any offset");
+            Assert.That(traced.GasSpent, Is.EqualTo(tracedBaseline.GasSpent), "a zero-length range charges no memory expansion at any offset");
+        }
     }
 
     [Test]
