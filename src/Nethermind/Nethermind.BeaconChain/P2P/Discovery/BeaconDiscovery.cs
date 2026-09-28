@@ -299,6 +299,28 @@ public sealed class BeaconDiscovery(
         return EnrForkId.TryDecode(ssz, out forkId);
     }
 
+    /// <summary>Decodes a record's <c>cgc</c> entry (fulu/p2p-interface.md); <see langword="false"/> when the entry is absent or malformed.</summary>
+    internal static bool TryGetCustodyGroupCount(NodeRecord record, out ulong custodyGroupCount)
+    {
+        custodyGroupCount = 0;
+        // A record parsed off the wire keeps an entry type it does not know as its raw RLP item.
+        if (record.GetObj<byte[]>("cgc") is not { } value)
+        {
+            return false;
+        }
+
+        try
+        {
+            RlpReader reader = new(value);
+            custodyGroupCount = reader.DecodeULong();
+            return reader.Position == value.Length;
+        }
+        catch (RlpException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Decodes a record's <c>nfd</c> entry: <see langword="false"/> when the entry is absent (a peer
     /// that has not adopted EIP-7892 yet), and <c>null</c> when present but advertising

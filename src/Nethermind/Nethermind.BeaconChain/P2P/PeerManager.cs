@@ -636,6 +636,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         Metrics.BeaconChainPeersConnected++;
         Metrics.BeaconChainPeerCount = _peers.Count;
         if (_logger.IsInfo) _logger.Info($"Connected to beacon chain peer {address} ({info.Direction.ToString().ToLowerInvariant()}, head slot {peer.HeadSlot})");
+        await RefreshCustodyAsync(peer, token);
         return true;
     }
 
@@ -744,9 +745,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 return;
             }
 
-            await _p2p.PingAsync(peer.Session, token);
+            ulong metadataSeqNumber = await _p2p.PingAsync(peer.Session, token);
             peer.RecordMessageSent();
             peer.ConsecutiveFailures = 0;
+            if (peer.MetadataSeqNumber != metadataSeqNumber)
+            {
+                await RefreshCustodyAsync(peer, token);
+            }
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
@@ -756,6 +761,22 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             {
                 await DropAsync(peer, GoodbyeReason.Fault, "repeated failures", token);
             }
+        }
+    }
+
+    /// <summary>Reads the peer's custody group count from its <c>MetaData</c> v3 (fulu/p2p-interface.md); on failure the previous custody stands.</summary>
+    private async Task RefreshCustodyAsync(ManagedPeer peer, CancellationToken token)
+    {
+        try
+        {
+            MetaDataV3 metadata = await _p2p.RequestMetaDataAsync(peer.Session, token);
+            peer.RecordMessageSent();
+            peer.ApplyMetadata(metadata);
+        }
+        catch (Exception e)
+        {
+            // Swallowed even on cancellation: the peer is already admitted, and the caller's next request observes the token.
+            if (_logger.IsDebug) _logger.Debug($"Metadata request to beacon chain peer {peer.Id} failed: {e.Message}");
         }
     }
 
@@ -882,6 +903,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         private int _consecutiveFailures;
         private long _messagesSent;
         private long _failuresReported;
+        private volatile PeerColumnCustody _custody = CustodyOf(session, PeerColumnCustody.CustodyGroupCountOf(enr));
 
         public ISession Session { get; } = session;
         public StatusMessageV2? Status { get; set; }
@@ -911,6 +933,21 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         public string Id => address;
         public ulong HeadSlot => Status?.HeadSlot ?? 0;
 
+        /// <summary>Until <c>MetaData</c> answers, the ENR's <c>cgc</c> when this peer was discovered, else the <c>CUSTODY_REQUIREMENT</c> floor.</summary>
+        public PeerColumnCustody Custody => _custody;
+
+        /// <summary>The <c>seq_number</c> of the last <c>MetaData</c> applied; <c>null</c> before the first.</summary>
+        public ulong? MetadataSeqNumber { get; private set; }
+
+        public void ApplyMetadata(MetaDataV3 metadata)
+        {
+            MetadataSeqNumber = metadata.SeqNumber;
+            _custody = CustodyOf(Session, metadata.CustodyGroupCount);
+        }
+
+        private static PeerColumnCustody CustodyOf(ISession session, ulong? custodyGroupCount) =>
+            PeerColumnCustody.NodeIdOf(BeaconP2P.RemotePublicKeyOf(session)) is { } nodeId ? PeerColumnCustody.ForNode(nodeId, custodyGroupCount) : PeerColumnCustody.None;
+
         public void RecordMessageSent() => Interlocked.Increment(ref _messagesSent);
 
         public async Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token)
@@ -929,6 +966,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         {
             RecordMessageSent();
             return await p2p.RequestDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token);
+        }
+
+        public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
+        {
+            RecordMessageSent();
+            return await p2p.RequestDataColumnSidecarsByRootAsync(Session, identifiers, token);
         }
 
         public async Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token)

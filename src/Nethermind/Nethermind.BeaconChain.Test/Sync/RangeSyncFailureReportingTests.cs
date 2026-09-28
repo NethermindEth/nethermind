@@ -84,6 +84,11 @@ public class RangeSyncFailureReportingTests
         public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
             Task.FromResult<IReadOnlyList<DataColumnSidecar>>([]);
 
+        public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) =>
+            throw new NotSupportedException();
+
+        public PeerColumnCustody Custody => PeerColumnCustody.None;
+
         public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
             throw new NotSupportedException();
 

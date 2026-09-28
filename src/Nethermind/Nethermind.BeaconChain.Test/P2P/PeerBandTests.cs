@@ -735,7 +735,7 @@ public class PeerBandTests
         return new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
     }
 
-    private static void SetMatchingStatus(params Node[] nodes)
+    internal static void SetMatchingStatus(params Node[] nodes)
     {
         byte[] forkDigest = ForkDigest.Compute(Spec, Spec.GetEpoch(AnchorSlot));
         foreach (Node node in nodes)
@@ -752,7 +752,7 @@ public class PeerBandTests
         }
     }
 
-    private static string LoopbackAddress(BeaconP2P node)
+    internal static string LoopbackAddress(BeaconP2P node)
     {
         string address = node.ListenAddresses.First().ToString().Replace("0.0.0.0", "127.0.0.1");
         if (!address.Contains("/p2p/"))
@@ -763,17 +763,17 @@ public class PeerBandTests
         return address;
     }
 
-    private record Node(BeaconP2P P2P, BeaconChainStatusHolder StatusHolder, BeaconChainConfig Config);
+    internal record Node(BeaconP2P P2P, BeaconChainStatusHolder StatusHolder, BeaconChainConfig Config, BeaconChainStore Store, LocalMetadataSource Metadata);
 
     /// <param name="statusSource">What the node serves over <c>status</c>; defaults to its own settable holder.</param>
-    private static Node CreateNode(IBeaconChainStatusSource? statusSource = null)
+    internal static Node CreateNode(IBeaconChainStatusSource? statusSource = null)
     {
         BeaconChainConfig config = new() { P2PPort = 0 };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default);
         LocalMetadataSource metadataSource = new();
         BeaconP2P p2p = new(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
-        return new Node(p2p, statusHolder, config);
+        return new Node(p2p, statusHolder, config, store, metadataSource);
     }
 
     /// <summary>Answers every <c>status</c> request with an error chunk, so a status exchange with this

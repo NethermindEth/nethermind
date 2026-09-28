@@ -237,6 +237,9 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>The peer id the session's handshake actually established, as opposed to whatever the dial address claimed.</summary>
     public static PeerId? RemotePeerIdOf(ISession session) => (session as LocalPeer.Session)?.State.RemotePeerId;
 
+    /// <summary>The public key the session's handshake verified, from which the peer's discv5 node id derives.</summary>
+    internal static Nethermind.Libp2p.Core.Dto.PublicKey? RemotePublicKeyOf(ISession session) => (session as LocalPeer.Session)?.State.RemotePublicKey;
+
     /// <summary>Internal so a test can give one node a distinguishable agent string before it connects.</summary>
     internal IdentifyProtocolSettings IdentifySettingsForTest => _serviceProvider.GetRequiredService<IdentifyProtocolSettings>();
 
