@@ -12,10 +12,12 @@ using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
@@ -52,7 +54,8 @@ public sealed class BeaconSyncOrchestrator(
     PeerManager? peerManager = null,
     BeaconDiscovery? discovery = null,
     ColumnGossipRouter? columnRouter = null,
-    DataColumnSidecarPool? columnPool = null)
+    DataColumnSidecarPool? columnPool = null,
+    ExecutionPayloadEnvelopePool? envelopePool = null)
 {
     /// <summary>Maximum parent-chain depth fetched by root for a gossip block with an unknown parent.</summary>
     private const int MaxBackfillDepth = 32;
@@ -64,6 +67,20 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>Cap on blocks awaiting a data/engine-availability retry, so a stuck peer or a stalled EL cannot grow this without bound.</summary>
     private const int MaxPendingRetryBlocks = 128;
+
+    /// <summary>Epochs a block or envelope may wait in a retry set, so under stalled finality a stuck one does not keep its place.</summary>
+    private const ulong MaxPendingRetryAgeEpochs = 2;
+
+    /// <summary>Envelopes held per block root, first come, so forgeries naming one block cannot take every place.</summary>
+    private const int MaxPendingEnvelopesPerBlock = 4;
+
+    /// <summary>Cap on envelopes held for a block not imported yet, and separately on envelopes awaiting a data or engine retry.</summary>
+    private const int MaxPendingEnvelopes = 128;
+
+    /// <summary>Cap on imported Gloas blocks whose sampled columns are still recovered by root on each slot tick.</summary>
+    private const int MaxColumnRecoveryBlocks = 32;
+
+    private const int RecentEnvelopeRequestCapacity = 1024;
 
     private const int WorkQueueCapacity = 512;
 
@@ -89,10 +106,23 @@ public sealed class BeaconSyncOrchestrator(
     private readonly Dictionary<Hash256, List<ForkedSignedBeaconBlock>> _pendingByParent = [];
 
     /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.EngineUnavailable"/> or <see cref="BlockImportResult.ParentPayloadUnverified"/>, keyed by block root, awaiting a retry.</summary>
-    private readonly Dictionary<Hash256, ForkedSignedBeaconBlock> _pendingRetry = [];
+    private readonly Dictionary<Hash256, PendingRetry> _pendingRetry = [];
 
     /// <summary>The roots of the blocks in <see cref="_pendingByParent"/> held for a parent waiting on a payload.</summary>
     private readonly HashSet<Hash256> _heldForPayload = [];
+
+    /// <summary>Envelopes that answered <see cref="ExecutionPayloadEnvelopeImportResult.UnknownBlock"/>, held until the block they name imports.</summary>
+    /// <remarks>specs/gloas/p2p-interface.md <c>execution_payload</c>: an envelope for a block not yet seen MAY be queued until the block is retrieved.</remarks>
+    private readonly EnvelopeParking _pendingEnvelopesByBlock = new(MaxPendingEnvelopesPerBlock, MaxPendingEnvelopes);
+
+    /// <summary>Envelopes that answered <see cref="ExecutionPayloadEnvelopeImportResult.DataUnavailable"/> or <see cref="ExecutionPayloadEnvelopeImportResult.EngineUnavailable"/>, retried on each slot tick.</summary>
+    private readonly EnvelopeParking _pendingEnvelopeRetry = new(MaxPendingEnvelopesPerBlock, MaxPendingEnvelopes);
+
+    /// <summary>The slot each parent envelope was last requested by root, so a parked child asks at most once per slot.</summary>
+    private readonly LruCache<Hash256, ulong> _envelopeRequestedAtSlot = new(RecentEnvelopeRequestCapacity, "beacon sync envelope by-root requests");
+
+    /// <summary>Imported Gloas blocks whose bid commits blobs, by root, whose sampled columns are recovered by root until all are held.</summary>
+    private readonly Dictionary<Hash256, ColumnRecovery> _columnRecovery = [];
 
     private readonly ConcurrentDictionary<string, byte> _dialedPeerIds = new();
 
@@ -126,6 +156,16 @@ public sealed class BeaconSyncOrchestrator(
     internal sealed record GossipAttesterSlashingItem(AttesterSlashing Slashing) : WorkItem;
     internal sealed record GossipGloasAttesterSlashingItem(AttesterSlashingGloas Slashing) : WorkItem;
     internal sealed record SlotTickItem(ulong Slot) : WorkItem;
+
+    /// <summary>An execution payload envelope to import; <paramref name="Source"/> is the req/resp peer that served it, if any.</summary>
+    internal abstract record EnvelopeItem(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source) : WorkItem;
+    internal sealed record GossipEnvelopeItem(SignedExecutionPayloadEnvelope Envelope) : EnvelopeItem(Envelope, null);
+    internal sealed record RangeEnvelopeItem(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer Source) : EnvelopeItem(Envelope, Source);
+    internal sealed record FetchedEnvelopeItem(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source) : EnvelopeItem(Envelope, Source);
+
+    private readonly record struct PendingRetry(ForkedSignedBeaconBlock Block, ulong QueuedAtSlot);
+
+    private sealed record ColumnRecovery(ExecutionPayloadBid Bid, ulong QueuedAtSlot, ulong LastAttemptSlot);
 
     /// <summary>Whether gossip has started; settable by tests to keep it from starting.</summary>
     internal bool GossipStarted { get; set; }
@@ -332,6 +372,9 @@ public sealed class BeaconSyncOrchestrator(
             case SlotTickItem tick:
                 await ProcessSlotAsync(tick.Slot, token);
                 break;
+            case EnvelopeItem envelope:
+                await ImportEnvelopeItemAsync(envelope, token);
+                break;
         }
     }
 
@@ -339,7 +382,7 @@ public sealed class BeaconSyncOrchestrator(
     /// Imports one block and, on success, drains any gossip blocks that were waiting for it. The
     /// single choke point for all four callers of <see cref="IBlockImporter.Import"/> that can import, so this is
     /// also where a <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.ParentPayloadUnverified"/> or
-    /// <see cref="BlockImportResult.EngineUnavailable"/> result is remembered for a later retry —
+    /// <see cref="BlockImportResult.EngineUnavailable"/> result is remembered for a later retry -
     /// wiring it in at only one call site would leave the other three silently dropping it.
     /// </summary>
     internal async Task<BlockImportResult> ImportBlockAsync(ForkedSignedBeaconBlock block, CancellationToken token)
@@ -358,6 +401,12 @@ public sealed class BeaconSyncOrchestrator(
             Metrics.BeaconChainBlocksImported++;
             Metrics.BeaconChainLastBlockImportMs = Environment.TickCount64 - startMs;
             _pendingRetry.Remove(root);
+            // Before the held envelopes import, so one that waits only on these columns finds them held.
+            if (TrackColumnRecovery(root, block) is { } recovery)
+            {
+                await RecoverColumnsAsync(root, recovery, slotClock.CurrentSlot, token);
+            }
+
             await OnImportedAsync(root, block.Slot, token);
         }
         else if (result is BlockImportResult.DataUnavailable or BlockImportResult.EngineUnavailable or BlockImportResult.ParentPayloadUnverified)
@@ -365,6 +414,15 @@ public sealed class BeaconSyncOrchestrator(
             if (!QueuePendingRetry(root, block))
             {
                 DropPendingChildren(root);
+            }
+            // A child of a deferred parent waits on that parent's import, not on an envelope fork choice could record.
+            else if (result == BlockImportResult.ParentPayloadUnverified
+                && _importer!.IsKnown(block.ParentRoot)
+                && await RecoverParentEnvelopeAsync(block.ParentRoot, token)
+                && _importer!.IsKnown(root))
+            {
+                // The recovered envelope re-drove this block from the retry set, so the caller must see it imported.
+                return BlockImportResult.Imported;
             }
         }
         else
@@ -394,7 +452,7 @@ public sealed class BeaconSyncOrchestrator(
             return false;
         }
 
-        _pendingRetry[root] = block;
+        _pendingRetry[root] = new PendingRetry(block, slotClock.CurrentSlot);
         return true;
     }
 
@@ -430,8 +488,9 @@ public sealed class BeaconSyncOrchestrator(
     /// Retries every pending block once per slot tick, straight through <see cref="ImportBlockAsync"/>
     /// - never through <see cref="ProcessGossipBlockAsync"/>, whose seen-proposal gate would drop the
     /// retry as a repeat. A pending block whose slot has fallen behind the finalized checkpoint is
-    /// dropped instead of retried: that, together with <see cref="MaxPendingRetryBlocks"/>, is what
-    /// stops a stuck block from being retried forever.
+    /// dropped instead of retried, and so is one that has waited more than <see cref="MaxPendingRetryAgeEpochs"/>
+    /// since it was queued, which bounds a stuck block under stalled finality; with <see cref="MaxPendingRetryBlocks"/>,
+    /// that is what stops a stuck block from being retried forever.
     /// </summary>
     private async Task DrainPendingRetriesAsync(CancellationToken token)
     {
@@ -440,42 +499,201 @@ public sealed class BeaconSyncOrchestrator(
             return;
         }
 
-        ulong finalizedSlot = _lastHead is { } head ? BeaconStateAccessors.ComputeStartSlotAtEpoch(head.Finalized.Epoch) : 0;
-        List<KeyValuePair<Hash256, ForkedSignedBeaconBlock>> retries = [.. _pendingRetry];
-        foreach ((Hash256 root, ForkedSignedBeaconBlock block) in retries)
+        ulong finalizedSlot = FinalizedSlot;
+        ulong currentSlot = slotClock.CurrentSlot;
+        List<KeyValuePair<Hash256, PendingRetry>> retries = [.. _pendingRetry];
+        foreach ((Hash256 root, PendingRetry retry) in retries)
         {
-            if (block.Slot <= finalizedSlot)
+            if (retry.Block.Slot <= finalizedSlot || IsRetryExpired(retry.QueuedAtSlot, currentSlot))
             {
                 _pendingRetry.Remove(root);
                 DropPendingChildren(root);
                 continue;
             }
 
-            await ImportBlockAsync(block, token);
+            await ImportBlockAsync(retry.Block, token);
+        }
+    }
+
+    private ulong FinalizedSlot => _lastHead is { } head ? BeaconStateAccessors.ComputeStartSlotAtEpoch(head.Finalized.Epoch) : 0;
+
+    private bool IsRetryExpired(ulong queuedAtSlot, ulong currentSlot) => currentSlot > queuedAtSlot + MaxPendingRetryAgeEpochs * spec.SlotsPerEpoch;
+
+    /// <summary>Drops held envelopes at or below the finalized slot or past their age, then retries each envelope waiting on its data or the engine.</summary>
+    /// <remarks>An envelope's slot is its own unverified claim, so the per-root and total caps and the age bound are what bound a forged one.</remarks>
+    private async Task DrainPendingEnvelopesAsync(CancellationToken token)
+    {
+        ulong finalizedSlot = FinalizedSlot;
+        ulong currentSlot = slotClock.CurrentSlot;
+        bool Expired(ParkedEnvelope parked) => (parked.Envelope.Message!.Payload?.SlotNumber ?? 0) <= finalizedSlot || IsRetryExpired(parked.QueuedAtSlot, currentSlot);
+        _pendingEnvelopesByBlock.RemoveWhere(Expired);
+        _pendingEnvelopeRetry.RemoveWhere(Expired);
+
+        foreach (ParkedEnvelope parked in _pendingEnvelopeRetry.Snapshot())
+        {
+            ExecutionPayloadEnvelopeImportResult? result = await ImportEnvelopeAsync(parked.Envelope, token, parked.Source);
+            if (result is not (ExecutionPayloadEnvelopeImportResult.DataUnavailable or ExecutionPayloadEnvelopeImportResult.EngineUnavailable))
+            {
+                _pendingEnvelopeRetry.Remove(parked);
+            }
+        }
+    }
+
+    /// <summary>Queues an envelope that waits on its blob data or on the engine for a retry on the slot tick.</summary>
+    /// <param name="source">The req/resp peer that served the envelope, penalized if a retry finds it invalid.</param>
+    private Task OnEnvelopeDataUnavailableAsync(SignedExecutionPayloadEnvelope envelope, CancellationToken token, IBeaconSyncPeer? source = null)
+    {
+        _pendingEnvelopeRetry.Add(envelope.Message!.BeaconBlockRoot!, envelope, source, slotClock.CurrentSlot);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Remembers an imported Gloas block whose bid commits blobs, so <see cref="RecoverGloasColumnsAsync"/> fetches its missing sampled columns.</summary>
+    /// <returns>The new entry, or <c>null</c> when the block demands no columns or is tracked already.</returns>
+    private ColumnRecovery? TrackColumnRecovery(Hash256 root, ForkedSignedBeaconBlock block)
+    {
+        if (block is not ForkedSignedBeaconBlock.OfGloas { Block.Message.Body.SignedExecutionPayloadBid.Message: { BlobKzgCommitments.Length: > 0 } bid }
+            || _columnRecovery.ContainsKey(root))
+        {
+            return null;
+        }
+
+        if (_columnRecovery.Count >= MaxColumnRecoveryBlocks)
+        {
+            // The newest block is the one whose envelope is due next, so the oldest gives way.
+            Hash256? oldest = null;
+            ulong oldestSlot = ulong.MaxValue;
+            foreach ((Hash256 tracked, ColumnRecovery recovery) in _columnRecovery)
+            {
+                if (recovery.Bid.Slot < oldestSlot)
+                {
+                    oldest = tracked;
+                    oldestSlot = recovery.Bid.Slot;
+                }
+            }
+
+            _columnRecovery.Remove(oldest!);
+        }
+
+        ColumnRecovery added = new(bid, slotClock.CurrentSlot, LastAttemptSlot: ulong.MaxValue);
+        _columnRecovery[root] = added;
+        return added;
+    }
+
+    /// <summary>
+    /// Fetches by root, at most once per block per slot, the sampled columns still missing for each imported Gloas block that
+    /// commits blobs, until every one is held, the block falls to finality or it has waited past <see cref="MaxPendingRetryAgeEpochs"/>.
+    /// The first attempt is made when the block imports; the slot tick retries.
+    /// </summary>
+    /// <remarks>
+    /// Gossip candidates carry no source peer to bound, so a flood can take every candidate place of a column, or every
+    /// candidate can fail verification; the columns then arrive only by DataColumnSidecarsByRoot (gloas/p2p-interface.md).
+    /// </remarks>
+    private async Task RecoverGloasColumnsAsync(CancellationToken token)
+    {
+        if (_columnRecovery.Count == 0)
+        {
+            return;
+        }
+
+        ulong finalizedSlot = FinalizedSlot;
+        ulong currentSlot = slotClock.CurrentSlot;
+        List<KeyValuePair<Hash256, ColumnRecovery>> tracked = [.. _columnRecovery];
+        foreach ((Hash256 root, ColumnRecovery recovery) in tracked)
+        {
+            if (recovery.Bid.Slot <= finalizedSlot || IsRetryExpired(recovery.QueuedAtSlot, currentSlot))
+            {
+                _columnRecovery.Remove(root);
+                continue;
+            }
+
+            await RecoverColumnsAsync(root, recovery, currentSlot, token);
+        }
+    }
+
+    private async Task RecoverColumnsAsync(Hash256 root, ColumnRecovery recovery, ulong currentSlot, CancellationToken token)
+    {
+        if (recovery.LastAttemptSlot == currentSlot)
+        {
+            return;
+        }
+
+        _columnRecovery[root] = recovery with { LastAttemptSlot = currentSlot };
+        if (await rangeSync.FetchGloasColumnsByRootAsync(root, recovery.Bid, token))
+        {
+            _columnRecovery.Remove(root);
         }
     }
 
     /// <summary>
-    /// Imports an execution payload envelope and, once its payload is recorded, re-drives at once every
-    /// pending block that waits on it as its full parent: the next slot's block needs that payload within the slot.
+    /// Imports an execution payload envelope and acts on the verdict. Once its payload is recorded it is pooled for
+    /// ExecutionPayloadEnvelopesByRange and ByRoot, its (block root, builder index) is marked seen for gossip, and every
+    /// pending block that waits on it as its full parent is re-driven at once: the next slot's block needs that payload within the slot.
     /// </summary>
-    internal async Task<ExecutionPayloadEnvelopeImportResult> ImportEnvelopeAsync(SignedExecutionPayloadEnvelope envelope, CancellationToken token)
+    /// <remarks>
+    /// An envelope for a block not imported yet is held until that block imports, and one waiting on its data or the engine
+    /// is retried on the slot tick. An invalid envelope penalizes the req/resp peer that served it. A verdict this method does
+    /// not know is dropped, neither marked seen nor pooled, so a result added later fails closed.
+    /// </remarks>
+    /// <param name="source">The req/resp peer that served the envelope; <c>null</c> for gossip.</param>
+    /// <returns>The verdict, or <c>null</c> when the envelope carries no message or block root, or its import failed on a local fault, and it was dropped.</returns>
+    internal async Task<ExecutionPayloadEnvelopeImportResult?> ImportEnvelopeAsync(SignedExecutionPayloadEnvelope envelope, CancellationToken token, IBeaconSyncPeer? source = null)
     {
-        ExecutionPayloadEnvelopeImportResult result = _importer!.ImportEnvelope(envelope);
-        if (result is not (ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic))
+        if (envelope.Message is not { BeaconBlockRoot: not null } message)
         {
-            return result;
+            return null;
         }
 
+        ExecutionPayloadEnvelopeImportResult result;
+        try
+        {
+            result = _importer!.ImportEnvelope(envelope);
+        }
+        catch (Exception e)
+        {
+            // A local fault is not the sender's, and it must not stop the worker every other message goes through.
+            if (_logger.IsError) _logger.Error($"Dropping the execution payload envelope for beacon block {message.BeaconBlockRoot}: its import failed", e);
+            return null;
+        }
+
+        switch (result)
+        {
+            case ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic:
+                Hash256 blockRoot = message.BeaconBlockRoot!;
+                envelopePool?.Add(blockRoot, envelope);
+                gossipRouter.MarkEnvelopeSeen(blockRoot, message.BuilderIndex);
+                await OnPayloadRecordedAsync(blockRoot, token);
+                break;
+            case ExecutionPayloadEnvelopeImportResult.AlreadyKnown:
+                gossipRouter.MarkEnvelopeSeen(message.BeaconBlockRoot!, message.BuilderIndex);
+                break;
+            case ExecutionPayloadEnvelopeImportResult.UnknownBlock:
+                _pendingEnvelopesByBlock.Add(message.BeaconBlockRoot!, envelope, source, slotClock.CurrentSlot);
+                break;
+            case ExecutionPayloadEnvelopeImportResult.DataUnavailable or ExecutionPayloadEnvelopeImportResult.EngineUnavailable:
+                await OnEnvelopeDataUnavailableAsync(envelope, token, source);
+                break;
+            case ExecutionPayloadEnvelopeImportResult.Invalid:
+                source?.ReportFailure(PeerFailureReason.ProtocolViolation, $"Execution payload envelope for beacon block {message.BeaconBlockRoot} is invalid");
+                break;
+            default:
+                if (_logger.IsWarn) _logger.Warn($"Dropping the execution payload envelope for beacon block {message.BeaconBlockRoot}: unhandled import result {result}");
+                break;
+        }
+
+        return result;
+    }
+
+    /// <summary>Re-drives every block in the retry set that waits on the payload just recorded for <paramref name="blockRoot"/>.</summary>
+    private async Task OnPayloadRecordedAsync(Hash256 blockRoot, CancellationToken token)
+    {
         // The execution layer now holds the payload, and only forkchoiceUpdated makes it the head.
         _importedSinceHeadStep = true;
-        Hash256 blockRoot = envelope.Message!.BeaconBlockRoot!;
         List<ForkedSignedBeaconBlock>? children = null;
-        foreach (ForkedSignedBeaconBlock pending in _pendingRetry.Values)
+        foreach (PendingRetry pending in _pendingRetry.Values)
         {
-            if (pending.ParentRoot == blockRoot)
+            if (pending.Block.ParentRoot == blockRoot)
             {
-                (children ??= []).Add(pending);
+                (children ??= []).Add(pending.Block);
             }
         }
 
@@ -486,9 +704,97 @@ public sealed class BeaconSyncOrchestrator(
                 await ImportBlockAsync(child, token);
             }
         }
-
-        return result;
     }
+
+    private static bool IsPayloadRecorded(ExecutionPayloadEnvelopeImportResult? result) =>
+        result is ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic or ExecutionPayloadEnvelopeImportResult.AlreadyKnown;
+
+    /// <summary>Imports the envelopes held for <paramref name="blockRoot"/> in arrival order until one records its payload; the rest are dropped.</summary>
+    /// <returns>Whether an envelope recorded the payload or found it recorded already.</returns>
+    private async Task<bool> ImportHeldEnvelopesAsync(Hash256 blockRoot, CancellationToken token)
+    {
+        if (_pendingEnvelopesByBlock.Take(blockRoot) is not { } held)
+        {
+            return false;
+        }
+
+        foreach (ParkedEnvelope parked in held)
+        {
+            if (IsPayloadRecorded(await ImportEnvelopeAsync(parked.Envelope, token, parked.Source)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Recovers the envelope of <paramref name="parentRoot"/>, a block fork choice holds whose payload a parked full child needs:
+    /// from the envelopes held for it, else by ExecutionPayloadEnvelopesByRoot from up to <see cref="MaxBackfillPeersPerRequest"/>
+    /// peers, at most once per root per slot. Each envelope found is imported as a <see cref="FetchedEnvelopeItem"/>, which
+    /// re-drives the parked children.
+    /// </summary>
+    /// <remarks>
+    /// gloas/fork-choice.md <c>get_forkchoice_store</c> starts with <c>payloads = {}</c>, so the anchor's payload is recovered this
+    /// way too when its first child builds on it. An envelope for a root other than the one asked for penalizes its peer.
+    /// </remarks>
+    /// <returns>Whether an envelope recorded the payload or found it recorded already.</returns>
+    private async Task<bool> RecoverParentEnvelopeAsync(Hash256 parentRoot, CancellationToken token)
+    {
+        if (await ImportHeldEnvelopesAsync(parentRoot, token))
+        {
+            return true;
+        }
+
+        // The held envelope waits on its data or the engine, which another copy would not change.
+        if (_pendingEnvelopeRetry.Contains(parentRoot))
+        {
+            return false;
+        }
+
+        ulong currentSlot = slotClock.CurrentSlot;
+        if (_envelopeRequestedAtSlot.TryGet(parentRoot, out ulong requestedAt) && requestedAt == currentSlot)
+        {
+            return false;
+        }
+
+        _envelopeRequestedAtSlot.Set(parentRoot, currentSlot);
+        IReadOnlyList<IBeaconSyncPeer> peers = peerPool.GetBestPeers(0);
+        for (int i = 0; i < peers.Count && i < MaxBackfillPeersPerRequest; i++)
+        {
+            IBeaconSyncPeer peer = peers[i];
+            IReadOnlyList<SignedExecutionPayloadEnvelope> envelopes;
+            try
+            {
+                envelopes = await peer.RequestExecutionPayloadEnvelopesByRootAsync([parentRoot], token);
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+                peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Execution-payload-envelopes-by-root for {parentRoot} failed: {e.Message}");
+                continue;
+            }
+
+            foreach (SignedExecutionPayloadEnvelope envelope in envelopes)
+            {
+                if (envelope.Message?.BeaconBlockRoot != parentRoot)
+                {
+                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Execution-payload-envelopes-by-root for {parentRoot} returned an envelope for another block");
+                    continue;
+                }
+
+                if (IsPayloadRecorded(await ImportEnvelopeItemAsync(new FetchedEnvelopeItem(envelope, peer), token)))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private Task<ExecutionPayloadEnvelopeImportResult?> ImportEnvelopeItemAsync(EnvelopeItem item, CancellationToken token) =>
+        ImportEnvelopeAsync(item.Envelope, token, item.Source);
 
     private async Task OnImportedAsync(Hash256 root, ulong slot, CancellationToken token)
     {
@@ -500,6 +806,8 @@ public sealed class BeaconSyncOrchestrator(
         _importedSinceHeadStep = true;
         LogSyncProgress(slot);
 
+        // Before the held children, so a full child finds its parent's payload recorded instead of asking a peer for it.
+        await ImportHeldEnvelopesAsync(root, token);
         if (_pendingByParent.Remove(root, out List<ForkedSignedBeaconBlock>? children))
         {
             _pendingCount -= children.Count;
@@ -603,7 +911,7 @@ public sealed class BeaconSyncOrchestrator(
     /// </summary>
     private bool IsWaitingForPayload(Hash256 blockRoot) =>
         // A Gloas block is only ever retried for its parent's payload.
-        (_pendingRetry.TryGetValue(blockRoot, out ForkedSignedBeaconBlock? parked) && parked is ForkedSignedBeaconBlock.OfGloas)
+        (_pendingRetry.TryGetValue(blockRoot, out PendingRetry parked) && parked.Block is ForkedSignedBeaconBlock.OfGloas)
         || _heldForPayload.Contains(blockRoot);
 
     /// <summary>Holds <paramref name="block"/> until its parent, found by <see cref="IsWaitingForPayload"/>, imports.</summary>
@@ -807,6 +1115,8 @@ public sealed class BeaconSyncOrchestrator(
         _importer!.OnSlotTick(slot);
         await RunHeadStepAsync(token);
         await DrainPendingRetriesAsync(token);
+        await RecoverGloasColumnsAsync(token);
+        await DrainPendingEnvelopesAsync(token);
 
         ulong epoch = spec.GetEpoch(slot);
         if (_nextRotation is { } rotation && epoch >= rotation.Epoch)
@@ -838,6 +1148,7 @@ public sealed class BeaconSyncOrchestrator(
         gossipRouter.GloasAggregateAndProofReceived += aggregate => _work.Writer.TryWrite(new GossipGloasAggregateItem(aggregate));
         gossipRouter.AttesterSlashingReceived += slashing => _work.Writer.TryWrite(new GossipAttesterSlashingItem(slashing));
         gossipRouter.GloasAttesterSlashingReceived += slashing => _work.Writer.TryWrite(new GossipGloasAttesterSlashingItem(slashing));
+        gossipRouter.ExecutionPayloadEnvelopeReceived += envelope => _work.Writer.TryWrite(new GossipEnvelopeItem(envelope));
     }
 
     private void StartGossip() => StartGossip(p2p!.GetTopic);
@@ -950,7 +1261,14 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
+
     /// <summary>Runs one range-sync round from the sync tip into the work channel.</summary>
+    /// <remarks>
+    /// A Gloas block carries only a bid, so consecutive Gloas blocks are buffered and their envelopes fetched with one
+    /// ExecutionPayloadEnvelopesByRange request per run (gloas/p2p-interface.md); a run is written out at
+    /// <see cref="RangeSync.DefaultBatchSize"/> blocks, before it would span more than <c>MAX_REQUEST_PAYLOADS</c> slots,
+    /// at a pre-Gloas block, and at the end of the round.
+    /// </remarks>
     internal async Task FeedRangeSyncRoundAsync(CancellationToken token)
     {
         Tip tip = _syncTip;
@@ -959,10 +1277,135 @@ public sealed class BeaconSyncOrchestrator(
             return;
         }
 
+        List<ForkedSignedBeaconBlock.OfGloas> gloasRun = [];
         await foreach (ForkedSignedBeaconBlock block in rangeSync.Run(tip.Root, tip.Slot, () => slotClock.CurrentSlot, token))
         {
-            await _work.Writer.WriteAsync(new RangeBlockItem(block), token);
+            if (block is not ForkedSignedBeaconBlock.OfGloas gloas)
+            {
+                await WriteGloasRunAsync(gloasRun, token);
+                await _work.Writer.WriteAsync(new RangeBlockItem(block), token);
+                continue;
+            }
+
+            if (gloasRun.Count > 0 && gloas.Slot - gloasRun[0].Slot >= ExecutionPayloadEnvelopesProtocolBase.MaxRequestPayloads)
+            {
+                await WriteGloasRunAsync(gloasRun, token);
+            }
+
+            gloasRun.Add(gloas);
+            if ((ulong)gloasRun.Count >= RangeSync.DefaultBatchSize)
+            {
+                await WriteGloasRunAsync(gloasRun, token);
+            }
         }
+
+        await WriteGloasRunAsync(gloasRun, token);
+    }
+
+    /// <summary>Writes each block of <paramref name="run"/> in order, each followed by its envelope when the chain carries that payload, then clears the run.</summary>
+    /// <remarks>
+    /// A block's payload is on the chain when the next block's bid builds on it (<c>bid.parent_block_hash</c> equals its
+    /// <c>bid.block_hash</c>); the last block's envelope is written when a peer served it. A missing envelope a full child
+    /// needs is recovered by root once that child is parked.
+    /// </remarks>
+    private async Task WriteGloasRunAsync(List<ForkedSignedBeaconBlock.OfGloas> run, CancellationToken token)
+    {
+        if (run.Count == 0)
+        {
+            return;
+        }
+
+        (SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer Source)?[] envelopes = await FetchRunEnvelopesAsync(run, token);
+        for (int i = 0; i < run.Count; i++)
+        {
+            await _work.Writer.WriteAsync(new RangeBlockItem(run[i]), token);
+            if (envelopes[i] is { } served && (i == run.Count - 1 || IsPayloadOnChain(run[i], run[i + 1])))
+            {
+                await _work.Writer.WriteAsync(new RangeEnvelopeItem(served.Envelope, served.Source), token);
+            }
+        }
+
+        run.Clear();
+    }
+
+    private static ExecutionPayloadBid BidOf(ForkedSignedBeaconBlock.OfGloas block) => block.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
+
+    private static bool IsPayloadOnChain(ForkedSignedBeaconBlock.OfGloas block, ForkedSignedBeaconBlock.OfGloas child) =>
+        BidOf(child).ParentBlockHash == BidOf(block).BlockHash;
+
+    /// <summary>
+    /// Requests the envelopes of <paramref name="run"/> by range from up to <see cref="MaxBackfillPeersPerRequest"/> peers, until
+    /// every block whose payload the chain carries has one; each envelope must name a block of the run and match its slot and bid.
+    /// </summary>
+    /// <returns>The first matching envelope for each block of <paramref name="run"/>, with the peer that served it, by index.</returns>
+    private async Task<(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer Source)?[]> FetchRunEnvelopesAsync(List<ForkedSignedBeaconBlock.OfGloas> run, CancellationToken token)
+    {
+        (SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer Source)?[] found = new (SignedExecutionPayloadEnvelope, IBeaconSyncPeer)?[run.Count];
+        Dictionary<Hash256, int> indexByRoot = new(run.Count);
+        for (int i = 0; i < run.Count; i++)
+        {
+            indexByRoot[run[i].ComputeMessageRoot()] = i;
+        }
+
+        ulong startSlot = run[0].Slot;
+        ulong count = run[^1].Slot - startSlot + 1;
+        IReadOnlyList<IBeaconSyncPeer> peers = peerPool.GetBestPeers(run[^1].Slot);
+        for (int p = 0; p < peers.Count && p < MaxBackfillPeersPerRequest; p++)
+        {
+            IBeaconSyncPeer peer = peers[p];
+            IReadOnlyList<SignedExecutionPayloadEnvelope> envelopes;
+            try
+            {
+                envelopes = await peer.RequestExecutionPayloadEnvelopesByRangeAsync(startSlot, count, token);
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+                peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Execution-payload-envelopes-by-range from slot {startSlot} failed: {e.Message}");
+                continue;
+            }
+
+            foreach (SignedExecutionPayloadEnvelope envelope in envelopes)
+            {
+                if (envelope.Message is not { BeaconBlockRoot: { } root } message
+                    || !indexByRoot.TryGetValue(root, out int index)
+                    || !MatchesBid(message, run[index]))
+                {
+                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Execution-payload-envelopes-by-range from slot {startSlot} returned an envelope for no block of the range");
+                    continue;
+                }
+
+                found[index] ??= (envelope, peer);
+            }
+
+            if (HasEveryOnChainEnvelope(run, found))
+            {
+                break;
+            }
+        }
+
+        return found;
+    }
+
+    private static bool MatchesBid(ExecutionPayloadEnvelope message, ForkedSignedBeaconBlock.OfGloas block)
+    {
+        ExecutionPayloadBid bid = BidOf(block);
+        return message.Payload is { } payload
+            && payload.SlotNumber == block.Slot
+            && message.BuilderIndex == bid.BuilderIndex
+            && payload.BlockHash == bid.BlockHash;
+    }
+
+    private static bool HasEveryOnChainEnvelope(List<ForkedSignedBeaconBlock.OfGloas> run, (SignedExecutionPayloadEnvelope, IBeaconSyncPeer)?[] found)
+    {
+        for (int i = 0; i < run.Count - 1; i++)
+        {
+            if (found[i] is null && IsPayloadOnChain(run[i], run[i + 1]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Dials discovered candidates (bounded concurrency) until the target peer count is reached, then idles.</summary>
@@ -1034,5 +1477,95 @@ public sealed class BeaconSyncOrchestrator(
         _progressLogSlot = slot;
         _progressLogMs = now;
         _blocksSinceProgressLog = 0;
+    }
+
+    private sealed record ParkedEnvelope(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source, ulong QueuedAtSlot);
+
+    /// <summary>Envelopes held by the block root they name, first come: at most <paramref name="perBlock"/> for one root and <paramref name="total"/> in all.</summary>
+    /// <remarks>An envelope already held is not held again, so a retry keeps the slot it was first queued at. Worker-only, not thread-safe.</remarks>
+    private sealed class EnvelopeParking(int perBlock, int total)
+    {
+        private readonly Dictionary<Hash256, List<ParkedEnvelope>> _byBlock = [];
+        private int _count;
+
+        public bool Contains(Hash256 blockRoot) => _byBlock.ContainsKey(blockRoot);
+
+        /// <returns>Whether the envelope is held.</returns>
+        public bool Add(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope, IBeaconSyncPeer? source, ulong queuedAtSlot)
+        {
+            if (!_byBlock.TryGetValue(blockRoot, out List<ParkedEnvelope>? held))
+            {
+                if (_count >= total)
+                {
+                    return false;
+                }
+
+                _byBlock[blockRoot] = held = [];
+            }
+
+            foreach (ParkedEnvelope parked in held)
+            {
+                if (ReferenceEquals(parked.Envelope, envelope))
+                {
+                    return true;
+                }
+            }
+
+            if (held.Count >= perBlock || _count >= total)
+            {
+                return false;
+            }
+
+            held.Add(new ParkedEnvelope(envelope, source, queuedAtSlot));
+            _count++;
+            return true;
+        }
+
+        /// <summary>Removes and returns the envelopes held for <paramref name="blockRoot"/> in arrival order.</summary>
+        public List<ParkedEnvelope>? Take(Hash256 blockRoot)
+        {
+            if (!_byBlock.Remove(blockRoot, out List<ParkedEnvelope>? held))
+            {
+                return null;
+            }
+
+            _count -= held.Count;
+            return held;
+        }
+
+        public void Remove(ParkedEnvelope parked)
+        {
+            Hash256 blockRoot = parked.Envelope.Message!.BeaconBlockRoot!;
+            if (_byBlock.TryGetValue(blockRoot, out List<ParkedEnvelope>? held) && held.Remove(parked))
+            {
+                _count--;
+                if (held.Count == 0)
+                {
+                    _byBlock.Remove(blockRoot);
+                }
+            }
+        }
+
+        public void RemoveWhere(Func<ParkedEnvelope, bool> predicate)
+        {
+            foreach (ParkedEnvelope parked in Snapshot())
+            {
+                if (predicate(parked))
+                {
+                    Remove(parked);
+                }
+            }
+        }
+
+        public List<ParkedEnvelope> Snapshot()
+        {
+            List<ParkedEnvelope> all = new(_count);
+            foreach (List<ParkedEnvelope> held in _byBlock.Values)
+            {
+                all.AddRange(held);
+            }
+
+            return all;
+        }
     }
 }
