@@ -29,7 +29,7 @@ public class KzgPolynomialCommitmentsTests
     [Test]
     public void Setup_read_before_initialization_throws() => WithFreshSetupState(kzg =>
         Assert.That(() => ReadSetup(kzg), Throws.InstanceOf<TargetInvocationException>()
-            .With.InnerException.TypeOf<InvalidOperationException>()));
+            .With.InnerException.Matches<Exception>(IsSetupUnavailable)));
 
     [Test]
     public void Failed_load_is_not_reported_as_an_invalid_proof() => WithFreshSetupState(kzg =>
@@ -41,7 +41,7 @@ public class KzgPolynomialCommitmentsTests
 
         Assert.That(() => verify(new byte[Ckzg.BytesPerCommitment], new byte[Ckzg.BytesPerFieldElement],
                 new byte[Ckzg.BytesPerFieldElement], new byte[Ckzg.BytesPerProof]),
-            Throws.InvalidOperationException.With.InnerException.TypeOf<ArgumentException>());
+            Throws.Exception.Matches<Exception>(IsSetupUnavailable).With.InnerException.TypeOf<ArgumentException>());
     });
 
     /// <remarks>
@@ -61,6 +61,10 @@ public class KzgPolynomialCommitmentsTests
             context.Unload();
         }
     }
+
+    // The isolated context has its own copy of the exception type, so it is matched by name.
+    private static bool IsSetupUnavailable(Exception exception) =>
+        exception.GetType().FullName == typeof(KzgSetupUnavailableException).FullName;
 
     private static Task StartLoad(Type kzg, string? setupFilePath) =>
         (Task)kzg.GetMethod(nameof(KzgPolynomialCommitments.InitializeAsync))!.Invoke(null, [default(ILogger), setupFilePath])!;

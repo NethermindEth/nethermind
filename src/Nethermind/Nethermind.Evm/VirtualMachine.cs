@@ -10,6 +10,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
@@ -1165,7 +1166,7 @@ public partial class VirtualMachine<TGasPolicy>(
             Environment.Exit(ExitCodes.MissingPrecompile);
             throw; // Unreachable
         }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is not KzgSetupUnavailableException)
         {
             if (_logger.IsError) LogExecutionException(precompile, exception);
             output = default;
@@ -1353,7 +1354,7 @@ public partial class VirtualMachine<TGasPolicy>(
             Environment.Exit(ExitCodes.MissingPrecompile);
             throw; // Unreachable
         }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is not KzgSetupUnavailableException)
         {
             if (_logger.IsError) LogExecutionException(precompile, exception);
             return new(default, precompileSuccess: false, shouldRevert: true);
