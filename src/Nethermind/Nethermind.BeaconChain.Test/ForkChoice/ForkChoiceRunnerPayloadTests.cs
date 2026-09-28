@@ -119,9 +119,9 @@ public class ForkChoiceRunnerPayloadTests
     }
 
     /// <summary>
-    /// The bid parent hashes are pruned with the blocks they describe: a finalized chain long enough for the
+    /// The bid parent hashes and PTC votes are pruned with the blocks they describe: a finalized chain long enough for the
     /// proto-array to prune (<see cref="ProtoArrayForkChoice.DefaultPruneThreshold"/> nodes) must not keep
-    /// answering for blocks fork choice dropped, or the map grows for the life of the node.
+    /// answering for blocks fork choice dropped, or the maps grow for the life of the node.
     /// </summary>
     [Test]
     public void Prune_drops_the_bid_parent_hash_of_every_pruned_block()
@@ -162,6 +162,8 @@ public class ForkChoiceRunnerPayloadTests
             Assert.That(runner.ContainsBlock(chain.First.Root), Is.False, "fixture bug: the proto-array must have pruned");
             Assert.That(runner.GetParentBlockHash(chain.First.Root), Is.Null);
             Assert.That(runner.GetParentBlockHash(parentRoot), Is.Not.Null, "the unpruned tip keeps its record");
+            Assert.That(runner.GetPtcVotes(chain.First.Root), Is.Null);
+            Assert.That(runner.GetPtcVotes(parentRoot), Is.Not.Null, "the unpruned tip keeps its PTC votes");
         }
     }
 
@@ -214,6 +216,59 @@ public class ForkChoiceRunnerPayloadTests
 
         Assert.That(attest, vote.Refusal is null ? Throws.Nothing : Throws.TypeOf<ForkChoiceException>().With.Message.Contains(vote.Refusal));
         Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(vote.Refusal is null ? CommitteeSize * EffectiveBalance : 0));
+    }
+
+    /// <summary>
+    /// specs/gloas/fork-choice.md <c>validate_on_attestation</c>: an index-1 vote needs <c>is_payload_verified</c>, which is
+    /// <c>root in store.payloads</c>. A pre-Gloas block has no envelope and never enters it, so a Gloas-slot index-1 vote for the
+    /// last Fulu block is refused, from gossip and from a block, while its index-0 vote counts.
+    /// </summary>
+    [Test]
+    public void Index_one_vote_for_a_pre_gloas_block_is_refused([Values(0ul, 1ul)] ulong index, [Values] bool isFromBlock)
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        ForkChoiceRunner runner = chain.CreateRunner();
+        TickToSlot(runner, BoundarySlot + 2);
+        AttestationData data = new()
+        {
+            Slot = BoundarySlot + 1,
+            Index = index,
+            BeaconBlockRoot = chain.AnchorRoot,
+            Source = new Checkpoint { Epoch = 0, Root = chain.AnchorRoot },
+            Target = new Checkpoint { Epoch = ForkCrossingChain.ForkEpoch, Root = chain.AnchorRoot },
+        };
+        AttestationGloas attestation = CommitteeAttestation(
+            chain.First.PostState, data, new EpochCache().GetCommitteeCache(chain.First.PostState, ForkCrossingChain.ForkEpoch), 0, sign: false);
+
+        Assert.That(() => runner.OnAttestation(attestation, isFromBlock, verifySignature: false),
+            index == 1 ? Throws.TypeOf<ForkChoiceException>().With.Message.Contains("which is not verified") : Throws.Nothing);
+    }
+
+    /// <summary>
+    /// specs/gloas/validator.md sets <c>data.index</c> to 1 only for a FULL head. The head of a store whose tip is the last Fulu
+    /// block is its EMPTY node, so the vote an attester derives from it is one <c>validate_on_attestation</c> counts.
+    /// </summary>
+    [Test]
+    public void A_vote_derived_from_a_pre_gloas_head_is_accepted()
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        ForkChoiceRunner runner = chain.CreateRunner();
+        TickToSlot(runner, BoundarySlot + 1);
+        ForkChoiceNode head = runner.GetHeadNode();
+        Assert.That(head.Root, Is.EqualTo(chain.AnchorRoot), "fixture bug");
+
+        AttestationData data = new()
+        {
+            Slot = BoundarySlot + 1,
+            Index = head.PayloadStatus == ForkChoicePayloadStatus.Full ? 1ul : 0ul,
+            BeaconBlockRoot = head.Root,
+            Source = new Checkpoint { Epoch = 0, Root = chain.AnchorRoot },
+            Target = new Checkpoint { Epoch = ForkCrossingChain.ForkEpoch, Root = chain.AnchorRoot },
+        };
+        AttestationGloas attestation = CommitteeAttestation(
+            chain.First.PostState, data, new EpochCache().GetCommitteeCache(chain.First.PostState, ForkCrossingChain.ForkEpoch), 0, sign: false);
+
+        Assert.That(() => runner.OnAttestation(attestation, isFromBlock: true, verifySignature: false), Throws.Nothing);
     }
 
     private static ExecutionPayloadBid BidOf(SignedBeaconBlockGloas block) => block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
