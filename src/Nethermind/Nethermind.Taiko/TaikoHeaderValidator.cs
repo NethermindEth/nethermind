@@ -291,7 +291,7 @@ public class TaikoHeaderValidator(
         return base.ValidateRequestsHash(header, spec, ref error);
     }
 
-    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+    protected override bool ValidateBlobGasFields(BlockHeader header, IReleaseSpec spec, ref string? error)
     {
         ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)spec;
 
@@ -321,6 +321,9 @@ public class TaikoHeaderValidator(
             return true;
         }
 
-        return base.ValidateBlobGasFields(header, parent, spec, ref error);
+        return base.ValidateBlobGasFields(header, spec, ref error);
     }
+
+    protected override bool ValidateExcessBlobGas(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) =>
+        ((ITaikoReleaseSpec)spec).IsUnzenEnabled || base.ValidateExcessBlobGas(header, parent, spec, ref error);
 }
