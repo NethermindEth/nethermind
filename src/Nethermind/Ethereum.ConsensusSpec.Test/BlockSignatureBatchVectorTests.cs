@@ -5,18 +5,17 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Ethereum.ConsensusSpec.Test;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
-using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransition;
 
-namespace Nethermind.BeaconChain.Test.StateTransition;
+namespace Ethereum.ConsensusSpec.Test;
 
 /// <summary>
 /// Differential of the batched block signature path against the serial one it replaced, over the
@@ -319,5 +318,11 @@ public class BlockSignatureBatchVectorTests
                 }
             }
         }
+    }
+
+    private sealed class AcceptingNotifier : INewPayloadNotifier
+    {
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
+        public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) => ExecutionStatus.Valid;
     }
 }
