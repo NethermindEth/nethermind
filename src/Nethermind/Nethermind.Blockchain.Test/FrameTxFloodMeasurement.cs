@@ -776,6 +776,7 @@ public class FrameTxFloodMeasurement
         measureAtRate(rates[0]);
 
         double w0 = Percentile(baseline, 0.50);
+        double w0p95 = Percentile(baseline, 0.95);
         double w0p99 = Percentile(baseline, 0.99);
 
         double lastSustained = 0;
@@ -824,6 +825,11 @@ public class FrameTxFloodMeasurement
                     // published capacity figure rests on `sustained`'s current meaning.
                     bool sustainedNoBacklog = sustained && pendingPoolStable;
                     double w = Percentile(outcome.ProcessMicros, 0.50);
+                    double wp95 = Percentile(outcome.ProcessMicros, 0.95);
+                    double wp99 = Percentile(outcome.ProcessMicros, 0.99);
+                    // Both windows span MeasureWindow, as in the matched comparison, so the pass-count ratio is
+                    // the victim throughput the flood left: a short pass's median can stay flat while this falls.
+                    double victimThroughputRatio = baseline.Count > 0 ? (double)outcome.ProcessMicros.Count / baseline.Count : 0;
 
                     rowLines.Add(($"case={rateCase} shape={shape} ceiling={ceiling} shedding={(_shedding ? "on" : "off")} "
                          + $"{extraFields}cpus={ObservedCpuSet()} single_core={(IsSingleCore() ? "yes" : "no")} offered_rate={rate} "
@@ -836,7 +842,11 @@ public class FrameTxFloodMeasurement
                          + $"submitted={outcome.Submitted} rejected={outcome.Rejected} shed={outcome.Shed} "
                          + $"shed_pct={ShedPct(outcome):F1} "
                          + $"pending_pool_growth={outcome.PendingPoolGrowth} "
-                         + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1}", "unknown"));
+                         + $"W0_p50_us={w0:F1} W_p50_us={w:F1} delta_p50_us={w - w0:F1} "
+                         + $"W0_p95_us={w0p95:F1} W_p95_us={wp95:F1} delta_p95_us={wp95 - w0p95:F1} "
+                         + $"W0_p99_us={w0p99:F1} W_p99_us={wp99:F1} delta_p99_us={wp99 - w0p99:F1} "
+                         + $"baseline_passes={baseline.Count} flood_passes={outcome.ProcessMicros.Count} "
+                         + $"victim_throughput_ratio={victimThroughputRatio:F3}", "unknown"));
 
                     Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
                         $"at {rate} tx/s {outcome.Rejected} of {outcome.Submitted} submissions were simulated and "
