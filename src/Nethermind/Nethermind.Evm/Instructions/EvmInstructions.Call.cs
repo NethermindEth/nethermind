@@ -210,8 +210,9 @@ public static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth ||
             (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < callValue))
         {
+            EvmExceptionType precheckError = env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
             if (vm.IsTracingActions)
-                TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile);
+                TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, precheckError);
 
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = default;
@@ -220,7 +221,7 @@ public static partial class EvmInstructions
             if (TTracingInst.IsActive)
             {
                 vm.TraceCallOutputWindow(in outputOffset, in outputLength);
-                vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas), EvmExceptionType.NotEnoughBalance);
+                vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas), precheckError);
             }
 
             // Refund the remaining gas to the caller.
@@ -290,14 +291,14 @@ public static partial class EvmInstructions
         Address codeSource,
         in UInt256 callValue,
         ulong gas,
-        bool isPrecompile)
+        bool isPrecompile,
+        EvmExceptionType error)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
     {
         ExecutionEnvironment env = vm.VmState.Env;
         // The call already paid to expand memory over its input.
         vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> input);
-        EvmExceptionType error = env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
         vm.TxTracer.ReportRejectedAction(gas, gas, callValue, env.ExecutingAccount, codeSource, input, TOpCall.ExecutionType, error, isPrecompile);
     }
 

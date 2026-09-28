@@ -323,7 +323,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (!_streamVmTrace) { base.ReportOperationError(error); return; }
 
-        if (error == EvmExceptionType.NotEnoughBalance || !_hasPendingOp) return;
+        if (error is EvmExceptionType.NotEnoughBalance or EvmExceptionType.CallDepthExceeded || !_hasPendingOp) return;
 
         if (IsRejectedBeforeExecution(_pendingOpcode, error))
         {
