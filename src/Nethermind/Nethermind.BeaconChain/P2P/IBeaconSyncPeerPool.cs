@@ -42,6 +42,12 @@ public interface IBeaconSyncPeer
     /// <summary>Fulu-shaped sidecars; the window must lie wholly before the Gloas fork.</summary>
     Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token);
 
+    /// <summary>Fulu-shaped sidecars for the given block roots and columns.</summary>
+    Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token);
+
+    /// <summary>The columns this peer custodies; it is never asked for another (fulu/p2p-interface.md).</summary>
+    PeerColumnCustody Custody { get; }
+
     /// <summary>Gloas-shaped sidecars; the window must lie wholly in Gloas epochs.</summary>
     Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token);
 

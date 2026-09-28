@@ -200,8 +200,19 @@ public partial class RangeSyncTests
         Func<ulong, ulong, ForkedSignedBeaconBlock[]> handler,
         Func<ulong, ulong, ulong[], DataColumnSidecar[]>? columnHandler = null,
         Func<ulong, ulong, ulong[], DataColumnSidecarGloas[]>? gloasColumnHandler = null,
-        Func<DataColumnsByRootIdentifier[], DataColumnSidecarGloas[]>? gloasRootHandler = null) : IBeaconSyncPeer
+        Func<DataColumnsByRootIdentifier[], DataColumnSidecarGloas[]>? gloasRootHandler = null,
+        PeerColumnCustody? custody = null,
+        Func<DataColumnsByRootIdentifier[], DataColumnSidecar[]>? rootHandler = null) : IBeaconSyncPeer
     {
+        /// <summary>Every column, as a supernode would custody, unless the test narrows it.</summary>
+        public PeerColumnCustody Custody { get; } = custody ?? AllColumns;
+
+        internal static PeerColumnCustody AllColumns { get; } = new(Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c), isAdvertised: true);
+
+        /// <summary>The columns of every by-range and by-root column request, in order.</summary>
+        public List<ulong[]> RequestedColumns { get; } = [];
+        public int RootColumnRequests { get; private set; }
+
         public List<PeerFailureReason> Reports { get; } = [];
         public int Failures => Reports.Count;
         public int Requests { get; private set; }
@@ -222,7 +233,19 @@ public partial class RangeSyncTests
         public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
         {
             ColumnRequests++;
+            RequestedColumns.Add(columns);
             return Task.FromResult<IReadOnlyList<DataColumnSidecar>>(columnHandler?.Invoke(startSlot, count, columns) ?? []);
+        }
+
+        public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
+        {
+            RootColumnRequests++;
+            foreach (DataColumnsByRootIdentifier identifier in identifiers)
+            {
+                RequestedColumns.Add(identifier.Columns!);
+            }
+
+            return Task.FromResult<IReadOnlyList<DataColumnSidecar>>(rootHandler?.Invoke(identifiers) ?? []);
         }
 
         public Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
