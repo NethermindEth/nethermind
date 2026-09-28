@@ -169,7 +169,7 @@ public class PbtRocksDbPersistence(
     /// <remarks>
     /// Omission changes a group's bytes but not its hash, and the node-group caches key on the hash, so a database mixing
     /// layouts can serve a group whose size no longer matches the one its ancestors recorded. Databases stamped before
-    /// the omission became pinned carry no stamp and use the default <see cref="PbtPrefixlessBranchOmission.OddLevels"/>.
+    /// the omission became pinned carry no stamp and use the former default <see cref="PbtPrefixlessBranchOmission.OddLevels"/>.
     /// </remarks>
     private static void ValidateOmission(byte[]? value, PbtPrefixlessBranchOmission configured)
     {

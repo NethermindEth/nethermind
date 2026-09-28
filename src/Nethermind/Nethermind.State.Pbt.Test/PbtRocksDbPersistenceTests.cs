@@ -68,6 +68,7 @@ public class PbtRocksDbPersistenceTests
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         metadata[SchemaEpochKey] = Epoch(20);
         if (stamp is not null) metadata[NodeGroupKeyLayoutKey] = stamp;
+        metadata[PrefixlessBranchOmissionKey] = [(byte)PbtPrefixlessBranchOmission.Interior];
 
         using (Assert.EnterMultipleScope())
         {
@@ -871,6 +872,7 @@ public class PbtRocksDbPersistenceTests
         {
             db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(20));
             db.GetColumnDb(PbtColumns.Metadata).Set(NodeGroupKeyLayoutKey, [(byte)config.NodeGroupKeyLayout]);
+            db.GetColumnDb(PbtColumns.Metadata).Set(PrefixlessBranchOmissionKey, [(byte)config.PrefixlessBranchOmission]);
         }
 
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()),
