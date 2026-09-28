@@ -133,14 +133,15 @@ public class BatchReconcilerTests
     }
 
     [Test]
-    public async Task Reconcile_ReplayedBatch_MovesTheHeadOnce()
+    public async Task Reconcile_ReplayedBatch_MakesEachBlockTheHeadBeforeTheNext()
     {
         DaBlock[] published = [Published(TestItem.PrivateKeyA, 0), Published(TestItem.PrivateKeyB, 0), Published(TestItem.PrivateKeyC, 0)];
-        Hash256 settled = ExpectedHashes(_genesis, published)[^1];
+        Hash256[] expected = ExpectedHashes(_genesis, published);
 
-        await _reconciler.Reconcile(Batch(published, settled, _genesis.Hash!), _genesis, _heads);
+        await _reconciler.Reconcile(Batch(published, expected[^1], _genesis.Hash!), _genesis, _heads);
 
-        Assert.That(_engine.Forkchoices, Is.EqualTo(new[] { (settled, _genesis.Hash!, _genesis.Hash!) }), "one forkchoice per batch, to its last block");
+        Assert.That(_engine.Forkchoices.Select(static f => f.Head), Is.EqualTo(expected),
+            "a derived block's state is only readable once it is canonical, so each one is the head before the next is built");
     }
 
     /// <summary>

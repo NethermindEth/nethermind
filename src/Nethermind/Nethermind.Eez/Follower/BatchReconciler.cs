@@ -29,8 +29,8 @@ public interface IBatchReconciler
 /// Brings the local chain in line with one settled batch: rebuilds the blocks it settles from its DA, keeps the local
 /// blocks that already match, replays the first one that does not and everything after it, and checks that L1's stored
 /// commitment is a block of the result. A batch whose first steps a competing batch in the same L1 block already made
-/// resumes: its settled effects are appended to the Sync block that batch committed. The head moves once per batch,
-/// to its last derived block.
+/// resumes: its settled effects are appended to the Sync block that batch committed. Each derived block becomes the
+/// head before the next is built, since a block's state is only readable once it is canonical.
 /// </summary>
 public sealed class BatchReconciler(
     IBlockTree blockTree,
@@ -169,12 +169,7 @@ public sealed class BatchReconciler(
             }
 
             replaying = true;
-            parent = await Commit(session, parent, derived[i], replayed);
-        }
-
-        if (replaying)
-        {
-            await heads.SetHead(parent);
+            parent = await Commit(session, parent, derived[i], heads, replayed);
         }
     }
 
@@ -199,7 +194,7 @@ public sealed class BatchReconciler(
         Array.Copy(local, transactions, kept);
         content.Transactions.CopyTo(transactions, kept);
         if (_logger.IsInfo) _logger.Info($"Rewriting Sync block {height} with the {content.Transactions.Length} transactions a resumed batch settled.");
-        await heads.SetHead(await Commit(session, parent, content with { Transactions = transactions }, replayed));
+        await Commit(session, parent, content with { Transactions = transactions }, heads, replayed);
     }
 
     /// <summary>
@@ -222,8 +217,9 @@ public sealed class BatchReconciler(
         if (_logger.IsWarn) _logger.Warn($"Safe L2 head retreats to {parent.ToString(BlockHeader.Format.Short)} to replace block {height}.");
     }
 
-    /// <summary>Executes and inserts one derived block; it becomes canonical when the batch moves the head.</summary>
-    private async Task<BlockHeader> Commit(IDerivedBlockSession session, BlockHeader parent, DerivedBlock derived, Dictionary<ulong, Hash256> replayed)
+    /// <summary>Executes and inserts one derived block and makes it the head, so the next block can be built on its state.</summary>
+    private async Task<BlockHeader> Commit(IDerivedBlockSession session, BlockHeader parent, DerivedBlock derived, FollowerHeads heads,
+        Dictionary<ulong, Hash256> replayed)
     {
         Block block;
         try
@@ -236,6 +232,7 @@ public sealed class BatchReconciler(
         }
 
         await engine.Insert(block);
+        await heads.SetHead(block.Header);
         replayed[block.Number] = block.Hash!;
         if (_logger.IsDebug) _logger.Debug($"Derived L2 block {block.ToString(Block.Format.Short)}.");
         return block.Header;
