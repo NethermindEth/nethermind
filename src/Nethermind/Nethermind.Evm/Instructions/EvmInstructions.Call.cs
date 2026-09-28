@@ -141,7 +141,7 @@ public static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
         bool traceNewAccountCharge = false;
-        ulong initialGas = DispatchFlags.ConstTracing && vm.IsTracingActions ? TGasPolicy.GetRemainingGas(in gas) : 0;
+        ulong initialGas = DispatchFlags.ConstTracing && (vm.IsTracingActions || TTracingInst.IsActive) ? TGasPolicy.GetRemainingGas(in gas) : 0;
         ulong traceMemorySize = DispatchFlags.ConstTracing && vm.IsTracingActions ? vm.VmState.Memory.Size : 0;
         bool traceColdAccess = DispatchFlags.ConstTracing && vm.IsTracingActions && TSpec.UseHotAndColdStorage &&
             vm.VmState.AccessTracker.IsCold(codeSource) && !spec.IsPrecompile(codeSource);
@@ -216,6 +216,9 @@ public static partial class EvmInstructions
 
         // EIP-150: forward the requested gas to the child frame, capped at 63/64 of remaining.
         if (!TSpec.TryReserveChildGas<TGasPolicy>(ref gas, in gasLimit, spec, out ulong gasLimitUl)) goto OutOfGas;
+
+        if (TTracingInst.IsActive && TOpCall.ExecutionType == ExecutionType.STATICCALL)
+            vm.TraceOperationReady(initialGas - TGasPolicy.GetRemainingGas(in gas));
 
         // Add call stipend if value is being transferred.
         if (hasValueTransfer)
@@ -316,12 +319,15 @@ public static partial class EvmInstructions
         where TOpCall : struct, IOpCall
     {
         IReleaseSpec spec = vm.Spec;
-        if (!DispatchFlags.ConstTracing || !vm.IsTracingActions || spec.IsEip2780Enabled || spec.IsEip8038Enabled) return;
+        if (!DispatchFlags.ConstTracing || !vm.IsTracingActions ||
+            TOpCall.ExecutionType != ExecutionType.STATICCALL && (spec.IsEip2780Enabled || spec.IsEip8038Enabled)) return;
 
+        ulong coldCost = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
         ulong constantCost = spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : spec.GasCosts.CallCost;
         if (initialGas < constantCost)
         {
             vm.TraceOperationGasCost(constantCost);
+            vm.TraceOperationReady(constantCost, "out of gas");
             return;
         }
 
@@ -330,22 +336,25 @@ public static partial class EvmInstructions
         {
             vm.TraceOperationGasCost(constantCost);
             vm.TraceActionErrorDetails("gas uint64 overflow");
+            vm.TraceOperationReady(constantCost, "gas uint64 overflow");
             return;
         }
 
         // Geth checks memory range overflow before cold access, but memory gas overflow after it.
-        if ((!coldAccess || initialGas >= GasCostOf.ColdAccountAccess) && Math.Max(inputSize, outputSize) > 0x1FFFFFFFE0UL)
+        if ((!coldAccess || initialGas >= coldCost) && Math.Max(inputSize, outputSize) > 0x1FFFFFFFE0UL)
         {
             vm.TraceOperationGasCost(constantCost);
             vm.TraceActionErrorDetails("out of gas: gas uint64 overflow");
+            vm.TraceOperationReady(constantCost, "out of gas: gas uint64 overflow");
             return;
         }
 
         // EIP-7702 charges every call variant's intrinsic costs inside Geth's gas calculator.
-        if (spec.IsEip7702Enabled || TOpCall.ExecutionType == ExecutionType.CALL && !newAccountCharge || coldAccess && initialGas < GasCostOf.ColdAccountAccess)
+        if (spec.IsEip7702Enabled || TOpCall.ExecutionType == ExecutionType.CALL && !newAccountCharge || coldAccess && initialGas < coldCost)
         {
             vm.TraceOperationGasCost(constantCost);
             vm.TraceActionErrorDetails("out of gas: out of gas");
+            vm.TraceOperationReady(constantCost, "out of gas: out of gas");
             return;
         }
 
@@ -355,7 +364,7 @@ public static partial class EvmInstructions
             newWords * newWords / 512 - oldWords * oldWords / 512;
         ulong intrinsicCost = memoryCost + (hasValueTransfer ? GasCostOf.CallValue : 0) +
             (newAccountCharge ? GasCostOf.NewAccount : 0);
-        ulong accessCost = coldAccess ? GasCostOf.ColdAccountAccess - constantCost : 0;
+        ulong accessCost = coldAccess ? coldCost - constantCost : 0;
         ulong forwardedGas;
         if (spec.Use63Over64Rule)
         {
@@ -372,6 +381,7 @@ public static partial class EvmInstructions
         {
             vm.TraceOperationGasCost(constantCost);
             vm.TraceActionErrorDetails("out of gas: gas uint64 overflow");
+            vm.TraceOperationReady(constantCost, "out of gas: gas uint64 overflow");
             return;
         }
 
@@ -380,9 +390,11 @@ public static partial class EvmInstructions
         {
             vm.TraceOperationGasCost(constantCost);
             vm.TraceActionErrorDetails("out of gas: gas uint64 overflow");
+            vm.TraceOperationReady(constantCost, "out of gas: gas uint64 overflow");
             return;
         }
         vm.TraceOperationGasCost(unchecked(constantCost + baseCost + forwardedGas));
+        vm.TraceOperationReady(unchecked(constantCost + baseCost + forwardedGas), "out of gas");
     }
 
     private static bool TryGetTraceMemorySize(in UInt256 offset, in UInt256 length, out ulong size)

@@ -53,16 +53,12 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
         else if (o is IArrayBufferView buffer)
         {
             int size = (int)buffer.Size;
-            if (size == 0)
-            {
-                JsonSerializer.Serialize(writer, Array.Empty<int>(), options);
-                return;
-            }
-
             using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(size, out byte[] array);
-
-            buffer.ReadBytes(buffer.Offset, buffer.Size, array, 0);
-            ByteArrayConverter.Convert(writer, array.AsSpan(0, size), skipLeadingZeros: false);
+            buffer.ReadBytes(0, buffer.Size, array, 0);
+            writer.WriteStartObject();
+            for (int i = 0; i < size; i++)
+                writer.WriteNumber(i.ToString(CultureInfo.InvariantCulture), array[i]);
+            writer.WriteEndObject();
         }
         else
         {
