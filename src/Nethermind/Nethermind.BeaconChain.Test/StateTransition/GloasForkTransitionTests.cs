@@ -565,7 +565,7 @@ public class GloasForkTransitionTests
     {
         BlsPublicKey pubkey = new(new Bls.P1(sk).Compress());
         DepositMessage.Merkleize(new DepositMessage { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = amount }, out UInt256 root);
-        Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, Presets.GenesisForkVersion, Hash256.Zero);
+        Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, BeaconChainSpec.Mainnet.GenesisForkVersion, Hash256.Zero);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
         BlsSignature signature = new(BlsSigner.Sign(sk, signingRoot.Bytes).Bytes);
         return (pubkey, signature);

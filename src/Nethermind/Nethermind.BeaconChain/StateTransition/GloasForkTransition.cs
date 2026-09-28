@@ -153,12 +153,12 @@ public static class GloasForkTransition
         withdrawalCredentials.Bytes[0] == Presets.BuilderWithdrawalPrefix;
 
     /// <summary>Spec <c>is_pending_validator</c>: is there a signature-valid pending deposit for <paramref name="pubkey"/>?</summary>
-    public static bool IsPendingValidator(IReadOnlyList<PendingDeposit> pendingDeposits, BlsPublicKey pubkey)
+    public static bool IsPendingValidator(Hash256 genesisValidatorsRoot, IReadOnlyList<PendingDeposit> pendingDeposits, BlsPublicKey pubkey)
     {
         foreach (PendingDeposit deposit in pendingDeposits)
         {
             if (deposit.Pubkey.Equals(pubkey) &&
-                DepositSignatureVerifier.IsValid(deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
+                DepositSignatureVerifier.IsValid(genesisValidatorsRoot, deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
                 return true;
         }
         return false;
@@ -224,12 +224,12 @@ public static class GloasForkTransition
                     kept.Add(deposit);
                     continue;
                 }
-                if (IsPendingValidator(kept, deposit.Pubkey))
+                if (IsPendingValidator(state.GenesisValidatorsRoot!, kept, deposit.Pubkey))
                 {
                     kept.Add(deposit);
                     continue;
                 }
-                if (!DepositSignatureVerifier.IsValid(deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
+                if (!DepositSignatureVerifier.IsValid(state.GenesisValidatorsRoot!, deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
                     continue;
 
                 AddBuilderToRegistry(

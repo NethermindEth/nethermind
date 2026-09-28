@@ -79,7 +79,7 @@ public static class GloasSignatureSets
     public static bool VerifyVoluntaryExit(BeaconStateGloas state, SignedVoluntaryExit signedExit, PubkeyCache pubkeys)
     {
         VoluntaryExit exit = signedExit.Message!;
-        Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, Presets.CapellaForkVersion, state.GenesisValidatorsRoot!);
+        Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).CapellaForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain);
         return Verify(pubkeys.GetPublicKey((int)exit.ValidatorIndex), signedExit.Signature, signingRoot);
     }
@@ -92,7 +92,7 @@ public static class GloasSignatureSets
     public static bool VerifyBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange)
     {
         BlsToExecutionChange change = signedChange.Message!;
-        Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, Presets.GenesisForkVersion, state.GenesisValidatorsRoot!);
+        Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).GenesisForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
