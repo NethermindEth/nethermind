@@ -32,8 +32,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 {
     private const int DefaultFlushIntervalEntries = 8192;
     private const int InitialFrameStackCapacity = 8;
-    private const ulong ParityCallCostBeforeStipend = 7400UL;
-    private const ulong ParityCallCostAfterStipend = 9700UL;
 
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
@@ -45,8 +43,10 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private bool _hasPendingOp;
     private bool _pushAssigned;
     private int _pendingPc;
+    private Instruction _pendingOpcode;
     private ulong _pendingCost;
     private ulong _pendingUsed;
+    private bool _pendingHalted;
 
     private byte[]? _memoryBuffer;
     private int _memoryByteCount;
@@ -299,6 +299,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _hasPendingOp = true;
         _pushAssigned = false;
         _pendingPc = pc;
+        _pendingOpcode = opcode;
         _pendingCost = gas;
         _pendingUsed = 0;
         _gasAlreadySetForCurrentOp = false;
@@ -313,7 +314,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _gasAlreadySetForCurrentOp = true;
 
         _pendingCost -= _treatGasParityStyle ? 0UL : gas;
-        if (_pendingCost == ParityCallCostBeforeStipend) _pendingCost = ParityCallCostAfterStipend;
         _pendingUsed = gas;
         _pushAssigned = true;
         _treatGasParityStyle = false;
@@ -323,10 +323,16 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (!_streamVmTrace) { base.ReportOperationError(error); return; }
 
-        if (error != EvmExceptionType.InvalidJumpDestination && error != EvmExceptionType.NotEnoughBalance)
+        if (error == EvmExceptionType.NotEnoughBalance || !_hasPendingOp) return;
+
+        if (IsRejectedBeforeExecution(_pendingOpcode, error))
         {
             _hasPendingOp = false;
             ReleaseOpBuffers();
+        }
+        else
+        {
+            _pendingHalted = true;
         }
     }
 
@@ -408,6 +414,15 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         if (_streamVmTrace && _hasPendingOp && callType.IsAnyCreate()) _pendingCost += gas;
 
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+    }
+
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+        ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    {
+        // Mirrors the base tracer, which adds the gas made available to a rejected creation to the operation's cost.
+        if (_streamVmTrace && _hasPendingOp && callType.IsAnyCreate()) _pendingCost += gas;
+
+        base.ReportRejectedAction(gas, gasLeft, value, from, to, input, callType, error, isPrecompileCall);
     }
 
     protected override void OnEnterVmFrame(ParityTraceAction action)
@@ -562,58 +577,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private void EmitOuterOpTail()
     {
         _writer.WriteNumber("cost"u8, _pendingCost);
-
-        _writer.WritePropertyName("ex"u8);
-        _writer.WriteStartObject();
-
-        _writer.WritePropertyName("mem"u8);
-        if (_hasMemory)
-        {
-            _writer.WriteStartObject();
-            _writer.WritePropertyName("data"u8);
-            WriteHexBytes(_memoryBuffer.AsSpan(0, _memoryByteCount));
-            _writer.WriteNumber("off"u8, _memoryOffset);
-            _writer.WriteEndObject();
-        }
-        else
-        {
-            _writer.WriteNullValue();
-        }
-
-        _writer.WritePropertyName("push"u8);
-        if (_pushAssigned)
-        {
-            _writer.WriteStartArray();
-            for (int i = 0; i < _pushItems.Count; i++)
-            {
-                (byte[] buf, int len) = _pushItems[i];
-                ByteArrayConverter.Convert(_writer, buf.AsSpan(0, len), skipLeadingZeros: true);
-            }
-            _writer.WriteEndArray();
-        }
-        else
-        {
-            _writer.WriteNullValue();
-        }
-
-        _writer.WritePropertyName("store"u8);
-        if (_hasStorage)
-        {
-            _writer.WriteStartObject();
-            _writer.WritePropertyName("key"u8);
-            ByteArrayConverter.Convert(_writer, _storageKeyBuffer.AsSpan(0, _storageKeyByteCount), skipLeadingZeros: true);
-            _writer.WritePropertyName("val"u8);
-            ByteArrayConverter.Convert(_writer, _storageValueBuffer.AsSpan(0, _storageValueByteCount), skipLeadingZeros: true);
-            _writer.WriteEndObject();
-        }
-        else
-        {
-            _writer.WriteNullValue();
-        }
-
-        _writer.WriteNumber("used"u8, _pendingUsed);
-        _writer.WriteEndObject();
-
+        WritePendingEx();
         _writer.WriteNumber("pc"u8, _pendingPc);
         _writer.WriteEndObject();
     }
@@ -622,8 +586,20 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         _writer.WriteStartObject();
         _writer.WriteNumber("cost"u8, _pendingCost);
+        WritePendingEx();
+        _writer.WriteNumber("pc"u8, _pendingPc);
+        _writer.WritePropertyName("sub"u8);
+    }
 
+    private void WritePendingEx()
+    {
         _writer.WritePropertyName("ex"u8);
+        if (_pendingHalted)
+        {
+            _writer.WriteNullValue();
+            return;
+        }
+
         _writer.WriteStartObject();
 
         _writer.WritePropertyName("mem"u8);
@@ -673,9 +649,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         _writer.WriteNumber("used"u8, _pendingUsed);
         _writer.WriteEndObject();
-
-        _writer.WriteNumber("pc"u8, _pendingPc);
-        _writer.WritePropertyName("sub"u8);
     }
 
     private void OpenFrameJson(VmFrame frame)
@@ -712,6 +685,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
     private void ReleaseOpBuffers()
     {
+        _pendingHalted = false;
         _hasMemory = false;
         _memoryByteCount = 0;
         _hasStorage = false;

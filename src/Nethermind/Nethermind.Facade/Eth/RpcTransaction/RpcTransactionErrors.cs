@@ -18,6 +18,10 @@ public static class RpcTransactionErrors
     public static string MaxFeePerGasSmallerThanMaxPriorityFeePerGas(UInt256? maxFeePerGas, UInt256? maxPriorityFeePerGas)
         => $"maxFeePerGas ({maxFeePerGas}) < maxPriorityFeePerGas ({maxPriorityFeePerGas})";
 
+    /// <summary>Reports a call or transaction request whose <c>chainId</c> names another chain.</summary>
+    public static string InvalidChainId(ulong chainId, ulong requestedChainId)
+        => $"invalid chain id (have={chainId}, want={requestedChainId})";
+
     public static string NullEntryIn(string field) => $"{field} must not contain a null entry";
 
     /// <summary>Reports the gas an EIP-8141 frame transaction reserves against the RPC cap.</summary>
