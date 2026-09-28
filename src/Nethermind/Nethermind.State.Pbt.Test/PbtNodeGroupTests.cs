@@ -679,7 +679,7 @@ public class PbtNodeGroupTests
         Assert.That(ValidateLeafGroup(groupKey, 0, payload, streamingWriter), Is.EqualTo(1));
 
         byte[] shortEncoding = LeafBranch(key.AsSpan(0, key.Length - 1), 1);
-        byte[] shortPayload = new byte[PbtNodeGroupCodec.HeaderLength + shortEncoding.Length + PbtNodeGroupCodec.GetTrailerLength(1, 0)];
+        byte[] shortPayload = new byte[PbtNodeGroupCodec.HeaderLength + shortEncoding.Length + PbtNodeGroupCodec.GetTrailerLength(1, 0, default)];
         PbtNodeGroupCodec.Header.CopyTo(shortPayload);
         shortEncoding.CopyTo(shortPayload, PbtNodeGroupCodec.HeaderLength);
         PbtNodeGroupCodec.WriteFooter(shortPayload.AsSpan(PbtNodeGroupCodec.HeaderLength + shortEncoding.Length), stackalloc ushort[PbtNodeGroupCodec.PositionCount], 1u, 0, default);
@@ -696,7 +696,7 @@ public class PbtNodeGroupTests
         if (!streamingWriter) return ReadGroupCount(groupKey, payload);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         using PbtNodeGroupWriter<TPath> writer = new(groupKey.BitDepth, new TrackingMemoryProvider(), PbtPrefixlessBranchOmission.Interior);
-        writer.Write(groupPath, position, payload.AsSpan(PbtNodeGroupCodec.HeaderLength, payload.Length - PbtNodeGroupCodec.HeaderLength - PbtNodeGroupCodec.GetTrailerLength(1, 0)));
+        writer.Write(groupPath, position, payload.AsSpan(PbtNodeGroupCodec.HeaderLength, payload.Length - PbtNodeGroupCodec.HeaderLength - PbtNodeGroupCodec.GetTrailerLength(1, 0, default)));
         using RefCountingMemory writtenPayload = writer.Detach(default, ushort.MaxValue)!;
         Assert.That(writtenPayload.GetSpan().ToArray(), Is.EqualTo(payload));
         return 1;
@@ -2017,7 +2017,7 @@ public class PbtNodeGroupTests
             {
                 Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(expected));
                 Assert.That(slotWriter.WrittenSpan.ToArray(), Is.EqualTo(expected));
-                Assert.That(expected[..PbtNodeGroupCodec.HeaderLength], Is.EqualTo(Bytes.FromHexString("05")));
+                Assert.That(expected[..PbtNodeGroupCodec.HeaderLength], Is.EqualTo(Bytes.FromHexString("06")));
                 Assert.That(reader.Count, Is.EqualTo(count));
                 int nodeLength = PbtNodeCodec.BranchLength(4, 0, 0);
                 Assert.That(expected.Length, Is.EqualTo(count * nodeLength + 7 + 2 * count));
@@ -2113,7 +2113,7 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Versioned_group_rejects_invalid_header_and_footer([Range(0, 19)] int scenario)
+    public void Versioned_group_rejects_invalid_header_and_footer([Range(0, 22)] int scenario)
     {
         PbtNodePath groupKey = new([], 0);
         byte[] branch = PbtTreeHarness.EncodeBranch(Bytes.FromHexString("80"), 1,
@@ -2129,8 +2129,8 @@ public class PbtNodeGroupTests
             case 1: payload = payload[1..]; break;
             case 2: payload[0] = 1; break;
             case 3: payload[0] = 2; break;
-            case 4: payload = Bytes.FromHexString("05000000"); break;
-            case 5: payload = Bytes.FromHexString("050004000b00000000"); break;
+            case 4: payload = Bytes.FromHexString("06000000"); break;
+            case 5: payload = Bytes.FromHexString("060004000b00000000"); break;
             case 6: payload.AsSpan(payload.Length - 6, 4).Clear(); break;
             case 7: payload[^3] |= 0x80; break;
             case 8: groupKey = new(Bytes.FromHexString("00"), 4); break;
@@ -2144,19 +2144,23 @@ public class PbtNodeGroupTests
             case 16: payload.AsSpan(5, 32).Clear(); break;
             case 17:
                 payload = new byte[1 + ushort.MaxValue + 1 + 8];
-                payload[0] = 5;
+                payload[0] = 6;
                 payload[^3] = 0x40;
                 break;
             // A descendant mask bit must carry a nonzero size.
-            case 18: payload = [.. payload[..^2], 0, 0, 0, 0, 0, 0, 0x01, 0x00]; break;
-            case 19: payload[0] = 4; break;
+            case 18: payload = [.. payload[..^2], 0, 1, 0x01, 0x00]; break;
+            case 19: payload[0] = 5; break;
+            // Descendant sizes take the width, 1–6 bytes, of the largest one.
+            case 20: payload = [.. payload[..^2], 1, 0, 0x01, 0x00]; break;
+            case 21: payload = [.. payload[..^2], 1, 0, 0, 0, 0, 0, 0, 7, 0x01, 0x00]; break;
+            case 22: payload = [.. payload[..^2], 1, 0, 2, 0x01, 0x00]; break;
         }
         Assert.Throws<InvalidDataException>(() => ReadGroupCount(groupKey, payload));
     }
 
     [Test]
     public void Descendant_sizes_are_stored_per_slot_and_reject_the_uint48_overflow(
-        [Values(0L, 1L, 0x1234_5678_9ABCL, PbtNodeGroupCodec.MaxDescendantBytes)] long descendantBytes, [Values(0, 7, 15)] int slot)
+        [Values(0L, 1L, 0x1234L, 0x1234_5678_9ABCL, PbtNodeGroupCodec.MaxDescendantBytes)] long descendantBytes, [Values(0, 7, 15)] int slot)
     {
         PbtNodePath groupKey = new([], 0);
         PbtNodeRecord record = new(groupKey.ToPath<PbtStorageNodePath>(), LeafEncoding(0x00));
@@ -2170,7 +2174,7 @@ public class PbtNodeGroupTests
         long[] stored = PbtStoreTestExtensions.ReadDescendantBytes(payload);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(payload, Has.Length.EqualTo(descendantBytes == 0 ? 12 : 18));
+            Assert.That(payload, Has.Length.EqualTo(descendantBytes switch { 0 => 12, 1 => 14, 0x1234 => 15, _ => 19 }));
             Assert.That(PbtNodeGroupCodec.ReadDescendantMask(payload), Is.EqualTo(descendantBytes == 0 ? 0 : 1 << slot));
             Assert.That(stored, Is.EqualTo(slots));
             Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload).DescendantBytes(slot), Is.EqualTo(descendantBytes));
@@ -2187,7 +2191,7 @@ public class PbtNodeGroupTests
     public void Root_leaf_has_byte_exact_compact_encoding()
     {
         PbtNodePath groupKey = new([], 0);
-        byte[] expected = Bytes.FromHexString("050001000000000000400000");
+        byte[] expected = Bytes.FromHexString("060001000000000000400000");
         byte[] payload = EncodeGroup(groupKey, [new(groupKey.ToPath<PbtStorageNodePath>(), LeafEncoding(0x00))]);
         Assert.That(payload, Is.EqualTo(expected));
     }

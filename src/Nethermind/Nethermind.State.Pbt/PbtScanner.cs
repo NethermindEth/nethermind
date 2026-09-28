@@ -207,7 +207,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             varintBytes += (64 - BitOperations.LeadingZeroCount((ulong)size) + 6) / 7;
         }
         int suffixWidth = ByteWidth(differingBits);
-        bytesByEncoding[(int)PbtScanReport.DescendantEncoding.Fixed] += sizes.Length * PbtNodeGroupCodec.DescendantBytesLength;
+        bytesByEncoding[(int)PbtScanReport.DescendantEncoding.Fixed] += sizes.Length * PbtNodeGroupCodec.MaxDescendantBytesLength;
         bytesByEncoding[(int)PbtScanReport.DescendantEncoding.SharedWidth] += 1 + sizes.Length * ByteWidth(max);
         bytesByEncoding[(int)PbtScanReport.DescendantEncoding.BaseDelta] += 1 + ByteWidth(min) + sizes.Length * ByteWidth(max - min);
         bytesByEncoding[(int)PbtScanReport.DescendantEncoding.FrontCoded] += 1 + ByteWidth(max) - suffixWidth + sizes.Length * suffixWidth;
@@ -359,7 +359,7 @@ public sealed class PbtScanReport
         for (int occupancy = 0; occupancy < stats.GroupsByOccupancy.Length; occupancy++)
             if (stats.GroupsByOccupancy[occupancy] != 0)
                 report.AppendLine($"  {occupancy,6} {stats.GroupsByOccupancy[occupancy],15:N0}");
-        long descendantFields = stats.DescendantEncodingBytes[(int)DescendantEncoding.Fixed] / PbtNodeGroupCodec.DescendantBytesLength;
+        long descendantFields = stats.DescendantEncodingBytes[(int)DescendantEncoding.Fixed] / PbtNodeGroupCodec.MaxDescendantBytesLength;
         report.AppendLine($"Descendant sizes ({label}): {stats.GroupsWithDescendants:N0} groups, {descendantFields:N0} fields, bytes excluding the descendant mask");
         report.AppendLine($"  {"encoding",-12} {"bytes",18}");
         foreach (DescendantEncoding encoding in Enum.GetValues<DescendantEncoding>())

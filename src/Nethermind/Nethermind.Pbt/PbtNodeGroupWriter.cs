@@ -227,7 +227,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         }
 
         ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, candidateSlots);
-        int trailerLength = PbtNodeGroupCodec.GetTrailerLength(_availability, descendantMask);
+        int trailerLength = PbtNodeGroupCodec.GetTrailerLength(_availability, descendantMask, descendantBytes);
         int length = PbtNodeGroupCodec.HeaderLength + _written + trailerLength;
         // The snapshot retains the payload's whole capacity until the segment is persisted, so it is rented at its final size.
         RefCountingMemory memory = _memoryProvider.Rent(length);

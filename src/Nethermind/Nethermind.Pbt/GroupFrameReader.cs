@@ -43,7 +43,7 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
             ReadOnlySpan<byte> entries = payload[PbtNodeGroupCodec.HeaderLength..];
             uint availability = PbtNodeGroupCodec.ReadAvailability(entries);
             Debug.Assert(bitDepth == 0 || (availability & (1u << PbtFourLevelGroupGeometry.RootPosition)) == 0, "Only the root group stores the root position.");
-            int entriesEnd = PbtNodeGroupCodec.HeaderLength + entries.Length - PbtNodeGroupCodec.GetTrailerLength(availability, PbtNodeGroupCodec.ReadDescendantMask(payload));
+            int entriesEnd = PbtNodeGroupCodec.HeaderLength + entries.Length - PbtNodeGroupCodec.GetTrailerLength(availability, payload);
             ReadOnlySpan<byte> offsets = payload[entriesEnd..];
             int previous = -1;
             for (uint remaining = availability; remaining != 0; remaining &= remaining - 1)

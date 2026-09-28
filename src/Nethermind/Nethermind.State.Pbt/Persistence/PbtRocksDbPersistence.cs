@@ -27,7 +27,7 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> PrefixlessBranchOmissionKey => "prefixlessBranchOmission"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
     internal static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
-    private const int SchemaEpoch = 20;
+    private const int SchemaEpoch = 21;
     /// <summary>Account groups keyed at or above this depth are top groups: the last level before the 16^8 dense band.</summary>
     internal const int AccountTopDepth = 28;
     /// <summary>Code and storage groups keyed at or above this depth are top groups: every group keyed shorter than zone and address hash.</summary>
