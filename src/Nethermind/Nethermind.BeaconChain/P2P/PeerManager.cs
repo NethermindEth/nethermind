@@ -9,8 +9,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -66,6 +68,11 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     private readonly IBeaconChainStatusSource _statusSource;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, ManagedPeer> _peers = new();
+    private readonly BeaconDiscovery? _discovery;
+    private readonly INodeColumnCustodySource _localCustody;
+
+    // Replaced and completed whenever a sampled column is left without a connected custodian, to wake the admission wait.
+    private TaskCompletionSource _custodyShortfall = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     // Keyed by peer id (not dial address), so a ban and the message/failure history behind it
     // survive both a disconnect and a later reconnection attempt from a different address.
@@ -96,12 +103,15 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// an inbound session, which have no ENR to offer.</summary>
     private readonly record struct Reservation(string PeerId, PeerDirection Direction, string? Enr);
 
-    public PeerManager(BeaconP2P p2p, IBeaconChainConfig config, IBeaconChainStatusSource statusSource, ILogManager logManager)
+    /// <param name="discovery">Supplies this node's sampled columns and dials their custodians; without it no custody is sought or kept.</param>
+    public PeerManager(BeaconP2P p2p, IBeaconChainConfig config, IBeaconChainStatusSource statusSource, ILogManager logManager, BeaconDiscovery? discovery = null)
     {
         _p2p = p2p;
         _config = config;
         _statusSource = statusSource;
         _logger = logManager.GetClassLogger<PeerManager>();
+        _discovery = discovery;
+        _localCustody = new DiscoveryNodeCustodySource(discovery);
         _outboundDialGate = new SemaphoreSlim(Math.Max(1, config.MaxConcurrentOutboundDials));
 
         // A session the remote side opened has no dial here to admit it through; this is its only way in.
@@ -145,11 +155,69 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// connected peers and dials already admitted but not yet resolved, so a burst of concurrent
     /// dials cannot itself blow through the target the moment they all land.
     /// </summary>
+    /// <remarks>
+    /// Also returns while a sampled column has no connected custodian; <see cref="TryAddPeerAsync"/> then admits past the target
+    /// only a candidate custodying such a column, making room for it at <see cref="IBeaconChainConfig.MaxPeerCount"/>.
+    /// </remarks>
     public async Task WaitForAdmissionCapacityAsync(CancellationToken token)
     {
-        while (_peers.Count + _dialing.Count >= _config.TargetPeerCount)
+        while (true)
         {
-            await Task.Delay(AdmissionPollInterval, token);
+            Task shortfall = Volatile.Read(ref _custodyShortfall).Task;
+            if (_peers.Count + _dialing.Count < _config.TargetPeerCount || UncustodiedSampledColumns().Count > 0)
+            {
+                return;
+            }
+
+            using CancellationTokenSource poll = CancellationTokenSource.CreateLinkedTokenSource(token);
+            await Task.WhenAny(Task.Delay(AdmissionPollInterval, poll.Token), shortfall);
+            await poll.CancelAsync();
+            token.ThrowIfCancellationRequested();
+        }
+    }
+
+    /// <summary>The columns this node samples (fulu/das-core.md) that no connected peer custodies; empty while this node's custody is unknown.</summary>
+    internal IReadOnlyList<ulong> UncustodiedSampledColumns()
+    {
+        if (_localCustody.Current is not { } local)
+        {
+            return [];
+        }
+
+        List<ulong> uncustodied = [];
+        foreach (ulong column in local.SampledColumns)
+        {
+            if (CustodianCount(column) == 0)
+            {
+                uncustodied.Add(column);
+            }
+        }
+
+        return uncustodied;
+    }
+
+    private int CustodianCount(ulong column)
+    {
+        int count = 0;
+        foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
+        {
+            if (peer.Value.Custody.Custodies(column))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    /// <summary>Hands discovery the sampled columns left without a connected custodian, and wakes the admission wait when there are any.</summary>
+    private void PublishCustodyShortfall()
+    {
+        IReadOnlyList<ulong> uncustodied = UncustodiedSampledColumns();
+        _discovery?.RequestColumnCustodians(uncustodied);
+        if (uncustodied.Count > 0)
+        {
+            Interlocked.Exchange(ref _custodyShortfall, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
         }
     }
 
@@ -174,6 +242,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
 
         await TrimToPeerBandAsync(staticAddresses, token);
+        PublishCustodyShortfall();
     }
 
     /// <summary>
@@ -185,6 +254,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// just have the next maintenance round reconnect it, and it is not a "worst" peer by any measure
     /// here. Worst is ranked by consecutive health-check failures first, then by stale head slot -
     /// the same signals the health check itself already trusts, not a new scoring scheme.
+    /// The last connected custodian of a column this node samples is kept too, since without it the node
+    /// cannot retrieve that column (fulu/das-core.md); the pool can then stay above the target.
     /// </remarks>
     private async Task TrimToPeerBandAsync(string[] staticAddresses, CancellationToken token)
     {
@@ -194,6 +265,35 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return;
         }
 
+        List<ManagedPeer> trimmable = TrimmableWorstFirst(staticAddresses);
+        IReadOnlyList<ulong> sampled = _localCustody.Current?.SampledColumns ?? [];
+        int[] custodians = CustodianCounts(sampled);
+        int target = Math.Min(_config.TargetPeerCount, _config.MaxPeerCount);
+        int toDrop = Math.Min(trimmable.Count, _peers.Count - target);
+        for (int i = 0; i < trimmable.Count && toDrop > 0; i++)
+        {
+            PeerColumnCustody custody = trimmable[i].Custody;
+            if (IsLastCustodian(custody, sampled, custodians))
+            {
+                continue;
+            }
+
+            for (int c = 0; c < sampled.Count; c++)
+            {
+                if (custody.Custodies(sampled[c]))
+                {
+                    custodians[c]--;
+                }
+            }
+
+            toDrop--;
+            await DropAsync(trimmable[i], GoodbyeReason.TooManyPeers, "over the configured peer band", token);
+        }
+    }
+
+    /// <summary>The connected peers other than configured static ones, worst first: most consecutive health-check failures, then stalest head.</summary>
+    private List<ManagedPeer> TrimmableWorstFirst(string[] staticAddresses)
+    {
         // By peer id, not pool key: a static peer that connected to us first is keyed by the address it
         // came from, which never equals its configured dial address.
         HashSet<string> exempt = new(StringComparer.Ordinal);
@@ -216,13 +316,55 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             int byFailures = b.ConsecutiveFailures.CompareTo(a.ConsecutiveFailures);
             return byFailures != 0 ? byFailures : a.HeadSlot.CompareTo(b.HeadSlot);
         });
+        return trimmable;
+    }
 
-        int target = Math.Min(_config.TargetPeerCount, _config.MaxPeerCount);
-        int toDrop = Math.Min(trimmable.Count, _peers.Count - target);
-        for (int i = 0; i < toDrop; i++)
+    private int[] CustodianCounts(IReadOnlyList<ulong> sampled)
+    {
+        int[] custodians = new int[sampled.Count];
+        for (int c = 0; c < sampled.Count; c++)
         {
-            await DropAsync(trimmable[i], GoodbyeReason.TooManyPeers, "over the configured peer band", token);
+            custodians[c] = CustodianCount(sampled[c]);
         }
+
+        return custodians;
+    }
+
+    private static bool IsLastCustodian(PeerColumnCustody custody, IReadOnlyList<ulong> sampled, int[] custodians)
+    {
+        for (int c = 0; c < sampled.Count; c++)
+        {
+            if (custodians[c] == 1 && custody.Custodies(sampled[c]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The worst non-static peer that would not be the last custodian of a sampled column once <paramref name="joining"/> is connected too.</summary>
+    private ManagedPeer? WorstReplaceablePeer(PeerColumnCustody joining)
+    {
+        IReadOnlyList<ulong> sampled = _localCustody.Current?.SampledColumns ?? [];
+        int[] custodians = CustodianCounts(sampled);
+        for (int c = 0; c < sampled.Count; c++)
+        {
+            if (joining.Custodies(sampled[c]))
+            {
+                custodians[c]++;
+            }
+        }
+
+        foreach (ManagedPeer peer in TrimmableWorstFirst(StaticPeerAddresses()))
+        {
+            if (!IsLastCustodian(peer.Custody, sampled, custodians))
+            {
+                return peer;
+            }
+        }
+
+        return null;
     }
 
     public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
@@ -250,6 +392,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <param name="enr">The candidate's discv5 ENR text when known, so the resulting <see cref="PeerRecord"/>
     /// can report it truthfully instead of <c>null</c>. Omitted for a static-peer reconnect, which has no ENR to offer.</param>
     /// <returns><c>true</c> when the peer is (already) connected and on our fork.</returns>
+    /// <remarks>
+    /// At or above <see cref="IBeaconChainConfig.TargetPeerCount"/>, once this node's custody is known, a candidate is dialed only
+    /// when <paramref name="enr"/> custodies a sampled column no connected peer custodies (see <see cref="WaitForAdmissionCapacityAsync"/>);
+    /// at <see cref="IBeaconChainConfig.MaxPeerCount"/> such a candidate is dialed one over the ceiling and, once admitted, takes the place of the worst
+    /// peer that is not the last custodian of a sampled column; with no such peer it is not dialed.
+    /// </remarks>
     public async Task<bool> TryAddPeerAsync(string address, CancellationToken token, string? enr = null)
     {
         if (IsConnected(address))
@@ -257,17 +405,57 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return true;
         }
 
+        if (!IsWantedAtCurrentCount(enr, out PeerColumnCustody? covering))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Not dialing {address}: at the target peer count and it custodies no sampled column that lacks a connected custodian");
+            return false;
+        }
+
+        bool replacing = covering is not null && _peers.Count + _dialing.Count >= _config.MaxPeerCount;
+        if (replacing && WorstReplaceablePeer(covering!) is null)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Not dialing {address}: at the peer band ceiling and every peer is the last custodian of a sampled column");
+            return false;
+        }
+
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         cts.CancelAfter(DialTimeout);
+        bool admitted;
         try
         {
-            return await ConnectAsync(address, token, cts.Token, enr);
+            admitted = await ConnectAsync(address, token, cts.Token, enr, overCeiling: replacing);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
             if (_logger.IsDebug) _logger.Debug($"Dialing beacon chain peer {address} timed out");
             return false;
         }
+
+        // Only after the dial, so a candidate that cannot be reached costs no connected peer.
+        if (admitted && replacing && _peers.Count > _config.MaxPeerCount && WorstReplaceablePeer(PeerColumnCustody.None) is { } replaced)
+        {
+            await DropAsync(replaced, GoodbyeReason.TooManyPeers, "at the peer band ceiling, replaced by a custodian of a sampled column no other connected peer custodies", token);
+        }
+
+        return admitted;
+    }
+
+    /// <param name="covering">The custody of <paramref name="enr"/> when the admission rests on it custodying a sampled column no connected peer custodies.</param>
+    private bool IsWantedAtCurrentCount(string? enr, out PeerColumnCustody? covering)
+    {
+        covering = null;
+        if (_peers.Count + _dialing.Count < _config.TargetPeerCount || _localCustody.Current is null)
+        {
+            return true;
+        }
+
+        IReadOnlyList<ulong> uncustodied = UncustodiedSampledColumns();
+        if (uncustodied.Count > 0 && PeerColumnCustody.ForEnr(enr) is { } custody && custody.CountCustodied(uncustodied) > 0)
+        {
+            covering = custody;
+        }
+
+        return covering is not null;
     }
 
     /// <summary>
@@ -278,7 +466,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// one session can never be recorded twice; <paramref name="atCeiling"/> tells the two refusals
     /// apart, because only the ceiling one may cost the remote its session.
     /// </summary>
-    private bool TryReserveAdmissionSlot(string address, string peerId, PeerDirection direction, string? enr, out bool atCeiling)
+    /// <param name="overCeiling">Allows one admission past the ceiling in total, for a dial that replaces a connected peer once admitted.</param>
+    private bool TryReserveAdmissionSlot(string address, string peerId, PeerDirection direction, string? enr, out bool atCeiling, bool overCeiling = false)
     {
         lock (_admissionLock)
         {
@@ -288,7 +477,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
                 return false;
             }
 
-            atCeiling = _peers.Count + _dialing.Count >= _config.MaxPeerCount;
+            atCeiling = _peers.Count + _dialing.Count >= _config.MaxPeerCount + (overCeiling ? 1 : 0);
             if (atCeiling)
             {
                 return false;
@@ -558,7 +747,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// </summary>
     /// <param name="callerToken">The caller's own token; once it is cancelled nothing is admitted after the dial ends.</param>
     /// <param name="token">Cancels the dial: <paramref name="callerToken"/> or a timeout linked to it.</param>
-    private async Task<bool> ConnectAsync(string address, CancellationToken callerToken, CancellationToken token, string? enr = null)
+    /// <param name="overCeiling">See <see cref="TryReserveAdmissionSlot"/>.</param>
+    private async Task<bool> ConnectAsync(string address, CancellationToken callerToken, CancellationToken token, string? enr = null, bool overCeiling = false)
     {
         string peerId = ExtractPeerId(address);
         if (IsBanned(peerId))
@@ -567,7 +757,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return false;
         }
 
-        if (!TryReserveAdmissionSlot(address, peerId, PeerDirection.Outbound, enr, out bool atCeiling))
+        if (!TryReserveAdmissionSlot(address, peerId, PeerDirection.Outbound, enr, out bool atCeiling, overCeiling))
         {
             if (_logger.IsDebug) _logger.Debug($"Refusing to dial {address}: {(atCeiling ? $"at the configured peer band ceiling ({_config.MaxPeerCount})" : "already connected or in flight")}");
             return false;
@@ -873,7 +1063,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peer.Id} failed health check ({peer.ConsecutiveFailures}/{MaxConsecutiveFailures}): {e.Message}");
             if (peer.ConsecutiveFailures >= MaxConsecutiveFailures)
             {
-                await DropAsync(peer, GoodbyeReason.Fault, "repeated failures", token);
+                await DropAsync(peer, GoodbyeReason.Fault, $"repeated failures, last {e.GetType().Name}: {e.Message}", token);
             }
         }
     }
@@ -892,6 +1082,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             // Swallowed even on cancellation: the peer is already admitted, and the caller's next request observes the token.
             if (_logger.IsDebug) _logger.Debug($"Metadata request to beacon chain peer {peer.Id} failed: {e.Message}");
         }
+
+        PublishCustodyShortfall();
     }
 
     /// <returns><c>false</c> when the peer was dropped for being on a different fork.</returns>

@@ -119,8 +119,8 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.EngineUnavailable"/> or <see cref="BlockImportResult.ParentPayloadUnverified"/>, keyed by block root, awaiting a retry.</summary>
     private readonly Dictionary<Hash256, PendingRetry> _pendingRetry = [];
 
-    /// <summary>Blocks whose missing columns were already fetched by root this slot; cleared on every slot tick.</summary>
-    private readonly HashSet<Hash256> _columnsFetchedThisSlot = [];
+    /// <summary>The custodians asked for the missing columns of each block in <see cref="_pendingRetry"/>, kept across slots so every custodian is reached.</summary>
+    private readonly Dictionary<Hash256, RangeSync.ColumnFetchRotation> _columnFetchRotations = [];
 
     /// <summary>The roots of the blocks in <see cref="_pendingByParent"/> held for a parent waiting on a payload.</summary>
     private readonly HashSet<Hash256> _heldForPayload = [];
@@ -150,6 +150,13 @@ public sealed class BeaconSyncOrchestrator(
 
     private IBlockImporter? _importer;
     private volatile Tip _syncTip = new(Hash256.Zero, 0);
+
+    /// <summary>Cancelled and replaced to restart range sync; see <see cref="ResumeRangeSyncFromHead"/>.</summary>
+    private CancellationTokenSource _rangeSyncRestart = new();
+    private ulong? _rangeSyncResumedAtSlot;
+
+    /// <summary>The head slot at the latest slot tick, and the first tick it was seen at.</summary>
+    private (ulong HeadSlot, ulong SinceSlot)? _headSlotSeen;
     private Hash256 _anchorExecutionHash = Hash256.Zero;
     private ulong _anchorSlot;
     private HeadView? _lastHead;
@@ -189,7 +196,7 @@ public sealed class BeaconSyncOrchestrator(
 
     private readonly record struct PendingRetry(ForkedSignedBeaconBlock Block, ulong QueuedAtSlot);
 
-    private sealed record ColumnRecovery(ExecutionPayloadBid Bid, ulong QueuedAtSlot, ulong LastAttemptSlot);
+    private sealed record ColumnRecovery(ExecutionPayloadBid Bid, ulong QueuedAtSlot, ulong LastAttemptSlot, RangeSync.ColumnFetchRotation Rotation);
 
     /// <summary>Whether gossip has started; settable by tests to keep it from starting.</summary>
     internal bool GossipStarted { get; set; }
@@ -202,6 +209,9 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>The gossip blocks held for a parent, bounded by <see cref="MaxPendingGossipBlocks"/>; for tests.</summary>
     internal int PendingGossipBlockCount => _pendingCount;
+
+    /// <summary>The blocks whose by-root column fetches are tracked, bounded by the retry set; for tests.</summary>
+    internal int ColumnFetchRotationCount => _columnFetchRotations.Count;
 
     /// <summary>Runs the full sync flow from the given anchor until cancelled.</summary>
     public async Task RunAsync(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot, CancellationToken token)
@@ -370,15 +380,21 @@ public sealed class BeaconSyncOrchestrator(
         ChannelReader<WorkItem> reader = _work.Reader;
         while (await reader.WaitToReadAsync(token))
         {
-            while (reader.TryRead(out WorkItem? item))
-            {
-                await ProcessItemAsync(item, token);
-            }
+            await ProcessQueuedAsync(token);
+        }
+    }
 
-            if (_importedSinceHeadStep)
-            {
-                await RunHeadStepAsync(token);
-            }
+    /// <summary>Processes every queued work item, then runs a head step if any imported; one pass of <see cref="RunWorkerAsync"/>.</summary>
+    internal async Task ProcessQueuedAsync(CancellationToken token)
+    {
+        while (_work.Reader.TryRead(out WorkItem? item))
+        {
+            await ProcessItemAsync(item, token);
+        }
+
+        if (_importedSinceHeadStep)
+        {
+            await RunHeadStepAsync(token);
         }
     }
 
@@ -479,18 +495,38 @@ public sealed class BeaconSyncOrchestrator(
             }
         }
 
+        // Kept only while the block waits for a retry, which bounds the rotations to MaxPendingRetryBlocks.
+        if (!_pendingRetry.ContainsKey(root))
+        {
+            _columnFetchRotations.Remove(root);
+        }
+
         return result;
     }
 
     /// <summary>
-    /// Fetches a deferred Fulu block's missing sampled columns by root from peers custodying them, at most once per
-    /// slot per block, which bounds the requests a block stuck on its columns can cause.
+    /// Fetches a deferred Fulu block's missing sampled columns by root from a bounded number of custodians per call,
+    /// rotating through every connected custodian of a missing column across calls and slots.
     /// </summary>
+    /// <remarks>
+    /// A custodian behind peers that answered with nothing, or one that connected since the last attempt, is still reached
+    /// (fulu/das-core.md, every sampled column), while one import costs a bounded number of requests however many peers are connected.
+    /// </remarks>
     /// <returns>Whether every sampled column is now held, so a re-import can pass the availability gate.</returns>
-    private async Task<bool> FetchMissingColumnsAsync(ForkedSignedBeaconBlock block, Hash256 root, CancellationToken token) =>
-        block is ForkedSignedBeaconBlock.OfFulu { Block.Message: { Body.BlobKzgCommitments.Length: > 0 } message }
-        && _columnsFetchedThisSlot.Add(root)
-        && await rangeSync.FetchColumnsByRootAsync(root, message, token);
+    private async Task<bool> FetchMissingColumnsAsync(ForkedSignedBeaconBlock block, Hash256 root, CancellationToken token)
+    {
+        if (block is not ForkedSignedBeaconBlock.OfFulu { Block.Message: { Body.BlobKzgCommitments.Length: > 0 } message })
+        {
+            return false;
+        }
+
+        if (!_columnFetchRotations.TryGetValue(root, out RangeSync.ColumnFetchRotation? rotation))
+        {
+            _columnFetchRotations[root] = rotation = new RangeSync.ColumnFetchRotation(slotClock);
+        }
+
+        return await rangeSync.FetchColumnsByRootAsync(root, message, rotation, token);
+    }
 
     /// <summary>Remembers a block for <see cref="DrainPendingRetriesAsync"/>; silently drops it once <see cref="MaxPendingRetryBlocks"/> is reached, same as <see cref="QueuePendingGossipBlock"/> does for its list.</summary>
     /// <returns>Whether the block is held for a retry.</returns>
@@ -561,7 +597,14 @@ public sealed class BeaconSyncOrchestrator(
             if (retry.Block.Slot <= finalizedSlot || IsRetryExpired(retry.QueuedAtSlot, currentSlot))
             {
                 _pendingRetry.Remove(root);
+                _columnFetchRotations.Remove(root);
                 DropPendingChildren(root);
+                // Nothing else brings back a dropped block the head waits on: range sync re-delivers it from the head.
+                if (retry.Block.Slot > finalizedSlot && retry.Block.ParentRoot == _lastHead?.HeadRoot)
+                {
+                    ResumeRangeSyncFromHead(currentSlot);
+                }
+
                 continue;
             }
 
@@ -628,7 +671,7 @@ public sealed class BeaconSyncOrchestrator(
             _columnRecovery.Remove(oldest!);
         }
 
-        ColumnRecovery added = new(bid, slotClock.CurrentSlot, LastAttemptSlot: ulong.MaxValue);
+        ColumnRecovery added = new(bid, slotClock.CurrentSlot, LastAttemptSlot: ulong.MaxValue, new RangeSync.ColumnFetchRotation(slotClock));
         _columnRecovery[root] = added;
         return added;
     }
@@ -672,7 +715,7 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         _columnRecovery[root] = recovery with { LastAttemptSlot = currentSlot };
-        if (await rangeSync.FetchGloasColumnsByRootAsync(root, recovery.Bid, token))
+        if (await rangeSync.FetchGloasColumnsByRootAsync(root, recovery.Bid, recovery.Rotation, token))
         {
             _columnRecovery.Remove(root);
         }
@@ -1205,7 +1248,8 @@ public sealed class BeaconSyncOrchestrator(
             EarliestAvailableSlot = EarliestAvailableSlot(),
         };
 
-        if (!GossipStarted && head.HeadSlot + GossipStartDistanceSlots >= slotClock.CurrentSlot)
+        // A replay near the wall clock runs before the libp2p host starts, and topics exist only once it has.
+        if (!GossipStarted && p2p?.LocalPeerId is not null && head.HeadSlot + GossipStartDistanceSlots >= slotClock.CurrentSlot)
         {
             StartGossip();
         }
@@ -1235,9 +1279,13 @@ public sealed class BeaconSyncOrchestrator(
     internal async Task ProcessSlotAsync(ulong slot, CancellationToken token)
     {
         gossipRouter.ReleaseDueMessages();
-        _columnsFetchedThisSlot.Clear();
         _importer!.OnSlotTick(slot);
         await RunHeadStepAsync(token);
+        if (_lastHead is { } stalled && HasHeadStalled(stalled.HeadSlot, slot) && GossipStarted && stalled.HeadSlot + GossipStartDistanceSlots < slot)
+        {
+            ResumeRangeSyncFromHead(slot);
+        }
+
         await DrainPendingRetriesAsync(token);
         await RecoverGloasColumnsAsync(token);
         await DrainPendingEnvelopesAsync(token);
@@ -1372,13 +1420,17 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Feeds range-synced blocks into the work channel, re-running as the wall clock outpaces the sync tip.</summary>
-    private async Task RunRangeSyncFeedAsync(CancellationToken token)
+    internal async Task RunRangeSyncFeedAsync(CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
+            CancellationToken restart = Volatile.Read(ref _rangeSyncRestart).Token;
             try
             {
                 await FeedRangeSyncRoundAsync(token);
+            }
+            catch (OperationCanceledException) when (restart.IsCancellationRequested && !token.IsCancellationRequested)
+            {
             }
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
@@ -1388,12 +1440,55 @@ public sealed class BeaconSyncOrchestrator(
 
             // Caught up (or briefly stalled): in steady state gossip keeps the tip moving and this
             // loop only re-checks for gaps once per slot.
-            await Task.Delay(TimeSpan.FromSeconds(spec.SecondsPerSlot), token);
+            using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(token, restart);
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(spec.SecondsPerSlot), wait.Token);
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            {
+            }
         }
     }
 
+    /// <summary>Records the head slot at this slot tick; whether it has not moved for an epoch of ticks, so a catch-up still advancing is left running.</summary>
+    private bool HasHeadStalled(ulong headSlot, ulong slot)
+    {
+        if (_headSlotSeen is not { } seen || seen.HeadSlot != headSlot)
+        {
+            _headSlotSeen = seen = (headSlot, slot);
+        }
 
-    /// <summary>Runs one range-sync round from the sync tip into the work channel.</summary>
+        return slot >= seen.SinceSlot + spec.SlotsPerEpoch;
+    }
+
+    /// <summary>
+    /// Restarts range sync from the fork-choice head, at most once per epoch: ends the round in flight and the wait after it,
+    /// and moves the sync tip to the head when it is on another block.
+    /// </summary>
+    /// <remarks>
+    /// A round follows the wall clock past blocks that did not import, which then fail as <see cref="BlockImportResult.UnknownParent"/>,
+    /// so a block the head waits on is fetched again only by a round that starts from the head.
+    /// </remarks>
+    private void ResumeRangeSyncFromHead(ulong slot)
+    {
+        if (_lastHead is not { } head || (_rangeSyncResumedAtSlot is { } resumedAt && slot < resumedAt + spec.SlotsPerEpoch))
+        {
+            return;
+        }
+
+        _rangeSyncResumedAtSlot = slot;
+        if (_syncTip.Root != head.HeadRoot)
+        {
+            _syncTip = new Tip(head.HeadRoot, head.HeadSlot);
+        }
+
+        // Cancelled asynchronously, so the round's continuations do not run on the worker.
+        _ = Interlocked.Exchange(ref _rangeSyncRestart, new CancellationTokenSource()).CancelAsync();
+        if (_logger.IsInfo) _logger.Info($"Beacon head at slot {head.HeadSlot} is stuck ({slot - Math.Min(slot, head.HeadSlot)} behind wall slot {slot}); resuming range sync from the head");
+    }
+
+    /// <summary>Runs one range-sync round from the sync tip into the work channel, until done or <see cref="ResumeRangeSyncFromHead"/> ends it.</summary>
     /// <remarks>
     /// A Gloas block carries only a bid, so consecutive Gloas blocks are buffered and their envelopes fetched with one
     /// ExecutionPayloadEnvelopesByRange request per run (gloas/p2p-interface.md); a run is written out at
@@ -1402,11 +1497,16 @@ public sealed class BeaconSyncOrchestrator(
     /// </remarks>
     internal async Task FeedRangeSyncRoundAsync(CancellationToken token)
     {
+        // Before the tip, so a resume that moves the tip after this read also ends this round.
+        CancellationToken restart = Volatile.Read(ref _rangeSyncRestart).Token;
         Tip tip = _syncTip;
         if (slotClock.CurrentSlot <= tip.Slot)
         {
             return;
         }
+
+        using CancellationTokenSource round = CancellationTokenSource.CreateLinkedTokenSource(token, restart);
+        token = round.Token;
 
         List<ForkedSignedBeaconBlock.OfGloas> gloasRun = [];
         await foreach (ForkedSignedBeaconBlock block in rangeSync.Run(tip.Root, tip.Slot, () => slotClock.CurrentSlot, token))

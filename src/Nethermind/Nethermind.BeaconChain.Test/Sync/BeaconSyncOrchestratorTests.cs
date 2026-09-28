@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -404,6 +405,163 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>A restart replays stored blocks before the libp2p host starts; a replayed head near the wall clock must wait for it to start gossip.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_replayed_head_near_the_wall_clock_starts_gossip_once_the_libp2p_host_has_started(CancellationToken token)
+    {
+        const ulong NearHeadAnchorSlot = WallSlot - 10;
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, NearHeadAnchorSlot + 1, NearHeadAnchorSlot + 2);
+        TestChain.Persist(store, anchor, anchorRoot, chain);
+        PeerBandTests.Node node = PeerBandTests.CreateNode();
+        await using BeaconP2P p2p = node.P2P;
+        Harness harness = CreateHarness(anchorSlot: NearHeadAnchorSlot, store: store, p2p: p2p);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, NearHeadAnchorSlot + 2, finalizedEpoch: Spec.GetEpoch(NearHeadAnchorSlot));
+
+        await harness.Orchestrator.ReplayStoredBlocksAsync(token);
+        bool startedBeforeHost = harness.Orchestrator.GossipStarted;
+        await p2p.StartAsync(token);
+        await harness.Orchestrator.RunHeadStepAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Orchestrator.SyncTip.Slot, Is.EqualTo(NearHeadAnchorSlot + 2), "the stored blocks replayed");
+            Assert.That(startedBeforeHost, Is.False, "gossip topics cannot be subscribed before the host starts");
+            Assert.That(harness.Orchestrator.GossipStarted, Is.True, "the first head step after the host starts starts gossip");
+        }
+    }
+
+    /// <summary>
+    /// Following gossip, a head more than two epochs behind the wall clock that has not advanced for an epoch restarts range sync
+    /// from the head, moving the sync tip off a block the head is not on. A head within that distance, which still counts as
+    /// following gossip, a head still advancing, as in a catch-up, and a node not yet following gossip leave the tip alone.
+    /// </summary>
+    [TestCase(65UL, 32UL, false, true, ExpectedResult = true)]
+    [TestCase(65UL, 31UL, false, true, ExpectedResult = false)]
+    [TestCase(65UL, 32UL, true, true, ExpectedResult = false)]
+    [TestCase(65UL, 32UL, false, false, ExpectedResult = false)]
+    [TestCase(64UL, 32UL, false, true, ExpectedResult = false)]
+    [TestCase(10UL, 32UL, false, true, ExpectedResult = false)]
+    public async Task<bool> A_head_left_behind_the_wall_clock_moves_the_sync_tip_back_to_it(ulong slotsBehind, ulong slotsSinceEarlierTick, bool headAdvanced, bool followingGossip)
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Orchestrator.GossipStarted = followingGossip;
+        await harness.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None);
+        (Hash256 Root, ulong Slot) tipOffTheHead = harness.Orchestrator.SyncTip;
+        ulong headSlot = WallSlot - slotsBehind;
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, headAdvanced ? headSlot - 1 : headSlot, finalizedEpoch: Spec.GetEpoch(AnchorSlot));
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot - slotsSinceEarlierTick, CancellationToken.None);
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, headSlot, finalizedEpoch: Spec.GetEpoch(AnchorSlot));
+
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
+
+        Assert.That(tipOffTheHead.Slot, Is.EqualTo(150UL));
+        bool restarted = harness.Orchestrator.SyncTip == (TestItem.KeccakA, headSlot);
+        Assert.That(restarted || harness.Orchestrator.SyncTip == tipOffTheHead, Is.True, "the tip is either left alone or moved to the head");
+        return restarted;
+    }
+
+    /// <summary>Each restart ends the round in flight, so a head that stays behind restarts range sync once an epoch, not on every slot tick.</summary>
+    [Test]
+    public async Task A_head_left_behind_restarts_range_sync_at_most_once_an_epoch()
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150, 151, 152, 153);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Orchestrator.GossipStarted = true;
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot, finalizedEpoch: Spec.GetEpoch(AnchorSlot));
+        List<ulong> tipsAfterTicks = [];
+        // The first tick only observes the head; it has been stuck for an epoch from the second on.
+        foreach ((SignedBeaconBlock block, ulong tick) in new[] { (chain[0], WallSlot), (chain[1], WallSlot + Spec.SlotsPerEpoch), (chain[2], WallSlot + 2 * Spec.SlotsPerEpoch - 1), (chain[3], WallSlot + 2 * Spec.SlotsPerEpoch) })
+        {
+            // A block imported off the head moves the tip, which only a restart moves back.
+            await harness.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(block), CancellationToken.None);
+            await harness.Orchestrator.ProcessSlotAsync(tick, CancellationToken.None);
+            tipsAfterTicks.Add(harness.Orchestrator.SyncTip.Slot);
+        }
+
+        Assert.That(tipsAfterTicks, Is.EqualTo(new[] { 150UL, AnchorSlot, 152UL, AnchorSlot }));
+    }
+
+    /// <summary>
+    /// A retry that expires restarts range sync only when the head waits on it, as its child; any other, such as a side-fork block,
+    /// leaves the round in flight running.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task An_expiring_retry_restarts_range_sync_only_when_it_is_a_child_of_the_head([Values] bool childOfHead, CancellationToken token)
+    {
+        Harness harness = CreateHarness();
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 150);
+        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        harness.Importer.Known.Add(anchorRoot);
+        harness.Importer.Unavailable.Add(block.ComputeMessageRoot());
+        harness.Importer.Head = CreateHead(childOfHead ? anchorRoot : TestItem.KeccakA, AnchorSlot, finalizedEpoch: Spec.GetEpoch(AnchorSlot));
+        Assert.That(await harness.Orchestrator.ImportBlockAsync(block, token), Is.EqualTo(BlockImportResult.DataUnavailable));
+
+        // No peer is ahead of the tip, so the round waits for one until it is ended.
+        using CancellationTokenSource stopRound = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task round = harness.Orchestrator.FeedRangeSyncRoundAsync(stopRound.Token);
+        ulong expirySlot = WallSlot + 2 * Spec.SlotsPerEpoch + 1;
+        harness.Timestamper.Set(SlotStart(expirySlot));
+        await harness.Orchestrator.ProcessSlotAsync(expirySlot, token);
+        bool roundEnded = await Task.WhenAny(round, Task.Delay(TimeSpan.FromSeconds(childOfHead ? 5 : 1), token)) == round;
+        await stopRound.CancelAsync();
+
+        Assert.That(roundEnded, Is.EqualTo(childOfHead));
+        Assert.That(await EndsAsync(round, token), Is.True);
+    }
+
+    /// <summary>A restart also ends the wait between rounds, so the round from the head starts at once, not a slot later.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_range_sync_restart_starts_the_next_round_without_waiting_out_the_slot(CancellationToken token)
+    {
+        RangeSyncTests.StubPeer server = new("server", WallSlot, static (_, _) => []);
+        // The tip is at the wall clock, so the first round ends at once and the feed waits a slot before the next.
+        Harness harness = CreateHarness(wallSlot: AnchorSlot, peers: [server]);
+        harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot, finalizedEpoch: Spec.GetEpoch(AnchorSlot));
+        // Observes the head, which then has not advanced for the epochs until the restart's tick.
+        await harness.Orchestrator.ProcessSlotAsync(AnchorSlot, token);
+        using CancellationTokenSource stopFeed = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task feed = harness.Orchestrator.RunRangeSyncFeedAsync(stopFeed.Token);
+        await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+        int requestsWhileWaiting = server.Requests;
+
+        harness.Timestamper.Set(SlotStart(WallSlot));
+        harness.Orchestrator.GossipStarted = true;
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot, token);
+        TimeSpan bound = TimeSpan.FromSeconds(Spec.SecondsPerSlot / 2.0);
+        Stopwatch sinceRestart = Stopwatch.StartNew();
+        while (server.Requests == 0 && sinceRestart.Elapsed < bound)
+        {
+            await Task.Delay(10, token);
+        }
+
+        TimeSpan untilNextRound = sinceRestart.Elapsed;
+        await stopFeed.CancelAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await EndsAsync(feed, token), Is.True);
+            Assert.That(requestsWhileWaiting, Is.Zero);
+            Assert.That(server.Requests, Is.Positive, "the round from the head started");
+            Assert.That(untilNextRound, Is.LessThan(bound));
+        }
+    }
+
+    /// <summary>Whether <paramref name="task"/> ends, by completing or by cancellation, within a few seconds of a stop request.</summary>
+    /// <remarks>A range-sync loop checks its token between awaits, so a stop can end it either way.</remarks>
+    internal static async Task<bool> EndsAsync(Task task, CancellationToken token)
+    {
+        await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5), token));
+        return task.IsCompletedSuccessfully || task.IsCanceled;
+    }
+
     private static Harness CreateHarness(
         ulong anchorSlot = AnchorSlot,
         ulong wallSlot = WallSlot,
@@ -412,7 +570,8 @@ public partial class BeaconSyncOrchestratorTests
         DataColumnSidecarPool? sidecarPool = null,
         BeaconDiscovery? discovery = null,
         GossipRouter? router = null,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        BeaconP2P? p2p = null)
     {
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + wallSlot * Spec.SecondsPerSlot).AddSeconds(6);
         ManualTimestamper timestamper = new(now);
@@ -436,6 +595,7 @@ public partial class BeaconSyncOrchestratorTests
             router,
             statusHolder,
             logManager ?? LimboLogs.Instance,
+            p2p: p2p,
             envelopePool: envelopePool);
 
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);

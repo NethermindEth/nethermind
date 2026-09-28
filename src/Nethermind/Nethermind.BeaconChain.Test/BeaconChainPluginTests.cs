@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -8,6 +9,7 @@ using Autofac.Core;
 using Google.Protobuf;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.Config;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
@@ -54,6 +56,20 @@ public class BeaconChainPluginTests
         // Without the validator the library accepts and forwards every message, including a signed one StrictNoSign forbids.
         Message signed = new() { Topic = "/eth2/00000000/beacon_block/ssz_snappy", Signature = ByteString.CopyFrom([1]) };
         Assert.That(p2p.VerifyMessageForTest?.Invoke(signed), Is.EqualTo(MessageValidity.Rejected));
+    }
+
+    /// <summary>Without discovery the peer manager knows no sampled column, so every custodian search and keep rule would be inert.</summary>
+    [Test]
+    public async Task Plugin_wiring_gives_the_peer_manager_the_discovery_that_knows_this_nodes_sampled_columns()
+    {
+        await using IContainer container = BeaconChainTestContainer.Builder(config: new BeaconChainConfig { Discv5Port = 0 }).Build();
+        BeaconDiscovery discovery = container.Resolve<BeaconDiscovery>();
+        PeerManager peerManager = container.Resolve<PeerManager>();
+
+        discovery.CreateDiscv5Services(IPAddress.Loopback);
+
+        Assert.That(peerManager.UncustodiedSampledColumns(), Is.EqualTo(new DiscoveryNodeCustodySource(discovery).Current!.SampledColumns).And.Not.Empty,
+            "with no peer connected, every sampled column lacks a custodian");
     }
 
     [Test]
