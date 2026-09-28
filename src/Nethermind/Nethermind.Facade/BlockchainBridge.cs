@@ -709,7 +709,7 @@ namespace Nethermind.Facade
         }
 
         // One env per invocation — independent _worldScopeCloser and decorator chain so concurrent renters share no mutable state.
-        private IOverridableEnv<BlockchainBridge.BlockProcessingComponents> BuildSingleEnv()
+        internal IOverridableEnv<BlockchainBridge.BlockProcessingComponents> BuildSingleEnv()
         {
             IOverridableEnv env = envFactory.Create();
             ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
@@ -717,10 +717,11 @@ namespace Nethermind.Facade
                 .AddScoped<SingleCallRequestState>()
                 .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
                 .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
-                // The memo relies on a scope running one transaction (re-run from the same state by estimateGas and
-                // createAccessList); an env that runs several transactions in one scope must not register it.
+                // Resolved code is remembered across the restored re-runs of estimateGas and createAccessList; the
+                // processor decorator drops it after any transaction that keeps its changes.
                 .AddScoped<ResolvedCodeMemo>()
                 .AddDecorator<ICodeInfoRepository, MemoizingCodeInfoRepository>()
+                .AddDecorator<ITransactionProcessor, ResolvedCodeClearingTransactionProcessor>()
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
             // Pool owns the scope. Registering with rootLifetimeScope.Disposer would retain every created env until shutdown

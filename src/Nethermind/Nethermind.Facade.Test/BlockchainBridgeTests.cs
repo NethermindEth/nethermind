@@ -1023,6 +1023,28 @@ public class BlockchainBridgeTests
         AssertCodeSourceLookups(codeSource, CodeLookupsPerCall);
     }
 
+    [TestCase(ExecutionOptions.CommitAndRestore, true)]
+    [TestCase(ExecutionOptions.Commit, false)]
+    [TestCase(ExecutionOptions.SkipValidationAndCommit, false)]
+    [TestCase(ExecutionOptions.BuildUp, false)]
+    public void Single_call_env_keeps_resolved_code_only_across_restored_transactions(ExecutionOptions first, bool kept)
+    {
+        using IContainer container = BuildCodeLookupContainer(out ICodeInfoRepository codeSource);
+        // The bridge restores every transaction it runs; this stands in for a consumer that runs several in one scope.
+        BlockchainBridgeFactory factory = (BlockchainBridgeFactory)container.Resolve<IBlockchainBridgeFactory>();
+        IOverridableEnv<BlockchainBridge.BlockProcessingComponents> env = factory.BuildSingleEnv();
+        using IDisposable envLifetime = (IDisposable)env;
+
+        using (Scope<BlockchainBridge.BlockProcessingComponents> scope = env.BuildAndOverride(Build.A.BlockHeader.TestObject))
+        {
+            ITransactionProcessor transactionProcessor = scope.Component.TransactionProcessor;
+            transactionProcessor.Process(new Transaction(), NullTxTracer.Instance, first);
+            transactionProcessor.CallAndRestore(new Transaction(), NullTxTracer.Instance);
+        }
+
+        AssertCodeSourceLookups(codeSource, kept ? 1 : 2);
+    }
+
     private const int CodeLookupsPerCall = 3;
 
     private static IContainer BuildCodeLookupContainer(out ICodeInfoRepository codeSource)

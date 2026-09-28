@@ -15,11 +15,12 @@ namespace Nethermind.State.OverridableEnv;
 /// Answers repeated code lookups from a <see cref="ResolvedCodeMemo"/> for the rest of an env scope.
 /// </summary>
 /// <remarks>
-/// Only for an env whose scope runs one transaction, possibly re-run from the same state, as the single-call env of
-/// eth_call, eth_estimateGas and eth_createAccessList does. State overrides are applied before that transaction
+/// Only for an env that clears the memo after every transaction that keeps its changes, as the single-call env of
+/// eth_call, eth_estimateGas and eth_createAccessList does with <see cref="ResolvedCodeClearingTransactionProcessor"/>,
+/// so the memo spans one transaction and its restored re-runs. State overrides are applied before the first transaction
 /// runs. After that, an address's code can change only through <see cref="InsertCode"/> (CREATE, CREATE2, a create
-/// transaction) or <see cref="SetDelegation"/> (EIP-7702), and both keep the address out of the memo for the rest of
-/// the scope. SELFDESTRUCT removes code only at the end of the transaction, or, since Cancun, only from accounts
+/// transaction) or <see cref="SetDelegation"/> (EIP-7702), and both keep the address out of the memo until it is
+/// cleared. SELFDESTRUCT removes code only at the end of the transaction, or, since Cancun, only from accounts
 /// created in it, which went through InsertCode. Precompiles and delegation designators are never remembered. Every
 /// lookup the memo answers skips the inner repositories' override checks, code-hash read and cache probe, which a
 /// contract-heavy call repeats on every CALL, STATICCALL and EXTCODE* to the same address.

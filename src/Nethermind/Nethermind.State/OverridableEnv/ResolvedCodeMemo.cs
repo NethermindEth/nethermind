@@ -13,7 +13,10 @@ namespace Nethermind.State.OverridableEnv;
 /// The code each address resolved to in the current env scope, which <see cref="MemoizingCodeInfoRepository"/>
 /// answers repeated lookups from.
 /// </summary>
-/// <remarks>The env that registers it clears it when a scope closes.</remarks>
+/// <remarks>
+/// The env that registers it clears it when a scope closes and, through
+/// <see cref="ResolvedCodeClearingTransactionProcessor"/>, after every transaction that keeps its changes.
+/// </remarks>
 public sealed class ResolvedCodeMemo
 {
     // The gain comes from a few hot contracts; the cap and the trim on clear keep a pooled env from holding grown tables.
