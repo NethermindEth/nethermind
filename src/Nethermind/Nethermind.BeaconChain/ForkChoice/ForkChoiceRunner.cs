@@ -149,11 +149,12 @@ public sealed class ForkChoiceRunner
             finalizedCheckpoint: anchorCheckpoint,
             executionStatus: anchor.ExecutionBlockHash is null ? ExecutionStatus.Irrelevant : ExecutionStatus.Valid,
             executionBlockHash: anchor.ExecutionBlockHash,
-            slotsPerEpoch: spec.SlotsPerEpoch);
+            slotsPerEpoch: spec.SlotsPerEpoch,
+            isGloas: anchor.IsGloas);
     }
 
     /// <summary>The fork-independent parts of an anchor that <c>get_forkchoice_store</c> reads.</summary>
-    private readonly record struct AnchorNode(ulong GenesisTime, ulong StateSlot, ulong Epoch, ulong BlockSlot, Hash256 Root, Hash256 StateRoot, Hash256? ExecutionBlockHash);
+    private readonly record struct AnchorNode(ulong GenesisTime, ulong StateSlot, ulong Epoch, ulong BlockSlot, Hash256 Root, Hash256 StateRoot, Hash256? ExecutionBlockHash, bool IsGloas);
 
     private static AnchorNode FuluAnchor(BeaconChainSpec spec, BeaconStateFulu anchorState, BeaconBlock anchorBlock)
     {
@@ -170,7 +171,8 @@ public sealed class ForkChoiceRunner
             anchorBlock.Slot,
             SszRoots.HashTreeRoot(anchorBlock),
             anchorBlock.StateRoot!,
-            anchorBlock.Body?.ExecutionPayload?.BlockHash);
+            anchorBlock.Body?.ExecutionPayload?.BlockHash,
+            IsGloas: false);
     }
 
     private static AnchorNode GloasAnchor(BeaconChainSpec spec, BeaconStateGloas anchorState, BeaconBlockGloas anchorBlock)
@@ -188,7 +190,8 @@ public sealed class ForkChoiceRunner
             anchorBlock.Slot,
             SszRoots.HashTreeRoot(anchorBlock),
             anchorBlock.StateRoot!,
-            anchorBlock.Body!.SignedExecutionPayloadBid!.Message!.BlockHash!);
+            anchorBlock.Body!.SignedExecutionPayloadBid!.Message!.BlockHash!,
+            IsGloas: true);
     }
 
     /// <summary>The wall-clock time in seconds (the spec store's <c>time</c>).</summary>
@@ -415,7 +418,9 @@ public sealed class ForkChoiceRunner
             CheckpointRef.From(postState.FinalizedCheckpoint!),
             GloasEpochProcessing.ComputeJustificationAndFinalization(postState, new EpochCache()),
             ExecutionStatus.Optimistic,
-            bid.BlockHash!);
+            bid.BlockHash!,
+            isGloas: true,
+            parentBlockHash: bid.ParentBlockHash);
         _parentBlockHashes[blockRoot] = bid.ParentBlockHash!;
     }
 
@@ -481,6 +486,8 @@ public sealed class ForkChoiceRunner
 
     /// <summary>The store updates of an accepted <c>on_block</c>: proposer boost, realized and unrealized checkpoints, and the proto-array node.</summary>
     /// <param name="pulledUp">The justification weighing run on the block's post-state; the spec's <c>compute_pulled_up_tip</c>.</param>
+    /// <param name="isGloas">Whether the block carries a signed execution payload bid, whose <c>block_hash</c> is then <paramref name="executionBlockHash"/>.</param>
+    /// <param name="parentBlockHash">The bid's <c>parent_block_hash</c>, which decides whether the block builds on its parent's EMPTY or FULL node.</param>
     private void RegisterBlock(
         ulong slot,
         ulong proposerIndex,
@@ -491,7 +498,9 @@ public sealed class ForkChoiceRunner
         CheckpointRef stateFinalized,
         JustificationAndFinalizationState pulledUp,
         ExecutionStatus executionStatus,
-        Hash256? executionBlockHash)
+        Hash256? executionBlockHash,
+        bool isGloas = false,
+        Hash256? parentBlockHash = null)
     {
         // Checked before the first store update: the proto-array would refuse it only after the boost and checkpoints moved.
         if ((executionStatus == ExecutionStatus.Irrelevant) != (executionBlockHash is null))
@@ -507,9 +516,6 @@ public sealed class ForkChoiceRunner
         bool isTimely = slot == _store.CurrentSlot && timeIntoSlotMs < attestationDueMs;
         // update_proposer_boost_root reads the pre-block get_head only for a timely first block of the slot.
         bool isBoosted = isTimely && _store.ProposerBoostRoot == Hash256.Zero && HasHeadDependentRoot(parentRoot);
-        _blockTimeliness[blockRoot] = isTimely;
-        if (isBoosted)
-            _store.ProposerBoostRoot = blockRoot;
 
         _store.UpdateCheckpoints(stateJustified, stateFinalized);
 
@@ -531,12 +537,17 @@ public sealed class ForkChoiceRunner
                 ExecutionStatus: executionStatus,
                 ExecutionBlockHash: executionBlockHash,
                 UnrealizedJustifiedCheckpoint: unrealizedJustified,
-                UnrealizedFinalizedCheckpoint: unrealizedFinalized),
+                UnrealizedFinalizedCheckpoint: unrealizedFinalized,
+                IsGloas: isGloas,
+                ParentBlockHash: parentBlockHash),
             _store.CurrentSlot,
             _store.JustifiedCheckpoint,
             _store.FinalizedCheckpoint);
 
-        // Recorded only once ProcessBlock returns: a block it throws on, even after inserting the node, must never count as a second proposal of its slot.
+        // Recorded only once ProcessBlock returns: a block it refuses must neither hold the slot's boost nor count as its proposal.
+        _blockTimeliness[blockRoot] = isTimely;
+        if (isBoosted)
+            _store.ProposerBoostRoot = blockRoot;
         _blockProposers[blockRoot] = new BlockProposer(slot, proposerIndex);
     }
 
