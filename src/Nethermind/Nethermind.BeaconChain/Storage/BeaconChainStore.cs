@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text;
+using System.Threading;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -30,7 +31,7 @@ public static class BeaconChainMetadataKeys
     public const string CanonicalIndexTopSlot = "canonicalIndexTopSlot";
 }
 
-/// <summary>Persistence for beacon blocks, states, the canonical slot index, the root-to-children index, and driver metadata.</summary>
+/// <summary>Persistence for beacon blocks, states, execution payload envelopes, the canonical slot index, the root-to-children index, and driver metadata.</summary>
 /// <remarks>
 /// <para>
 /// Blocks and states are stored as snappy-compressed SSZ. States are large (hundreds of MB), so
@@ -82,10 +83,25 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// <summary>The block existed outside the index at some point, so children may be missing for good.</summary>
     private const byte ChildrenNeverComplete = 2;
 
+    /// <summary><c>compute_min_epochs_for_block_requests()</c> (phase0/p2p-interface.md), the epochs ExecutionPayloadEnvelopesByRange/ByRoot must serve (gloas/p2p-interface.md).</summary>
+    internal const ulong MinEpochsForBlockRequests = Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2;
+
+    /// <summary>The most slots one envelope prune batch covers, so a prune after a long gap never builds one unbounded batch.</summary>
+    internal const ulong EnvelopePruneBatchSlots = 1024;
+
+    /// <summary>Envelope column key of the lowest and highest slot (8 bytes big-endian each) that may still have envelopes; its 1-byte length never collides with slot (8) or root (32) keys.</summary>
+    private static ReadOnlySpan<byte> EnvelopeBoundsKey => [0];
+    private const int EnvelopeBoundsLength = 2 * sizeof(ulong);
+
+    /// <summary><c>MAX_PAYLOAD_SIZE</c> (phase0/p2p-interface.md): no envelope a peer can send, and so none stored, is larger uncompressed.</summary>
+    private const int MaxEnvelopeLength = 10 * 1024 * 1024;
+
     private readonly IDb _blocks = db.GetColumnDb(BeaconChainDbColumns.Blocks);
     private readonly IDb _blockIndex = db.GetColumnDb(BeaconChainDbColumns.BlockIndex);
     private readonly IDb _states = db.GetColumnDb(BeaconChainDbColumns.States);
     private readonly IDb _metadata = db.GetColumnDb(BeaconChainDbColumns.Metadata);
+    private readonly IDb _envelopes = db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
+    private readonly Lock _envelopeIndexLock = new();
 
     /// <summary>Stores a pre-Gloas block; see <see cref="PutForkedBlock"/>.</summary>
     /// <exception cref="InvalidOperationException">The block's slot is in the Gloas fork.</exception>
@@ -525,6 +541,194 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
 
         sszBytes = buffer;
         return true;
+    }
+
+    /// <summary>Stores a verified execution payload envelope under its beacon block root and indexes it by slot for <see cref="PruneExecutionPayloadEnvelopes"/>.</summary>
+    /// <remarks>
+    /// The slot indexed is the payload's <c>slot_number</c>, which <c>verify_execution_payload_envelope</c> (gloas/beacon-chain.md)
+    /// holds equal to the block's slot, so the block is not read. The record, the slot index entry and the slot bounds are one write batch.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The envelope has no payload, or names a beacon block other than <paramref name="blockRoot"/>.</exception>
+    public void PutExecutionPayloadEnvelope(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope)
+    {
+        ulong slot = GetExecutionPayloadEnvelopeSlot(blockRoot, envelope);
+        byte[] record = Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(envelope));
+        byte[] slotKey = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
+
+        lock (_envelopeIndexLock)
+        {
+            using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+            IWriteBatch envelopes = batch.GetColumnBatch(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
+            envelopes.Set(blockRoot.Bytes, record);
+
+            byte[] stored = _envelopes.Get(slotKey) ?? [];
+            // A corrupt entry's partial root is dropped, or every root appended after it would be misaligned and never pruned.
+            ReadOnlySpan<byte> roots = stored.AsSpan(0, stored.Length - stored.Length % Hash256.Size);
+            if (!ContainsRoot(roots, blockRoot))
+            {
+                envelopes.Set(slotKey, [.. roots, .. blockRoot.Bytes]);
+            }
+
+            bool bounded = TryGetEnvelopeBounds(out ulong lowest, out ulong highest);
+            if (!bounded || slot < lowest || slot > highest)
+            {
+                envelopes.Set(EnvelopeBoundsKey, EnvelopeBounds(bounded ? Math.Min(lowest, slot) : slot, bounded ? Math.Max(highest, slot) : slot));
+            }
+        }
+    }
+
+    /// <summary>The slot of <paramref name="envelope"/>'s payload, once it is known to name <paramref name="blockRoot"/>.</summary>
+    /// <exception cref="ArgumentException">The envelope has no payload, or names a beacon block other than <paramref name="blockRoot"/>.</exception>
+    internal static ulong GetExecutionPayloadEnvelopeSlot(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope) =>
+        envelope.Message is { Payload: { } payload, BeaconBlockRoot: { } namedRoot } && namedRoot == blockRoot
+            ? payload.SlotNumber
+            : throw new ArgumentException($"The envelope for {blockRoot} has no payload or names beacon block {envelope.Message?.BeaconBlockRoot?.ToString() ?? "none"}", nameof(envelope));
+
+    /// <summary>Reads the execution payload envelope stored under <paramref name="blockRoot"/>.</summary>
+    /// <exception cref="InvalidDataException">The stored record is not snappy-compressed SSZ of an envelope with a payload that names <paramref name="blockRoot"/>.</exception>
+    public bool TryGetExecutionPayloadEnvelope(Hash256 blockRoot, [NotNullWhen(true)] out SignedExecutionPayloadEnvelope? envelope)
+    {
+        byte[]? record = _envelopes.Get(blockRoot.Bytes);
+        if (record is null)
+        {
+            envelope = null;
+            return false;
+        }
+
+        SignedExecutionPayloadEnvelope decoded;
+        try
+        {
+            // A corrupt length header would otherwise allocate up to 2 GiB before the decompressor fails.
+            int length = Snappy.GetUncompressedLength(record);
+            if (length > MaxEnvelopeLength)
+            {
+                throw new InvalidDataException($"The envelope stored under {blockRoot} claims {length} bytes, above MAX_PAYLOAD_SIZE");
+            }
+
+            byte[] ssz = new byte[length];
+            Snappy.Decompress(record, ssz);
+
+            SignedExecutionPayloadEnvelope.Decode(ssz, out decoded);
+        }
+        catch (Exception e) when (e is not InvalidDataException)
+        {
+            throw new InvalidDataException($"The envelope stored under {blockRoot} is not snappy-compressed SSZ: {e.Message}", e);
+        }
+
+        if (decoded.Message is not { Payload: not null, BeaconBlockRoot: { } namedRoot } || namedRoot != blockRoot)
+        {
+            throw new InvalidDataException($"The envelope stored under {blockRoot} has no payload or names beacon block {decoded.Message?.BeaconBlockRoot?.ToString() ?? "none"}");
+        }
+
+        envelope = decoded;
+        return true;
+    }
+
+    /// <summary>Deletes every stored execution payload envelope whose slot is below both the ExecutionPayloadEnvelopesByRange/ByRoot retention window as of <paramref name="currentEpoch"/> and <paramref name="finalizedSlot"/>.</summary>
+    /// <remarks>
+    /// The window is <c>[max(GLOAS_FORK_EPOCH, current_epoch - compute_min_epochs_for_block_requests()), current_epoch]</c>
+    /// (gloas/p2p-interface.md), where <paramref name="currentEpoch"/> is the wall-clock epoch; no envelope precedes the Gloas fork,
+    /// so the fork term never prunes more and is left out. Envelopes from the finalized block on are kept even outside the window,
+    /// because replay from the finalized state verifies each child against its parent's payload. Only the stored slot bounds are
+    /// visited, at most <see cref="EnvelopePruneBatchSlots"/> slots per write batch, and each batch moves the lower bound with its
+    /// deletions, so an interrupted prune resumes where it stopped.
+    /// </remarks>
+    /// <param name="currentEpoch">The wall-clock epoch.</param>
+    /// <param name="finalizedSlot">The slot of the finalized checkpoint's block.</param>
+    /// <exception cref="InvalidOperationException">This store has no spec, so it knows no epoch length.</exception>
+    public void PruneExecutionPayloadEnvelopes(ulong currentEpoch, ulong finalizedSlot)
+    {
+        BeaconChainSpec networkSpec = spec ?? throw new InvalidOperationException($"A store without a {nameof(BeaconChainSpec)} knows no epoch length to prune envelopes by");
+        ulong windowEpoch = currentEpoch > MinEpochsForBlockRequests ? currentEpoch - MinEpochsForBlockRequests : 0;
+        ulong windowStart = windowEpoch > ulong.MaxValue / networkSpec.SlotsPerEpoch ? ulong.MaxValue : windowEpoch * networkSpec.SlotsPerEpoch;
+        ulong keepFrom = Math.Min(windowStart, finalizedSlot);
+
+        while (PruneExecutionPayloadEnvelopeBatch(keepFrom))
+        {
+        }
+    }
+
+    /// <summary>Deletes the envelopes of at most <see cref="EnvelopePruneBatchSlots"/> slots from the lower slot bound up, stopping below <paramref name="keepFrom"/>.</summary>
+    /// <returns><c>false</c> when no stored slot is below <paramref name="keepFrom"/>.</returns>
+    /// <remarks>The bounds are read again for each batch, so <see cref="PutExecutionPayloadEnvelope"/> waits for one batch only and a slot it adds meanwhile is still pruned.</remarks>
+    private bool PruneExecutionPayloadEnvelopeBatch(ulong keepFrom)
+    {
+        lock (_envelopeIndexLock)
+        {
+            if (!TryGetEnvelopeBounds(out ulong lowest, out ulong highest) || keepFrom <= lowest)
+            {
+                return false;
+            }
+
+            bool prunesAll = keepFrom > highest;
+            ulong last = prunesAll ? highest : keepFrom - 1;
+            ulong batchLast = last - lowest >= EnvelopePruneBatchSlots ? lowest + EnvelopePruneBatchSlots - 1 : last;
+            Span<byte> slotKey = stackalloc byte[sizeof(ulong)];
+            using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+            IWriteBatch envelopes = batch.GetColumnBatch(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
+            for (ulong slot = lowest; ; slot++)
+            {
+                BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
+                if (_envelopes.Get(slotKey) is { } roots)
+                {
+                    for (int offset = 0; offset + Hash256.Size <= roots.Length; offset += Hash256.Size)
+                    {
+                        envelopes.Remove(roots.AsSpan(offset, Hash256.Size));
+                    }
+
+                    envelopes.Remove(slotKey);
+                }
+
+                if (slot == batchLast)
+                {
+                    break;
+                }
+            }
+
+            if (prunesAll && batchLast == last)
+            {
+                envelopes.Remove(EnvelopeBoundsKey);
+            }
+            else
+            {
+                envelopes.Set(EnvelopeBoundsKey, EnvelopeBounds(batchLast + 1, highest));
+            }
+
+            return true;
+        }
+    }
+
+    private bool TryGetEnvelopeBounds(out ulong lowest, out ulong highest)
+    {
+        byte[]? value = _envelopes.Get(EnvelopeBoundsKey);
+        if (value is not { Length: EnvelopeBoundsLength })
+        {
+            lowest = highest = 0;
+            return false;
+        }
+
+        lowest = BinaryPrimitives.ReadUInt64BigEndian(value);
+        highest = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(sizeof(ulong)));
+        return true;
+    }
+
+    private static byte[] EnvelopeBounds(ulong lowest, ulong highest)
+    {
+        byte[] value = new byte[EnvelopeBoundsLength];
+        BinaryPrimitives.WriteUInt64BigEndian(value, lowest);
+        BinaryPrimitives.WriteUInt64BigEndian(value.AsSpan(sizeof(ulong)), highest);
+        return value;
+    }
+
+    private static bool ContainsRoot(ReadOnlySpan<byte> roots, Hash256 root)
+    {
+        for (int offset = 0; offset + Hash256.Size <= roots.Length; offset += Hash256.Size)
+        {
+            if (roots.Slice(offset, Hash256.Size).SequenceEqual(root.Bytes)) return true;
+        }
+
+        return false;
     }
 
     public byte[]? GetMetadata(string key) => _metadata.Get(Encoding.UTF8.GetBytes(key));
