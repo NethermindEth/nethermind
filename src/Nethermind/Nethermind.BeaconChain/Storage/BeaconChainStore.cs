@@ -5,7 +5,9 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Text;
+using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
@@ -253,6 +255,92 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         SignedBeaconBlock.Decode(ssz, out SignedBeaconBlock fulu);
         block = new ForkedSignedBeaconBlock.OfFulu(fulu);
         return true;
+    }
+
+    /// <summary>Reads a stored block's slot from its SSZ prefix, decompressing only that prefix.</summary>
+    /// <returns><c>false</c> when no block is stored under <paramref name="root"/>.</returns>
+    /// <remarks>
+    /// A <c>true</c> result also bounds the record's claimed uncompressed length by the spec
+    /// <c>MAX_PAYLOAD_SIZE</c>, so a full decompression of it cannot be asked for an arbitrary allocation.
+    /// </remarks>
+    /// <exception cref="BeaconStateException">The record is not a well-formed signed beacon block prefix.</exception>
+    /// <exception cref="System.IO.InvalidDataException">The record claims more than <c>MAX_PAYLOAD_SIZE</c> bytes, or its prefix is not valid raw snappy.</exception>
+    internal bool TryGetBlockSlot(Hash256 root, out ulong slot)
+    {
+        byte[]? compressed = _blocks.Get(root.Bytes);
+        if (compressed is null)
+        {
+            slot = 0;
+            return false;
+        }
+
+        Span<byte> prefix = stackalloc byte[SignedBeaconBlockCodec.SlotPrefixLength];
+        int written = DecompressSnappyPrefix(compressed, prefix, ReqRespFraming.MaxPayloadSize);
+        if (!SignedBeaconBlockCodec.TryReadSlot(prefix[..written], out slot))
+        {
+            throw new BeaconStateException($"The record stored for block {root} does not start with a signed beacon block slot");
+        }
+
+        return true;
+    }
+
+    /// <summary>Decompresses the start of a raw snappy block into <paramref name="prefix"/>, reading no further than it needs.</summary>
+    /// <returns>The bytes written: <paramref name="prefix"/>.Length, or the whole block when it is shorter.</returns>
+    /// <exception cref="System.IO.InvalidDataException">The claimed length exceeds <paramref name="maxLength"/>, or the length varint or an element before the end of the prefix is malformed.</exception>
+    private static int DecompressSnappyPrefix(ReadOnlySpan<byte> compressed, Span<byte> prefix, int maxLength)
+    {
+        int pos = 0;
+        ulong length = 0;
+        for (int shift = 0; ; shift += 7)
+        {
+            if (pos == compressed.Length || shift > 28) throw new InvalidDataException("Snappy length varint is truncated or longer than 32 bits");
+            byte b = compressed[pos++];
+            length |= (ulong)(b & 0x7f) << shift;
+            if (b < 0x80) break;
+        }
+
+        if (length > (ulong)maxLength) throw new InvalidDataException($"Snappy block claims {length} bytes, above the {maxLength}-byte limit");
+
+        int target = (int)Math.Min(length, (ulong)prefix.Length);
+        int written = 0;
+        while (written < target)
+        {
+            if (pos == compressed.Length) throw new InvalidDataException("Snappy block ends before its claimed length");
+            byte tag = compressed[pos++];
+            int tagType = tag & 3;
+            int extra = tagType switch
+            {
+                0 => tag >> 2 < 60 ? 0 : (tag >> 2) - 59,
+                1 => 1,
+                2 => 2,
+                _ => 4,
+            };
+            if (compressed.Length - pos < extra) throw new InvalidDataException("Snappy element is truncated");
+            ulong operand = 0;
+            for (int i = 0; i < extra; i++) operand |= (ulong)compressed[pos + i] << (8 * i);
+            pos += extra;
+
+            if (tagType == 0)
+            {
+                ulong literalLength = (extra == 0 ? (ulong)(tag >> 2) : operand) + 1;
+                int take = (int)Math.Min(literalLength, (ulong)(target - written));
+                if (compressed.Length - pos < take) throw new InvalidDataException("Snappy literal is truncated");
+                compressed.Slice(pos, take).CopyTo(prefix[written..]);
+                pos += take;
+                written += take;
+                continue;
+            }
+
+            // Copy elements per google/snappy format_description.txt section 2.2.
+            int copyLength = tagType == 1 ? 4 + ((tag >> 2) & 7) : (tag >> 2) + 1;
+            ulong offset = tagType == 1 ? ((ulong)(tag >> 5) << 8) | operand : operand;
+            if (offset == 0 || offset > (ulong)written) throw new InvalidDataException("Snappy copy offset points outside the decompressed bytes");
+            int end = Math.Min(written + copyLength, target);
+            // Byte by byte: a copy may overlap the bytes it produces.
+            for (; written < end; written++) prefix[written] = prefix[written - (int)offset];
+        }
+
+        return written;
     }
 
     /// <summary>Deletes a block and unlinks it from its parent's child list, so that list never names a block this node no longer holds.</summary>

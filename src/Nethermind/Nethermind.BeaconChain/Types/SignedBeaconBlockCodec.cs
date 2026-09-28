@@ -27,26 +27,38 @@ public static class SignedBeaconBlockCodec
     /// <summary>The only valid <c>message</c> offset: the fixed part is the offset itself plus the signature.</summary>
     private const int MessageOffset = sizeof(uint) + BlsSignature.Length;
 
+    /// <summary>The bytes <see cref="TryReadSlot"/> needs: the fixed part of the outer container and the <c>slot</c>.</summary>
+    internal const int SlotPrefixLength = MessageOffset + sizeof(ulong);
+
     /// <summary>Whether a block at <paramref name="slot"/> has the Gloas shape.</summary>
     internal static bool IsGloasSlot(ulong slot, BeaconChainSpec spec) => spec.GetEpoch(slot) >= spec.GloasForkEpoch;
+
+    /// <summary>Reads the slot of a serialized signed beacon block without decoding its body.</summary>
+    /// <returns><c>false</c> when <paramref name="ssz"/> is too short to carry a slot or its <c>message</c> offset is not the fixed-part length.</returns>
+    internal static bool TryReadSlot(ReadOnlySpan<byte> ssz, out ulong slot)
+    {
+        if (ssz.Length < SlotPrefixLength || BinaryPrimitives.ReadUInt32LittleEndian(ssz) != MessageOffset)
+        {
+            slot = 0;
+            return false;
+        }
+
+        slot = BinaryPrimitives.ReadUInt64LittleEndian(ssz[MessageOffset..]);
+        return true;
+    }
 
     /// <summary>Decodes <paramref name="ssz"/> as the block shape of the fork its slot belongs to.</summary>
     /// <exception cref="BeaconStateException">The block is too short to carry a slot, or its <c>message</c> offset is not the fixed-part length.</exception>
     /// <exception cref="System.IO.InvalidDataException">The body is malformed for the shape its slot selects.</exception>
     public static ForkedSignedBeaconBlock Decode(ReadOnlySpan<byte> ssz, BeaconChainSpec spec)
     {
-        if (ssz.Length < MessageOffset + sizeof(ulong))
+        if (!TryReadSlot(ssz, out ulong slot))
         {
-            throw new BeaconStateException($"Signed beacon block SSZ is {ssz.Length} bytes, too short to contain a slot");
+            throw new BeaconStateException(ssz.Length < SlotPrefixLength
+                ? $"Signed beacon block SSZ is {ssz.Length} bytes, too short to contain a slot"
+                : $"Signed beacon block message offset is {BinaryPrimitives.ReadUInt32LittleEndian(ssz)}, expected {MessageOffset}");
         }
 
-        uint messageOffset = BinaryPrimitives.ReadUInt32LittleEndian(ssz);
-        if (messageOffset != MessageOffset)
-        {
-            throw new BeaconStateException($"Signed beacon block message offset is {messageOffset}, expected {MessageOffset}");
-        }
-
-        ulong slot = BinaryPrimitives.ReadUInt64LittleEndian(ssz[MessageOffset..]);
         if (IsGloasSlot(slot, spec))
         {
             SignedBeaconBlockGloas.Decode(ssz, out SignedBeaconBlockGloas gloas);

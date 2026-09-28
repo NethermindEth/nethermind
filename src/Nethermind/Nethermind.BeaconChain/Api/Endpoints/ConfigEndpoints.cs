@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
@@ -19,11 +20,36 @@ internal static class ConfigEndpoints
     {
         app.MapGet("/eth/v1/config/spec", c => Spec(c, ctx));
         app.MapGet("/eth/v1/config/fork_schedule", c => ForkSchedule(c, ctx));
+        app.MapGet("/eth/v1/config/deposit_contract", c => DepositContract(c, ctx));
+    }
 
-        // No field anywhere in BeaconChainSpec/Presets carries a deposit contract address; the
-        // driver was never given one to track (it does not process phase0-era deposit logs).
-        app.MapGet("/eth/v1/config/deposit_contract", c => ApiErrors.Write(c, StatusCodes.Status501NotImplemented,
-            "The deposit contract address is not tracked by this driver.", c.RequestAborted));
+    /// <summary>The network config's <c>DEPOSIT_CONTRACT_ADDRESS</c>, or <c>null</c> for a chain this driver has no network config for.</summary>
+    /// <remarks>
+    /// From consensus-specs v1.7.0-beta.2 <c>configs/mainnet.yaml</c> and the eth-clients <c>hoodi</c> and
+    /// <c>sepolia</c> <c>metadata/config.yaml</c>, whose <c>DEPOSIT_CHAIN_ID</c> equals the chain id each is keyed by.
+    /// </remarks>
+    private static string? DepositContractAddress(ulong chainId) => chainId switch
+    {
+        BlockchainIds.Mainnet => "0x00000000219ab540356cBB839Cbe05303d7705Fa",
+        BlockchainIds.Hoodi => "0x00000000219ab540356cBB839Cbe05303d7705Fa",
+        BlockchainIds.Sepolia => "0x7f02C3E3c98b133055B8B348B2Ac625669Ed295D",
+        _ => null,
+    };
+
+    private static Task DepositContract(HttpContext c, BeaconApiContext ctx)
+    {
+        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
+        {
+            return ContentNegotiation.WriteNotAcceptable(c);
+        }
+
+        if (DepositContractAddress(ctx.Spec.ChainId) is not { } address)
+        {
+            return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
+                $"No deposit contract is configured for chain {ctx.Spec.ChainId}.", c.RequestAborted);
+        }
+
+        return BeaconApiJson.WriteDataAsync(c, new DepositContractDto(ctx.Spec.ChainId.ToString(), address), c.RequestAborted);
     }
 
     /// <remarks>
@@ -93,6 +119,10 @@ internal static class ConfigEndpoints
 
         return BeaconApiJson.WriteDataAsync(c, data, c.RequestAborted);
     }
+
+    private sealed record DepositContractDto(
+        [property: JsonPropertyName("chain_id")] string ChainId,
+        [property: JsonPropertyName("address")] string Address);
 
     private sealed record ForkDto(
         [property: JsonPropertyName("previous_version")] string PreviousVersion,

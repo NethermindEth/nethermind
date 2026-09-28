@@ -9,4 +9,6 @@ public class BeaconApiConfig : IBeaconApiConfig
     public bool Enabled { get; set; }
     public string Host { get; set; } = "127.0.0.1";
     public int Port { get; set; } = 5052;
+    public int MaxConcurrentStateRequests { get; set; } = 2;
+    public int StateDownloadsPerMinutePerClient { get; set; } = 30;
 }

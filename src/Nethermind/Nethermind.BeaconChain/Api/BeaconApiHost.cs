@@ -44,6 +44,7 @@ public sealed class BeaconApiHost(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconApiHost>();
     private WebApplication? _app;
+    private StateRequestLimiter? _stateLimiter;
     private int _port;
     private CancellationTokenRegistration _exitRegistration;
     private int _disposed;
@@ -54,11 +55,13 @@ public sealed class BeaconApiHost(
 
     public async Task StartAsync(CancellationToken token)
     {
+        StateRequestLimiter stateLimiter = _stateLimiter = new StateRequestLimiter(apiConfig);
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls($"http://{apiConfig.Host}:{apiConfig.Port}");
 
         WebApplication app = builder.Build();
+        app.Use(stateLimiter.InvokeAsync);
         BeaconApiContext ctx = new(chainConfig, spec, statusSource, slotClock, store, metadataSource, engine, logManager, p2p, peerManager, discovery, forkChoiceSnapshots);
         BeaconApiEndpoints.MapAll(app, ctx);
 
@@ -107,5 +110,7 @@ public sealed class BeaconApiHost(
         {
             await app.DisposeAsync();
         }
+
+        _stateLimiter?.Dispose();
     }
 }
