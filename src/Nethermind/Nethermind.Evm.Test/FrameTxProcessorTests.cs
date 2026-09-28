@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Test;
 /// <remarks>A frame transaction found invalid mid-loop is rolled back to the executor's transaction
 /// snapshot, so post-rejection assertions see the state the transaction started from.</remarks>
 [TestFixture]
-public class FrameTxProcessorTests
+public partial class FrameTxProcessorTests
 {
     private ISpecProvider _specProvider;
     private OverridableReleaseSpec _spec;
@@ -4592,7 +4592,7 @@ public class FrameTxProcessorTests
             Assert.That(root.GetProperty("to").GetString(), Is.EqualTo(Eip8141Constants.EntryPointAddress.ToString()));
             Assert.That(root.TryGetProperty("value", out JsonElement rootValue) ? rootValue.GetString() : null, Is.EqualTo("0x0"),
                 "the synthetic root must carry the same value field every other transaction's root does");
-            Assert.That(HexValue(root, "gas"), Is.EqualTo(tx.GasLimit),
+            Assert.That(HexValue(root, "gas"), Is.EqualTo(FrameGasBudget(tx)),
                 "the transaction-wide limit belongs to the synthetic root, not to a frame");
             Assert.That(frames.GetArrayLength(), Is.EqualTo(2), "both executed frames belong in the trace");
 

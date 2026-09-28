@@ -567,7 +567,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
         else if (opts.HasFlag(ExecutionOptions.Commit))
         {
-            WorldState.Commit(spec, commitRoots: false);
+            WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
         }
 
         if (tracer.IsTracingFees)
