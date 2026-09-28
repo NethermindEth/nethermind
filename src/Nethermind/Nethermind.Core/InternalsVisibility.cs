@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Core.ZkEvm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Consensus")]
 [assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Evm")]
 [assembly: InternalsVisibleTo("Nethermind.Trie")]
@@ -16,3 +17,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Nethermind.Serialization.Json")]
 [assembly: InternalsVisibleTo("Nethermind.Network")]
 [assembly: InternalsVisibleTo("Nethermind.TxPool")]
+[assembly: InternalsVisibleTo("nethermind")]

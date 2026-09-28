@@ -61,6 +61,10 @@ namespace Nethermind.TxPool.Test
         private TestBlockTree _blockTree;
 
         private const int TxGasLimit = 1_000_000;
+        /// <summary>Gas limit of the head the fixture starts from, which the pool reads at construction.
+        /// Mainnet-sized rather than the block builder's default, so only the cases that set their own
+        /// ceiling are bounded by one.</summary>
+        private const ulong FixtureHeadGasLimit = 30_000_000;
         /// <summary>Timestamp of the head the fixture starts from, which the pool reads at construction, so the
         /// expiry cases below state their deadlines relative to it rather than against an empty head.</summary>
         private const ulong FixtureHeadTimestamp = 1_000_000;
@@ -97,7 +101,8 @@ namespace Nethermind.TxPool.Test
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
             _stateProvider = new TestReadOnlyStateProvider();
             _blockTree = new TestBlockTree();
-            Block block = Build.A.Block.WithNumber(10000000 - 1).WithBaseFeePerGas(0).WithTimestamp(FixtureHeadTimestamp).TestObject;
+            Block block = Build.A.Block.WithNumber(10000000 - 1).WithBaseFeePerGas(0)
+                .WithGasLimit(FixtureHeadGasLimit).WithTimestamp(FixtureHeadTimestamp).TestObject;
             _blockTree.Head = block;
             _blockTree.BestSuggestedHeader = Build.A.BlockHeader.WithNumber(10000000).WithBaseFee(0).TestObject;
         }
@@ -122,11 +127,9 @@ namespace Nethermind.TxPool.Test
             {
                 _blockTree.Head = Build.A.Block.WithNumber(1).TestObject;
             }
-            _txPool = CreatePool(new TxPoolConfig { MaxBlobTxSize = 1, ProofsTranslationEnabled = rejection == "translation" },
+            _txPool = CreatePool(new TxPoolConfig { MaxBlobTxSize = rejection == "translation" ? int.MaxValue : 1, ProofsTranslationEnabled = rejection == "translation" },
                 rejection == "translation" ? GetOsakaSpecProvider() : null);
             Transaction tx = DecodeReceivedBlob(0x11, pooled);
-            if (rejection == "translation")
-                tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper) with { Version = ProofVersion.V1 };
             byte[] original = ((ShardBlobNetworkWrapper)tx.NetworkWrapper).Blobs[0];
             Transaction retained = null;
             EventHandler<TxEventArgs> listener = null;
@@ -1723,6 +1726,64 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // With TxPool.GasLimit unset - the shipped default - the head's block gas limit is the only bound
+        // GasLimitTxFilter has, so an unseeded one lifts the filter until the first head change.
+        [Test]
+        public void Over_block_gas_limit_transaction_is_rejected_before_the_first_head_change()
+        {
+            const ulong headGasLimit = 100_000;
+            _blockTree.Head = Build.A.Block.WithNumber(10000000 - 1).WithBaseFeePerGas(0)
+                .WithGasLimit(headGasLimit).TestObject;
+            _txPool = CreatePool(new TxPoolConfig { GasLimit = null });
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            Transaction tx = Build.A.Transaction.WithGasLimit(headGasLimit + 1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.GasLimitExceeded));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+            }
+        }
+
+        [Test]
+        public void Head_facts_are_seeded_from_the_canonical_head_at_construction()
+        {
+            const ulong headGasLimit = 12_345_678;
+            _blockTree.Head = Build.A.Block.WithNumber(10000000 - 1)
+                .WithGasLimit(headGasLimit).WithBaseFeePerGas(7).WithExcessBlobGas(0).TestObject;
+            _txPool = CreatePool(null, GetOsakaSpecProvider());
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_headInfo.BlockGasLimit, Is.EqualTo(headGasLimit));
+                Assert.That(_headInfo.CurrentBaseFee, Is.EqualTo((UInt256)7));
+                Assert.That(_headInfo.CurrentFeePerBlobGas, Is.EqualTo(Eip4844Constants.MinBlobGasPrice));
+                Assert.That(_headInfo.CurrentProofVersion, Is.EqualTo(ProofVersion.V1));
+            }
+        }
+
+        // A node still syncing to the tip sits on genesis, whose facts describe no chain it will build on, so
+        // the seed skips it and the filters keep their defaults until the first head change.
+        [Test]
+        public void Head_facts_are_not_seeded_from_a_genesis_head()
+        {
+            _blockTree.Head = Build.A.Block.WithNumber(0).WithBaseFeePerGas(0).WithGasLimit(5_000).TestObject;
+            _txPool = CreatePool(new TxPoolConfig { GasLimit = null });
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+
+            // Local submission, the only kind that reaches the filters while the node reads as syncing
+            Transaction tx = Build.A.Transaction.WithGasLimit(TxGasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_headInfo.BlockGasLimit, Is.Null);
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
         [Test]
         public void should_reject_tx_if_max_size_is_exceeded([Values(true, false)] bool sizeExceeded)
         {
@@ -2532,15 +2593,27 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_notify_added_peer_of_own_tx_when_we_are_synced([Values(0u, 1u)] uint headNumber)
+        public void should_notify_added_peer_of_own_tx_when_we_are_synced([Values(0u, 1u)] uint headNumber) =>
+            AssertAnnouncementsToAddedPeer(peerHeadNumber: headNumber, expectedAnnouncements: (int)headNumber);
+
+        private void AssertAnnouncementsToAddedPeer(ulong peerHeadNumber, int expectedAnnouncements)
         {
             _txPool = CreatePool();
             _ = AddTransactionToPool();
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-            txPoolPeer.HeadNumber.Returns(headNumber);
+            txPoolPeer.HeadNumber.Returns(peerHeadNumber);
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
-            txPoolPeer.Received((int)headNumber).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+            txPoolPeer.Received(expectedAnnouncements).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+        }
+
+        [TestCase(12_000_000UL, 0, TestName = "should_not_notify_added_peer_at_the_tip_while_syncing")]
+        [TestCase(10_000_000UL, 1, TestName = "should_notify_added_peer_at_the_tip_when_synced")]
+        public void should_notify_added_peer_based_on_processed_head(ulong tipNumber, int expectedAnnouncements)
+        {
+            // Setup leaves the processed head at 9_999_999; the tip carries both the best downloaded block and the peer
+            _blockTree.BestKnownNumberOverride = tipNumber;
+            AssertAnnouncementsToAddedPeer(peerHeadNumber: tipNumber, expectedAnnouncements);
         }
 
         [Test]
@@ -6100,6 +6173,53 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(AuthorityTx(0), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(AuthorityTx(1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.NotCurrentNonceForDelegation));
+        }
+
+        // The authority's account nonce is 1.
+        [TestCase(0UL, 1UL, true)]
+        [TestCase(TestBlockchainIds.ChainId, 1UL, true)]
+        [TestCase(TestBlockchainIds.ChainId, 2UL, true)]
+        [TestCase(TestBlockchainIds.ChainId, 0UL, false, TestName = "Stale authorization nonce")]
+        [TestCase(TestBlockchainIds.ChainId + 1, 1UL, false, TestName = "Foreign chain id")]
+        public void Authorization_restricts_authority_only_when_it_can_still_apply(ulong authChainId, ulong authNonce, bool restrictsAuthority)
+        {
+            ISpecProvider specProvider = GetPragueSpecProvider();
+            _txPool = CreatePool(new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 }, specProvider);
+
+            PrivateKey authority = TestItem.PrivateKeyA;
+            PrivateKey sponsorA = TestItem.PrivateKeyB;
+            PrivateKey sponsorB = TestItem.PrivateKeyC;
+            _stateProvider.CreateAccount(authority.Address, UInt256.MaxValue, nonce: 1);
+            _stateProvider.CreateAccount(sponsorA.Address, UInt256.MaxValue);
+            _stateProvider.CreateAccount(sponsorB.Address, UInt256.MaxValue);
+
+            EthereumEcdsa ecdsa = new(_specProvider.ChainId);
+
+            Transaction Delegation(PrivateKey sponsor) => Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.SetCode)
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
+                .WithGasLimit(100_000)
+                .WithAuthorizationCode(ecdsa.Sign(authority, authChainId, TestItem.AddressD, authNonce))
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, sponsor).TestObject;
+
+            Transaction AuthorityTx(ulong nonce) => Build.A.Transaction
+                .WithNonce(nonce)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(9.GWei)
+                .WithMaxPriorityFeePerGas(9.GWei)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, authority).TestObject;
+
+            Assert.That(_txPool.SubmitTx(Delegation(sponsorA), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(AuthorityTx(1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(AuthorityTx(2), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(restrictsAuthority ? AcceptTxResult.NotCurrentNonceForDelegation : AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(Delegation(sponsorB), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(restrictsAuthority ? AcceptTxResult.DelegatorHasPendingTx : AcceptTxResult.Accepted));
         }
 
         [TestCase(1ul, 2ul)]
