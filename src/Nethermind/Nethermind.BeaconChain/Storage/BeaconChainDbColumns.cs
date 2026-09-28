@@ -15,4 +15,6 @@ public enum BeaconChainDbColumns
     ForkChoice,
     /// <summary>Anchor checkpoint, genesis validators root, ENR sequence, pubkey cache, schema version.</summary>
     Metadata,
+    /// <summary>Beacon block root to snappy-compressed SSZ <c>SignedExecutionPayloadEnvelope</c>, with a slot index for pruning.</summary>
+    ExecutionPayloadEnvelopes,
 }
