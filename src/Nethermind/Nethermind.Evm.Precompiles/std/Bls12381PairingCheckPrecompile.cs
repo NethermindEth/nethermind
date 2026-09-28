@@ -45,8 +45,7 @@ public partial class Bls12381PairingCheckPrecompile
         Memory<long> g1Memory = g1Points.AsMemory();
         Memory<long> g2Memory = g2Points.AsMemory();
         // decode + on-curve/subgroup-validate each pair into its slot
-        Result result = Eip2537.DecodeAll(pairDestinations.Count,
-            index => TryDecodePairToBuffer(inputData, g1Memory, g2Memory, pairDestinations[index], index));
+        Result result = Eip2537.DecodeAll(pairDestinations.Count, new PairDecoder(inputData, g1Memory, g2Memory, pairDestinations));
 
         if (!result)
             return result.Error!;
@@ -69,6 +68,12 @@ public partial class Bls12381PairingCheckPrecompile
         if (acc.FinalExp().IsOne()) res[31] = 1;
 
         return res;
+    }
+
+    private readonly struct PairDecoder(ReadOnlyMemory<byte> inputData, Memory<long> g1Buffer, Memory<long> g2Buffer, ArrayPoolList<int> destinations)
+        : Eip2537.IItemDecoder
+    {
+        public Result Decode(int index) => TryDecodePairToBuffer(inputData, g1Buffer, g2Buffer, destinations[index], index);
     }
 
     private static Result TryDecodePairToBuffer(

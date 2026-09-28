@@ -81,8 +81,7 @@ public partial class Bls12381G1MsmPrecompile
         Memory<byte> rawScalarsMemory = rawScalars.AsMemory();
         // decode points to rawPoints buffer
         // n.b. subgroup checks carried out as part of decoding
-        Result result = Eip2537.DecodeAll(pointDestinations.Count,
-            index => Eip2537.TryDecodeG1ToBuffer(inputData, rawPointsMemory, rawScalarsMemory, pointDestinations[index], index));
+        Result result = Eip2537.DecodeAll(pointDestinations.Count, new G1Decoder(inputData, rawPointsMemory, rawScalarsMemory, pointDestinations));
 
         if (!result)
             return result.Error!;
@@ -90,5 +89,11 @@ public partial class Bls12381G1MsmPrecompile
         // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
         G1 res = new G1(stackalloc long[G1.Sz]).MultiMultAffine(rawPoints, rawScalars, npoints);
         return res.EncodeRaw();
+    }
+
+    private readonly struct G1Decoder(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, ArrayPoolList<int> destinations)
+        : Eip2537.IItemDecoder
+    {
+        public Result Decode(int index) => Eip2537.TryDecodeG1ToBuffer(inputData, pointBuffer, scalarBuffer, destinations[index], index);
     }
 }

@@ -9,8 +9,14 @@ namespace Nethermind.Evm.Precompiles;
 
 internal static partial class Eip2537
 {
+    /// <summary>Decodes and validates one input item into its destination buffer.</summary>
+    internal interface IItemDecoder
+    {
+        Result Decode(int index);
+    }
+
     /// <summary>
-    /// Runs <paramref name="decode"/> for every index in [0, <paramref name="count"/>), stopping early once one fails.
+    /// Runs <paramref name="decoder"/> for every index in [0, <paramref name="count"/>), stopping early once one fails.
     /// </summary>
     /// <returns>A failure if any item failed to decode, otherwise <see cref="Result.Success"/>.</returns>
     /// <remarks>
@@ -18,31 +24,44 @@ internal static partial class Eip2537
     /// started, so a call cannot stall when the thread pool is saturated (for example by block prewarming).
     /// Which failure is returned when several items fail is unspecified.
     /// </remarks>
-    internal static Result DecodeAll(int count, Func<int, Result> decode)
+    internal static Result DecodeAll<TDecoder>(int count, TDecoder decoder) where TDecoder : struct, IItemDecoder
     {
-        Result result = Result.Success;
-
 #pragma warning disable CS0162 // Unreachable code detected
         if (DisableConcurrency)
         {
+            Result result = Result.Success;
             for (int i = 0; i < count && result; i++)
             {
-                result = decode(i);
+                result = decoder.Decode(i);
             }
 
             return result;
         }
-#pragma warning restore CS0162 // Unreachable code detected
-
-        using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
-        ParallelUnbalancedWork.For(0, count, index =>
+        else
         {
-            if (!result) return;
-            Result local = decode(index);
-            // racy but safe: workers only ever store a failure, so the result after the barrier fails iff any item did
-            if (!local) result = local;
-        });
+            using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+            DecodeAllState<TDecoder> state = new(decoder);
+            ParallelUnbalancedWork.For(0, count, state, static (index, s) =>
+            {
+                s.Decode(index);
+                return s;
+            });
 
-        return result;
+            return state.Result;
+        }
+#pragma warning restore CS0162 // Unreachable code detected
+    }
+
+    private sealed class DecodeAllState<TDecoder>(TDecoder decoder) where TDecoder : struct, IItemDecoder
+    {
+        public Result Result { get; private set; } = Result.Success;
+
+        public void Decode(int index)
+        {
+            if (!Result) return;
+            Result local = decoder.Decode(index);
+            // racy but safe: workers only ever store a failure, so the result after the barrier fails iff any item did
+            if (!local) Result = local;
+        }
     }
 }
