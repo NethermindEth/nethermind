@@ -326,7 +326,7 @@ public partial class ParityLikeTxTracer : TxTracer
     public override void ReportOperationError(EvmExceptionType error)
     {
         // A call or creation that fails its balance or depth precheck pushes 0 and execution continues.
-        if (error == EvmExceptionType.NotEnoughBalance) return;
+        if (error is EvmExceptionType.NotEnoughBalance or EvmExceptionType.CallDepthExceeded) return;
 
         // A failed precompile frame reports its error without an operation of its own.
         List<ParityVmOperationTrace> ops = _currentVmTrace.Ops;

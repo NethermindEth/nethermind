@@ -559,6 +559,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             Assert.That(deepest.Subtraces[1].Value, Is.EqualTo(UInt256.One), "precompile call value");
             // Before EIP-150 a creation would have received all the gas left after its own cost.
             Assert.That(deepest.Subtraces[2].Gas, Is.EqualTo(create.Used), "create gas");
+            // A failed precheck pushes 0 and execution continues, so none of the attempts halts.
+            Assert.That(deepestVmTrace.Operations.Select(static operation => operation.Halted), Is.All.False, "halted operations");
         }
     }
 
