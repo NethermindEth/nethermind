@@ -240,9 +240,15 @@ public partial class VirtualMachine<TGasPolicy>(
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         if (!ReferenceEquals(_blockExecutionContext.Spec, blockExecutionContext.Spec))
+        {
             _executionHandlers = null;
+            ResetSpecCaches();
+        }
         _blockExecutionContext = blockExecutionContext;
     }
+
+    /// <summary>Drops state cached for the previous block's spec.</summary>
+    partial void ResetSpecCaches();
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
     private TxExecutionContext _txExecutionContext;
@@ -289,7 +295,7 @@ public partial class VirtualMachine<TGasPolicy>(
         _isCancelableCached = txTracer.IsCancelable;
         IsTracingAccess = txTracer.IsTracingAccess;
         IsTracingOpLevelStorage = txTracer.IsTracingOpLevelStorage;
-        IsTracingImplicitStop = txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
+        IsTracingImplicitStop = TTracingInst.IsActive && txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
         _tracerAllowsReturnScratch = !txTracer.IsTracingActions
             && !txTracer.IsTracingInstructions
             && !txTracer.IsTracingMemory
@@ -1338,7 +1344,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
             )
             {
-                SubstateError = success ? null : GetErrorString(precompile, output.Error)
+                SubstateError = success || !state.IsTopLevel ? null : GetErrorString(precompile, output.Error)
             };
         }
         catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
