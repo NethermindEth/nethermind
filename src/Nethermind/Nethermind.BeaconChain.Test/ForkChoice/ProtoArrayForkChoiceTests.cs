@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.Core.Crypto;
@@ -126,5 +127,34 @@ public class ProtoArrayForkChoiceTests
             Assert.That(forkChoice.CalculateCommitteeFraction(balances, ForkChoiceRunner.ReorgHeadWeightThresholdPercent), Is.EqualTo(40ul));
             Assert.That(forkChoice.CalculateCommitteeFraction(balances, ForkChoiceRunner.ReorgParentWeightThresholdPercent), Is.EqualTo(320ul));
         }
+    }
+
+    /// <summary>
+    /// A pre-Gloas vote is kept at its target epoch's first slot, which a later Gloas-slot vote must exceed to replace it. A
+    /// start slot that overflows would wrap to a small slot, so the vote is refused and the latest message stays unset.
+    /// </summary>
+    [Test]
+    public void A_vote_whose_target_epoch_start_slot_overflows_is_refused()
+    {
+        CheckpointRef anchor = new(0, GetRoot(0));
+        ProtoArrayForkChoice forkChoice = new(0, 0, Hash256.Zero, anchor, anchor, ExecutionStatus.Optimistic, Hash256.Zero, slotsPerEpoch: 32);
+
+        Assert.That(() => forkChoice.ProcessAttestation(0, GetRoot(0), ulong.MaxValue / 2), Throws.TypeOf<ProtoArrayException>());
+        Assert.That(forkChoice.LatestMessage(0), Is.Null);
+    }
+
+    /// <summary>A default <see cref="ScoreDeltas"/> has no arrays: it is refused as a proto-array error before any weight moves, never a <see cref="NullReferenceException"/>.</summary>
+    [Test]
+    public void Score_changes_without_delta_arrays_are_refused()
+    {
+        CheckpointRef anchor = new(0, GetRoot(0));
+        ProtoArray protoArray = new(slotsPerEpoch: 32, proposerScoreBoostPercent: 40);
+        protoArray.OnBlock(
+            new ProtoBlock(0, GetRoot(0), null, Hash256.Zero, anchor, anchor, ExecutionStatus.Optimistic, Hash256.Zero, anchor, anchor),
+            0, anchor, anchor);
+
+        Assert.That(
+            () => protoArray.ApplyScoreChanges(default, anchor, anchor, JustifiedBalances.FromEffectiveBalances([1]), Hash256.Zero, 0),
+            Throws.TypeOf<ProtoArrayException>());
     }
 }

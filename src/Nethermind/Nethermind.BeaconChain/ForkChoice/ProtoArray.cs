@@ -48,6 +48,11 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         ulong currentSlot)
     {
         (long[] weightDeltas, long[] emptyDeltas, long[] fullDeltas) = deltas;
+        if (weightDeltas is null || emptyDeltas is null || fullDeltas is null)
+        {
+            throw new ProtoArrayException("Score deltas are missing a weight, EMPTY or FULL array");
+        }
+
         if (weightDeltas.Length != Indices.Count || emptyDeltas.Length != Indices.Count || fullDeltas.Length != Indices.Count)
         {
             throw new ProtoArrayException($"Invalid delta length: {weightDeltas.Length}, expected {Indices.Count}");
@@ -430,6 +435,35 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
 
         // specs/phase0/fork-choice.md get_head: an empty get_filtered_block_tree leaves the head at the justified root.
         return NodeIsViableForHead(bestNode, currentSlot, justifiedCheckpoint, finalizedCheckpoint) ? bestNode.Root : justifiedRoot;
+    }
+
+    /// <summary>The spec's <c>get_filtered_block_tree</c>: which nodes, by index, are in the viable block tree.</summary>
+    /// <remarks>
+    /// specs/phase0/fork-choice.md <c>filter_block_tree</c>: a node with children is kept when any child is kept, and a
+    /// leaf when <see cref="NodeIsViableForHead"/>. An invalid node and its subtree are absent (specs/bellatrix/optimistic-sync.md),
+    /// so a valid node whose children are all invalid is judged as a leaf. Nodes outside the justified subtree are never read.
+    /// </remarks>
+    internal bool[] FilterBlockTree(ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
+    {
+        bool[] kept = new bool[Nodes.Count];
+        for (int nodeIndex = Nodes.Count - 1; nodeIndex >= 0; nodeIndex--)
+        {
+            ProtoNode node = Nodes[nodeIndex];
+            if (node.ExecutionStatus == ExecutionStatus.Invalid) continue;
+
+            bool hasChildren = false;
+            bool anyChildKept = false;
+            foreach (int child in node.Children)
+            {
+                if (Nodes[child].ExecutionStatus == ExecutionStatus.Invalid) continue;
+                hasChildren = true;
+                anyChildKept |= kept[child];
+            }
+
+            kept[nodeIndex] = hasChildren ? anyChildKept : NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+        }
+
+        return kept;
     }
 
     /// <summary>Drops all nodes preceding <paramref name="finalizedRoot"/>, unless it is shallower than <see cref="PruneThreshold"/>.</summary>
