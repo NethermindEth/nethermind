@@ -482,6 +482,9 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
                 lock (_completion) Monitor.PulseAll(_completion);
         }
 
+        // Tests publish descendant work after the readiness check, at the wait boundary.
+        internal Action? BeforeJoinWait;
+
         private void JoinScoped()
         {
             Volatile.Write(ref _joiner, Environment.CurrentManagedThreadId);
@@ -502,7 +505,10 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
                     int active = Volatile.Read(ref _active);
                     if (!_complete && !_scope!.HasReadyWork(_queue!) && (active == 0 || active >= _workers || (active > 0 &&
                         (Volatile.Read(ref _next.Value) >= _to || _abandoned || _token.IsCancellationRequested || _exception is not null))))
+                    {
+                        BeforeJoinWait?.Invoke();
                         Monitor.Wait(_completion);
+                    }
                     Volatile.Write(ref _joinerWaiting, 0);
                 }
             }

@@ -179,23 +179,11 @@ public partial class ParallelUnbalancedWorkTests
             });
         }
         Task worker = Task.Run(() => work.TryHelp());
-        Task? publisher = null;
+        if (enqueueAfterWait) work.BeforeJoinWait = release.Set;
         try
         {
             Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
-            if (enqueueAfterWait)
-            {
-                publisher = Task.Run(() =>
-                {
-                    try
-                    {
-                        Assert.That(SpinWait.SpinUntil(() => (joiningThread.ThreadState & ThreadState.WaitSleepJoin) != 0,
-                            TimeSpan.FromSeconds(10)), Is.True);
-                    }
-                    finally { release.Set(); }
-                });
-            }
-            else
+            if (!enqueueAfterWait)
             {
                 release.Set();
                 Assert.That(nestedEntered.Wait(TimeSpan.FromSeconds(10)), Is.True);
@@ -214,7 +202,6 @@ public partial class ParallelUnbalancedWorkTests
             release.Set();
             assisted.Set();
             worker.GetAwaiter().GetResult();
-            publisher?.GetAwaiter().GetResult();
         }
     }
 

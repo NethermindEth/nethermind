@@ -49,7 +49,7 @@ public partial class ParallelUnbalancedWork
         /// <summary>One operation's unstarted callbacks, all the same work item.</summary>
         internal sealed class WorkQueue(BackgroundWork? owner = null)
         {
-            // Synchronous loops retain their ancestry until their callbacks have drained.
+            // Synchronous loops record the operation that started them.
             // Background operations start a new ancestry: their creator need not join them.
             internal readonly WorkQueue? Parent = owner is null ? _context.Operation : null;
             internal readonly BackgroundWork? Owner = owner;
