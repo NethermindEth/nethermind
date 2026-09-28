@@ -15,7 +15,6 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Api;
-using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
