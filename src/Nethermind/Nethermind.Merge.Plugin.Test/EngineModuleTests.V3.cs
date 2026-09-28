@@ -388,7 +388,7 @@ public partial class EngineModuleTests
 
         static (string, string, string) BaseField(string field, string? nullError = null)
         {
-            string error = $"{char.ToUpperInvariant(field[0])}{field[1..]} must be set";
+            string error = $"{field} must be set";
             return (field, nullError ?? error, error);
         }
     }

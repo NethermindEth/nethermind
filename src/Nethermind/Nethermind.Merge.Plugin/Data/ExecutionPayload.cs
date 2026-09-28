@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Cpu;
@@ -86,11 +87,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     }
 
     /// <summary>
-    /// The name of a field the JSON request omitted or sent as <c>null</c>, or <c>null</c> if every field was bound.
+    /// The JSON key of a field the request omitted or sent as <c>null</c>, or <c>null</c> if every field was bound.
     /// </summary>
     /// <remarks>Only payload types that arm presence tracking on deserialization report a field.</remarks>
     internal string? UnboundFieldName =>
-        _unboundFields == PayloadFields.None ? null : ((PayloadFields)(1 << BitOperations.TrailingZeroCount((uint)_unboundFields))).ToString();
+        _unboundFields == PayloadFields.None
+            ? null
+            : JsonNamingPolicy.CamelCase.ConvertName(((PayloadFields)(1 << BitOperations.TrailingZeroCount((uint)_unboundFields))).ToString());
 
     protected byte[][] _encodedTransactions = [];
 
