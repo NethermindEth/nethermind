@@ -319,6 +319,25 @@ public class RangeSyncGloasColumnsTests
         }
     }
 
+    /// <summary>gloas/p2p-interface.md DataColumnSidecarsByRoot names the block by root, so a peer whose last status head is behind the block is still asked.</summary>
+    [Test]
+    public async Task By_root_fetch_asks_a_peer_whose_recorded_head_is_behind_the_block()
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create();
+        ulong[] sampled = [.. SampledColumns(discovery)];
+        RangeSyncTests.StubPeer behind = chain.CreateRootPeer("behind", ids => [.. ids[0].Columns!.Select(c => chain.GloasSidecar(c))], headSlot: FuluSlot);
+        DataColumnSidecarPool pool = new();
+
+        bool available = await CreateSync(pool, discovery, clock: null, behind).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(available, Is.True);
+            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
+        }
+    }
+
     /// <summary>No peer is asked while every sampled column is held; otherwise every peer of the fetch is asked at once.</summary>
     [Test]
     public async Task By_root_fetch_asks_every_peer_at_once_unless_every_column_is_held([Values] bool heldOnEntry)
@@ -557,9 +576,9 @@ public class RangeSyncGloasColumnsTests
             },
             gloasColumnHandler);
 
-        public RangeSyncTests.StubPeer CreateRootPeer(string id, Func<DataColumnsByRootIdentifier[], DataColumnSidecarGloas[]> gloasRootHandler) => new(
+        public RangeSyncTests.StubPeer CreateRootPeer(string id, Func<DataColumnsByRootIdentifier[], DataColumnSidecarGloas[]> gloasRootHandler, ulong headSlot = GloasSlot) => new(
             id,
-            headSlot: GloasSlot,
+            headSlot,
             static (_, _) => [],
             gloasRootHandler: gloasRootHandler);
     }

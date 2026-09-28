@@ -43,6 +43,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     // Generous: a slow peer hammered by range-sync batches can rack up transient timeouts
     // without being useless, and dialable mainnet peers are scarce.
     private const int MaxConsecutiveFailures = 8;
+
+    // Peers that never answer each hold a check for a request timeout, so a round checks this many at once.
+    private const int MaxConcurrentHealthChecks = 8;
     private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromSeconds(30);
 
     // Below MinPeerCount, maintenance (static-peer reconnect and health checks) runs on this
@@ -176,7 +179,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
     }
 
-    /// <summary>The columns this node samples (fulu/das-core.md) that no connected peer custodies; empty while this node's custody is unknown.</summary>
+    /// <summary>The columns this node samples (fulu/das-core.md) that no connected peer below the failure limit custodies; empty while this node's custody is unknown.</summary>
     internal IReadOnlyList<ulong> UncustodiedSampledColumns()
     {
         if (_localCustody.Current is not { } local)
@@ -187,7 +190,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         List<ulong> uncustodied = [];
         foreach (ulong column in local.SampledColumns)
         {
-            if (CustodianCount(column) == 0)
+            if (CustodianCount(column, usableOnly: true) == 0)
             {
                 uncustodied.Add(column);
             }
@@ -196,12 +199,13 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return uncustodied;
     }
 
-    private int CustodianCount(ulong column)
+    /// <param name="usableOnly">Counts only peers below the failure limit, which requests are still sent to (see <see cref="GetBestPeers"/>).</param>
+    private int CustodianCount(ulong column, bool usableOnly = false)
     {
         int count = 0;
         foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
         {
-            if (peer.Value.Custody.Custodies(column))
+            if (peer.Value.Custody.Custodies(column) && !(usableOnly && peer.Value.IsAtFailureLimit))
             {
                 count++;
             }
@@ -236,10 +240,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             }
         }
 
-        foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
-        {
-            await CheckHealthAsync(peer.Value, token);
-        }
+        // Enumerating the concurrent dictionary tolerates a check dropping a peer meanwhile.
+        await Parallel.ForEachAsync(_peers, new ParallelOptions { MaxDegreeOfParallelism = MaxConcurrentHealthChecks, CancellationToken = token },
+            (peer, checkToken) => new ValueTask(CheckHealthAsync(peer.Value, checkToken)));
 
         await TrimToPeerBandAsync(staticAddresses, token);
         PublishCustodyShortfall();
@@ -367,12 +370,17 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return null;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A peer at the failure limit is not handed out, but it is not dropped for request failures alone either: it can be the
+    /// last custodian of a sampled column (fulu/das-core.md), so its columns are sought elsewhere while it stays connected.
+    /// </remarks>
     public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
     {
         List<ManagedPeer> best = [];
         foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
         {
-            if (peer.Value.Status is not null && peer.Value.HeadSlot >= minHeadSlot)
+            if (peer.Value.Status is not null && peer.Value.HeadSlot >= minHeadSlot && !peer.Value.IsAtFailureLimit)
             {
                 best.Add(peer.Value);
             }
@@ -1051,7 +1059,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
             ulong metadataSeqNumber = await _p2p.PingAsync(peer.Session, token);
             peer.RecordMessageSent();
-            peer.ConsecutiveFailures = 0;
+            peer.ResetFailures();
             if (peer.MetadataSeqNumber != metadataSeqNumber)
             {
                 await RefreshCustodyAsync(peer, token);
@@ -1059,9 +1067,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
-            peer.ConsecutiveFailures++;
-            if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peer.Id} failed health check ({peer.ConsecutiveFailures}/{MaxConsecutiveFailures}): {e.Message}");
-            if (peer.ConsecutiveFailures >= MaxConsecutiveFailures)
+            int failures = peer.RecordFailedHealthCheck();
+            if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peer.Id} failed health check ({failures}/{MaxConsecutiveFailures}): {e.Message}");
+            if (failures >= MaxConsecutiveFailures)
             {
                 await DropAsync(peer, GoodbyeReason.Fault, $"repeated failures, last: {DescribeFailure(e)}", token);
             }
@@ -1231,11 +1239,14 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         /// an inbound session (see <see cref="PeerManager.TryAddPeerAsync"/>'s optional parameter).</summary>
         public string? Enr { get; } = enr;
 
-        public int ConsecutiveFailures
-        {
-            get => _consecutiveFailures;
-            set => _consecutiveFailures = value;
-        }
+        public int ConsecutiveFailures => Volatile.Read(ref _consecutiveFailures);
+
+        public bool IsAtFailureLimit => ConsecutiveFailures >= MaxConsecutiveFailures;
+
+        public void ResetFailures() => Interlocked.Exchange(ref _consecutiveFailures, 0);
+
+        /// <returns>The consecutive failures including this one.</returns>
+        public int RecordFailedHealthCheck() => Interlocked.Increment(ref _consecutiveFailures);
 
         public long MessagesSent => Interlocked.Read(ref _messagesSent);
         public long FailuresReported => Interlocked.Read(ref _failuresReported);

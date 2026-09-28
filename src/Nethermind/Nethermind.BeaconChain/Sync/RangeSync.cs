@@ -403,8 +403,9 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
 
         List<ulong> missing = MissingColumns(blockRoot, custody);
+        // A by-root request names the block, so a custodian whose last status head is behind it may still serve it (fulu/p2p-interface.md DataColumnSidecarsByRoot).
         // OrderBy is stable, so the pool's own order breaks ties.
-        IBeaconSyncPeer[] custodians = [.. peerPool.GetBestPeers(block.Slot).Where(p => p.Custody.CountCustodied(missing) > 0).OrderByDescending(static p => p.Custody.IsAdvertised)];
+        IBeaconSyncPeer[] custodians = [.. peerPool.GetBestPeers(0).Where(p => p.Custody.CountCustodied(missing) > 0).OrderByDescending(static p => p.Custody.IsAdvertised)];
         List<IBeaconSyncPeer> asked = rotation.Take(custodians, MaxByRootColumnPeers);
         Task<IReadOnlyList<DataColumnSidecar>?>[] responses = new Task<IReadOnlyList<DataColumnSidecar>?>[asked.Count];
         for (int i = 0; i < asked.Count; i++)
@@ -499,7 +500,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             return true;
         }
 
-        IBeaconSyncPeer[] custodians = [.. peerPool.GetBestPeers(bid.Slot).Where(p => p.Custody.CountCustodied(missing) > 0)];
+        // A by-root request names the block, so a custodian whose last status head is behind it may still serve it (fulu/p2p-interface.md DataColumnSidecarsByRoot).
+        IBeaconSyncPeer[] custodians = [.. peerPool.GetBestPeers(0).Where(p => p.Custody.CountCustodied(missing) > 0)];
         List<IBeaconSyncPeer> asked = rotation.Take(custodians, MaxByRootColumnPeers);
         ulong[][] requested = new ulong[asked.Count][];
         Task<IReadOnlyList<DataColumnSidecarGloas>?>[] responses = new Task<IReadOnlyList<DataColumnSidecarGloas>?>[asked.Count];
