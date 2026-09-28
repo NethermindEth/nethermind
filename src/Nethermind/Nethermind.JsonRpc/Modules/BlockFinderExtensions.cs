@@ -98,8 +98,11 @@ namespace Nethermind.JsonRpc.Modules
             {
                 SearchResult<BlockHeader> finalBlockHeader = SearchForHeader(blockFinder, toBlock);
                 if (finalBlockHeader.IsError || finalBlockHeader.Object is null)
+                {
                     yield return new SearchResult<Block>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
-                bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object!);
+                    yield break;
+                }
+                bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object);
                 bool isStartingBlockOnMainChain = blockFinder.IsMainChain(startingBlock.Object.Header);
                 if (!isFinalBlockOnMainChain || !isStartingBlockOnMainChain)
                 {
@@ -115,7 +118,7 @@ namespace Nethermind.JsonRpc.Modules
                     ulong finalBlockNumber = finalBlockHeader.Object.Number;
                     if (startingBlockNumber > finalBlockNumber)
                     {
-                        yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidInput);
+                        yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidParams);
                     }
 
                     for (ulong i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)
