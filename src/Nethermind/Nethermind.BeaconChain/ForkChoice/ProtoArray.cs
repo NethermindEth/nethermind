@@ -336,7 +336,8 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
     /// <see cref="OnBlock"/>, since <see cref="OnBlock"/> does not walk backwards updating
     /// best-child/best-descendant links.
     /// </remarks>
-    /// <exception cref="ProtoArrayException">The justified root is unknown or invalid, or the best node is not viable for the head.</exception>
+    /// <returns>The best viable descendant, or <paramref name="justifiedRoot"/> when no node is viable: the spec's <c>get_head</c> starts its walk there.</returns>
+    /// <exception cref="ProtoArrayException">The justified root is unknown or has an invalid execution payload.</exception>
     public Hash256 FindHead(Hash256 justifiedRoot, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
     {
         if (!Indices.TryGetValue(justifiedRoot, out int justifiedIndex))
@@ -356,15 +357,8 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
 
         ProtoNode bestNode = Nodes[justifiedNode.BestDescendant ?? justifiedIndex];
 
-        if (!NodeIsViableForHead(bestNode, currentSlot, justifiedCheckpoint, finalizedCheckpoint))
-        {
-            throw new ProtoArrayException(
-                $"Best node {bestNode.Root} (justified {bestNode.JustifiedCheckpoint}, finalized {bestNode.FinalizedCheckpoint}) " +
-                $"is not viable for head at slot {currentSlot} from {justifiedRoot} " +
-                $"(justified {justifiedCheckpoint}, finalized {finalizedCheckpoint})");
-        }
-
-        return bestNode.Root;
+        // specs/phase0/fork-choice.md get_head: an empty get_filtered_block_tree leaves the head at the justified root.
+        return NodeIsViableForHead(bestNode, currentSlot, justifiedCheckpoint, finalizedCheckpoint) ? bestNode.Root : justifiedRoot;
     }
 
     /// <summary>Drops all nodes preceding <paramref name="finalizedRoot"/>, unless it is shallower than <see cref="PruneThreshold"/>.</summary>

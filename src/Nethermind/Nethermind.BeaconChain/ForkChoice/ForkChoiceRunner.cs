@@ -340,10 +340,13 @@ public sealed class ForkChoiceRunner
         BeaconBlock block = signedBlock.Message!;
         if (IsGloasSlot(block.Slot))
             throw new ForkChoiceException($"Block at slot {block.Slot} is in a Gloas epoch; it must be a {nameof(SignedBeaconBlockGloas)}");
+        Hash256 blockRoot = SszRoots.HashTreeRoot(block);
+        // specs/phase0/fork-choice.md on_block: return early if the block is already known.
+        if (_protoArray.ContainsBlock(blockRoot))
+            return;
         Hash256 parentRoot = block.ParentRoot!;
         ValidateOnBlock(block.Slot, parentRoot);
 
-        Hash256 blockRoot = SszRoots.HashTreeRoot(block);
         if (!availability.IsDataAvailable(block, blockRoot, _spec))
             throw new ForkChoiceException($"Block {blockRoot} at slot {block.Slot} does not have all its blob data available");
         ExtendPubkeys(postState.Validators!);
@@ -389,13 +392,16 @@ public sealed class ForkChoiceRunner
             throw new ForkChoiceException($"Block at slot {block.Slot} is before the Gloas fork; it must be a {nameof(SignedBeaconBlock)}");
         if (_gloasStateProvider is null)
             throw new ForkChoiceException($"Block at slot {block.Slot} is a Gloas block, but no {nameof(IGloasBlockStateProvider)} was supplied to resolve its checkpoint states");
+        Hash256 blockRoot = SszRoots.HashTreeRoot(block);
+        // specs/gloas/fork-choice.md on_block: return early if the block is already known.
+        if (_protoArray.ContainsBlock(blockRoot))
+            return;
         Hash256 parentRoot = block.ParentRoot!;
         ValidateOnBlock(block.Slot, parentRoot);
         // specs/gloas/fork-choice.md on_block: if is_parent_node_full, assert is_payload_verified(parent_root).
         if (IsParentNodeFull(block) && !IsPayloadVerified(parentRoot))
             throw new ForkChoiceException($"Block at slot {block.Slot} builds on the full payload of {parentRoot}, which is not verified");
 
-        Hash256 blockRoot = SszRoots.HashTreeRoot(block);
         ExtendPubkeys(postState.Validators!);
 
         ExecutionPayloadBid bid = block.Body!.SignedExecutionPayloadBid!.Message!;
@@ -499,8 +505,10 @@ public sealed class ForkChoiceRunner
         ulong timeIntoSlotMs = (secondsSinceGenesis > ulong.MaxValue / 1000 ? ulong.MaxValue : secondsSinceGenesis * 1000) % slotDurationMs;
         ulong attestationDueMs = (IsGloasSlot(slot) ? GloasTiming.AttestationDueBpsGloas : GloasTiming.AttestationDueBps) * slotDurationMs / BasisPoints;
         bool isTimely = slot == _store.CurrentSlot && timeIntoSlotMs < attestationDueMs;
+        // update_proposer_boost_root reads the pre-block get_head only for a timely first block of the slot.
+        bool isBoosted = isTimely && _store.ProposerBoostRoot == Hash256.Zero && HasHeadDependentRoot(parentRoot);
         _blockTimeliness[blockRoot] = isTimely;
-        if (isTimely && _store.ProposerBoostRoot == Hash256.Zero)
+        if (isBoosted)
             _store.ProposerBoostRoot = blockRoot;
 
         _store.UpdateCheckpoints(stateJustified, stateFinalized);
@@ -530,6 +538,23 @@ public sealed class ForkChoiceRunner
 
         // Recorded only once ProcessBlock returns: a block it throws on, even after inserting the node, must never count as a second proposal of its slot.
         _blockProposers[blockRoot] = new BlockProposer(slot, proposerIndex);
+    }
+
+    /// <summary>
+    /// The <c>is_same_dependent_root</c> term of <c>update_proposer_boost_root</c> (specs/phase0/fork-choice.md, unchanged
+    /// by specs/gloas/fork-choice.md apart from the payload status of the walk): whether a current-slot block on
+    /// <paramref name="parentRoot"/> and the pre-block <c>get_head</c> share <c>get_shuffling_dependent_root</c> at the store epoch.
+    /// </summary>
+    /// <remarks>
+    /// Must run before the block is added and before the checkpoints move. A current-slot block is always after the
+    /// dependent slot, so its dependent root is its parent's. A pruned walk ends <see langword="null"/> for both roots at
+    /// once: both descend from the finalized root, below which the spec's walk reaches the same block.
+    /// </remarks>
+    private bool HasHeadDependentRoot(Hash256 parentRoot)
+    {
+        ulong lookaheadStartSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(_store.CurrentEpoch > Presets.MinSeedLookahead ? _store.CurrentEpoch - Presets.MinSeedLookahead : 0);
+        ulong dependentSlot = lookaheadStartSlot > 0 ? lookaheadStartSlot - 1 : 0;
+        return _protoArray.GetAncestor(GetHead(), dependentSlot) == _protoArray.GetAncestor(parentRoot, dependentSlot);
     }
 
     /// <summary>Whether <paramref name="slot"/> is in an epoch at or after <see cref="BeaconChainSpec.GloasForkEpoch"/>.</summary>
@@ -711,8 +736,12 @@ public sealed class ForkChoiceRunner
     };
 
     /// <summary>The spec's <c>get_head</c>: LMD-GHOST from the justified checkpoint, weighted by the justified state's balances and the proposer boost.</summary>
+    /// <exception cref="ForkChoiceException">The justified block has an invalid execution payload.</exception>
     public Hash256 GetHead()
     {
+        // specs/bellatrix/optimistic-sync.md: an INVALIDATED justified checkpoint leaves no valid head; a node MAY exit.
+        if (_protoArray.GetBlockExecutionStatus(_store.JustifiedCheckpoint.Root) == ExecutionStatus.Invalid)
+            throw new ForkChoiceException($"Justified block {_store.JustifiedCheckpoint.Root} has an invalid execution payload");
         JustifiedBalances balances = GetJustifiedBalances(_store.JustifiedCheckpoint);
         _protoArray.SetProposerBoostRoot(_store.ProposerBoostRoot);
         return _protoArray.GetHead(_store.JustifiedCheckpoint, _store.FinalizedCheckpoint, balances, _equivocatingIndices, _store.CurrentSlot);
@@ -743,7 +772,8 @@ public sealed class ForkChoiceRunner
     /// </remarks>
     /// <exception cref="ForkChoiceException">
     /// <paramref name="headRoot"/> or its parent is unknown to fork choice, the head still holds the proposer
-    /// boost (its score has not worn off), or a state <c>is_head_weak</c> needs cannot be resolved.
+    /// boost (its score has not worn off), a state <c>is_head_weak</c> needs cannot be resolved, or the justified
+    /// block has an invalid execution payload.
     /// </exception>
     public Hash256 GetProposerHead(Hash256 headRoot, ulong proposalSlot)
     {
@@ -963,7 +993,7 @@ public sealed class ForkChoiceRunner
         _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
     };
 
-    /// <summary>The spec's <c>get_weight</c> balance source: effective balances of the justified state's active, unslashed validators.</summary>
+    /// <summary>The spec's <c>get_weight</c> balance source: effective balances of the justified state's active, unslashed validators, and its <c>get_total_active_balance</c>.</summary>
     private JustifiedBalances GetJustifiedBalances(CheckpointRef justified)
     {
         if (_justifiedBalances.TryGetValue(justified, out JustifiedBalances? cached))
@@ -973,14 +1003,20 @@ public sealed class ForkChoiceRunner
         ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(state.Slot);
         Validator[] validators = ValidatorsOf(state);
         ulong[] effectiveBalances = new ulong[validators.Length];
+        ulong totalActiveBalance = 0;
         for (int i = 0; i < validators.Length; i++)
         {
             Validator validator = validators[i];
-            if (!validator.Slashed && validator.IsActiveValidator(epoch))
+            if (!validator.IsActiveValidator(epoch))
+                continue;
+
+            totalActiveBalance = checked(totalActiveBalance + validator.EffectiveBalance);
+            if (!validator.Slashed)
                 effectiveBalances[i] = validator.EffectiveBalance;
         }
 
-        JustifiedBalances balances = JustifiedBalances.FromEffectiveBalances(effectiveBalances);
+        // get_total_active_balance counts slashed validators and floors at EFFECTIVE_BALANCE_INCREMENT (specs/phase0/beacon-chain.md).
+        JustifiedBalances balances = new(effectiveBalances, Math.Max(Presets.EffectiveBalanceIncrement, totalActiveBalance));
         _justifiedBalances[justified] = balances;
         return balances;
     }
