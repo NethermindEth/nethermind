@@ -7,15 +7,19 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.P2P;
+using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -518,6 +522,100 @@ public class BlockImporterTests
         });
     }
 
+    /// <summary>
+    /// A body attester slashing the transition accepts but fork choice refuses is counted, not dropped silently.
+    /// The block's pre-state has a validator the justified state has not onboarded yet, so the slashing is valid
+    /// for the transition and out of range for <c>on_attester_slashing</c>, which checks it against the justified state.
+    /// </summary>
+    [Test]
+    public void Body_attester_slashing_refused_by_fork_choice_is_tolerated_and_counted()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        (BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot) = AnchorWithQueuedValidator(chain.Anchor.AnchorState, chain.Anchor.AnchorBlock);
+        ulong onboarded = (ulong)anchorState.Validators!.Length;
+        AttesterSlashing slashing = chain.DoubleVote([1, onboarded], slot: 1, chain.AnchorRoot, UnknownBlockRoot);
+        // The slashing block forks off the anchor, so its transition runs on a copy and the anchor's state stays the justified one.
+        (SignedBeaconBlock lineage, Hash256 lineageRoot, _) = UnsignedChild(anchorState, anchorRoot, slot: 1, []);
+        (SignedBeaconBlock block, Hash256 root, BeaconStateFulu postState) = UnsignedChild(anchorState, anchorRoot, slot: Presets.SlotsPerEpoch + 1, [slashing]);
+        Assert.That(postState.Validators, Has.Length.EqualTo(anchorState.Validators.Length + 1), "fixture bug: the queued validator must be onboarded before the slashing block");
+        BlockImporter importer = new(
+            chain.Spec,
+            new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
+            chain.Anchor.Pubkeys,
+            new ValidPayloadEngine(),
+            new BeaconChainConfig(),
+            LimboLogs.Instance,
+            ReplayedBlockAvailability.Instance,
+            static (_, _) => false,
+            new SlotClock(chain.Spec, Timestamper.Default),
+            anchorState,
+            anchorBlock,
+            anchorRoot);
+        Assert.That(importer.Import(lineage, lineageRoot, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        long refusedBefore = RefusedByForkChoice("body_attester_slashing");
+
+        BlockImportResult result = importer.Import(block, root, verifySignatures: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the transition accepted the slashing, so fork choice's refusal must not sink the block");
+            Assert.That(RefusedByForkChoice("body_attester_slashing") - refusedBefore, Is.EqualTo(1), "a tolerated refusal must still be observable");
+        });
+    }
+
+    /// <summary>
+    /// The snapshot <see cref="BlockImporter.ComputeHead"/> publishes carries the weights of the head it chose: votes
+    /// replayed from block bodies are weighed only by <c>get_head</c>, so a copy taken before it shows none of them.
+    /// </summary>
+    [Test]
+    public void ComputeHead_publishes_the_weights_its_head_was_chosen_by()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceSnapshotHolder snapshots = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), forkChoiceSnapshots: snapshots);
+        importer.OnSlotTick(8);
+        UnsignedChain.Equivocation scenario = chain.BuildEquivocation();
+        foreach (UnsignedChain.ChainBlock block in new[] { scenario.A, scenario.B, scenario.Voted })
+        {
+            Assert.That(importer.Import(block.Block, block.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        }
+
+        Hash256 head = importer.ComputeHead().HeadRoot;
+        ForkChoiceSnapshot published = snapshots.Current!;
+
+        ulong vote = chain.Anchor.AnchorState.Validators![0].EffectiveBalance;
+        Assert.Multiple(() =>
+        {
+            Assert.That(head, Is.EqualTo(scenario.Voted.Root));
+            Assert.That(published.Nodes.Single(n => n.Root == scenario.A.Root).Weight, Is.EqualTo(2 * vote), "A carries the two slot-1 and slot-3 votes");
+            Assert.That(published.Nodes.Single(n => n.Root == scenario.B.Root).Weight, Is.EqualTo(vote), "B carries the slot-5 vote");
+        });
+    }
+
+    /// <summary>
+    /// A child of a block whose payload the execution layer declared INVALID is refused before its state transition,
+    /// so the engine is never asked about it (specs/bellatrix/optimistic-sync.md). The engine answers one call only.
+    /// </summary>
+    [Test]
+    public void Child_of_an_invalid_parent_is_refused_before_any_engine_call()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        WarningCapture warnings = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), warnings, engine: new ScriptedPayloadEngine(ExecutionStatus.Optimistic));
+        UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
+        UnsignedChain.ChainBlock child = chain.Extend(parent.Root, slot: 2, payloadHashByte: 0xa2);
+        Assert.That(importer.Import(parent.Block, parent.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        importer.OnInvalidExecutionPayload(parent.Root, null);
+
+        BlockImportResult result = importer.Import(child.Block, child.Root, verifySignatures: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Invalid));
+            Assert.That(warnings.Warnings, Has.Some.Contains("before its state transition").And.Contains("has an invalid execution payload"));
+        });
+    }
+
     [Test]
     public void Gossip_aggregate_refused_by_fork_choice_is_counted([Values] bool gloasContainer)
     {
@@ -567,6 +665,37 @@ public class BlockImporterTests
         }
 
         Assert.That(RefusedByForkChoice("gossip_attester_slashing") - refusedBefore, Is.EqualTo(1), "the slashing reached fork choice, which refused it");
+    }
+
+    /// <summary>An anchor with one new validator's signed deposit queued, which the first epoch transition onboards.</summary>
+    internal static (BeaconStateFulu State, SignedBeaconBlock Block, Hash256 Root) AnchorWithQueuedValidator(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock)
+    {
+        BeaconStateFulu state = anchorState.Clone();
+        state.PendingDeposits = [GloasTestFixtures.NewValidatorDeposit(keyIndex: 300, 32 * GloasTestFixtures.Gwei, slot: 0)];
+        BeaconBlock anchor = anchorBlock.Message!;
+        BeaconBlock message = new() { Slot = anchor.Slot, ProposerIndex = anchor.ProposerIndex, ParentRoot = anchor.ParentRoot, StateRoot = SszRoots.HashTreeRoot(state), Body = anchor.Body };
+        return (state, new SignedBeaconBlock { Message = message, Signature = anchorBlock.Signature }, SszRoots.HashTreeRoot(message));
+    }
+
+    /// <summary>An unsigned, sealed child of <paramref name="parentRoot"/> at <paramref name="slot"/> carrying <paramref name="slashings"/>, as <see cref="UnsignedChain.Extend"/> builds one.</summary>
+    private static (SignedBeaconBlock Block, Hash256 Root, BeaconStateFulu PostState) UnsignedChild(BeaconStateFulu parentState, Hash256 parentRoot, ulong slot, AttesterSlashing[] slashings)
+    {
+        BlsSignature unsigned = new(SignatureSets.G2PointAtInfinity);
+        BeaconBlock block = TestChain.CreateBlock(slot, parentRoot).Message!;
+        block.ProposerIndex = 0;
+        block.Body!.RandaoReveal = unsigned;
+        block.Body.AttesterSlashings = slashings;
+        Nethermind.BeaconChain.Types.ExecutionPayload payload = block.Body.ExecutionPayload!;
+        payload.ParentHash = parentState.LatestExecutionPayloadHeader!.BlockHash;
+        payload.PrevRandao = parentState.GetRandaoMix(parentState.GetCurrentEpoch());
+        payload.Timestamp = parentState.GenesisTime + slot * Presets.SecondsPerSlot;
+        payload.BlockNumber = parentState.LatestExecutionPayloadHeader.BlockNumber + 1;
+        payload.BlockHash = new Hash256([.. Enumerable.Repeat((byte)slot, 32)]);
+        SignedBeaconBlock signedBlock = new() { Message = block, Signature = unsigned };
+        BeaconStateFulu postState = parentState.Clone();
+        Nethermind.BeaconChain.StateTransition.StateTransition.Apply(postState, signedBlock, new EpochCache(), new PubkeyCache(), new GloasTestFixtures.AcceptingNotifier(), ImportableBlobBlock.FuluFromGenesis, validateResult: false, verifySignatures: false);
+        block.StateRoot = SszRoots.HashTreeRoot(postState);
+        return (signedBlock, SszRoots.HashTreeRoot(block), postState);
     }
 
     private static long RefusedByForkChoice(string operation) =>

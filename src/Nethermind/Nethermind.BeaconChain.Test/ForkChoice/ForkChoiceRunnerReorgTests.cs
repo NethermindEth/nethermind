@@ -178,6 +178,35 @@ public class ForkChoiceRunnerReorgTests
     }
 
     /// <summary>
+    /// <c>record_block_timeliness</c> times the head by the store time it arrived at: before <c>get_attestation_due_ms</c>
+    /// (3999 ms of a 12 s slot) it is timely and boosted, so <c>is_head_late</c> keeps it; from 4 s it is late, unboosted
+    /// and re-orged. The store time has whole-second resolution, so 3 s and 4 s straddle the deadline.
+    /// </summary>
+    [TestCase(3ul, false)]
+    [TestCase(4ul, true)]
+    public void Head_arriving_after_the_attestation_deadline_is_unboosted_and_reorged(ulong headArrivalSeconds, bool expectReorg)
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = CreateRunner(chain);
+        UnsignedChain.ChainBlock parent = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
+        UnsignedChain.ChainBlock head = chain.Extend(parent.Root, slot: 2, payloadHashByte: 0xa2);
+        TickTo(runner, slot: 1);
+        Import(runner, parent);
+        TickTo(runner, slot: 2, headArrivalSeconds);
+        Import(runner, head);
+        Hash256 boostRoot = runner.ProposerBoostRoot;
+        TickTo(runner, slot: 3);
+        runner.OnAttestation(chain.Vote(1, parent.Root), verifySignature: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(boostRoot, Is.EqualTo(expectReorg ? Hash256.Zero : head.Root), "only a timely head is boosted");
+            Assert.That(runner.GetHead(), Is.EqualTo(head.Root), "fixture bug: the head must be the slot-2 block");
+            Assert.That(runner.GetProposerHead(head.Root, proposalSlot: 3), Is.EqualTo(expectReorg ? parent.Root : head.Root));
+        });
+    }
+
+    /// <summary>
     /// Fulu's <c>get_proposer_head</c> (specs/fulu/fork-choice.md, EIP-7917) has no <c>is_shuffling_stable</c>, so a late,
     /// weak head in the last slot of an epoch is re-orged for a proposal in the first slot of the next, as one slot earlier.
     /// The slot-30 committee is empty, so the parent's vote there comes from the slot-31 committee.

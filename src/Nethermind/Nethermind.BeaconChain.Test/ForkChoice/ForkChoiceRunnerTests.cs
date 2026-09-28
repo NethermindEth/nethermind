@@ -463,6 +463,94 @@ public class ForkChoiceRunnerTests
             Throws.TypeOf<ForkChoiceException>().With.Message.Contains(overBound ? $"{oversizedName} has {Bound + 1} attesting indices" : "attestation 1 is invalid"));
     }
 
+    /// <summary>The Gloas <c>is_valid_indexed_attestation</c> bound admits exactly <c>MAX_VALIDATORS_PER_COMMITTEE * MAX_COMMITTEES_PER_SLOT</c> indices.</summary>
+    [TestCase(Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot, false)]
+    [TestCase(Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot + 1, true)]
+    public void Gloas_indexed_attestation_bound_refuses_one_index_over_it(int count, bool refused)
+    {
+        ulong[] indices = new ulong[count];
+        Assert.That(() => ForkChoiceRunner.ThrowIfOverGloasIndexedAttestationBound(indices, "Vote"),
+            refused ? Throws.TypeOf<ForkChoiceException>().With.Message.EqualTo($"Vote has {count} attesting indices, over the bound of 131072") : Throws.Nothing);
+    }
+
+    /// <summary>
+    /// A Gloas attestation against a Fulu target state, whose <c>is_valid_indexed_attestation</c> has no length bound, is still
+    /// held to the Gloas one. A slot's committees exceed 131072 members only past 4194304 active validators, so the target
+    /// state carries 4194336: one slot's 64 committees then hold 131073.
+    /// </summary>
+    [Test]
+    public void Gloas_attestation_over_the_indexed_attestation_bound_is_refused_against_a_fulu_target_state()
+    {
+        const int Bound = Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot;
+        const int ActiveValidators = (Bound + 1) * (int)Presets.SlotsPerEpoch;
+        UnsignedChain chain = UnsignedChain.Create();
+        BeaconStateFulu anchorState = chain.Anchor.AnchorState;
+        Assert.That(anchorState.Slot, Is.Zero, "fixture bug: the vote is for the anchor's own slot, so the target state needs no advance");
+        BeaconStateFulu targetState = anchorState.Clone();
+        Validator template = anchorState.Validators![0];
+        targetState.Validators = new Validator[ActiveValidators];
+        for (int i = 0; i < ActiveValidators; i++)
+        {
+            targetState.Validators[i] = new Validator
+            {
+                Pubkey = template.Pubkey,
+                WithdrawalCredentials = template.WithdrawalCredentials,
+                EffectiveBalance = template.EffectiveBalance,
+                ActivationEpoch = 0,
+                ExitEpoch = Presets.FarFutureEpoch,
+                WithdrawableEpoch = Presets.FarFutureEpoch,
+            };
+        }
+
+        InMemoryStates states = new();
+        states.States[chain.AnchorRoot] = targetState;
+        ForkChoiceRunner runner = new(chain.Spec, anchorState, chain.Anchor.AnchorBlock.Message!, states, chain.Anchor.Pubkeys);
+        AttestationGloas vote = new()
+        {
+            AggregationBits = new System.Collections.BitArray(Bound + 1, true),
+            CommitteeBits = new System.Collections.BitArray(Presets.MaxCommitteesPerSlot, true),
+            Data = new AttestationData
+            {
+                Slot = 0,
+                Index = 0,
+                BeaconBlockRoot = chain.AnchorRoot,
+                Source = anchorState.CurrentJustifiedCheckpoint,
+                Target = new Checkpoint { Epoch = 0, Root = chain.AnchorRoot },
+            },
+        };
+
+        Assert.That(() => runner.OnAttestation(vote, isFromBlock: true, verifySignature: false),
+            Throws.TypeOf<ForkChoiceException>().With.Message.EqualTo($"Attestation has {Bound + 1} attesting indices, over the bound of {Bound}"));
+    }
+
+    /// <summary>
+    /// A checkpoint state is advanced on a copy of its block state. A provider that loses the state between the
+    /// lookup and the copy must make fork choice refuse the vote, not crash on a missing state.
+    /// </summary>
+    [Test]
+    public void Checkpoint_state_evicted_before_its_copy_refuses_the_vote()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, new EvictedBeforeCopy(chain), chain.Anchor.Pubkeys);
+        ulong slot = Presets.SlotsPerEpoch + 1;
+        Attestation vote = new()
+        {
+            AggregationBits = new System.Collections.BitArray(1, true),
+            CommitteeBits = new System.Collections.BitArray(Presets.MaxCommitteesPerSlot) { [0] = true },
+            Data = new AttestationData
+            {
+                Slot = slot,
+                Index = 0,
+                BeaconBlockRoot = chain.AnchorRoot,
+                Source = chain.Anchor.AnchorState.CurrentJustifiedCheckpoint,
+                Target = new Checkpoint { Epoch = 1, Root = chain.AnchorRoot },
+            },
+        };
+
+        Assert.That(() => runner.OnAttestation(vote, isFromBlock: true, verifySignature: false),
+            Throws.TypeOf<ForkChoiceException>().With.Message.Contains($"No state for the block {chain.AnchorRoot}"));
+    }
+
     /// <summary>
     /// <c>get_weight</c> counts the validators active at the justified state's own epoch, so one exiting
     /// the epoch after still carries weight; measured here through the proposer boost, which is a
@@ -927,6 +1015,14 @@ public class ForkChoiceRunnerTests
         public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => States.GetValueOrDefault(blockRoot);
 
         public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
+    }
+
+    /// <summary>Serves the chain's block states, but every copy finds the state already evicted.</summary>
+    private sealed class EvictedBeforeCopy(UnsignedChain chain) : IForkChoiceStateProvider
+    {
+        public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => chain.GetBlockState(blockRoot);
+
+        public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => null;
     }
 
     private sealed class AcceptingNotifier : INewPayloadNotifier
