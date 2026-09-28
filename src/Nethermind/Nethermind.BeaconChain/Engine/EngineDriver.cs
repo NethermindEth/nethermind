@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Types;
@@ -59,12 +60,14 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         ExecutionPayloadV3 payload = PayloadConverter.ToExecutionPayloadV3(body.ExecutionPayload!);
 
         Metrics.BeaconChainNewPayloadCalls++;
+        long started = Stopwatch.GetTimestamp();
         // EIP-4788: the payload's parent_beacon_block_root is the parent root of the beacon block carrying it.
         ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(
             payload,
             PayloadConverter.ToBlobVersionedHashes(body.BlobKzgCommitments),
             message.ParentRoot,
             PayloadConverter.ToExecutionRequestsList(body.ExecutionRequests));
+        Metrics.BeaconChainNewPayloadMilliseconds += (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         return UnwrapNewPayload(result.Result, result.Data, "newPayloadV4");
     }
 
@@ -107,11 +110,13 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     public async Task<PayloadStatusV1> NewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests)
     {
         Metrics.BeaconChainNewPayloadCalls++;
+        long started = Stopwatch.GetTimestamp();
         ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(
             PayloadConverter.ToExecutionPayloadV4(payload),
             versionedHashes,
             parentBeaconBlockRoot,
             PayloadConverter.ToExecutionRequestsList(executionRequests));
+        Metrics.BeaconChainNewPayloadMilliseconds += (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         return UnwrapNewPayload(result.Result, result.Data, "newPayloadV5");
     }
 

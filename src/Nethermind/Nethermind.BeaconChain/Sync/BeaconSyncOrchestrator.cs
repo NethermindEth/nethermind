@@ -167,6 +167,8 @@ public sealed class BeaconSyncOrchestrator(
     private ulong _progressLogSlot;
     private long _progressLogMs;
     private long _blocksSinceProgressLog;
+    private long _importMsSinceProgressLog;
+    private ulong _newPayloadMsAtProgressLog;
 
     private sealed record Tip(Hash256 Root, ulong Slot);
 
@@ -267,6 +269,7 @@ public sealed class BeaconSyncOrchestrator(
         _syncTip = new Tip(anchorRoot, _anchorSlot);
         _progressLogSlot = _anchorSlot;
         _progressLogMs = slotClock.UnixMilliseconds;
+        _newPayloadMsAtProgressLog = Metrics.BeaconChainNewPayloadMilliseconds;
 
         ulong epoch = slotClock.CurrentEpoch;
         _currentDigest = GossipTopics.CurrentDigest(spec, epoch);
@@ -430,6 +433,7 @@ public sealed class BeaconSyncOrchestrator(
         {
             Metrics.BeaconChainBlocksImported++;
             Metrics.BeaconChainLastBlockImportMs = Environment.TickCount64 - startMs;
+            _importMsSinceProgressLog += Metrics.BeaconChainLastBlockImportMs;
             _pendingRetry.Remove(root);
             // Before the held envelopes import, so one that waits only on these columns finds them held.
             if (TrackColumnRecovery(root, block) is { } recovery)
@@ -1590,10 +1594,13 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         double seconds = (now - _progressLogMs) / 1000.0;
-        _logger.Info($"Beacon sync: slot {slot} (+{slot - _progressLogSlot} slots, {_blocksSinceProgressLog / seconds:F1} blocks/s), {behind} behind wall slot {wallSlot}, finalized epoch {_lastHead?.Finalized.Epoch ?? 0}, peers {peerManager?.PeerCount ?? 0}/{config.TargetPeerCount}, EL {(_elInSync ? "in sync" : "syncing")}");
+        ulong newPayloadMs = Metrics.BeaconChainNewPayloadMilliseconds;
+        _logger.Info($"Beacon sync: slot {slot} (+{slot - _progressLogSlot} slots, {_blocksSinceProgressLog / seconds:F1} blocks/s, {_importMsSinceProgressLog / _blocksSinceProgressLog} ms/block of which newPayload {(long)(newPayloadMs - _newPayloadMsAtProgressLog) / _blocksSinceProgressLog} ms), {behind} behind wall slot {wallSlot}, finalized epoch {_lastHead?.Finalized.Epoch ?? 0}, peers {peerManager?.PeerCount ?? 0}/{config.TargetPeerCount}, EL {(_elInSync ? "in sync" : "syncing")}");
         _progressLogSlot = slot;
         _progressLogMs = now;
         _blocksSinceProgressLog = 0;
+        _importMsSinceProgressLog = 0;
+        _newPayloadMsAtProgressLog = newPayloadMs;
     }
 
     private sealed record ParkedEnvelope(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source, ulong QueuedAtSlot);
