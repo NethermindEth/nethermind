@@ -36,6 +36,9 @@ public static class Eth2MessageId
 
     private const int MessageIdLength = 20;
 
+    /// <summary>More than the most a snappy element emits per byte of input: a 3-byte copy of 64 bytes.</summary>
+    private const long MaxSnappyExpansion = 22;
+
     private static ReadOnlySpan<byte> MessageDomainValidSnappy => [0x01, 0x00, 0x00, 0x00];
     private static ReadOnlySpan<byte> MessageDomainInvalidSnappy => [0x00, 0x00, 0x00, 0x00];
 
@@ -63,6 +66,12 @@ public static class Eth2MessageId
             if ((uint)length > (uint)maxSize)
             {
                 return SnappyDecodeResult.Oversized;
+            }
+
+            // A declared length the input cannot expand to never decodes; refusing it first keeps a few bytes from buying that buffer.
+            if (length > data.Length * MaxSnappyExpansion)
+            {
+                return SnappyDecodeResult.Invalid;
             }
 
             byte[] buffer = new byte[length];

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -64,6 +66,7 @@ public class Eth2MessageIdTests
     [TestCase("0x051068656c6c6f", SnappyDecodeResult.Decoded, "0x68656c6c6f", TestName = "decodes valid block data")]
     [TestCase("0xffffffff", SnappyDecodeResult.Invalid, null, TestName = "rejects corrupt data")]
     [TestCase("0x8080c0051068656c6c6f", SnappyDecodeResult.Oversized, null, TestName = "rejects an oversized declared length without decompressing")]
+    [TestCase("0x8080800500", SnappyDecodeResult.Invalid, null, TestName = "rejects a declared length its input cannot expand to")]
     public void Capped_decompression_reports_the_outcome(string dataHex, SnappyDecodeResult expected, string? decompressedHex)
     {
         SnappyDecodeResult result = Eth2MessageId.TryDecompress(Bytes.FromHexString(dataHex), Eth2MessageId.MaxGossipSize, out byte[]? decompressed);
@@ -72,5 +75,30 @@ public class Eth2MessageIdTests
             Assert.That(result, Is.EqualTo(expected));
             Assert.That(decompressed, Is.EqualTo(decompressedHex is null ? null : Bytes.FromHexString(decompressedHex)));
         }
+    }
+
+    /// <summary>The expansion bound must never refuse real data: a stream of 3-byte copies of 64 bytes is the densest snappy can encode.</summary>
+    [TestCase(1)]
+    [TestCase(163_839)]
+    public void A_stream_expanding_at_the_snappy_maximum_still_decodes(int copies)
+    {
+        int length = 1 + 64 * copies;
+        List<byte> stream = [];
+        for (uint v = (uint)length; ; v >>= 7)
+        {
+            stream.Add((byte)(v < 0x80 ? v : (v & 0x7f) | 0x80));
+            if (v < 0x80) break;
+        }
+
+        // One literal byte, then copies of length 64 at offset 1 (tag 0b111111_10, little-endian 2-byte offset).
+        stream.AddRange([0x00, 0x2a]);
+        for (int i = 0; i < copies; i++)
+        {
+            stream.AddRange([0xfe, 0x01, 0x00]);
+        }
+
+        SnappyDecodeResult result = Eth2MessageId.TryDecompress(stream.ToArray(), Eth2MessageId.MaxGossipSize, out byte[]? decompressed);
+
+        Assert.That((result, decompressed?.Length, decompressed?.All(static b => b == 0x2a)), Is.EqualTo((SnappyDecodeResult.Decoded, (int?)length, (bool?)true)));
     }
 }
