@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
@@ -29,22 +28,21 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
 {
     protected ZkEvmBlockchainTestFixture() : base(parallel: false, batchRead: false) { }
 
-    private static readonly Lazy<IReadOnlyList<BlockchainTest>> _tests = new(() =>
-        ZkEvmMutatedWitnessIndex.StampMutatedBlocks(
-            new TestsSourceLoader(
-                new LoadPyspecTestsStrategy { ArchiveVersion = Constants.ArchiveVersion, ArchiveName = Constants.ArchiveName },
-                "fixtures/blockchain_tests").LoadTests<BlockchainTest>()).ToList());
+    private static readonly LoadPyspecTestsStrategy _strategy = new() { ArchiveVersion = Constants.ArchiveVersion, ArchiveName = Constants.ArchiveName };
+    private const string TestsDir = "fixtures/blockchain_tests";
 
     [TestCaseSource(nameof(LoadWitnessTests))]
-    public async Task WitnessMatchesFixture(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task WitnessMatchesFixture(PyspecTestRef testRef) => Assert.That((await RunTest(PyspecLoader.LoadZkEvmTest(testRef))).Pass, Is.True);
 
     // Execute publishes the process-wide StatelessExecutor.FailureOutput, and this fixture inherits
     // ParallelScope.All, so concurrent cases would otherwise overwrite each other's sentinel. (The
     // hash seed the decode installs is a no-op here: this assembly builds without EnableZkEvm.)
     [NonParallelizable]
     [TestCaseSource(nameof(LoadStatelessTests))]
-    public void StatelessExecutorOutputMatchesFixture(string inputBytes, string expectedOutputBytes)
+    public void StatelessExecutorOutputMatchesFixture(PyspecStatelessRef testRef)
     {
+        (string inputBytes, string expectedOutputBytes) = PyspecLoader.LoadZkEvmStatelessBytes(testRef);
+
         if (!inputBytes.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"StatelessInputBytes must be 0x-prefixed.");
 
@@ -58,30 +56,11 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
             $"Expected {expectedOutput.ToHexString(true)}, got {actualOutput.ToHexString(true)}");
     }
 
-    private static IEnumerable<TestCaseData> LoadWitnessTests() => PyspecLoader.ToTestCases(_tests.Value);
+    private static IEnumerable<TestCaseData> LoadWitnessTests() =>
+        PyspecLoader.LoadCases<BlockchainTest>(_strategy, TestsDir);
 
-    private static IEnumerable<TestCaseData> LoadStatelessTests()
-    {
-        foreach (BlockchainTest test in _tests.Value)
-        {
-            if (test.Blocks is not { Length: > 0 } blocks)
-                continue;
-
-            for (int i = 0; i < blocks.Length; i++)
-            {
-                TestBlockJson block = blocks[i];
-
-                if (block.StatelessInputBytes is null && block.StatelessOutputBytes is null)
-                    continue;
-
-                if (block.StatelessInputBytes is null || block.StatelessOutputBytes is null)
-                    throw new InvalidDataException($"Incomplete stateless fixture data in {test.Name}, block {i}.");
-
-                yield return new TestCaseData(block.StatelessInputBytes, block.StatelessOutputBytes)
-                    .SetName($"{test.Name}_stateless_block_{i}");
-            }
-        }
-    }
+    private static IEnumerable<TestCaseData> LoadStatelessTests() =>
+        PyspecLoader.LoadZkEvmStatelessCases(_strategy, TestsDir);
 }
 
 [TestFixture]

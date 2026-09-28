@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
@@ -42,6 +43,7 @@ public partial class DebugRpcModuleTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
                 .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
                 .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new BudgetCountingAdapter(inner, counter)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
@@ -101,6 +103,7 @@ public partial class DebugRpcModuleTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
                 .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
                 .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new BudgetCountingAdapter(inner, counter)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);

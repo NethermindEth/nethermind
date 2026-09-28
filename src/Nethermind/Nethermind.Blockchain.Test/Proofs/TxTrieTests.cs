@@ -3,8 +3,11 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
+using System.Runtime.Intrinsics.X86;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -26,7 +29,189 @@ public class TxTrieTests(bool useEip2718)
 {
     private readonly IReleaseSpec _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
 
-    private static readonly int[] RootCounts = [0, 1, 2, 15, 16, 17, 63, 64, 65, 127, 128, 129, 255, 256, 257, 4096];
+    private static readonly int[] MultiBlockLengths = [31, 100, 132, 133, 134, 135, 261, 262, 263, 264, 300, 1000, 2164, 2165, 8192];
+
+    private static readonly int[] RootCounts = [0, 1, 2, 7, 8, 9, 15, 16, 17, 18, 19, 20, 21, 22, 23, 31, 32, 33, 63, 64, 65, 79, 80, 81, 127, 128, 129, 143, 144, 145, 255, 256, 257, 271, 272, 273, 4096];
+
+    [Test]
+    public void Sequential_multi_block_batch_requires_all_items_to_be_eligible(
+        [Values(8, 17, 40, 64)] int count, [Values(124, 125, 2164, 2165)] int otherLength,
+        [Values] bool multiBlock)
+    {
+        byte[][] values = new byte[count][];
+        Array.Fill(values, new byte[otherLength]);
+        values[1] = new byte[500];
+        IndexedTrieRoot.Calculator<byte[], TestValueEncoder> calculator = new(values, new(multiBlock));
+        Assert.That(calculator.TryGetMultiBlockLengths(new int[count]),
+            Is.EqualTo(otherLength is > 124 and <= 2164));
+
+        using TrackingCappedArrayPool pool = new();
+        TxTrie expected = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
+        for (int i = 0; i < count; i++) expected.Set(Rlp.Encode(i).Bytes, values[i]);
+        expected.UpdateRootHash(canBeParallel: false);
+        Assert.That(calculator.Calculate(minItemsForParallel: IndexedTrieRoot.MinReceiptsForParallelRootHash),
+            Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
+    public void Sequential_multi_block_batch_computes_each_length_once(
+        [Values(8, 16, 17, 64)] int count, [Values] bool multiBlock) =>
+        AssertRootAndLengthCalls(count, multiBlock, -1, 0, true);
+
+    [Test]
+    public void Mixed_root_reuses_lengths_when_batch_admission_fails(
+        [Values(17, 64)] int count, [Values] bool multiBlock, [Values(0, 1)] int outlierIndex,
+        [Values(124, 2165)] int outlierLength, [Values] bool canBeParallel) =>
+        AssertRootAndLengthCalls(count, multiBlock, outlierIndex, outlierLength, canBeParallel);
+
+    [Test]
+    public void Parallel_multi_block_batch_computes_each_length_once(
+        [Values(65, 129, 255, 257)] int count, [Values(-1, 0, 1, 17)] int outlierIndex,
+        [Values(124, 2165)] int outlierLength, [Values] bool allOtherValuesEligible) =>
+        AssertRootAndLengthCalls(count, true, outlierIndex, outlierLength, true, allOtherValuesEligible);
+
+    private static void AssertRootAndLengthCalls(int count, bool multiBlock, int outlierIndex, int outlierLength, bool canBeParallel, bool allOtherValuesEligible = false)
+    {
+        if (!Avx2.IsSupported) Assert.Ignore("Requires AVX2.");
+        byte[][] values = new byte[count][];
+        int[] lengthCalls = new int[count];
+        using TrackingCappedArrayPool pool = new();
+        TxTrie expected = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] value = new byte[i == outlierIndex ? outlierLength : 125 + (allOtherValuesEligible ? i % 120 : i) * 17];
+            BinaryPrimitives.WriteInt32LittleEndian(value, i);
+            values[i] = value;
+            expected.Set(Rlp.Encode(i).Bytes, value);
+        }
+        expected.UpdateRootHash(canBeParallel: false);
+
+        Hash256 actual = new IndexedTrieRoot.Calculator<byte[], TestValueEncoder>(values, new(multiBlock, lengthCalls))
+            .Calculate(canBeParallel, IndexedTrieRoot.MinReceiptsForParallelRootHash);
+        using (Assert.EnterMultipleScope())
+        {
+            if (multiBlock || outlierIndex < 0) Assert.That(lengthCalls, Is.All.EqualTo(1));
+            else Assert.That(lengthCalls, Is.All.LessThanOrEqualTo(1).And.Some.EqualTo(1));
+            Assert.That(actual, Is.EqualTo(expected.RootHash));
+        }
+    }
+
+    [Test]
+    public void Encoded_leaf_length_takes_precedence_over_length_hint(
+        [Values(8, 17, 64, 65)] int count, [Values(124, 136, 2165)] int actualLength,
+        [Values(125, 2164)] int reportedLength)
+    {
+        byte[][] values = new byte[count][];
+        Random random = new(4231);
+        using TrackingCappedArrayPool pool = new();
+        TxTrie expected = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] value = new byte[actualLength];
+            random.NextBytes(value);
+            values[i] = value;
+            expected.Set(Rlp.Encode(i).Bytes, value);
+        }
+        expected.UpdateRootHash(canBeParallel: false);
+
+        Hash256 actual = new IndexedTrieRoot.Calculator<byte[], TestValueEncoder>(values, new(false, reportedLength: reportedLength)).Calculate();
+
+        Assert.That(actual, Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
+    public void Terminal_branch_batches_include_eligible_tail(
+        [Values(144, 160, 176, 200, 256, 272, 400)] int count)
+    {
+        if (!Avx2.IsSupported) Assert.Ignore("Requires AVX2.");
+        byte[][] values = new byte[count][];
+        IndexedTrieRoot.NodeReference[] references = new IndexedTrieRoot.NodeReference[count];
+        for (int i = 0; i < count; i++)
+            references[i] = new(ValueKeccak.Compute(BitConverter.GetBytes(i)), Keccak.Size);
+        IndexedTrieRoot.NodeReference[] original = (IndexedTrieRoot.NodeReference[])references.Clone();
+        IndexedTrieRoot.Calculator<byte[], TestValueEncoder> calculator = new(values, default);
+        calculator.BatchTerminalBranches(references);
+
+        int eligible = count / 16 - 1;
+        // A cleared hash-kernel lane costs nothing extra, so only a lone leftover (remainder 1) stays unbatched.
+        int branchBatchSize = Avx512F.IsSupported ? 8 : 4;
+        int expectedBatched = eligible - (eligible % branchBatchSize == 1 ? 1 : 0);
+        Assert.That(references.Count(reference => reference.Length == -Keccak.Size), Is.EqualTo(expectedBatched));
+        byte[] branch = new byte[KeccakHash.Hash532InputLength];
+        for (int i = 0; i < count; i++)
+        {
+            if (references[i].Length != -Keccak.Size)
+            {
+                Assert.That(references[i], Is.EqualTo(original[i]));
+                continue;
+            }
+            RlpWriter writer = new(branch);
+            writer.StartSequence(16 * Rlp.LengthOfKeccakRlp + 1);
+            for (int j = 0; j < 16; j++) writer.Encode(original[i + j].Value);
+            writer.Encode(ReadOnlySpan<byte>.Empty);
+            Assert.That(references[i].Value, Is.EqualTo(ValueKeccak.Compute(branch)));
+        }
+    }
+
+    [Test]
+    public void Terminal_branch_batch_excludes_group_with_one_unhashed_child(
+        [Values(1, 4, 7)] int groupIndex, [Values(0, 7, 15)] int childOffset)
+    {
+        if (!Avx2.IsSupported) Assert.Ignore("Requires AVX2.");
+        // 128 / 16 - 1 = 7 groups, all below the position-127 remap kink, so every group start is 16 * k - 1.
+        const int count = 128;
+        byte[][] values = new byte[count][];
+        IndexedTrieRoot.NodeReference[] references = new IndexedTrieRoot.NodeReference[count];
+        for (int i = 0; i < count; i++)
+            references[i] = new(ValueKeccak.Compute(BitConverter.GetBytes(i)), Keccak.Size);
+        IndexedTrieRoot.NodeReference[] original = (IndexedTrieRoot.NodeReference[])references.Clone();
+
+        int excludedGroupStart = 16 * groupIndex - 1;
+        int shortPosition = excludedGroupStart + childOffset;
+        references[shortPosition] = new(references[shortPosition].Value, 5);
+
+        IndexedTrieRoot.Calculator<byte[], TestValueEncoder> calculator = new(values, default);
+        calculator.BatchTerminalBranches(references);
+
+        // One group is disqualified out of the 7 that would otherwise all batch, leaving 6 - divisible by both batch widths.
+        Assert.That(references.Count(reference => reference.Length == -Keccak.Size), Is.EqualTo(6));
+        byte[] branch = new byte[KeccakHash.Hash532InputLength];
+        for (int k = 1; k <= 7; k++)
+        {
+            int start = 16 * k - 1;
+            if (start == excludedGroupStart)
+            {
+                for (int j = 0; j < 16; j++)
+                {
+                    IndexedTrieRoot.NodeReference expectedChild = start + j == shortPosition
+                        ? new(original[shortPosition].Value, 5)
+                        : original[start + j];
+                    Assert.That(references[start + j], Is.EqualTo(expectedChild),
+                        "A group with one unhashed child must fall back to per-node hashing, unchanged.");
+                }
+                continue;
+            }
+            RlpWriter writer = new(branch);
+            writer.StartSequence(16 * Rlp.LengthOfKeccakRlp + 1);
+            for (int j = 0; j < 16; j++) writer.Encode(original[start + j].Value);
+            writer.Encode(ReadOnlySpan<byte>.Empty);
+            Assert.That(references[start].Length, Is.EqualTo(-Keccak.Size));
+            Assert.That(references[start].Value, Is.EqualTo(ValueKeccak.Compute(branch)));
+        }
+    }
+
+    private readonly struct TestValueEncoder(bool multiBlock, int[]? lengthCalls = null, int? reportedLength = null) : IndexedTrieRoot.IValueEncoder<byte[]>
+    {
+        public IndexedTrieRoot.LeafBatching Batching => multiBlock ? IndexedTrieRoot.LeafBatching.MultiBlock : IndexedTrieRoot.LeafBatching.Encoded;
+        public ReadOnlySpan<byte> GetEncodedValue(byte[] item) => multiBlock ? default : item;
+        public int GetLength(byte[] item)
+        {
+            if (lengthCalls is not null) Interlocked.Increment(ref lengthCalls[BinaryPrimitives.ReadInt32LittleEndian(item)]);
+            return reportedLength ?? item.Length;
+        }
+        public void Encode<TWriter>(ref TWriter writer, byte[] item)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item);
+    }
 
     [Test]
     public void Root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool cached)
@@ -55,7 +240,8 @@ public class TxTrieTests(bool useEip2718)
     }
 
     [Test]
-    public void Encoded_root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool sparse)
+    public void Encoded_root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool sparse,
+        [Values(-1, 0, 124, 125, 136, 300, 2164, 2165, 8192)] int valueLength)
     {
         byte[][] encoded = new byte[count][];
         Random random = new(42);
@@ -64,7 +250,8 @@ public class TxTrieTests(bool useEip2718)
         for (int i = 0; i < count; i++)
         {
             // Include unprefixed bytes, inline nodes, and the 32/56-byte RLP boundaries.
-            byte[] value = new byte[sparse && i % 3 == 0 ? 0 : i % 65 + 1];
+            int length = valueLength == -1 ? MultiBlockLengths[i % MultiBlockLengths.Length] : valueLength == 0 ? i % 65 + 1 : valueLength;
+            byte[] value = new byte[sparse && i % 3 == 0 ? 0 : length];
             random.NextBytes(value);
             encoded[i] = sparse && i % 6 == 0 ? null! : value;
             trie.Set(Rlp.Encode(i).Bytes, value);

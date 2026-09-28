@@ -43,6 +43,11 @@ namespace Nethermind.Core.Collections
         public void CopyTo(T[] array, int arrayIndex) => _list.CopyTo(array, arrayIndex);
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");
         public T[] ToArray() => _list.ToArray();
+
+        /// <summary>The items in insertion order.</summary>
+        /// <remarks>Lets a caller holding an index range slice it instead of enumerating from the start.
+        /// Invalidated by any <see cref="Add"/>, <see cref="Restore"/> or <see cref="Clear"/>.</remarks>
+        public ReadOnlySpan<T> AsSpan() => CollectionsMarshal.AsSpan(_list);
         public int Count => _list.Count;
         public bool IsReadOnly => false;
     }

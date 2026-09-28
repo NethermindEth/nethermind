@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
@@ -72,6 +73,25 @@ public partial class DebugRpcModuleTests
         UInt256 before = Bytes.FromHexString(expected["result"]![1]!["result"]![sender]!["balance"]!.Value<string>()!).ToUInt256();
         UInt256 after = Bytes.FromHexString(actual["result"]![1]!["result"]![sender]!["balance"]!.Value<string>()!).ToUInt256();
         Assert.That(after, Is.EqualTo(before - 99), "the second transaction must see the modified first transfer, not the indexed prefix");
+    }
+
+    [TestCase("debug_traceBlockByHash")]
+    [TestCase("debug_traceBlockByNumber")]
+    public async Task Debug_traceBlock_preimage_results_preserve_transaction_hash(string method)
+    {
+        using Context context = await Context.Create();
+        ulong nonce = context.Blockchain.WorldStateManager.GlobalStateReader.GetNonce(context.Blockchain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce)
+            .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await context.Blockchain.AddBlock(transaction);
+        object selector = method == "debug_traceBlockByHash" ? block.Hash! : block.Number;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new { tracer = "keccak256PreimageTracer" });
+        JToken result = JToken.Parse(response);
+        Assert.That(result["error"], Is.Null, response);
+        Assert.That(result["result"]!.Count(), Is.EqualTo(block.Transactions.Length));
+        for (int i = 0; i < block.Transactions.Length; i++)
+            Assert.That(result["result"]![i]!["txHash"]!.Value<string>(), Is.EqualTo(block.Transactions[i].Hash!.ToString()));
     }
 
     [Test]

@@ -553,7 +553,6 @@ public class WireTests
             handler,
             packetCodec,
             nodeRecordProvider,
-            ipResolver,
             new DiscoveryConfig { PingTimeout = pingTimeout },
             new KademliaConfig<Node> { CurrentNodeId = currentNode, KSize = bucketSize },
             new CryptoRandom(),

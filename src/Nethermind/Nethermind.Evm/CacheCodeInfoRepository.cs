@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
@@ -15,13 +16,13 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
 {
     private readonly IWorldState _worldState;
     private readonly ICodeCache _codeCache;
-    private readonly CodeInfoRepository _inner;
+    private readonly CachingCodeInfoRepository _inner;
 
     public CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, ICodeCache codeCache)
     {
         _worldState = worldState;
         _codeCache = codeCache;
-        _inner = new CodeInfoRepository(worldState, precompileProvider, GetOrCacheCodeInfo);
+        _inner = new CachingCodeInfoRepository(worldState, precompileProvider, this);
     }
 
     /// <summary>The code most recently resolved, so a repeat skips the shared cache's probe.</summary>
@@ -43,7 +44,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     private const int MemoHitsPerTickerRefresh = 64;
     private int _memoHits;
 
-    private CodeInfo GetOrCacheCodeInfo(Address address, ValueHash256 codeHash, IReleaseSpec spec)
+    private CodeInfo GetOrCacheCodeInfo(Address address, in ValueHash256 codeHash)
     {
         if (codeHash == ValueKeccak.OfAnEmptyString)
         {
@@ -79,6 +80,9 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress) =>
         _inner.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
 
+    public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
+        _inner.GetPrecompile(codeSource, vmSpec);
+
     public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         _inner.TryGetDelegation(address, spec, out delegatedAddress);
 
@@ -86,7 +90,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     {
         if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
         {
-            _codeCache.Set(in codeHash, CodeInfoFactory.CreateCodeInfo(code));
+            _codeCache.Set(in codeHash, new CodeInfo(code));
         }
     }
 
@@ -97,5 +101,12 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         {
             _codeCache.Set(in codeHash, new CodeInfo(authorizedBuffer));
         }
+    }
+
+    private sealed class CachingCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, CacheCodeInfoRepository owner)
+        : CodeInfoRepository(worldState, precompileProvider)
+    {
+        protected override CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash) =>
+            owner.GetOrCacheCodeInfo(address, in codeHash);
     }
 }

@@ -101,7 +101,7 @@ public class ShutterP2P : IShutterP2P
     public async Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationToken cancellationToken)
     {
         IIPResolver.NethermindIp ip = await _ipResolver.Resolve(cancellationToken);
-        string listenAddress = $"/ip4/{ip.ExternalIp}/tcp/{_cfg.P2PPort}";
+        string listenAddress = NetworkHelper.ToTcpMultiaddress(ip.ExternalIp, _cfg.P2PPort);
 
         await _peer.StartListenAsync([listenAddress], cancellationToken);
         await _router.StartAsync(_peer, cancellationToken);

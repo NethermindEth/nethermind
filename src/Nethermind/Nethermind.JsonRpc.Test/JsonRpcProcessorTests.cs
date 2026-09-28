@@ -83,7 +83,9 @@ public class JsonRpcProcessorTests
     [TestCase(ErrorCodes.InvalidParams, false, TestName = "InvalidParams (-32602) is not WARN")]
     [TestCase(ErrorCodes.InternalError, true, TestName = "InternalError (-32603) keeps WARN")]
     [TestCase(ErrorCodes.Default, true, TestName = "Default (-32000) keeps WARN")]
-    [TestCase(ErrorCodes.LimitExceeded, true, TestName = "LimitExceeded (-32005) without suppression keeps WARN")]
+    [TestCase(ErrorCodes.ResourceUnavailable, false, TestName = "ResourceUnavailable (-32002) is not WARN")]
+    [TestCase(ErrorCodes.LimitExceeded, false, TestName = "LimitExceeded (-32005) without suppression is not WARN")]
+    [TestCase(ErrorCodes.PrunedHistoryUnavailable, false, TestName = "PrunedHistoryUnavailable (4444) is not WARN")]
     public async Task Error_response_log_level_follows_error_class(int errorCode, bool expectWarn)
     {
         IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
@@ -1239,6 +1241,40 @@ public class JsonRpcProcessorTests
             Assert.That(thrown, Is.SameAs(expected));
             Assert.That(reader.ConsumedLength, Is.EqualTo(reader.ReadLength), "the dispatched body must be reported consumed");
         }
+    }
+
+    [Test]
+    public async Task Response_json_failure_is_not_reported_as_request_parse_error(
+        [Values] RequestTransport transport, [Values] bool batch)
+    {
+        IJsonRpcService service = CreateService(request => new JsonRpcSuccessResponse { Id = request.Id });
+        JsonRpcProcessor processor = CreateProcessor(service);
+        IJsonRpcResponseSink sink = Substitute.For<IJsonRpcResponseSink>();
+        JsonException failure = new("response serialization failed");
+        if (batch)
+            sink.WriteBatchItemAsync(Arg.Any<JsonRpcResponse>(), Arg.Any<RpcReport>(), Arg.Any<CancellationToken>())
+                .Returns(_ => ValueTask.FromException(failure));
+        else
+            sink.WriteSingleAsync(Arg.Any<JsonRpcResponse>(), Arg.Any<RpcReport>(), Arg.Any<CancellationToken>())
+                .Returns(_ => ValueTask.FromException(failure));
+        string request = CreateRequest("1", "eth_blockNumber");
+        if (batch) request = "[" + request + "]";
+        byte[] body = Encoding.UTF8.GetBytes(request);
+        using JsonRpcContext context = CreateContext(transport);
+        JsonRpcProcessingOptions options = new(transport == RequestTransport.WsPipe
+            ? JsonRpcInputMode.MultipleDocuments : JsonRpcInputMode.SingleDocument);
+
+        Exception? thrown = Assert.CatchAsync(async () =>
+        {
+            if (transport == RequestTransport.HttpMemory)
+                await processor.ProcessAsync(body.AsMemory(), context, sink, options);
+            else
+                await processor.ProcessAsync(PipeReader.Create(new ReadOnlySequence<byte>(body)), context, sink, options);
+        });
+
+        Assert.That(thrown, Is.SameAs(failure));
+        await sink.DidNotReceive().EndBatchAsync(Arg.Any<CancellationToken>());
+        await sink.DidNotReceive().WriteSingleAsync(Arg.Is<JsonRpcResponse>(response => response is JsonRpcErrorResponse), Arg.Any<RpcReport>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>Records how much of the last read buffer the processor reported consumed.</summary>

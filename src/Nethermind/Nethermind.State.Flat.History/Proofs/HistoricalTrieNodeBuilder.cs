@@ -247,11 +247,7 @@ internal sealed class HistoricalTrieNodeBuilder
         NodeView[] views = new NodeView[BranchRlp.ChildCount];
         try
         {
-            for (int index = 0; index < BranchRlp.ChildCount; index++)
-            {
-                byte[]? child = children[index];
-                views[index] = child is null ? NodeView.Empty : NodeViews.FromRlp(child);
-            }
+            NodeViews.FromChildrenRlp(children, views);
 
             NodeView composed = NodeViews.Combine(views);
             try

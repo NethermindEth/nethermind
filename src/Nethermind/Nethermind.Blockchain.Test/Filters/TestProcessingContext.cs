@@ -19,6 +19,8 @@ namespace Nethermind.Blockchain.Test.Filters;
 /// </summary>
 internal class TestBranchProcessor : IBranchProcessor
 {
+    public event EventHandler<BlockExecutedEventArgs>? BlockExecuted { add { } remove { } }
+
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing { add { } remove { } }
     public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted { add { } remove { } }
@@ -47,10 +49,7 @@ internal class TestMainProcessingContext : IMainProcessingContext
     public IWorldState WorldState => null!;
     public IGenesisLoader GenesisLoader => null!;
 
-    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed { add { } remove { } }
 
     public TestBranchProcessor TestBranchProcessor => _branchProcessor;
-
-    public void RaiseTransactionProcessed(TxProcessedEventArgs args)
-        => TransactionProcessed?.Invoke(this, args);
 }

@@ -31,13 +31,12 @@ public sealed class KademliaAdapter(
     NettyDiscoveryV5Handler discoveryHandler,
     PacketCodec packetCodec,
     INodeRecordProvider nodeRecordProvider,
-    IIPResolver ipResolver,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     ICryptoRandom cryptoRandom,
     IKademliaDistance<ValueHash256> distance,
     ILogManager logManager,
-    NetworkListenerState listenerState) : KademliaAdapterBase("discv5", ipResolver, logManager.GetClassLogger<KademliaAdapter>(), listenerState), IKademliaAdapter
+    NetworkListenerState listenerState) : KademliaAdapterBase("discv5", logManager.GetClassLogger<KademliaAdapter>(), listenerState), IKademliaAdapter
 {
     private const int MaxFindNodeRecords = 16;
     private const int MaxEnrsPerNodesMessage = 3;
