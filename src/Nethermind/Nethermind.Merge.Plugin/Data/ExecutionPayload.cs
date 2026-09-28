@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Cpu;
@@ -28,31 +29,68 @@ public interface IExecutionPayloadFactory<out TExecutionPayload> where TExecutio
 /// </summary>
 public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecutionPayloadFactory<ExecutionPayload>
 {
-    public UInt256 BaseFeePerGas { get; set; }
+    public UInt256 BaseFeePerGas { get; set => field = Bind(value, PayloadFields.BaseFeePerGas); }
 
-    public Hash256 BlockHash { get; set; } = Keccak.Zero;
+    public Hash256 BlockHash { get; set => field = Bind(value, PayloadFields.BlockHash); } = Keccak.Zero;
 
-    public ulong BlockNumber { get; set; }
+    public ulong BlockNumber { get; set => field = Bind(value, PayloadFields.BlockNumber); }
 
-    public byte[] ExtraData { get; set; } = [];
+    public byte[] ExtraData { get; set => field = Bind(value, PayloadFields.ExtraData); } = [];
 
-    public Address FeeRecipient { get; set; } = Address.Zero;
+    public Address FeeRecipient { get; set => field = Bind(value, PayloadFields.FeeRecipient); } = Address.Zero;
 
-    public ulong GasLimit { get; set; }
+    public ulong GasLimit { get; set => field = Bind(value, PayloadFields.GasLimit); }
 
-    public ulong GasUsed { get; set; }
+    public ulong GasUsed { get; set => field = Bind(value, PayloadFields.GasUsed); }
 
-    public Bloom LogsBloom { get; set; } = Bloom.Empty;
+    public Bloom LogsBloom { get; set => field = Bind(value, PayloadFields.LogsBloom); } = Bloom.Empty;
 
-    public Hash256 ParentHash { get; set; } = Keccak.Zero;
+    public Hash256 ParentHash { get; set => field = Bind(value, PayloadFields.ParentHash); } = Keccak.Zero;
 
-    public Hash256 PrevRandao { get; set; } = Keccak.Zero;
+    public Hash256 PrevRandao { get; set => field = Bind(value, PayloadFields.PrevRandao); } = Keccak.Zero;
 
-    public Hash256 ReceiptsRoot { get; set; } = Keccak.Zero;
+    public Hash256 ReceiptsRoot { get; set => field = Bind(value, PayloadFields.ReceiptsRoot); } = Keccak.Zero;
 
-    public Hash256 StateRoot { get; set; } = Keccak.Zero;
+    public Hash256 StateRoot { get; set => field = Bind(value, PayloadFields.StateRoot); } = Keccak.Zero;
 
-    public ulong Timestamp { get; set; }
+    public ulong Timestamp { get; set => field = Bind(value, PayloadFields.Timestamp); }
+
+    [Flags]
+    private protected enum PayloadFields : ushort
+    {
+        None = 0,
+        BaseFeePerGas = 1 << 0,
+        BlockHash = 1 << 1,
+        BlockNumber = 1 << 2,
+        ExtraData = 1 << 3,
+        FeeRecipient = 1 << 4,
+        GasLimit = 1 << 5,
+        GasUsed = 1 << 6,
+        LogsBloom = 1 << 7,
+        ParentHash = 1 << 8,
+        PrevRandao = 1 << 9,
+        ReceiptsRoot = 1 << 10,
+        StateRoot = 1 << 11,
+        Timestamp = 1 << 12,
+        Transactions = 1 << 13,
+        All = (1 << 14) - 1
+    }
+
+    // Defaults hide an omitted JSON key once binding is done, so setters record presence while it runs.
+    private protected PayloadFields _unboundFields;
+
+    private T Bind<T>(T value, PayloadFields payloadField)
+    {
+        _unboundFields = value is null ? _unboundFields | payloadField : _unboundFields & ~payloadField;
+        return value;
+    }
+
+    /// <summary>
+    /// The name of a field the JSON request omitted or sent as <c>null</c>, or <c>null</c> if every field was bound.
+    /// </summary>
+    /// <remarks>Only payload types that arm presence tracking on deserialization report a field.</remarks>
+    internal string? UnboundFieldName =>
+        _unboundFields == PayloadFields.None ? null : ((PayloadFields)(1 << BitOperations.TrailingZeroCount((uint)_unboundFields))).ToString();
 
     protected byte[][] _encodedTransactions = [];
 
@@ -70,6 +108,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            _unboundFields &= ~PayloadFields.Transactions;
             _encodedTransactions = value;
             _transactions = null;
             _txRootTask = null;

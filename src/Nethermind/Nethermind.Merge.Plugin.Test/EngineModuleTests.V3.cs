@@ -315,11 +315,8 @@ public partial class EngineModuleTests
         return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig, chain.Container.Resolve<GCKeeper>()), new(RpcEndpoint.Http), new(), executionPayload, chain);
     }
 
-    [Test]
-    public async Task NewPayload_should_reject_null_or_missing_required_fields(
-        [Values(3, 4, 5)] int version,
-        [Values("withdrawals", "blobGasUsed", "excessBlobGas")] string field,
-        [Values] bool omit)
+    [TestCaseSource(nameof(RequiredPayloadFieldsTestSource))]
+    public async Task NewPayload_should_reject_null_or_missing_required_fields(int version, string field, bool omit, string expectedMessage)
     {
         IReleaseSpec releaseSpec = version switch { 3 => Cancun.Instance, 4 => Prague.Instance, _ => Amsterdam.Instance };
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload, MergeTestBlockchain chain)
@@ -333,31 +330,66 @@ public partial class EngineModuleTests
             payload["slotNumber"] = "0x1";
         }
 
+        using (JsonRpcResponse controlResponse = await jsonRpcService.SendRequestAsync(BuildRequest(payload), context))
+        {
+            Assert.That(controlResponse is ResultWrapper<PayloadStatusV1> { Result.ResultType: ResultType.Success }, "the complete payload must pass parameter validation");
+        }
+
         if (omit)
             payload.Remove(field);
         else
             payload[field] = null;
 
-        List<object> parameters = [serializer.Serialize(payload), serializer.Serialize(Array.Empty<byte[]>()), TestItem.KeccakA.ToString()];
-        if (version >= EngineApiVersions.NewPayload.V4) parameters.Add(serializer.Serialize(Array.Empty<byte[]>()));
-        JsonRpcRequest request = RpcTest.BuildJsonRequest($"engine_newPayloadV{version}", [.. parameters]);
-
-        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
+        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(BuildRequest(payload), context);
         Error error = RpcTest.AssertError(response);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
-            // Omitted blob fields are rejected earlier by [JsonRequired] with a deserialization message.
-            if (!omit || field == "withdrawals")
+            Assert.That(error.Message, Is.EqualTo(expectedMessage));
+        }
+
+        JsonRpcRequest BuildRequest(JsonObject executionPayloadJson)
+        {
+            List<object> parameters = [serializer.Serialize(executionPayloadJson), serializer.Serialize(Array.Empty<byte[]>()), TestItem.KeccakA.ToString()];
+            if (version >= EngineApiVersions.NewPayload.V4) parameters.Add(serializer.Serialize(Array.Empty<byte[]>()));
+            return RpcTest.BuildJsonRequest($"engine_newPayloadV{version}", [.. parameters]);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> RequiredPayloadFieldsTestSource()
+    {
+        // Values the JSON binder itself refuses get the generic message.
+        const string bindingError = "Invalid params";
+        (string Field, string NullError, string OmittedError)[] v3Fields =
+        [
+            BaseField("parentHash"), BaseField("feeRecipient"), BaseField("stateRoot"), BaseField("receiptsRoot"),
+            BaseField("logsBloom"), BaseField("prevRandao"), BaseField("blockNumber", bindingError), BaseField("gasLimit", bindingError),
+            BaseField("gasUsed", bindingError), BaseField("timestamp", bindingError), BaseField("extraData"),
+            BaseField("baseFeePerGas", bindingError), BaseField("blockHash"), BaseField("transactions", bindingError),
+            ("withdrawals", "Withdrawals must be set", "Withdrawals must be set"),
+            ("blobGasUsed", "Blob gas used must be set", bindingError),
+            ("excessBlobGas", "Excess blob gas must be set", bindingError)
+        ];
+        (string Field, string NullError, string OmittedError)[] v4Fields =
+        [
+            .. v3Fields,
+            ("blockAccessList", "Block access list must be set", bindingError),
+            ("slotNumber", "Slot number must be set", bindingError)
+        ];
+
+        foreach (int version in (int[])[EngineApiVersions.NewPayload.V3, EngineApiVersions.NewPayload.V4, EngineApiVersions.NewPayload.V5])
+        {
+            foreach ((string field, string nullError, string omittedError) in version >= EngineApiVersions.NewPayload.V5 ? v4Fields : v3Fields)
             {
-                string expectedMessage = field switch
-                {
-                    "withdrawals" => "Withdrawals must be set",
-                    "blobGasUsed" => "Blob gas used must be set",
-                    _ => "Excess blob gas must be set"
-                };
-                Assert.That(error.Message, Is.EqualTo(expectedMessage));
+                yield return new TestCaseData(version, field, false, nullError);
+                yield return new TestCaseData(version, field, true, omittedError);
             }
+        }
+
+        static (string, string, string) BaseField(string field, string? nullError = null)
+        {
+            string error = $"{char.ToUpperInvariant(field[0])}{field[1..]} must be set";
+            return (field, nullError ?? error, error);
         }
     }
 

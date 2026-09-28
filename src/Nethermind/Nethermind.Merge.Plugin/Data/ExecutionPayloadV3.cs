@@ -14,8 +14,12 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayloadV3</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<ExecutionPayloadV3>
+public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<ExecutionPayloadV3>, IJsonOnDeserializing
 {
+    /// <inheritdoc/>
+    /// <remarks>Arms presence tracking: <c>engine_newPayloadV3</c>+ must reject an omitted or <c>null</c> field.</remarks>
+    void IJsonOnDeserializing.OnDeserializing() => _unboundFields = PayloadFields.All;
+
     protected new static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayloadV3, new()
     {
         TExecutionPayload executionPayload = ExecutionPayload.Create<TExecutionPayload>(block);

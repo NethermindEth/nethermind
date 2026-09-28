@@ -193,6 +193,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
     private ValidationResult ValidateEngineApiVersionParams(IReleaseSpec spec, int version, out string? error)
     {
+        if (executionPayload.UnboundFieldName is { } unboundField)
+        {
+            error = $"{unboundField} must be set";
+            return ValidationResult.Fail;
+        }
+
         if (spec.WithdrawalsEnabled && executionPayload.Withdrawals is null)
         {
             error = "Withdrawals must be set";
