@@ -142,7 +142,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
-            vm.VmState.Env.InputData.Span);
+            MemoryMarshal.CreateReadOnlySpan(in stack.InputData, (int)stack.InputDataLength));
 
     /// <summary>
     /// Copies data from the previous call's return buffer into memory.

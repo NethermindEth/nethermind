@@ -222,22 +222,38 @@ public sealed class PrecompileCaches
     }
 
     /// <summary> Key combining precompile address, its effective input, and the fork it ran under. </summary>
-    public readonly struct Key(Address address, ReadOnlyMemory<byte> data, IReleaseSpec spec) : IEquatable<Key>
+    /// <remarks> The hash is computed once at construction: a lookup and insert probe both tiers several times, and each probe would otherwise rehash the whole input. </remarks>
+    public readonly struct Key : IEquatable<Key>
     {
+        public Key(Address address, ReadOnlyMemory<byte> data, IReleaseSpec spec)
+            : this(address, data, spec, data.Span.FastHash() ^ address.GetHashCode() ^ RuntimeHelpers.GetHashCode(spec))
+        {
+        }
+
+        private Key(Address address, ReadOnlyMemory<byte> data, IReleaseSpec spec, int hashCode)
+        {
+            Address = address;
+            Data = data;
+            Spec = spec;
+            Hash = hashCode;
+        }
+
         // Surviving tier is shared and needs a discriminator
-        private Address Address { get; } = address;
-        private ReadOnlyMemory<byte> Data { get; } = data;
+        private Address Address { get; }
+        private ReadOnlyMemory<byte> Data { get; }
         // Reference-compared; results may differ across forks, so entries never cross a fork boundary.
-        private IReleaseSpec Spec { get; } = spec;
+        private IReleaseSpec Spec { get; }
+        private int Hash { get; }
 
         internal int DataLength => Data.Length;
 
         /// <summary> Creates a copy that owns its data. </summary>
-        internal Key WithCopiedData() => new(Address, Data.ToArray(), Spec);
+        internal Key WithCopiedData() => new(Address, Data.ToArray(), Spec, Hash);
 
-        public bool Equals(Key other) => ReferenceEquals(Spec, other.Spec) && Address == other.Address && Data.Span.SequenceEqual(other.Data.Span);
+        public bool Equals(Key other) =>
+            Hash == other.Hash && ReferenceEquals(Spec, other.Spec) && Address == other.Address && Data.Span.SequenceEqual(other.Data.Span);
         public override bool Equals(object? obj) => obj is Key other && Equals(other);
-        public override int GetHashCode() => Data.Span.FastHash() ^ Address.GetHashCode() ^ RuntimeHelpers.GetHashCode(Spec);
+        public override int GetHashCode() => Hash;
         public static bool operator ==(Key left, Key right) => left.Equals(right);
         public static bool operator !=(Key left, Key right) => !(left == right);
     }
