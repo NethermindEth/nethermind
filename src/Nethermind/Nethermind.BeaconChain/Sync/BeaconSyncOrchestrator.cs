@@ -27,14 +27,14 @@ namespace Nethermind.BeaconChain.Sync;
 /// <summary>
 /// Drives the embedded beacon chain to follow mainnet: kicks the execution layer toward the
 /// checkpoint anchor, replays stored canonical blocks, range-syncs to the wall clock, then follows
-/// gossip — funneling all consensus work through a single import worker.
+/// gossip - funneling all consensus work through a single import worker.
 /// </summary>
 /// <remarks>
 /// Threading model: producers (gossip events on libp2p threads, the slot timer, the range-sync
 /// feed) only write to a bounded channel; one worker loop consumes it and is the only thread that
 /// touches the <see cref="IBlockImporter"/> (and through it the state transition and fork choice,
-/// neither of which is thread-safe). A fork-choice head step — <c>engine_forkchoiceUpdated</c>,
-/// finality handling, status refresh — runs on the worker after every drained import batch (or
+/// neither of which is thread-safe). A fork-choice head step - <c>engine_forkchoiceUpdated</c>,
+/// finality handling, status refresh - runs on the worker after every drained import batch (or
 /// every <see cref="HeadStepImportInterval"/> imports while saturated) and on every slot tick.
 /// </remarks>
 public sealed class BeaconSyncOrchestrator(
@@ -149,7 +149,7 @@ public sealed class BeaconSyncOrchestrator(
         // syncing toward it; SYNCING is the expected (successful) answer here.
         if (_logger.IsInfo) _logger.Info($"Beacon sync starting from anchor slot {_anchorSlot} ({anchorRoot}); kicking execution layer with forkchoiceUpdated(head=safe=finalized={_anchorExecutionHash})");
         PayloadStatusV1 kick = await engine.ForkchoiceUpdated(_anchorExecutionHash, _anchorExecutionHash, _anchorExecutionHash);
-        if (_logger.IsInfo) _logger.Info($"Engine kick returned {kick.Status}{(kick.Status == PayloadStatus.Syncing ? " — execution layer is syncing toward the anchor" : "")}");
+        if (_logger.IsInfo) _logger.Info($"Engine kick returned {kick.Status}{(kick.Status == PayloadStatus.Syncing ? " - execution layer is syncing toward the anchor" : "")}");
 
         await ReplayStoredBlocksAsync(token);
 
@@ -424,7 +424,7 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>
     /// Retries every pending block once per slot tick, straight through <see cref="ImportBlockAsync"/>
-    /// — never through <see cref="ProcessGossipBlockAsync"/>, whose seen-proposal gate would drop the
+    /// - never through <see cref="ProcessGossipBlockAsync"/>, whose seen-proposal gate would drop the
     /// retry as a repeat. A pending block whose slot has fallen behind the finalized checkpoint is
     /// dropped instead of retried: that, together with <see cref="MaxPendingRetryBlocks"/>, is what
     /// stops a stuck block from being retried forever.
@@ -558,7 +558,7 @@ public sealed class BeaconSyncOrchestrator(
 
         if (!importer.IsKnown(block.ParentRoot))
         {
-            // While far behind, range sync will deliver the parent chain anyway — just hold the
+            // While far behind, range sync will deliver the parent chain anyway - just hold the
             // block; in steady state fetch the missing ancestors by root.
             if (_syncTip.Slot + MaxBackfillDepth < slotClock.CurrentSlot)
             {
@@ -855,7 +855,7 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         ReconcileGossipDigests(slotClock.CurrentEpoch);
-        if (_logger.IsInfo) _logger.Info($"Within {GossipStartDistanceSlots} slots of the wall clock — gossip following started");
+        if (_logger.IsInfo) _logger.Info($"Within {GossipStartDistanceSlots} slots of the wall clock - gossip following started");
     }
 
     private bool TryStartColumnGossip()
@@ -964,7 +964,7 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Dials discovered candidates (bounded concurrency) until the target peer count is reached, then idles.</summary>
     private async Task RunDiscoveryDialLoopAsync(CancellationToken token)
     {
-        // A dropped peer becomes re-dialable after a cooldown — dialable mainnet peers are
+        // A dropped peer becomes re-dialable after a cooldown - dialable mainnet peers are
         // scarce, so permanently blacklisting every drop starves the pool.
         if (peerManager is PeerManager manager)
         {
