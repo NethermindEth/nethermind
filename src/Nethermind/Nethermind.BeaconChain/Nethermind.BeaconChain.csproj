@@ -3,6 +3,7 @@
   <PropertyGroup>
     <RootNamespace>Nethermind.BeaconChain</RootNamespace>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
