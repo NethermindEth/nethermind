@@ -54,6 +54,40 @@ def scenario_id(args) -> str:
     )
 
 
+GROTH16_STAGE = "groth16"
+GROTH16_FILES = ("verifier.hex", "calldata-invalid.hex", "calldata-valid.hex", "gas.txt")
+
+
+def stage_groth16_artifacts(path: str) -> str:
+    """Returns the package-relative path Kurtosis should upload for the Groth16 sweeps.
+
+    `plan.upload_files` only reads paths inside the package, so a sweep tree elsewhere (for
+    example an unpacked frame-verify-gas release) is copied into the package's gitignored
+    `groth16/` first. Only the files the generator reads are copied, which keeps the package
+    upload small."""
+    source = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isdir(source):
+        raise SystemExit("--groth16-artifacts {0} is not a directory".format(path))
+    if os.path.commonpath([source, DEVNET_ROOT]) == DEVNET_ROOT:
+        return os.path.relpath(source, DEVNET_ROOT)
+
+    sweeps = sorted(d for d in os.listdir(source)
+                    if d.startswith("sweep-") and os.path.isdir(os.path.join(source, d)))
+    if not sweeps:
+        raise SystemExit("--groth16-artifacts {0} holds no sweep-* directories".format(path))
+
+    stage = os.path.join(DEVNET_ROOT, GROTH16_STAGE)
+    shutil.rmtree(stage, ignore_errors=True)
+    for sweep in sweeps:
+        os.makedirs(os.path.join(stage, sweep))
+        for name in GROTH16_FILES:
+            if os.path.exists(os.path.join(source, sweep, name)):
+                shutil.copy2(os.path.join(source, sweep, name), os.path.join(stage, sweep, name))
+    print("staged {0} Groth16 sweep(s) from {1} into {2}".format(len(sweeps), source, stage),
+          file=sys.stderr)
+    return GROTH16_STAGE
+
+
 def render_args_file(args, sid: str, destination: str) -> str:
     """Appends the scenario block to the shared topology.
 
@@ -219,7 +253,7 @@ def collect(enclave: str, sid: str, results_root: str, logs: str, started: float
             "warmup_seconds": args.warmup,
             "duration_seconds": args.duration,
             "privacy_inclusion": args.privacy_inclusion,
-            "groth16_artifacts": args.groth16_artifacts,
+            "groth16_artifacts": getattr(args, "groth16_artifacts_source", args.groth16_artifacts),
         },
         "topology_file": os.path.abspath(args.base_args),
         "nethermind_commit": _git_commit(REPO_ROOT),
@@ -308,6 +342,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if shutil.which("kurtosis") is None and not args.dry_run:
         raise SystemExit("kurtosis is not on PATH: https://docs.kurtosis.com/install")
+
+    if args.groth16_artifacts and not args.dry_run:
+        args.groth16_artifacts_source = os.path.abspath(os.path.expanduser(args.groth16_artifacts))
+        args.groth16_artifacts = stage_groth16_artifacts(args.groth16_artifacts)
 
     sid = scenario_id(args)
     enclave = args.enclave or "frame-tx-{0}".format(sid.replace("_", "-"))

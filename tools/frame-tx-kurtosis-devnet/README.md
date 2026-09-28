@@ -58,12 +58,14 @@ It needs the v2 sweeps from `NethermindEth/frame-verify-gas`:
 
 ```bash
 mkdir -p ~/frame-verify-gas-v2 && cd ~/frame-verify-gas-v2
-gh release download <v2-tag> --repo NethermindEth/frame-verify-gas
+gh release download v2.0.0 --repo NethermindEth/frame-verify-gas
 shasum -a 256 -c SHA256SUMS
 for t in sweep-*.tar.gz; do tar xzf "$t"; done
 ```
 
-Each `sweep-*/` directory holds `verifier.hex` and `calldata-invalid.hex`. The role picks the
+Each `sweep-*/` directory holds `verifier.hex` and `calldata-invalid.hex`. Kurtosis can only
+upload files inside this package, so the runner copies those files into the gitignored `groth16/`
+before each run. The role picks the
 sweep by ceiling: `sweep-soispoke` at 100,000 and 235,800, and the matching control at 250,000,
 300,000, 400,000 and 500,000.
 
@@ -89,6 +91,10 @@ runner/run_matrix.py --ceilings 235800 500000 --roles signature-stuffed --k-retr
 ```
 
 Each ceiling needs its own image: `images/build.sh <ceiling>`, or `images/build.sh --all`.
+
+`kurtosis run .` uploads this whole folder, gitignored files included. For a long matrix pass
+`--results-dir` outside the package, for example `--results-dir ~/frame-tx-devnet-results`, so the
+upload does not grow with every run.
 
 Teardown if a run was interrupted:
 
