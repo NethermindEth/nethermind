@@ -253,6 +253,7 @@ public sealed class SnapshotBundle : IDisposable
                 transientResource.ReleaseLease();
             }
 
+            Metrics.IncrementTransientLeaseSpins();
             spinWait.SpinOnce();
         }
     }

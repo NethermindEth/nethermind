@@ -141,6 +141,13 @@ public static class Metrics
     private static CacheLinePaddedLong _carryForwardAccountWipes;
     internal static void IncrementCarryForwardAccountWipes() => Interlocked.Increment(ref _carryForwardAccountWipes.Value);
 
+    private static long _transientLeaseSpins;
+
+    [Description("Spin iterations spent waiting for transient resource leases (exclusive lease on commit, bundle lease on read)")]
+    public static long TransientLeaseSpins => Volatile.Read(ref _transientLeaseSpins);
+
+    internal static void IncrementTransientLeaseSpins() => Interlocked.Increment(ref _transientLeaseSpins);
+
     [CounterMetric]
     [Description("Times the carry-forward slot cache was cleared wholesale because its entry cap was reached")]
     public static long CarryForwardSlotWipes => Volatile.Read(ref _carryForwardSlotWipes.Value);

@@ -35,6 +35,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     /// </summary>
     internal static bool InlinePersistence { get; } = Environment.GetEnvironmentVariable("NETHERMIND_FLAT_INLINE_PERSISTENCE") == "1";
 
+    /// <summary>
+    /// Benchmark hook, called on the committing thread at the inline commit's step boundaries: 0 before and 1 after the
+    /// trie node cache population, 2 after compaction, 3 after the inline persistence job.
+    /// </summary>
+    public static Action<int>? CommitPhase { get; set; }
+
     private readonly ILogger _logger;
     private readonly IPersistenceManager _persistenceManager;
     private readonly ISnapshotCompactor _snapshotCompactor;
@@ -149,7 +155,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunCompactJobSync(StateId stateId, TransientResource transientResource, CancellationToken cancellationToken)
     {
+        CommitPhase?.Invoke(0);
         PopulateTrieNodeCache(transientResource);
+        CommitPhase?.Invoke(1);
         await RunCompactJob(stateId, cancellationToken);
     }
 
@@ -158,7 +166,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
 
-        if (_snapshotCompactor.DoCompactSnapshot(stateId))
+        bool compacted = _snapshotCompactor.DoCompactSnapshot(stateId);
+        CommitPhase?.Invoke(2);
+        if (compacted)
         {
             ClearReadOnlyBundleCache();
         }
@@ -168,6 +178,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (_inlineCompaction && InlinePersistence)
         {
             await PersistIfNeeded(stateId);
+            CommitPhase?.Invoke(3);
             return;
         }
 
