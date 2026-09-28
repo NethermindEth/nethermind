@@ -126,8 +126,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     }
 
     // Authenticated and IPC callers are the operator's own, so they go ahead of every other waiter, each with the whole
-    // budget. They take a slot like everyone else: the override and simulate env pools have as many environments as there
-    // are slots.
+    // budget, and may take one slot above the others, so public calls holding every slot do not hold them up. The override
+    // and simulate env pools hold that slot too.
     private ValueTask<EvmAdmissionGate.Lease> AdmitAsync(JsonRpcRequest request, JsonRpcContext context) =>
         context.IsAuthenticated || request.BatchQueueWait is null
             ? EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget, context.IsAuthenticated, request.CancellationToken)

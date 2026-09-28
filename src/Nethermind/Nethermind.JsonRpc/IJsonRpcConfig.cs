@@ -38,7 +38,8 @@ public interface IJsonRpcConfig : IConfig
             The max number of concurrent in-flight requests on the shared (sharable) singleton handler.
             Caps heavy methods promoted to sharable — `eth_call`, `eth_estimateGas`,
             `eth_createAccessList` — preventing unbounded concurrency from exhausting memory.
-            Those methods are first limited to `EthModuleConcurrentInstances` at a time; see `EvmExecutionMaxQueueWaitMs`.
+            Those methods are first limited to `EthModuleConcurrentInstances` at a time, one more for authenticated and IPC
+            callers; see `EvmExecutionMaxQueueWaitMs`.
             Light sharable methods (e.g. `eth_blockNumber`, `eth_getBalance`) complete in <1 ms and
             effectively never approach this limit. `eth_sendRawTransactionSync` holds a slot for as long
             as it waits for inclusion; see `RpcTxSyncMaxConcurrentRequests`. `0` to lift the limit.
@@ -164,14 +165,13 @@ public interface IJsonRpcConfig : IConfig
             - `eth_uninstallFilter`
 
             This limits the load on the CPU and I/O to reasonable levels. If the limit is exceeded,
-            HTTP 503 is returned along with the JSON-RPC error. Also acts as the hard active
-            concurrency cap on the override-path env pool used by sharable `eth_call` /
-            `eth_estimateGas` / `eth_createAccessList` when called with state or blob-base-fee
-            overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. Also the
-            number of execution slots shared by `eth_call`, `eth_estimateGas`, `eth_createAccessList`,
-            `eth_simulateV1` and `eth_fillTransaction`, with or without overrides; see
-            `EvmExecutionMaxQueueWaitMs`. Raising it above the number of logical processors also runs
-            more of those calls at once.
+            HTTP 503 is returned along with the JSON-RPC error. Also the number of execution slots
+            shared by `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` and
+            `eth_fillTransaction`, with or without overrides; authenticated and IPC requests may take one
+            slot more. See `EvmExecutionMaxQueueWaitMs`. The env pools used by those calls with state or
+            blob-base-fee overrides and by `eth_simulateV1` hold one environment per slot, the extra one
+            included. Raising it above the number of logical processors also runs more of those calls
+            at once.
             Queueing and load shedding start only when more than this many of these calls are in flight,
             so a value at or above the node's peak concurrency turns them off. Defaults to the number of
             logical processors.
@@ -184,7 +184,10 @@ public interface IJsonRpcConfig : IConfig
             The max time, in milliseconds, an EVM-executing JSON-RPC request (`eth_call`, `eth_estimateGas`,
             `eth_createAccessList`, `eth_simulateV1`, `eth_fillTransaction`) waits for one of the
             `EthModuleConcurrentInstances` execution slots before it is answered with `LimitExceeded` (HTTP 503).
-            Authenticated (Engine API / JWT) and IPC requests are served ahead of every other waiter, each with the whole budget.
+            Authenticated (Engine API / JWT) and IPC requests may take one slot more, so other requests holding every slot do
+            not hold them up, and are served ahead of every other waiter, each with the whole budget. While they keep more than
+            `EthModuleConcurrentInstances` of these calls in flight, other requests are not served and are rejected after this
+            budget.
             The others are served in arrival order, except that each full 128 KiB of `params` delays a request's turn by 1/14 of
             this budget, up to half of it or of what is left of its batch's budget; a request that has waited half this budget is
             served before any of them that arrived later.
@@ -197,7 +200,8 @@ public interface IJsonRpcConfig : IConfig
             `IpcProcessingConcurrency` of 1, the default), a waiting request also holds up that connection's later requests;
             raise the concurrency to avoid it.
             A request keeps its slot until it completes (up to `Timeout`), so `EthModuleConcurrentInstances` concurrent long
-            calls, such as large `eth_simulateV1` or `eth_estimateGas`, make every other EVM-executing request wait or be rejected.
+            calls, such as large `eth_simulateV1` or `eth_estimateGas`, make every other EVM-executing request wait or be rejected,
+            except for one authenticated or IPC request at a time.
             `eth_fillTransaction` always takes a slot, even when gas is supplied.
             """,
         DefaultValue = "500")]

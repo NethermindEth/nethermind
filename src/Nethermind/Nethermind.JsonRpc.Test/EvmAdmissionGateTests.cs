@@ -23,10 +23,15 @@ public class EvmAdmissionGateTests
     [TestCase(null, null, TestName = "Defaults to the processor count")]
     [TestCase(6, 6, TestName = "Eth module concurrency")]
     [TestCase(0, 1, TestName = "At least one")]
-    public void Permits_follow_eth_module_concurrency(int? ethModuleConcurrentInstances, int? expected) =>
+    public void Permits_follow_eth_module_concurrency(int? ethModuleConcurrentInstances, int? expected)
+    {
+        JsonRpcConfig config = new() { EthModuleConcurrentInstances = ethModuleConcurrentInstances };
+        int permits = expected ?? Environment.ProcessorCount;
+
         Assert.That(
-            new EvmAdmissionGate(new JsonRpcConfig { EthModuleConcurrentInstances = ethModuleConcurrentInstances }).Permits,
-            Is.EqualTo(expected ?? Environment.ProcessorCount));
+            (new EvmAdmissionGate(config).Permits, config.GetMaxConcurrentEvmExecutions()),
+            Is.EqualTo((permits, permits + 1)), "the execution environment pools hold the slot above the permits too");
+    }
 
     [TestCase(0, ExpectedResult = 1)]
     [TestCase(BytesPerWeightUnit - 1, ExpectedResult = 1)]
@@ -50,6 +55,35 @@ public class EvmAdmissionGateTests
         Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((2, 0)));
 
         granted.Dispose();
+        second.Dispose();
+        Assert.That(gate.InFlight, Is.Zero);
+    }
+
+    [Test]
+    public async Task Priority_request_may_take_one_slot_above_the_permits_which_passes_only_to_priority()
+    {
+        EvmAdmissionGate gate = CreateGate(permits: 2);
+        Lease first = await Admit(gate);
+        Lease second = await Admit(gate);
+        Task<Lease> queued = Admit(gate).AsTask();
+        Task<Lease> priority = Admit(gate, priority: true).AsTask();
+        Assert.That((priority.IsCompletedSuccessfully, queued.IsCompleted, gate.InFlight, gate.Queued), Is.EqualTo((true, false, 3, 1)),
+            "granted at once while requests without priority hold every permit");
+        Task<Lease> nextPriority = Admit(gate, priority: true).AsTask();
+        Assert.That((nextPriority.IsCompleted, gate.Queued), Is.EqualTo((false, 2)), "only one slot above the permits");
+
+        first.Dispose();
+        Lease nextPriorityLease = await nextPriority.WaitAsync(TestTimeout);
+        Assert.That((queued.IsCompleted, gate.InFlight, gate.Queued), Is.EqualTo((false, 3, 1)), "a slot released above the permits passes only to priority");
+
+        (await priority).Dispose();
+        Assert.That((queued.IsCompleted, gate.InFlight, gate.Queued), Is.EqualTo((false, 2, 1)), "or is freed");
+
+        nextPriorityLease.Dispose();
+        Lease queuedLease = await queued.WaitAsync(TestTimeout);
+        Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((2, 0)), "a slot released within the permits passes to anyone");
+
+        queuedLease.Dispose();
         second.Dispose();
         Assert.That(gate.InFlight, Is.Zero);
     }
@@ -116,13 +150,20 @@ public class EvmAdmissionGateTests
         ManualClock clock = new();
         EvmAdmissionGate gate = CreateGate(clock);
         Lease held = await Admit(gate);
+        // The slot above the permits is taken too, so the priority requests below queue.
+        Lease above = await Admit(gate, priority: true);
         List<(string Name, Task<Lease> Admission)> waiters = [("oldest", Admit(gate).AsTask())];
         clock.Advance(TimeSpan.FromMilliseconds(BudgetMs / 2));
         waiters.Add(("heavy priority", Admit(gate, MaxWeight * BytesPerWeightUnit, priority: true).AsTask()));
         waiters.Add(("light", Admit(gate).AsTask()));
         waiters.Add(("light priority", Admit(gate, priority: true).AsTask()));
 
-        Assert.That(await ReleaseAndRecordGrantOrder(held, waiters), Is.EqualTo(new[] { "heavy priority", "light priority", "oldest", "light" }));
+        held.Dispose();
+        // Once the priority waiters are served, the slot above the permits is freed, so the others wait for the last one.
+        List<string> order = [await DisposeNextGrant(waiters), await DisposeNextGrant(waiters)];
+        order.AddRange(await ReleaseAndRecordGrantOrder(above, waiters));
+
+        Assert.That(order, Is.EqualTo(new[] { "heavy priority", "light priority", "oldest", "light" }));
     }
 
     [TestCase(BudgetMs / 2 - 1, "light", TestName = "Just before half the budget: size order")]
@@ -309,14 +350,20 @@ public class EvmAdmissionGateTests
         held.Dispose();
         while (waiters.Count > 0)
         {
-            Task<Lease> granted = await Task.WhenAny(waiters.Select(static w => w.Admission)).WaitAsync(TestTimeout);
-            (string name, _) = waiters.Single(w => w.Admission == granted);
-            waiters.RemoveAll(w => w.Admission == granted);
-            order.Add(name);
-            (await granted).Dispose();
+            order.Add(await DisposeNextGrant(waiters));
         }
 
         return order;
+    }
+
+    // Waits for the next waiter to be granted, releases its slot and removes it from the list.
+    private static async Task<string> DisposeNextGrant(List<(string Name, Task<Lease> Admission)> waiters)
+    {
+        Task<Lease> granted = await Task.WhenAny(waiters.Select(static w => w.Admission)).WaitAsync(TestTimeout);
+        (string name, _) = waiters.Single(w => w.Admission == granted);
+        waiters.RemoveAll(w => w.Admission == granted);
+        (await granted).Dispose();
+        return name;
     }
 
     /// <summary>A clock that moves only when told to, firing the timers that fall due.</summary>
