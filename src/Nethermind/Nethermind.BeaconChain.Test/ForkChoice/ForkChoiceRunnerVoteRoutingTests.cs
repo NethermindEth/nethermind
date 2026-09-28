@@ -6,6 +6,7 @@ using System.Linq;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
@@ -35,6 +36,33 @@ public class ForkChoiceRunnerVoteRoutingTests
             yield return new TestCaseData(false, 1, 0ul, ForkChoicePayloadStatus.Empty, queued).SetName($"Gloas slot after the block, index 0: EMPTY{source}");
             yield return new TestCaseData(false, 0, 0ul, ForkChoicePayloadStatus.Pending, queued).SetName($"Gloas slot of the block: PENDING{source}");
             yield return new TestCaseData(true, -1, 0ul, ForkChoicePayloadStatus.Pending, queued).SetName($"Pre-Gloas slot after the block: PENDING{source}");
+        }
+    }
+
+    /// <summary>
+    /// specs/gloas/fork-choice.md <c>is_parent_node_full</c>: a Gloas block builds on its parent's FULL node exactly when its
+    /// bid's <c>parent_block_hash</c> is the parent bid's <c>block_hash</c>; without that, every vote is routed as if FULL.
+    /// </summary>
+    [Test]
+    public void Gloas_blocks_record_whether_they_build_on_their_parents_full_or_empty_payload([Values] bool full)
+    {
+        SignedGloasChain chain = new();
+        ulong forkSlot = ForkCrossingChain.ForkEpoch * Presets.SlotsPerEpoch;
+        SignedGloasChain.Block parent = chain.Next(null, forkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = chain.Next(parent, forkSlot + 1, full, 0xB1);
+        ForkChoiceRunner runner = ForkCrossingChain.Instance.CreateRunner();
+        runner.OnTick(runner.GenesisTime + (forkSlot + 1) * Presets.SecondsPerSlot);
+        runner.OnBlock(parent.Signed, parent.PostState);
+        runner.OnExecutionPayloadVerified(parent.Root);
+        runner.OnBlock(child.Signed, child.PostState);
+
+        ProtoNode parentNode = runner.EnumerateAncestors(parent.Root).First();
+        ProtoNode childNode = runner.EnumerateAncestors(child.Root).First();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((parentNode.IsGloas, childNode.IsGloas), Is.EqualTo((true, true)));
+            Assert.That(child.Bid.ParentBlockHash == parent.Bid.BlockHash, Is.EqualTo(full), "fixture: the child's bid names its parent's payload only when full");
+            Assert.That(childNode.ParentPayloadStatus, Is.EqualTo(full ? ForkChoicePayloadStatus.Full : ForkChoicePayloadStatus.Empty));
         }
     }
 

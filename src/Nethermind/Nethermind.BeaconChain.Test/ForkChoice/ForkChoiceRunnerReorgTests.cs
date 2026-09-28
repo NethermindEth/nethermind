@@ -159,6 +159,34 @@ public class ForkChoiceRunnerReorgTests
     }
 
     /// <summary>
+    /// update_proposer_boost_root runs only for a block on_block accepts: a timely first block of its slot that the
+    /// proto-array refuses must leave the boost free for the slot's real proposal.
+    /// </summary>
+    [Test]
+    public void Timely_block_refused_by_on_block_does_not_take_the_proposer_boost()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ForkChoiceRunner runner = CreateRunner(chain);
+        UnsignedChain.ChainBlock a = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0xa1);
+        UnsignedChain.ChainBlock b = chain.Extend(a.Root, slot: 2, payloadHashByte: 0xa2);
+        UnsignedChain.ChainBlock c = chain.Extend(b.Root, slot: 3, payloadHashByte: 0xa3);
+        UnsignedChain.ChainBlock d = chain.Extend(b.Root, slot: 3, payloadHashByte: 0xb3);
+        UnsignedChain.ChainBlock refused = chain.Extend(d.Root, slot: 4, payloadHashByte: 0xb4);
+        TickTo(runner, slot: 1);
+        Import(runner, a);
+        TickTo(runner, slot: 2);
+        Import(runner, b, ExecutionStatus.Optimistic);
+        TickTo(runner, slot: 3);
+        Import(runner, c, ExecutionStatus.Optimistic);
+        Import(runner, d, ExecutionStatus.Optimistic);
+        Assert.That(() => runner.OnInvalidExecutionPayload(c.Root, runner.GetExecutionBlockHash(chain.AnchorRoot)), Throws.TypeOf<ProtoArrayException>());
+        TickTo(runner, slot: 4);
+
+        Assert.That(() => Import(runner, refused), Throws.TypeOf<ProtoArrayException>(), "fixture: the proto-array refuses E");
+        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
+    }
+
+    /// <summary>
     /// The late-head branch: a late, vote-less slot-2 head on a slot-1 parent is re-orged for a slot-3 proposal only
     /// when <c>is_parent_strong</c> holds (the parent has one vote) and the clock is at most
     /// <c>get_proposer_reorg_cutoff_ms</c> (2000 ms of a 12 s slot) into the slot.
