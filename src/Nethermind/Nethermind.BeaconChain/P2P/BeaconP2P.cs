@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Gossip;
+using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
@@ -60,17 +61,18 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     // What the libp2p layer learns about each session that the session object itself does not tell:
     // which side dialed, and the identify agent string. A slot opens the moment the library adds the
-    // session, completes once identify and the agent probe are done (see BeaconLocalPeer), and is
-    // cancelled when the library drops the session. It is a slot and not a value because a dial
-    // returns as soon as the library's identify completes, while the probe is still in flight.
+    // session, completes once identify is done (see BeaconLocalPeer), and is cancelled when the
+    // library drops the session. It is a slot and not a value because a dial returns as soon as the
+    // identify dial completes, before the slot is filled.
     private readonly ConcurrentDictionary<ISession, TaskCompletionSource<SessionInfo>> _sessionInfo = new();
+    private int _identifyTimeouts;
 
     private LocalPeer? _localPeer;
     private PubsubRouter? _router;
 
     /// <summary>The per-session facts <see cref="PeerManager"/> cannot read off an <see cref="ISession"/>.
-    /// <paramref name="AgentVersion"/> is <c>null</c> only when the peer did not answer the identify
-    /// probe (see <see cref="IdentifyAgentVersionProbe"/>), never as a stand-in for "not wired".</summary>
+    /// <paramref name="AgentVersion"/> is <c>null</c> only when the peer's identify answer carries none
+    /// (see <see cref="IdentifyAgentVersionProbe"/>), never as a stand-in for "not wired".</summary>
     public readonly record struct SessionInfo(PeerDirection Direction, string? AgentVersion);
 
     /// <summary>Raised once a session is fully established (identify done) in either direction. This is
@@ -127,7 +129,10 @@ public sealed class BeaconP2P : IAsyncDisposable
             // One identify instance: the library's own stack slot and the probe's listen fallback
             // both resolve to it, so an inbound identify request is answered the same way whichever
             // of the two same-id protocols multistream picks.
-            .AddSingleton<IdentifyProtocol>()
+            .AddSingleton(sp => new IdentifyProtocol(new ProbeHidingStackSettings(sp.GetRequiredService<IProtocolStackSettings>()),
+                sp.GetRequiredService<IdentifyProtocolSettings>(), sp.GetRequiredService<PeerStore>(), sp.GetService<ILoggerFactory>()))
+            .AddSingleton(sp => new IdentifyPushProtocol(new ProbeHidingStackSettings(sp.GetRequiredService<IProtocolStackSettings>()),
+                sp.GetRequiredService<IdentifyProtocolSettings>(), sp.GetRequiredService<PeerStore>(), sp.GetService<ILoggerFactory>()))
             .AddSingleton<IdentifyAgentVersionProbe>()
             // The library's peer class is internal; this one does the same identify handshake and also
             // records the session direction and agent string (see BeaconLocalPeer).
@@ -143,7 +148,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = "eth2/1.0.0",
-                AgentVersion = $"nethermind/{ProductInfo.Version}",
+                AgentVersion = ClientAgentVersion,
             })
             // The eth2 gossipsub parameters (consensus-specs p2p-interface "The gossip domain: gossipsub").
             .AddSingleton(new PubsubSettings
@@ -165,6 +170,9 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager, lowerLogLevel: true, maxLogLevel: Microsoft.Extensions.Logging.LogLevel.Debug))
             .BuildServiceProvider();
     }
+
+    /// <summary>The client string this node advertises over libp2p identify and reports from <c>/eth/v1/node/version</c>.</summary>
+    internal static string ClientAgentVersion => ProductInfo.ClientId;
 
     public PeerId? LocalPeerId => _localPeer?.Identity.PeerId;
 
@@ -196,7 +204,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     public void Discover(Multiaddress[] addresses) => _serviceProvider.GetRequiredService<PeerStore>().Discover(addresses);
 
     /// <summary>The direction and agent string recorded for a live session, waiting for the identify
-    /// handshake and agent probe when the session is that fresh. Throws once the library has dropped
+    /// handshake when the session is that fresh. Throws once the library has dropped
     /// the session, including while waiting.</summary>
     public async Task<SessionInfo> GetSessionInfoAsync(ISession session, CancellationToken token)
     {
@@ -243,8 +251,17 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>Internal so a test can give one node a distinguishable agent string before it connects.</summary>
     internal IdentifyProtocolSettings IdentifySettingsForTest => _serviceProvider.GetRequiredService<IdentifyProtocolSettings>();
 
+    /// <summary>Internal so a test can read what a peer advertised in its identify answers.</summary>
+    internal PeerStore.PeerInfo PeerInfoForTest(PeerId peerId) => _serviceProvider.GetRequiredService<PeerStore>().GetPeerInfo(peerId);
+
+    /// <summary>Internal so a test can change the listen addresses, which makes the node push its identify to every session.</summary>
+    internal LocalPeer? LocalPeerForTest => _localPeer;
+
     /// <summary>Internal so a test can observe a refused inbound session being torn down, not just never admitted.</summary>
     internal int SessionCountForTest => _localPeer?.Sessions.Count ?? 0;
+
+    /// <summary>Internal so a test can tell a session closed for an unanswered identify from a failure of the code under test.</summary>
+    internal int IdentifyTimeoutsForTest => Volatile.Read(ref _identifyTimeouts);
 
     /// <summary>Internal so a test can see the validator installed on the started router; without it the node forwards every message unchecked.</summary>
     internal Func<Libp2p.Protocols.Pubsub.Dto.Message, MessageValidity>? VerifyMessageForTest => _router?.VerifyMessage;
@@ -271,14 +288,23 @@ public sealed class BeaconP2P : IAsyncDisposable
         {
             return await localPeer.DialAsync(address, token);
         }
-        catch (Exception e) when ((e is not OperationCanceledException || !token.IsCancellationRequested)
-                                  && remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? raced))
+        catch (Exception e) when (e is not OperationCanceledException && token.IsCancellationRequested)
         {
+            // The pinned library can end a dial the caller cancelled with its own exception rather than a cancellation.
+            throw new OperationCanceledException("The dial was cancelled by the caller", e, token);
+        }
+        catch (Exception) when (remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? raced)
+                                && !(_sessionInfo.TryGetValue(raced, out TaskCompletionSource<SessionInfo>? slot) && slot.Task.IsCanceled))
+        {
+            // A session whose identify failed is the one this dial lost, still closing, not a session the peer opened.
             return raced;
         }
     }
 
     /// <summary>Exchanges <c>status</c> with the peer, preferring v2 and falling back to v1 (with <c>earliest_available_slot</c> of 0).</summary>
+    /// <remarks>Falls back only when v2 failed as an exchange (<see cref="Eth2ReqRespException"/>) or went unanswered
+    /// within the request timeout, which is how the pinned multistream surfaces a protocol the peer does not support;
+    /// any other failure is not a reason to try v1 and propagates.</remarks>
     public async Task<StatusMessageV2> RequestStatusAsync(ISession session, CancellationToken token)
     {
         try
@@ -286,7 +312,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             using CancellationTokenSource cts = Timeout(token);
             return await session.DialAsync<StatusProtocolV2, StatusMessageV2, StatusMessageV2>(_statusSource.CurrentStatus, cts.Token);
         }
-        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+        catch (Exception e) when (IsExchangeFailure(e) || e is OperationCanceledException && !token.IsCancellationRequested)
         {
             if (_logger.IsTrace) _logger.Trace($"Status v2 with {session.RemoteAddress} failed ({e.Message}), falling back to v1");
             using CancellationTokenSource cts = Timeout(token);
@@ -384,6 +410,10 @@ public sealed class BeaconP2P : IAsyncDisposable
         }
     }
 
+    // The pinned session dial faults its task with the protocol's AggregateException rather than the exception itself.
+    private static bool IsExchangeFailure(Exception e) =>
+        e is Eth2ReqRespException || (e as AggregateException)?.Flatten().InnerException is Eth2ReqRespException;
+
     private static CancellationTokenSource Timeout(CancellationToken token, TimeSpan? timeout = null)
     {
         CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -468,22 +498,6 @@ public sealed class BeaconP2P : IAsyncDisposable
         }
     }
 
-    /// <summary>Best effort: an unanswered probe leaves the agent string unknown, it never costs the session.
-    /// Bounded tighter than a request because every admission waits on it.</summary>
-    private async Task<string?> ProbeAgentVersionAsync(ISession session)
-    {
-        try
-        {
-            using CancellationTokenSource cts = Timeout(CancellationToken.None, IdentifyAgentVersionProbe.ReadTimeout);
-            return await session.DialAsync<IdentifyAgentVersionProbe, ulong, string?>(0, cts.Token);
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Identify agent-version probe of {session.RemoteAddress} failed: {e.Message}");
-            return null;
-        }
-    }
-
     public async ValueTask DisposeAsync()
     {
         if (_localPeer is not null)
@@ -513,14 +527,64 @@ public sealed class BeaconP2P : IAsyncDisposable
 
         protected override async Task ConnectedTo(ISession session, bool isDialer)
         {
-            // The library's identify dial first: it verifies the remote identity and fills the peer store,
-            // and a failure here disconnects the session, exactly as the library's own peer class behaves.
-            await session.DialAsync<IdentifyProtocol>();
-            string? agentVersion = await _owner.ProbeAgentVersionAsync(session);
-            if (_owner._sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot))
+            // One identify exchange verifies the remote identity, fills the peer store and reads the agent string.
+            _owner._sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot);
+            string? agentVersion;
+            try
             {
-                slot.TrySetResult(new SessionInfo(isDialer ? PeerDirection.Outbound : PeerDirection.Inbound, agentVersion));
+                using CancellationTokenSource cts = new(IdentifyAgentVersionProbe.ReadTimeout);
+                agentVersion = await session.DialAsync<IdentifyAgentVersionProbe, ulong, string?>(0, cts.Token);
             }
+            catch (Exception e)
+            {
+                slot?.TrySetCanceled();
+                // The pinned library disconnects the session only when this task faults; a cancelled one counts as connected.
+                if (e is OperationCanceledException)
+                {
+                    Interlocked.Increment(ref _owner._identifyTimeouts);
+                    throw new TimeoutException($"No identify answer from {session.RemoteAddress} within {IdentifyAgentVersionProbe.ReadTimeout}", e);
+                }
+
+                throw;
+            }
+
+            slot?.TrySetResult(new SessionInfo(isDialer ? PeerDirection.Outbound : PeerDirection.Inbound, agentVersion));
+        }
+    }
+
+    /// <summary>The stack as identify advertises it: without the probe, whose id duplicates identify's own.</summary>
+    /// <remarks>The pinned identify lists every registered listener protocol and ignores <see cref="ProtocolRef.IsExposed"/>,
+    /// so a view over the live settings is the only way to keep <c>/ipfs/id/1.0.0</c> to one entry.</remarks>
+    private sealed class ProbeHidingStackSettings(IProtocolStackSettings inner) : IProtocolStackSettings
+    {
+        public Dictionary<ProtocolRef, ProtocolRef[]>? Protocols
+        {
+            get
+            {
+                Dictionary<ProtocolRef, ProtocolRef[]>? protocols = inner.Protocols;
+                if (protocols is null)
+                {
+                    return null;
+                }
+
+                Dictionary<ProtocolRef, ProtocolRef[]> advertised = new(protocols.Count);
+                foreach (KeyValuePair<ProtocolRef, ProtocolRef[]> protocol in protocols)
+                {
+                    if (protocol.Key.Protocol is not IdentifyAgentVersionProbe)
+                    {
+                        advertised.Add(protocol.Key, protocol.Value);
+                    }
+                }
+
+                return advertised;
+            }
+            set => inner.Protocols = value;
+        }
+
+        public ProtocolRef[]? TopProtocols
+        {
+            get => inner.TopProtocols;
+            set => inner.TopProtocols = value;
         }
     }
 

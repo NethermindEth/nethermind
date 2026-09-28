@@ -54,7 +54,7 @@ internal static class NodeEndpoints
             return ContentNegotiation.WriteNotAcceptable(c);
         }
 
-        return BeaconApiJson.WriteDataAsync(c, new VersionDto(ClientIdentity.AgentVersion), c.RequestAborted);
+        return BeaconApiJson.WriteDataAsync(c, new VersionDto(BeaconP2P.ClientAgentVersion), c.RequestAborted);
     }
 
     private static Task Identity(HttpContext c, BeaconApiContext ctx)

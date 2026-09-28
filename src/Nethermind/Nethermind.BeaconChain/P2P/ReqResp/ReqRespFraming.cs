@@ -67,8 +67,11 @@ public static class ReqRespFraming
     // Frame data is capped at the snappy framing-format limits: 65536 bytes of uncompressed data
     // plus the 4-byte CRC, with headroom for the worst-case snappy block expansion of a 64 KiB frame.
     private const int MaxFrameDataLength = 4 + 65536 + 65536 / 6 + 32;
+    // A stream identifier (10 bytes) and one empty data frame (at most 9) with headroom for padding; an empty request needs no more.
+    private const int MaxEmptyRequestFramingBytes = 64;
     private static readonly byte[] StreamIdentifierContent = "sNaPpY"u8.ToArray();
-    private static readonly byte[] EmptyPayloadFraming = [StreamIdentifierFrame, (byte)StreamIdentifierContent.Length, 0, 0, .. StreamIdentifierContent];
+    // The masked CRC-32C of no data (0xa282ead8), little-endian, as the snappy framing format stores it.
+    private static readonly byte[] EmptyDataChecksum = [0xd8, 0xea, 0x82, 0xa2];
 
     public static async Task WriteRequestAsync(Stream stream, ReadOnlyMemory<byte> ssz, CancellationToken token)
     {
@@ -155,20 +158,75 @@ public static class ReqRespFraming
         }
     }
 
-    // An empty payload has no data frame to end it, so its framing runs to the requester's half-close: nothing, or one stream identifier.
+    // An empty payload has no data frame to end it, so its framing runs to the requester's half-close; any legal framing that decodes to no bytes is accepted.
     private static async Task ReadEmptyRequestFramingAsync(Stream stream, CancellationToken token)
     {
-        byte[] framing = new byte[EmptyPayloadFraming.Length + 1];
-        int read = 0;
-        int lastRead;
-        while (read < framing.Length && (lastRead = await stream.ReadAsync(framing.AsMemory(read), token)) > 0)
+        using MemoryStream frames = new();
+        byte[] header = new byte[4];
+        int framedBytesRead = 0;
+        while (await stream.ReadAsync(header.AsMemory(0, 1), token) != 0)
         {
-            read += lastRead;
+            await stream.ReadExactlyAsync(header.AsMemory(1), token);
+            byte frameType = header[0];
+            int dataLength = header[1] | (header[2] << 8) | (header[3] << 16);
+            framedBytesRead += 4 + dataLength;
+            if (framedBytesRead > MaxEmptyRequestFramingBytes)
+            {
+                throw new Eth2ReqRespException($"Snappy framing of an empty request exceeds the {MaxEmptyRequestFramingBytes}-byte bound");
+            }
+
+            byte[] data = new byte[dataLength];
+            await stream.ReadExactlyAsync(data, token);
+            if (frames.Length == 0 && frameType != StreamIdentifierFrame)
+            {
+                throw new Eth2ReqRespException("Snappy framing of an empty request does not start with a stream identifier");
+            }
+
+            switch (frameType)
+            {
+                case StreamIdentifierFrame:
+                    if (!data.AsSpan().SequenceEqual(StreamIdentifierContent))
+                    {
+                        throw new Eth2ReqRespException("Malformed snappy stream identifier frame");
+                    }
+
+                    break;
+                case CompressedFrame or UncompressedFrame:
+                    // Only an empty frame carries this checksum; the decompressor below rejects any data, but skips the checksum of an empty uncompressed frame.
+                    if (data.Length < 4 || !data.AsSpan(0, 4).SequenceEqual(EmptyDataChecksum))
+                    {
+                        throw new Eth2ReqRespException("Snappy data frame of an empty request without the empty-data checksum");
+                    }
+
+                    // An empty snappy block is its one-byte zero length; the decompressor ignores bytes after it.
+                    if (frameType == CompressedFrame && (data.Length != 5 || data[4] != 0))
+                    {
+                        throw new Eth2ReqRespException("Compressed snappy frame of an empty request is not one empty block");
+                    }
+
+                    break;
+                case PaddingFrame or >= FirstSkippableFrame:
+                    continue;
+                default:
+                    throw new Eth2ReqRespException($"Unskippable reserved snappy frame type 0x{frameType:x2}");
+            }
+
+            frames.Write(header);
+            frames.Write(data);
         }
 
-        if (read != 0 && !framing.AsSpan(0, read).SequenceEqual(EmptyPayloadFraming))
+        frames.Position = 0;
+        try
         {
-            throw new Eth2ReqRespException("Bytes other than one snappy stream identifier follow an empty request payload");
+            using SnappyStream snappy = new(frames, CompressionMode.Decompress);
+            if (snappy.Read(new byte[1]) != 0)
+            {
+                throw new Eth2ReqRespException("Snappy frames of an empty request decode to data");
+            }
+        }
+        catch (Exception e) when (e is not Eth2ReqRespException)
+        {
+            throw new Eth2ReqRespException($"Snappy decompression failed: {e.Message}");
         }
     }
 

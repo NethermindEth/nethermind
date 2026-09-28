@@ -104,7 +104,7 @@ public class BeaconApiHostTests
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         JsonDocument body = await ReadJsonAsync(response);
         string version = body.RootElement.GetProperty("data").GetProperty("version").GetString()!;
-        Assert.That(version, Is.EqualTo($"nethermind/{ProductInfo.Version}"), "must match BeaconP2P's IdentifyProtocolSettings.AgentVersion literal");
+        Assert.That(version, Is.EqualTo(BeaconP2P.ClientAgentVersion), "must be the agent string libp2p identify advertises");
     }
 
     [Test]
