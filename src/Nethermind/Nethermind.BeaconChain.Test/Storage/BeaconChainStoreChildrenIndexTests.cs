@@ -272,7 +272,7 @@ public class BeaconChainStoreChildrenIndexTests
         WriteLegacyBlock(deletedLegacy, CreateBlock(103, parent));
         _store.DeleteBlock(deletedLegacy); // leaves a tombstone that pins the block incomplete
         _store.SetCanonicalRoot(100, parent);
-        _store.SetSchemaVersion(BeaconChainStore.CurrentSchemaVersion - 1);
+        _store.SetSchemaVersion(1);
 
         BeaconChainStore reopened = new(_db);
         reopened.EnsureSchemaVersion();

@@ -61,10 +61,13 @@ public static class BeaconChainMetadataKeys
 public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSpec? spec = null)
 {
     /// <summary>Layout version of every column; bump it whenever a change needs an existing database migrated or refused.</summary>
-    public const uint CurrentSchemaVersion = ChildrenIndexSchemaVersion;
+    public const uint CurrentSchemaVersion = ExecutionPayloadEnvelopesSchemaVersion;
 
     /// <summary>The first version whose children index is known to cover every stored block; an older database gets the index rebuilt.</summary>
     private const uint ChildrenIndexSchemaVersion = 2;
+
+    /// <summary>The first version stamped by a build that knows <see cref="BeaconChainDbColumns.ExecutionPayloadEnvelopes"/>, so a build that does not refuses the database.</summary>
+    private const uint ExecutionPayloadEnvelopesSchemaVersion = 3;
 
     /// <summary>Offset of <c>parent_root</c> in a serialized <c>SignedBeaconBlock</c>: the message offset and signature precede the message, whose slot and proposer index precede the root; the same in every fork.</summary>
     private const int ParentRootOffset = sizeof(uint) + BlsSignature.Length + sizeof(ulong) + sizeof(ulong);
@@ -548,11 +551,17 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// The slot indexed is the payload's <c>slot_number</c>, which <c>verify_execution_payload_envelope</c> (gloas/beacon-chain.md)
     /// holds equal to the block's slot, so the block is not read. The record, the slot index entry and the slot bounds are one write batch.
     /// </remarks>
-    /// <exception cref="ArgumentException">The envelope has no payload, or names a beacon block other than <paramref name="blockRoot"/>.</exception>
+    /// <exception cref="ArgumentException">The envelope has no payload, names a beacon block other than <paramref name="blockRoot"/>, or encodes to more than <c>MAX_PAYLOAD_SIZE</c> bytes.</exception>
     public void PutExecutionPayloadEnvelope(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope)
     {
         ulong slot = GetExecutionPayloadEnvelopeSlot(blockRoot, envelope);
-        byte[] record = Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(envelope));
+        byte[] ssz = SignedExecutionPayloadEnvelope.Encode(envelope);
+        if (ssz.Length > MaxEnvelopeLength)
+        {
+            throw new ArgumentException($"The envelope for {blockRoot} encodes to {ssz.Length} bytes, above MAX_PAYLOAD_SIZE, so no read would accept it", nameof(envelope));
+        }
+
+        byte[] record = Snappy.CompressToArray(ssz);
         byte[] slotKey = new byte[sizeof(ulong)];
         BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
 
@@ -635,7 +644,7 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// deletions, so an interrupted prune resumes where it stopped.
     /// </remarks>
     /// <param name="currentEpoch">The wall-clock epoch.</param>
-    /// <param name="finalizedSlot">The slot of the finalized checkpoint's block.</param>
+    /// <param name="finalizedSlot">The slot of the finalized checkpoint's block, or of an earlier block that replay after a restart starts from.</param>
     /// <exception cref="InvalidOperationException">This store has no spec, so it knows no epoch length.</exception>
     public void PruneExecutionPayloadEnvelopes(ulong currentEpoch, ulong finalizedSlot)
     {
@@ -699,18 +708,59 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         }
     }
 
+    /// <summary>The stored slot bounds, rebuilt from the slot index when the record is malformed or inverted; the caller holds <see cref="_envelopeIndexLock"/>.</summary>
+    /// <returns><c>false</c> when no slot may have envelopes.</returns>
     private bool TryGetEnvelopeBounds(out ulong lowest, out ulong highest)
     {
         byte[]? value = _envelopes.Get(EnvelopeBoundsKey);
-        if (value is not { Length: EnvelopeBoundsLength })
+        if (value is null)
         {
             lowest = highest = 0;
             return false;
         }
 
-        lowest = BinaryPrimitives.ReadUInt64BigEndian(value);
-        highest = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(sizeof(ulong)));
-        return true;
+        if (value.Length == EnvelopeBoundsLength)
+        {
+            lowest = BinaryPrimitives.ReadUInt64BigEndian(value);
+            highest = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(sizeof(ulong)));
+            if (lowest <= highest)
+            {
+                return true;
+            }
+        }
+
+        return RebuildEnvelopeBounds(out lowest, out highest);
+    }
+
+    /// <summary>Replaces the slot bounds record with the lowest and highest slot the slot index holds, or removes it when the index is empty.</summary>
+    /// <remarks>Scans every key of the column, so it runs only on a damaged record, which would otherwise leave slots outside the bounds that no prune visits.</remarks>
+    private bool RebuildEnvelopeBounds(out ulong lowest, out ulong highest)
+    {
+        bool found = false;
+        lowest = ulong.MaxValue;
+        highest = 0;
+        foreach (byte[] key in _envelopes.GetAllKeys())
+        {
+            if (key.Length != sizeof(ulong))
+            {
+                continue;
+            }
+
+            ulong slot = BinaryPrimitives.ReadUInt64BigEndian(key);
+            lowest = Math.Min(lowest, slot);
+            highest = Math.Max(highest, slot);
+            found = true;
+        }
+
+        if (found)
+        {
+            _envelopes.Set(EnvelopeBoundsKey, EnvelopeBounds(lowest, highest));
+            return true;
+        }
+
+        _envelopes.Remove(EnvelopeBoundsKey);
+        lowest = highest = 0;
+        return false;
     }
 
     private static byte[] EnvelopeBounds(ulong lowest, ulong highest)
@@ -740,7 +790,9 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
     /// A database with no version predates versioning and counts as version 0; version 1 added only
     /// the stamp itself, so that upgrade rewrites nothing. Version 2 rebuilds the children index from
     /// every stored block, so a database that held blocks before the index existed answers child
-    /// queries as complete. A newer version may hold key shapes this build does not know, so it is
+    /// queries as complete. Version 3 rewrites nothing, since the envelope column keeps its layout; the
+    /// stamp makes a version-2 build, which never prunes that column, refuse the database.
+    /// A newer version may hold key shapes this build does not know, so it is
     /// refused rather than reinterpreted, and left unstamped.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The database was written by a newer schema version, or holds a block record too short to be a signed beacon block.</exception>
