@@ -86,12 +86,13 @@ public class RangeSyncColumnCustodyTests
         StubPeer advertised = PeerWithCustody("advertised", new PeerColumnCustody([1], isAdvertised: true));
         StubPeer[] singles = [.. Enumerable.Range(2, 4).Select(c => PeerWithCustody($"single-{c}", new PeerColumnCustody([(ulong)c], isAdvertised: true)))];
 
-        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = RangeSync.AssignColumns([0, 1, 2, 3, 4, 5], [floor, advertised, .. singles], maxPeers: 4);
+        // Column 1 comes first, while both its custodians are equally loaded and the floor peer is earlier in the pool.
+        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = RangeSync.AssignColumns([1, 0, 2, 3, 4, 5], [floor, advertised, .. singles], maxPeers: 4);
 
         Assert.That(requests.Select(static r => (r.Peer.Id, r.Columns)), Is.EqualTo(new (string, ulong[])[]
         {
-            ("floor", [0]),
             ("advertised", [1]),
+            ("floor", [0]),
             ("single-2", [2]),
             ("single-3", [3]),
         }), "column 1 goes to its advertised custodian; columns 4 and 5 would need a fifth peer");
