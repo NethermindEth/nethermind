@@ -9,8 +9,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-using static Nethermind.Evm.VirtualMachineStatics;
-
 public unsafe partial class VirtualMachine<TGasPolicy>
 {
     // Poll cancellation at the first taken jump once 1024 opcodes have run since the last poll. Code that
