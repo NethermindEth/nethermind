@@ -788,6 +788,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     {
         stateGasUsed = 0;
         UInt256 value = frame.Value;
+        bool isTracingInstructions = TTracing.IsActive && tracer.IsTracingInstructions;
 
         // create_evm_from_frame: the frame pays its target's access out of its own gas limit before the
         // balance check and before dispatch, resolving the target's code being what dispatch is. The charge
@@ -803,7 +804,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (entryExecution > frame.ExecutionGasLimit)
         {
             gasUsed = frame.ExecutionGasLimit;
-            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+            return new TransactionSubstate(EvmExceptionType.OutOfGas, isTracingInstructions);
         }
 
         // The charge prices reading the target's account, so the read is recorded even where the frame
@@ -815,7 +816,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (!value.IsZero && WorldState.GetBalance(caller) < value)
         {
             gasUsed = entryExecution;
-            return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
+            return new TransactionSubstate(EvmExceptionType.Revert, isTracingInstructions);
         }
 
         // EIP-8141: a precompile dispatches in every mode, leaving default code to a VERIFY frame's codeless
@@ -824,7 +825,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             && _codeInfoRepository.GetPrecompile(resolvedTarget, spec) is null
             && WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
         {
-            TransactionSubstate defaultCode = ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, spec, in accessTracker, tracer, entryExecution, out gasUsed, out stateGasUsed);
+            TransactionSubstate defaultCode = ExecuteDefaultVerifyCode(frame, resolvedTarget, frameContext, spec, in accessTracker, isTracingInstructions, entryExecution, out gasUsed, out stateGasUsed);
             // The entry charge warms the target on this path too; a failing default-code frame is a failing
             // VERIFY frame, which invalidates the transaction, so there is nothing to unwind.
             if (spec.UseHotAndColdStorage && !defaultCode.IsError && !defaultCode.ShouldRevert)
@@ -843,7 +844,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if (!TGasPolicy.TryConsumeStateAndExecutionGas(ref frameGas, entryState, entryExecution))
         {
             gasUsed = frame.ExecutionGasLimit;
-            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+            return new TransactionSubstate(EvmExceptionType.OutOfGas, isTracingInstructions);
         }
 
         CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(resolvedTarget, followDelegation: false, spec, out Address? delegation);
@@ -858,7 +859,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 if (!TGasPolicy.TryConsume(ref frameGas, delegationAccess))
                 {
                     gasUsed = frame.ExecutionGasLimit;
-                    return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+                    return new TransactionSubstate(EvmExceptionType.OutOfGas, isTracingInstructions);
                 }
             }
 
@@ -909,7 +910,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // Selected explicitly: the parameterless ExecuteTransaction overload hard-codes OffFlag.
         // DispatchFlags folds the tracing arm out of the zkEVM guest, which compiles no tracing dispatch.
-        TransactionSubstate substate = !(TTracing.IsActive && DispatchFlags.Tracing(tracer.IsTracingInstructions))
+        TransactionSubstate substate = !DispatchFlags.Tracing(isTracingInstructions)
             ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer)
             : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
 
@@ -950,7 +951,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// Execution gas the frame already owes for its target's access, charged before dispatch and known to
     /// fit within <see cref="TxFrame.ExecutionGasLimit"/>.
     /// </param>
-    private TransactionSubstate ExecuteDefaultVerifyCode(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, IReleaseSpec spec, in StackAccessTracker accessTracker, ITxTracer tracer, ulong entryExecution, out ulong gasUsed, out long stateGasUsed)
+    private TransactionSubstate ExecuteDefaultVerifyCode(TxFrame frame, Address resolvedTarget, FrameTxContext frameContext, IReleaseSpec spec, in StackAccessTracker accessTracker, bool isTracingInstructions, ulong entryExecution, out ulong gasUsed, out long stateGasUsed)
     {
         gasUsed = entryExecution;
         stateGasUsed = 0;
@@ -958,7 +959,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         FrameFlags allowedScope = frame.AllowedApproveScope;
         if (allowedScope == 0)
         {
-            return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
+            return new TransactionSubstate(EvmExceptionType.Revert, isTracingInstructions);
         }
 
         int sigIndex = (allowedScope & FrameFlags.ApproveExecution) != 0 ? 0 : 1;
@@ -968,7 +969,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             || !signatures[sigIndex].Msg.IsEmpty
             || frameContext.ResolvedSigner(sigIndex) != resolvedTarget)
         {
-            return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
+            return new TransactionSubstate(EvmExceptionType.Revert, isTracingInstructions);
         }
 
         FrameApprovalOutcome outcome = frameContext.PlanApproval(allowedScope, resolvedTarget, WorldState, out FrameApprovalPlan plan);
@@ -976,11 +977,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             if (outcome == FrameApprovalOutcome.Rejected)
             {
-                return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
+                return new TransactionSubstate(EvmExceptionType.Revert, isTracingInstructions);
             }
 
             gasUsed = frame.ExecutionGasLimit;
-            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+            return new TransactionSubstate(EvmExceptionType.OutOfGas, isTracingInstructions);
         }
 
         // The declared limit still is state_gas_left: default code writes no state before the approval, so
@@ -989,7 +990,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         if ((ulong)nonceStateGas > frame.StateGasLimit)
         {
             gasUsed = frame.ExecutionGasLimit;
-            return new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracingInstructions);
+            return new TransactionSubstate(EvmExceptionType.OutOfGas, isTracingInstructions);
         }
 
         stateGasUsed = nonceStateGas;
