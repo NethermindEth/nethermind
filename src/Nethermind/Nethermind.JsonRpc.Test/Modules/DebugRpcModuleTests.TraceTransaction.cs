@@ -270,9 +270,6 @@ public partial class DebugRpcModuleTests
                         "code": "0xabcd",
                         "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
                     },
-                    "0x0000000000000000000000000000000000000000": {
-                        "balance": "0x0"
-                    },
                     "0x475674cb523a0a2736b7f7534390288fce16982c": {
                         "balance": "0xf618"
                     }
@@ -369,7 +366,7 @@ public partial class DebugRpcModuleTests
         yield return new TestCaseData(
             contractTransaction,
             new GethTraceOptions { Tracer = Native4ByteTracer.FourByteTracer },
-            """{"jsonrpc":"2.0","result":{"0x60006020-2":1},"id":67}"""
+            """{"jsonrpc":"2.0","result":{},"id":67}"""
         )
         { TestName = "Contract with " + Native4ByteTracer.FourByteTracer };
 
@@ -406,12 +403,6 @@ public partial class DebugRpcModuleTests
                         "nonce": 3,
                         "code": "0xabcd",
                         "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
-                    },
-                    "0x0ffd3e46594919c04bcfd4e146203c8255670828": {
-                        "balance": "0x0",
-                        "storage": {
-                            "0x0000000000000000000000000000000000000000000000000000000000000020": "0x0000000000000000000000000000000000000000000000000000000000000000"
-                        }
                     },
                     "0x475674cb523a0a2736b7f7534390288fce16982c": {
                         "balance": "0xf618"

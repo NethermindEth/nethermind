@@ -58,42 +58,14 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
-        if (Depth == 0)
-        {
-            CaptureStart(input);
-        }
-        else
-        {
-            CaptureEnter(callType, input, to, isPrecompileCall);
-        }
-    }
-
-    private void CaptureStart(ReadOnlyMemory<byte> input)
-    {
-        if (input.Length >= 4)
-        {
-            Store4ByteIds(input, input.Length - 4);
-        }
-    }
-
-    private void CaptureEnter(ExecutionType callType, ReadOnlyMemory<byte> input, Address? to, bool isPrecompileCall)
-    {
         if (input.Length >= 4
-            && callType.IsAnyCall()
-            && to is not null
+            && (callType.IsAnyCall() || callType == ExecutionType.TRANSACTION)
             && !isPrecompileCall)
         {
             Store4ByteIds(input, input.Length - 4);
         }
     }
 
-    /*
-     * Store4ByteIds counts the occurrences of 4byteId keys and stores them in a dictionary.
-     * Each 4byteId key is composed of the function signature along with the size of the supplied call data.
-     *
-     * 4byteId format: SELECTOR-CALLDATASIZE
-     * example 4byteId: 0x27dc297e-128
-     */
     private void Store4ByteIds(ReadOnlyMemory<byte> input, int size)
     {
         static int GetDigitsBase10(int n) => n == 0 ? 1 : (int)Math.Floor(Math.Log10(Math.Abs(n)) + 1);
