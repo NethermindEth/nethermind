@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Numerics;
+using System.Text.RegularExpressions;
+using Microsoft.ClearScript;
 using System.Threading;
 using Microsoft.ClearScript.JavaScript;
 using Microsoft.ClearScript.V8;
@@ -215,5 +218,26 @@ public class Engine : IDisposable
     /// <summary>
     /// Creates a JavaScript tracer object from JavaScript code or name
     /// </summary>
-    public dynamic CreateTracer(string tracer) => V8Engine.Evaluate(_runtime.GetTracerScript(tracer));
+    public dynamic CreateTracer(string tracer)
+    {
+        try
+        {
+            return V8Engine.Evaluate(_runtime.GetTracerScript(tracer));
+        }
+        catch (ScriptEngineException ex) when (Regex.IsMatch(tracer.Trim(), @"\A[A-Za-z_$][A-Za-z0-9_$]*\z")
+            && ex.Message == $"ReferenceError: {tracer.Trim()} is not defined")
+        {
+            int line = 1, column = 2;
+            foreach (char character in tracer.AsSpan(0, tracer.Length - tracer.TrimStart().Length))
+            {
+                if (character == '\n')
+                {
+                    line++;
+                    column = 1;
+                }
+                else column++;
+            }
+            throw new InvalidDataException($"{ex.Message} at <eval>:{line}:{column}(0)", ex);
+        }
+    }
 }

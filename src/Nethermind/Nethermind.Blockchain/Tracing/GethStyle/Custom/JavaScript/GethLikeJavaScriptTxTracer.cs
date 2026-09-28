@@ -3,10 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using FastEnumUtility;
+using Microsoft.ClearScript;
+using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Core.Crypto;
@@ -61,7 +62,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
 
         Engine.CurrentEngine = _engine;
         _tracer = engine.CreateTracer(options.Tracer);
-        _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
+        _functions = GetAvailableFunctions((object)_tracer);
         if (_functions.HasFlag(TracerFunctions.setup))
         {
             Engine.CurrentEngine = _engine;
@@ -349,30 +350,25 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _log.refund = CurrentRefund;
     }
 
-    private static TracerFunctions GetAvailableFunctions(ICollection<string> functions)
+    private static TracerFunctions GetAvailableFunctions(object tracer)
     {
-        const TracerFunctions required = TracerFunctions.result;
+        bool HasFunction(string name) => tracer is ScriptObject script
+            && script.GetProperty(name) is IJavaScriptObject { Kind: JavaScriptObjectKind.Function };
 
-        TracerFunctions result = TracerFunctions.none;
+        if (!HasFunction("result"))
+            throw new ArgumentException("trace object must expose a function result()");
+        if (!HasFunction("fault"))
+            throw new ArgumentException("trace object must expose a function fault()");
 
-        // skip none
-        foreach (TracerFunctions function in FastEnum.GetValues<TracerFunctions>().Skip(1))
+        TracerFunctions result = TracerFunctions.result | TracerFunctions.fault;
+        foreach (TracerFunctions function in FastEnum.GetValues<TracerFunctions>())
         {
-            string name = FastEnum.GetName(function);
-            if (functions.Contains(name))
-            {
+            if (function > TracerFunctions.result && HasFunction(FastEnum.GetName(function)))
                 result |= function;
-            }
-            else if (function <= required)
-            {
-                throw new ArgumentException($"trace object must expose required function {name}");
-            }
         }
 
         if (result.HasFlag(TracerFunctions.enter) != result.HasFlag(TracerFunctions.exit))
-        {
             throw new ArgumentException("trace object must expose either both or none of enter() and exit()");
-        }
 
         return result;
     }

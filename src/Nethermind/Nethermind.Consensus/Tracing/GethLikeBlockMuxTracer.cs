@@ -143,6 +143,8 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
                 if (index != results.Length)
                     throw new InvalidOperationException("Mux child returned a different number of transaction traces.");
             }
+            for (int i = 0; i < results.Length; i++)
+                results[i].CustomTracerResult!.Value = JsonSerializer.SerializeToElement(values[i]);
             return _results = results;
         }
         finally
