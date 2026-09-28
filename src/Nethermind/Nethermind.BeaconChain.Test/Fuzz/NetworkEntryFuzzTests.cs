@@ -123,24 +123,26 @@ public class NetworkEntryFuzzTests
         Assert.That(stream.Position, Is.EqualTo(shortFrame.Length), "no byte past the short frame is read");
     }
 
-    // An empty request has no data frame to end it, so its framing is only nothing or one stream identifier before the half-close.
+    // An empty request has no data frame to end it, so its framing runs to the half-close: any framing that decodes to no bytes
+    // (repeated stream identifiers, padding, skippable chunks) is legal, and one that is truncated, starts elsewhere or carries data is not.
     [Test]
-    public void Request_framing_reader_takes_an_empty_request_only_with_nothing_or_one_stream_identifier_after_it(
+    public void Request_framing_reader_takes_an_empty_request_only_with_framing_that_decodes_to_nothing(
         [ValueSource(typeof(SszFuzzer), nameof(SszFuzzer.Seeds))] int seed)
     {
         byte[] streamIdentifier = [0xff, 0x06, 0x00, 0x00, .. "sNaPpY"u8];
-        Assert.That((ReadRequest([0x00], allowEmpty: true), ReadRequest([0x00, .. streamIdentifier], allowEmpty: true)), Is.EqualTo((Array.Empty<byte>(), Array.Empty<byte>())));
+        byte[][] legal = [[], streamIdentifier, [.. streamIdentifier, .. streamIdentifier], [.. streamIdentifier, 0xfe, 0x00, 0x00, 0x00], [.. streamIdentifier, 0x80, 0x02, 0x00, 0x00, 0x2a, 0x2a]];
+        Assert.That(legal.Select(static trailing => ReadRequest([0x00, .. trailing], allowEmpty: true)), Has.All.Empty);
 
         Random random = new(seed);
         for (int i = 0; i < 200; i++)
         {
-            byte[] trailing = random.Next(4) switch
+            byte[] trailing = random.Next(3) switch
             {
-                0 => RandomBytes(random, random.Next(1, 24)),
+                0 => [(byte)random.Next(0xff), .. RandomBytes(random, random.Next(0, 24))],
                 1 => streamIdentifier[..random.Next(1, streamIdentifier.Length)],
-                2 => [.. streamIdentifier, .. RandomBytes(random, random.Next(1, 24))],
-                _ => [.. streamIdentifier, .. streamIdentifier],
+                _ => [.. streamIdentifier, .. UncompressedFrameWithData(random)],
             };
+
             Assert.That(() => ReadRequest([0x00, .. trailing], allowEmpty: true), Throws.TypeOf<Eth2ReqRespException>(), SszFuzzer.Preview(trailing));
         }
     }
@@ -290,7 +292,6 @@ public class NetworkEntryFuzzTests
 
     // A 5-byte message declaring GOSSIP_MAX_SIZE passes the phase0 p2p size cap, so only a bound on snappy expansion keeps it from buying a 10 MiB buffer.
     [Test]
-    [Explicit("Fails until Eth2MessageId.TryDecompress refuses a declared length its input cannot expand to, before it allocates that length")]
     public void Gossip_snappy_bomb_is_refused_without_allocating_its_declared_length()
     {
         (GossipMessageValidator validator, _, _) = CreateValidator();
@@ -481,6 +482,13 @@ public class NetworkEntryFuzzTests
         2 => [.. Varint((ulong)random.NextInt64()), .. RandomBytes(random, random.Next(8))],
         _ => Snappy.CompressToArray(RandomBytes(random, random.Next(1, 64))),
     };
+
+    /// <summary>An uncompressed snappy frame carrying 1 to 19 bytes under a random checksum.</summary>
+    private static byte[] UncompressedFrameWithData(Random random)
+    {
+        byte[] data = RandomBytes(random, random.Next(1, 20));
+        return [0x01, (byte)(4 + data.Length), 0x00, 0x00, .. RandomBytes(random, 4), .. data];
+    }
 
     private static byte[] RandomBytes(Random random, int length)
     {
