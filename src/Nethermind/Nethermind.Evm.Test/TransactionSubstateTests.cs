@@ -197,5 +197,33 @@ namespace Nethermind.Evm.Test
                 true);
             Assert.That(transactionSubstate.Error, Is.EqualTo(TransactionSubstate.Revert));
         }
+
+        [Test]
+        public void Logs_without_journal_are_null_and_yield_no_receipt_logs()
+        {
+            TransactionSubstate substate = new(default, 0, null, null, false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(substate.Logs, Is.Null, "a substate without a journal has no logs");
+                Assert.That(substate.LogsToArray(), Is.Empty, "a substate without a journal yields no receipt logs");
+            }
+        }
+
+        [Test]
+        public void Logs_with_journal_reflect_appended_entries()
+        {
+            JournalCollection<LogEntry> journal = [];
+            TransactionSubstate substate = new(default, 0, null, journal, false);
+            LogEntry entry = new(Address.Zero, [], []);
+
+            substate.Logs!.Add(entry);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(substate.Logs, Is.SameAs(journal), "the substate exposes the journal it was given");
+                Assert.That(substate.LogsToArray(), Is.EqualTo(new[] { entry }), "receipt logs come from the same journal");
+            }
+        }
     }
 }
