@@ -97,7 +97,7 @@ public partial class BeaconSyncOrchestratorTests
         await orchestrator.ProcessGossipBlockAsync(child, CancellationToken.None);
         await orchestrator.ProcessSlotAsync(WallSlot, CancellationToken.None);
         int attemptsBeforeEnvelope = harness.Importer.Imports.Count;
-        await orchestrator.ImportEnvelopeAsync(new SignedExecutionPayloadEnvelope { Message = new ExecutionPayloadEnvelope { BeaconBlockRoot = parentRoot } }, CancellationToken.None);
+        await orchestrator.ImportEnvelopeAsync(EnvelopeFor(parentRoot, WallSlot), CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -124,7 +124,7 @@ public partial class BeaconSyncOrchestratorTests
         }
 
         await orchestrator.ProcessGossipBlockAsync(scenario.Child, CancellationToken.None);
-        await orchestrator.ImportEnvelopeAsync(new SignedExecutionPayloadEnvelope { Message = new ExecutionPayloadEnvelope { BeaconBlockRoot = scenario.FullRoot } }, CancellationToken.None);
+        await orchestrator.ImportEnvelopeAsync(EnvelopeFor(scenario.FullRoot, WallSlot), CancellationToken.None);
         await orchestrator.ProcessGossipBlockAsync(scenario.Grandchild, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
@@ -206,7 +206,7 @@ public partial class BeaconSyncOrchestratorTests
 
         await harness.Orchestrator.ProcessGossipBlockAsync(parentUnknown ? greatGrandchild : scenario.Grandchild, CancellationToken.None);
         int heldBeforeEnvelope = harness.Orchestrator.PendingGossipBlockCount;
-        await harness.Orchestrator.ImportEnvelopeAsync(new SignedExecutionPayloadEnvelope { Message = new ExecutionPayloadEnvelope { BeaconBlockRoot = scenario.FullRoot } }, CancellationToken.None);
+        await harness.Orchestrator.ImportEnvelopeAsync(EnvelopeFor(scenario.FullRoot, WallSlot), CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -476,7 +476,7 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.EnvelopeResult = envelopeResult;
         BeaconSyncOrchestrator orchestrator = harness.Orchestrator;
 
-        await orchestrator.ImportEnvelopeAsync(new SignedExecutionPayloadEnvelope { Message = new ExecutionPayloadEnvelope { BeaconBlockRoot = TestItem.KeccakA } }, CancellationToken.None);
+        await orchestrator.ImportEnvelopeAsync(EnvelopeFor(TestItem.KeccakA, WallSlot), CancellationToken.None);
         orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipAggregateItem(new SignedAggregateAndProof()));
         orchestrator.WorkWriter.Complete();
         await orchestrator.RunWorkerAsync(CancellationToken.None);
