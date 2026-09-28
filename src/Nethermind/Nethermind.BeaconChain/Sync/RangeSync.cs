@@ -286,8 +286,15 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             }
 
             Hash256 sidecarBlockRoot = SszRoots.HashTreeRoot(header);
-            if (!blocksByRoot.TryGetValue(sidecarBlockRoot, out BeaconBlock? block)
-                || !DataColumnAvailability.IsVerifiedColumnOf(sidecar, sidecarBlockRoot, block.Body!.BlobKzgCommitments!, spec))
+            bool requested = blocksByRoot.TryGetValue(sidecarBlockRoot, out BeaconBlock? block);
+            // A column an earlier reply already supplied is not verified again.
+            if (requested && sidecarPool.TryGet(sidecarBlockRoot, sidecar.Index, out _))
+            {
+                continue;
+            }
+
+            if (!requested
+                || !DataColumnAvailability.IsVerifiedColumnOf(sidecar, sidecarBlockRoot, block!.Body!.BlobKzgCommitments!, spec))
             {
                 peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Data column sidecar at slot {header.Slot} column {sidecar.Index} failed verification");
                 continue;
@@ -374,7 +381,15 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// Peers with advertised custody are asked first; a peer custodying none of the missing columns is skipped
     /// without counting toward the bound, since fulu/p2p-interface.md DataColumnSidecarsByRoot serves custodied columns only.
     /// </remarks>
-    public async Task<bool> FetchColumnsByRootAsync(Hash256 blockRoot, BeaconBlock block, CancellationToken token)
+    public Task<bool> FetchColumnsByRootAsync(Hash256 blockRoot, BeaconBlock block, CancellationToken token) =>
+        FetchColumnsByRootAsync(blockRoot, block, new ColumnFetchRotation(clock), token);
+
+    /// <inheritdoc cref="FetchColumnsByRootAsync(Hash256, BeaconBlock, CancellationToken)"/>
+    /// <param name="rotation">The custodians earlier fetches for this block asked; this call asks only custodians it has not, all at once.</param>
+    /// <remarks>
+    /// The requests run in parallel, so a peer that never answers costs one request timeout, not one per peer asked.
+    /// </remarks>
+    internal async Task<bool> FetchColumnsByRootAsync(Hash256 blockRoot, BeaconBlock block, ColumnFetchRotation rotation, CancellationToken token)
     {
         SszKzgCommitment[] commitments = block.Body?.BlobKzgCommitments ?? [];
         if (commitments.Length == 0 || !IsInDataAvailabilityWindow(block.Slot, DataAvailabilityStartEpoch()))
@@ -387,40 +402,47 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             return false;
         }
 
+        List<ulong> missing = MissingColumns(blockRoot, custody);
         // OrderBy is stable, so the pool's own order breaks ties.
-        IBeaconSyncPeer[] peers = [.. peerPool.GetBestPeers(block.Slot).OrderByDescending(static p => p.Custody.IsAdvertised)];
-        Dictionary<Hash256, BeaconBlock> blocksByRoot = new() { [blockRoot] = block };
-        int asked = 0;
-        foreach (IBeaconSyncPeer peer in peers)
+        IBeaconSyncPeer[] custodians = [.. peerPool.GetBestPeers(block.Slot).Where(p => p.Custody.CountCustodied(missing) > 0).OrderByDescending(static p => p.Custody.IsAdvertised)];
+        List<IBeaconSyncPeer> asked = rotation.Take(custodians, MaxByRootColumnPeers);
+        Task<IReadOnlyList<DataColumnSidecar>?>[] responses = new Task<IReadOnlyList<DataColumnSidecar>?>[asked.Count];
+        for (int i = 0; i < asked.Count; i++)
         {
-            if (asked >= MaxByRootColumnPeers)
-            {
-                break;
-            }
+            PeerColumnCustody peerCustody = asked[i].Custody;
+            responses[i] = RequestColumnsByRootAsync(asked[i], blockRoot, [.. missing.Where(peerCustody.Custodies)], static (peer, ids, t) => peer.RequestDataColumnSidecarsByRootAsync(ids, t), token);
+        }
 
-            PeerColumnCustody peerCustody = peer.Custody;
-            ulong[] columns = [.. MissingColumns(blockRoot, custody).Where(peerCustody.Custodies)];
-            if (columns.Length == 0)
+        await Task.WhenAll(responses);
+        Dictionary<Hash256, BeaconBlock> blocksByRoot = new() { [blockRoot] = block };
+        for (int i = 0; i < asked.Count; i++)
+        {
+            if (responses[i].Result is { } sidecars)
             {
-                continue;
+                AddVerifiedSidecars(asked[i], sidecars, blocksByRoot);
             }
-
-            asked++;
-            IReadOnlyList<DataColumnSidecar> sidecars;
-            try
-            {
-                sidecars = await peer.RequestDataColumnSidecarsByRootAsync([new DataColumnsByRootIdentifier { BlockRoot = blockRoot, Columns = columns }], token);
-            }
-            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
-            {
-                peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Data-column-sidecars-by-root for {blockRoot} failed: {e.Message}");
-                continue;
-            }
-
-            AddVerifiedSidecars(peer, sidecars, blocksByRoot);
         }
 
         return MissingColumns(blockRoot, custody).Count == 0;
+    }
+
+    /// <returns>The peer's sidecars, or <c>null</c> when the request failed and the peer was penalized.</returns>
+    private static async Task<IReadOnlyList<TSidecar>?> RequestColumnsByRootAsync<TSidecar>(
+        IBeaconSyncPeer peer,
+        Hash256 blockRoot,
+        ulong[] columns,
+        Func<IBeaconSyncPeer, DataColumnsByRootIdentifier[], CancellationToken, Task<IReadOnlyList<TSidecar>>> request,
+        CancellationToken token)
+    {
+        try
+        {
+            return await request(peer, [new DataColumnsByRootIdentifier { BlockRoot = blockRoot, Columns = columns }], token);
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+        {
+            peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Data-column-sidecars-by-root for {blockRoot} failed: {e.Message}");
+            return null;
+        }
     }
 
     private List<ulong> MissingColumns(Hash256 blockRoot, NodeColumnCustody custody)
@@ -449,11 +471,16 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// slot is before the data availability window. <c>false</c> while this node's custody identity is unknown.
     /// </returns>
     /// <remarks>
-    /// Each peer is asked only for the columns still missing after the previous one. A sidecar that fails
-    /// verification penalizes its peer; the other sidecars in that response still count, since each is
-    /// verified on its own against the bid.
+    /// The peers are asked at once, each for the missing columns it custodies, so a peer that never answers costs one request
+    /// timeout, not one per peer asked. A sidecar that fails verification penalizes its peer; the other sidecars in that
+    /// response still count, since each is verified on its own against the bid.
     /// </remarks>
-    public async Task<bool> FetchGloasColumnsByRootAsync(Hash256 blockRoot, ExecutionPayloadBid bid, CancellationToken token)
+    public Task<bool> FetchGloasColumnsByRootAsync(Hash256 blockRoot, ExecutionPayloadBid bid, CancellationToken token) =>
+        FetchGloasColumnsByRootAsync(blockRoot, bid, new ColumnFetchRotation(clock), token);
+
+    /// <inheritdoc cref="FetchGloasColumnsByRootAsync(Hash256, ExecutionPayloadBid, CancellationToken)"/>
+    /// <param name="rotation">The custodians earlier fetches for this block asked; this call asks only custodians it has not, all at once.</param>
+    internal async Task<bool> FetchGloasColumnsByRootAsync(Hash256 blockRoot, ExecutionPayloadBid bid, ColumnFetchRotation rotation, CancellationToken token)
     {
         SszKzgCommitment[] commitments = bid.BlobKzgCommitments ?? [];
         if (commitments.Length == 0 || !IsInDataAvailabilityWindow(bid.Slot, DataAvailabilityStartEpoch()))
@@ -466,32 +493,37 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             return false;
         }
 
-        IReadOnlyList<IBeaconSyncPeer> peers = peerPool.GetBestPeers(bid.Slot);
-        for (int i = 0; i < peers.Count && i < MaxByRootColumnPeers; i++)
+        ulong[] missing = MissingGloasColumns(blockRoot, custody);
+        if (missing.Length == 0)
         {
-            ulong[] missing = MissingGloasColumns(blockRoot, custody);
-            if (missing.Length == 0)
-            {
-                return true;
-            }
+            return true;
+        }
 
-            IBeaconSyncPeer peer = peers[i];
-            IReadOnlyList<DataColumnSidecarGloas> sidecars;
-            try
-            {
-                sidecars = await peer.RequestGloasDataColumnSidecarsByRootAsync([new DataColumnsByRootIdentifier { BlockRoot = blockRoot, Columns = missing }], token);
-            }
-            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
-            {
-                peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Data-column-sidecars-by-root for {blockRoot} failed: {e.Message}");
-                continue;
-            }
+        IBeaconSyncPeer[] custodians = [.. peerPool.GetBestPeers(bid.Slot).Where(p => p.Custody.CountCustodied(missing) > 0)];
+        List<IBeaconSyncPeer> asked = rotation.Take(custodians, MaxByRootColumnPeers);
+        ulong[][] requested = new ulong[asked.Count][];
+        Task<IReadOnlyList<DataColumnSidecarGloas>?>[] responses = new Task<IReadOnlyList<DataColumnSidecarGloas>?>[asked.Count];
+        for (int i = 0; i < asked.Count; i++)
+        {
+            PeerColumnCustody peerCustody = asked[i].Custody;
+            requested[i] = [.. missing.Where(peerCustody.Custodies)];
+            responses[i] = RequestColumnsByRootAsync(asked[i], blockRoot, requested[i], static (peer, ids, t) => peer.RequestGloasDataColumnSidecarsByRootAsync(ids, t), token);
+        }
 
-            foreach (DataColumnSidecarGloas sidecar in sidecars)
+        await Task.WhenAll(responses);
+        for (int i = 0; i < asked.Count; i++)
+        {
+            foreach (DataColumnSidecarGloas sidecar in responses[i].Result ?? [])
             {
-                if (sidecar.BeaconBlockRoot != blockRoot || !IsVerifiedGloasColumnOf(sidecar, bid.Slot, commitments, missing))
+                // A column an earlier reply already supplied is not verified again.
+                if (sidecar.BeaconBlockRoot == blockRoot && sidecarPool.TryGetGloas(blockRoot, sidecar.Index, out _))
                 {
-                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Gloas data column sidecar at slot {sidecar.Slot} column {sidecar.Index} failed verification");
+                    continue;
+                }
+
+                if (sidecar.BeaconBlockRoot != blockRoot || !IsVerifiedGloasColumnOf(sidecar, bid.Slot, commitments, requested[i]))
+                {
+                    asked[i].ReportFailure(PeerFailureReason.ProtocolViolation, $"Gloas data column sidecar at slot {sidecar.Slot} column {sidecar.Index} failed verification");
                     continue;
                 }
 
@@ -589,4 +621,52 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     private ulong DataAvailabilityStartEpoch() => DataAvailabilityBoundary.Compute(clock.CurrentEpoch, spec);
 
     private bool IsInDataAvailabilityWindow(ulong slot, ulong windowStartEpoch) => spec.GetEpoch(slot) >= windowStartEpoch;
+
+    /// <summary>The custodians the by-root column fetches for one block have asked, so repeated fetches rotate through every custodian.</summary>
+    /// <remarks>
+    /// A fetch takes custodians not asked yet, those absent at the previous fetch first but for one place kept for a custodian
+    /// seen before, so newcomers arriving before every fetch cannot keep an earlier custodian from being asked. Once every
+    /// custodian was asked the rotation starts over, at most once per slot of <paramref name="clock"/>. Only the custodians of
+    /// the latest fetch are remembered as asked. Not thread-safe.
+    /// </remarks>
+    internal sealed class ColumnFetchRotation(SlotClock clock)
+    {
+        private readonly HashSet<string> _asked = new(StringComparer.Ordinal);
+        private HashSet<string> _previous = new(StringComparer.Ordinal);
+        private ulong _cycleSlot = clock.CurrentSlot;
+
+        /// <summary>The custodians recorded as asked; for tests.</summary>
+        internal int AskedCount => _asked.Count;
+
+        /// <summary>Takes up to <paramref name="max"/> of <paramref name="custodians"/>, in their order within each group, and records them as asked.</summary>
+        public List<IBeaconSyncPeer> Take(IReadOnlyList<IBeaconSyncPeer> custodians, int max)
+        {
+            HashSet<string> current = new(custodians.Select(static p => p.Id), StringComparer.Ordinal);
+            _asked.IntersectWith(current);
+            ulong slot = clock.CurrentSlot;
+            if (slot > _cycleSlot && _asked.Count == current.Count)
+            {
+                _asked.Clear();
+                _cycleSlot = slot;
+            }
+
+            List<IBeaconSyncPeer> taken = [];
+            TakeUpTo(max - 1, newcomers: true);
+            TakeUpTo(max, newcomers: false);
+            TakeUpTo(max, newcomers: true);
+            _previous = current;
+            return taken;
+
+            void TakeUpTo(int limit, bool newcomers)
+            {
+                foreach (IBeaconSyncPeer peer in custodians)
+                {
+                    if (taken.Count < limit && _previous.Contains(peer.Id) != newcomers && _asked.Add(peer.Id))
+                    {
+                        taken.Add(peer);
+                    }
+                }
+            }
+        }
+    }
 }

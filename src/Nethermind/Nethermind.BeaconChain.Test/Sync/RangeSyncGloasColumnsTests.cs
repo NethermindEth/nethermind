@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -238,7 +239,7 @@ public class RangeSyncGloasColumnsTests
     }
 
     [Test]
-    public async Task By_root_fetch_moves_to_the_next_peer_after_a_bad_sidecar([Values(BadSidecar.WrongSlot, BadSidecar.RootOutsideBatch, BadSidecar.TamperedProof)] BadSidecar bad)
+    public async Task A_bad_by_root_sidecar_penalizes_its_peer_and_another_peers_copy_is_pooled([Values(BadSidecar.WrongSlot, BadSidecar.RootOutsideBatch, BadSidecar.TamperedProof)] BadSidecar bad)
     {
         await using BeaconDiscovery discovery = CreateDiscovery();
         StraddlingChain chain = StraddlingChain.Create();
@@ -260,15 +261,45 @@ public class RangeSyncGloasColumnsTests
         {
             Assert.That(available, Is.True);
             Assert.That(lying.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
-            Assert.That(secondPeerRequests, Is.EqualTo(new[] { new[] { victim } }), "the next peer is asked only for what is still missing");
+            Assert.That(secondPeerRequests, Is.EqualTo(new[] { sampled }), "the peers are asked at once, each for every missing column");
             Assert.That(pool.TryGetGloas(chain.GloasRoot, victim, out DataColumnSidecarGloas? held) ? held : null, Is.Not.Null.And.Property(nameof(DataColumnSidecarGloas.Slot)).EqualTo(GloasSlot), "the honest sidecar is pooled");
             Assert.That(pool.TryGetGloas(OtherRoot, victim, out _), Is.False, "a sidecar for another block is not pooled");
             Assert.That(honest.Failures, Is.Zero);
         }
     }
 
+    /// <summary>A column an earlier reply of the same fetch supplied is neither verified again nor held against a later peer's copy.</summary>
     [Test]
-    public async Task By_root_fetch_moves_to_the_next_peer_after_a_failed_request()
+    public async Task A_by_root_copy_of_a_column_already_supplied_is_skipped_without_verification()
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create();
+        ulong[] sampled = [.. SampledColumns(discovery)];
+        Dictionary<ulong, DataColumnSidecarGloas> served = [];
+        RangeSyncTests.StubPeer honest = chain.CreateRootPeer("honest", ids =>
+        {
+            foreach (ulong column in ids[0].Columns!)
+            {
+                served[column] = chain.GloasSidecar(column);
+            }
+
+            return [.. ids[0].Columns!.Select(c => served[c])];
+        });
+        RangeSyncTests.StubPeer late = chain.CreateRootPeer("late", ids => [.. ids[0].Columns!.Select(c => Forge(BadSidecar.TamperedProof, chain.GloasSidecar(c)))]);
+        DataColumnSidecarPool pool = new();
+
+        bool available = await CreateSync(pool, discovery, clock: null, honest, late).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(available, Is.True);
+            Assert.That(late.Reports, Is.Empty, "the tampered copies were never verified");
+            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out DataColumnSidecarGloas? held) && ReferenceEquals(held, served[c])), Is.True, "the first reply's sidecars stay pooled");
+        }
+    }
+
+    [Test]
+    public async Task A_failed_by_root_request_penalizes_its_peer_while_another_peer_serves_the_columns()
     {
         await using BeaconDiscovery discovery = CreateDiscovery();
         StraddlingChain chain = StraddlingChain.Create();
@@ -288,9 +319,9 @@ public class RangeSyncGloasColumnsTests
         }
     }
 
-    /// <summary>Once every sampled column is held, no further peer is asked, whether the columns were held on entry or served by the first peer.</summary>
+    /// <summary>No peer is asked while every sampled column is held; otherwise every peer of the fetch is asked at once.</summary>
     [Test]
-    public async Task By_root_fetch_stops_asking_peers_once_every_column_is_held([Values] bool heldOnEntry)
+    public async Task By_root_fetch_asks_every_peer_at_once_unless_every_column_is_held([Values] bool heldOnEntry)
     {
         await using BeaconDiscovery discovery = CreateDiscovery();
         StraddlingChain chain = StraddlingChain.Create();
@@ -316,7 +347,7 @@ public class RangeSyncGloasColumnsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(available, Is.True);
-            Assert.That(requests, Is.EqualTo(heldOnEntry ? new[] { 0, 0 } : new[] { 1, 0 }));
+            Assert.That(requests, Is.EqualTo(heldOnEntry ? new[] { 0, 0 } : new[] { 1, 1 }));
         }
     }
 
@@ -343,6 +374,60 @@ public class RangeSyncGloasColumnsTests
             Assert.That(requests, Is.EqualTo(new[] { 1, 1, 1, 0 }), "at most three peers are asked");
             Assert.That(pool.TryGetGloas(chain.GloasRoot, withheld, out _), Is.False);
             Assert.That(sampled.Where(c => c != withheld).All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
+        }
+    }
+
+    /// <summary>The by-root requests of one fetch run together, so peers that never answer cost one request timeout between them, not one each.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task By_root_peers_that_never_answer_cost_one_request_timeout_per_fetch(CancellationToken token)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create();
+        ulong[] sampled = [.. SampledColumns(discovery)];
+        TimeSpan requestTimeout = TimeSpan.FromSeconds(5);
+        const int PeersPerFetch = 3;
+        DeferredBlockColumnFetchTests.Gate allAsked = new(PeersPerFetch);
+        DeferredBlockColumnFetchTests.UnansweringPeer[] peers = [.. Enumerable.Range(0, PeersPerFetch).Select(i => new DeferredBlockColumnFetchTests.UnansweringPeer($"unanswering-{i}", sampled, allAsked, requestTimeout))];
+
+        Stopwatch elapsed = Stopwatch.StartNew();
+        bool available = await CreateSync(new DataColumnSidecarPool(), discovery, clock: null, peers).FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, token);
+        elapsed.Stop();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(available, Is.False);
+            Assert.That(allAsked.MaxInFlight, Is.EqualTo(PeersPerFetch), "every peer of the fetch is asked before any answers");
+            Assert.That(elapsed.Elapsed, Is.LessThan(requestTimeout), "no request waited out its timeout behind another");
+            Assert.That(peers.Select(static p => p.Failures), Is.All.EqualTo(1));
+        }
+    }
+
+    /// <summary>Repeated fetches for one block rotate through the peers, so peers answering with nothing do not hide one that serves the columns.</summary>
+    [Test]
+    public async Task By_root_fetches_sharing_a_rotation_reach_the_peer_behind_three_that_answer_nothing()
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        StraddlingChain chain = StraddlingChain.Create();
+        ulong[] sampled = [.. SampledColumns(discovery)];
+        int[] requests = new int[4];
+        RangeSyncTests.StubPeer[] peers = [.. Enumerable.Range(0, requests.Length).Select(i => chain.CreateRootPeer($"peer{i}", ids =>
+        {
+            requests[i]++;
+            return i == requests.Length - 1 ? [.. ids[0].Columns!.Select(c => chain.GloasSidecar(c))] : [];
+        }))];
+        DataColumnSidecarPool pool = new();
+        RangeSync sync = CreateSync(pool, discovery, clock: null, peers);
+        RangeSync.ColumnFetchRotation rotation = new(RangeSyncTests.ClockAtGenesis(Spec));
+
+        bool first = await sync.FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, rotation, CancellationToken.None);
+        bool second = await sync.FetchGloasColumnsByRootAsync(chain.GloasRoot, chain.Bid, rotation, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((first, second), Is.EqualTo((false, true)));
+            Assert.That(requests, Is.EqualTo(new[] { 1, 1, 1, 1 }), "the second fetch asks only the peer the first did not");
+            Assert.That(sampled.All(c => pool.TryGetGloas(chain.GloasRoot, c, out _)), Is.True);
         }
     }
 

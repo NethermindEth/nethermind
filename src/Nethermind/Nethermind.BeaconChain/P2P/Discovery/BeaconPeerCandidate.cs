@@ -10,4 +10,8 @@ namespace Nethermind.BeaconChain.P2P.Discovery;
 /// <param name="EnrSequence">The sequence number of the ENR the candidate was built from.</param>
 /// <param name="Enr">The candidate's full ENR text (<c>enr:...</c>), carried through so a peer admitted
 /// from this candidate can report it truthfully on the Beacon API's <c>node/peers</c> surface.</param>
-public sealed record BeaconPeerCandidate(string Multiaddress, string PeerId, byte[] ForkDigest, ulong EnrSequence, string Enr);
+public sealed record BeaconPeerCandidate(string Multiaddress, string PeerId, byte[] ForkDigest, ulong EnrSequence, string Enr)
+{
+    /// <summary>The columns the record's node id and <c>cgc</c> entry custody (fulu/das-core.md <c>get_custody_groups</c>).</summary>
+    public PeerColumnCustody Custody { get; init; } = PeerColumnCustody.None;
+}

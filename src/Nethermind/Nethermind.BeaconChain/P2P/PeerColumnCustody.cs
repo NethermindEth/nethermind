@@ -36,6 +36,21 @@ public sealed class PeerColumnCustody
 
     public bool Custodies(ulong column) => column < (ulong)_columns.Length && _columns[column];
 
+    /// <summary>How many of <paramref name="columns"/> this peer custodies.</summary>
+    internal int CountCustodied(IReadOnlyList<ulong> columns)
+    {
+        int count = 0;
+        foreach (ulong column in columns)
+        {
+            if (Custodies(column))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     /// <summary>The columns of <c>get_custody_groups(node_id, custody_group_count)</c> (fulu/das-core.md).</summary>
     /// <param name="nodeId">The peer's raw discv5 node id.</param>
     /// <param name="custodyGroupCount">The count the peer advertised; <c>null</c> or out of range when unknown.</param>
@@ -72,6 +87,31 @@ public sealed class PeerColumnCustody
         try
         {
             return BeaconDiscovery.TryGetCustodyGroupCount(NodeRecord.FromEnrString(enr), out ulong count) ? count : null;
+        }
+        catch (Exception e) when (e is RlpException or ArgumentException or FormatException or InvalidOperationException or InvalidCastException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The custody a discovered peer advertises in its record: its secp256k1 key's node id and its <c>cgc</c> entry.</summary>
+    /// <returns><c>null</c> when the record carries no secp256k1 key.</returns>
+    internal static PeerColumnCustody? ForRecord(NodeRecord record) =>
+        record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1) is { } key
+            ? ForNode(key.Decompress().Hash, BeaconDiscovery.TryGetCustodyGroupCount(record, out ulong count) ? count : null)
+            : null;
+
+    /// <summary>As <see cref="ForRecord"/> for an ENR text; <c>null</c> when the text is not a valid ENR with a secp256k1 key.</summary>
+    internal static PeerColumnCustody? ForEnr(string? enr)
+    {
+        if (enr is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return ForRecord(NodeRecord.FromEnrString(enr));
         }
         catch (Exception e) when (e is RlpException or ArgumentException or FormatException or InvalidOperationException or InvalidCastException)
         {

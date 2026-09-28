@@ -522,6 +522,36 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>Column recovery rotates through the peers across slots, so peers answering with nothing do not hide one that serves the columns.</summary>
+    [Test]
+    public async Task Column_recovery_asks_in_a_later_slot_the_peers_not_asked_yet()
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        Hash256 anchorRoot = AnchorRoot();
+        ForkedSignedBeaconBlock block = GloasBlobBlock(EnvelopeBlockSlot, anchorRoot, ColumnSlot);
+        ExecutionPayloadBid bid = ((ForkedSignedBeaconBlock.OfGloas)block).Block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
+        Hash256 root = block.ComputeMessageRoot();
+        DataColumnSidecarPool sidecars = new();
+        EnvelopeServingPeer[] silent = [.. Enumerable.Range(0, 3).Select(i => new EnvelopeServingPeer($"silent-{i}", WallSlot, gloasColumnsByRoot: static _ => []))];
+        EnvelopeServingPeer serving = new("serving", WallSlot, gloasColumnsByRoot: ids => [.. ids[0].Columns!.Select(c => DataColumnSidecarGloasTestFixture.BuildSidecar(c, ColumnSlot, root))]);
+        Harness harness = CreateHarness(peers: [.. silent, serving], sidecarPool: sidecars, discovery: discovery);
+        harness.Importer.Known.Add(anchorRoot);
+        GloasCustodySamplingAvailability availability = new(new DiscoveryNodeCustodySource(discovery), sidecars, RangeSyncTests.ClockAtGenesis(Spec), Spec);
+
+        await harness.Orchestrator.ImportBlockAsync(block, CancellationToken.None);
+        bool availableOnImport = availability.IsDataAvailable(root, bid);
+        harness.Timestamper.Set(SlotStart(WallSlot + 1));
+        await harness.Orchestrator.ProcessSlotAsync(WallSlot + 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(availableOnImport, Is.False);
+            Assert.That(silent.Select(static p => p.ColumnRootRequests.Count), Is.All.EqualTo(1), "each silent peer is asked once");
+            Assert.That(serving.ColumnRootRequests, Has.Count.EqualTo(1), "the next slot asks the peer the import did not");
+            Assert.That(availability.IsDataAvailable(root, bid), Is.True);
+        }
+    }
+
     /// <summary>A range whose Gloas blocks are followed by a pre-Gloas one still reaches the worker in slot order.</summary>
     [Test]
     public async Task Range_feed_writes_out_buffered_gloas_blocks_before_a_later_pre_gloas_block()
