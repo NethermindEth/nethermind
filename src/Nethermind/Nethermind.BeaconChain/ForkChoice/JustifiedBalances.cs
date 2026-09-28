@@ -7,32 +7,23 @@ namespace Nethermind.BeaconChain.ForkChoice;
 
 /// <summary>Effective balances of the validators in a justified state, with precomputed aggregates.</summary>
 /// <param name="effectiveBalances">Per-validator effective balances in Gwei; inactive or slashed validators must be reported as zero.</param>
-/// <param name="totalEffectiveBalance">The sum of <paramref name="effectiveBalances"/>.</param>
-/// <param name="numActiveValidators">The number of non-zero entries in <paramref name="effectiveBalances"/>.</param>
-public sealed class JustifiedBalances(IReadOnlyList<ulong> effectiveBalances, ulong totalEffectiveBalance, ulong numActiveValidators)
+/// <param name="totalEffectiveBalance">The committee-weight base: the justified state's <c>get_total_active_balance</c>, which counts slashed validators and is at least <c>EFFECTIVE_BALANCE_INCREMENT</c>; <see cref="FromEffectiveBalances"/> uses the plain sum.</param>
+public sealed class JustifiedBalances(IReadOnlyList<ulong> effectiveBalances, ulong totalEffectiveBalance)
 {
-    public static readonly JustifiedBalances Empty = new([], 0, 0);
+    public static readonly JustifiedBalances Empty = new([], 0);
 
     public IReadOnlyList<ulong> EffectiveBalances { get; } = effectiveBalances;
 
     public ulong TotalEffectiveBalance { get; } = totalEffectiveBalance;
 
-    public ulong NumActiveValidators { get; } = numActiveValidators;
-
     public static JustifiedBalances FromEffectiveBalances(IReadOnlyList<ulong> effectiveBalances)
     {
         ulong total = 0;
-        ulong active = 0;
         for (int i = 0; i < effectiveBalances.Count; i++)
         {
-            ulong balance = effectiveBalances[i];
-            if (balance != 0)
-            {
-                total = checked(total + balance);
-                active++;
-            }
+            total = checked(total + effectiveBalances[i]);
         }
 
-        return new JustifiedBalances(effectiveBalances, total, active);
+        return new JustifiedBalances(effectiveBalances, total);
     }
 }
