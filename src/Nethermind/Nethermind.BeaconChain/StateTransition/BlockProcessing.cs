@@ -88,16 +88,26 @@ public static class BlockProcessing
     /// <see cref="SignatureSets.VerifyProposerSignature(BeaconStateFulu, SignedBeaconBlock, PubkeyCache)"/>.
     /// </summary>
     /// <param name="maxBlobsPerBlock">The blob limit for the state's epoch; see <see cref="ProcessExecutionPayload"/>.</param>
+    /// <remarks>The operation signatures are verified as one <see cref="BlockSignatureBatch"/>, with the serial verdicts and messages.</remarks>
     public static void ProcessBlock(BeaconStateFulu state, BeaconBlock block, EpochCache cache, PubkeyCache pubkeys, INewPayloadNotifier notifier, ulong maxBlobsPerBlock, bool verifySignatures = true)
+    {
+        if (verifySignatures)
+            BlockSignatureBatch.Run(batch => ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures: true, batch));
+        else
+            ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures: false, batch: null);
+    }
+
+    /// <summary>Spec <c>process_block</c>, deferring the signatures to <paramref name="batch"/> or, when it is <c>null</c>, verifying each at its own step.</summary>
+    internal static void ProcessBlock(BeaconStateFulu state, BeaconBlock block, EpochCache cache, PubkeyCache pubkeys, INewPayloadNotifier notifier, ulong maxBlobsPerBlock, bool verifySignatures, BlockSignatureBatch? batch)
     {
         BeaconBlockBody body = block.Body!;
         ProcessBlockHeader(state, block);
         ProcessWithdrawals(state, body.ExecutionPayload!);
         ProcessExecutionPayload(state, body, notifier, maxBlobsPerBlock);
-        ProcessRandao(state, body, pubkeys, verifySignatures);
+        ProcessRandao(state, body, pubkeys, verifySignatures, batch);
         ProcessEth1Data(state, body);
-        ProcessOperations(state, body, cache, pubkeys, verifySignatures);
-        ProcessSyncAggregate(state, body.SyncAggregate!, cache, verifySignatures);
+        ProcessOperations(state, body, cache, pubkeys, verifySignatures, batch);
+        ProcessSyncAggregate(state, body.SyncAggregate!, cache, verifySignatures, batch);
     }
 
     /// <summary>Spec <c>process_block_header</c>: validates the block against the chain tip and caches it as the latest header.</summary>
@@ -295,11 +305,12 @@ public static class BlockProcessing
         state.GenesisTime + (slot - Presets.GenesisSlot) * Presets.SecondsPerSlot;
 
     /// <summary>Spec <c>process_randao</c>: verifies the proposer's reveal and mixes it into the current randao mix.</summary>
-    public static void ProcessRandao(BeaconStateFulu state, BeaconBlockBody body, PubkeyCache pubkeys, bool verifySignature = true)
+    public static void ProcessRandao(BeaconStateFulu state, BeaconBlockBody body, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
+        const string invalidSignature = "Invalid RANDAO reveal";
         ulong epoch = state.GetCurrentEpoch();
-        if (verifySignature && !SignatureSets.VerifyRandaoReveal(state, (int)state.GetBeaconProposerIndex(), epoch, body.RandaoReveal, pubkeys))
-            throw new BeaconStateException("Invalid RANDAO reveal");
+        if (verifySignature && !SignatureSets.VerifyRandaoReveal(state, (int)state.GetBeaconProposerIndex(), epoch, body.RandaoReveal, pubkeys, batch?.Defer(invalidSignature)))
+            throw new BeaconStateException(invalidSignature);
 
         Span<byte> mix = stackalloc byte[32];
         SHA256.HashData(body.RandaoReveal.Bytes, mix);
@@ -332,7 +343,7 @@ public static class BlockProcessing
     /// Spec <c>process_operations</c> (Electra): checks the expected Eth1 deposit count, then
     /// dispatches every operation list in spec order.
     /// </summary>
-    public static void ProcessOperations(BeaconStateFulu state, BeaconBlockBody body, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
+    public static void ProcessOperations(BeaconStateFulu state, BeaconBlockBody body, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null)
     {
         // [Modified in Electra:EIP6110] The former deposit mechanism is disabled once all
         // pre-request deposits are processed.
@@ -345,15 +356,15 @@ public static class BlockProcessing
 
         foreach (ProposerSlashing slashing in body.ProposerSlashings ?? [])
         {
-            ProcessProposerSlashing(state, slashing, cache, pubkeys, verifySignatures);
+            ProcessProposerSlashing(state, slashing, cache, pubkeys, verifySignatures, batch);
         }
         foreach (AttesterSlashing slashing in body.AttesterSlashings ?? [])
         {
-            ProcessAttesterSlashing(state, slashing, cache, pubkeys, verifySignatures);
+            ProcessAttesterSlashing(state, slashing, cache, pubkeys, verifySignatures, batch);
         }
         foreach (Attestation attestation in body.Attestations ?? [])
         {
-            ProcessAttestation(state, attestation, cache, pubkeys, verifySignatures);
+            ProcessAttestation(state, attestation, cache, pubkeys, verifySignatures, batch);
         }
         foreach (Deposit deposit in body.Deposits ?? [])
         {
@@ -361,11 +372,11 @@ public static class BlockProcessing
         }
         foreach (SignedVoluntaryExit exit in body.VoluntaryExits ?? [])
         {
-            ProcessVoluntaryExit(state, exit, cache, pubkeys, verifySignatures);
+            ProcessVoluntaryExit(state, exit, cache, pubkeys, verifySignatures, batch);
         }
         foreach (SignedBlsToExecutionChange change in body.BlsToExecutionChanges ?? [])
         {
-            ProcessBlsToExecutionChange(state, change, verifySignatures);
+            ProcessBlsToExecutionChange(state, change, verifySignatures, batch);
         }
         ExecutionRequests requests = body.ExecutionRequests!;
         foreach (DepositRequest request in requests.Deposits ?? [])
@@ -383,7 +394,7 @@ public static class BlockProcessing
     }
 
     /// <summary>Spec <c>process_proposer_slashing</c>.</summary>
-    public static void ProcessProposerSlashing(BeaconStateFulu state, ProposerSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
+    public static void ProcessProposerSlashing(BeaconStateFulu state, ProposerSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null)
     {
         BeaconBlockHeader header1 = slashing.SignedHeader1!.Message!;
         BeaconBlockHeader header2 = slashing.SignedHeader2!.Message!;
@@ -401,10 +412,12 @@ public static class BlockProcessing
 
         if (verifySignatures)
         {
-            if (!SignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader1, pubkeys))
-                throw new BeaconStateException("Invalid proposer slashing signature 1");
-            if (!SignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader2, pubkeys))
-                throw new BeaconStateException("Invalid proposer slashing signature 2");
+            const string invalidSignature1 = "Invalid proposer slashing signature 1";
+            const string invalidSignature2 = "Invalid proposer slashing signature 2";
+            if (!SignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader1, pubkeys, batch?.Defer(invalidSignature1)))
+                throw new BeaconStateException(invalidSignature1);
+            if (!SignatureSets.VerifySignedBeaconBlockHeader(state, slashing.SignedHeader2, pubkeys, batch?.Defer(invalidSignature2)))
+                throw new BeaconStateException(invalidSignature2);
         }
 
         state.SlashValidator((int)header1.ProposerIndex, cache);
@@ -418,17 +431,19 @@ public static class BlockProcessing
         && a.BodyRoot == b.BodyRoot;
 
     /// <summary>Spec <c>process_attester_slashing</c>: slashes every still-slashable validator attesting in both votes.</summary>
-    public static void ProcessAttesterSlashing(BeaconStateFulu state, AttesterSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true)
+    public static void ProcessAttesterSlashing(BeaconStateFulu state, AttesterSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null)
     {
+        const string invalidAttestation1 = "Attester slashing attestation 1 is invalid";
+        const string invalidAttestation2 = "Attester slashing attestation 2 is invalid";
         IndexedAttestation attestation1 = slashing.Attestation1!;
         IndexedAttestation attestation2 = slashing.Attestation2!;
 
         if (!BeaconStateAccessors.IsSlashableAttestationData(attestation1.Data!, attestation2.Data!))
             throw new BeaconStateException("Attester slashing votes are not slashable");
-        if (!IsValidIndexedAttestation(state, attestation1, pubkeys, verifySignatures))
-            throw new BeaconStateException("Attester slashing attestation 1 is invalid");
-        if (!IsValidIndexedAttestation(state, attestation2, pubkeys, verifySignatures))
-            throw new BeaconStateException("Attester slashing attestation 2 is invalid");
+        if (!IsValidIndexedAttestation(state, attestation1, pubkeys, verifySignatures, batch?.Defer(invalidAttestation1)))
+            throw new BeaconStateException(invalidAttestation1);
+        if (!IsValidIndexedAttestation(state, attestation2, pubkeys, verifySignatures, batch?.Defer(invalidAttestation2)))
+            throw new BeaconStateException(invalidAttestation2);
 
         ulong currentEpoch = state.GetCurrentEpoch();
         HashSet<ulong> indices2 = [.. attestation2.AttestingIndices!];
@@ -450,7 +465,8 @@ public static class BlockProcessing
     /// Spec <c>is_valid_indexed_attestation</c>: indices must be non-empty, sorted, unique, and in
     /// range, and the aggregate signature must verify.
     /// </summary>
-    public static bool IsValidIndexedAttestation(BeaconStateFulu state, IndexedAttestation attestation, PubkeyCache pubkeys, bool verifySignature)
+    /// <param name="deferral">Defers the signature to a batch; <c>null</c> verifies it now.</param>
+    public static bool IsValidIndexedAttestation(BeaconStateFulu state, IndexedAttestation attestation, PubkeyCache pubkeys, bool verifySignature, BlockSignatureBatch.Deferral? deferral = null)
     {
         ulong[] indices = attestation.AttestingIndices ?? [];
         if (indices.Length == 0)
@@ -462,14 +478,14 @@ public static class BlockProcessing
             if (indices[i] >= (ulong)state.Validators!.Length)
                 return false;
         }
-        return !verifySignature || SignatureSets.VerifyIndexedAttestation(state, attestation, pubkeys);
+        return !verifySignature || SignatureSets.VerifyIndexedAttestation(state, attestation, pubkeys, deferral);
     }
 
     /// <summary>
     /// Spec <c>process_attestation</c> (Electra): validates the EIP-7549 aggregate, sets
     /// participation flags, and credits the proposer reward.
     /// </summary>
-    public static void ProcessAttestation(BeaconStateFulu state, Attestation attestation, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true)
+    public static void ProcessAttestation(BeaconStateFulu state, Attestation attestation, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
         AttestationData data = attestation.Data!;
         ulong currentEpoch = state.GetCurrentEpoch();
@@ -495,8 +511,9 @@ public static class BlockProcessing
             Data = data,
             Signature = attestation.Signature,
         };
-        if (!IsValidIndexedAttestation(state, indexed, pubkeys, verifySignature))
-            throw new BeaconStateException("Invalid indexed attestation");
+        const string invalidAttestation = "Invalid indexed attestation";
+        if (!IsValidIndexedAttestation(state, indexed, pubkeys, verifySignature, batch?.Defer(invalidAttestation)))
+            throw new BeaconStateException(invalidAttestation);
 
         byte[] epochParticipation = data.Target.Epoch == currentEpoch
             ? state.CurrentEpochParticipation!
@@ -609,7 +626,7 @@ public static class BlockProcessing
     }
 
     /// <summary>Spec <c>process_voluntary_exit</c> (Electra).</summary>
-    public static void ProcessVoluntaryExit(BeaconStateFulu state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true)
+    public static void ProcessVoluntaryExit(BeaconStateFulu state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
         VoluntaryExit exit = signedExit.Message!;
         if (exit.ValidatorIndex >= (ulong)state.Validators!.Length)
@@ -628,14 +645,15 @@ public static class BlockProcessing
         // [New in Electra:EIP7251] Only exit when no withdrawals are pending in the queue.
         if (state.GetPendingBalanceToWithdraw((int)exit.ValidatorIndex) != 0)
             throw new BeaconStateException($"Validator {exit.ValidatorIndex} has pending partial withdrawals");
-        if (verifySignature && !SignatureSets.VerifyVoluntaryExit(state, signedExit, pubkeys))
-            throw new BeaconStateException("Invalid voluntary exit signature");
+        const string invalidSignature = "Invalid voluntary exit signature";
+        if (verifySignature && !SignatureSets.VerifyVoluntaryExit(state, signedExit, pubkeys, batch?.Defer(invalidSignature)))
+            throw new BeaconStateException(invalidSignature);
 
         state.InitiateValidatorExit((int)exit.ValidatorIndex, cache);
     }
 
     /// <summary>Spec <c>process_bls_to_execution_change</c> (Capella).</summary>
-    public static void ProcessBlsToExecutionChange(BeaconStateFulu state, SignedBlsToExecutionChange signedChange, bool verifySignature = true)
+    public static void ProcessBlsToExecutionChange(BeaconStateFulu state, SignedBlsToExecutionChange signedChange, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
         BlsToExecutionChange change = signedChange.Message!;
         if (change.ValidatorIndex >= (ulong)state.Validators!.Length)
@@ -647,8 +665,9 @@ public static class BlockProcessing
             throw new BeaconStateException($"Validator {change.ValidatorIndex} does not have BLS withdrawal credentials");
         if (!credentials[1..].SequenceEqual(SHA256.HashData(change.FromBlsPubkey.Bytes).AsSpan(1)))
             throw new BeaconStateException("BLS change pubkey does not match the withdrawal credentials");
-        if (verifySignature && !SignatureSets.VerifyBlsToExecutionChange(state, signedChange))
-            throw new BeaconStateException("Invalid BLS to execution change signature");
+        const string invalidSignature = "Invalid BLS to execution change signature";
+        if (verifySignature && !SignatureSets.VerifyBlsToExecutionChange(state, signedChange, batch?.Defer(invalidSignature)))
+            throw new BeaconStateException(invalidSignature);
 
         Span<byte> newCredentials = stackalloc byte[32];
         newCredentials[0] = Presets.EthWithdrawalPrefix;
@@ -839,10 +858,11 @@ public static class BlockProcessing
     }
 
     /// <summary>Spec <c>process_sync_aggregate</c> (Altair): verifies the aggregate and applies participant, proposer, and non-participant balance changes.</summary>
-    public static void ProcessSyncAggregate(BeaconStateFulu state, SyncAggregate syncAggregate, EpochCache cache, bool verifySignature = true)
+    public static void ProcessSyncAggregate(BeaconStateFulu state, SyncAggregate syncAggregate, EpochCache cache, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
-        if (verifySignature && !SignatureSets.VerifySyncAggregate(state, syncAggregate))
-            throw new BeaconStateException("Invalid sync aggregate signature");
+        const string invalidSignature = "Invalid sync aggregate signature";
+        if (verifySignature && !SignatureSets.VerifySyncAggregate(state, syncAggregate, batch?.Defer(invalidSignature)))
+            throw new BeaconStateException(invalidSignature);
 
         ulong totalActiveIncrements = state.GetTotalActiveBalance(cache) / Presets.EffectiveBalanceIncrement;
         ulong totalBaseRewards = state.GetBaseRewardPerIncrement(cache) * totalActiveIncrements;
