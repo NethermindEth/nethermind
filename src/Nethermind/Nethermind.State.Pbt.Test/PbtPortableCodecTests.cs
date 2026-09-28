@@ -50,10 +50,10 @@ public class PbtPortableCodecTests
     }
 
     [Test]
-    public void Streamed_root_matches_independent_oracle([Values("empty", "single", "random", "deep")] string shape, [Values(1, 7, PbtRightmostGroupStore.DefaultWindowSize)] int windowSize)
+    public void Streamed_root_matches_independent_oracle([Values("empty", "single", "random", "deep", "wide")] string shape, [Values(1, 7, 1000, PbtRightmostGroupStore.DefaultWindowSize)] int windowSize)
     {
         Random random = new(8297);
-        int count = shape switch { "empty" => 0, "single" => 1, "deep" => 521, _ => 1000 };
+        int count = shape switch { "empty" => 0, "single" => 1, "deep" => 521, "wide" => 5000, _ => 1000 };
         RebuildEntry[] entries = new RebuildEntry[count];
         EipReferenceTree oracle = new();
         for (int index = 0; index < count; index++)
