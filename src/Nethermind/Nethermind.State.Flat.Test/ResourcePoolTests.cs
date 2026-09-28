@@ -26,6 +26,23 @@ public class ResourcePoolTests
         _resourcePool = new ResourcePool(_config);
     }
 
+    /// <summary>The pool metrics are keyed by label value, so labels built apart must still meet in one entry.</summary>
+    [Test]
+    public void PooledResourceLabel_EqualValues_ShareAMetricEntry()
+    {
+        ResourcePool.PooledResourceLabel label = new("MainBlockProcessing", "CachedResource");
+        Dictionary<ResourcePool.PooledResourceLabel, long> counts = new() { [label] = 1 };
+
+        counts[new ResourcePool.PooledResourceLabel("MainBlockProcessing", "CachedResource")] += 1;
+        counts[new ResourcePool.PooledResourceLabel("MainBlockProcessing", "SnapshotContent")] = 1;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counts[label], Is.EqualTo(2));
+            Assert.That(counts, Has.Count.EqualTo(2));
+        }
+    }
+
     [Test]
     public void Test_GetSnapshotContent_ReturnsNewInstance_WhenPoolEmpty()
     {
