@@ -21,6 +21,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -29,6 +30,21 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 {
+    [TestCase("new Uint8Array([])", "{}")]
+    [TestCase("new Uint8Array([0, 1, 255])", "{\"0\":0,\"1\":1,\"2\":255}")]
+    [TestCase("new Uint8Array([7, 1, 255, 8]).subarray(1, 3)", "{\"0\":1,\"1\":255}")]
+    [TestCase("[]", "[]")]
+    [TestCase("[0, 1, 255]", "[0,1,255]")]
+    [TestCase("toHex(new Uint8Array([]))", "\"0x\"")]
+    [TestCase("toHex(new Uint8Array([0, 1, 255]))", "\"0x0001ff\"")]
+    public void Javascript_byte_results_match_json_stringify(string expression, string expected)
+    {
+        using Engine engine = new(Shanghai.Instance);
+        dynamic tracer = engine.CreateTracer("{result:function(){return " + expression + ";}}");
+        object result = tracer.result();
+        Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo(expected));
+    }
+
     [Test]
     public void Concurrent_custom_tracer_compilation_keeps_cached_script_alive()
     {
@@ -266,8 +282,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         string finalMemory = rightAligned ? finalByte.PadLeft(64, '0') : finalByte.PadRight(64, '0');
         AssertResult(trace, new[]
         {
-            $"step:{cost}:{operands}:32:{initialMemory}:{initialStorage}",
-            $"end:{finalMemory}:{finalStorage}"
+            $"step:{cost}:{operands}:32:0x{initialMemory}:0x{initialStorage}",
+            $"end:0x{finalMemory}:0x{finalStorage}"
         });
     }
 
@@ -524,7 +540,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MStore(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
-        AssertResult(traces, "942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099:");
+        AssertResult(traces, "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0xb7705ae4c6f81b66cdb323c65f4e8133690fc099:0x");
     }
 
     [Test]
@@ -552,8 +568,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 code,
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
-        string caller = "1:942921b14f1b1c385cd7e0cc2ef7abe5598c8358";
-        string callee = "2:76e68a8696537e4141926f3e528733af9e237d69";
+        string caller = "1:0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358";
+        string callee = "2:0x76e68a8696537e4141926f3e528733af9e237d69";
         AssertResult(traces, new[] { caller, callee, caller });
     }
 
@@ -722,7 +738,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 SStore_double(),
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
-        string[] expectedStrings = { SampleHexData1.PadLeft(64, '0'), SampleHexData2.PadLeft(64, '0') };
+        string[] expectedStrings = { "0x" + SampleHexData1.PadLeft(64, '0'), "0x" + SampleHexData2.PadLeft(64, '0') };
         AssertResult(traces, expectedStrings);
     }
 
@@ -860,7 +876,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400\",\"storage\":{}},\"76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":\"0xde0b6b3a7640000\",\"nonce\":0,\"code\":\"7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000\",\"storage\":{}},\"89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\":{\"balance\":\"0x0\",\"nonce\":0,\"code\":\"\",\"storage\":{}},\"b7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"\",\"storage\":{}}}"));
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"0x60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400\",\"storage\":{}},\"0x76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":\"0xde0b6b3a7640000\",\"nonce\":0,\"code\":\"0x7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000\",\"storage\":{}},\"0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\":{\"balance\":\"0x0\",\"nonce\":0,\"code\":\"0x\",\"storage\":{}},\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"0x\",\"storage\":{}}}"));
     }
 
     [Test]
@@ -872,7 +888,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"type\":\"CALL\",\"from\":\"b7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gas\":\"0x186a0\",\"gasUsed\":\"0xdbd1\",\"input\":\"\",\"output\":\"\",\"calls\":[{\"type\":\"DELEGATECALL\",\"from\":\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0xc350\",\"gasUsed\":\"0x14d07\",\"input\":\"\",\"output\":\"\",\"calls\":[{\"type\":\"CREATE\",\"from\":\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\",\"value\":\"0x0\",\"gas\":\"0x4513\",\"gasUsed\":\"0x7f6e\",\"input\":\"7f000000000000000000000000000000000000000000000000000000000000000060005260036000f3\",\"output\":\"000000\"}]}]}"));
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"type\":\"CALL\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gas\":\"0x186a0\",\"gasUsed\":\"0xdbd1\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"DELEGATECALL\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0xc350\",\"gasUsed\":\"0x14d07\",\"input\":\"0x\",\"output\":\"0x\",\"calls\":[{\"type\":\"CREATE\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\",\"value\":\"0x0\",\"gas\":\"0x4513\",\"gasUsed\":\"0x7f6e\",\"input\":\"0x7f000000000000000000000000000000000000000000000000000000000000000060005260036000f3\",\"output\":\"0x000000\"}]}]}"));
     }
 
     [Test]
@@ -884,7 +900,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"00000000-1\":2,\"00000000-2\":1}"));
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"0x00000000-1\":2,\"0x00000000-2\":1}"));
     }
 
     [Test]
@@ -1009,7 +1025,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             AssertResult(trace, new
             {
                 value = "115792089237316195423570985008687907853269984665640564039457584007913129639936",
-                bytes = "0000000000000000000000000000000000000000000000000000000000000001"
+                bytes = "0x0000000000000000000000000000000000000000000000000000000000000001"
             });
         }
     }
@@ -1027,7 +1043,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using GethLikeBlockJavaScriptTracer recovered = ExecuteBlock(GetTracer(recoveringTracer), MStore());
         using GethLikeTxTrace trace = recovered.BuildResult().First();
 
-        AssertResult(trace, "0000000000000000000000000000000000000000000000000000000000000001");
+        AssertResult(trace, "0x0000000000000000000000000000000000000000000000000000000000000001");
     }
 
     [Test]
@@ -1350,4 +1366,299 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                                              fault: this.step
                                          }
                                          """;
+}
+
+
+public class GethLikeJavaScriptSStoreTracerTests : VirtualMachineTestsBase
+{
+    protected override ISpecProvider SpecProvider => new CustomSpecProvider(
+        ((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, Constantinople.Instance),
+        ((ForkActivation)2, ConstantinopleFix.Instance), ((ForkActivation)3, Istanbul.Instance),
+        ((ForkActivation)4, Berlin.Instance), ((ForkActivation)5, London.Instance),
+        ((ForkActivation)6, Shanghai.Instance), ((ForkActivation)7, Amsterdam.Instance));
+
+    [TestCaseSource(nameof(StorageCases))]
+    public void SStore_callbacks_capture_cost_refund_and_operands_before_mutation(
+        ulong blockNumber, string code, int initial, int pc, ulong gas, string expected, int final)
+    {
+        TestState.CreateAccount(Recipient, 1.Ether);
+        StorageCell cell = new(Recipient, 0);
+        TestState.Set(cell, (UInt256)(uint)initial);
+        (Block block, Transaction transaction) = PrepareTx((blockNumber, 0), gas, Bytes.FromHexString(code), blockGasLimit: 40000000);
+        if (blockNumber == 7 && gas < 100000)
+            transaction.GasLimit = IntrinsicGasCalculator.Calculate(transaction, Amsterdam.Instance, block.Header.GasLimit).Standard + 6 + gas;
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, SpecProvider.GetSpec(block.Header),
+            GethTraceOptions.Default with { EnableMemory = true, Tracer = StorageTracer(pc) });
+        tracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = ((IBlockTracer)tracer).StartNewTxTrace(transaction);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), txTracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        TestState.Get(cell, out UInt256 finalValue);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions),
+                Is.EqualTo(JsonSerializer.Serialize(new[] { expected }, new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping })));
+            Assert.That(finalValue, Is.EqualTo((UInt256)(uint)final));
+        }
+    }
+
+    [Test]
+    public void Static_SStore_checks_stack_before_write_protection_and_sentry(
+        [Values(2UL, 3UL, 4UL, 5UL, 6UL)] ulong blockNumber,
+        [Values("55", "600055", "6001600055")] string childCode,
+        [Values(2306, 50000)] int childGas)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), SpecProvider.GetSpec((ForkActivation)blockNumber));
+        TestState.Set(new StorageCell(TestItem.AddressC, 0), UInt256.One);
+        byte[] code = Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(0)
+            .PushData(TestItem.AddressC).PushData(childGas).Op(Instruction.STATICCALL).Op(Instruction.STOP).Done;
+        int depth = (childCode.Length - 2) / 4;
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, SpecProvider.GetSpec((ForkActivation)blockNumber),
+            GethTraceOptions.Default with { EnableMemory = true, Tracer = StorageTracer((childCode.Length - 2) / 2) });
+        ExecuteBlock(tracer, code, (blockNumber, 0));
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        string error = depth == 2 ? "out of gas: write protection" : $"stack underflow ({depth} <=> 2)";
+        string operands = depth == 2 ? "0,1" : depth == 1 ? "0" : "";
+        string expected = $"step:0:0:{error}:{operands}:1:0";
+        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions),
+            Is.EqualTo(JsonSerializer.Serialize(new[] { expected }, new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping })));
+    }
+
+    [TestCase(0UL)]
+    [TestCase(2UL)]
+    public void Legacy_SStore_initial_oog_native_trace_is_unchanged_when_composed(ulong blockNumber)
+    {
+        TestState.CreateAccount(Recipient, 1.Ether);
+        StorageCell cell = new(Recipient, 0);
+        TestState.Set(cell, UInt256.One);
+        string? nativeEntries = null;
+        foreach (bool composite in new[] { false, true })
+        {
+            (Block block, Transaction transaction) = PrepareTx((blockNumber, 0), 21007UL, Bytes.FromHexString("600060005500"));
+            using GethLikeTxMemoryTracer native = new(transaction, GethTraceOptions.Default);
+            using GethLikeBlockJavaScriptTracer script = new(TestState, SpecProvider.GetSpec(block.Header),
+                GethTraceOptions.Default with { Tracer = StorageTracer(4) });
+            script.StartNewBlockTrace(block);
+            ITxTracer javascript = ((IBlockTracer)script).StartNewTxTrace(transaction);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+                composite ? new CompositeTxTracer(native, javascript) : native);
+            script.EndTxTrace();
+            script.EndBlockTrace();
+            using GethLikeTxTrace nativeResult = native.BuildResult();
+            string entries = JsonSerializer.Serialize(nativeResult.Entries, EthereumJsonSerializer.JsonOptions);
+            if (!composite)
+                nativeEntries = entries;
+            else
+            {
+                using GethLikeTxTrace scriptResult = script.BuildResult().First();
+                TestState.Get(cell, out UInt256 finalValue);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(entries, Is.EqualTo(nativeEntries));
+                    Assert.That(finalValue, Is.EqualTo(UInt256.One));
+                    Assert.That(JsonSerializer.Serialize(scriptResult.CustomTracerResult, EthereumJsonSerializer.JsonOptions),
+                        Is.EqualTo("[\"step:5000:15000:out of gas:0,0:1:0\"]"));
+                }
+            }
+        }
+    }
+
+    private static string StorageTracer(int pc) => $$"""
+        {
+            events: [],
+            capture: function(phase, log, db) {
+                if (log.getPC() !== {{pc}} || log.op.toNumber() !== 0x55) return;
+                var stack = [];
+                for (var i = 0; i < log.stack.length(); i++) stack.push(log.stack.peek(i).toString());
+                var storage = parseInt(toHex(db.getState(log.contract.getAddress(), toWord("0x00"))), 16);
+                this.events.push(phase + ":" + log.getCost() + ":" + log.getRefund() + ":" + (log.getError() || "") + ":" + stack.join(",") + ":" + storage + ":" + log.memory.length());
+            },
+            step: function(log, db) { this.capture("step", log, db); },
+            fault: function(log, db) { this.capture("fault", log, db); },
+            result: function() { return this.events; }
+        }
+        """;
+
+    private static IEnumerable<TestCaseData> StorageCases()
+    {
+        foreach (ulong gas in new[] { 250000UL, 20000000UL })
+        {
+            yield return new TestCaseData(7UL, "600060005500", 0, 4, gas, "step:2100:0::0,0:0:0", 0).SetName($"SStore_Amsterdam_noop_{gas}");
+            yield return new TestCaseData(7UL, "600160005500", 0, 4, gas, "step:12100:0::0,1:0:0", 1).SetName($"SStore_Amsterdam_create_{gas}");
+            yield return new TestCaseData(7UL, "600060005500", 1, 4, gas, "step:12100:11616::0,0:1:0", 0).SetName($"SStore_Amsterdam_clear_{gas}");
+            yield return new TestCaseData(7UL, "6001600055600060005500", 0, 9, gas, "step:100:10000::0,0:1:0", 0).SetName($"SStore_Amsterdam_reverse_zero_{gas}");
+            yield return new TestCaseData(7UL, "6000600055600160005500", 1, 9, gas, "step:100:10000::0,1:0:0", 1).SetName($"SStore_Amsterdam_reverse_one_{gas}");
+            yield return new TestCaseData(7UL, "6000600055600260005500", 1, 9, gas, "step:100:0::0,2:0:0", 2).SetName($"SStore_Amsterdam_replace_cleared_{gas}");
+        }
+        yield return new TestCaseData(7UL, "600160005500", 0, 4, 50000UL, "step:12100:0:out of gas:0,1:0:0", 0).SetName("SStore_Amsterdam_state_spill_oog");
+        yield return new TestCaseData(7UL, "600060005500", 1, 4, 10000UL, "step:12100:11616:out of gas:0,0:1:0", 1).SetName("SStore_Amsterdam_clear_execution_oog");
+        yield return new TestCaseData(7UL, "600060005500", 0, 4, 2300UL, "step:0:0:out of gas: not enough gas for reentrancy sentry:0,0:0:0", 0).SetName("SStore_Amsterdam_sentry");
+        yield return new TestCaseData(7UL, "600060005500", 0, 4, 2301UL, "step:2100:0::0,0:0:0", 0).SetName("SStore_Amsterdam_above_sentry_noop");
+        for (ulong fork = 0; fork <= 6; fork++)
+        {
+            yield return new TestCaseData(fork, "55", 1, 0, 21000UL, "step:0:0:stack underflow (0 <=> 2)::1:0", 1).SetName($"SStore_stack_underflow_empty_fork_{fork}");
+            yield return new TestCaseData(fork, "600055", 1, 2, 21003UL, "step:0:0:stack underflow (1 <=> 2):0:1:0", 1).SetName($"SStore_stack_underflow_one_fork_{fork}");
+        }
+        yield return new TestCaseData(0UL, "600060005500", 0, 4, 51006UL, "step:5000:0::0,0:0:0", 0).SetName("SStore_Frontier_noop_zero");
+        yield return new TestCaseData(0UL, "600160005500", 1, 4, 51006UL, "step:5000:0::0,1:1:0", 1).SetName("SStore_Frontier_noop_one");
+        yield return new TestCaseData(0UL, "600160005500", 0, 4, 51006UL, "step:20000:0::0,1:0:0", 1).SetName("SStore_Frontier_set");
+        yield return new TestCaseData(0UL, "600260005500", 1, 4, 51006UL, "step:5000:0::0,2:1:0", 2).SetName("SStore_Frontier_reset");
+        yield return new TestCaseData(0UL, "600060005500", 1, 4, 51006UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_Frontier_clear");
+        yield return new TestCaseData(0UL, "600160005500", 0, 4, 26005UL, "step:20000:0:out of gas:0,1:0:0", 0).SetName("SStore_Frontier_set_initial_charge_oog");
+        yield return new TestCaseData(0UL, "600060005500", 1, 4, 26005UL, "step:5000:15000:out of gas:0,0:1:0", 1).SetName("SStore_Frontier_clear_initial_charge_oog");
+        yield return new TestCaseData(0UL, "600160005500", 0, 4, 41005UL, "step:20000:0:out of gas:0,1:0:0", 0).SetName("SStore_Frontier_set_extra_charge_oog");
+        yield return new TestCaseData(0UL, "600160005500", 0, 4, 41006UL, "step:20000:0::0,1:0:0", 1).SetName("SStore_Frontier_set_exact");
+        yield return new TestCaseData(0UL, "600060005500", 1, 4, 26006UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_Frontier_clear_exact");
+        yield return new TestCaseData(0UL, "6001600055600060005500", 0, 9, 71012UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_Frontier_set_then_clear");
+        yield return new TestCaseData(0UL, "6000600055600160005500", 1, 9, 56012UL, "step:20000:15000::0,1:0:0", 1).SetName("SStore_Frontier_clear_restore");
+        yield return new TestCaseData(0UL, "60006000556001600055600060005500", 1, 14, 76018UL, "step:5000:30000::0,0:1:0", 0).SetName("SStore_Frontier_clear_restore_clear");
+        yield return new TestCaseData(2UL, "600060005500", 0, 4, 51006UL, "step:5000:0::0,0:0:0", 0).SetName("SStore_ConstantinopleFix_noop_zero");
+        yield return new TestCaseData(2UL, "600160005500", 1, 4, 51006UL, "step:5000:0::0,1:1:0", 1).SetName("SStore_ConstantinopleFix_noop_one");
+        yield return new TestCaseData(2UL, "600160005500", 0, 4, 51006UL, "step:20000:0::0,1:0:0", 1).SetName("SStore_ConstantinopleFix_set");
+        yield return new TestCaseData(2UL, "600260005500", 1, 4, 51006UL, "step:5000:0::0,2:1:0", 2).SetName("SStore_ConstantinopleFix_reset");
+        yield return new TestCaseData(2UL, "600060005500", 1, 4, 51006UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_ConstantinopleFix_clear");
+        yield return new TestCaseData(2UL, "600160005500", 0, 4, 26005UL, "step:20000:0:out of gas:0,1:0:0", 0).SetName("SStore_ConstantinopleFix_set_initial_charge_oog");
+        yield return new TestCaseData(2UL, "600060005500", 1, 4, 26005UL, "step:5000:15000:out of gas:0,0:1:0", 1).SetName("SStore_ConstantinopleFix_clear_initial_charge_oog");
+        yield return new TestCaseData(2UL, "600160005500", 0, 4, 41005UL, "step:20000:0:out of gas:0,1:0:0", 0).SetName("SStore_ConstantinopleFix_set_extra_charge_oog");
+        yield return new TestCaseData(2UL, "600160005500", 0, 4, 41006UL, "step:20000:0::0,1:0:0", 1).SetName("SStore_ConstantinopleFix_set_exact");
+        yield return new TestCaseData(2UL, "600060005500", 1, 4, 26006UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_ConstantinopleFix_clear_exact");
+        yield return new TestCaseData(2UL, "6001600055600060005500", 0, 9, 71012UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_ConstantinopleFix_set_then_clear");
+        yield return new TestCaseData(2UL, "6000600055600160005500", 1, 9, 56012UL, "step:20000:15000::0,1:0:0", 1).SetName("SStore_ConstantinopleFix_clear_restore");
+        yield return new TestCaseData(2UL, "60006000556001600055600060005500", 1, 14, 76018UL, "step:5000:30000::0,0:1:0", 0).SetName("SStore_ConstantinopleFix_clear_restore_clear");
+        yield return new TestCaseData(1UL, "600160005500", 1, 4, 51006UL, "step:200:0::0,1:1:0", 1).SetName("SStore_Constantinople_noop");
+        yield return new TestCaseData(1UL, "600160005500", 0, 4, 51006UL, "step:20000:0::0,1:0:0", 1).SetName("SStore_Constantinople_set");
+        yield return new TestCaseData(1UL, "600260005500", 1, 4, 51006UL, "step:5000:0::0,2:1:0", 2).SetName("SStore_Constantinople_reset");
+        yield return new TestCaseData(1UL, "600060005500", 1, 4, 51006UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_Constantinople_clear");
+        yield return new TestCaseData(1UL, "6001600055600060005500", 0, 9, 71012UL, "step:200:19800::0,0:1:0", 0).SetName("SStore_Constantinople_restore_zero");
+        yield return new TestCaseData(1UL, "6000600055600160005500", 1, 9, 56012UL, "step:200:4800::0,1:0:0", 1).SetName("SStore_Constantinople_restore_one");
+        yield return new TestCaseData(1UL, "6000600055600260005500", 1, 9, 56012UL, "step:200:0::0,2:0:0", 2).SetName("SStore_Constantinople_dirty_after_clear");
+        yield return new TestCaseData(1UL, "600060005500", 1, 4, 26005UL, "step:5000:15000:out of gas:0,0:1:0", 1).SetName("SStore_Constantinople_clear_oog");
+        yield return new TestCaseData(1UL, "600160005500", 1, 4, 21205UL, "step:200:0:out of gas:0,1:1:0", 1).SetName("SStore_Constantinople_noop_oog");
+        yield return new TestCaseData(1UL, "600160005500", 1, 4, 21206UL, "step:200:0::0,1:1:0", 1).SetName("SStore_Constantinople_noop_exact");
+        yield return new TestCaseData(1UL, "6001600055600060005500", 0, 9, 41211UL, "step:200:19800:out of gas:0,0:1:0", 0).SetName("SStore_Constantinople_restore_zero_oog");
+        yield return new TestCaseData(1UL, "6000600055600160005500", 1, 9, 26211UL, "step:200:4800:out of gas:0,1:0:0", 1).SetName("SStore_Constantinople_restore_one_oog");
+        yield return new TestCaseData(3UL, "600160005500", 1, 4, 51006UL, "step:800:0::0,1:1:0", 1).SetName("SStore_Istanbul_noop");
+        yield return new TestCaseData(3UL, "600160005500", 0, 4, 51006UL, "step:20000:0::0,1:0:0", 1).SetName("SStore_Istanbul_set");
+        yield return new TestCaseData(3UL, "600260005500", 1, 4, 51006UL, "step:5000:0::0,2:1:0", 2).SetName("SStore_Istanbul_reset");
+        yield return new TestCaseData(3UL, "600060005500", 1, 4, 51006UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_Istanbul_clear");
+        yield return new TestCaseData(3UL, "6001600055600060005500", 0, 9, 71012UL, "step:800:19200::0,0:1:0", 0).SetName("SStore_Istanbul_restore_zero");
+        yield return new TestCaseData(3UL, "6000600055600160005500", 1, 9, 56012UL, "step:800:4200::0,1:0:0", 1).SetName("SStore_Istanbul_restore_one");
+        yield return new TestCaseData(3UL, "6000600055600260005500", 1, 9, 56012UL, "step:800:0::0,2:0:0", 2).SetName("SStore_Istanbul_dirty_after_clear");
+        yield return new TestCaseData(3UL, "600060005500", 1, 4, 26005UL, "step:5000:15000:out of gas:0,0:1:0", 1).SetName("SStore_Istanbul_clear_oog");
+        yield return new TestCaseData(3UL, "600060005500", 1, 4, 23306UL, "step:0:0:out of gas: not enough gas for reentrancy sentry:0,0:1:0", 1).SetName("SStore_Istanbul_sentry");
+        yield return new TestCaseData(3UL, "600160005500", 1, 4, 23307UL, "step:800:0::0,1:1:0", 1).SetName("SStore_Istanbul_above_sentry_noop");
+        yield return new TestCaseData(3UL, "600160005500", 0, 4, 23307UL, "step:20000:0:out of gas:0,1:0:0", 0).SetName("SStore_Istanbul_above_sentry_set_oog");
+        yield return new TestCaseData(6UL, "0x600060005500", 0, 4, 100000UL, "step:2200:0::0,0:0:0", 0).SetName("SStore_cold_zero_noop");
+        yield return new TestCaseData(6UL, "0x600160005500", 0, 4, 100000UL, "step:22100:0::0,1:0:0", 1).SetName("SStore_cold_set");
+        yield return new TestCaseData(6UL, "0x600160005500", 1, 4, 100000UL, "step:2200:0::0,1:1:0", 1).SetName("SStore_cold_nonzero_noop");
+        yield return new TestCaseData(6UL, "0x600260005500", 1, 4, 100000UL, "step:5000:0::0,2:1:0", 2).SetName("SStore_cold_reset");
+        yield return new TestCaseData(6UL, "0x600060005500", 1, 4, 100000UL, "step:5000:4800::0,0:1:0", 0).SetName("SStore_cold_clear");
+        yield return new TestCaseData(6UL, "0x60005450600160005500", 1, 8, 100000UL, "step:100:0::0,1:1:0", 1).SetName("SStore_warm_noop");
+        yield return new TestCaseData(6UL, "0x60005450600260005500", 1, 8, 100000UL, "step:2900:0::0,2:1:0", 2).SetName("SStore_warm_reset");
+        yield return new TestCaseData(6UL, "0x60005450600060005500", 1, 8, 100000UL, "step:2900:4800::0,0:1:0", 0).SetName("SStore_warm_clear");
+        yield return new TestCaseData(6UL, "0x6001600055600260005500", 0, 9, 100000UL, "step:100:0::0,2:1:0", 2).SetName("SStore_dirty_zero_replace");
+        yield return new TestCaseData(6UL, "0x6001600055600060005500", 0, 9, 100000UL, "step:100:19900::0,0:1:0", 0).SetName("SStore_dirty_zero_restore");
+        yield return new TestCaseData(6UL, "0x6000600055600160005500", 1, 9, 100000UL, "step:100:2800::0,1:0:0", 1).SetName("SStore_dirty_nonzero_clear_restore");
+        yield return new TestCaseData(6UL, "0x6000600055600260005500", 1, 9, 100000UL, "step:100:0::0,2:0:0", 2).SetName("SStore_dirty_nonzero_clear_replace");
+        yield return new TestCaseData(6UL, "0x6002600055600060005500", 1, 9, 100000UL, "step:100:4800::0,0:2:0", 0).SetName("SStore_dirty_nonzero_replace_clear");
+        yield return new TestCaseData(6UL, "0x6002600055600160005500", 1, 9, 100000UL, "step:100:2800::0,1:2:0", 1).SetName("SStore_dirty_nonzero_replace_restore");
+        yield return new TestCaseData(6UL, "0x600160005500", 0, 4, 23306UL, "step:0:0:out of gas: not enough gas for reentrancy sentry:0,1:0:0", 0).SetName("SStore_sentry_2300");
+        yield return new TestCaseData(6UL, "0x600060005500", 0, 4, 23307UL, "step:2200:0::0,0:0:0", 0).SetName("SStore_sentry_2301_noop_success");
+        yield return new TestCaseData(6UL, "0x600160005500", 0, 4, 23307UL, "step:22100:0:out of gas:0,1:0:0", 0).SetName("SStore_sentry_2301_set_oog");
+        yield return new TestCaseData(6UL, "0x600060005500", 1, 4, 26005UL, "step:5000:4800:out of gas:0,0:1:0", 1).SetName("SStore_clear_oog_4999");
+        yield return new TestCaseData(6UL, "0x600060005500", 1, 4, 26006UL, "step:5000:4800::0,0:1:0", 0).SetName("SStore_clear_exact_5000");
+        yield return new TestCaseData(6UL, "0x60005450600060005500", 1, 8, 26010UL, "step:2900:4800:out of gas:0,0:1:0", 1).SetName("SStore_warm_clear_oog_2899");
+        yield return new TestCaseData(6UL, "0x60005450600160005500", 1, 8, 25411UL, "step:0:0:out of gas: not enough gas for reentrancy sentry:0,1:1:0", 1).SetName("SStore_warm_noop_sentry_2300");
+        yield return new TestCaseData(6UL, "0x55", 1, 0, 21000UL, "step:0:0:stack underflow (0 <=> 2)::1:0", 1).SetName("SStore_empty_underflow");
+        yield return new TestCaseData(6UL, "0x600155", 1, 2, 21003UL, "step:0:0:stack underflow (1 <=> 2):1:1:0", 1).SetName("SStore_one_underflow");
+    }
+}
+
+
+public class GethLikeJavaScriptStaticCallTracerTests : VirtualMachineTestsBase
+{
+    protected override ISpecProvider SpecProvider => new CustomSpecProvider(
+        ((ForkActivation)0, Byzantium.Instance), ((ForkActivation)1, Berlin.Instance),
+        ((ForkActivation)2, Prague.Instance), ((ForkActivation)3, Amsterdam.Instance));
+
+    [Test]
+    public void StaticCall_cost_is_ready_before_child_entry(
+        [Values(0UL, 1UL, 2UL, 3UL)] ulong fork,
+        [Values(false, true)] bool warm,
+        [Values(false, true)] bool precompile,
+        [Values(0, 32, 64)] int memoryLength,
+        [Values(false, true)] bool maximumForwarding)
+    {
+        IReleaseSpec spec = SpecProvider.GetSpec((ForkActivation)fork);
+        Address target = precompile ? Address.FromNumber(4) : TestItem.AddressC;
+        if (!precompile)
+        {
+            TestState.CreateAccount(target, 1.Ether);
+            TestState.InsertCode(target, Bytes.FromHexString("60006000f3"), spec);
+        }
+        Prepare builder = Prepare.EvmCode;
+        if (warm) builder = builder.PushData(target).Op(Instruction.BALANCE).Op(Instruction.POP);
+        UInt256 requested = maximumForwarding ? UInt256.MaxValue : 10000;
+        byte[] code = builder.PushData(memoryLength).PushData(0).PushData(memoryLength).PushData(0)
+            .PushData(target).PushData(requested).Op(Instruction.STATICCALL).Op(Instruction.STOP).Done;
+        (Block block, Transaction transaction) = PrepareTx((fork, 0), 100000, code);
+        ulong coldCost = spec.IsEip8038Enabled ? 3000UL : 2600UL;
+        ulong access = spec.UseHotAndColdStorage ? warm || precompile ? 100UL : coldCost : spec.GasCosts.CallCost;
+        ulong warmup = warm ? 5 + (spec.UseHotAndColdStorage ? precompile ? 100UL : coldCost : spec.GasCosts.BalanceCost) : 0;
+        ulong entryGas = transaction.GasLimit - IntrinsicGasCalculator.Calculate(transaction, spec, block.Header.GasLimit).Standard - 18 - warmup;
+        ulong intrinsic = access + (ulong)(memoryLength / 32 * 3);
+        ulong forwarded = maximumForwarding ? entryGas - intrinsic - (entryGas - intrinsic) / 64 : 10000;
+        string tracerCode = """
+            {
+                events: [],
+                step: function(log) {
+                    if (log.op.toNumber() === 0xfa)
+                        this.events.push("step:" + log.getCost() + ":" + log.stack.length() + ":" + log.stack.peek(0).toString() + ":" + log.getGas() + ":" + log.getRefund() + ":" + log.memory.length() + ":" + (log.getError() || ""));
+                },
+                fault: function(log) { this.events.push("fault:" + log.getError()); },
+                enter: function(frame) { this.events.push("enter:" + frame.getGas()); },
+                exit: function() { this.events.push("exit"); },
+                result: function() { return this.events; }
+            }
+            """;
+        string result = RunTrace(block, transaction, tracerCode);
+        Assert.That(result, Is.EqualTo(JsonSerializer.Serialize(new[] { $"step:{intrinsic + forwarded}:6:{requested}:{entryGas}:0:0:", $"enter:{forwarded}", "exit" })));
+    }
+
+    [TestCase("fa", 0UL, 100UL, "stack underflow (0 <=> 6)")]
+    [TestCase("60006000600060006000fa", 15UL, 100UL, "stack underflow (5 <=> 6)")]
+    [TestCase("600060006000600061beef612710fa", 117UL, 100UL, "out of gas")]
+    [TestCase("600060006000600061beef612710fa", 2617UL, 100UL, "out of gas: out of gas")]
+    [TestCase("6000600060017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff61beef612710fa", 79000UL, 100UL, "gas uint64 overflow")]
+    [TestCase("600060006001641fffffffe061beef612710fa", 79000UL, 100UL, "out of gas: gas uint64 overflow")]
+    public void StaticCall_failures_emit_one_step_with_geth_cost(string code, ulong executionGas, ulong expectedCost, string error)
+    {
+        (Block block, Transaction transaction) = PrepareTx((2UL, 0), 21000 + executionGas, Bytes.FromHexString(code));
+        const string tracerCode = """
+            {
+                events: [],
+                step: function(log) { if (log.op.toNumber() === 0xfa) this.events.push("step:" + log.getCost() + ":" + (log.getError() || "")); },
+                fault: function(log) { this.events.push("fault:" + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        Assert.That(RunTrace(block, transaction, tracerCode),
+            Is.EqualTo(JsonSerializer.Serialize(new[] { $"step:{expectedCost}:{error}" }, new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping })));
+    }
+
+    private string RunTrace(Block block, Transaction transaction, string tracerCode)
+    {
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, SpecProvider.GetSpec(block.Header),
+            GethTraceOptions.Default with { EnableMemory = true, Tracer = tracerCode });
+        tracer.StartNewBlockTrace(block);
+        ITxTracer transactionTracer = ((IBlockTracer)tracer).StartNewTxTrace(transaction);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), transactionTracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        return JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions);
+    }
 }

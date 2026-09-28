@@ -209,7 +209,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _failedBeforeExecution = false;
         _pendingStep = opcode is Instruction.RETURNDATACOPY or Instruction.RETURN or Instruction.REVERT
             or Instruction.MLOAD or Instruction.MSTORE or Instruction.MSTORE8 or Instruction.CALLDATACOPY or Instruction.CODECOPY
-            or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD;
+            or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD or Instruction.SSTORE or Instruction.STATICCALL;
     }
 
     /// <inheritdoc/>
@@ -368,6 +368,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             Invoke(TracerFunctions.step);
         }
     }
+
+    /// <inheritdoc/>
+    public override void ReportStorageRefund(long refund) => _log.refund = CurrentRefund + refund;
 
     public override void ReportRefund(long refund)
     {
