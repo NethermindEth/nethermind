@@ -148,6 +148,7 @@ jobs:
           # No external consensus client: BeaconChain.Enabled checkpoint-syncs Hoodi and drives the node itself.
           # The container keeps sedge's name so wait-for-sync.py reads its logs unchanged.
           docker run -d --name sedge-execution-client --network host \
+            -e DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION=1 \
             -v "$PWD/execution-data:/nethermind/data" \
             nethermind:pr-local \
             --config hoodi \
@@ -181,6 +182,7 @@ jobs:
         env:
           NETWORK: hoodi
           SYNC_MODE: ${{ matrix.mode }}
+          PYTHONUNBUFFERED: "1"
         run: python scripts/wait-for-sync.py
 
       - name: Get Nethermind Debug Logs
