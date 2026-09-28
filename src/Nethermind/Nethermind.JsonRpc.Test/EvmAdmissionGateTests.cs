@@ -12,6 +12,8 @@ using static Nethermind.JsonRpc.EvmAdmissionGate;
 
 namespace Nethermind.JsonRpc.Test;
 
+// Counts are read from the gate under test: the Metrics statics it also writes are shared by every gate in the test
+// run, so asserting them would race with the other tests.
 [Parallelizable(ParallelScope.All)]
 public class EvmAdmissionGateTests
 {
@@ -56,12 +58,10 @@ public class EvmAdmissionGateTests
     [TestCase(BudgetMs, 2, BudgetMs, 2, 1, 0, TestName = "Full queue")]
     [TestCase(BudgetMs, 0, 0, 0, 0, 1, TestName = "Request that may not queue")]
     [TestCase(BudgetMs, 0, BudgetMs, 3, 0, 0, TestName = "Zero queue limit leaves the queue uncapped")]
-    [NonParallelizable]
     public async Task Busy_gate_rejects_at_once_only_when_the_request_cannot_queue(
         int maxQueueWaitMs, int queueLimit, int requestMaxWaitMs, int alreadyQueued, int queueFullRejections, int notQueueableRejections)
     {
         bool rejected = queueFullRejections + notQueueableRejections > 0;
-        (long QueueFull, long NotQueueable) rejectionsBefore = (Metrics.RpcAdmissionQueueFullRejections, Metrics.RpcAdmissionNotQueueableRejections);
         EvmAdmissionGate gate = CreateGate(maxQueueWaitMs: maxQueueWaitMs, queueLimit: queueLimit);
         using Lease held = await Admit(gate);
         Task<Lease>[] queued = [.. Enumerable.Range(0, alreadyQueued).Select(_ => Admit(gate).AsTask())];
@@ -75,9 +75,7 @@ public class EvmAdmissionGateTests
         }
 
         Assert.That(
-            (gate.Queued,
-                Metrics.RpcAdmissionQueueFullRejections - rejectionsBefore.QueueFull,
-                Metrics.RpcAdmissionNotQueueableRejections - rejectionsBefore.NotQueueable),
+            (gate.Queued, gate.QueueFullRejections, gate.NotQueueableRejections),
             Is.EqualTo((queued.Length + (rejected ? 0 : 1), queueFullRejections, notQueueableRejections)));
     }
 
@@ -140,13 +138,11 @@ public class EvmAdmissionGateTests
 
     // A late timer leaves the rejection to the next release, which passes the slot on to the next waiter.
     [Test]
-    [NonParallelizable]
     public async Task Waiter_is_rejected_once_its_budget_has_elapsed([Values] bool timerFires, [Values(100, BudgetMs, 2 * BudgetMs)] int maxWaitMs)
     {
         TimeSpan maxWait = TimeSpan.FromMilliseconds(maxWaitMs);
         // A request's own wait is capped at the gate's budget.
         TimeSpan rejectedAfter = TimeSpan.FromMilliseconds(Math.Min(maxWaitMs, BudgetMs));
-        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
         ManualClock clock = new();
         EvmAdmissionGate gate = CreateGate(clock);
         Lease held = await Admit(gate);
@@ -169,14 +165,12 @@ public class EvmAdmissionGateTests
         }
 
         (await next.WaitAsync(TestTimeout)).Dispose();
-        Assert.That((gate.InFlight, gate.Queued, Metrics.RpcAdmissionWaitTimeoutRejections - rejectionsBefore), Is.EqualTo((0, 0, 1)));
+        Assert.That((gate.InFlight, gate.Queued, gate.WaitTimeoutRejections), Is.EqualTo((0, 0, 1)));
     }
 
     [Test]
-    [NonParallelizable]
     public async Task Cancelled_waiter_leaves_the_queue_without_taking_a_slot()
     {
-        long cancellationsBefore = Metrics.RpcAdmissionCancellations;
         EvmAdmissionGate gate = CreateGate();
         Lease held = await Admit(gate);
         using CancellationTokenSource cancellation = new();
@@ -186,7 +180,7 @@ public class EvmAdmissionGateTests
 
         Assert.That(async () => await waiter.WaitAsync(TestTimeout), Throws.InstanceOf<OperationCanceledException>());
         held.Dispose();
-        Assert.That((gate.InFlight, gate.Queued, Metrics.RpcAdmissionCancellations - cancellationsBefore), Is.EqualTo((0, 0, 1)));
+        Assert.That((gate.InFlight, gate.Queued, gate.Cancellations), Is.EqualTo((0, 0, 1)));
     }
 
     [Test]
@@ -197,7 +191,11 @@ public class EvmAdmissionGateTests
 
         Assert.That(async () => await Admit(gate), Throws.InvalidOperationException);
         held.Dispose();
-        Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((0, 0)), "no slot is granted to a waiter nobody awaits");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((0, 0)), "no slot is granted to a waiter nobody awaits");
+            Assert.That((gate.Cancellations, gate.WaitTimeoutRejections), Is.EqualTo((0, 0)), "counted as neither a cancellation nor a timeout");
+        }
     }
 
     [Test]

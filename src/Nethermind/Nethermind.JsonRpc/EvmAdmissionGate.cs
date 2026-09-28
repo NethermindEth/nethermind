@@ -66,6 +66,12 @@ internal sealed class EvmAdmissionGate
         }
     }
 
+    // This gate's own share of the RpcAdmission counters in Metrics, which every gate in the process adds to.
+    internal long QueueFullRejections { get; private set; }
+    internal long NotQueueableRejections { get; private set; }
+    internal long WaitTimeoutRejections { get; private set; }
+    internal long Cancellations { get; private set; }
+
     /// <summary>Converts the byte length of a request's raw <c>params</c> into a weight from 1 to <see cref="MaxWeight"/>.</summary>
     internal static int Weigh(int paramsUtf8Length) => Math.Min(MaxWeight, 1 + paramsUtf8Length / BytesPerWeightUnit);
 
@@ -92,12 +98,14 @@ internal sealed class EvmAdmissionGate
             if (maxWait <= TimeSpan.Zero)
             {
                 Metrics.RpcAdmissionNotQueueableRejections++;
+                NotQueueableRejections++;
                 throw new LimitExceededException(BusyMessage);
             }
 
             if (_queueLimit > 0 && _waiters.Count >= _queueLimit)
             {
                 Metrics.RpcAdmissionQueueFullRejections++;
+                QueueFullRejections++;
                 throw new LimitExceededException(BusyMessage);
             }
 
@@ -115,7 +123,7 @@ internal sealed class EvmAdmissionGate
         }
         catch (Exception ex)
         {
-            if (TryRemove(waiter, timedOut: ex is TimeoutException))
+            if (TryRemove(waiter, ex))
             {
                 if (ex is TimeoutException) throw new LimitExceededException(WaitTimeoutMessage);
                 throw;
@@ -128,7 +136,7 @@ internal sealed class EvmAdmissionGate
         return lease.IsGranted ? lease : throw new LimitExceededException(WaitTimeoutMessage);
     }
 
-    private bool TryRemove(Waiter waiter, bool timedOut)
+    private bool TryRemove(Waiter waiter, Exception reason)
     {
         lock (_lock)
         {
@@ -139,8 +147,19 @@ internal sealed class EvmAdmissionGate
 
             _arrivals.Remove(waiter.Arrival!);
             Metrics.RpcAdmissionQueued = _waiters.Count;
-            if (timedOut) Metrics.RpcAdmissionWaitTimeoutRejections++;
-            else Metrics.RpcAdmissionCancellations++;
+            // Any other failure is rethrown and answered as an internal error, so it counts as neither.
+            switch (reason)
+            {
+                case TimeoutException:
+                    Metrics.RpcAdmissionWaitTimeoutRejections++;
+                    WaitTimeoutRejections++;
+                    break;
+                case OperationCanceledException:
+                    Metrics.RpcAdmissionCancellations++;
+                    Cancellations++;
+                    break;
+            }
+
             return true;
         }
     }
@@ -162,6 +181,7 @@ internal sealed class EvmAdmissionGate
                 }
 
                 Metrics.RpcAdmissionWaitTimeoutRejections++;
+                WaitTimeoutRejections++;
                 next.SetResult(default);
             }
 
