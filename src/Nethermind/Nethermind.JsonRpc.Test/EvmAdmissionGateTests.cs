@@ -118,9 +118,11 @@ public class EvmAdmissionGateTests
     {
         EvmAdmissionGate gate = CreateGate(queueLimit: 2);
         Lease held = await Admit(gate);
-        Lease above = await Admit(gate, priority: true);
+        Lease above = await TakeFreeSlot(gate, priority: true);
         List<(string Name, Task<Lease> Admission)> waiters = [("public 1", Admit(gate).AsTask()), ("public 2", Admit(gate).AsTask())];
-        Assert.That(async () => await Admit(gate), Throws.TypeOf<LimitExceededException>(), "the queue is full");
+        Task<Lease> refused = Admit(gate).AsTask();
+        Assert.That(refused.IsFaulted, Is.True, "refused at once: the queue is full");
+        Assert.That(async () => await refused, Throws.TypeOf<LimitExceededException>());
 
         waiters.Add(("priority", Admit(gate, priority: true).AsTask()));
         Assert.That((gate.Queued, gate.QueueFullRejections), Is.EqualTo((3, 1)), "a priority request queues all the same");
@@ -169,7 +171,7 @@ public class EvmAdmissionGateTests
         EvmAdmissionGate gate = CreateGate(clock);
         Lease held = await Admit(gate);
         // The slot above the permits is taken too, so the priority requests below queue.
-        Lease above = await Admit(gate, priority: true);
+        Lease above = await TakeFreeSlot(gate, priority: true);
         List<(string Name, Task<Lease> Admission)> waiters = [("oldest", Admit(gate).AsTask())];
         clock.Advance(TimeSpan.FromMilliseconds(BudgetMs / 2));
         waiters.Add(("heavy priority", Admit(gate, MaxWeight * BytesPerWeightUnit, priority: true).AsTask()));
@@ -360,6 +362,10 @@ public class EvmAdmissionGateTests
     private static ValueTask<Lease> Admit(
         EvmAdmissionGate gate, int paramsUtf8Length = 0, CancellationToken cancellationToken = default, TimeSpan? maxWait = null, bool priority = false) =>
         gate.AdmitAsync(paramsUtf8Length, maxWait ?? gate.Budget, priority, cancellationToken);
+
+    // Takes a slot that should be free without waiting for it, so a gate that has none fails the test instead of hanging it
+    // on a clock that never moves.
+    private static ValueTask<Lease> TakeFreeSlot(EvmAdmissionGate gate, bool priority = false) => Admit(gate, maxWait: TimeSpan.Zero, priority: priority);
 
     // One slot: each grant is disposed before the next, so completions follow the grant order.
     private static async Task<List<string>> ReleaseAndRecordGrantOrder(Lease held, List<(string Name, Task<Lease> Admission)> waiters)

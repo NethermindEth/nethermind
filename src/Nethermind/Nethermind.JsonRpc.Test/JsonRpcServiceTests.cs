@@ -1353,7 +1353,7 @@ public class JsonRpcServiceTests
 
             Assert.That(Stopwatch.GetElapsedTime(queuedAt), Is.LessThan(service.EvmGate.Budget / 2), "it waited only what was left");
             Assert.That(batchQueueWait.Value, Is.EqualTo(service.EvmGate.Budget), "a timed-out item spends what was left");
-            using JsonRpcResponse rejected = await service.SendRequestAsync(BatchItem(), context);
+            using JsonRpcResponse rejected = await service.SendRequestAsync(BatchItem(), context).AsTask().WaitAsync(TestTimeout);
             AssertJsonRpcError(rejected, ErrorCodes.LimitExceeded);
         }
 
@@ -1380,7 +1380,7 @@ public class JsonRpcServiceTests
         using (await HoldSlot(service))
         {
             queued = service.SendRequestAsync(EthCall(), _context).AsTask();
-            using JsonRpcResponse refused = await service.SendRequestAsync(item, _context);
+            using JsonRpcResponse refused = await service.SendRequestAsync(item, _context).AsTask().WaitAsync(TestTimeout);
             AssertJsonRpcError(refused, ErrorCodes.LimitExceeded);
         }
 
@@ -1478,7 +1478,7 @@ public class JsonRpcServiceTests
         EvmAdmissionGate.Lease slotAbove = await HoldSlot(service, priority: true);
 
         Task<JsonRpcResponse> queuedPublic = service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 1 }), _context).AsTask();
-        using (JsonRpcResponse refused = await service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 3 }), _context))
+        using (JsonRpcResponse refused = await service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 3 }), _context).AsTask().WaitAsync(TestTimeout))
         {
             AssertJsonRpcError(refused, ErrorCodes.LimitExceeded, "Too many requests");
         }
@@ -1516,7 +1516,7 @@ public class JsonRpcServiceTests
         using (await HoldSlot(service))
         using (await HoldSlot(service, priority: true))
         {
-            using (JsonRpcResponse rejected = await service.SendRequestAsync(BatchItem(TimeSpan.FromSeconds(60)), trusted))
+            using (JsonRpcResponse rejected = await service.SendRequestAsync(BatchItem(TimeSpan.FromSeconds(60)), trusted).AsTask().WaitAsync(TestTimeout))
             {
                 AssertJsonRpcError(rejected, ErrorCodes.LimitExceeded);
             }
