@@ -68,6 +68,19 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData("60003b15", 21706UL, 3).SetName("ExtCodeSize_IsZero_at_end"),
     ];
 
+    // Each case runs under both untraced drivers, which adjust a halt in the padding separately.
+    private static IEnumerable<TestCaseData> UntracedCompletionCases()
+    {
+        foreach (TestCaseData data in JumpCompletionCases.Concat(EndOfCodeCases))
+        {
+            foreach (bool cancelable in (bool[])[false, true])
+            {
+                yield return new TestCaseData([.. data.Arguments, cancelable])
+                    .SetName($"{data.TestName}{(cancelable ? "_cancelable" : string.Empty)}");
+            }
+        }
+    }
+
     private static readonly TestCaseData[] JumpFailureCases =
     [
         new TestCaseData("56", 100000UL, 1).SetName("Jump_stack_underflow"),
@@ -792,11 +805,10 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCaseSource(nameof(JumpCompletionCases))]
-    [TestCaseSource(nameof(EndOfCodeCases))]
-    public void Untraced_completion_preserves_semantics(string bytecode, ulong expectedGas, int expectedOpCodeCount)
+    [TestCaseSource(nameof(UntracedCompletionCases))]
+    public void Untraced_completion_preserves_semantics(string bytecode, ulong expectedGas, int expectedOpCodeCount, bool cancelable)
     {
-        TestAllTracerWithOutput receipt = ExecuteUntraced(100000UL, Bytes.FromHexString(bytecode));
+        TestAllTracerWithOutput receipt = ExecuteUntraced(100000UL, Bytes.FromHexString(bytecode), cancelable: cancelable);
 
         using (Assert.EnterMultipleScope())
         {
@@ -833,10 +845,10 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         }
     }
 
-    private TestAllTracerWithOutput ExecuteUntraced(ulong gasLimit, byte[] code, ulong blockGasLimit = DefaultBlockGasLimit)
+    private TestAllTracerWithOutput ExecuteUntraced(ulong gasLimit, byte[] code, ulong blockGasLimit = DefaultBlockGasLimit, bool cancelable = false)
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code, blockGasLimit: blockGasLimit);
-        NoInstructionTracer tracer = new();
+        TestAllTracerWithOutput tracer = cancelable ? new CountingCancellationTracer() : new NoInstructionTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
