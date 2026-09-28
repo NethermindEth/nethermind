@@ -1859,10 +1859,6 @@ public partial class EngineModuleTests
     }
 
     /// <summary>Hides the state of selected blocks, standing in for a state backend whose reorg window has moved past them.</summary>
-    /// <remarks>
-    /// <paramref name="pruned"/> is read on the engine-RPC and block-processing threads while the test thread and
-    /// <see cref="IBranchProcessor.BlockProcessed"/> write to it, so it must tolerate concurrent access.
-    /// </remarks>
     private sealed class PrunedStateReader(IStateReader inner, ConcurrentDictionary<Hash256, byte> pruned) : IStateReader
     {
         public bool HasStateForBlock(BlockHeader? baseBlock) =>
@@ -1885,8 +1881,6 @@ public partial class EngineModuleTests
 
     /// <summary>Builds a node whose state for selected blocks can be hidden on demand.</summary>
     /// <param name="pruned">Hashes whose state <see cref="IStateReader"/> should pretend not to have.</param>
-    /// <param name="configure">Further registrations for the node, applied after the state decorator.</param>
-    /// <param name="releaseSpec">The fork to run, London by default.</param>
     private async Task<MergeTestBlockchain> CreateBlockchainWithPrunableState(
         ConcurrentDictionary<Hash256, byte> pruned, Action<ContainerBuilder>? configure = null, IReleaseSpec? releaseSpec = null)
     {
@@ -1896,16 +1890,13 @@ public partial class EngineModuleTests
                 builder.AddDecorator<IStateReader>((_, inner) => new PrunedStateReader(inner, pruned));
                 configure?.Invoke(builder);
             });
-        // Executing a block re-creates the state that was pruned, so stop hiding it once that happens.
+        // Execution restores the state, so stop hiding it.
         chain.BranchProcessor.BlockProcessed += (_, e) => pruned.TryRemove(e.Block.Hash!, out byte _);
         return chain;
     }
 
     /// <summary>Produces a four-block canonical branch and moves the head to its tip.</summary>
-    /// <param name="finalizedIndex">
-    /// Index into the produced blocks to report finalized, or -1 to report none. Without a finalized block,
-    /// moving the head back down is not short-circuited as behind-finalized.
-    /// </param>
+    /// <param name="finalizedIndex">Index of the block to report finalized, or -1 for none.</param>
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceCanonicalBranchV1(MergeTestBlockchain chain, int finalizedIndex = -1)
     {
         IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(chain.EngineRpcModule, chain, 4,
@@ -1917,15 +1908,8 @@ public partial class EngineModuleTests
         return blocks;
     }
 
-    /// <summary>
-    /// A resubmitted block above the head whose post-state has been pruned must be re-executed rather than answered
-    /// from a previous verdict, so that the payload that builds on it is executed instead of answered SYNCING.
-    /// </summary>
-    /// <remarks>
-    /// The Hive <c>consume-enginex</c> shape: the head is moved back to genesis between tests and a byte-identical
-    /// block 1 is sent again. A block at or below the head is covered by
-    /// <see cref="newPayloadV1_leaves_its_own_chain_intact_when_a_pruned_canonical_block_is_resubmitted"/>.
-    /// </remarks>
+    /// <summary>A resubmitted block above the head whose state was pruned is re-executed, so its child is not answered SYNCING.</summary>
+    /// <remarks>The Hive <c>consume-enginex</c> shape: the head moves back to genesis and block 1 is sent again.</remarks>
     [Test]
     public async Task newPayloadV1_reexecutes_a_resubmitted_block_whose_state_was_pruned()
     {
@@ -1965,7 +1949,6 @@ public partial class EngineModuleTests
     {
         private Hash256? _watched;
 
-        /// <summary>Completes when a wait for the watched block's committing copy begins.</summary>
         public TaskCompletionSource WaitEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         /// <summary>Starts recording waits for <paramref name="blockHash"/>; earlier ones are not the ones under test.</summary>
@@ -1978,11 +1961,7 @@ public partial class EngineModuleTests
     }
 
     /// <summary>Passes every call through, reporting the handler's commit waits to a <see cref="CommitWaitProbe"/>.</summary>
-    /// <remarks>
-    /// The queue is resolved more than once, so the probe - not the decorator - holds what was seen. The engine RPC
-    /// module waits on the same commit after every newPayload answer, so only a wait entered from inside the handler
-    /// counts: one entered after the handler has answered would let a handler that never waits pass.
-    /// </remarks>
+    /// <remarks>The engine RPC module also waits on this commit after answering, so only a wait from inside the handler counts.</remarks>
     private sealed class CommitWaitObservingQueue(IBlockProcessingQueue inner, CommitWaitProbe probe) : IBlockProcessingQueue
     {
         public ValueTask WaitUntilExecutedCopyRemovedAsync(Hash256 blockHash)
@@ -1993,9 +1972,8 @@ public partial class EngineModuleTests
 
         /// <summary>Whether the frame that asked for this wait belongs to <see cref="NewPayloadHandler"/>.</summary>
         /// <remarks>
-        /// Only the immediate caller counts: deeper frames can include the handler merely because a continuation it
-        /// completed ran inline. Async methods run as state machines nested in their method's type, hence the
-        /// declaring-type check.
+        /// Only the immediate caller counts, as a continuation can run inline under the handler's frames. Async
+        /// state machines are nested in their method's type, hence the declaring-type check.
         /// </remarks>
         private static bool IsCalledFromNewPayloadHandler()
         {
@@ -2043,11 +2021,7 @@ public partial class EngineModuleTests
         public event EventHandler<BlockStatistics> NewProcessingStatistics { add => inner.NewProcessingStatistics += value; remove => inner.NewProcessingStatistics -= value; }
     }
 
-    /// <summary>
-    /// A block being re-executed is already marked processed from its first run, so it can be made head while the
-    /// re-execution that restores its state is still committing. Sent again in that window it must wait for that
-    /// commit and be answered VALID, not SYNCING as a block on the node's own chain whose state is gone.
-    /// </summary>
+    /// <summary>A head resent while its re-execution is still committing waits for that commit and is answered VALID.</summary>
     [Test]
     public async Task newPayloadV1_answers_valid_for_a_head_resent_while_its_re_execution_commits()
     {
@@ -2079,8 +2053,7 @@ public partial class EngineModuleTests
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(resubmitted.BlockHash));
         }
 
-        // The commit is released only once the re-send is parked on it, or has answered without waiting - the
-        // regression this pins. The bound is a backstop for a handler that does neither.
+        // Release the commit once the re-send waits on it or answers; the delay is a backstop.
         probe.Watch(resubmitted.BlockHash);
         Task<ResultWrapper<PayloadStatusV1>> resent = rpc.engine_newPayloadV1(resubmitted);
         await Task.WhenAny(probe.WaitEntered.Task, resent, Task.Delay(TimeSpan.FromSeconds(20)));
@@ -2097,18 +2070,11 @@ public partial class EngineModuleTests
     }
 
     /// <summary>Waits for a block's answered copy to leave the processing queue, and with it to commit its state.</summary>
-    /// <remarks>
-    /// <c>engine_newPayload</c> answers once the block is executed, so the state its child needs can arrive after
-    /// the answer. Completes at once when no answered copy is in flight - a block that was never re-executed - and
-    /// the caller's own assertion then says so.
-    /// </remarks>
+    /// <remarks><c>engine_newPayload</c> answers before the commit. Completes at once if no copy is in flight.</remarks>
     private static Task WaitForCommit(MergeTestBlockchain chain, Hash256 blockHash) =>
         chain.BlockProcessingQueue.WaitForExecutedCopyAsync(blockHash, TimeSpan.FromSeconds(10)).AsTask();
 
-    /// <summary>
-    /// The canonical-chain shortcut must not answer from the chain-level marker alone: sync sets that marker for
-    /// blocks it has not executed.
-    /// </summary>
+    /// <summary>The canonical shortcut must not answer from the chain-level marker alone, which sync sets for unexecuted blocks.</summary>
     [Test]
     public async Task newPayloadV1_does_not_report_valid_for_an_unprocessed_canonical_block([Values] bool markedCanonical)
     {
@@ -2126,7 +2092,7 @@ public partial class EngineModuleTests
         chain.BlockTree.SuggestBlock(tampered, BlockTreeSuggestOptions.ForceDontSetAsMain);
         if (markedCanonical)
         {
-            // What forward sync does when it moves a downloaded, not-yet-executed block onto the main chain.
+            // As forward sync does for a downloaded, unexecuted block.
             chain.BlockTree.TryUpdateMainChain(tampered.Header, wereProcessed: false, preloadedBlocks: new[] { tampered });
         }
 
@@ -2136,9 +2102,8 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
-    /// A canonical block whose own and whose parent's state are both gone cannot be re-executed, because
-    /// <c>ShouldProcessBlock</c> gates on the parent. The answer then depends on whether the block could still
-    /// become the head: below the finalized block it cannot, so the earlier verdict stands.
+    /// A canonical block whose own and parent's state are gone cannot be re-executed; below finalized it can never
+    /// become head, so its earlier verdict stands.
     /// </summary>
     [Test]
     public async Task newPayloadV1_answers_a_canonical_block_below_the_state_window([Values] bool finalizedAbove)
@@ -2188,10 +2153,7 @@ public partial class EngineModuleTests
         Assert.That(pruned.ContainsKey(block2A.BlockHash), Is.False);
     }
 
-    /// <summary>
-    /// A payload for a block the chain level already points at must not be staged as a beacon block: on a node
-    /// that has finished syncing that arms the beacon pivot behind the head.
-    /// </summary>
+    /// <summary>A canonical header-only block must not be staged as a beacon block, which would arm the pivot behind the head.</summary>
     [Test]
     public async Task newPayloadV1_does_not_arm_the_beacon_pivot_for_a_canonical_header_only_block()
     {
@@ -2206,7 +2168,7 @@ public partial class EngineModuleTests
         headerOnly.Hash = headerOnly.CalculateHash();
         chain.BlockTree.Insert(headerOnly, BlockTreeInsertHeaderOptions.None);
 
-        // Hiding the parent's state is what makes the handler decline to process and reach the insert path.
+        // With the parent's state hidden the handler declines to process and reaches the insert path.
         pruned[blocks[0].BlockHash] = 0;
 
         ResultWrapper<PayloadStatusV1> result =
@@ -2280,14 +2242,11 @@ public partial class EngineModuleTests
     public enum TightenedCheck { None, Header, Processing }
 
     /// <summary>
-    /// A canonical block at or below the head whose state has been pruned is answered SYNCING and not run again. A
-    /// second run could fail a check the block passed when it was accepted, and the failure would be handled like any
-    /// invalid block: the head marked invalid, and the block and every block after it up to the head deleted from
-    /// the block tree.
+    /// A pruned canonical block at or below the head is answered SYNCING, not re-run: a re-run failing a tightened
+    /// check would mark the head invalid and delete blocks up to it.
     /// </summary>
     /// <param name="parentHasState">Whether the block could be re-executed at all, or only answered.</param>
     /// <param name="executed">Whether this node ran the block, or sync placed it on the chain without running it.</param>
-    /// <param name="tightened">The check that would reject the block now.</param>
     [TestCase(false, true, TightenedCheck.Header)]
     [TestCase(false, false, TightenedCheck.Header)]
     [TestCase(true, true, TightenedCheck.None)]

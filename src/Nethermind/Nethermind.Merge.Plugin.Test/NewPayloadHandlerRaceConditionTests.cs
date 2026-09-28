@@ -701,8 +701,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         poSSwitcher.TransitionFinished.Returns(true);
         beaconSyncStrategy.IsBeaconSyncFinished(Arg.Any<BlockHeader?>()).Returns(true);
         stateReader.HasStateForBlock(parent).Returns(true);
-        // The handler re-decodes the payload, so the header it asks about is not the instance held here. The
-        // matcher is an expression tree, which cannot carry a pattern, hence != rather than is not null.
+        // The handler re-decodes the payload, so match by hash; an expression tree cannot use `is not null`.
         stateReader.HasStateForBlock(Arg.Is<BlockHeader>(h => h != null && h.Hash == block.Hash)).Returns(true);
         if (processingQueue is null)
         {

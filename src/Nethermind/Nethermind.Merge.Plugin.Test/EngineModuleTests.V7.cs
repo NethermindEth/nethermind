@@ -644,12 +644,8 @@ public partial class EngineModuleTests
         Assert.That(emptyBlock!.Transactions.Select(t => t.Hash), Is.EqualTo(new[] { inclusionListTx.Hash }));
     }
 
-    // bogota.md newPayloadV6 (2.1): a VALID response must carry a compliance answer. Appendability is
-    // judged against the state the block committed, so a canonical block is answerable without the
-    // re-execution that would replay the whole pruning window on every resend - but only one this node ran:
-    // the state root alone cannot tell the state a block committed from one it merely shares a root with. One the
-    // head descends from but this node never ran is answered SYNCING, neither from that root nor re-executed, and so
-    // is one this node ran whose state is gone: re-running a block already on the chain could delete the chain.
+    // bogota.md newPayloadV6 (2.1): a VALID response must carry a compliance answer. A canonical block this node ran
+    // is answered from its own state; otherwise it is answered SYNCING rather than re-executed.
     [TestCase(true, false, PayloadStatus.Valid)]
     [TestCase(true, true, PayloadStatus.Syncing)]
     [TestCase(false, false, PayloadStatus.Syncing)]
@@ -693,8 +689,7 @@ public partial class EngineModuleTests
 
     /// <summary>
     /// The inclusion-list counterpart of <c>newPayloadV1_answers_valid_for_a_head_resent_while_its_re_execution_commits</c>:
-    /// a head whose re-execution is still committing, sent again with a different list, must wait for that commit
-    /// and be judged against the state it restores, not answered SYNCING as no longer evaluable.
+    /// the resent head waits for its commit and has the new list judged against the restored state.
     /// </summary>
     [Test]
     public async Task NewPayloadV6_judges_an_inclusion_list_for_a_head_resent_while_its_re_execution_commits()
@@ -737,8 +732,7 @@ public partial class EngineModuleTests
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block.BlockHash));
         }
 
-        // A different list misses the (block, IL) cache. The commit is released only once the re-send is parked on
-        // it, or has answered without waiting - the regression this pins. The bound is a backstop.
+        // A different list misses the (block, IL) cache; release the commit once the re-send waits on it or answers.
         Transaction censoredTx = Build.A.Transaction
             .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
             .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
