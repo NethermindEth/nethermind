@@ -1335,9 +1335,9 @@ public class JsonRpcServiceTests
 
     [TestCase(false, TestName = "Public")]
     [TestCase(true, TestName = "Authenticated")]
-    public async Task Batch_item_whose_wait_timed_out_leaves_nothing_for_later_items(bool authenticated)
+    public async Task Batch_item_waits_only_what_is_left_and_once_that_runs_out_later_items_are_rejected_at_once(bool authenticated)
     {
-        JsonRpcService service = CreateGatedService(Substitute.For<IEthRpcModule>(), maxQueueWaitMs: 1_000);
+        JsonRpcService service = CreateGatedService(Substitute.For<IEthRpcModule>(), maxQueueWaitMs: 10_000);
         using JsonRpcContext context = authenticated ? CreateTrustedContext(RpcEndpoint.Http, true) : new JsonRpcContext(RpcEndpoint.Http);
         // Less is left than the timer resolution, so the wait times out at once, usually before that much time has passed.
         StrongBox<TimeSpan> batchQueueWait = new(service.EvmGate.Budget - TimeSpan.FromMilliseconds(0.5));
@@ -1345,11 +1345,13 @@ public class JsonRpcServiceTests
         using (await HoldSlot(service))
         using (authenticated ? await HoldSlot(service, priority: true) : default)
         {
+            long queuedAt = Stopwatch.GetTimestamp();
             using (JsonRpcResponse timedOut = await service.SendRequestAsync(BatchItem(), context).AsTask().WaitAsync(TestTimeout))
             {
                 AssertJsonRpcError(timedOut, ErrorCodes.LimitExceeded);
             }
 
+            Assert.That(Stopwatch.GetElapsedTime(queuedAt), Is.LessThan(service.EvmGate.Budget / 2), "it waited only what was left");
             Assert.That(batchQueueWait.Value, Is.EqualTo(service.EvmGate.Budget), "a timed-out item spends what was left");
             using JsonRpcResponse rejected = await service.SendRequestAsync(BatchItem(), context);
             AssertJsonRpcError(rejected, ErrorCodes.LimitExceeded);
@@ -1393,46 +1395,40 @@ public class JsonRpcServiceTests
     }
 
     [Test]
-    public async Task Batch_items_add_their_granted_waits_and_later_items_may_wait_only_what_is_left()
+    public async Task Batch_items_add_their_granted_waits_to_what_their_batch_waited()
     {
-        const int budgetMs = 2_000;
-        TimeSpan hold = TimeSpan.FromMilliseconds(300);
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
-        JsonRpcService service = CreateGatedService(ethRpcModule, maxQueueWaitMs: budgetMs);
+        // CreateGatedService gives a 60 s budget, far more than these waits take even on a starved host.
+        JsonRpcService service = CreateGatedService(ethRpcModule);
         StrongBox<TimeSpan> batchQueueWait = new();
 
-        // The clock is real: lower bounds allow a timer that fires a little early, upper bounds a slow host.
-        TimeSpan afterFirst = await GrantedAfter(hold);
-        Assert.That(afterFirst, Is.InRange(hold - TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(budgetMs / 2)), "a wait that ends in a grant is charged");
-        TimeSpan afterSecond = await GrantedAfter(hold);
-        Assert.That(afterSecond - afterFirst, Is.InRange(hold - TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(budgetMs / 2)), "and adds to what the batch waited before");
+        // An item waits at least as long as the slot is held after it queued, measured on the clock the charge uses, so
+        // the bounds below hold however slow the host is.
+        TimeSpan firstHeld = await GrantedAfterHolding(TimeSpan.FromMilliseconds(200));
+        TimeSpan afterFirst = batchQueueWait.Value;
+        Assert.That(afterFirst, Is.GreaterThanOrEqualTo(firstHeld), "a wait that ends in a grant is charged");
+        TimeSpan secondHeld = await GrantedAfterHolding(TimeSpan.FromMilliseconds(200));
+        Assert.That(batchQueueWait.Value - afterFirst, Is.GreaterThanOrEqualTo(secondHeld), "and adds to what the batch waited before");
+        // A unit slip would overstate the wait a hundredfold on Linux.
+        Assert.That(batchQueueWait.Value, Is.LessThan(TimeSpan.FromSeconds(30)));
 
-        TimeSpan left = TimeSpan.FromMilliseconds(budgetMs) - afterSecond;
-        TimeSpan waited;
-        using (await HoldSlot(service))
-        {
-            long queuedAt = Stopwatch.GetTimestamp();
-            using JsonRpcResponse rejected = await service.SendRequestAsync(BatchItem(), _context).AsTask().WaitAsync(TestTimeout);
-            waited = Stopwatch.GetElapsedTime(queuedAt);
-            AssertJsonRpcError(rejected, ErrorCodes.LimitExceeded);
-        }
-
-        Assert.That(waited, Is.InRange(left - TimeSpan.FromMilliseconds(20), left + TimeSpan.FromMilliseconds(250)), "the next item may wait only what is left");
-
-        async Task<TimeSpan> GrantedAfter(TimeSpan delay)
+        async Task<TimeSpan> GrantedAfterHolding(TimeSpan delay)
         {
             Task<JsonRpcResponse> response;
+            TimeSpan held;
             using (await HoldSlot(service))
             {
                 response = service.SendRequestAsync(BatchItem(), _context).AsTask();
+                long heldFrom = Stopwatch.GetTimestamp();
                 Assert.That(service.EvmGate.Queued, Is.EqualTo(1));
                 await Task.Delay(delay);
+                held = Stopwatch.GetElapsedTime(heldFrom);
             }
 
             using JsonRpcResponse granted = await response.WaitAsync(TestTimeout);
             RpcTest.AssertSuccess<HexBytes>(granted);
-            return batchQueueWait.Value;
+            return held;
         }
 
         JsonRpcRequest BatchItem()
