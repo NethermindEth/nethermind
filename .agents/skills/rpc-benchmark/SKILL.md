@@ -11,20 +11,42 @@ description: Dispatch and interpret the JSON-RPC benchmark workflow (run-rpc-ben
 
 `run-rpc-benchmarks` measures state-reading JSON-RPC (`eth_call`, `eth_getBalance`, `trace_*`,
 `debug_*`) against a parked DB snapshot on the same two benchmark runners as expb — pick the box with
-`arch`, and always pass `docker_image` explicitly so the runner pulls a prebuilt tag rather than
-building one. For an A/B use `benchmark_tool=jsonbench-sweep` with `tool_config.clients` listing one
-`nethermind@<image>` per arm (the first is the response-parity baseline, compared byte-for-byte), then
-dispatch the same config a second time with the arms swapped, because position artifacts on this rig
-reach ~10% and have pointed in opposite directions on different workloads.
+`arch`, and pass `docker_image` explicitly so the runner pulls a prebuilt tag rather than building one.
+The default preset (`benchmark_tool=corpus-ab`) compares `docker_image` against the **cached master baseline**:
+after every master push that changes `src/Nethermind/**`, `Publish Docker image` completes and a `workflow_run`
+trigger records `nethermind:master-<sha7>` alone on the corpus (`corpus-baseline` preset) — its aggregates go to the
+GitHub Actions cache (`rpc-corpus-baseline-<arch>-<corpus>-<cell>-<run id>`, newest wins), its parity responses stay
+on the runner under `<expb data dir>/rpc-bench/baselines/`. A PR run therefore executes only the PR image and the
+comment names the master image, date and run the baseline came from; with no cache yet it runs `nethermind:master`
+itself. `<cell>` is a hash of every knob that shapes the cell (request count, warm-up, seed, replay passes, rps,
+`node_env_vars`, cpu cap/cpuset/memory, …), so changing any of them misses the cache on purpose and the run measures
+master in-job — never compare a cached baseline across cell shapes. Only **amd64** baselines refresh automatically
+(the `workflow_run` path takes the default `arch`), so an `arch=arm64` corpus-ab always takes that two-arm fallback at
+~2x the runtime unless you record an arm64 baseline by hand (`-f benchmark_tool=corpus-baseline -f arch=arm64`).
+Cached aggregates and on-runner parity responses are separate state and can come from different master vintages.
+`baseline_image=<image>` forces a real two-arm A/B in one job; `rounds=2` (A B B A) adds an in-run A/A control at
+twice the cost — the frequency cap and seeded requests make single rounds land within ~1–1.5%, so 1 is the default.
+More than two arms: `tool_config.clients` (`nethermind@<image>` per arm) overrides the derived list.
 
 ## What the runners actually hold
+
+The amd64 box holds the full snapshot set, so it serves every `client`, `reference_client` and
+`state_layout`. The ARM box carries the Nethermind **flat** set plus one directory per additionally
+provisioned client (`/data/<client>/<client>-<block>`), so any provisioned `client` runs there in
+single-node mode with `reference_client=none`, `state_layout=flat`, and a prebuilt image (its small
+root disk dies under a build). Sweeps resolve every arm's set under the Nethermind snapshot root, so
+geth/reth sweep arms (`tool_config.clients`) run on amd64 only; the ARM box's per-client sets serve
+single-node runs.
 
 Both boxes carry **one** private `eth_call` corpus, `eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz`
 = **497 records** (heavy simulation traffic: every record carries state overrides, median ~331 KiB). The
 sweep discovers it by glob and prints `Corpus scenarios: …` / `corpus OK: 497 records` — read those lines
 rather than assuming a corpus set. Pin one with `corpus_glob` when more are added.
 
-The canonical cell is **100 rps for 120 s after a discarded 60 s warm-up at 400 rps**. Rates are
+The canonical cell is **20,000 requests at 100 rps per arm after a discarded 60 s warm-up at 400 rps**, plus a
+40-pass closed-loop per-record replay (`timings_passes: 40`); the request sequence is seeded so every arm replays
+identical requests, the CPU frequency is capped for the job, and the PR image is compared against the cached master
+baseline (see `scripts/rpc-bench/README.md`, "Triggering" and "Fixed corpus A/B"). Rates are
 the thing to get right:
 
 | rate | usable? |
@@ -47,8 +69,8 @@ corpus (`corpus-v2`, ~1.1 GB) rather than these JSONL corpora, and with a seeded
 its own stale timings — use the json-bench per-category config for an A/B instead.
 
 ```bash
+# default preset corpus-ab: docker_image (the PR build) vs the cached master baseline on the private corpus,
+# 20k requests at 100 rps, 40-pass replay; every knob is a plain input, JSON is only for overrides
 gh workflow run run-rpc-benchmarks.yml --ref <branch> \
-  -f arch=amd64 -f benchmark_tool=jsonbench-sweep \
-  -f docker_image=nethermindeth/nethermind:master-<sha> \
-  -f tool_config='{"clients":"nethermind@nethermindeth/nethermind:master-<sha> nethermind@nethermindeth/nethermind:<pr-tag>","rps_list":"100","duration":"120s"}'
+  -f arch=amd64 -f docker_image=nethermindeth/nethermind:<pr-tag> -f baseline_image=nethermindeth/nethermind:master-<sha>
 ```

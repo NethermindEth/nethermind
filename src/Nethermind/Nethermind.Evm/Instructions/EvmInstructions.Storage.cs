@@ -671,7 +671,7 @@ public static partial class EvmInstructions
         Unsafe.SkipInit(out EvmWord word);
         EvmWord storageWord = storageCell.Index.ToBigEndianWord();
         ReadOnlySpan<byte> storageBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref storageWord, 1));
-        vm.TxTracer.ReportStorageChange(storageBytes, value.ToMinimalBigEndian(ref word));
+        vm.TxTracer.ReportOperationStorageChange(storageBytes, value.ToMinimalBigEndian(ref word));
     }
 
     /// <summary>
@@ -745,7 +745,7 @@ public static partial class EvmInstructions
         ref byte slot = ref stack.PeekBytesByRefUnchecked();
         EvmStack.ReadMemoryPositionFromSlot(ref slot, out UInt256 result);
 
-        ReadOnlySpan<byte> inputData = vm.VmState.Env.InputData.Span;
+        ReadOnlySpan<byte> inputData = MemoryMarshal.CreateReadOnlySpan(in stack.InputData, (int)stack.InputDataLength);
 
         ulong offset = result.u0;
         if (!result.IsUint64 || offset >= (uint)inputData.Length)

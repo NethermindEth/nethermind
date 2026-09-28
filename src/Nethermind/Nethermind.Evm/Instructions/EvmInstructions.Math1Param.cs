@@ -218,9 +218,17 @@ public static partial class EvmInstructions
     {
         if (!TGasPolicy.UpdateGas<LowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
+        return SignExtendCore<TTracingInst, OnFlag>(ref stack);
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType SignExtendCore<TTracingInst, TCheckDepth>(ref EvmStack stack)
+        where TTracingInst : struct, IFlag
+        where TCheckDepth : struct, IFlag
+    {
         // The index and the word it applies to are adjacent, so one depth check covers both.
-        if (!stack.EnsureDepth(2))
-            goto StackUnderflow;
+        if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) return EvmExceptionType.StackUnderflow;
         ref byte bytesRef = ref stack.Pop1Peek32BytesUnchecked();
 
         // Only an index below 32 extends anything, so test the index where it lies. Decoding it as
@@ -264,8 +272,6 @@ public static partial class EvmInstructions
         }
         if (TTracingInst.IsActive) stack.ReportPushWord(ref bytesRef);
         return EvmExceptionType.None;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
     }
 
     /// <summary>Leading zero bits of a word in UInt256 limb layout: limb 3 is the most significant.</summary>

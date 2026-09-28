@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -28,15 +29,15 @@ public class CompositeNodeSourceTests
     }
 
     [Test]
-    [CancelAfter(10000)]
-    public async Task DiscoverNodes_ShouldStopInnerSources_WhenEnumerationIsDisposed(CancellationToken token)
+    public async Task DiscoverNodes_ShouldStopInnerSources_WhenEnumerationIsDisposed()
     {
         TestNodeSource innerSource = new();
         CompositeNodeSource compositeNodeSource = new(innerSource);
         Node node = new(TestItem.PublicKeyA, "1.2.3.4", 1234);
         innerSource.AddNode(node);
 
-        List<Node> nodes = await compositeNodeSource.DiscoverNodes(CancellationToken.None).Take(1).ToListAsync(token);
+        Task<List<Node>> enumeration = compositeNodeSource.DiscoverNodes(CancellationToken.None).Take(1).ToListAsync().AsTask();
+        List<Node> nodes = await enumeration.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.That(nodes, Is.EqualTo(new[] { node }));
     }

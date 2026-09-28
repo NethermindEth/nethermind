@@ -121,8 +121,6 @@ namespace Nethermind.Runner.Ethereum
             string urlsString = string.Join(" ; ", urls);
             // TODO: replace http with ws where relevant
 
-            ThisNodeInfo.AddInfo("JSON RPC     :", $"{urlsString}");
-
             _webApp = new WebHost(webApp.Services, webApp.Configuration, startup, _logManager);
 
             if (!cancellationToken.IsCancellationRequested)

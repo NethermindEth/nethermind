@@ -2,16 +2,10 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-"""Sample a benchmarked node container's resource use for the duration of a load cell.
+"""Sample a node container's cgroup v2 counters for the duration of a load cell.
 
-Reads the container's cgroup v2 files from the host, so nothing is required inside the image
-(reth, geth and Nethermind images differ in what shell and tooling they carry). Emits counters
-and derived rates only — no request or response data can pass through here.
-
-The headline number is CPU seconds per request: latency says how long a call took, this says how
-much machine it cost, which is what distinguishes "slower because it does more work" from
-"slower because it waits". Pressure stalls (PSI) separate a third case: waiting on IO or memory
-rather than running at all.
+Emits counters and derived rates only. The headline is CPU-ms per request: latency says how long a
+call took, this says how much machine it cost.
 """
 
 from __future__ import annotations
@@ -31,13 +25,12 @@ CGROUP_ROOTS = ("/sys/fs/cgroup/system.slice/docker-{cid}.scope",
 
 
 class ResourceSampleError(Exception):
-    """Raised when the container's cgroup cannot be located or read."""
+    """The container's cgroup cannot be located or read."""
 
 
 def _container_id(name: str) -> str:
     try:
-        out = subprocess.run(["docker", "inspect", "--format", "{{.Id}}", name],
-                             capture_output=True, text=True, timeout=30)
+        out = subprocess.run(["docker", "inspect", "--format", "{{.Id}}", name], capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as error:
         raise ResourceSampleError(f"cannot inspect container: {error.__class__.__name__}") from None
     if out.returncode != 0:
@@ -54,7 +47,6 @@ def _cgroup_dir(container_id: str) -> Path:
 
 
 def _read_kv(path: Path) -> dict[str, int]:
-    """Parse 'key value' lines (cpu.stat, memory.stat)."""
     values: dict[str, int] = {}
     try:
         for line in path.read_text().splitlines():
@@ -75,7 +67,6 @@ def _read_int(path: Path) -> int | None:
 
 
 def _pressure_total(path: Path) -> int | None:
-    """'some avg10=.. total=N' -> N microseconds stalled."""
     try:
         for line in path.read_text().splitlines():
             if line.startswith("some"):
@@ -102,11 +93,7 @@ def _io_totals(path: Path) -> tuple[int, int]:
 
 
 def sample(container: str, out_path: str, interval: float, should_stop=None) -> None:
-    """Sample until should_stop() is true; by default until SIGTERM/SIGINT.
-
-    The predicate is injectable so the loop and its arithmetic can be exercised without
-    delivering a signal — Windows cannot deliver a catchable SIGTERM, and this runs on Linux.
-    """
+    """Sample until should_stop() (default: SIGTERM/SIGINT). Every figure is a delta or a sample inside the window."""
     cgroup = _cgroup_dir(_container_id(container))
     stop = {"now": False}
     if should_stop is None:
@@ -121,9 +108,7 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
     cpu_start = cpu_usec()
     throttled_start = _read_kv(cgroup / "cpu.stat").get("throttled_usec", 0)
     io_start = _io_totals(cgroup / "io.stat")
-    psi_start = {name: _pressure_total(cgroup / f"{name}.pressure")
-                 for name in ("cpu", "io", "memory")}
-
+    psi_start = {name: _pressure_total(cgroup / f"{name}.pressure") for name in ("cpu", "io", "memory")}
     memory_samples: list[int] = []
     peak_cores = 0.0
     last_t, last_cpu = started, cpu_start
@@ -142,23 +127,19 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
     wall = time.monotonic() - started
     cpu_seconds = (cpu_usec() - cpu_start) / 1e6
     io_end = _io_totals(cgroup / "io.stat")
-    throttle = _read_kv(cgroup / "cpu.stat")
 
     def psi_delta(name: str) -> int | None:
         end = _pressure_total(cgroup / f"{name}.pressure")
         start = psi_start.get(name)
         return None if end is None or start is None else end - start
 
-    # Every figure here is a delta or a sample taken inside the window. cgroup lifetime values
-    # (memory.peak, the raw throttled_usec) would fold node startup and DB warmup into what is
-    # reported as a per-cell number, so the peak is the sampled maximum and throttling is a delta.
     summary = {
         "wall_seconds": round(wall, 3),
         "samples": len(memory_samples),
         "cpu_seconds": round(cpu_seconds, 3),
         "cpu_avg_cores": round(cpu_seconds / wall, 3) if wall > 0 else 0.0,
         "cpu_peak_cores": round(peak_cores, 3),
-        "cpu_throttled_usec": throttle.get("throttled_usec", 0) - throttled_start,
+        "cpu_throttled_usec": _read_kv(cgroup / "cpu.stat").get("throttled_usec", 0) - throttled_start,
         "memory_avg_bytes": int(sum(memory_samples) / len(memory_samples)) if memory_samples else 0,
         "memory_peak_bytes": max(memory_samples) if memory_samples else 0,
         "io_read_bytes": io_end[0] - io_start[0],
@@ -166,14 +147,12 @@ def sample(container: str, out_path: str, interval: float, should_stop=None) -> 
         "stall_cpu_usec": psi_delta("cpu"),
         "stall_io_usec": psi_delta("io"),
         "stall_memory_usec": psi_delta("memory"),
-        # The delivered count is not known until the cell reports it; `normalize` fills it in.
-        "requests": 0,
+        "requests": 0,  # filled in by `normalize` once the cell reports its delivered count
     }
     _write(out_path, _with_rates(summary))
 
 
 def _with_rates(summary: dict) -> dict:
-    """Add per-request costs when a request count is known; drop stale ones when it is not."""
     summary.pop("cpu_ms_per_request", None)
     summary.pop("io_read_bytes_per_request", None)
     requests = summary.get("requests", 0)
@@ -188,18 +167,12 @@ def _write(out_path: str, summary: dict) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8") as handle:
         json.dump(summary, handle, sort_keys=True, separators=(",", ":"))
-    print(f"resources: {summary['cpu_avg_cores']} avg cores, "
-          f"{summary['memory_peak_bytes'] / 1e9:.2f} GB peak, "
+    print(f"resources: {summary['cpu_avg_cores']} avg cores, {summary['memory_peak_bytes'] / 1e9:.2f} GB peak, "
           f"{summary.get('cpu_ms_per_request', 'n/a')} CPU-ms/request", flush=True)
 
 
 def normalize(out_path: str, requests: int) -> None:
-    """Restate an existing sample against the request count the load actually delivered.
-
-    The sampler cannot know it: deriving requests from rate x duration assumes an integer-second
-    duration and that k6 dropped no iterations. Both are false in general, so the count comes from
-    the benchmark's own `http_reqs` after the cell.
-    """
+    """Restate a sample against the request count the load actually delivered."""
     target = Path(out_path)
     try:
         with target.open("r", encoding="utf-8") as handle:
@@ -215,17 +188,13 @@ def normalize(out_path: str, requests: int) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-
     sample_parser = subparsers.add_parser("sample", help="sample until SIGTERM")
     sample_parser.add_argument("--container", required=True)
     sample_parser.add_argument("--out", required=True)
     sample_parser.add_argument("--interval", type=float, default=0.25)
-
-    normalize_parser = subparsers.add_parser(
-        "normalize", help="restate a sample against the delivered request count")
+    normalize_parser = subparsers.add_parser("normalize", help="restate a sample against the delivered request count")
     normalize_parser.add_argument("--out", required=True)
     normalize_parser.add_argument("--requests", type=int, required=True)
-
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "sample":
@@ -234,8 +203,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             normalize(arguments.out, arguments.requests)
     except ResourceSampleError as error:
         print(f"resource sampling unavailable: {error}", file=sys.stderr)
-        return 0  # never fail a benchmark because sampling could not start
-    return 0
+    return 0  # sampling must never fail a benchmark
 
 
 if __name__ == "__main__":

@@ -403,14 +403,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return gasAvailable;
         }
 
-        if (accessTracker.IsCold(in storageCell))
-        {
-            if (!UpdateGas(ref gas, TMode.IsEip8038Enabled(spec) ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad))
-                return false;
-
-            accessTracker.WarmUp(in storageCell);
-            return true;
-        }
+        // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
+        if (accessTracker.WarmUp(in storageCell))
+            return UpdateGas(ref gas, TMode.IsEip8038Enabled(spec) ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad);
 
         // EIP-8038 charges the warm-access cost on SSTORE too; the net-metered charge is dropped.
         if (storageAccessType == StorageAccessType.SLOAD || TMode.IsEip8038Enabled(spec))
