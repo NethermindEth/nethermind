@@ -1217,6 +1217,16 @@ jobs:
             done
           fi
 
+          # NETHERMIND_COUNT_INSTRUCTIONS=1 makes the client read its own hardware counters with perf_event_open,
+          # which Docker's default seccomp profile refuses unless the container holds CAP_PERFMON. An expb without
+          # cap_add support ignores that key; perf_event_paranoid then decides whether the client may count.
+          if printf '%s' "${CLIENT_ENV:-}" | grep -q 'NETHERMIND_COUNT_INSTRUCTIONS=1'; then
+            SK="${scenario_key}" "${YQ}" -i '.scenarios.[strenv(SK)].security_opt = ["seccomp=unconfined"]' "${RENDERED_CONFIG_FILE}"
+            SK="${scenario_key}" "${YQ}" -i '.scenarios.[strenv(SK)].cap_add = ["PERFMON"]' "${RENDERED_CONFIG_FILE}"
+            echo "Instruction counting: uid=$(id -u) perf_event_paranoid=$(cat /proc/sys/kernel/perf_event_paranoid 2>/dev/null || echo unknown)" \
+              "docker=$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo unknown) kernel=$(uname -r)"
+          fi
+
           echo "Effective resources block:"
           "${YQ}" '.resources' "${RENDERED_CONFIG_FILE}"
 
@@ -1990,6 +2000,11 @@ jobs:
           [[ -f "${RAW_RUN_LOG}" ]] && cp "${RAW_RUN_LOG}" "${LOG_ARTIFACT_DIR}/combined.log" || true
           [[ -f "${CLEAN_RUN_LOG}" ]] && cp "${CLEAN_RUN_LOG}" "${LOG_ARTIFACT_DIR}/combined.clean.log" || true
           [[ -n "${METRICS_FILE}" && -f "${METRICS_FILE}" ]] && cp "${METRICS_FILE}" "${LOG_ARTIFACT_DIR}/metrics.env" || true
+          # Per-block instruction counts from a NETHERMIND_COUNT_INSTRUCTIONS=1 run, one line per block and branch.
+          if [[ -f "${RAW_RUN_LOG}" ]] && grep -aq 'EXPB-COUNT' "${RAW_RUN_LOG}"; then
+            grep -a 'EXPB-COUNT' "${RAW_RUN_LOG}" > "${LOG_ARTIFACT_DIR}/expb-counts.log" || true
+            echo "Instruction counts: $(grep -c 'EXPB-COUNT block=' "${LOG_ARTIFACT_DIR}/expb-counts.log" || true) blocks"
+          fi
           if [[ -n "${RENDERED_CONFIG_FILE}" && -f "${RENDERED_CONFIG_FILE}" ]]; then
             [[ -x "${YQ_BIN}" ]] || { echo "::error::yq is required to sanitize the rendered config before artifact staging."; exit 1; }
             sanitized_config="$(mktemp "${LOG_ARTIFACT_DIR}/.rendered-config.XXXXXX")"

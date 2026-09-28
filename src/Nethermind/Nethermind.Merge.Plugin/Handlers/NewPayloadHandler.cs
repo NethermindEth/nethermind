@@ -469,8 +469,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
 
+    /// <summary>
+    /// Benchmark switch: leaves every sender to the processing queue, which recovers them all before the block
+    /// runs. The early recovery races the processing thread, so without this the thread's instruction count per
+    /// block depends on who won.
+    /// </summary>
+    private static readonly bool s_noEarlySenderRecovery =
+        Environment.GetEnvironmentVariable("NETHERMIND_NO_EARLY_SENDER_RECOVERY") == "1";
+
     private void StartSenderRecovery(ExecutionPayload request)
     {
+        if (s_noEarlySenderRecovery)
+            return;
+
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
         // the senders; they recover in the processing queue as before.
         if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance)

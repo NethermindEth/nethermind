@@ -14,8 +14,7 @@ namespace Nethermind.Core.Extensions
         // Ensure that hashes are different for every run of the node and every node, so if there are any hash collisions
         // on one node, they will not be the same on another node or across a restart and cannot degrade the network as a whole.
         /// <summary>The full-width process seed from cryptographic randomness.</summary>
-        public static readonly Int256.UInt256 InstanceRandom =
-            new(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        public static readonly Int256.UInt256 InstanceRandom = new(CreateSeed(32, purpose: 0));
 
         private static readonly ulong[] AddressSeeds = [DeriveAddressSeed(InstanceRandom.u0), DeriveAddressSeed(InstanceRandom.u1),
             DeriveAddressSeed(InstanceRandom.u2), DeriveAddressSeed(InstanceRandom.u3)];
@@ -61,18 +60,28 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static partial int CombineHash(uint hash, ulong value) => (int)BitOperations.Crc32C(hash, value);
 
-        private static readonly Vector128<byte> AesHashSeed = CreateAesHashSeed();
-        private static readonly Vector128<byte> AesHash20Seed = CreateAesHashSeed();
-        private static readonly Vector128<byte> AesHashPairSeed = CreateAesHashSeed();
-        private static readonly Vector128<byte> AesHash32Seed = CreateAesHashSeed();
-        private static readonly Vector128<byte> AesHashFinalSeed = CreateAesHashSeed();
+        private static readonly Vector128<byte> AesHashSeed = CreateAesHashSeed(purpose: 1);
+        private static readonly Vector128<byte> AesHash20Seed = CreateAesHashSeed(purpose: 2);
+        private static readonly Vector128<byte> AesHashPairSeed = CreateAesHashSeed(purpose: 3);
+        private static readonly Vector128<byte> AesHash32Seed = CreateAesHashSeed(purpose: 4);
+        private static readonly Vector128<byte> AesHashFinalSeed = CreateAesHashSeed(purpose: 5);
 
-        [SkipLocalsInit]
-        private static Vector128<byte> CreateAesHashSeed()
+        private static Vector128<byte> CreateAesHashSeed(int purpose) =>
+            Unsafe.ReadUnaligned<Vector128<byte>>(ref MemoryMarshal.GetArrayDataReference(CreateSeed(16, purpose)));
+
+        /// <summary>
+        /// Cryptographic randomness, unless <c>NETHERMIND_HASH_SEED</c> fixes the seeds for a benchmark: hash tables
+        /// then lay out the same way on every run, so a block's instruction count repeats. A fixed seed gives up the
+        /// per-process protection above, so never set it on a node that serves the network.
+        /// </summary>
+        /// <remarks>Reads the variable itself rather than a static, since the seeds initialise before other statics.</remarks>
+        private static byte[] CreateSeed(int length, int purpose)
         {
-            Span<byte> bytes = stackalloc byte[16];
-            System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
-            return Unsafe.ReadUnaligned<Vector128<byte>>(ref MemoryMarshal.GetReference(bytes));
+            string? fixedSeed = Environment.GetEnvironmentVariable("NETHERMIND_HASH_SEED");
+            if (string.IsNullOrEmpty(fixedSeed)) return System.Security.Cryptography.RandomNumberGenerator.GetBytes(length);
+
+            byte[] digest = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{fixedSeed}/{purpose}"));
+            return digest[..length];
         }
 
     }
