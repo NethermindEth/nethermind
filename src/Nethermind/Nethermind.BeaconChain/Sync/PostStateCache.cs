@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.StateTransition;
@@ -35,13 +36,18 @@ namespace Nethermind.BeaconChain.Sync;
 /// latest justified ones, of which the next finalized checkpoint is one: before a checkpoint candidate can evict a
 /// boundary entry, the root <paramref name="justifiedRoot"/> names is pinned while its state is still held. A persisted
 /// Gloas state is read back from the store only for a root <paramref name="isGloasBlock"/> accepts, into the per-block
-/// tier, so the read never evicts a checkpoint candidate unpinned; an undecodable one is logged and treated as absent.
+/// tier, so the read never evicts a checkpoint candidate unpinned. An undecodable persisted state of either fork is logged and treated as absent.
+/// A checkpoint candidate evicted from the boundary tier while <paramref name="isAboveFinalized"/> holds is persisted,
+/// because a root first justified after leaving both tiers is resolvable only from the store. With finality two or three
+/// epochs behind, a canonical candidate is usually finalized before eight later ones evict it; under non-finality this
+/// writes about one state per epoch beyond the tier's span. The store has no state deletion, so these states stay after finality.
 /// <para/>
 /// A node started from a Gloas anchor has no Fulu lineage: <see cref="LineageRoot"/> and
 /// <see cref="LineageState"/> are then <c>null</c>.
 /// </remarks>
 /// <param name="isGloasBlock">Whether fork choice holds the root at a Gloas slot; bounds which roots may cost a store read.</param>
 /// <param name="justifiedRoot">Fork choice's justified checkpoint root, whose Gloas state must outlive the boundary tier until finalization passes it.</param>
+/// <param name="isAboveFinalized">Whether fork choice holds the root above the finalized checkpoint's start slot, so it can still become justified.</param>
 internal sealed class PostStateCache(
     BeaconChainStore store,
     BeaconChainSpec spec,
@@ -49,11 +55,15 @@ internal sealed class PostStateCache(
     BeaconStateFulu? lineageState,
     Func<Hash256, bool>? isGloasBlock = null,
     Func<Hash256>? justifiedRoot = null,
-    ILogManager? logManager = null) : IForkChoiceStateProvider, IGloasBlockStateProvider
+    ILogManager? logManager = null,
+    Func<Hash256, bool>? isAboveFinalized = null) : IForkChoiceStateProvider, IGloasBlockStateProvider
 {
     private readonly ILogger _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<PostStateCache>();
 
     private const int RetainedStateCount = 8;
+
+    /// <summary>Byte offset of <c>slot</c> in a persisted state, the same in the Fulu and Gloas layouts: <c>genesis_time</c> (8) plus <c>genesis_validators_root</c> (32).</summary>
+    private const int StateSlotOffset = 40;
 
     // Two epochs of slots: an envelope arrives within its block's slot, and a payload attestation
     // or late envelope for a block two epochs back is already outside any window the spec honors.
@@ -61,7 +71,7 @@ internal sealed class PostStateCache(
 
     private readonly LruCache<Hash256, BeaconStateFulu> _retained = new(RetainedStateCount, nameof(PostStateCache));
     private readonly LruCache<Hash256, BeaconStateGloas> _retainedGloas = new(RetainedGloasStateCount, nameof(PostStateCache) + "Gloas");
-    private readonly LruCache<Hash256, BeaconStateGloas> _retainedGloasBoundaries = new(RetainedStateCount, nameof(PostStateCache) + "GloasBoundaries");
+    private readonly GloasBoundaryTier _retainedGloasBoundaries = new(store, isAboveFinalized, (logManager ?? LimboLogs.Instance).GetClassLogger<PostStateCache>());
 
     private Hash256? _pinnedGloasRoot;
     private BeaconStateGloas? _pinnedGloasState;
@@ -99,8 +109,8 @@ internal sealed class PostStateCache(
             return retained;
         }
 
-        // A Gloas snapshot is not this root's Fulu state; the Gloas getter serves it.
-        if (store.TryGetState(blockRoot, out byte[]? ssz) && BeaconStateCodec.DecodeForked(ssz, spec) is ForkedBeaconState.OfFulu { State: BeaconStateFulu state })
+        // A Gloas snapshot is not this root's Fulu state, so it is refused by its slot before a full decode; the Gloas getter serves it.
+        if (store.TryGetState(blockRoot, out byte[]? ssz) && !IsGloasSnapshot(ssz) && DecodePersisted(blockRoot, ssz) is ForkedBeaconState.OfFulu { State: BeaconStateFulu state })
         {
             _retained.Set(blockRoot, state);
             return state;
@@ -108,6 +118,9 @@ internal sealed class PostStateCache(
 
         return null;
     }
+
+    private bool IsGloasSnapshot(byte[] ssz) =>
+        ssz.Length >= StateSlotOffset + sizeof(ulong) && SignedBeaconBlockCodec.IsGloasSlot(BinaryPrimitives.ReadUInt64LittleEndian(ssz.AsSpan(StateSlotOffset)), spec);
 
     /// <inheritdoc/>
     public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
@@ -124,7 +137,7 @@ internal sealed class PostStateCache(
         if (checkpointCandidate)
         {
             PinJustified();
-            _retainedGloasBoundaries.Set(blockRoot, state);
+            _retainedGloasBoundaries.Set(blockRoot, new RetainedGloasState(blockRoot, state));
         }
     }
 
@@ -178,14 +191,19 @@ internal sealed class PostStateCache(
             return _previousJustifiedState;
         }
 
-        if (_retainedGloas.TryGet(blockRoot, out BeaconStateGloas? retained) || _retainedGloasBoundaries.TryGet(blockRoot, out retained))
+        if (_retainedGloas.TryGet(blockRoot, out BeaconStateGloas? retained))
         {
             return retained;
         }
 
+        if (_retainedGloasBoundaries.TryGet(blockRoot, out RetainedGloasState boundary))
+        {
+            return boundary.State;
+        }
+
         if (isGloasBlock?.Invoke(blockRoot) == true
             && store.TryGetState(blockRoot, out byte[]? ssz)
-            && DecodePersistedGloas(blockRoot, ssz) is { } state)
+            && DecodePersisted(blockRoot, ssz) is ForkedBeaconState.OfGloas { State: BeaconStateGloas state })
         {
             _retainedGloas.Set(blockRoot, state);
             return state;
@@ -194,17 +212,36 @@ internal sealed class PostStateCache(
         return null;
     }
 
-    private BeaconStateGloas? DecodePersistedGloas(Hash256 blockRoot, byte[] ssz)
+    private ForkedBeaconState? DecodePersisted(Hash256 blockRoot, byte[] ssz)
     {
         try
         {
-            return BeaconStateCodec.DecodeForked(ssz, spec) is ForkedBeaconState.OfGloas { State: BeaconStateGloas state } ? state : null;
+            return BeaconStateCodec.DecodeForked(ssz, spec);
         }
         catch (Exception e) when (e is BeaconStateException or InvalidDataException or NotSupportedException)
         {
             // A corrupt local snapshot must not fail every import or envelope naming this root.
             if (_logger.IsWarn) _logger.Warn($"Ignoring the undecodable persisted state of {blockRoot}: {e.Message}");
             return null;
+        }
+    }
+
+    private readonly record struct RetainedGloasState(Hash256 Root, BeaconStateGloas State);
+
+    /// <summary>The Gloas epoch-boundary tier, which persists a checkpoint candidate it evicts while that root can still become justified.</summary>
+    private sealed class GloasBoundaryTier(BeaconChainStore store, Func<Hash256, bool>? isAboveFinalized, ILogger logger)
+        : LruCache<Hash256, RetainedGloasState>(RetainedStateCount, nameof(PostStateCache) + "GloasBoundaries")
+    {
+        protected override void Evict(RetainedGloasState evicted)
+        {
+            // Also raised when a retained root is set again, which evicts nothing.
+            if (Contains(evicted.Root) || isAboveFinalized?.Invoke(evicted.Root) != true)
+            {
+                return;
+            }
+
+            store.PutState(evicted.Root, BeaconStateGloas.Encode(evicted.State));
+            if (logger.IsDebug) logger.Debug($"Persisted the evicted Gloas checkpoint candidate state of {evicted.Root} at slot {evicted.State.Slot}");
         }
     }
 }
