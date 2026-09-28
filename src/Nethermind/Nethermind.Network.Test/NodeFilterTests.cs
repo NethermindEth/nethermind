@@ -21,16 +21,17 @@ public class NodeFilterTests
     [Test]
     public void Touch_existing_address_does_not_allocate([Values] bool exactMatchOnly)
     {
+        const int Iterations = 1000;
         const int Windows = 5;
         NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly);
         IPAddress address = IPAddress.Parse("203.0.113.1");
-        for (int i = 0; i < 1000; i++) filter.Touch(address);
+        for (int i = 0; i < Iterations; i++) filter.Touch(address);
 
         long allocated = long.MaxValue;
         for (int window = 0; window < Windows; window++)
         {
             long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 1000; i++) filter.Touch(address);
+            for (int i = 0; i < Iterations; i++) filter.Touch(address);
             allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
