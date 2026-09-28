@@ -106,7 +106,7 @@ public partial class BeaconSyncOrchestratorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(lines, Has.Length.EqualTo(1));
-            Assert.That(lines[0], Does.Contain("slot 120 (+20 slots, 2.0 blocks/s), 80 behind wall slot 200"));
+            Assert.That(lines[0], Does.Match(@"slot 120 \(\+20 slots, 2\.0 blocks/s, 0 ms/block of which newPayload \d+ ms\), 80 behind wall slot 200"));
         }
     }
 
