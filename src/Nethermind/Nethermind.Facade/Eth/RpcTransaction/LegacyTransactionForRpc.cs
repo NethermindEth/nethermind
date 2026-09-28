@@ -42,9 +42,13 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
     public byte[]? Data { set { Input = value; } private get { return null; } }
 
+    /// <remarks>
+    /// <see cref="Data"/> is an alias when deserializing. An explicit JSON null for either is the same as omitting it,
+    /// so it never clears calldata set by the other.
+    /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
-    public byte[]? Input { get; set; }
+    public byte[]? Input { get; set => field = value ?? field; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public virtual UInt256? GasPrice { get; set; }

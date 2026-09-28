@@ -571,6 +571,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         yield return new("Rejects_InvalidHexCharacters", "0x01zz01", Bytes.ErrSyntax);
 
         yield return new("Parses_EmptyHex", "0x", Array.Empty<byte>());
+        yield return new("Parses_EmptyString", "", Array.Empty<byte>());
         yield return new("Parses_SingleByte", "0x1f", new byte[] { 0x1f });
         yield return new("Parses_DeadBeef", "0xDEADBEEF", new byte[] { 0xde, 0xad, 0xbe, 0xef });
     }
