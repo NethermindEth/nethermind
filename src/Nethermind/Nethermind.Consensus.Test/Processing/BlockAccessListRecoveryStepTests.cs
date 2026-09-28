@@ -56,6 +56,7 @@ public class BlockAccessListRecoveryStepTests
 
     [TestCase(false, false, false, TestName = "No consumer: nothing is looked up")]
     [TestCase(false, true, true, TestName = "Read warming alone still uses the list")]
+    [TestCase(true, false, true, TestName = "Parallel execution alone still uses the list")]
     [TestCase(true, true, true, TestName = "Parallel execution and read warming use the list")]
     public void Stored_list_is_attached_only_when_something_consumes_it(bool parallelExecution, bool batchRead, bool expectAttached)
     {
