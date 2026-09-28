@@ -43,8 +43,8 @@ public class GossipMessageValidatorColumnTests
         yield return Fulu("wrong subnet", DataColumnSidecarTestFixture.BuildValidSidecar(Subnet + 1, MainnetSlot), 0, MessageValidity.Rejected, consumed: false, ColumnGossipDropReason.WrongSubnet);
         yield return Fulu("future slot", DataColumnSidecarTestFixture.BuildValidSidecar(Subnet, MainnetSlot + 2), 0, MessageValidity.Ignored, consumed: false, ColumnGossipDropReason.FutureSlot);
         yield return Fulu("at the finalized start slot", Sidecar(), Mainnet.GetEpoch(MainnetSlot), MessageValidity.Ignored, consumed: false, ColumnGossipDropReason.BeforeFinalized);
-        yield return Fulu("inclusion proof is ordered after the parent checks", Sidecar(static s => s.KzgCommitmentsInclusionProof![0] = Hash256.Zero), 0, MessageValidity.Ignored, consumed: false, ColumnGossipDropReason.FailedInclusionProof);
-        yield return Fulu("KZG proofs are ordered after the parent checks", Sidecar(static s => s.KzgProofs = [s.KzgProofs![1], s.KzgProofs[0]]), 0, MessageValidity.Ignored, consumed: false, ColumnGossipDropReason.FailedKzgProofs);
+        yield return Fulu("invalid inclusion proof", Sidecar(static s => s.KzgCommitmentsInclusionProof![0] = Hash256.Zero), 0, MessageValidity.Rejected, consumed: false, ColumnGossipDropReason.FailedInclusionProof);
+        yield return Fulu("invalid KZG proofs", Sidecar(static s => s.KzgProofs = [s.KzgProofs![1], s.KzgProofs[0]]), 0, MessageValidity.Rejected, consumed: false, ColumnGossipDropReason.FailedKzgProofs);
     }
 
     [TestCaseSource(nameof(FuluCases))]

@@ -7,6 +7,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.P2P.Gossip;
 using Snappier;
 
 namespace Nethermind.BeaconChain.P2P.ReqResp;
@@ -67,8 +68,8 @@ public static class ReqRespFraming
     // Frame data is capped at the snappy framing-format limits: 65536 bytes of uncompressed data
     // plus the 4-byte CRC, with headroom for the worst-case snappy block expansion of a 64 KiB frame.
     private const int MaxFrameDataLength = 4 + 65536 + 65536 / 6 + 32;
-    // A stream identifier (10 bytes) and one empty data frame (at most 9) with headroom for padding; an empty request needs no more.
-    private const int MaxEmptyRequestFramingBytes = 64;
+    // phase0 p2p ssz_snappy: max_compressed_len(0); a stream identifier (10 bytes) and one empty data frame (at most 9) fit.
+    private static readonly int MaxEmptyRequestFramingBytes = Eth2MessageId.MaxCompressedLength(0);
     private static readonly byte[] StreamIdentifierContent = "sNaPpY"u8.ToArray();
     // The masked CRC-32C of no data (0xa282ead8), little-endian, as the snappy framing format stores it.
     private static readonly byte[] EmptyDataChecksum = [0xd8, 0xea, 0x82, 0xa2];
@@ -158,14 +159,20 @@ public static class ReqRespFraming
         }
     }
 
-    // An empty payload has no data frame to end it, so its framing runs to the requester's half-close; any legal framing that decodes to no bytes is accepted.
+    // An empty payload has no data frame to end it, so its framing runs to the requester's half-close or to max_compressed_len(0); any legal framing that decodes to no bytes is accepted.
     private static async Task ReadEmptyRequestFramingAsync(Stream stream, CancellationToken token)
     {
         using MemoryStream frames = new();
         byte[] header = new byte[4];
         int framedBytesRead = 0;
-        while (await stream.ReadAsync(header.AsMemory(0, 1), token) != 0)
+        // phase0 p2p ssz_snappy: nothing past max_compressed_len(0) is read, so framing that fills the bound ends there.
+        while (framedBytesRead < MaxEmptyRequestFramingBytes && await stream.ReadAsync(header.AsMemory(0, 1), token) != 0)
         {
+            if (framedBytesRead + header.Length > MaxEmptyRequestFramingBytes)
+            {
+                throw new Eth2ReqRespException($"Snappy framing of an empty request exceeds the {MaxEmptyRequestFramingBytes}-byte bound");
+            }
+
             await stream.ReadExactlyAsync(header.AsMemory(1), token);
             byte frameType = header[0];
             int dataLength = header[1] | (header[2] << 8) | (header[3] << 16);
@@ -241,10 +248,8 @@ public static class ReqRespFraming
         }
 
         int sszLength = (int)declaredLength;
-        // Worst-case compressed size for a payload that decodes to sszLength bytes: one data frame
-        // per 64 KiB block plus one stream identifier. Bounds total buffered wire bytes so a peer
-        // cannot stall uncompressedTotal at zero with endless stream-identifier or padding frames.
-        long maxFramedBytes = 4 + StreamIdentifierContent.Length + ((sszLength + 65535) / 65536) * (long)(4 + MaxFrameDataLength);
+        // phase0 p2p ssz_snappy: a reader MUST NOT read more than max_compressed_len(n) bytes after the length-prefix n, frame headers and padding included.
+        int maxFramedBytes = Eth2MessageId.MaxCompressedLength(sszLength);
         long framedBytesRead = 0;
         using MemoryStream frames = new();
         long uncompressedTotal = 0;
@@ -252,6 +257,11 @@ public static class ReqRespFraming
         byte[] header = new byte[4];
         while (uncompressedTotal < sszLength)
         {
+            if (framedBytesRead + header.Length > maxFramedBytes)
+            {
+                throw new Eth2ReqRespException($"Snappy framing for a {sszLength}-byte payload needs more than the {maxFramedBytes}-byte bound");
+            }
+
             await stream.ReadExactlyAsync(header, token);
             byte frameType = header[0];
             int dataLength = header[1] | (header[2] << 8) | (header[3] << 16);
@@ -260,14 +270,14 @@ public static class ReqRespFraming
                 throw new Eth2ReqRespException($"Snappy frame of {dataLength} bytes exceeds the {MaxFrameDataLength} limit");
             }
 
-            byte[] data = new byte[dataLength];
-            await stream.ReadExactlyAsync(data, token);
-
-            framedBytesRead += 4 + dataLength;
+            framedBytesRead += header.Length + dataLength;
             if (framedBytesRead > maxFramedBytes)
             {
-                throw new Eth2ReqRespException($"Snappy framing for a {sszLength}-byte payload read {framedBytesRead} wire bytes, more than the {maxFramedBytes}-byte bound");
+                throw new Eth2ReqRespException($"Snappy framing for a {sszLength}-byte payload would read {framedBytesRead} wire bytes, more than the {maxFramedBytes}-byte bound");
             }
+
+            byte[] data = new byte[dataLength];
+            await stream.ReadExactlyAsync(data, token);
 
             switch (frameType)
             {

@@ -49,6 +49,9 @@ public enum ColumnGossipDropReason
 
     /// <summary>A Gloas sidecar whose stored block is not cached and not canonical at a recent slot, after this slot's store decodes are spent.</summary>
     StoreDecodeBudgetSpent,
+
+    /// <summary>A Fulu sidecar whose slot is not above the slot of its held parent.</summary>
+    NotAboveParentSlot,
 }
 
 /// <summary>
@@ -59,10 +62,10 @@ public enum ColumnGossipDropReason
 /// Implements the EIP-7594 <c>validate_data_column_sidecar_gossip</c> conditions in the spec's own
 /// order (p2p-interface.md), cheapest structural checks first: decode, per-(slot, proposer_index,
 /// index) duplicate suppression, the structural part of <c>verify_data_column_sidecar</c>, subnet
-/// correctness, not-from-a-future-slot, then the two cryptographic checks (merkle inclusion proof,
+/// correctness, not-from-a-future-slot, a slot above a held parent's, then the two cryptographic checks (merkle inclusion proof,
 /// KZG cell-proof batch). The remaining conditions - the sidecar's block parent has been seen and
 /// passes validation, the proposer index is valid and its signature verifies, the sidecar's slot is
-/// higher than its parent's, the current finalized checkpoint is an ancestor of the sidecar's block,
+/// higher than the slot of a parent not held, the current finalized checkpoint is an ancestor of the sidecar's block,
 /// and the sidecar is proposed by the expected proposer - all need the head state and fork choice.
 /// Exactly like <see cref="GossipRouter"/> leaves full block validation to the orchestrator import
 /// pipeline, this router does not implement them: <see cref="DataColumnSidecarReceived"/> firing is
@@ -101,6 +104,9 @@ public sealed class ColumnGossipRouter(
     /// </remarks>
     internal const int StoreDecodesPerSlot = 16;
 
+    /// <summary>The most stored blocks decoded per slot to read the slot of a Fulu sidecar's held, uncached parent.</summary>
+    internal const int ParentSlotReadsPerSlot = 16;
+
     private readonly ILogger _logger = logManager.GetClassLogger<ColumnGossipRouter>();
     private readonly LruKeyCache<(ulong Slot, ulong ProposerIndex, ulong Index)> _seenSidecars = new(SeenCacheSize, "beacon column gossip seen sidecars");
     private readonly LruKeyCache<(Hash256 BlockRoot, ulong Index)> _seenGloasSidecars = new(SeenCacheSize, "beacon column gossip seen gloas sidecars");
@@ -111,9 +117,9 @@ public sealed class ColumnGossipRouter(
     // A root whose stored block is not a readable Gloas block never becomes one, so it is decoded once, not once per message.
     private readonly LruCache<Hash256, GloasBlockLookup> _nonGloasBlocks = new(NonGloasBlockCacheSize, "beacon column gossip non-gloas blocks");
 
-    private readonly Lock _storeDecodeLock = new();
-    private ulong _storeDecodeSlot;
-    private int _storeDecodesThisSlot;
+    private readonly PerSlotBudget _storeDecodes = new(StoreDecodesPerSlot);
+    private readonly PerSlotBudget _parentSlotReads = new(ParentSlotReadsPerSlot);
+    private readonly StoredBlockSlots? _storedBlockSlots = store is null ? null : new(store, slotClock, logManager.GetClassLogger<ColumnGossipRouter>(), "beacon column gossip parent slots");
 
     // gloas/p2p-interface.md compute_max_data_column_sidecar_size: the progressive lists carry no SSZ bound of their own.
     private readonly int _maxGloasSidecarSize = (int)Math.Min(DataColumnSidecarGloasSize.ComputeMax(spec), (ulong)Eth2MessageId.MaxGossipSize);
@@ -233,6 +239,12 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.UnsubscribedSubnet, MessageValidity.Ignored);
         }
 
+        // The type bound caps only the uncompressed size; the compressed one is bounded by MAX_PAYLOAD_SIZE on every topic.
+        if (message.Length > Eth2MessageId.MaxCompressedGossipSize)
+        {
+            return Drop(ColumnGossipDropReason.Oversized, MessageValidity.Rejected);
+        }
+
         SnappyDecodeResult snappy = Eth2MessageId.TryDecompress(message, gloasTopic ? _maxGloasSidecarSize : Eth2MessageId.MaxGossipSize, out byte[]? payload);
         if (snappy != SnappyDecodeResult.Decoded)
         {
@@ -310,11 +322,16 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.StaleSlot, MessageValidity.Ignored);
         }
 
-        // [REJECT] verify_data_column_sidecar_inclusion_proof: a handful of SHA256 hashes, cheap. It and the KZG check are
-        // ordered after the parent checks, which need state, so a failure here is only Ignored.
+        // [REJECT] the sidecar is from a higher slot than its parent: the store holds only accepted blocks, so a held parent was seen and passed validation.
+        if (_storedBlockSlots?.TryRead(header.ParentRoot!, _parentSlotReads, out ulong parentSlot) == true && slot <= parentSlot)
+        {
+            return Drop(ColumnGossipDropReason.NotAboveParentSlot, MessageValidity.Rejected);
+        }
+
+        // [REJECT] verify_data_column_sidecar_inclusion_proof needs no state; gossip_validation.md lets it run before the parent checks that do.
         if (!DataColumnSidecarVerifier.VerifyInclusionProof(sidecar))
         {
-            return Drop(ColumnGossipDropReason.FailedInclusionProof, MessageValidity.Ignored);
+            return Drop(ColumnGossipDropReason.FailedInclusionProof, MessageValidity.Rejected);
         }
 
         // [REJECT] verify_data_column_sidecar_kzg_proofs: a native KZG cell-proof batch verification
@@ -330,12 +347,12 @@ public sealed class ColumnGossipRouter(
         // real sidecar - the deferred proposer signature check is what would actually bound it.
         if (!DataColumnSidecarVerifier.VerifyKzgProofs(sidecar))
         {
-            return Drop(ColumnGossipDropReason.FailedKzgProofs, MessageValidity.Ignored);
+            return Drop(ColumnGossipDropReason.FailedKzgProofs, MessageValidity.Rejected);
         }
 
         // Deferred (need beacon state / fork choice, exactly like GossipRouter's block handling defers
         // proposer signature and shuffling): parent-seen, parent-passes-validation, proposer index
-        // validity and signature, higher-slot-than-parent, finalized-checkpoint-is-ancestor, and
+        // validity and signature, higher-slot-than-a-parent-not-held, finalized-checkpoint-is-ancestor, and
         // expected-proposer. A caller must run those before trusting this sidecar against an
         // adversarial proposer.
         if (!_seenSidecars.Set((slot, proposerIndex, sidecar.Index)))
@@ -382,11 +399,13 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.WrongSubnet, MessageValidity.Rejected);
         }
 
-        // A sidecar no bid can match is dropped before a store read or parking; the spec orders its REJECT after the block checks, so only Ignored.
+        // A sidecar no bid can match is dropped before a block decode or parking. The spec orders its REJECT after the future-slot
+        // and block-seen IGNOREs, so only a sidecar whose block is held is rejected: that block's bid is within the blob limit, so a longer column fails too.
         bool blockCached = _gloasBlocks.TryGet(blockRoot, out GloasBlockColumns block);
         if (!blockCached && ExceedsCandidateBounds(sidecar) is { } boundsReason)
         {
-            return Drop(boundsReason, MessageValidity.Ignored);
+            bool convicted = ValidateNotFromFuture(sidecar.Slot) is null && store?.HasBlock(blockRoot) == true;
+            return Drop(boundsReason, convicted ? MessageValidity.Rejected : MessageValidity.Ignored);
         }
 
         // [IGNORE] not from a future slot. One early for the next slot is parked: its message id stays dropped for the seen TTL.
@@ -497,7 +516,7 @@ public sealed class ColumnGossipRouter(
             return GloasBlockLookup.Unknown;
         }
 
-        if (!IsCanonicalAtRecentSlot(blockRoot, sidecarSlot) && !TryTakeStoreDecode())
+        if (!IsCanonicalAtRecentSlot(blockRoot, sidecarSlot) && !_storeDecodes.TryTake(slotClock.CurrentSlot))
         {
             return GloasBlockLookup.BudgetSpent;
         }
@@ -527,27 +546,6 @@ public sealed class ColumnGossipRouter(
         block = new GloasBlockColumns(message.Slot, message.Body?.SignedExecutionPayloadBid?.Message?.BlobKzgCommitments ?? []);
         _gloasBlocks.Set(blockRoot, block);
         return GloasBlockLookup.Found;
-    }
-
-    private bool TryTakeStoreDecode()
-    {
-        ulong currentSlot = slotClock.CurrentSlot;
-        lock (_storeDecodeLock)
-        {
-            if (currentSlot != _storeDecodeSlot)
-            {
-                _storeDecodeSlot = currentSlot;
-                _storeDecodesThisSlot = 0;
-            }
-
-            if (_storeDecodesThisSlot >= StoreDecodesPerSlot)
-            {
-                return false;
-            }
-
-            _storeDecodesThisSlot++;
-            return true;
-        }
     }
 
     // The canonical index maps a slot to the root of the block at that slot, so such a root is a Gloas block matching the sidecar's slot.
