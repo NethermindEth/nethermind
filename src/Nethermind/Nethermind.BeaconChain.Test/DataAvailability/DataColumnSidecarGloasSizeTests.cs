@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
@@ -23,17 +24,20 @@ public class DataColumnSidecarGloasSizeTests
         yield return new TestCaseData(BeaconChainSpec.Hoodi).SetArgDisplayNames("hoodi");
     }
 
-    /// <summary>Every shipped network tops out at 21 blobs (BPO2).</summary>
+    /// <summary>
+    /// The expected value is <c>compute_max_data_column_sidecar_size</c> run as the spec writes it: the largest blob count in
+    /// the network's config, then the length of the container serialized with that many cells and proofs.
+    /// </summary>
     [TestCaseSource(nameof(ShippedSpecs))]
-    public void Shipped_networks_bound_a_sidecar_at_its_serialized_size_with_21_blobs(BeaconChainSpec spec)
+    public void Shipped_networks_bound_a_sidecar_at_its_serialized_size_with_the_schedule_maximum(BeaconChainSpec spec)
     {
-        ulong bound = DataColumnSidecarGloasSize.ComputeMax(spec);
-
-        using (Assert.EnterMultipleScope())
+        ulong maxBlobs = spec.MaxBlobsPerBlockElectra;
+        foreach (BlobScheduleEntry entry in spec.BlobSchedule)
         {
-            Assert.That(bound, Is.EqualTo(44072UL));
-            Assert.That(bound, Is.EqualTo((ulong)SerializedLength(21)), "the bound is the spec's len(ssz_serialize(sidecar)), not a separate formula");
+            maxBlobs = Math.Max(maxBlobs, entry.MaxBlobsPerBlock);
         }
+
+        Assert.That(DataColumnSidecarGloasSize.ComputeMax(spec), Is.EqualTo((ulong)SerializedLength((int)maxBlobs)));
     }
 
     /// <summary>

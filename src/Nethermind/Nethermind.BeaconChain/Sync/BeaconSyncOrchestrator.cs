@@ -63,6 +63,12 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Peers tried per by-root fetch before giving the block up.</summary>
     private const int MaxBackfillPeersPerRequest = 3;
 
+    /// <summary>By-root backfills started per wall-clock slot for gossip blocks with an unknown parent.</summary>
+    internal const int MaxBackfillsPerSlot = 4;
+
+    /// <summary>Gossip blocks the backfill budget refused that are held for their parent at once.</summary>
+    internal const int MaxHeldRefusedBackfills = 4 * MaxBackfillsPerSlot;
+
     private const int MaxPendingGossipBlocks = 128;
 
     /// <summary>Cap on blocks awaiting a data/engine-availability retry, so a stuck peer or a stalled EL cannot grow this without bound.</summary>
@@ -131,6 +137,14 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>Imported Gloas blocks whose bid commits blobs, by root, whose sampled columns are recovered by root until all are held.</summary>
     private readonly Dictionary<Hash256, ColumnRecovery> _columnRecovery = [];
+
+    /// <summary>The unknown parent roots whose backfill started in wall-clock slot <see cref="_backfillSlot"/>.</summary>
+    private readonly HashSet<Hash256> _backfilledParents = [];
+    private int _backfillsThisSlot;
+    private ulong _backfillSlot;
+
+    /// <summary>The gossip blocks held in <see cref="_pendingByParent"/> after the backfill budget refused them, oldest first.</summary>
+    private readonly Queue<ForkedSignedBeaconBlock> _heldForBackfill = new();
 
     private readonly ConcurrentDictionary<string, byte> _dialedPeerIds = new();
 
@@ -902,15 +916,84 @@ public sealed class BeaconSyncOrchestrator(
             {
                 QueuePendingGossipBlock(block);
             }
-            else
+            else if (TryTakeBackfill(block))
             {
                 await BackfillAndImportAsync(block, token);
+                Hash256 parent = block.ParentRoot;
+                // A parent that neither imported nor waits for a retry may be fetched again, within the slot's spent budget.
+                if (!importer.IsKnown(parent) && !_pendingRetry.ContainsKey(parent) && !IsWaitingForPayload(parent))
+                {
+                    _backfilledParents.Remove(parent);
+                }
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"Holding gossip block at slot {block.Slot} for unknown parent {block.ParentRoot}: {(_backfilledParents.Contains(block.ParentRoot) ? "that parent waits for a retry" : "backfill budget for this slot spent")}");
+                HoldRefusedBackfill(block);
             }
 
             return;
         }
 
         await ImportBlockAsync(block, token);
+    }
+
+    /// <summary>Whether a by-root backfill may start for <paramref name="block"/>: one per unknown parent and <see cref="MaxBackfillsPerSlot"/> per wall-clock slot.</summary>
+    /// <remarks>
+    /// The block's proposer signature is checked only once its parent chain is fetched and it imports, so without this bound each
+    /// forged unknown-parent block would buy an outbound request. The key is the parent, not the (slot, proposer): an unsigned
+    /// block naming the real proposer must not take the backfill of the real block. A parent released after a failed fetch keeps
+    /// its share of the budget, so failed fetches cannot buy more requests.
+    /// </remarks>
+    private bool TryTakeBackfill(ForkedSignedBeaconBlock block)
+    {
+        ulong currentSlot = slotClock.CurrentSlot;
+        if (currentSlot != _backfillSlot)
+        {
+            _backfillSlot = currentSlot;
+            _backfilledParents.Clear();
+            _backfillsThisSlot = 0;
+        }
+
+        if (_backfillsThisSlot >= MaxBackfillsPerSlot || !_backfilledParents.Add(block.ParentRoot))
+        {
+            return false;
+        }
+
+        _backfillsThisSlot++;
+        return true;
+    }
+
+    /// <summary>Holds a block refused a backfill until its parent imports by another route, evicting the oldest such block past <see cref="MaxHeldRefusedBackfills"/>.</summary>
+    /// <remarks>
+    /// The cap keeps forged blocks from filling the queue shared with blocks held for a parent payload. Under a sustained flood the
+    /// real block can still be evicted; a later block's backfill or the range-sync feed then fetches it.
+    /// </remarks>
+    private void HoldRefusedBackfill(ForkedSignedBeaconBlock block)
+    {
+        if (_pendingByParent.TryGetValue(block.ParentRoot, out List<ForkedSignedBeaconBlock>? held) && held.Contains(block))
+        {
+            return;
+        }
+
+        if (_heldForBackfill.Count >= MaxHeldRefusedBackfills)
+        {
+            ForkedSignedBeaconBlock oldest = _heldForBackfill.Dequeue();
+            // An entry its parent's import already drained holds no queue slot.
+            if (_pendingByParent.TryGetValue(oldest.ParentRoot, out List<ForkedSignedBeaconBlock>? siblings) && siblings.Remove(oldest))
+            {
+                _pendingCount--;
+                if (siblings.Count == 0)
+                {
+                    _pendingByParent.Remove(oldest.ParentRoot);
+                }
+            }
+        }
+
+        if (QueuePendingGossipBlock(block))
+        {
+            _heldForBackfill.Enqueue(block);
+        }
     }
 
     private bool QueuePendingGossipBlock(ForkedSignedBeaconBlock block)

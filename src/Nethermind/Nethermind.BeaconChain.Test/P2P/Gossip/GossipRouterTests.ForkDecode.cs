@@ -85,5 +85,13 @@ public partial class GossipRouterTests
 
     private static byte[] SepoliaBlockMessage(bool gloas) => Snappy.CompressToArray(gloas
         ? SignedBeaconBlockGloas.Encode(CreateMinimalGloasBlock(FirstGloasSlot))
-        : SignedBeaconBlock.Encode(CreateMinimalBlock(FirstGloasSlot - 1)));
+        : SignedBeaconBlock.Encode(SepoliaFuluBlock(FirstGloasSlot - 1)));
+
+    // bellatrix p2p: a Fulu block's payload timestamp must be compute_time_at_slot to be consumed.
+    private static SignedBeaconBlock SepoliaFuluBlock(ulong slot)
+    {
+        SignedBeaconBlock block = CreateMinimalBlock(slot);
+        block.Message!.Body!.ExecutionPayload!.Timestamp = Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot;
+        return block;
+    }
 }
