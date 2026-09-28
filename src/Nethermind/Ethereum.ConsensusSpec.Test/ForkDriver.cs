@@ -20,10 +20,11 @@ namespace Ethereum.ConsensusSpec.Test;
 /// epoch_processing, sanity). A fork is driven only when its state can be carried through a pipeline
 /// under the fork's own semantics and compared by the fork's own state root; anything less would be
 /// a false pass. The Fulu pipeline is typed to <see cref="BeaconStateFulu"/> and is Fulu's native one.
-/// Electra's state transition differs from Fulu's in exactly two places - EIP-7917's
-/// <c>get_beacon_proposer_index</c> reads <c>proposer_lookahead</c> instead of sampling on the fly, and
-/// <c>process_epoch</c> ends with <c>process_proposer_lookahead</c> - plus the state's SSZ shape, and
-/// <see cref="Electra"/> accounts for each. Gloas has its own pipeline over <see cref="BeaconStateGloas"/>
+/// Fulu's state transition differs from Electra's in three places - EIP-7917's <c>get_beacon_proposer_index</c>
+/// reads <c>proposer_lookahead</c> instead of sampling on the fly, <c>process_epoch</c> ends with
+/// <c>process_proposer_lookahead</c>, and <c>process_execution_payload</c> takes its blob limit from
+/// <c>get_blob_parameters</c> - plus the state's SSZ shape, and <see cref="Electra"/> accounts for each.
+/// Gloas has its own pipeline over <see cref="BeaconStateGloas"/>
 /// (<see cref="Gloas"/>). Forks before Electra have no state container in this repo and are not driven
 /// (see <see cref="ConsensusSpecArchive.StateTransitionForks"/>).
 /// </summary>
@@ -82,9 +83,12 @@ public abstract class ForkDriver
     /// seed's RANDAO mix only move at epoch processing - so the refill reproduces it exactly, whereas
     /// Fulu's own lookahead for the next epoch is sampled an epoch early against older effective
     /// balances and can name a different proposer. The next-epoch half is filled too but nothing in the
-    /// state transition reads it. Roots are merkleized as the working state's Electra base (37 fields),
-    /// both per slot via <see cref="EpochCache.Hasher"/> and for the post-state comparison, so the
-    /// lookahead never leaks into a root an Electra vector compares.
+    /// state transition reads it. Epoch processing is Electra's: Fulu's steps without
+    /// <c>process_proposer_lookahead</c>, which would sample two epochs ahead and throw on an empty active
+    /// set that Electra never reads. Blocks take <c>MAX_BLOBS_PER_BLOCK_ELECTRA</c> as their blob limit.
+    /// Roots are merkleized as the working state's Electra base (37 fields), both per slot via
+    /// <see cref="EpochCache.Hasher"/> and for the post-state comparison, so the lookahead never leaks
+    /// into a root an Electra vector compares.
     /// </remarks>
     private sealed class Electra : ForkDriver<BeaconStateFulu>
     {
@@ -127,11 +131,32 @@ public abstract class ForkDriver
 
             while (state.Slot < targetSlot)
             {
-                ulong nextEpochStart = BeaconStateAccessors.ComputeStartSlotAtEpoch(state.GetCurrentEpoch() + 1);
-                SlotProcessing.ProcessSlots(state, Math.Min(targetSlot, nextEpochStart), cache);
-                if (state.Slot == nextEpochStart)
+                SlotProcessing.ProcessSlot(state, cache.Hasher);
+                if ((state.Slot + 1) % Presets.SlotsPerEpoch == 0)
+                    ProcessEpoch(state, cache);
+                state.Slot++;
+                if (state.Slot % Presets.SlotsPerEpoch == 0)
                     RefillProposerLookahead(state);
             }
+        }
+
+        /// <summary>Electra <c>process_epoch</c>: <see cref="EpochProcessing.ProcessEpoch"/> without the Fulu-only <c>process_proposer_lookahead</c>.</summary>
+        private static void ProcessEpoch(BeaconStateFulu state, EpochCache cache)
+        {
+            EpochProcessing.ProcessJustificationAndFinalization(state, cache);
+            EpochProcessing.ProcessInactivityUpdates(state);
+            EpochProcessing.ProcessRewardsAndPenalties(state, cache);
+            EpochProcessing.ProcessRegistryUpdates(state, cache);
+            EpochProcessing.ProcessSlashings(state, cache);
+            EpochProcessing.ProcessEth1DataReset(state);
+            EpochProcessing.ProcessPendingDeposits(state, cache);
+            EpochProcessing.ProcessPendingConsolidations(state);
+            EpochProcessing.ProcessEffectiveBalanceUpdates(state, cache);
+            EpochProcessing.ProcessSlashingsReset(state);
+            EpochProcessing.ProcessRandaoMixesReset(state);
+            EpochProcessing.ProcessHistoricalSummariesUpdate(state);
+            EpochProcessing.ProcessParticipationFlagUpdates(state);
+            EpochProcessing.ProcessSyncCommitteeUpdates(state);
         }
 
         // Mirrors StateTransition.Apply statement for statement; that method cannot be reused because

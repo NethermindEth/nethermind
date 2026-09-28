@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -17,6 +19,7 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.ForkChoice;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
@@ -775,6 +778,61 @@ public class GloasBlockImporterTests
             Assert.That(logger.LogList, Is.Empty);
         }
     }
+
+    /// <summary>
+    /// A Gloas body attester slashing the transition accepts but fork choice refuses is counted, not dropped silently.
+    /// The first epoch transition onboards a validator the justified anchor state lacks, so the slashing is in range for
+    /// the transition and out of range for <c>on_attester_slashing</c>, which checks it against the justified state.
+    /// </summary>
+    [Test]
+    public void Body_attester_slashing_refused_by_fork_choice_is_tolerated_and_counted()
+    {
+        SignedGloasChain chain = new();
+        (BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot) = BlockImporterTests.AnchorWithQueuedValidator(chain.AnchorState, chain.AnchorBlock);
+        BeaconStateFulu crossing = anchorState.Clone();
+        SlotProcessing.ProcessSlots(crossing, ForkSlot, new EpochCache());
+        BeaconStateGloas state = GloasForkTransition.UpgradeToGloas(crossing, chain.Spec);
+        ulong onboarded = (ulong)anchorState.Validators!.Length;
+        Assert.That(state.Validators, Has.Length.EqualTo(anchorState.Validators.Length + 1), "fixture bug: the queued validator must be onboarded before the slashing block");
+        AttesterSlashingGloas slashing = new()
+        {
+            Attestation1 = new IndexedAttestationGloas { AttestingIndices = [1, onboarded], Data = Vote(ForkSlot, 0, ForkCrossingChain.ForkEpoch, 0x31) },
+            Attestation2 = new IndexedAttestationGloas { AttestingIndices = [1, onboarded], Data = Vote(ForkSlot, 0, ForkCrossingChain.ForkEpoch, 0x41) },
+        };
+        SignedBeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, state.LatestBlockHash!, Hash(0xA1)));
+        block.Message!.Body!.AttesterSlashings = [slashing];
+        ApplyBlock(state, block, new EpochCache());
+        block.Message.StateRoot = SszRoots.HashTreeRoot(state);
+        Hash256 root = SszRoots.HashTreeRoot(block.Message);
+        Assert.That(state.Validators![1].Slashed, Is.True, "fixture bug: the transition must accept the slashing");
+        PubkeyCache pubkeys = new();
+        pubkeys.Build(anchorState.Validators);
+        BlockImporter importer = new(
+            chain.Spec,
+            chain.CreateStore(),
+            pubkeys,
+            new SignedGloasChain.EnvelopeEngine(),
+            new BeaconChainConfig(),
+            LimboLogs.Instance,
+            ReplayedBlockAvailability.Instance,
+            static (_, _) => true,
+            new SlotClock(chain.Spec, Timestamper.Default),
+            anchorState,
+            anchorBlock,
+            anchorRoot);
+        long refusedBefore = RefusedByForkChoice("body_attester_slashing");
+
+        BlockImportResult result = importer.Import(new ForkedSignedBeaconBlock.OfGloas(block), root, verifySignatures: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported), "the transition accepted the slashing, so fork choice's refusal must not sink the block");
+            Assert.That(RefusedByForkChoice("body_attester_slashing") - refusedBefore, Is.EqualTo(1), "a tolerated refusal must still be observable");
+        }
+    }
+
+    private static long RefusedByForkChoice(string operation) =>
+        Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(new StringLabel(operation));
 
     private static void Import(BlockImporter importer, params SignedGloasChain.Block[] blocks)
     {
