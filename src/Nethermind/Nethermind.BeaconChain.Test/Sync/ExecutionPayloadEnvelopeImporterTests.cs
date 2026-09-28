@@ -128,24 +128,77 @@ public class ExecutionPayloadEnvelopeImporterTests
 
     /// <summary>
     /// A self-built envelope names <c>BUILDER_INDEX_SELF_BUILD</c>, which is never inside the builder
-    /// registry; it is signed by the block's proposer and must still verify.
+    /// registry; it is signed by the block's proposer and must still verify, also when the pubkey cache
+    /// lags the registry, which the importer extends from the block's post-state rather than let the lookup throw.
     /// </summary>
     [Test]
-    public void A_self_built_envelope_signed_by_the_proposer_is_accepted()
+    public void A_self_built_envelope_signed_by_the_proposer_is_accepted([Values] bool cacheLagsRegistry)
     {
         BeaconStateGloas state = StateWithSelfBuildBid(out SignedExecutionPayloadBid bid, out PubkeyCache pubkeys, out _);
         Bls.SecretKey proposerSk = ValidatorKey((int)state.LatestBlockHeader!.ProposerIndex);
         SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, proposerSk, Presets.BuilderIndexSelfBuild);
         IEngineRpcModule engine = ScriptedEngine(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
+        PubkeyCache cache = cacheLagsRegistry ? new PubkeyCache() : pubkeys;
         long rejectionsBefore = Rejections();
 
-        ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine, pubkeys: pubkeys).Import(envelope);
+        ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine, pubkeys: cache).Import(envelope);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
             Assert.That(Rejections(), Is.EqualTo(rejectionsBefore));
+            Assert.That(cache.Count, Is.EqualTo(state.Validators!.Length));
             engine.ReceivedWithAnyArgs(1).engine_newPayloadV5(default!, default!, default, default);
+        }
+    }
+
+    /// <summary>
+    /// The spec's <c>state.validators[header.proposer_index]</c> fails a self-built envelope whose block names a proposer outside
+    /// the registry; the importer rejects it instead of letting the cache lookup throw out of the import worker.
+    /// </summary>
+    [Test]
+    public void A_self_built_envelope_whose_proposer_is_outside_the_registry_is_a_counted_rejection()
+    {
+        BeaconStateGloas state = StateWithSelfBuildBid(out SignedExecutionPayloadBid bid, out PubkeyCache pubkeys, out _);
+        SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, ValidatorKey((int)state.LatestBlockHeader!.ProposerIndex), Presets.BuilderIndexSelfBuild);
+        BlockStates states = new BlockStates().Add(state);
+        state.LatestBlockHeader.ProposerIndex = (ulong)state.Validators!.Length;
+        IEngineRpcModule engine = ScriptedEngine(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
+        long rejectionsBefore = Rejections();
+
+        ExecutionPayloadEnvelopeImportResult result = CreateImporter(states, engine, pubkeys: pubkeys).Import(envelope);
+
+        AssertCountedRejectionWithoutEngineCall(result, rejectionsBefore, engine);
+    }
+
+    /// <summary>
+    /// The envelope rejection is counted under its own source-agnostic operation label and under no other, so it neither
+    /// renames silently nor lands on a sibling's label (body_attestation, gossip_aggregate and the rest); a dashboard reads these names.
+    /// </summary>
+    [Test]
+    public void An_envelope_rejection_is_counted_under_its_settled_operation_label_only()
+    {
+        BeaconStateGloas state = StateWithCommittedBid(out SignedExecutionPayloadBid bid, out Bls.SecretKey builderSk);
+        SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
+        envelope.Message!.Payload!.GasLimit++;
+        IEngineRpcModule engine = ScriptedEngine(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
+        Dictionary<StringLabel, long> before = new(Metrics.BeaconChainForkChoiceRejections);
+
+        ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine).Import(envelope);
+
+        List<string> counted = [];
+        foreach ((StringLabel label, long count) in Metrics.BeaconChainForkChoiceRejections)
+        {
+            if (count != before.GetValueOrDefault(label))
+            {
+                counted.Add(label.Labels[0]);
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Invalid));
+            Assert.That(counted, Is.EqualTo(new[] { "execution_payload_envelope" }));
         }
     }
 
