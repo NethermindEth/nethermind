@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -53,6 +54,21 @@ public class BlockAccessListRecoveryStepTests
         Assert.That(block.BlockAccessList?.WireHash, expectAttached ? Is.EqualTo(StoredHash) : Is.Null);
     }
 
+    [TestCase(false, false, false, TestName = "No consumer: nothing is looked up")]
+    [TestCase(false, true, true, TestName = "Read warming alone still uses the list")]
+    [TestCase(true, true, true, TestName = "Parallel execution and read warming use the list")]
+    public void Stored_list_is_attached_only_when_something_consumes_it(bool parallelExecution, bool batchRead, bool expectAttached)
+    {
+        TestMemDb db = new();
+        Block block = BlockCommittingTo(StoredHash);
+        new BlockAccessListStore(db).Insert(BlockNumber, block.Hash!, StoredRlp);
+        BlocksConfig config = new() { ParallelExecution = parallelExecution, ParallelExecutionBatchRead = batchRead };
+
+        CreateStep(db, config).RecoverDataForQueuedProcessing(block);
+
+        Assert.That(block.BlockAccessList?.WireHash, expectAttached ? Is.EqualTo(StoredHash) : Is.Null);
+    }
+
     [Test]
     public void Non_queued_processing_is_left_on_its_own_path()
     {
@@ -91,5 +107,6 @@ public class BlockAccessListRecoveryStepTests
     private static Block BlockCommittingTo(Hash256 balHash) =>
         Build.A.Block.WithNumber(BlockNumber).WithBlockAccessListHash(balHash).TestObject;
 
-    private static BlockAccessListRecoveryStep CreateStep(TestMemDb db) => new(new BlockAccessListStore(db), LimboLogs.Instance);
+    private static BlockAccessListRecoveryStep CreateStep(TestMemDb db, IBlocksConfig config = null) =>
+        new(new BlockAccessListStore(db), config ?? new BlocksConfig(), LimboLogs.Instance);
 }
