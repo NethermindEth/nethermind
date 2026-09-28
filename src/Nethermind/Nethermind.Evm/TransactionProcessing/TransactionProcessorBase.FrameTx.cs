@@ -86,7 +86,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             : TransactionResult.ErrorType.TransactionNonceTooHigh).WithDetail("frame transaction nonce sequence mismatch");
     }
 
-    private TransactionResult ExecuteFrameTx(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
+    /// <typeparam name="TTracing"><see cref="OnFlag"/> when the tracer is tracing; <see cref="OffFlag"/> compiles the
+    /// tracer hooks, including the <see cref="IFrameTxReceiptTracer"/> reports, out of the frame loop.</typeparam>
+    private TransactionResult ExecuteFrameTx<TTracing>(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
+        where TTracing : struct, IFlag
     {
         // eth_call and the other estimation/tracing entry points reach the processor with validation
         // skipped, so the whole structural constraint set is enforced here and not only in TxValidator.
@@ -224,7 +227,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // EIP-2929 warm/cold journal shared across frames (EIP-8141 § Cross-frame interactions): targets
         // per frame, sender and coinbase once per transaction. ENTRY_POINT-as-caller is unspecified: left cold.
-        using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
+        using StackAccessTracker accessTracker = new(TTracing.IsActive && tracer.IsTracingAccess);
         if (spec.UseHotAndColdStorage)
         {
             if (spec.AddCoinbaseToTxAccessList)
@@ -256,7 +259,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // EIP-161: once any frame touches RIPEMD-160, the touch outlives every later rollback that
         // leaves the transaction valid, so it is tracked for the whole transaction rather than per frame.
         bool shouldRestoreRipemdTouch = false;
-        IFrameTxReceiptTracer? frameReceiptTracer = tracer as IFrameTxReceiptTracer;
+        IFrameTxReceiptTracer? frameReceiptTracer = TTracing.IsActive ? tracer as IFrameTxReceiptTracer : null;
 
         for (int i = 0; i < frames.Length; i++)
         {
@@ -290,14 +293,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext)
             {
                 SuppressLogs = ShouldSuppressLogs(opts, tracer),
-                MaterializeLogMemory = tracer.IsTracingInstructions || tracer.IsTracingMemory
+                MaterializeLogMemory = TTracing.IsActive && (tracer.IsTracingInstructions || tracer.IsTracingMemory)
             });
 
             // The shared journal accumulates logs across frames; this frame's own logs start here.
             int frameLogStart = accessTracker.Logs.Count;
             int frameStartJournal = frameContext.FrameJournalCheckpoint;
             bool payerWasSet = frameContext.Payer is not null;
-            TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
+            TransactionSubstate substate = ExecuteFrame<TTracing>(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
             // Transient storage is discarded between frames (EIP-8141 § Cross-frame interactions). Discarded
             // here rather than before the next frame: the batch and prefix-end snapshots straddle frames, and
             // a discard after either was taken truncates the journal it indexes into.
@@ -424,7 +427,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
-        return SettleFrameTx(
+        return SettleFrameTx<TTracing>(
             tx: tx,
             tracer: tracer,
             frameReceiptTracer: frameReceiptTracer,
@@ -450,7 +453,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <summary>Settles a frame transaction once every frame has run: nets the EIP-3529 refund, computes the
     /// payer and block gas, returns the unspent <c>max_cost</c> escrow, credits the fee recipients, finalizes
     /// EIP-6780 destructions and commits or restores the transaction-wide snapshot.</summary>
-    /// <remarks>Straight-line tail of <see cref="ExecuteFrameTx"/>, taking the loop's accumulated totals as
+    /// <remarks>Straight-line tail of <see cref="ExecuteFrameTx{TTracing}"/>, taking the loop's accumulated totals as
     /// inputs. The only failure it can report is a transaction that never set a payer, which unwinds to
     /// <paramref name="txSnapshot"/>.</remarks>
     /// <param name="intrinsicGas">The transaction's intrinsic gas, gross of any frame execution.</param>
@@ -460,7 +463,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <param name="refundCounter">The EIP-3529 refund accumulated by committed frames.</param>
     /// <param name="maxCost">The escrow charged to the payer at approval, per TXPARAM 0x06.</param>
     /// <param name="postTxReverted">Whether a POST_TX frame discarded the body, which the receipt reports as a failure.</param>
-    private TransactionResult SettleFrameTx(
+    /// <typeparam name="TTracing">As in <see cref="ExecuteFrameTx{TTracing}"/>.</typeparam>
+    private TransactionResult SettleFrameTx<TTracing>(
         Transaction tx,
         ITxTracer tracer,
         IFrameTxReceiptTracer? frameReceiptTracer,
@@ -481,6 +485,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         in UInt256 blobFee,
         in UInt256 maxCost,
         bool postTxReverted)
+        where TTracing : struct, IFlag
     {
         if (frameContext.Payer is null)
         {
@@ -572,13 +577,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             WorldState.Commit(spec, commitRoots: false);
         }
 
-        if (tracer.IsTracingFees)
+        if (TTracing.IsActive && tracer.IsTracingFees)
         {
             // Capped at the effective price paid, as in PayFees, so validation-off runs do not over-report.
             tracer.ReportFees(fees, effectiveBaseFee * spentGas + blobFee);
         }
 
-        if (tracer.IsTracingReceipt)
+        if (TTracing.IsActive && tracer.IsTracingReceipt)
         {
             frameReceiptTracer?.ReportFrameTxReceipt(payer, frameReceipts);
 
@@ -656,7 +661,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 prefixTracer?.StartPrefixFrame(isDeployFrame, resolvedTarget);
 
                 // A deploy frame runs in DEFAULT mode, so unlike a VERIFY frame it may write state.
-                TransactionSubstate substate = ExecuteFrame(boundedFrame, resolvedTarget, caller, isStatic: !isDeployFrame, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
+                TransactionSubstate substate = ExecuteFrame<OnFlag>(boundedFrame, resolvedTarget, caller, isStatic: !isDeployFrame, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
                 // Discarded once the frame has run, as the main loop does.
                 WorldState.ResetTransient();
 
@@ -778,7 +783,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         && FrameTxValidation.IsDeployFrame(frames[i])
         && frames[i + 1].Mode == FrameMode.Verify;
 
-    private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
+    private TransactionSubstate ExecuteFrame<TTracing>(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
+        where TTracing : struct, IFlag
     {
         stateGasUsed = 0;
         UInt256 value = frame.Value;
@@ -903,7 +909,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // Selected explicitly: the parameterless ExecuteTransaction overload hard-codes OffFlag.
         // DispatchFlags folds the tracing arm out of the zkEVM guest, which compiles no tracing dispatch.
-        TransactionSubstate substate = !DispatchFlags.Tracing(tracer.IsTracingInstructions)
+        TransactionSubstate substate = !(TTracing.IsActive && DispatchFlags.Tracing(tracer.IsTracingInstructions))
             ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer)
             : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
 

@@ -37,6 +37,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -983,18 +984,7 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_AtomicBatch_FrameFails_RollsBackBatchAndSkipsRemaining()
     {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        // Frame 1 writes and succeeds, frame 2 reverts, terminal frame 3 must be skipped and the batch
-        // rolled back.
-        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
-        DeployContract(TestItem.AddressD, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-
-        Transaction tx = FrameTx(nonce: 0,
-            SelfVerifyFrame(),
-            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Observer),
-            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
-            Frame(FrameMode.Sender, target: TestItem.AddressD));
+        Transaction tx = FailingAtomicBatchTx();
 
         TransactionResult result = Process(tx);
 
@@ -1006,6 +996,37 @@ public class FrameTxProcessorTests
             AssertStorage(Observer, 0, UInt256.Zero, "batch frame 1 write rolled back");
             AssertStorage(TestItem.AddressD, 0, UInt256.Zero, "terminal frame skipped, never wrote");
         }
+    }
+
+    [TestCase(false, 0, 0, TestName = "Execute_AtomicBatch_FrameFails_NonTracingTracerGetsNoFrameReports")]
+    [TestCase(true, 3, 1, TestName = "Execute_AtomicBatch_FrameFails_TracingTracerGetsFrameReports")]
+    public void Execute_AtomicBatch_FrameFails_FrameReportsFollowIsTracing(bool isTracing, int frameEnds, int rollbacks)
+    {
+        Transaction tx = FailingAtomicBatchTx();
+        ITxTracer tracer = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+        tracer.IsTracing.Returns(isTracing);
+        IFrameTxReceiptTracer frameTracer = (IFrameTxReceiptTracer)tracer;
+
+        Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
+
+        frameTracer.Received(frameEnds).ReportFrameEnd(Arg.Any<int>(), Arg.Any<EvmExceptionType?>());
+        frameTracer.Received(rollbacks).ReportFramesRolledBack(1, 2);
+        frameTracer.DidNotReceive().ReportFrameTxReceipt(Arg.Any<Address>(), Arg.Any<TxFrameReceipt[]>());
+    }
+
+    /// <summary>Frame 1 writes and succeeds, frame 2 reverts, so the batch rolls back and terminal frame 3 is skipped.</summary>
+    private Transaction FailingAtomicBatchTx()
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(TestItem.AddressD, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        return FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Observer),
+            Frame(FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: Recipient),
+            Frame(FrameMode.Sender, target: TestItem.AddressD));
     }
 
     [Test]
