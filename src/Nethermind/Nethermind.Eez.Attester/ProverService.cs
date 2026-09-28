@@ -67,6 +67,11 @@ internal sealed class ProverService(AttestationPipeline pipeline, AttesterOption
                 Convert.ToHexStringLower(response.PublicInputsHash.Span), Environment.TickCount64 - started);
             return response;
         }
+        catch (RpcException e) when (e.StatusCode == StatusCode.Cancelled)
+        {
+            logger.LogInformation("Prove request cancelled by the composer after {Elapsed} ms", Environment.TickCount64 - started);
+            throw;
+        }
         catch (RpcException e)
         {
             logger.LogWarning("Prove request failed: {Code} {Message} after {Elapsed} ms", e.StatusCode, e.Status.Detail, Environment.TickCount64 - started);
