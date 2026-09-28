@@ -46,18 +46,28 @@ public class KzgPolynomialCommitmentsTests
 
     /// <remarks>
     /// A fresh load context gives the static setup state its own copy, untouched by whatever earlier tests
-    /// in this process initialized in the shared one.
+    /// in this process initialized in the shared one. The native setup it loads is freed afterwards, since
+    /// unloading the context does not release it.
     /// </remarks>
     private static void WithFreshSetupState(Action<Type> test)
     {
         AssemblyLoadContext context = new(nameof(KzgPolynomialCommitmentsTests), isCollectible: true);
+        Type kzg = context.LoadFromAssemblyPath(typeof(KzgPolynomialCommitments).Assembly.Location)
+            .GetType(typeof(KzgPolynomialCommitments).FullName!, throwOnError: true)!;
         try
         {
-            test(context.LoadFromAssemblyPath(typeof(KzgPolynomialCommitments).Assembly.Location)
-                .GetType(typeof(KzgPolynomialCommitments).FullName!, throwOnError: true)!);
+            test(kzg);
         }
         finally
         {
+            FieldInfo setupField = kzg.GetField("_ckzgSetup", BindingFlags.NonPublic | BindingFlags.Static)!;
+            nint setup = (nint)setupField.GetValue(null)!;
+            if (setup != nint.Zero)
+            {
+                Ckzg.FreeTrustedSetup(setup);
+                setupField.SetValue(null, nint.Zero);
+            }
+
             context.Unload();
         }
     }
