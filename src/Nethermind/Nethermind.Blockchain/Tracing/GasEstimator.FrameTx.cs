@@ -16,6 +16,8 @@ namespace Nethermind.Blockchain.Tracing;
 public partial class GasEstimator
 {
     private const int MaxFrameProbes = 512;
+    private const double OptimisticMultiplier = 64d / 63d;
+    private const string InvalidErrorMarginNegative = "Invalid error margin, cannot be negative.";
 
     /// <summary>Fills omitted frame limits by replaying the complete transaction in the caller's state scope.</summary>
     /// <remarks>Every probe keeps its omitted execution and state limits within the rooms the final limits must fit,

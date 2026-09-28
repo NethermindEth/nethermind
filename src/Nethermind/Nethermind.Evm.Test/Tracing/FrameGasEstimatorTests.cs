@@ -4,14 +4,12 @@
 using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -36,7 +34,7 @@ public class FrameGasEstimatorTests
     private static void AssertFills(Func<int, (ulong Execution, ulong State)> need, int errorMargin)
     {
         FixedNeedProcessor processor = new(need);
-        GasEstimator estimator = new(processor, Substitute.For<IReadOnlyStateProvider>(), new TestSpecProvider(Eip8141Prototype.Instance), new BlocksConfig());
+        GasEstimator estimator = new(processor, Substitute.For<IReadOnlyStateProvider>());
         TxFrame[] frames = new TxFrame[Eip8141Constants.MaxFrames];
         for (int i = 0; i < frames.Length; i++)
             frames[i] = new TxFrame(FrameMode.Sender, default, TestItem.AddressB, 0, 0, UInt256.Zero, default);
