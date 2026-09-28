@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -14,6 +16,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
@@ -119,17 +122,9 @@ internal static class BeaconEndpoints
         bool mixedForks = false;
         foreach (Hash256 childRoot in childRoots)
         {
-            if (!ctx.Store.TryGetForkedBlock(childRoot, out ForkedSignedBeaconBlock? child))
-            {
-                // The index and the block column disagree (a prune raced this request); skipping the
-                // entry would hand back a shorter list that looks complete.
-                return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
-                    $"The children index names block {childRoot}, which is not retained; retry the request.", c.RequestAborted);
-            }
+            if (!TryReadChild(ctx, childRoot, slotFilter, out ForkedSignedBeaconBlock? child)) continue;
 
             ulong childSlot = child.Slot;
-            if (slotFilter is not null && childSlot != slotFilter) continue;
-
             entries.Add(BuildHeaderEntry(ctx, new ResolvedBlock(childRoot, child)));
             finalized &= ResponseEnvelope.IsFinalized(ctx, childSlot, childRoot);
             BeaconFork childFork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(childSlot));
@@ -146,6 +141,33 @@ internal static class BeaconEndpoints
             ResponseEnvelope.ExecutionOptimistic(ctx.StatusSource),
             finalized && entries.Count > 0,
             c.RequestAborted);
+    }
+
+    /// <summary>Reads an indexed child that passes <paramref name="slotFilter"/>, decoding it only once its stored slot matches.</summary>
+    /// <returns><c>false</c> when the child is filtered out, no longer stored, or unreadable.</returns>
+    /// <remarks>
+    /// A child pruned after the index was read, or whose record is corrupt, is left out: one bad record
+    /// must not turn the children this node can serve into a 500.
+    /// </remarks>
+    private static bool TryReadChild(BeaconApiContext ctx, Hash256 childRoot, ulong? slotFilter, [NotNullWhen(true)] out ForkedSignedBeaconBlock? child)
+    {
+        child = null;
+        try
+        {
+            // Read even without a filter: it also bounds the claimed size the full decompression allocates.
+            if (!ctx.Store.TryGetBlockSlot(childRoot, out ulong storedSlot) || (slotFilter is not null && storedSlot != slotFilter))
+            {
+                return false;
+            }
+
+            return ctx.Store.TryGetForkedBlock(childRoot, out child);
+        }
+        catch (Exception e) when (e is BeaconStateException or InvalidDataException)
+        {
+            ILogger logger = ctx.LogManager.GetClassLogger(typeof(BeaconEndpoints));
+            if (logger.IsWarn) logger.Warn($"Beacon API headers?parent_root skipped child {childRoot}: its stored record is unreadable ({e.Message})");
+            return false;
+        }
     }
 
     private static Task HeaderById(HttpContext c, string blockId, BeaconApiContext ctx)
