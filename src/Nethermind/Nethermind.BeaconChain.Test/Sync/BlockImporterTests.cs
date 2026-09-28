@@ -548,8 +548,8 @@ public class BlockImporterTests
             ReplayedBlockAvailability.Instance,
             static (_, _) => false,
             new SlotClock(chain.Spec, Timestamper.Default),
-            anchorState,
-            anchorBlock,
+            new ForkedBeaconState.OfFulu(anchorState),
+            new ForkedSignedBeaconBlock.OfFulu(anchorBlock),
             anchorRoot);
         Assert.That(importer.Import(lineage, lineageRoot, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
         long refusedBefore = RefusedByForkChoice("body_attester_slashing");

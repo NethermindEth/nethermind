@@ -348,7 +348,7 @@ public class ForkDispatchTests
         PubkeyCache pubkeys = new();
         pubkeys.Build(chain.AnchorState.Validators!);
         return new BlockImporter(Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>(), Spec), pubkeys, new SignedGloasChain.EnvelopeEngine(), new BeaconChainConfig(), LimboLogs.Instance,
-            ReplayedBlockAvailability.Instance, static (_, _) => true, new SlotClock(Spec, Timestamper.Default), chain.AnchorState, chain.AnchorBlock, chain.AnchorRoot);
+            ReplayedBlockAvailability.Instance, static (_, _) => true, new SlotClock(Spec, Timestamper.Default), new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
     }
 
     private static readonly ConcurrentDictionary<BeaconFork, byte[]> States = new();
