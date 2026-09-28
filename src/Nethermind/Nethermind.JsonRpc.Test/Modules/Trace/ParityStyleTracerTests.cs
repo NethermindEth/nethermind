@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -18,7 +17,6 @@ using Nethermind.Specs;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -79,7 +77,7 @@ public class ParityStyleTracerTests
     }
 
     [Test]
-    public async Task Should_return_correct_block_reward([Values] bool isPostMerge)
+    public async Task trace_block_does_not_return_reward_traces([Values] bool isPostMerge)
     {
         Block block = Build.A.Block.WithParent(_blockTree!.Head!).TestObject;
         Assert.That((await _blockTree!.SuggestBlockAsync(block, BlockTreeSuggestOptions.None)), Is.EqualTo(AddBlockResult.Added));
@@ -87,16 +85,6 @@ public class ParityStyleTracerTests
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter(block.Number));
         Assert.That(rpcResult.Result, Is.EqualTo(Result.Success));
-        ParityTxTraceFromStore[] result = rpcResult.Data.ToArray();
-        if (isPostMerge)
-        {
-            Assert.That(result.Length, Is.EqualTo(1));
-            Assert.That(result[0].Action.Author, Is.EqualTo(block.Beneficiary!));
-            Assert.That(result[0].Action.Value, Is.EqualTo(UInt256.Zero));
-        }
-        else
-        {
-            Assert.That(result.Length, Is.EqualTo(0));
-        }
+        Assert.That(rpcResult.Data, Is.Empty);
     }
 }
