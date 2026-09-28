@@ -157,8 +157,9 @@ public partial class EngineModuleTests
         }
     }
 
+    // Also pins that forkchoiceUpdatedV5 reports the answer for the latest list, whichever order they arrive in.
     [Test]
-    public async Task NewPayloadV6_should_revalidate_same_block_against_new_inclusion_list()
+    public async Task NewPayloadV6_should_revalidate_same_block_against_new_inclusion_list([Values] bool censoringListLast)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -169,38 +170,35 @@ public partial class EngineModuleTests
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
+        byte[][] censoringList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
 
         ResultWrapper<PayloadStatusV2> first = await rpc.engine_newPayloadV6(
             emptyPayload,
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
-            inclusionListTransactions: []);
+            inclusionListTransactions: censoringListLast ? [] : censoringList);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(first.Data.InclusionListSatisfied, Is.True);
+            Assert.That(first.Data.InclusionListSatisfied, Is.EqualTo(censoringListLast));
         }
 
         // Same block hash, different IL: the cached VALID must not short-circuit the IL check.
-        Transaction censoredTx = Build.A.Transaction
-            .WithNonce(0)
-            .WithMaxFeePerGas(10.GWei)
-            .WithMaxPriorityFeePerGas(2.GWei)
-            .WithGasLimit(100_000)
-            .WithTo(TestItem.AddressA)
-            .SignedAndResolved(TestItem.PrivateKeyB)
-            .TestObject;
         ResultWrapper<PayloadStatusV2> second = await rpc.engine_newPayloadV6(
             emptyPayload,
             blobVersionedHashes: [],
             parentBeaconBlockRoot: Keccak.Zero,
             executionRequests: payloadResult.Data!.ExecutionRequests,
-            inclusionListTransactions: [Rlp.Encode(censoredTx).Bytes]);
+            inclusionListTransactions: censoringListLast ? censoringList : []);
+        ResultWrapper<ForkchoiceUpdatedV2Result> toBlock = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(emptyPayload.BlockHash, startingHead, startingHead), payloadAttributes: null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(second.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(second.Data.InclusionListSatisfied, Is.False);
+            Assert.That(second.Data.InclusionListSatisfied, Is.EqualTo(!censoringListLast));
+            Assert.That(toBlock.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(toBlock.Data.PayloadStatus.InclusionListSatisfied, Is.EqualTo(!censoringListLast));
         }
     }
 
@@ -756,29 +754,29 @@ public partial class EngineModuleTests
         }
     }
 
-    // bogota.md engine_forkchoiceUpdatedV5 (2.1-2.2): a VALID head must carry a compliance answer, derived
-    // from the retained inclusion list when newPayloadV6 could not answer it (the block was still queued).
-    // The stateReadThrows case pins the degradation: evaluating the retained list reads the head's state,
-    // and an absent trie node there must not fail an update that has already applied the head and begun a build.
-    [TestCase(true, false, TestName = "ForkchoiceUpdatedV5_answers_a_satisfied_head_left_syncing_by_newPayloadV6")]
-    [TestCase(false, false, TestName = "ForkchoiceUpdatedV5_answers_an_unsatisfied_head_left_syncing_by_newPayloadV6")]
-    [TestCase(false, true, TestName = "ForkchoiceUpdatedV5_reports_null_when_the_retained_list_evaluation_throws")]
+    // bogota.md engine_forkchoiceUpdatedV5 (2.2): a VALID head is answered from the list retained when newPayloadV6
+    // could not answer. stateReadThrows: a missing trie node while evaluating must not fail the update.
+    [TestCase(PayloadStatus.Syncing, true, false, TestName = "ForkchoiceUpdatedV5_answers_a_satisfied_head_left_syncing_by_newPayloadV6")]
+    [TestCase(PayloadStatus.Syncing, false, false, TestName = "ForkchoiceUpdatedV5_answers_an_unsatisfied_head_left_syncing_by_newPayloadV6")]
+    [TestCase(PayloadStatus.Syncing, false, true, TestName = "ForkchoiceUpdatedV5_reports_null_when_the_retained_list_evaluation_throws")]
+    [TestCase(PayloadStatus.Accepted, true, false, TestName = "ForkchoiceUpdatedV5_answers_a_satisfied_head_left_accepted_by_newPayloadV6")]
+    [TestCase(PayloadStatus.Accepted, false, false, TestName = "ForkchoiceUpdatedV5_answers_an_unsatisfied_head_left_accepted_by_newPayloadV6")]
     [NonParallelizable]
-    public async Task ForkchoiceUpdatedV5_answers_compliance_for_a_head_left_syncing(bool satisfied, bool stateReadThrows)
+    public async Task ForkchoiceUpdatedV5_answers_compliance_for_a_head_left_unanswered(
+        string newPayloadStatus, bool satisfied, bool stateReadThrows)
     {
         HeadStateInterceptor headState = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+        StatusOverridingNewPayloadHandler newPayloadHandler = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithHeadState(headState,
             new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 100 },
-            configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner
-                .AddSingleton<IStateReader>(headState)));
-        headState.Inner = chain.StateReader;
+            builder => builder.AddDecorator<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>((_, inner) =>
+            {
+                newPayloadHandler.Inner = inner;
+                return newPayloadHandler;
+            }));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block parent = chain.BlockTree.Head!;
-
-        Transaction inclusionListTx = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
-            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        byte[][] inclusionList = [Rlp.Encode(inclusionListTx).Bytes];
+        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
 
         // Build with the list only in the satisfied case; the other build censors it.
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
@@ -788,28 +786,19 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
         Assert.That(payload.Transactions, Has.Length.EqualTo(satisfied ? 1 : 0));
 
-        // Occupy the processor so the payload has to queue and newPayloadV6 times out before it is processed.
-        chain.ThrottleBlockProcessor(500);
-        using ManualResetEventSlim processingStarted = new(false);
-        TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
-        branchProcessor.ProcessingStarted = processingStarted;
-        Block occupyBlock = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent)
-            .WithNonce(0).WithDifficulty(0).WithStateRoot(parent.StateRoot!).TestObject;
-        occupyBlock.Header.TotalDifficulty = parent.TotalDifficulty;
-        _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
-            occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
-        Assert.That(processingStarted.Wait(TimeSpan.FromSeconds(5)), Is.True, "the block processor was never occupied");
-        // Later blocks must not signal an event this test disposes while the chain is still processing.
-        branchProcessor.ProcessingStarted = null;
+        // This node never answers ACCEPTED itself, so that status is forced on an otherwise processed payload.
+        if (newPayloadStatus == PayloadStatus.Syncing) OccupyBlockProcessor(chain, parent);
+        else newPayloadHandler.Status = newPayloadStatus;
 
         ResultWrapper<PayloadStatusV2> newPayload = await rpc.engine_newPayloadV6(
             payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(newPayload.Data.Status, Is.EqualTo(newPayloadStatus));
             Assert.That(newPayload.Data.InclusionListSatisfied, Is.Null);
         }
 
+        newPayloadHandler.Status = null;
         chain.ThrottleBlockProcessor(0);
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(20));
         while (!chain.BlockTree.WasProcessed(payload.BlockNumber, payload.BlockHash))
@@ -840,30 +829,14 @@ public partial class EngineModuleTests
         bool stateHealed, bool? expected)
     {
         HeadStateInterceptor headState = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
-            new MergeConfig { TerminalTotalDifficulty = "0" },
-            configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner
-                .AddSingleton<IStateReader>(headState)));
-        headState.Inner = chain.StateReader;
+        using MergeTestBlockchain chain = await CreateBlockchainWithHeadState(headState);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // An empty list is trivially satisfied, so this leaves inclusionListSatisfied=true cached for the head.
         ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, slot: 2);
 
-        // Resend the same block with a censoring list, with its state pruned so newPayloadV6 cannot answer.
-        Transaction censoredTx = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
-            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        headState.PrunedBlock = payload.BlockHash;
-        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
-            payload, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes]);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-            Assert.That(resend.Data.InclusionListSatisfied, Is.Null);
-        }
-
-        if (stateHealed) headState.PrunedBlock = null;
+        await RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
+        if (!stateHealed) headState.PrunedBlock = payload.BlockHash;
 
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
@@ -878,23 +851,12 @@ public partial class EngineModuleTests
     public async Task ForkchoiceUpdatedV5_retains_an_unresolved_branch_tip_across_unrelated_payloads()
     {
         HeadStateInterceptor headState = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
-            new MergeConfig { TerminalTotalDifficulty = "0" },
-            configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner
-                .AddSingleton<IStateReader>(headState)));
-        headState.Inner = chain.StateReader;
+        using MergeTestBlockchain chain = await CreateBlockchainWithHeadState(headState);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 parentHash = chain.BlockTree.HeadHash;
 
         ExecutionPayloadV4 first = await BuildAndInsertEmptyBlock(rpc, parentHash, slot: 2, finalize: false);
-        Transaction censoredTx = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
-            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        headState.PrunedBlock = first.BlockHash;
-        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
-            first, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes]);
-        Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-        headState.PrunedBlock = null;
+        await RetainInclusionListByPrunedResend(rpc, headState, first, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
 
         for (ulong slot = 3; slot < 21; slot++)
         {
@@ -914,11 +876,7 @@ public partial class EngineModuleTests
     public async Task ForkchoiceUpdatedV5_prunes_earlier_syncing_lists_when_a_descendant_is_finalized()
     {
         HeadStateInterceptor headState = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
-            new MergeConfig { TerminalTotalDifficulty = "0" },
-            configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner
-                .AddSingleton<IStateReader>(headState)));
-        headState.Inner = chain.StateReader;
+        using MergeTestBlockchain chain = await CreateBlockchainWithHeadState(headState);
         EngineRpcModule rpc = (EngineRpcModule)chain.EngineRpcModule;
         Hash256 genesis = chain.BlockTree.HeadHash;
 
@@ -927,20 +885,11 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 third = await BuildAndInsertEmptyBlock(rpc, second.BlockHash, slot: 4, finalize: false, finalizedHash: genesis);
         ExecutionPayloadV4 sibling = await BuildAndInsertEmptyBlock(rpc, second.BlockHash, slot: 5, finalize: false, finalizedHash: genesis);
 
-        Transaction censoredTx = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
-            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        byte[][] inclusionList = [Rlp.Encode(censoredTx).Bytes];
-
-        headState.PrunedBlock = first.BlockHash;
-        ResultWrapper<PayloadStatusV2> firstResend = await rpc.engine_newPayloadV6(first, [], Keccak.Zero, [], inclusionList);
-        headState.PrunedBlock = second.BlockHash;
-        ResultWrapper<PayloadStatusV2> secondResend = await rpc.engine_newPayloadV6(second, [], Keccak.Zero, [], inclusionList);
-        headState.PrunedBlock = null;
+        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
+        await RetainInclusionListByPrunedResend(rpc, headState, first, inclusionList);
+        await RetainInclusionListByPrunedResend(rpc, headState, second, inclusionList);
         ResultWrapper<PayloadStatusV2> thirdResend = await rpc.engine_newPayloadV6(third, [], Keccak.Zero, [], []);
 
-        Assert.That(firstResend.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
-        Assert.That(secondResend.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
         Assert.That(thirdResend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         Assert.That(rpc.HasRetainedInclusionList(first.BlockHash), Is.True,
             "a VALID grandchild alone does not make the earlier SYNCING list disappear");
@@ -1020,29 +969,11 @@ public partial class EngineModuleTests
     {
         HeadStateInterceptor headState = new();
         InterleavingEvaluator evaluator = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
-            new MergeConfig { TerminalTotalDifficulty = "0" },
-            configurer: builder => builder
-                .UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<IStateReader>(headState))
-                .AddDecorator<IInclusionListComplianceEvaluator>((_, inner) =>
-                {
-                    evaluator.Inner = inner;
-                    return evaluator;
-                }));
-        headState.Inner = chain.StateReader;
+        using MergeTestBlockchain chain = await CreateBlockchainWithInterleavingEvaluator(headState, evaluator);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, slot: 2);
-
-        // Retain a censoring list the block does not satisfy, by resending it with its state pruned.
-        Transaction censoredTx = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
-            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        headState.PrunedBlock = payload.BlockHash;
-        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
-            payload, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes]);
-        Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the resend must leave its list retained");
-        headState.PrunedBlock = null;
+        await RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
 
         // A nonce the sender is past cannot be appended, so this list is satisfied where the censoring one is not.
         Transaction unappendableTx = Build.A.Transaction
@@ -1054,11 +985,7 @@ public partial class EngineModuleTests
         evaluator.BeforeEvaluate = () =>
         {
             evaluator.BeforeEvaluate = null;
-            headState.PrunedBlock = payload.BlockHash;
-            ResultWrapper<PayloadStatusV2> superseding = rpc
-                .engine_newPayloadV6(payload, [], Keccak.Zero, [], [Rlp.Encode(unappendableTx).Bytes]).GetAwaiter().GetResult();
-            Assert.That(superseding.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the superseding call must leave its list retained");
-            headState.PrunedBlock = null;
+            RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(unappendableTx).Bytes]).GetAwaiter().GetResult();
         };
 
         ForkchoiceStateV1 forkchoiceState = new(payload.BlockHash, payload.BlockHash, payload.BlockHash);
@@ -1078,29 +1005,11 @@ public partial class EngineModuleTests
     {
         HeadStateInterceptor headState = new();
         InterleavingEvaluator evaluator = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
-            new MergeConfig { TerminalTotalDifficulty = "0" },
-            configurer: builder => builder
-                .UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<IStateReader>(headState))
-                .AddDecorator<IInclusionListComplianceEvaluator>((_, inner) =>
-                {
-                    evaluator.Inner = inner;
-                    return evaluator;
-                }));
-        headState.Inner = chain.StateReader;
+        using MergeTestBlockchain chain = await CreateBlockchainWithInterleavingEvaluator(headState, evaluator);
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, slot: 2);
-
-        // Retain a list by resending the block with its state pruned, so the forkchoice update has to evaluate.
-        Transaction censoredTx = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
-            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        headState.PrunedBlock = payload.BlockHash;
-        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
-            payload, [], Keccak.Zero, [], [Rlp.Encode(censoredTx).Bytes]);
-        Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the resend must leave its list retained");
-        headState.PrunedBlock = null;
+        await RetainInclusionListByPrunedResend(rpc, headState, payload, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
 
         int evaluations = 0;
         evaluator.BeforeEvaluate = () =>
@@ -1118,6 +1027,80 @@ public partial class EngineModuleTests
             Assert.That(first.Data.PayloadStatus.InclusionListSatisfied, Is.Null);
             Assert.That(second.Data.PayloadStatus.InclusionListSatisfied, Is.Null);
             Assert.That(evaluations, Is.EqualTo(1), "the retained list must not be re-evaluated after it threw");
+        }
+    }
+
+    /// <summary>Builds a Bogota chain whose <see cref="NewPayloadHandler"/> reads state through <paramref name="headState"/>.</summary>
+    private async Task<MergeTestBlockchain> CreateBlockchainWithHeadState(HeadStateInterceptor headState,
+        MergeConfig? mergeConfig = null, Action<ContainerBuilder>? configure = null)
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, mergeConfig ?? new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder =>
+            {
+                builder.UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<IStateReader>(headState));
+                configure?.Invoke(builder);
+            });
+        headState.Inner = chain.StateReader;
+        return chain;
+    }
+
+    private Task<MergeTestBlockchain> CreateBlockchainWithInterleavingEvaluator(HeadStateInterceptor headState, InterleavingEvaluator evaluator) =>
+        CreateBlockchainWithHeadState(headState, configure: builder => builder
+            .AddDecorator<IInclusionListComplianceEvaluator>((_, inner) =>
+            {
+                evaluator.Inner = inner;
+                return evaluator;
+            }));
+
+    /// <summary>Resends <paramref name="payload"/> with its state hidden, so newPayloadV6 answers <c>SYNCING</c>
+    /// and <paramref name="inclusionList"/> is left retained for the forkchoice update.</summary>
+    private static async Task RetainInclusionListByPrunedResend(IEngineRpcModule rpc, HeadStateInterceptor headState,
+        ExecutionPayloadV4 payload, byte[][] inclusionList)
+    {
+        headState.PrunedBlock = payload.BlockHash;
+        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, [], inclusionList);
+        headState.PrunedBlock = null;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the resend must leave its list retained");
+            Assert.That(resend.Data.InclusionListSatisfied, Is.Null);
+        }
+    }
+
+    /// <summary>Occupies the block processor so the payload sent next has to queue and its newPayload times out.</summary>
+    private static void OccupyBlockProcessor(MergeTestBlockchain chain, Block parent)
+    {
+        chain.ThrottleBlockProcessor(500);
+        using ManualResetEventSlim processingStarted = new(false);
+        TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
+        branchProcessor.ProcessingStarted = processingStarted;
+        Block occupyBlock = Build.A.Block.WithNumber(parent.Number + 1).WithParent(parent)
+            .WithNonce(0).WithDifficulty(0).WithStateRoot(parent.StateRoot!).TestObject;
+        occupyBlock.Header.TotalDifficulty = parent.TotalDifficulty;
+        _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
+            occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
+        Assert.That(processingStarted.Wait(TimeSpan.FromSeconds(5)), Is.True, "the block processor was never occupied");
+        // Later blocks must not signal an event disposed here while the chain is still processing.
+        branchProcessor.ProcessingStarted = null;
+    }
+
+    /// <summary>A transfer that fits an empty Bogota payload, so a list holding it is unsatisfied unless the block includes it.</summary>
+    private static Transaction BuildInclusionListTransfer() => Build.A.Transaction
+        .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithGasLimit(100_000)
+        .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+    /// <summary>Forces a chosen status onto <c>newPayload</c> results after the wrapped handler has run.</summary>
+    private sealed class StatusOverridingNewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>
+    {
+        public IAsyncHandler<ExecutionPayload, PayloadStatusV1> Inner { get; set; } = null!;
+
+        /// <summary>Status to answer with, or <c>null</c> to pass the wrapped handler's result through.</summary>
+        public string? Status { get; set; }
+
+        public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
+        {
+            ResultWrapper<PayloadStatusV1> result = await Inner.HandleAsync(request);
+            return Status is { } status ? ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = status }) : result;
         }
     }
 
