@@ -68,7 +68,7 @@ public class BlockSignatureBatchVectorTests
         ["sync_aggregate"] = ("sync_aggregate.ssz_snappy", static (ctx, ssz, batch) =>
         {
             SyncAggregate.Decode(ssz, out SyncAggregate value);
-            BlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.VerifySignatures, batch);
+            BlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
         }
         ),
         ["voluntary_exit"] = ("voluntary_exit.ssz_snappy", static (ctx, ssz, batch) =>
@@ -121,7 +121,7 @@ public class BlockSignatureBatchVectorTests
         ["sync_aggregate"] = ("sync_aggregate.ssz_snappy", static (ctx, ssz, batch) =>
         {
             SyncAggregate.Decode(ssz, out SyncAggregate value);
-            GloasBlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.VerifySignatures, batch);
+            GloasBlockProcessing.ProcessSyncAggregate(ctx.State, value, ctx.Cache, ctx.Pubkeys, ctx.VerifySignatures, batch);
         }
         ),
         ["voluntary_exit"] = ("voluntary_exit.ssz_snappy", GloasVoluntaryExit),

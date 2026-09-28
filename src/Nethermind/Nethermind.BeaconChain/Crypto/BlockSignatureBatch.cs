@@ -21,8 +21,10 @@ namespace Nethermind.BeaconChain.Crypto;
 /// refuse, and refuses with the same <see cref="BeaconStateException"/> message:
 /// <list type="bullet">
 /// <item>A signature the serial path cannot decode is refused at its own call site, as before.</item>
-/// <item>A set whose points are outside the batch's soundness conditions (a public key at infinity
-/// or outside G1, a signature outside G2) is verified serially at its call site instead of deferred.</item>
+/// <item>A public key at infinity is refused at its call site, as <c>KeyValidate</c> in the IETF draft's
+/// <c>CoreVerify</c> refuses it, including an aggregate of keys that sum to infinity.</item>
+/// <item>A set whose other points are outside the batch's soundness conditions (a public key outside G1,
+/// a signature outside G2) is verified serially at its call site instead of deferred.</item>
 /// <item>A failed batch is attributed with <see cref="BatchSignatureVerifier.FindInvalid"/>, which
 /// runs the serial primitive, so its verdict is the serial one: a set it finds invalid is refused
 /// with that set's message, and no invalid set means the block stands.</item>
@@ -83,9 +85,10 @@ public sealed class BlockSignatureBatch
     /// <summary>Verifies a signature now when <paramref name="deferral"/> is <c>null</c>, otherwise defers it.</summary>
     /// <returns><c>false</c> when the signature is refused now; <c>true</c> when it is valid or deferred.</returns>
     internal static bool Verify(G1Affine publicKey, BlsSignature signature, Hash256 signingRoot, Deferral? deferral) =>
-        deferral is null
+        !publicKey.IsInf()
+        && (deferral is null
             ? BlsSigner.Verify(publicKey, signature.Bytes, signingRoot.Bytes)
-            : deferral.Batch.Add(publicKey, signature, signingRoot, deferral.Failure);
+            : deferral.Batch.Add(publicKey, signature, signingRoot, deferral.Failure));
 
     private bool Add(G1Affine publicKey, BlsSignature signature, Hash256 signingRoot, string failure)
     {

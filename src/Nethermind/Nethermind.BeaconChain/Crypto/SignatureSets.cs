@@ -21,7 +21,7 @@ namespace Nethermind.BeaconChain.Crypto;
 /// All helpers return <c>false</c> instead of throwing for malformed points or signatures; the
 /// surrounding spec asserts are the caller's responsibility. Pubkeys of registered validators come
 /// decompressed from <see cref="PubkeyCache"/>; pubkeys carried by the message itself
-/// (BLS-to-execution changes, sync committee members) are decompressed on the fly. Deposits are
+/// (BLS-to-execution changes) are decompressed and <c>KeyValidate</c>d on the fly. Deposits are
 /// handled separately by <see cref="DepositSignatureVerifier"/>. Given a <see cref="BlockSignatureBatch.Deferral"/>,
 /// a helper defers its check to that batch under the caller's message, returning <c>false</c>
 /// only for a signature the batch refuses at once.
@@ -117,42 +117,73 @@ public static class SignatureSets
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
-        return pubkey.TryDecode(change.FromBlsPubkey.Bytes, out _) && BlockSignatureBatch.Verify(pubkey, signedChange.Signature, signingRoot, deferral);
+        return BlsSignatureSet.TryKeyValidate(change.FromBlsPubkey.Bytes, pubkey) && BlockSignatureBatch.Verify(pubkey, signedChange.Signature, signingRoot, deferral);
     }
 
     /// <summary>
     /// Verifies a sync aggregate: the participants' signature over the block root at the slot
     /// before the state's slot, under <c>DOMAIN_SYNC_COMMITTEE</c>.
     /// </summary>
+    /// <param name="committeeIndices">The validator index of each current sync committee member, in committee order.</param>
     /// <remarks>
-    /// Participant pubkeys are decompressed from the current sync committee's stored 48-byte keys
-    /// (committee members may repeat, so this cannot go through validator indices). Implements the
-    /// <c>eth_fast_aggregate_verify</c> rule: with no participants, only the G2 point at infinity
-    /// is a valid signature.
+    /// Implements the <c>eth_fast_aggregate_verify</c> rule: with no participants, only the G2 point
+    /// at infinity is a valid signature. Participants whose keys sum to infinity are refused with any signature,
+    /// as <c>CoreVerify</c> in the IETF draft runs <c>KeyValidate</c> on the aggregate key.
     /// </remarks>
-    public static bool VerifySyncAggregate(BeaconStateFulu state, SyncAggregate syncAggregate, BlockSignatureBatch.Deferral? deferral = null)
+    public static bool VerifySyncAggregate(BeaconStateFulu state, SyncAggregate syncAggregate, int[] committeeIndices, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral = null)
     {
-        BitArray bits = syncAggregate.SyncCommitteeBits!;
-        BlsPublicKey[] committee = state.CurrentSyncCommittee!.Pubkeys!;
-
-        BlsSigner.AggregatedPublicKey participants = new(stackalloc long[Bls.P1.Sz]);
-        int participantCount = 0;
-        for (int i = 0; i < bits.Length; i++)
-        {
-            if (!bits[i])
-                continue;
-            if (!participants.TryAggregate(committee[i].Bytes, out _))
-                return false;
-            participantCount++;
-        }
-
+        Bls.P1 participants = new(stackalloc long[Bls.P1.Sz]);
+        int participantCount = AggregateSyncParticipants(syncAggregate.SyncCommitteeBits!, state.CurrentSyncCommittee!.Pubkeys!, committeeIndices, pubkeys, participants);
+        if (participantCount < 0)
+            return false;
         if (participantCount == 0)
             return syncAggregate.SyncCommitteeSignature.Bytes.SequenceEqual(G2PointAtInfinity);
 
         ulong previousSlot = Math.Max(state.Slot, 1) - 1;
         Hash256 domain = state.GetDomain(DomainType.SyncCommittee, BeaconStateAccessors.ComputeEpochAtSlot(previousSlot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(state.GetBlockRootAtSlot(previousSlot), domain);
-        return BlockSignatureBatch.Verify(participants.PublicKey, syncAggregate.SyncCommitteeSignature, signingRoot, deferral);
+        return BlockSignatureBatch.Verify(participants.ToAffine(), syncAggregate.SyncCommitteeSignature, signingRoot, deferral);
+    }
+
+    /// <summary>
+    /// Adds the public key of each sync committee member whose bit is set into <paramref name="participants"/>,
+    /// once per set bit, as <c>eth_fast_aggregate_verify</c> over the participant pubkeys does.
+    /// </summary>
+    /// <remarks>
+    /// A member's cached key is used only when it compresses to the committee's stored key; otherwise the stored key
+    /// is decompressed. Either way <c>FastAggregateVerify</c>'s <c>KeyValidate</c> is applied to each member (the cache
+    /// holds no infinity key and remembers its subgroup checks), so the result never depends on <paramref name="pubkeys"/>
+    /// or <paramref name="committeeIndices"/>, where -1 marks a member missing from the registry.
+    /// A repeated member is added once per bit, so the adds are sequential: <see cref="PubkeyCache.SumPublicKeys"/>
+    /// requires distinct indices. The aggregate itself may be infinity, which the verification refuses.
+    /// </remarks>
+    /// <returns>The participant count, or -1 when a member key fails <c>KeyValidate</c>.</returns>
+    internal static int AggregateSyncParticipants(BitArray bits, BlsPublicKey[] committee, int[] committeeIndices, PubkeyCache pubkeys, Bls.P1 participants)
+    {
+        G1Affine decoded = new(stackalloc long[G1Affine.Sz]);
+        int participantCount = 0;
+        for (int i = 0; i < bits.Length; i++)
+        {
+            if (!bits[i])
+                continue;
+            int index = committeeIndices[i];
+            G1Affine member = decoded;
+            if ((uint)index < (uint)pubkeys.Count && pubkeys.GetPublicKey(index).Compress().AsSpan().SequenceEqual(committee[i].Bytes))
+            {
+                if (!pubkeys.IsInSubgroup(index))
+                    return -1;
+                member = pubkeys.GetPublicKey(index);
+            }
+            else if (!BlsSignatureSet.TryKeyValidate(committee[i].Bytes, decoded))
+            {
+                return -1;
+            }
+
+            participants.Add(member);
+            participantCount++;
+        }
+
+        return participantCount;
     }
 
     private static bool Verify(G1Affine publicKey, BlsSignature signature, Hash256 signingRoot) =>

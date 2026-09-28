@@ -107,7 +107,7 @@ public static class BlockProcessing
         ProcessRandao(state, body, pubkeys, verifySignatures, batch);
         ProcessEth1Data(state, body);
         ProcessOperations(state, body, cache, pubkeys, verifySignatures, batch);
-        ProcessSyncAggregate(state, body.SyncAggregate!, cache, verifySignatures, batch);
+        ProcessSyncAggregate(state, body.SyncAggregate!, cache, pubkeys, verifySignatures, batch);
     }
 
     /// <summary>Spec <c>process_block_header</c>: validates the block against the chain tip and caches it as the latest header.</summary>
@@ -858,10 +858,12 @@ public static class BlockProcessing
     }
 
     /// <summary>Spec <c>process_sync_aggregate</c> (Altair): verifies the aggregate and applies participant, proposer, and non-participant balance changes.</summary>
-    public static void ProcessSyncAggregate(BeaconStateFulu state, SyncAggregate syncAggregate, EpochCache cache, bool verifySignature = true, BlockSignatureBatch? batch = null)
+    public static void ProcessSyncAggregate(BeaconStateFulu state, SyncAggregate syncAggregate, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null)
     {
+        EnsureSyncCommitteeWidth(syncAggregate);
+
         const string invalidSignature = "Invalid sync aggregate signature";
-        if (verifySignature && !SignatureSets.VerifySyncAggregate(state, syncAggregate, batch?.Defer(invalidSignature)))
+        if (verifySignature && !SignatureSets.VerifySyncAggregate(state, syncAggregate, cache.FindSyncCommitteeIndices(state.CurrentSyncCommittee!, state.Validators!), pubkeys, batch?.Defer(invalidSignature)))
             throw new BeaconStateException(invalidSignature);
 
         ulong totalActiveIncrements = state.GetTotalActiveBalance(cache) / Presets.EffectiveBalanceIncrement;
@@ -888,6 +890,15 @@ public static class BlockProcessing
                 state.DecreaseBalance(participantIndex, participantReward);
             }
         }
+    }
+
+    /// <summary>Refuses sync committee bits that are not one bit per member, which the SSZ <c>Bitvector[SYNC_COMMITTEE_SIZE]</c> type guarantees on the wire.</summary>
+    /// <exception cref="BeaconStateException">The bit count is not <c>SYNC_COMMITTEE_SIZE</c>.</exception>
+    internal static void EnsureSyncCommitteeWidth(SyncAggregate syncAggregate)
+    {
+        int width = syncAggregate.SyncCommitteeBits!.Length;
+        if (width != Presets.SyncCommitteeSize)
+            throw new BeaconStateException($"Sync committee bits have {width} entries, expected {Presets.SyncCommitteeSize}");
     }
 
     /// <summary>Returns the index of the validator with <paramref name="pubkey"/>, or null when unregistered.</summary>

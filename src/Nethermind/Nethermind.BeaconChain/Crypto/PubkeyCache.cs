@@ -30,6 +30,9 @@ public class PubkeyCache
 
     private long[] _points = [];
 
+    // Per validator: 0 not yet checked, 1 in G1, 2 outside G1.
+    private byte[] _subgroupChecks = [];
+
     public int Count { get; private set; }
 
     /// <summary><c>blst_p1s_add(ret, points[], npoints)</c>, which the managed wrapper does not bind; resolved from the library it loads.</summary>
@@ -39,6 +42,20 @@ public class PubkeyCache
     /// <summary>Returns the decompressed G1 point of a validator, wrapping the backing buffer without copying.</summary>
     public G1Affine GetPublicKey(int validatorIndex) =>
         new(_points.AsSpan(checked(validatorIndex * G1Affine.Sz), G1Affine.Sz));
+
+    /// <summary>Returns whether a validator's cached public key is in the prime-order subgroup G1.</summary>
+    /// <remarks>
+    /// The subgroup check is made on first use and remembered, as it costs several times the decompression the build
+    /// already pays. Concurrent callers may both check the same key and store the same result.
+    /// </remarks>
+    internal bool IsInSubgroup(int validatorIndex)
+    {
+        byte[] checks = _subgroupChecks;
+        byte check = checks[validatorIndex];
+        if (check == 0)
+            checks[validatorIndex] = check = GetPublicKey(validatorIndex).InGroup() ? (byte)1 : (byte)2;
+        return check == 1;
+    }
 
     /// <summary>Writes the sum of the public keys of <paramref name="validatorIndices"/> into <paramref name="sum"/>, a Jacobian G1 point.</summary>
     /// <remarks>
@@ -81,7 +98,7 @@ public class PubkeyCache
     }
 
     /// <summary>Decompresses all validator pubkeys into a fresh buffer.</summary>
-    /// <exception cref="InvalidOperationException">A pubkey is not a valid G1 point, or the sample verification failed.</exception>
+    /// <exception cref="InvalidOperationException">A pubkey does not decode or is the point at infinity, or the sample verification failed.</exception>
     public void Build(Validator[] validators)
     {
         _points = [];
@@ -92,19 +109,23 @@ public class PubkeyCache
     /// <summary>Extends the cache with validators appended to the registry since the last build.</summary>
     /// <param name="validators">The full validator registry.</param>
     /// <param name="fromIndex">The first index that is not yet cached.</param>
+    /// <exception cref="InvalidOperationException">A pubkey does not decode or is the point at infinity, or the sample verification failed.</exception>
     public void Extend(Validator[] validators, int fromIndex)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(fromIndex, Count);
 
         long[] points = new long[checked(validators.Length * G1Affine.Sz)];
         _points.AsSpan(0, fromIndex * G1Affine.Sz).CopyTo(points);
+        byte[] subgroupChecks = new byte[validators.Length];
+        _subgroupChecks.AsSpan(0, fromIndex).CopyTo(subgroupChecks);
 
         long firstInvalid = -1;
         Parallel.For(fromIndex, validators.Length, (i, state) =>
         {
             G1Affine point = new(points.AsSpan(i * G1Affine.Sz, G1Affine.Sz));
             BlsPublicKey pubkey = validators[i].Pubkey;
-            if (!point.TryDecode(pubkey.Bytes, out Bls.ERROR _))
+            // KeyValidate refuses infinity in every verification that sums these keys; the subgroup check is deferred to IsInSubgroup.
+            if (!point.TryDecode(pubkey.Bytes, out Bls.ERROR _) || point.IsInf())
             {
                 Interlocked.CompareExchange(ref firstInvalid, i, -1);
                 state.Stop();
@@ -117,6 +138,7 @@ public class PubkeyCache
         }
 
         _points = points;
+        _subgroupChecks = subgroupChecks;
         Count = validators.Length;
 
         if (!SamplesMatch(validators))
@@ -173,11 +195,13 @@ public class PubkeyCache
         }
 
         _points = points;
+        _subgroupChecks = new byte[count];
         Count = count;
 
-        if (!SamplesMatch(validators))
+        if (!SamplesMatch(validators) || HoldsInfinity())
         {
             _points = [];
+            _subgroupChecks = [];
             Count = 0;
             return false;
         }
@@ -190,6 +214,18 @@ public class PubkeyCache
     /// <summary>Re-compresses the first and last cached points and compares them with the registry's compressed pubkeys.</summary>
     private bool SamplesMatch(Validator[] validators) =>
         Count == 0 || (SampleMatches(validators, 0) && SampleMatches(validators, Count - 1));
+
+    /// <summary>Whether a loaded point is the point at infinity, which <see cref="Extend"/> never caches but a persisted buffer may hold.</summary>
+    private bool HoldsInfinity()
+    {
+        for (int i = 0; i < Count; i++)
+        {
+            if (GetPublicKey(i).IsInf())
+                return true;
+        }
+
+        return false;
+    }
 
     private bool SampleMatches(Validator[] validators, int index)
     {
