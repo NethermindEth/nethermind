@@ -20,16 +20,17 @@ namespace Nethermind.JsonRpc;
 /// EVM throughput plateaus at about one execution per logical processor, so running more at once only adds latency and,
 /// past saturation, wastes work on requests that are rejected anyway. An explicitly configured pool size is used as is;
 /// queueing and shedding start only when more than that many requests are in flight, so a pool at or above the peak
-/// concurrency turns them off. Waiters are served in order of arrival
-/// plus a penalty that grows with their <c>params</c> size up to half the wait budget, so a smaller request overtakes a
-/// larger one that arrived shortly before it. A waiter that has waited half the budget is served before any later arrival,
-/// so sustained light traffic cannot starve a heavy request.
+/// concurrency turns them off. Priority waiters are served first, in order of arrival. The others are served in order of
+/// arrival plus a penalty that grows with their <c>params</c> size up to half the wait budget, so a smaller request overtakes
+/// a larger one that arrived shortly before it. A waiter that has waited half the budget is served before any later arrival
+/// without priority, so sustained light traffic cannot starve a heavy request.
 /// </remarks>
 internal sealed class EvmAdmissionGate
 {
     internal const int MaxWeight = 8;
     internal const int BytesPerWeightUnit = 128 * 1024;
 
+    private const long PriorityOrder = long.MinValue;
     private const string BusyMessage = "All EVM execution slots are busy.";
     private const string WaitTimeoutMessage = "No EVM execution slot was granted within the queue wait budget.";
 
@@ -81,11 +82,12 @@ internal sealed class EvmAdmissionGate
     /// <summary>Acquires an execution slot, waiting up to <paramref name="maxWait"/> for one if every slot is busy.</summary>
     /// <param name="paramsUtf8Length">Byte length of the request's raw <c>params</c>; see <see cref="Weigh"/>.</param>
     /// <param name="maxWait">How long the request may wait for a slot, capped at <see cref="Budget"/>; zero or less rejects it at once.</param>
+    /// <param name="priority">Serves the request ahead of every waiter without priority.</param>
     /// <param name="cancellationToken">Abandons the wait.</param>
     /// <returns>A lease to dispose exactly once, after the execution, including any task it returned, has completed.</returns>
     /// <exception cref="LimitExceededException">No slot was free and the request could not queue, or none was granted within <paramref name="maxWait"/>.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled before a slot was granted.</exception>
-    internal async ValueTask<Lease> AdmitAsync(int paramsUtf8Length, TimeSpan maxWait, CancellationToken cancellationToken)
+    internal async ValueTask<Lease> AdmitAsync(int paramsUtf8Length, TimeSpan maxWait, bool priority, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Waiter waiter;
@@ -114,7 +116,7 @@ internal sealed class EvmAdmissionGate
 
             long now = _timeProvider.GetTimestamp();
             waiter = new Waiter(now, maxWait);
-            _waiters.Enqueue(waiter, (now + (Weigh(paramsUtf8Length) - 1) * _weightPenalty, ++_sequence));
+            _waiters.Enqueue(waiter, (priority ? PriorityOrder : now + (Weigh(paramsUtf8Length) - 1) * _weightPenalty, ++_sequence));
             waiter.Arrival = _arrivals.AddLast(waiter);
             Metrics.RpcAdmissionQueued = _waiters.Count;
         }
@@ -198,7 +200,8 @@ internal sealed class EvmAdmissionGate
         }
     }
 
-    // Caller holds _lock. Takes the smallest order, unless the oldest waiter has waited half the budget: then it goes first.
+    // Caller holds _lock. Takes the smallest order, unless the oldest waiter has waited half the budget and no priority
+    // waiter is queued: then the oldest goes first.
     private bool TryDequeue([NotNullWhen(true)] out Waiter? next)
     {
         next = _arrivals.First?.Value;
@@ -207,7 +210,8 @@ internal sealed class EvmAdmissionGate
             return false;
         }
 
-        if (_timeProvider.GetElapsedTime(next.EnqueuedTimestamp) >= _budget / 2)
+        if (_waiters.TryPeek(out _, out (long Order, long Sequence) first) && first.Order != PriorityOrder
+            && _timeProvider.GetElapsedTime(next.EnqueuedTimestamp) >= _budget / 2)
         {
             _waiters.Remove(next, out _, out _);
         }

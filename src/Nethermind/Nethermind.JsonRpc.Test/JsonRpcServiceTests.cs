@@ -1300,30 +1300,37 @@ public class JsonRpcServiceTests
 
     [TestCase(RpcEndpoint.Http, true, TestName = "Authenticated HTTP")]
     [TestCase(RpcEndpoint.IPC, false, TestName = "IPC")]
-    public async Task Trusted_evm_request_is_not_limited_by_the_execution_slots(RpcEndpoint endpoint, bool authenticatedUrl)
+    public async Task Trusted_evm_request_takes_a_slot_ahead_of_every_queued_request(RpcEndpoint endpoint, bool authenticatedUrl)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         JsonRpcService service = CreateGatedService(ethRpcModule);
-        List<(int InFlight, int Queued)> gateDuringCalls = [];
-        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ =>
+        List<(ulong? Nonce, int InFlight, int Queued)> calls = [];
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(callInfo =>
         {
-            lock (gateDuringCalls) gateDuringCalls.Add((service.EvmGate.InFlight, service.EvmGate.Queued));
+            ulong? nonce = ((LegacyTransactionForRpc)callInfo.Arg<SignableTransactionForRpc>()).Nonce;
+            lock (calls) calls.Add((nonce, service.EvmGate.InFlight, service.EvmGate.Queued));
             return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
         });
         using JsonRpcContext trusted = new(endpoint, url: authenticatedUrl ? new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, [ModuleType.Eth]) : null);
-        EvmAdmissionGate.Lease held = await HoldSlot(service);
-        Task<JsonRpcResponse> queued = service.SendRequestAsync(EthCall(), _context).AsTask();
-        Assert.That(service.EvmGate.Queued, Is.EqualTo(1));
 
-        using (JsonRpcResponse response = await service.SendRequestAsync(EthCall(), trusted).AsTask().WaitAsync(TestTimeout))
+        Task<JsonRpcResponse>[] responses;
+        using (await HoldSlot(service))
         {
-            RpcTest.AssertSuccess<HexBytes>(response);
+            responses =
+            [
+                service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 1 }), _context).AsTask(),
+                service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 2 }), trusted).AsTask(),
+            ];
+            Assert.That(service.EvmGate.Queued, Is.EqualTo(2), "the trusted request waits for a slot too");
         }
 
-        Assert.That(gateDuringCalls, Is.EqualTo(new[] { (1, 1) }), "ran while the only slot was held and a public request waited");
-        held.Dispose();
-        using JsonRpcResponse served = await queued.WaitAsync(TestTimeout);
-        RpcTest.AssertSuccess<HexBytes>(served);
+        foreach (Task<JsonRpcResponse> response in responses)
+        {
+            using JsonRpcResponse completed = await response.WaitAsync(TestTimeout);
+            RpcTest.AssertSuccess<HexBytes>(completed);
+        }
+
+        Assert.That(calls, Is.EqualTo(new (ulong?, int, int)[] { (2, 1, 1), (1, 1, 0) }), "the trusted request ran first, in the only slot");
     }
 
     [TestCase(true, TestName = "Raw params")]
@@ -1430,7 +1437,7 @@ public class JsonRpcServiceTests
         RpcTest.BuildJsonRequest("eth_call", transaction ?? new LegacyTransactionForRpc());
 
     private static ValueTask<EvmAdmissionGate.Lease> HoldSlot(JsonRpcService service) =>
-        service.EvmGate.AdmitAsync(0, TimeSpan.Zero, CancellationToken.None);
+        service.EvmGate.AdmitAsync(0, TimeSpan.Zero, false, CancellationToken.None);
 
     /// <summary>Holds the continuations posted to it until <see cref="RunUntilCompleted"/> runs them on the calling thread.</summary>
     private sealed class HeldContinuations : SynchronizationContext

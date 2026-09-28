@@ -170,10 +170,8 @@ public interface IJsonRpcConfig : IConfig
             overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. Also the
             number of execution slots shared by `eth_call`, `eth_estimateGas`, `eth_createAccessList`,
             `eth_simulateV1` and `eth_fillTransaction`, with or without overrides; see
-            `EvmExecutionMaxQueueWaitMs`. Authenticated (Engine API / JWT) and IPC requests are not
-            limited by these slots, but their calls with overrides still count against the override-path
-            env pool, so while they run, a public call with overrides can still fail with `LimitExceeded`.
-            Raising it above the number of logical processors also runs more of those calls at once.
+            `EvmExecutionMaxQueueWaitMs`. Raising it above the number of logical processors also runs
+            more of those calls at once.
             Queueing and load shedding start only when more than this many of these calls are in flight,
             so a value at or above the node's peak concurrency turns them off. Defaults to the number of
             logical processors.
@@ -186,12 +184,12 @@ public interface IJsonRpcConfig : IConfig
             The max time, in milliseconds, an EVM-executing JSON-RPC request (`eth_call`, `eth_estimateGas`,
             `eth_createAccessList`, `eth_simulateV1`, `eth_fillTransaction`) waits for one of the
             `EthModuleConcurrentInstances` execution slots before it is answered with `LimitExceeded` (HTTP 503).
-            Waiters are served in arrival order, except that each full 128 KiB of `params` delays a request's turn by 1/14 of
-            this budget, up to half of it; a request that has waited half this budget is served before any later arrival.
+            Authenticated (Engine API / JWT) and IPC requests are served ahead of every other waiter, each with the whole budget.
+            The others are served in arrival order, except that each full 128 KiB of `params` delays a request's turn by 1/14 of
+            this budget, up to half of it; a request that has waited half this budget is served before any of them that arrived later.
             The budget bounds only the wait for a slot, not the response time. `0` or a negative value disables queueing.
             Per-method JSON-RPC durations include this wait; the `RpcAdmissionQueuedGrants` and
             `RpcAdmissionQueueWaitMicroseconds` metrics measure it.
-            Authenticated (Engine API / JWT) and IPC requests do not take a slot, so they never wait.
             Items of one batch share one budget, counted from the start of the batch; once it is spent, a later item is
             rejected at once if every slot is busy.
             A request keeps its slot until it completes (up to `Timeout`), so `EthModuleConcurrentInstances` concurrent long

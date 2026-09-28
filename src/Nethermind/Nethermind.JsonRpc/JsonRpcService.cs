@@ -60,9 +60,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            // Authenticated and IPC callers are the operator's own, so they are not gated; the env pools still bound
-            // their calls with overrides and their simulations.
-            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution && !context.IsAuthenticated
+            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution
                 ? ExecuteGatedAsync(rpcRequest, methodName, method, context)
                 : ExecuteAsync(rpcRequest, methodName, method, context);
             return responseTask.IsCompletedSuccessfully
@@ -122,7 +120,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private async ValueTask<JsonRpcResponse> ExecuteGatedAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
         // Admitted before binding, so a rejected request never pays for deserializing its parameters.
-        using EvmAdmissionGate.Lease lease = await EvmGate.AdmitAsync(request.ParamsUtf8Length, MaxQueueWait(request, context), request.CancellationToken);
+        // Authenticated and IPC callers are the operator's own, so they go ahead of every other waiter. They take a slot
+        // like everyone else: the override and simulate env pools have as many environments as there are slots.
+        using EvmAdmissionGate.Lease lease = await EvmGate.AdmitAsync(
+            request.ParamsUtf8Length, MaxQueueWait(request, context), context.IsAuthenticated, request.CancellationToken);
         request.CancellationToken.ThrowIfCancellationRequested();
         return await ExecuteAsync(request, methodName, method, context);
     }
@@ -130,6 +131,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     // Items of one batch run one after another, so they share one budget counted from the start of the batch.
     private TimeSpan MaxQueueWait(JsonRpcRequest request, JsonRpcContext context) => context.RpcEndpoint switch
     {
+        _ when context.IsAuthenticated => EvmGate.Budget,
         RpcEndpoint.Http or RpcEndpoint.Ws when request.IsBatchItem => EvmGate.Budget - Stopwatch.GetElapsedTime(request.BatchStartTimestamp),
         RpcEndpoint.Http or RpcEndpoint.Ws => EvmGate.Budget,
         _ => TimeSpan.Zero,

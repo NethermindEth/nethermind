@@ -44,7 +44,7 @@ public class EvmAdmissionGateTests
         Assert.That((third.IsCompleted, gate.InFlight, gate.Queued), Is.EqualTo((false, 2, 1)));
 
         first.Dispose();
-        Assert.That(async () => await gate.AdmitAsync(0, TimeSpan.Zero, CancellationToken.None), Throws.InstanceOf<LimitExceededException>(),
+        Assert.That(async () => await Admit(gate, maxWait: TimeSpan.Zero), Throws.InstanceOf<LimitExceededException>(),
             "a request that may not queue never gets a slot released while others wait");
         Lease granted = await third.AsTask().WaitAsync(TestTimeout);
         Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((2, 0)));
@@ -66,7 +66,7 @@ public class EvmAdmissionGateTests
         using Lease held = await Admit(gate);
         Task<Lease>[] queued = [.. Enumerable.Range(0, alreadyQueued).Select(_ => Admit(gate).AsTask())];
 
-        Task<Lease> admission = gate.AdmitAsync(0, TimeSpan.FromMilliseconds(requestMaxWaitMs), CancellationToken.None).AsTask();
+        Task<Lease> admission = Admit(gate, maxWait: TimeSpan.FromMilliseconds(requestMaxWaitMs)).AsTask();
 
         if (rejected)
         {
@@ -108,6 +108,21 @@ public class EvmAdmissionGateTests
         List<(string Name, Task<Lease> Admission)> waiters = [.. Enumerable.Range(0, 5).Select(i => (i.ToString(), Admit(gate).AsTask()))];
 
         Assert.That(await ReleaseAndRecordGrantOrder(held, waiters), Is.EqualTo(new[] { "0", "1", "2", "3", "4" }));
+    }
+
+    [Test]
+    public async Task Priority_waiters_go_first_in_arrival_order_even_ahead_of_one_that_waited_half_the_budget()
+    {
+        ManualClock clock = new();
+        EvmAdmissionGate gate = CreateGate(clock);
+        Lease held = await Admit(gate);
+        List<(string Name, Task<Lease> Admission)> waiters = [("oldest", Admit(gate).AsTask())];
+        clock.Advance(TimeSpan.FromMilliseconds(BudgetMs / 2));
+        waiters.Add(("heavy priority", Admit(gate, MaxWeight * BytesPerWeightUnit, priority: true).AsTask()));
+        waiters.Add(("light", Admit(gate).AsTask()));
+        waiters.Add(("light priority", Admit(gate, priority: true).AsTask()));
+
+        Assert.That(await ReleaseAndRecordGrantOrder(held, waiters), Is.EqualTo(new[] { "heavy priority", "light priority", "oldest", "light" }));
     }
 
     [TestCase(BudgetMs / 2 - 1, "light", TestName = "Just before half the budget: size order")]
@@ -253,8 +268,9 @@ public class EvmAdmissionGateTests
     private static EvmAdmissionGate CreateGate(ManualClock? clock = null, int permits = 1, int maxQueueWaitMs = BudgetMs, int queueLimit = 0) =>
         new(new JsonRpcConfig { EthModuleConcurrentInstances = permits, EvmExecutionMaxQueueWaitMs = maxQueueWaitMs, EvmExecutionQueueLimit = queueLimit }, clock ?? new ManualClock());
 
-    private static ValueTask<Lease> Admit(EvmAdmissionGate gate, int paramsUtf8Length = 0, CancellationToken cancellationToken = default, TimeSpan? maxWait = null) =>
-        gate.AdmitAsync(paramsUtf8Length, maxWait ?? gate.Budget, cancellationToken);
+    private static ValueTask<Lease> Admit(
+        EvmAdmissionGate gate, int paramsUtf8Length = 0, CancellationToken cancellationToken = default, TimeSpan? maxWait = null, bool priority = false) =>
+        gate.AdmitAsync(paramsUtf8Length, maxWait ?? gate.Budget, priority, cancellationToken);
 
     // One slot: each grant is disposed before the next, so completions follow the grant order.
     private static async Task<List<string>> ReleaseAndRecordGrantOrder(Lease held, List<(string Name, Task<Lease> Admission)> waiters)
