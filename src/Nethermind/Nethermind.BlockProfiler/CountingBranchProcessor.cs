@@ -26,7 +26,8 @@ namespace Nethermind.BlockProfiler;
 /// the thread pool is outside them; the instruction count repeats only when that work is kept inline
 /// (<c>DOTNET_PROCESSOR_COUNT=1</c>, prewarming off, <c>NETHERMIND_NO_EARLY_SENDER_RECOVERY=1</c>).
 /// These handlers subscribe first, so the other subscribers' start handlers are inside the windows and their
-/// end handlers outside.
+/// end handlers outside. A block line also splits its window at <see cref="IBlockProcessor.TransactionsExecuted"/>:
+/// <c>exec</c> is transaction execution, <c>post</c> the receipts, roots and commit after it.
 /// <para>
 /// <c>DOTNET_PROCESSOR_COUNT=1</c> also makes the runtime fall back to workstation GC, which collects on the thread
 /// that allocates, so a collection landing in a window would be counted with the block. Each branch therefore
@@ -38,20 +39,35 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 {
     private static int s_armedLogged;
 
+    /// <summary>
+    /// <c>NETHERMIND_COUNT_DEFER_VERDICT=1</c> holds <see cref="BlockExecuted"/> until the branch window closes, so the
+    /// answered newPayload's forkchoiceUpdated cannot run alongside the window's commit.
+    /// </summary>
+    private static readonly bool s_deferVerdict = Environment.GetEnvironmentVariable("NETHERMIND_COUNT_DEFER_VERDICT") == "1";
+
     private readonly IBranchProcessor _inner;
+    private readonly IBlockProcessor? _blockProcessor;
     private readonly ILogger _logger;
     private Window _branch;
     private Window _block;
+    private ThreadInstructionCounter.Sample _executed;
+    private bool _executedRead;
     private GCScheduler.ForcedGCExclusionScope? _forcedGCExclusion;
+    private EventHandler<BlockExecutedEventArgs>? _deferredBlockExecuted;
+    private BlockExecutedEventArgs? _pendingVerdict;
 
-    public CountingBranchProcessor(IBranchProcessor inner, ILogManager logManager)
+    public CountingBranchProcessor(IBranchProcessor inner, ILogManager logManager, IBlockProcessor? blockProcessor = null)
     {
         _inner = inner;
+        _blockProcessor = blockProcessor;
         _logger = logManager.GetClassLogger<CountingBranchProcessor>();
         _inner.BlocksProcessing += OnBlocksProcessing;
         _inner.BlockProcessing += OnBlockProcessing;
         _inner.BlockProcessed += OnBlockProcessed;
         _inner.BranchProcessingCompleted += OnBranchProcessingCompleted;
+        // Optional: a scope without a block processor still counts, only without the execution split.
+        if (_blockProcessor is not null) _blockProcessor.TransactionsExecuted += OnTransactionsExecuted;
+        if (s_deferVerdict) _inner.BlockExecuted += OnInnerBlockExecuted;
         // Branch processors are scoped; report whether the counters work once per process.
         if (Interlocked.Exchange(ref s_armedLogged, 1) == 0)
         {
@@ -77,23 +93,43 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         _branch = Window.Start();
     }
 
-    private void OnBlockProcessing(object? sender, BlockEventArgs e) => _block = Window.Start();
+    private void OnBlockProcessing(object? sender, BlockEventArgs e)
+    {
+        _executedRead = false;
+        _block = Window.Start();
+    }
+
+    // Splits the block window: transaction execution before this point, receipts, roots and commit after it.
+    private void OnTransactionsExecuted() =>
+        _executedRead = _block.IsOnCurrentThread && ThreadInstructionCounter.TryRead(out _executed);
 
     private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
     {
-        if (!_block.TryStop(out string counts)) return;
+        if (!_block.TryStop(out string counts, out ulong instructions)) return;
+        ulong executed = _executedRead ? _executed.Instructions - _block.StartInstructions : 0;
         Block block = e.Block;
-        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts}");
+        if (_logger.IsInfo) _logger.Info($"EXPB-COUNT block={block.Number} txs={block.Transactions.Length} gas={block.GasUsed} {counts} exec={executed} post={instructions - executed}");
     }
+
+    private void OnInnerBlockExecuted(object? sender, BlockExecutedEventArgs e) => _pendingVerdict = e;
 
     private void OnBranchProcessingCompleted(object? sender, BranchProcessingCompletedEventArgs e)
     {
-        bool stopped = _branch.TryStop(out string counts);
+        bool stopped = _branch.TryStop(out string counts, out _);
         bool regionHeld = NoGcRegion.Exit();
         _forcedGCExclusion?.Dispose();
         _forcedGCExclusion = null;
+        ReleaseVerdict(e.Exception is null && e.ProcessedBlocksCount == e.SuggestedBlocks.Count);
         if (!stopped || e.SuggestedBlocks.Count == 0) return;
         if (_logger.IsInfo) _logger.Info($"EXPB-COUNT branch={e.SuggestedBlocks[0].Number} blocks={e.ProcessedBlocksCount} {counts} nogc={(regionHeld ? 1 : 0)}");
+    }
+
+    /// <summary>Hands a held verdict to the subscribers, unless the branch failed after it was reached.</summary>
+    private void ReleaseVerdict(bool branchSucceeded)
+    {
+        BlockExecutedEventArgs? verdict = _pendingVerdict;
+        _pendingVerdict = null;
+        if (verdict is not null && branchSucceeded) _deferredBlockExecuted?.Invoke(this, verdict);
     }
 
     private readonly struct Window
@@ -129,14 +165,20 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
         public static Window Start() => ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample counters) ? new Window(counters) : default;
 
+        public bool IsOnCurrentThread => _threadId != 0 && _threadId == Environment.CurrentManagedThreadId;
+
+        public ulong StartInstructions => _counters.Instructions;
+
         /// <summary>Formats the window's deltas; false when it never started or ended on another thread.</summary>
-        public bool TryStop(out string counts)
+        public bool TryStop(out string counts, out ulong instructions)
         {
             counts = string.Empty;
-            if (_threadId == 0 || _threadId != Environment.CurrentManagedThreadId) return false;
+            instructions = 0;
+            if (!IsOnCurrentThread) return false;
             if (!ThreadInstructionCounter.TryRead(out ThreadInstructionCounter.Sample end)) return false;
 
             ThreadInstructionCounter.Sample delta = end - _counters;
+            instructions = delta.Instructions;
             long allocated = GC.GetAllocatedBytesForCurrentThread() - _allocated;
             // jit: methods compiled on this thread; lockc: lock contentions anywhere; cfa/cfs: carry-forward cache
             // hits/misses for accounts and slots; bundle/snaps: the flat DB's layering when the window closed.
@@ -206,8 +248,16 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
 
     public event EventHandler<BlockExecutedEventArgs>? BlockExecuted
     {
-        add => _inner.BlockExecuted += value;
-        remove => _inner.BlockExecuted -= value;
+        add
+        {
+            if (s_deferVerdict) _deferredBlockExecuted += value;
+            else _inner.BlockExecuted += value;
+        }
+        remove
+        {
+            if (s_deferVerdict) _deferredBlockExecuted -= value;
+            else _inner.BlockExecuted -= value;
+        }
     }
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed
@@ -240,6 +290,8 @@ public sealed class CountingBranchProcessor : IBranchProcessor, IDisposable
         _inner.BlockProcessing -= OnBlockProcessing;
         _inner.BlockProcessed -= OnBlockProcessed;
         _inner.BranchProcessingCompleted -= OnBranchProcessingCompleted;
+        if (_blockProcessor is not null) _blockProcessor.TransactionsExecuted -= OnTransactionsExecuted;
+        if (s_deferVerdict) _inner.BlockExecuted -= OnInnerBlockExecuted;
         _forcedGCExclusion?.Dispose();
         // The container owns the decorated instance; disposing it here would double-dispose.
     }
