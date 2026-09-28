@@ -78,10 +78,11 @@ public class GossipValidationTests
                 ("too many builder exit requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
                 ("too many consolidation requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
                 ("too many withdrawal requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                // REJECTs the router only drops, as it orders them after store checks; gossip_validation.md lets them run in any order.
-                ("too many blob kzg commitments", RouterVerdict.Ignored(GossipDropReason.LimitExceeded)),
-                ("bid's parent does not equal block's parent", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
-                ("block is not from a higher slot than its parent", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
+                // REJECTs needing no state that the spec orders after store checks; gossip_validation.md lets them run in any order.
+                ("incorrect execution payload timestamp", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("too many blob kzg commitments", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+                ("bid's parent does not equal block's parent", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("block is not from a higher slot than its parent", RouterVerdict.Rejected(GossipDropReason.NotAboveParentSlot)),
             ],
             [GossipTopics.BeaconAggregateAndProof] =
             [
@@ -92,16 +93,15 @@ public class GossipValidationTests
                 ("aggregate slot is from a future slot", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
                 ("aggregate epoch is not current or previous epoch", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
                 ("already seen aggregate for this data", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
-                // REJECTs the router only drops, as it orders them after store checks; gossip_validation.md lets them run in any order.
-                ("attestation epoch does not match target epoch", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
-                ("aggregate has no participants", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
+                // REJECTs needing no state that the spec orders after store checks; gossip_validation.md lets them run in any order.
+                ("attestation epoch does not match target epoch", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("aggregate has no participants", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
             ],
             [GossipTopics.AttesterSlashing] =
             [
                 ("all attester slashing indices already seen", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
                 ("all attester slashing indices already seen", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
-                // With no seen-index set the router cannot rule out the earlier IGNORE, so it only drops this REJECT.
-                ("attestation data is not slashable", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
+                ("attestation data is not slashable", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
             ],
             // An envelope whose block is not held is raised, so "envelope's block has not been seen" and, as the store holds only
             // accepted blocks, "envelope's block failed validation" have no row; neither has the signature, which needs the state.
@@ -218,7 +218,8 @@ public class GossipValidationTests
     {
         VectorMeta meta = VectorMeta.Load(testCase.CasePath);
         bool gloas = testCase.Fork == "gloas";
-        BeaconChainSpec spec = VectorSpec(testCase.CasePath, gloas);
+        (ulong genesisTime, ulong anchorFinalizedEpoch) = ReadAnchorState(Path.Combine(testCase.CasePath, "state.ssz_snappy"), gloas);
+        BeaconChainSpec spec = WithGenesisTime(VectorSpec(testCase.CasePath, gloas), genesisTime);
         long slotMs = (long)spec.SecondsPerSlot * 1000;
         DateTime genesis = DateTimeOffset.FromUnixTimeSeconds((long)spec.GenesisTime).UtcDateTime;
         ManualTimestamper timestamper = new(genesis);
@@ -226,7 +227,7 @@ public class GossipValidationTests
         {
             CurrentStatus = new StatusMessageV2
             {
-                FinalizedEpoch = meta.FinalizedEpoch ?? AnchorFinalizedEpoch(Path.Combine(testCase.CasePath, "state.ssz_snappy"), gloas),
+                FinalizedEpoch = meta.FinalizedEpoch ?? anchorFinalizedEpoch,
                 FinalizedRoot = Hash256.Zero,
                 HeadRoot = Hash256.Zero,
             },
@@ -349,14 +350,36 @@ public class GossipValidationTests
         return spec;
     }
 
-    private static ulong AnchorFinalizedEpoch(string statePath, bool gloas)
+    private static (ulong GenesisTime, ulong FinalizedEpoch) ReadAnchorState(string statePath, bool gloas)
     {
         if (!gloas)
-            return FuluDriverSupport.DecodeState(statePath).FinalizedCheckpoint!.Epoch;
+        {
+            BeaconStateFulu fulu = FuluDriverSupport.DecodeState(statePath);
+            return (fulu.GenesisTime, fulu.FinalizedCheckpoint!.Epoch);
+        }
 
         BeaconStateGloas.Decode(SszConsensusTestLoader.ReadSszSnappy(statePath), out BeaconStateGloas state);
-        return state.FinalizedCheckpoint!.Epoch;
+        return (state.GenesisTime, state.FinalizedCheckpoint!.Epoch);
     }
+
+    // compute_time_at_slot reads the anchor state's genesis_time, which the vectors set apart from the network config's.
+    private static BeaconChainSpec WithGenesisTime(BeaconChainSpec spec, ulong genesisTime) => new()
+    {
+        ChainId = spec.ChainId,
+        CheckpointSyncUrl = spec.CheckpointSyncUrl,
+        SecondsPerSlot = spec.SecondsPerSlot,
+        SlotsPerEpoch = spec.SlotsPerEpoch,
+        GenesisTime = genesisTime,
+        GenesisValidatorsRoot = spec.GenesisValidatorsRoot,
+        Forks = spec.Forks,
+        BlobSchedule = spec.BlobSchedule,
+        ElectraForkEpoch = spec.ElectraForkEpoch,
+        FuluForkEpoch = spec.FuluForkEpoch,
+        MaxBlobsPerBlockElectra = spec.MaxBlobsPerBlockElectra,
+        GloasForkEpoch = spec.GloasForkEpoch,
+        GloasForkVersion = spec.GloasForkVersion,
+        Bootnodes = spec.Bootnodes,
+    };
 
     private static IEnumerable<TestCaseData> MainnetCases()
     {
