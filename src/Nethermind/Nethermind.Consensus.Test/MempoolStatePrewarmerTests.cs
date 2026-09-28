@@ -247,7 +247,8 @@ public class MempoolStatePrewarmerTests
     /// by its own head's session instead.
     /// </summary>
     [Test]
-    public void RemovedBlock_WithoutSuccess_StartsWarmingAgain([Values(ProcessingResult.Success, ProcessingResult.MissingBlock)] ProcessingResult result)
+    public void RemovedBlock_WithoutSuccess_StartsWarmingAgain(
+        [Values(ProcessingResult.Success, ProcessingResult.InclusionListUnsatisfied, ProcessingResult.MissingBlock)] ProcessingResult result)
     {
         BlockHeader headHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(30_000_000).TestObject;
         Block head = new(headHeader);
@@ -261,14 +262,31 @@ public class MempoolStatePrewarmerTests
         queue.BlockAdded += Raise.EventWith(new BlockEventArgs(child));
         queue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(child.Hash!, result));
 
-        bool restarted = preWarmer.TryNextSession(result == ProcessingResult.Success ? TimeSpan.FromMilliseconds(200) : TimeSpan.FromSeconds(5), out CancellationToken second);
+        bool processed = result is ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied;
+        bool restarted = preWarmer.TryNextSession(processed ? TimeSpan.FromMilliseconds(200) : TimeSpan.FromSeconds(5), out CancellationToken second);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first.IsCancellationRequested, Is.True, "precondition: queueing the block cancels the session");
-            Assert.That(restarted, Is.EqualTo(result != ProcessingResult.Success));
+            Assert.That(restarted, Is.EqualTo(!processed), "only a block that was not processed restarts warming");
             if (restarted) Assert.That(second.IsCancellationRequested, Is.False, "the new session must be running");
         }
+    }
+
+    /// <summary>
+    /// Subscribing to the queue is best effort: if resolving it fails, head notifications must not throw, and the
+    /// session still starts, to be joined when a processing scope opens.
+    /// </summary>
+    [Test]
+    public void QueueResolutionFailure_DoesNotThrowIntoHeadNotifications()
+    {
+        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(30_000_000).TestObject;
+        TokenCapturingPreWarmer preWarmer = new();
+        using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, headHeader, out IBlockTree blockTree, out _, out _,
+            new Lazy<IBlockProcessingQueue>(() => throw new InvalidOperationException("scope disposed")));
+
+        Assert.That(() => blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(headHeader))), Throws.Nothing);
+        Assert.That(preWarmer.NextSession().IsCancellationRequested, Is.False, "the session must still start");
     }
 
     /// <summary>
@@ -308,7 +326,7 @@ public class MempoolStatePrewarmerTests
 
     /// <summary>A prewarmer whose clock reads the head's timestamp, so the head is fresh enough to warm from.</summary>
     private static MempoolStatePrewarmer CreatePrewarmer(IBlockCachePreWarmer preWarmer, BlockHeader head, out IBlockTree blockTree,
-        out ITxSource txSource, out IBlockProcessingQueue processingQueue)
+        out ITxSource txSource, out IBlockProcessingQueue processingQueue, Lazy<IBlockProcessingQueue> lazyQueue = null)
     {
         txSource = Substitute.For<ITxSource>();
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
@@ -331,7 +349,7 @@ public class MempoolStatePrewarmerTests
         blocksConfig.PreWarming.Returns(PreWarmMode.BlockAndMempool);
         blocksConfig.SecondsPerSlot.Returns(SecondsPerSlot);
 
-        return new MempoolStatePrewarmer(preWarmer, txSourceFactory, blockTree, new Lazy<IBlockProcessingQueue>(() => queue), specProvider, timestamper, blocksConfig, LimboLogs.Instance);
+        return new MempoolStatePrewarmer(preWarmer, txSourceFactory, blockTree, lazyQueue ?? new Lazy<IBlockProcessingQueue>(() => queue), specProvider, timestamper, blocksConfig, LimboLogs.Instance);
     }
 
     // Stands in for a chain-specific header subtype (e.g. XdcBlockHeader) whose CreateSimulatedChild returns its own type.

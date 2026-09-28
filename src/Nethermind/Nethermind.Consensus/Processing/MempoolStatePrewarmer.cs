@@ -87,10 +87,20 @@ public sealed class MempoolStatePrewarmer : IDisposable
         using (_sessionLock.EnterScope())
         {
             if (_queueSubscription != 0) return;
-            IBlockProcessingQueue queue = _processingQueue.Value;
-            queue.BlockAdded += OnBlockQueued;
-            queue.BlockRemoved += OnBlockRemoved;
-            _queueSubscription = 1;
+            try
+            {
+                IBlockProcessingQueue queue = _processingQueue.Value;
+                queue.BlockAdded += OnBlockQueued;
+                queue.BlockRemoved += OnBlockRemoved;
+                _queueSubscription = 1;
+            }
+            catch (Exception ex)
+            {
+                // Best effort, and the lazy caches a failed resolution: stay unsubscribed, so sessions are joined when a
+                // processing scope opens, rather than throw into every head notification.
+                _queueSubscription = 3;
+                if (_logger.IsDebug) _logger.Debug($"Mempool pre-warming could not subscribe to the processing queue: {ex}");
+            }
         }
     }
 
@@ -105,7 +115,8 @@ public sealed class MempoolStatePrewarmer : IDisposable
     // follows to start another session; warm again from the unchanged head.
     private void OnBlockRemoved(object? sender, BlockRemovedEventArgs e)
     {
-        if (e.ProcessingResult == ProcessingResult.Success) return;
+        // Both were processed and committed; a new head, if any, starts the next session.
+        if (e.ProcessingResult is ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied) return;
 
         // Read before the head: a head published after this read must win, so the restart claims the next generation
         // only if none has been taken since, and a newer head's session is never displaced by the old head's.
