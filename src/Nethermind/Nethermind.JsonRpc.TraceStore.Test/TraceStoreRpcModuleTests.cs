@@ -311,6 +311,28 @@ public class TraceStoreRpcModuleTests
         test.InnerModule.Received().trace_filter(Arg.Any<TraceFilterForRpc>());
     }
 
+    // Pending resolves to the head, whose traces are stored; neither the store nor the inner module may answer it.
+    [Test]
+    public void rejects_pending_block_as_invalid_params(
+        [Values("trace_block", "trace_replayBlockTransactions", "trace_filter fromBlock", "trace_filter toBlock")] string request)
+    {
+        TestContext test = new();
+        IResultWrapper result = request switch
+        {
+            "trace_block" => test.Module.trace_block(BlockParameter.Pending),
+            "trace_replayBlockTransactions" => test.Module.trace_replayBlockTransactions(BlockParameter.Pending, [ParityTraceTypes.Trace.ToString()]),
+            "trace_filter fromBlock" => test.Module.trace_filter(new TraceFilterForRpc { FromBlock = BlockParameter.Pending, ToBlock = BlockParameter.Latest }),
+            _ => test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Pending }),
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(result.Result.Error, Is.EqualTo("Pending block is not supported for tracing"));
+            Assert.That(test.InnerModule.ReceivedCalls(), Is.Empty);
+        }
+    }
+
     [Test]
     public async Task trace_block_to_async_stream()
     {

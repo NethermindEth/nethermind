@@ -19,11 +19,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private int _after = after;
         private int? _count = count;
 
+        /// <summary>No further trace can be accepted, so the blocks left in the range cannot change the result.</summary>
+        public bool IsExhausted => _count <= 0;
+
         public IEnumerable<ParityTxTraceFromStore> FilterTxTraces(IEnumerable<ParityTxTraceFromStore> txTraces)
         {
             foreach (ParityTxTraceFromStore? txTrace in txTraces)
             {
-                if (_count <= 0)
+                if (IsExhausted)
                 {
                     break;
                 }
@@ -38,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public bool ShouldUseTxTrace(ParityTraceAction? tx)
         {
-            if (tx is not null && !(_count <= 0) && MatchAddresses(tx.From, tx.Type == "reward" ? tx.Author : tx.To))
+            if (tx is not null && !IsExhausted && MatchAddresses(tx.From, tx.Type == "reward" ? tx.Author : tx.To))
             {
                 if (_after > 0)
                 {
