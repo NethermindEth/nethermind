@@ -13,6 +13,7 @@ using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.P2P.Gossip;
@@ -182,7 +183,7 @@ public partial class BeaconSyncOrchestratorTests
         discovery = container.Resolve<BeaconDiscovery>();
         ulong anchorSlot = startEpoch * spec.SlotsPerEpoch;
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
-        orchestrator.Initialize(new ScriptedImporter { Head = CreateHead(TestItem.KeccakA, anchorSlot, finalizedEpoch: startEpoch - 1) }, anchorBlock, anchorRoot);
+        orchestrator.Initialize(new ScriptedImporter { Head = CreateHead(TestItem.KeccakA, anchorSlot, finalizedEpoch: startEpoch - 1) }, new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot);
         return container;
     }
 

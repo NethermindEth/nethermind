@@ -209,7 +209,7 @@ public class CustodySamplingAvailabilityTests
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         RecordingRule rule = new();
         BlockImporter importer = new(chain.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), chain.Pubkeys, new NoOpEngineDriver(),
-            new BeaconChainConfig(), LimboLogs.Instance, rule, static (_, _) => true, chain.ClockAtEpoch(1), chain.AnchorState, chain.AnchorBlock, chain.AnchorRoot);
+            new BeaconChainConfig(), LimboLogs.Instance, rule, static (_, _) => true, chain.ClockAtEpoch(1), new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
 
         BlockImportResult child = importer.Import(new ForkedSignedBeaconBlock.OfFulu(chain.Block), chain.BlockRoot, verifySignatures: true);
         int askedForChild = rule.Asked;

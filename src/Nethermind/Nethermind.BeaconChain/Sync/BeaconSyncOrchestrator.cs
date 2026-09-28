@@ -204,7 +204,7 @@ public sealed class BeaconSyncOrchestrator(
     internal int PendingGossipBlockCount => _pendingCount;
 
     /// <summary>Runs the full sync flow from the given anchor until cancelled.</summary>
-    public async Task RunAsync(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot, CancellationToken token)
+    public async Task RunAsync(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot, CancellationToken token)
     {
         if (p2p is null || peerManager is null || discovery is null)
         {
@@ -261,11 +261,21 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Binds the importer and anchor-derived bookkeeping; the synchronous head of <see cref="RunAsync"/>.</summary>
-    internal void Initialize(IBlockImporter importer, SignedBeaconBlock anchorBlock, Hash256 anchorRoot)
+    /// <remarks>
+    /// A Gloas anchor's execution hash is its bid's <c>parent_block_hash</c> (specs/gloas/fork-choice.md
+    /// <c>notify_forkchoice_updated</c>), which <c>process_execution_payload_bid</c> asserts equals the
+    /// anchor state's <c>latest_block_hash</c>; the bid's own payload may never have been revealed.
+    /// </remarks>
+    internal void Initialize(IBlockImporter importer, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot)
     {
         _importer = importer;
-        _anchorSlot = anchorBlock.Message!.Slot;
-        _anchorExecutionHash = anchorBlock.Message.Body!.ExecutionPayload!.BlockHash!;
+        _anchorSlot = anchorBlock.Slot;
+        _anchorExecutionHash = anchorBlock switch
+        {
+            ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Message!.Body!.ExecutionPayload!.BlockHash!,
+            ForkedSignedBeaconBlock.OfGloas gloas => gloas.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash!,
+            _ => throw new NotSupportedException($"Unhandled anchor block {anchorBlock.GetType().Name}"),
+        };
         _syncTip = new Tip(anchorRoot, _anchorSlot);
         _progressLogSlot = _anchorSlot;
         _progressLogMs = slotClock.UnixMilliseconds;

@@ -84,10 +84,11 @@ internal sealed class SignedGloasChain
     }
 
     /// <summary>Builds the block at <paramref name="slot"/> on <paramref name="parent"/>, or on the Fulu anchor across the fork when it is <c>null</c>.</summary>
-    public Block Next(Block? parent, ulong slot, bool full, byte blockHashFill, SszKzgCommitment[]? blobCommitments = null) =>
+    /// <param name="attestations">The body's attestations, built from the pre-state advanced to <paramref name="slot"/>.</param>
+    public Block Next(Block? parent, ulong slot, bool full, byte blockHashFill, SszKzgCommitment[]? blobCommitments = null, System.Func<BeaconStateGloas, EpochCache, AttestationGloas[]>? attestations = null) =>
         parent is null
-            ? Build(CrossFork(AnchorState), slot, full, blockHashFill, blobCommitments)
-            : Build(parent.PostState.Clone(), slot, full, blockHashFill, blobCommitments);
+            ? Build(CrossFork(AnchorState), slot, full, blockHashFill, blobCommitments, attestations)
+            : Build(parent.PostState.Clone(), slot, full, blockHashFill, blobCommitments, attestations);
 
     /// <summary>Builds the first Gloas block at <paramref name="slot"/> on the Fulu block <paramref name="parent"/>, across the fork.</summary>
     public Block NextOnFulu(FuluBlock parent, ulong slot, bool full, byte blockHashFill) => Build(CrossFork(parent.PostState), slot, full, blockHashFill, null);
@@ -99,7 +100,7 @@ internal sealed class SignedGloasChain
         return GloasForkTransition.UpgradeToGloas(fulu, Spec);
     }
 
-    private Block Build(BeaconStateGloas state, ulong slot, bool full, byte blockHashFill, SszKzgCommitment[]? blobCommitments)
+    private Block Build(BeaconStateGloas state, ulong slot, bool full, byte blockHashFill, SszKzgCommitment[]? blobCommitments, System.Func<BeaconStateGloas, EpochCache, AttestationGloas[]>? attestations = null)
     {
         EpochCache cache = new();
         if (state.Slot < slot)
@@ -115,6 +116,11 @@ internal sealed class SignedGloasChain
 
         SignedBeaconBlockGloas block = MinimalBlock(state, bid);
         BeaconBlockGloas message = block.Message!;
+        if (attestations is not null)
+        {
+            message.Body!.Attestations = attestations(state, cache);
+        }
+
         Bls.SecretKey proposerKey = ValidatorKey((int)message.ProposerIndex);
         ulong epoch = state.GetCurrentEpoch();
         message.Body!.RandaoReveal = Sign(proposerKey, Domains.ComputeSigningRoot(EpochRoot(epoch), state.GetDomain(DomainType.Randao, epoch)));
@@ -143,8 +149,8 @@ internal sealed class SignedGloasChain
             ReplayedBlockAvailability.Instance,
             isEnvelopeDataAvailable ?? (static (_, _) => true),
             clock ?? new SlotClock(Spec, Timestamper.Default),
-            AnchorState,
-            AnchorBlock,
+            new ForkedBeaconState.OfFulu(AnchorState),
+            new ForkedSignedBeaconBlock.OfFulu(AnchorBlock),
             AnchorRoot,
             snapshots);
     }

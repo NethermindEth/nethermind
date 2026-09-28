@@ -247,7 +247,7 @@ public class BlockImporterTests
         DataColumnSidecarPool pool = new();
         Hold(pool, chain, custody.SampledColumns);
         BlockImporterFactory factory = new(chain.Spec, store, chain.Pubkeys, new ValidPayloadEngine(), new BeaconChainConfig(), LimboLogs.Instance, pool, chain.ClockAtSlot(chain.Block.Message!.Slot), discovery);
-        IBlockImporter importer = factory.Create(chain.AnchorState, chain.AnchorBlock, chain.AnchorRoot);
+        IBlockImporter importer = factory.Create(new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
@@ -266,7 +266,7 @@ public class BlockImporterTests
         DataColumnSidecarPool pool = new();
         Hold(pool, chain, Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(c => (ulong)c));
         BlockImporterFactory factory = new(chain.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), chain.Pubkeys, new ValidPayloadEngine(), new BeaconChainConfig(), LimboLogs.Instance, pool, chain.ClockAtSlot(chain.Block.Message!.Slot));
-        IBlockImporter importer = factory.Create(chain.AnchorState, chain.AnchorBlock, chain.AnchorRoot);
+        IBlockImporter importer = factory.Create(new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
@@ -322,7 +322,7 @@ public class BlockImporterTests
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
         ForkChoiceSnapshotHolder snapshots = new();
         BlockImporterFactory factory = new(chain.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), chain.Pubkeys, new ValidPayloadEngine(), new BeaconChainConfig(), LimboLogs.Instance, new DataColumnSidecarPool(), new SlotClock(chain.Spec, Timestamper.Default), forkChoiceSnapshots: snapshots);
-        IBlockImporter importer = factory.Create(chain.AnchorState, chain.AnchorBlock, chain.AnchorRoot);
+        IBlockImporter importer = factory.Create(new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
 
         importer.ComputeHead();
 
@@ -335,7 +335,7 @@ public class BlockImporterTests
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
         SlotClock pastTheWindow = chain.ClockAtEpoch(Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests + 1);
         BlockImporterFactory factory = new(chain.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), chain.Pubkeys, new ValidPayloadEngine(), new BeaconChainConfig(), LimboLogs.Instance, new DataColumnSidecarPool(), pastTheWindow);
-        IBlockImporter importer = factory.Create(chain.AnchorState, chain.AnchorBlock, chain.AnchorRoot);
+        IBlockImporter importer = factory.Create(new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
 
         BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
 
@@ -712,8 +712,8 @@ public class BlockImporterTests
             new CustodySamplingAvailability(new FixedCustodySource(custody), new DataColumnPoolSource(pool), clock ?? chain.ClockAtEpoch(0)),
             static (_, _) => false,
             importClock ?? new SlotClock(chain.Spec, Timestamper.Default),
-            chain.AnchorState,
-            chain.AnchorBlock,
+            new ForkedBeaconState.OfFulu(chain.AnchorState),
+            new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock),
             chain.AnchorRoot,
             forkChoiceSnapshots);
 
