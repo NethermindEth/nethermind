@@ -71,6 +71,8 @@ internal sealed class EvmAdmissionGate
     internal long NotQueueableRejections { get; private set; }
     internal long WaitTimeoutRejections { get; private set; }
     internal long Cancellations { get; private set; }
+    internal long QueuedGrants { get; private set; }
+    internal long QueueWaitMicroseconds { get; private set; }
 
     /// <summary>Converts the byte length of a request's raw <c>params</c> into a weight from 1 to <see cref="MaxWeight"/>.</summary>
     internal static int Weigh(int paramsUtf8Length) => Math.Min(MaxWeight, 1 + paramsUtf8Length / BytesPerWeightUnit);
@@ -173,9 +175,15 @@ internal sealed class EvmAdmissionGate
             while (TryDequeue(out Waiter? next))
             {
                 Metrics.RpcAdmissionQueued = _waiters.Count;
+                TimeSpan waited = _timeProvider.GetElapsedTime(next.EnqueuedTimestamp);
                 // Its timeout may not have fired yet, but a waiter past its budget must not be admitted.
-                if (_timeProvider.GetElapsedTime(next.EnqueuedTimestamp) < next.MaxWait)
+                if (waited < next.MaxWait)
                 {
+                    long waitedMicroseconds = waited.Ticks / TimeSpan.TicksPerMicrosecond;
+                    Metrics.RpcAdmissionQueuedGrants++;
+                    QueuedGrants++;
+                    Metrics.RpcAdmissionQueueWaitMicroseconds += waitedMicroseconds;
+                    QueueWaitMicroseconds += waitedMicroseconds;
                     next.SetResult(new Lease(this));
                     return;
                 }

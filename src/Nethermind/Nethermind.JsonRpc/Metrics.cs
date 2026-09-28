@@ -58,6 +58,16 @@ namespace Nethermind.JsonRpc
         [Description("Number of queued EVM-executing JSON RPC requests whose caller disconnected before getting an execution slot.")]
         public static long RpcAdmissionCancellations { get; set; }
 
+        /// <summary>Number of EVM-executing JSON-RPC requests granted an execution slot after waiting for one.</summary>
+        [CounterMetric]
+        [Description("Number of EVM-executing JSON RPC requests granted an execution slot after waiting in the queue.")]
+        public static long RpcAdmissionQueuedGrants { get; set; }
+
+        /// <summary>Total time, in microseconds, that the requests counted in <see cref="RpcAdmissionQueuedGrants"/> waited.</summary>
+        [CounterMetric]
+        [Description("Total time, in microseconds, that the requests counted in RpcAdmissionQueuedGrants waited for an execution slot.")]
+        public static long RpcAdmissionQueueWaitMicroseconds { get; set; }
+
         [CounterMetric]
         [Description("Number of JSON RPC requests processed with errors.")]
         public static long JsonRpcErrors { get; set; }

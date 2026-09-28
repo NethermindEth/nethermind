@@ -188,6 +188,8 @@ public interface IJsonRpcConfig : IConfig
             Waiters are served in arrival order, except that each full 128 KiB of `params` delays a request's turn by 1/14 of
             this budget, up to half of it; a request that has waited half this budget is served before any later arrival.
             The budget bounds only the wait for a slot, not the response time. `0` or a negative value disables queueing.
+            Per-method JSON-RPC durations include this wait; the `RpcAdmissionQueuedGrants` and
+            `RpcAdmissionQueueWaitMicroseconds` metrics measure it.
             Authenticated (Engine API / JWT) and IPC requests do not take a slot, so they never wait.
             Items of one batch share one budget, counted from the start of the batch; once it is spent, a later item is
             rejected at once if every slot is busy.

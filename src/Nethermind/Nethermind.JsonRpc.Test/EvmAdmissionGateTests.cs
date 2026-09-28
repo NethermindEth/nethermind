@@ -184,6 +184,22 @@ public class EvmAdmissionGateTests
     }
 
     [Test]
+    public async Task Grant_after_waiting_counts_the_wait()
+    {
+        ManualClock clock = new();
+        EvmAdmissionGate gate = CreateGate(clock);
+        Lease held = await Admit(gate);
+        Assert.That((gate.QueuedGrants, gate.QueueWaitMicroseconds), Is.EqualTo((0L, 0L)), "a free slot is taken without waiting");
+        Task<Lease> waiter = Admit(gate).AsTask();
+
+        clock.Advance(TimeSpan.FromMilliseconds(100));
+        held.Dispose();
+
+        (await waiter.WaitAsync(TestTimeout)).Dispose();
+        Assert.That((gate.QueuedGrants, gate.QueueWaitMicroseconds), Is.EqualTo((1L, 100_000L)));
+    }
+
+    [Test]
     public async Task Cancelled_waiter_leaves_the_queue_without_taking_a_slot()
     {
         EvmAdmissionGate gate = CreateGate();
