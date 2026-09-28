@@ -218,6 +218,27 @@ counters (`PendingTransactionsFrameTxVerifyGasTooHigh`, `FrameTxSimulations*`,
 | `frametx.py checksum mismatch` | The soispoke pin was changed without re-pinning the hash | Review the encoder diff, then update `traffic/vendor/fetch.sh` |
 | Baseline transactions never included | EIP-8141 not active yet | Wait for `case=fork_gate ... active=yes`, about 120 s after genesis |
 
+## Verified runs
+
+Run on 2026-09-28 on one Linux x86_64 host (32 cores, Docker 29.7.2, Kurtosis 1.20.0), images
+built from this branch. Behaviour checks, not capacity measurements. Not yet run on macOS.
+
+| Ceiling | Role | `K_retry` | Rate (tx/s) | Attack refused | Baseline included | Refusal reason |
+|---|---|---|---|---|---|---|
+| 235,800 | keccak-wide (`smoke_test.sh`, 9/9 checks) | 1 | 5 | 601 / 601 | 145 / 145 | prefix frame reverted |
+| 235,800 | signature-stuffed | 1 | 25 | 6,001 / 6,001 | 481 / 481 | SECP256K1 signer mismatch |
+| 235,800 | soispoke-groth16 (`v2.0.0`) | 1 | 25 | 6,001 / 6,001 | 481 / 481 | prefix never set a payer |
+| 500,000 | signature-stuffed | 1 | 10 | 1,201 / 1,201 | 241 / 241 | SECP256K1 signer mismatch |
+| 235,800 | keccak-wide | 4 | 10 | 1,201 / 1,201 | 241 / 241 | prefix frame reverted |
+
+- Every run: EIP-8141 active on both nodes after about 114 s, the ceiling probe refused just
+  over the ceiling, no `Exception` or `Invalid Block` in client logs.
+- At 500,000 every stuffed transaction reached its last signature, so all 178 recoveries ran:
+  the compiled ceiling is live above the stock 300,000.
+- Generator build capacity on this host: about 420 signature-stuffed tx/s at 235,800 and 82 at
+  500,000. The runner checks this before loading (`case=generator_capacity`) and aborts rather
+  than report a generator limit as a node limit.
+
 ## History
 
 - [CORRECTIONS.md](CORRECTIONS.md): the withdrawn pre-2026-09-19 results, the generator fixes,
