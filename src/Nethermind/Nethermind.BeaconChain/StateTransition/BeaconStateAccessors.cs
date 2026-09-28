@@ -238,7 +238,7 @@ public static class BeaconStateAccessors
     /// <remarks>
     /// Uses the state's fork and genesis validators root. Deposits are the exception: their domain
     /// is fork-agnostic, so use
-    /// <c>Domains.ComputeDomain(DomainType.Deposit, Presets.GenesisForkVersion, Hash256.Zero)</c> directly.
+    /// <c>Domains.ComputeDomain(DomainType.Deposit, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot).GenesisForkVersion, Hash256.Zero)</c> directly.
     /// </remarks>
     public static Hash256 GetDomain(this BeaconStateFulu state, ReadOnlySpan<byte> domainType, ulong? epoch = null)
     {

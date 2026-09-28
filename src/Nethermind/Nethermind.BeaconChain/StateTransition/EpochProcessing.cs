@@ -376,7 +376,7 @@ public static class EpochProcessing
             state.IncreaseBalance(index, deposit.Amount);
         }
         // Verify the deposit signature (proof of possession) which is not checked by the deposit contract.
-        else if (DepositSignatureVerifier.IsValid(deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
+        else if (DepositSignatureVerifier.IsValid(state.GenesisValidatorsRoot!, deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
         {
             pubkeyToIndex.TryAdd(deposit.Pubkey, state.Validators!.Length);
             state.AddValidatorToRegistry(deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount);

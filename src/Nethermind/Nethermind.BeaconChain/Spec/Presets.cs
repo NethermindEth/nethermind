@@ -169,7 +169,4 @@ public static class Presets
     public const byte BlsWithdrawalPrefix = 0x00;
     public const byte EthWithdrawalPrefix = 0x01;
     public const byte CompoundingWithdrawalPrefix = 0x02;
-    public static readonly byte[] GenesisForkVersion = [0x00, 0x00, 0x00, 0x00];
-    /// <summary>EIP-7044: voluntary exits are perpetually signed over the Capella fork domain.</summary>
-    public static readonly byte[] CapellaForkVersion = [0x03, 0x00, 0x00, 0x00];
 }

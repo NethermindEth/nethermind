@@ -1083,7 +1083,7 @@ public static class GloasBlockProcessing
         int builderIndex = Array.FindIndex(state.Builders!, b => b.Pubkey.Equals(request.Pubkey));
         if (builderIndex < 0)
         {
-            if (IsValidBuilderDepositSignature(request))
+            if (IsValidBuilderDepositSignature(state.GenesisValidatorsRoot!, request))
             {
                 GloasForkTransition.AddBuilderToRegistry(
                     state,
@@ -1118,7 +1118,7 @@ public static class GloasBlockProcessing
     /// genesis validators root) exactly like a validator deposit's own domain - a distinct domain
     /// type, not a duplicate of <see cref="Crypto.DepositSignatureVerifier"/>'s.
     /// </summary>
-    private static bool IsValidBuilderDepositSignature(BuilderDepositRequest request)
+    private static bool IsValidBuilderDepositSignature(Hash256 genesisValidatorsRoot, BuilderDepositRequest request)
     {
         DepositMessage.Merkleize(new DepositMessage
         {
@@ -1127,7 +1127,7 @@ public static class GloasBlockProcessing
             Amount = request.Amount,
         }, out UInt256 root);
 
-        Hash256 domain = Domains.ComputeDomain(DomainType.BuilderDeposit, Presets.GenesisForkVersion, Hash256.Zero);
+        Hash256 domain = Domains.ComputeDomain(DomainType.BuilderDeposit, BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot).GenesisForkVersion, Hash256.Zero);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
