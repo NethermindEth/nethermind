@@ -1504,6 +1504,29 @@ public class TraceRpcModuleTests
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)).Using(JToken.EqualityComparer));
     }
 
+    /// <summary>A CREATE colliding with an existing account fails before any action is reported, so its root
+    /// carries the error alone.</summary>
+    [Test]
+    public async Task Trace_call_create_address_collision_reports_the_error_without_a_result([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Prague.Instance));
+        context.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        Address sender = TestItem.AddressF;
+        Address collision = ContractAddress.From(sender, 0);
+        object call = new { from = sender, input = "0x6000", gas = "0xf4240" };
+        object? stateOverride = JsonSerializer.Deserialize<object>($"{{\"{collision}\":{{\"code\":\"0x6000\"}}}}");
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call, new[] { "trace" }, "latest", stateOverride);
+        JToken? root = JToken.Parse(response)["result"]?["trace"]?[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root?["error"]?.Value<string>(), Is.Not.Null, response);
+            Assert.That(root?["result"], Is.Null, response);
+        }
+    }
+
     [TestCase(
         """{"from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0xc200000000000000000000000000000000000000","gas":"0xf4240"}""",
         "stateDiff",

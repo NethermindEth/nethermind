@@ -75,12 +75,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("action"u8);
             ParityTraceActionConverter.Instance.Write(writer, value, options);
 
-            if (value.Error is null)
+            // A failed action keeps its result only when it produced output, as a reverted frame does; a failed root
+            // built without an action keeps an empty one, which is not written.
+            if (value.Error is null || value.Result?.Output is not null)
             {
                 writer.WritePropertyName("result"u8);
                 JsonSerializer.Serialize(writer, value.Result, options);
             }
-            else
+
+            if (value.Error is not null)
             {
                 writer.WritePropertyName("error"u8);
                 JsonSerializer.Serialize(writer, value.Error, options);
