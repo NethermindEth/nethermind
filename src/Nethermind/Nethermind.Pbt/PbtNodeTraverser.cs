@@ -45,8 +45,7 @@ internal static class PbtNodeTraverser
                 if (!group.TryGetNode(location.Position, out ReadOnlySpan<byte> encoding))
                 {
                     if (PbtFourLevelGroupGeometry.WidthOf(location.Position) is 1 or PbtFourLevelGroupGeometry.BoundarySlots) return default;
-                    childPath = path.AppendBits(key.GetBit(path.BitDepth), 1);
-                    location = PbtFourLevelGroupGeometry.Locate(childPath);
+                    if (!TryDescendToStored(group, key, groupKey, path, out childPath, out location)) return default;
                 }
                 else
                 {
@@ -70,6 +69,34 @@ internal static class PbtNodeTraverser
                 path = childPath;
             } while (location.GroupKey.Equals(groupKey));
         }
+    }
+
+    /// <summary>Finds the first node <paramref name="group"/> stores on the key's path below the interior <paramref name="path"/> it leaves implicit.</summary>
+    /// <remarks>
+    /// Only prefixless interior branches are left out, so a dense group stores nothing above its boundary. Its levels are
+    /// checked by position alone, and the path is extended once, to the node found.
+    /// </remarks>
+    /// <returns>False when the group stores no node on the key's path, so the key is absent.</returns>
+    private static bool TryDescendToStored<TKey>(PbtNodeGroupReader group, in TKey key, PbtStorageNodePath groupKey, PbtStorageNodePath path,
+        out PbtStorageNodePath storedPath, out PbtNodeGroupLocation<PbtStorageNodePath> location)
+        where TKey : unmanaged, IPbtKey<TKey>
+    {
+        int groupDepth = groupKey.BitDepth;
+        int implicitDepth = path.BitDepth - groupDepth;
+        // Group depths are nibble-aligned, and a key reaching into a group spans all of its levels.
+        int slot = (key.Bytes[groupDepth >> 3] >> (4 - (groupDepth & 4))) & 0xF;
+        for (int depth = implicitDepth + 1; depth <= PbtFourLevelGroupGeometry.LevelsPerGroup; depth++)
+        {
+            int position = new NodeGroupPath(slot & ~((PbtFourLevelGroupGeometry.BoundarySlots >> depth) - 1), depth).Position;
+            if (!group.TryGetNode(position, out _)) continue;
+            int descended = depth - implicitDepth;
+            storedPath = path.AppendBits((slot >> (PbtFourLevelGroupGeometry.LevelsPerGroup - depth)) & ((1 << descended) - 1), descended);
+            location = new(groupKey, position);
+            return true;
+        }
+        storedPath = default;
+        location = default;
+        return false;
     }
 
     private static ValueHash256 HashAtBoundary(PbtNodeReader node, int prefixOffset)
