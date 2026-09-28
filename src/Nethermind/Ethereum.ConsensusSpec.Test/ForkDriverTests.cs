@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
@@ -219,4 +221,20 @@ public class ForkDriverTests
 
     /// <summary>Null lists and fixed-size fields merkleize as zero, but the generated merkleizer rejects a null variable-size container.</summary>
     private static BeaconStateElectra MerkleizableElectra() => new() { LatestExecutionPayloadHeader = new ExecutionPayloadHeader() };
+
+    /// <summary>
+    /// No pinned sync or fork_choice vector answers INVALID_BLOCK_HASH or ACCEPTED, so only this pins how an on_payload_info
+    /// status reaches fork choice (Engine API: INVALID_BLOCK_HASH is an invalid payload, ACCEPTED an unverified one).
+    /// </summary>
+    [TestCase("VALID", ExecutionStatus.Valid)]
+    [TestCase("SYNCING", ExecutionStatus.Optimistic)]
+    [TestCase("ACCEPTED", ExecutionStatus.Optimistic)]
+    [TestCase("INVALID", ExecutionStatus.Invalid)]
+    [TestCase("INVALID_BLOCK_HASH", ExecutionStatus.Invalid)]
+    public void Payload_info_status_maps_to_the_execution_status_fork_choice_records(string status, ExecutionStatus expected) =>
+        Assert.That(new ForkChoiceStepDriver.PayloadInfo(status, null).ExecutionStatus, Is.EqualTo(expected));
+
+    [Test]
+    public void Payload_info_with_an_unknown_status_is_refused_rather_than_guessed() =>
+        Assert.That(() => new ForkChoiceStepDriver.PayloadInfo("VALIDISH", null).ExecutionStatus, Throws.TypeOf<InvalidDataException>());
 }
