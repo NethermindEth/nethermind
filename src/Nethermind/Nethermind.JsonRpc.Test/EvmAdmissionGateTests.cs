@@ -141,6 +141,23 @@ public class EvmAdmissionGateTests
         Assert.That((await ReleaseAndRecordGrantOrder(held, waiters))[0], Is.EqualTo(expectedFirst));
     }
 
+    // Released at 250 ms: past half of the heavy waiter's 400 ms, but before it has waited half the budget.
+    [TestCase(2 * BudgetMs / 10 - 1, "light", TestName = "Arrived within half of the shorter wait: size order")]
+    [TestCase(2 * BudgetMs / 10, "heavy", TestName = "Arrived half the shorter wait later: heavy first")]
+    public async Task Size_penalty_is_capped_at_half_of_what_the_waiter_may_wait(int lightArrivesAtMs, string expectedFirst)
+    {
+        ManualClock clock = new();
+        EvmAdmissionGate gate = CreateGate(clock);
+        Lease held = await Admit(gate);
+        List<(string Name, Task<Lease> Admission)> waiters =
+            [("heavy", Admit(gate, MaxWeight * BytesPerWeightUnit, maxWait: TimeSpan.FromMilliseconds(4 * BudgetMs / 10)).AsTask())];
+        clock.Advance(TimeSpan.FromMilliseconds(lightArrivesAtMs));
+        waiters.Add(("light", Admit(gate).AsTask()));
+        clock.Advance(TimeSpan.FromMilliseconds(BudgetMs / 4 - lightArrivesAtMs));
+
+        Assert.That((await ReleaseAndRecordGrantOrder(held, waiters))[0], Is.EqualTo(expectedFirst));
+    }
+
     [Test]
     public async Task Sustained_lighter_traffic_cannot_starve_a_heavy_waiter()
     {

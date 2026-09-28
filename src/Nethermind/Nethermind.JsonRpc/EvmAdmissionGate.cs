@@ -21,9 +21,9 @@ namespace Nethermind.JsonRpc;
 /// past saturation, wastes work on requests that are rejected anyway. An explicitly configured pool size is used as is;
 /// queueing and shedding start only when more than that many requests are in flight, so a pool at or above the peak
 /// concurrency turns them off. Priority waiters are served first, in order of arrival. The others are served in order of
-/// arrival plus a penalty that grows with their <c>params</c> size up to half the wait budget, so a smaller request overtakes
-/// a larger one that arrived shortly before it. A waiter that has waited half the budget is served before any later arrival
-/// without priority, so sustained light traffic cannot starve a heavy request.
+/// arrival plus a penalty that grows with their <c>params</c> size up to half of what they may wait, so a smaller request
+/// overtakes a larger one that arrived shortly before it. A waiter that has waited half the budget is served before any
+/// later arrival without priority, so sustained light traffic cannot starve a heavy request.
 /// </remarks>
 internal sealed class EvmAdmissionGate
 {
@@ -116,7 +116,7 @@ internal sealed class EvmAdmissionGate
 
             long now = _timeProvider.GetTimestamp();
             waiter = new Waiter(now, maxWait);
-            _waiters.Enqueue(waiter, (priority ? PriorityOrder : now + (Weigh(paramsUtf8Length) - 1) * _weightPenalty, ++_sequence));
+            _waiters.Enqueue(waiter, (priority ? PriorityOrder : now + SizePenalty(paramsUtf8Length, maxWait), ++_sequence));
             waiter.Arrival = _arrivals.AddLast(waiter);
             Metrics.RpcAdmissionQueued = _waiters.Count;
         }
@@ -140,6 +140,11 @@ internal sealed class EvmAdmissionGate
 
         return lease.IsGranted ? lease : throw new LimitExceededException(WaitTimeoutMessage);
     }
+
+    // Capped at half the waiter's own wait: a batch item may wait less than half the budget, so it could never age to the
+    // front, but it still goes ahead of anything that arrives that much after it.
+    private long SizePenalty(int paramsUtf8Length, TimeSpan maxWait) =>
+        Math.Min((Weigh(paramsUtf8Length) - 1) * _weightPenalty, (long)(maxWait.TotalSeconds * _timeProvider.TimestampFrequency / 2));
 
     private bool TryRemove(Waiter waiter, Exception reason)
     {

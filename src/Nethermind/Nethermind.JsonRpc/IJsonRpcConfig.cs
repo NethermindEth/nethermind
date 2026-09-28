@@ -186,7 +186,8 @@ public interface IJsonRpcConfig : IConfig
             `EthModuleConcurrentInstances` execution slots before it is answered with `LimitExceeded` (HTTP 503).
             Authenticated (Engine API / JWT) and IPC requests are served ahead of every other waiter, each with the whole budget.
             The others are served in arrival order, except that each full 128 KiB of `params` delays a request's turn by 1/14 of
-            this budget, up to half of it; a request that has waited half this budget is served before any of them that arrived later.
+            this budget, up to half of it or of what is left of its batch's budget; a request that has waited half this budget is
+            served before any of them that arrived later.
             The budget bounds only the wait for a slot, not the response time. `0` or a negative value disables queueing.
             Per-method JSON-RPC durations include this wait; the `RpcAdmissionQueuedGrants` and
             `RpcAdmissionQueueWaitMicroseconds` metrics measure it.
