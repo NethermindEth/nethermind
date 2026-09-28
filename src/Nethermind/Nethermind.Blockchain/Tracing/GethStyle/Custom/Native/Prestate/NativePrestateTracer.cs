@@ -43,7 +43,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         Address? from,
         Address? to = null,
         Address? beneficiary = null,
-        TxFrame[]? frames = null)
+        Transaction? transaction = null)
         : base(options)
     {
         IsTracingActions = true;
@@ -65,20 +65,33 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         }
 
         LookupAccount(from!);
-        if (frames is null)
+        if (transaction?.Frames is null)
             LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
         else
-            LookupFrameAccounts(from, frames);
+            LookupFrameTxState(from, transaction);
         LookupAccount(beneficiary ?? Address.Zero);
     }
 
-    /// <summary>Records the accounts an EIP-8141 transaction's frames touch before the VM reports anything.</summary>
+    /// <summary>Records the state an EIP-8141 transaction touches outside the VM, before anything reports it.</summary>
     /// <remarks>A frame transaction creates no contract. The payer, always a frame target, is charged at approval,
-    /// which default code performs without entering the VM, so every frame target is read up front.</remarks>
-    private void LookupFrameAccounts(Address sender, TxFrame[] frames)
+    /// which default code performs without entering the VM, and approval also consumes EIP-8250 keyed nonces
+    /// through <c>NONCE_MANAGER</c> storage, so every frame target and consumed slot is read up front.</remarks>
+    private void LookupFrameTxState(Address sender, Transaction transaction)
     {
-        foreach (TxFrame frame in frames)
+        foreach (TxFrame frame in transaction.Frames!)
             LookupAccount(frame.Target ?? sender);
+
+        if (transaction.NonceKeys is { } nonceKeys && KeyedNonceManager.UsesKeyedDomain(nonceKeys))
+        {
+            foreach (UInt256 nonceKey in nonceKeys)
+                LookupStorage(KeyedNonceManager.StorageSlot(sender, nonceKey));
+        }
+    }
+
+    private void LookupStorage(in StorageCell cell)
+    {
+        LookupAccount(cell.Address);
+        LookupStorage(cell.Address, cell.Index);
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();

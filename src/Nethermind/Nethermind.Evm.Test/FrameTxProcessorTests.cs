@@ -4840,13 +4840,8 @@ public class FrameTxProcessorTests
         }
 
         Address payer = framePayer == FramePayer.Sender ? Sender : sponsor;
-        GethTraceOptions options = GethTraceOptions.Default with
-        {
-            Tracer = NativePrestateTracer.PrestateTracer,
-            TracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"diffMode":{{(diffMode ? "true" : "false")}}}""")
-        };
 
-        using JsonDocument document = TraceThroughReceiptsTracer(tx, options, (UInt256)baseFeePerGas, out TxReceipt receipt);
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode), (UInt256)baseFeePerGas, out TxReceipt receipt);
         JsonElement root = document.RootElement;
         JsonElement pre = diffMode ? root.GetProperty("pre") : root;
 
@@ -4854,46 +4849,102 @@ public class FrameTxProcessorTests
         {
             Assert.That(pre.TryGetProperty(ContractAddress.From(Sender, 0).ToString(), out _), Is.False,
                 "a frame transaction creates no contract");
-            Assert.That(Balance(pre, payer.ToString()), Is.EqualTo((BigInteger)1.Ether), "the payer's balance before approval charged it");
+            Assert.That(PrestateBalance(pre, payer.ToString()), Is.EqualTo((BigInteger)1.Ether), "the payer's balance before approval charged it");
 
             if (diffMode)
             {
                 JsonElement post = root.GetProperty("post");
-                Assert.That(Slot(post, Observer, 0), Is.EqualTo(Word(42)));
-                Assert.That(Slot(post, storageHelper, 1), Is.EqualTo(Word(7)));
-
-                // An account missing from pre was created at zero; one missing from post, or without a post
-                // balance, kept its pre balance.
-                BigInteger balanceDelta = 0;
-                foreach (JsonProperty account in pre.EnumerateObject())
-                {
-                    if (!post.TryGetProperty(account.Name, out JsonElement after) || !after.TryGetProperty("balance", out _)) continue;
-                    balanceDelta += Balance(post, account.Name) - Balance(pre, account.Name);
-                }
-
-                foreach (JsonProperty account in post.EnumerateObject())
-                {
-                    if (!pre.TryGetProperty(account.Name, out _) && account.Value.TryGetProperty("balance", out _))
-                        balanceDelta += Balance(post, account.Name);
-                }
+                Assert.That(PrestateSlot(post, Observer, 0), Is.EqualTo(StorageWord(42)));
+                Assert.That(PrestateSlot(post, storageHelper, 1), Is.EqualTo(StorageWord(7)));
 
                 BigInteger burnt = (BigInteger)baseFeePerGas * receipt.GasUsed;
-                Assert.That(balanceDelta, Is.EqualTo(-burnt), "the payer's debit has to balance the beneficiary's credit and the burn");
+                Assert.That(PrestateBalanceDelta(pre, post), Is.EqualTo(-burnt),
+                    "the payer's debit has to balance the beneficiary's credit and the burn");
             }
             else
             {
-                Assert.That(Slot(pre, Observer, 0), Is.EqualTo(Word(0)));
-                Assert.That(Slot(pre, storageHelper, 1), Is.EqualTo(Word(0)));
+                Assert.That(PrestateSlot(pre, Observer, 0), Is.EqualTo(StorageWord(0)));
+                Assert.That(PrestateSlot(pre, storageHelper, 1), Is.EqualTo(StorageWord(0)));
                 Assert.That(pre.TryGetProperty(Beneficiary.ToString(), out _), Is.True);
                 Assert.That(pre.TryGetProperty(Eip8141Constants.EntryPointAddress.ToString(), out _), Is.True);
             }
         }
+    }
 
-        static BigInteger Balance(JsonElement state, string address) =>
-            BigInteger.Parse("0" + state.GetProperty(address).GetProperty("balance").GetString()![2..], NumberStyles.AllowHexSpecifier);
-        static string? Slot(JsonElement state, Address address, int slot) =>
-            state.GetProperty(address.ToString()).GetProperty("storage").GetProperty(Word(slot)).GetString();
-        static string Word(int value) => "0x" + value.ToString("x64");
+    /// <summary>With a keyed nonce set, approval consumes the sender's nonce through <c>NONCE_MANAGER</c> storage
+    /// outside the VM, leaving the account nonce untouched.</summary>
+    [Test]
+    public void Execute_KeyedNonceFrameTxTracedWithPrestateTracer_RecordsTheConsumedSlots([Values] bool diffMode, [Values] bool keysUsedBefore)
+    {
+        UInt256[] keys = [1, 2];
+        ulong nonce = keysUsedBefore ? 1UL : 0UL;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        if (keysUsedBefore)
+        {
+            Transaction first = FrameTx(nonce: 0, KeyedSelfVerifyFrame(keys.Length));
+            first.NonceKeys = keys;
+            Assert.That(Process(first).TransactionExecuted, Is.True);
+        }
+
+        Transaction tx = FrameTx(nonce, KeyedSelfVerifyFrame(keysUsedBefore ? 0 : keys.Length));
+        tx.NonceKeys = keys;
+
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode), baseFeePerGas: 0, out _);
+        JsonElement root = document.RootElement;
+        JsonElement pre = diffMode ? root.GetProperty("pre") : root;
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (UInt256 key in keys)
+            {
+                UInt256 slot = KeyedNonceManager.StorageSlot(Sender, key).Index;
+                // diffMode leaves zero-valued slots out of pre, as for any other storage.
+                if (!diffMode || keysUsedBefore)
+                    Assert.That(PrestateSlot(pre, Eip8250Constants.NonceManagerAddress, slot), Is.EqualTo(StorageWord(nonce)), $"key {key} before");
+                if (diffMode)
+                    Assert.That(PrestateSlot(root.GetProperty("post"), Eip8250Constants.NonceManagerAddress, slot), Is.EqualTo(StorageWord(nonce + 1)), $"key {key} after");
+            }
+
+            if (diffMode)
+            {
+                Assert.That(root.GetProperty("post").TryGetProperty(Sender.ToString(), out JsonElement senderPost)
+                    && senderPost.TryGetProperty("nonce", out _), Is.False, "a keyed nonce set leaves the account nonce alone");
+            }
+        }
+    }
+
+    private static GethTraceOptions PrestateOptions(bool diffMode) => GethTraceOptions.Default with
+    {
+        Tracer = NativePrestateTracer.PrestateTracer,
+        TracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"diffMode":{{(diffMode ? "true" : "false")}}}""")
+    };
+
+    private static BigInteger PrestateBalance(JsonElement state, string address) =>
+        BigInteger.Parse("0" + state.GetProperty(address).GetProperty("balance").GetString()![2..], NumberStyles.AllowHexSpecifier);
+
+    private static string? PrestateSlot(JsonElement state, Address address, in UInt256 slot) =>
+        state.GetProperty(address.ToString()).GetProperty("storage").GetProperty(StorageWord(slot)).GetString();
+
+    private static string StorageWord(in UInt256 value) => value.ToBigEndian().ToHexString(true);
+
+    /// <summary>Σ balance changes across a diffMode trace: an account missing from pre was created at zero, and one
+    /// missing from post, or without a post balance, kept its pre balance.</summary>
+    private static BigInteger PrestateBalanceDelta(JsonElement pre, JsonElement post)
+    {
+        BigInteger balanceDelta = 0;
+        foreach (JsonProperty account in pre.EnumerateObject())
+        {
+            if (!post.TryGetProperty(account.Name, out JsonElement after) || !after.TryGetProperty("balance", out _)) continue;
+            balanceDelta += PrestateBalance(post, account.Name) - PrestateBalance(pre, account.Name);
+        }
+
+        foreach (JsonProperty account in post.EnumerateObject())
+        {
+            if (!pre.TryGetProperty(account.Name, out _) && account.Value.TryGetProperty("balance", out _))
+                balanceDelta += PrestateBalance(post, account.Name);
+        }
+
+        return balanceDelta;
     }
 
     public enum FramePayer
