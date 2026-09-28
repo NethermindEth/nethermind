@@ -53,7 +53,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     {
         Debug.Assert(path.BitDepth == bitDepth);
         BoundaryNode current = input;
-        if (operations.IsEmpty) return EncodeReanchored(current, anchorDepth, encoding);
+        if (operations.IsEmpty) return EncodeReanchored(current, path, anchorDepth, encoding);
 
         if (current.IsEmpty)
         {
@@ -65,7 +65,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (operations.Length == 1)
             {
                 PbtWriteOperation<TKey> operation = operations[0];
-                TKey leafKey = current.LeafKey;
+                TKey leafKey = current.LeafKey(path);
                 if (operation.Key.Equals(leafKey))
                 {
                     if (operation.Value == default) return default;
@@ -80,24 +80,24 @@ internal static partial class TrieUpdater<TKey, TPath>
         else if (operations.Length == 1 && current.LeafChildrenMask == (LeftLeaf | RightLeaf))
         {
             PbtWriteOperation<TKey> operation = operations[0];
-            bool right = operation.Key.Equals(current.RightLeafKey);
-            if (right || operation.Key.Equals(current.LeftLeafKey))
+            bool right = operation.Key.Equals(current.RightLeafKey(path));
+            if (right || operation.Key.Equals(current.LeftLeafKey(path)))
             {
                 if (operation.Value == default)
-                    return right ? EncodeLeaf(current.LeftLeafKey, current.LeftHash, encoding) : EncodeLeaf(current.RightLeafKey, current.RightHash, encoding);
+                    return right ? EncodeLeaf(current.LeftLeafKey(path), current.LeftHash, encoding) : EncodeLeaf(current.RightLeafKey(path), current.RightHash, encoding);
                 ValueHash256 leafHash = HashLeaf(operation);
-                if (leafHash == (right ? current.RightHash : current.LeftHash)) return EncodeReanchored(current, anchorDepth, encoding);
+                if (leafHash == (right ? current.RightHash : current.LeftHash)) return EncodeReanchored(current, path, anchorDepth, encoding);
                 PbtNodeReader branch = current.Reader;
-                int length = EncodeReanchored(branch, anchorDepth - current.AnchorDepth, right ? branch.LeftHash : leafHash, right ? leafHash : branch.RightHash, encoding);
+                int length = EncodeReanchored(branch, current.AnchorDepth, anchorDepth, right ? branch.LeftHash : leafHash, right ? leafHash : branch.RightHash, encoding);
                 return new SlotNode(length, default);
             }
-            if (operation.Value == default) return EncodeReanchored(current, anchorDepth, encoding);
+            if (operation.Value == default) return EncodeReanchored(current, path, anchorDepth, encoding);
         }
 
         TKey firstKey = operations[0].Key;
         int branchDepth = operations.Length == 1 ? firstKey.BitLength : firstKey.FirstDifferingBit(operations[^1].Key, bitDepth);
         if (current.IsLeaf)
-            branchDepth = Math.Min(branchDepth, current.LeafKey.FirstDifferingBit(firstKey, bitDepth));
+            branchDepth = Math.Min(branchDepth, current.LeafKey(path).FirstDifferingBit(firstKey, bitDepth));
         else if (!current.IsEmpty)
             branchDepth = Math.Min(branchDepth, current.FirstDifferingBit(path, firstKey, bitDepth));
         int groupDepth = branchDepth / PbtFourLevelGroupGeometry.LevelsPerGroup * PbtFourLevelGroupGeometry.LevelsPerGroup;
@@ -175,7 +175,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (context.FoldQuota is not null) TryFoldSlotsInParallel(ref walk);
             ComposedNode root = Walk(ref walk, default, input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource));
             Debug.Assert(walk.Next == operations.Length, "The walk consumes every operation of its frame.");
-            return root.IsEmpty ? default : Land(ref reader, ref hashes, writer, root, PbtFourLevelGroupGeometry.RootPosition);
+            return root.IsEmpty ? default : Land(ref reader, ref hashes, writer, path, root, PbtFourLevelGroupGeometry.RootPosition);
         }
         finally
         {
@@ -448,25 +448,33 @@ internal static partial class TrieUpdater<TKey, TPath>
         return new SlotNode(PbtNodeCodec.LeafLength(key.Length), hash);
     }
 
-    /// <summary>Encodes <paramref name="node"/> anchored at <paramref name="anchorDepth"/>, at or below its own anchor.</summary>
-    private static SlotNode EncodeReanchored(scoped in BoundaryNode node, int anchorDepth, Span<byte> encoding)
+    /// <summary>Encodes <paramref name="node"/>, read against <paramref name="cursor"/>, anchored at <paramref name="anchorDepth"/>, at or below its own anchor.</summary>
+    private static SlotNode EncodeReanchored(scoped in BoundaryNode node, scoped in PbtTraversalPath cursor, int anchorDepth, Span<byte> encoding)
     {
         if (node.IsEmpty) return default;
-        if (node.IsLeaf) return EncodeLeaf(node.LeafKey, node.Hash, encoding);
+        if (node.IsLeaf) return EncodeLeaf(node.LeafKey(cursor), node.Hash, encoding);
         PbtNodeReader branch = node.Reader;
-        int skippedBits = anchorDepth - node.AnchorDepth;
-        return new SlotNode(EncodeReanchored(branch, skippedBits, branch.LeftHash, branch.RightHash, encoding), skippedBits == 0 ? node.Hash : default);
+        return new SlotNode(EncodeReanchored(branch, node.AnchorDepth, anchorDepth, branch.LeftHash, branch.RightHash, encoding),
+            anchorDepth == node.AnchorDepth ? node.Hash : default);
     }
 
-    /// <summary>Encodes <paramref name="stored"/> with the first <paramref name="skippedBits"/> of its prefix dropped and the given child hashes.</summary>
-    private static int EncodeReanchored(scoped PbtNodeReader stored, int skippedBits, in ValueHash256 left, in ValueHash256 right, Span<byte> encoding)
+    /// <summary>The length of <paramref name="stored"/>, anchored at <paramref name="storedAnchorDepth"/>, encoded at the deeper <paramref name="anchorDepth"/>.</summary>
+    private static int ReanchoredLength(scoped PbtNodeReader stored, int storedAnchorDepth, int anchorDepth) =>
+        PbtNodeCodec.BranchPreimageLength(stored.Prefix.BitCount - (anchorDepth - storedAnchorDepth)) + PbtNodeCodec.BranchTrailerHeaderLength
+        + PbtNodeCodec.RebasedKeysLength(stored, PbtNodeCodec.InlineKeyOffset(storedAnchorDepth), PbtNodeCodec.InlineKeyOffset(anchorDepth));
+
+    /// <summary>Encodes <paramref name="stored"/>, anchored at <paramref name="storedAnchorDepth"/>, at the deeper <paramref name="anchorDepth"/> with the given child hashes.</summary>
+    /// <remarks>The prefix bits in between are dropped, and so are any key bytes the deeper anchor's inline keys omit.</remarks>
+    private static int EncodeReanchored(scoped PbtNodeReader stored, int storedAnchorDepth, int anchorDepth, in ValueHash256 left, in ValueHash256 right, Span<byte> encoding)
     {
         CompressedPrefix prefix = stored.Prefix;
+        int skippedBits = anchorDepth - storedAnchorDepth;
         int bitCount = prefix.BitCount - skippedBits;
-        int length = PbtNodeCodec.BranchLength(bitCount, stored.LeftKey.Length, stored.RightKey.Length);
+        int length = ReanchoredLength(stored, storedAnchorDepth, anchorDepth);
         PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, left, right);
         if (bitCount != 0) PbtBitPrefix.CopyBits(prefix.Bytes, skippedBits, bitCount, encoding[3..], 0);
-        PbtNodeCodec.WriteBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..length], stored.LeftKey, stored.RightKey);
+        PbtNodeCodec.WriteRebasedBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..length], stored,
+            PbtNodeCodec.InlineKeyOffset(storedAnchorDepth), PbtNodeCodec.InlineKeyOffset(anchorDepth), default);
         return length;
     }
 
@@ -477,11 +485,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         CompressedPrefix prefix = root.Prefix;
         int liftedBits = path.BitDepth - anchorDepth;
         int bitCount = prefix.BitCount + liftedBits;
-        int length = PbtNodeCodec.BranchLength(bitCount, root.LeftKey.Length, root.RightKey.Length);
+        // Lifted above its group, the root's inline keys take back the path bytes the shallower anchor no longer omits.
+        int fromKeyOffset = PbtNodeCodec.InlineKeyOffset(path.BitDepth), toKeyOffset = PbtNodeCodec.InlineKeyOffset(anchorDepth);
+        int length = PbtNodeCodec.BranchPreimageLength(bitCount) + PbtNodeCodec.BranchTrailerHeaderLength + PbtNodeCodec.RebasedKeysLength(root, fromKeyOffset, toKeyOffset);
         PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, root.LeftHash, root.RightHash);
         PbtBitPrefix.CopyBits(path.Bytes, anchorDepth, liftedBits, encoding[3..], 0);
         if (prefix.BitCount != 0) PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, encoding[3..], liftedBits);
-        PbtNodeCodec.WriteBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..length], root.LeftKey, root.RightKey);
+        PbtNodeCodec.WriteRebasedBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..length], root, fromKeyOffset, toKeyOffset, path.Bytes);
         return length;
     }
 
@@ -493,10 +503,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         TKey leftKey = firstIsLeft ? first : second;
         TKey rightKey = firstIsLeft ? second : first;
         int bitCount = branchDepth - anchorDepth;
-        int length = PbtNodeCodec.BranchLength(bitCount, leftKey.Length, rightKey.Length);
+        int keyOffset = PbtNodeCodec.InlineKeyOffset(anchorDepth);
+        int length = PbtNodeCodec.BranchLength(bitCount, leftKey.Length - keyOffset, rightKey.Length - keyOffset);
         PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, firstIsLeft ? firstHash : secondHash, firstIsLeft ? secondHash : firstHash);
         if (bitCount != 0) PbtBitPrefix.CopyBits(first.Bytes, anchorDepth, bitCount, encoding[3..], 0);
-        PbtNodeCodec.WriteBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..length], leftKey.Bytes, rightKey.Bytes);
+        PbtNodeCodec.WriteBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..length], leftKey.Bytes[keyOffset..], rightKey.Bytes[keyOffset..]);
         return new SlotNode(length, default);
     }
 
@@ -506,7 +517,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     {
         if (node.IsEmpty || node.IsLeaf || depth == node.AnchorDepth) return node.Hash;
         Span<byte> encoding = stackalloc byte[MaxNodeLength];
-        int length = EncodeReanchored(node.Reader, depth - node.AnchorDepth, node.LeftHash, node.RightHash, encoding);
+        int length = EncodeReanchored(node.Reader, node.AnchorDepth, depth, node.LeftHash, node.RightHash, encoding);
         return HashBranch(encoding[..length]);
     }
 
@@ -556,10 +567,10 @@ internal static partial class TrieUpdater<TKey, TPath>
         int leftPosition = position - local.Width;
         // Only read back once SettleLeftSorted wrote it, so it is not zeroed.
         Unsafe.SkipInit(out OmittedPreimage omittedLeft);
-        bool leftPending = SettleLeftSorted(walk.Writer, walk.Path, leftPosition, left.RiseBitCount == 0 ? left : Land(ref walk.Reader, ref walk.Hashes, walk.Writer, left, leftPosition), ref frame, omittedLeft);
+        bool leftPending = SettleLeftSorted(walk.Writer, walk.Path, leftPosition, left.RiseBitCount == 0 ? left : Land(ref walk.Reader, ref walk.Hashes, walk.Writer, walk.Path, left, leftPosition), ref frame, omittedLeft);
         ComposedNode right = Walk(ref walk, local.Right, rightCover);
         Debug.Assert(!right.IsEmpty, "A right half known to survive composes a node.");
-        return AppendBranchSorted(walk.Writer, walk.Path, position, right.RiseBitCount == 0 ? right : Land(ref walk.Reader, ref walk.Hashes, walk.Writer, right, position - 1), ref frame,
+        return AppendBranchSorted(walk.Writer, walk.Path, position, right.RiseBitCount == 0 ? right : Land(ref walk.Reader, ref walk.Hashes, walk.Writer, walk.Path, right, position - 1), ref frame,
             leftPending ? (ReadOnlySpan<byte>)omittedLeft : default);
     }
 
@@ -615,16 +626,17 @@ internal static partial class TrieUpdater<TKey, TPath>
         else
             writer.ValidateEntry(path, rightPosition, encoding);
 
-        int leftKeyLength = frame.LeftIsLeaf ? frame.LeftKey.Length : 0;
-        int rightKeyLength = rightIsLeaf ? rightKey.Length : 0;
+        int keyOffset = writer.KeyOffsetAt(position);
+        int leftKeyLength = frame.LeftIsLeaf ? frame.LeftKey.Length - keyOffset : 0;
+        int rightKeyLength = rightIsLeaf ? rightKey.Length - keyOffset : 0;
         int offset = writer.WrittenCount;
         int length = PbtNodeCodec.BranchLength(0, leftKeyLength, rightKeyLength);
         Span<byte> branch = writer.Append(position, length);
         PbtNodeCodec.CreateBranchEncoding(branch, 0, frame.LeftHash, rightHash);
         Span<byte> trailer = branch[PbtNodeCodec.BranchPreimageLength(0)..];
         PbtNodeCodec.WriteBranchTrailer(trailer, leftKeyLength, rightKeyLength);
-        if (frame.LeftIsLeaf) frame.LeftKey.Bytes.CopyTo(trailer[PbtNodeCodec.BranchTrailerHeaderLength..]);
-        if (rightIsLeaf) rightKey.Bytes.CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftKeyLength)..]);
+        if (frame.LeftIsLeaf) frame.LeftKey.Bytes[keyOffset..].CopyTo(trailer[PbtNodeCodec.BranchTrailerHeaderLength..]);
+        if (rightIsLeaf) rightKey.Bytes[keyOffset..].CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftKeyLength)..]);
         return new(offset, length, default);
     }
 
@@ -715,7 +727,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         PbtNodeReader node = walk.Node(cover, out int anchorDepth);
         int depth = walk.BitDepth + local.Length;
         if (anchorDepth + node.Prefix.BitCount < walk.BitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup) CopyDescendants(ref walk, local);
-        return AppendReanchoredSorted(walk.Writer, position, depth - anchorDepth, node);
+        return AppendReanchoredSorted(walk.Writer, position, anchorDepth, depth, node);
     }
 
     private static void CopyDescendants<TFrame>(scoped ref SortedWalk<TFrame> walk, NodeGroupPath local)
@@ -725,12 +737,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         int copied = walk.Reader.CopyRange(walk.Writer, position - 2 * local.Width + 2, position);
     }
 
-    /// <summary>Appends a stored branch anchored <paramref name="skippedBits"/> above <paramref name="position"/>, with the rest of its compressed prefix.</summary>
-    private static ComposedNode AppendReanchoredSorted(PbtNodeGroupWriter<TPath> writer, int position, int skippedBits, scoped PbtNodeReader stored)
+    /// <summary>Appends a stored branch anchored at <paramref name="storedAnchorDepth"/> at <paramref name="position"/>, at <paramref name="depth"/>, with the rest of its compressed prefix.</summary>
+    private static ComposedNode AppendReanchoredSorted(PbtNodeGroupWriter<TPath> writer, int position, int storedAnchorDepth, int depth, scoped PbtNodeReader stored)
     {
         int offset = writer.WrittenCount;
-        int length = PbtNodeCodec.BranchLength(stored.Prefix.BitCount - skippedBits, stored.LeftKey.Length, stored.RightKey.Length);
-        EncodeReanchored(stored, skippedBits, stored.LeftHash, stored.RightHash, writer.Append(position, length));
+        int length = ReanchoredLength(stored, storedAnchorDepth, depth);
+        EncodeReanchored(stored, storedAnchorDepth, depth, stored.LeftHash, stored.RightHash, writer.Append(position, length));
         return new(offset, length, default);
     }
 
@@ -1002,7 +1014,12 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         internal readonly bool IsLeaf(Cover cover) => cover.Kind == CoverKind.InlineLeaf || (cover.Kind == CoverKind.Input && _input.IsLeaf);
 
-        internal readonly TKey LeafKey(Cover cover) => cover.Kind == CoverKind.Input ? _input.LeafKey : TKey.Create(LeafKeyBytes(cover));
+        internal readonly TKey LeafKey(Cover cover)
+        {
+            if (cover.Kind == CoverKind.Input) return _input.LeafKey(Path);
+            ReadOnlySpan<byte> keyPostfix = LeafKeyPostfix(cover, out int keyOffset);
+            return PbtKeyOperations.CreateKey<TKey>(Path.Bytes[..keyOffset], keyPostfix);
+        }
 
         internal readonly ValueHash256 LeafHash(Cover cover)
         {
@@ -1011,20 +1028,18 @@ internal static partial class TrieUpdater<TKey, TPath>
             return cover.Right ? parent.RightHash : parent.LeftHash;
         }
 
-        private readonly ReadOnlySpan<byte> LeafKeyBytes(Cover cover)
+        /// <summary>The leaf's key past the <paramref name="keyOffset"/> bytes the branch inlining it omits.</summary>
+        private readonly ReadOnlySpan<byte> LeafKeyPostfix(Cover cover, out int keyOffset)
         {
             if (cover.Kind == CoverKind.Input)
             {
-                PbtNodeReader input = _input.Reader;
-                return _input.Source switch
-                {
-                    LeafSource.ParentLeft => input.LeftKey,
-                    LeafSource.ParentRight => input.RightKey,
-                    _ => input.Key,
-                };
+                keyOffset = _input.KeyOffset;
+                return _input.LeafKeyPostfix;
             }
+            // A stored parent sits below the group root, so its inline keys omit the group path's whole bytes.
+            keyOffset = cover.Position == RootSource ? _input.KeyOffset : BitDepth >> 3;
             PbtNodeReader parent = Parent(cover);
-            return cover.Right ? parent.RightKey : parent.LeftKey;
+            return cover.Right ? parent.RightKeyPostfix : parent.LeftKeyPostfix;
         }
 
         private readonly PbtNodeReader Parent(Cover cover) => cover.Position == RootSource
@@ -1061,7 +1076,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
             if (IsLeaf(cover))
             {
-                if (GetBit(LeafKeyBytes(cover), depth) == 0) left = cover;
+                if (GetBit(LeafKeyPostfix(cover, out int keyOffset), depth - (keyOffset << 3)) == 0) left = cover;
                 else right = cover;
                 return;
             }
@@ -1078,8 +1093,8 @@ internal static partial class TrieUpdater<TKey, TPath>
 
             Debug.Assert(branchDepth == depth, "A cover splits at or below the position it covers.");
             int source = cover.Kind == CoverKind.Input ? RootSource : cover.Position;
-            left = node.LeftKey.IsEmpty ? ChildNode(local.Left, node.LeftHash) : new Cover(CoverKind.InlineLeaf, source, right: false);
-            right = node.RightKey.IsEmpty ? ChildNode(local.Right, node.RightHash) : new Cover(CoverKind.InlineLeaf, source, right: true);
+            left = node.LeftKeyPostfix.IsEmpty ? ChildNode(local.Left, node.LeftHash) : new Cover(CoverKind.InlineLeaf, source, right: false);
+            right = node.RightKeyPostfix.IsEmpty ? ChildNode(local.Right, node.RightHash) : new Cover(CoverKind.InlineLeaf, source, right: true);
         }
 
         /// <summary>The node anchored at <paramref name="local"/>, named by a link whose hash is seeded when the parent's encoding holds it.</summary>

@@ -544,7 +544,7 @@ public class PbtNodeGroupTests
         Dictionary<PbtStorageNodePath, int?> entries = new() { [smallPath.ToPath<PbtStorageNodePath>()] = 1 };
         entries[storagePath] = null;
         PbtStorageNodePath leafPath = PbtNodePathOperations.Prefix<PbtStorageNodePath>(storageKey.Bytes, storageKey.BitLength, depth == 0 ? 0 : depth + 4);
-        byte[] encoding = LeafBranch(keyBytes, 1);
+        byte[] encoding = LeafBranch(keyBytes.AsSpan(PbtNodeCodec.InlineKeyOffset(leafPath.BitDepth)), 1);
         byte[] payload = EncodeGroup(smallPath, [new PbtNodeRecord(leafPath, encoding)]);
         PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(storagePath, payload);
 
@@ -646,17 +646,21 @@ public class PbtNodeGroupTests
             PbtStorageNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
             byte[] key = new byte[(path.BitDepth + 7) / 8 + 1];
             PbtNodePathOperations.CopyTo(path, key);
-            byte[] encoding = position == PbtFourLevelGroupGeometry.RootPosition ? PbtNodeCodec.EncodeLeaf(new PbtStorageTreeKey(key)) : LeafBranch(key, 1);
+            bool rootLeaf = position == PbtFourLevelGroupGeometry.RootPosition;
+            // An inline key omits the group path's whole bytes, whose bits the group key implies.
+            byte[] storedKey = rootLeaf ? key : key[PbtNodeCodec.InlineKeyOffset(path.BitDepth)..];
+            int omittedBits = (key.Length - storedKey.Length) * 8;
+            byte[] encoding = rootLeaf ? PbtNodeCodec.EncodeLeaf(new PbtStorageTreeKey(key)) : LeafBranch(storedKey, 1);
             byte[] payload = EncodeGroup(groupKey, [new PbtNodeRecord(path, encoding)]);
             Assert.That(ValidateLeafGroup(groupKey, position, payload, streamingWriter), Is.EqualTo(1));
 
-            int keyOffset = PbtNodeGroupCodec.HeaderLength + encoding.Length - key.Length;
-            for (int bit = 0; bit < key.Length * 8; bit++)
+            int keyOffset = PbtNodeGroupCodec.HeaderLength + encoding.Length - storedKey.Length;
+            for (int bit = 0; bit < storedKey.Length * 8; bit++)
             {
                 byte mask = (byte)(0x80 >> (bit & 7));
                 payload[keyOffset + (bit >> 3)] ^= mask;
 #if DEBUG
-                if (bit < path.BitDepth)
+                if (omittedBits + bit < path.BitDepth)
                     Assert.That(() => ValidateLeafGroup(groupKey, position, payload, streamingWriter), Throws.TypeOf<InvalidDataException>(), $"position {position}, bit {bit}");
                 else
 #endif
@@ -666,14 +670,15 @@ public class PbtNodeGroupTests
         }
     }
 
+    // Below a byte-aligned group, a one-byte postfix already reaches the leaf, and an empty one declares a branch child.
     [Test]
     public void Reader_and_writer_reject_leaf_keys_shorter_than_required_path(
-        [Values(8, 12, 252, 508)] int groupDepth, [Values] bool streamingWriter)
+        [Values(12, 252, 508)] int groupDepth, [Values] bool streamingWriter)
     {
         PbtStorageNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
         PbtStorageNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, 0);
-        // The inline leaf hangs one level below the branch, so its key needs one bit more than the branch depth.
-        byte[] key = new byte[path.BitDepth / 8 + 1];
+        // The inline leaf hangs one level below the branch, so its key needs one bit more than the branch depth, less the group path bytes it omits.
+        byte[] key = new byte[path.BitDepth / 8 + 1 - PbtNodeCodec.InlineKeyOffset(path.BitDepth)];
         byte[] encoding = LeafBranch(key, 1);
         byte[] payload = EncodeGroup(groupKey, [new PbtNodeRecord(path, encoding)]);
         Assert.That(ValidateLeafGroup(groupKey, 0, payload, streamingWriter), Is.EqualTo(1));
@@ -842,14 +847,15 @@ public class PbtNodeGroupTests
 
     [Test]
     public void Group_frames_materialize_only_branch_anchors(
-        [Values(0, 4, 8, 244)] int groupDepth, [Range(0, 29)] int position, [Values] bool inlineLeaf)
+        [Values(0, 4, 8, 12, 16, 244)] int groupDepth, [Range(0, 29)] int position, [Values] bool inlineLeaf)
     {
         using PbtNodeGroupStore store = new();
         PbtStorageNodePath groupKey = PbtNodePathOperations.Prefix<PbtStorageNodePath>(Bytes.FromHexString(new string('A', 62)), 248, groupDepth);
         PbtStorageNodePath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
         byte[] key = new byte[32];
         PbtNodePathOperations.CopyTo(path, key);
-        byte[] encoding = PbtTreeHarness.EncodeBranch(Bytes.FromHexString("A0"), 4, new ValueHash256(Value(1)), new ValueHash256(Value(2)), inlineLeaf ? key : [], []);
+        // The group stores the inline key past its path's whole bytes; an odd-nibble group keeps its last nibble.
+        byte[] encoding = PbtTreeHarness.EncodeBranch(Bytes.FromHexString("A0"), 4, new ValueHash256(Value(1)), new ValueHash256(Value(2)), inlineLeaf ? key[(groupDepth >> 3)..] : [], []);
         store.SetNode(path, encoding);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(store, groupPath, new ValueHash256(Value(1)));
@@ -858,6 +864,18 @@ public class PbtNodeGroupTests
         {
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode source = reader.TakeBoundaryNode(position, hashes.GetHash(ref reader, position));
             Assert.That(source.AnchorDepth, Is.EqualTo(path.BitDepth));
+            if (inlineLeaf)
+            {
+                TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode leaf = reader.TakeInlineLeaf(position, right: false);
+                PbtStorageTreeKey leafKey = leaf.LeafKey(groupPath);
+                PbtStorageTreeKey ownedKey = leaf.Owned(groupPath).LeafKey(groupPath);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(leaf.KeyOffset, Is.EqualTo(groupDepth >> 3));
+                    Assert.That(leafKey.Bytes.ToArray(), Is.EqualTo(key));
+                    Assert.That(ownedKey.Bytes.ToArray(), Is.EqualTo(key), "a detached leaf stores its complete key");
+                }
+            }
             PbtTraversalPath nodePath = PbtTraversalPath.FromPath(stackalloc byte[66], path);
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.FoldResult materialized = default;
             source.ToFoldResult(nodePath, groupKey.BitDepth, ref materialized);
@@ -916,20 +934,24 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Inlined_leaf_boundary_nodes_detach_from_the_branch_that_held_them([Values] bool right, [Values] bool stored)
+    public void Inlined_leaf_boundary_nodes_detach_from_the_branch_that_held_them([Values] bool right, [Values] bool stored, [Values(0, 12)] int anchorDepth)
     {
         byte[] key = Bytes.FromHexString("1234");
         ValueHash256 leafHash = PbtNodeCodec.HashLeaf(key, Value(1));
         ValueHash256 siblingHash = new(Value(2));
+        // A branch anchored at depth 12 lies in group 8, whose path byte its inline keys omit.
+        byte[] keyPostfix = key[PbtNodeCodec.InlineKeyOffset(anchorDepth)..];
         byte[] encoding = stored
             ? PbtNodeCodec.EncodeLeaf(new PbtStorageTreeKey(key))
             : right
-                ? PbtTreeHarness.EncodeBranch([], 0, siblingHash, leafHash, [], key)
-                : PbtTreeHarness.EncodeBranch([], 0, leafHash, siblingHash, key, []);
+                ? PbtTreeHarness.EncodeBranch([], 0, siblingHash, leafHash, [], keyPostfix)
+                : PbtTreeHarness.EncodeBranch([], 0, leafHash, siblingHash, keyPostfix, []);
+        PbtTraversalPath cursor = new(stackalloc byte[66]);
+        cursor.AppendKey(key, anchorDepth);
         TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode borrowed = stored
             ? new(encoding, leafHash)
-            : new(encoding, right);
-        PbtStorageTreeKey borrowedKey = borrowed.LeafKey;
+            : new(encoding, anchorDepth, right);
+        PbtStorageTreeKey borrowedKey = borrowed.LeafKey(cursor);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(borrowed.IsLeaf, Is.True);
@@ -938,10 +960,11 @@ public class PbtNodeGroupTests
             Assert.That(borrowed.Hash, Is.EqualTo(leafHash), "an inlined leaf's hash is the one its branch holds");
         }
 
-        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode owned = borrowed.Owned();
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode owned = borrowed.Owned(cursor);
         // Whatever the node was read from is gone once it has been detached, as it is when it crosses a thread.
         encoding.AsSpan().Fill(0xDD);
-        PbtStorageTreeKey ownedKey = owned.LeafKey;
+        cursor.Truncate(0);
+        PbtStorageTreeKey ownedKey = owned.LeafKey(cursor);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(owned.IsLeaf, Is.True);
@@ -1078,7 +1101,7 @@ public class PbtNodeGroupTests
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode root = default;
         GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> rootReader = new(store, new PbtTraversalPath(Span<byte>.Empty), store.GetGroupHash(rootPath));
-        using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref rootReader)) root = rootReader.TakeRoot().Owned();
+        using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref rootReader)) root = rootReader.TakeRoot().Owned(new PbtTraversalPath(Span<byte>.Empty));
         GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(store, groupPath, root.HashAt(groupPath, groupKey.BitDepth));
         TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.StoredGroupHashes hashes = default;
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth, new TrackingMemoryProvider());
@@ -2009,7 +2032,7 @@ public class PbtNodeGroupTests
             {
                 Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(expected));
                 Assert.That(slotWriter.WrittenSpan.ToArray(), Is.EqualTo(expected));
-                Assert.That(expected[..PbtNodeGroupCodec.HeaderLength], Is.EqualTo(Bytes.FromHexString("06")));
+                Assert.That(expected[..PbtNodeGroupCodec.HeaderLength], Is.EqualTo(Bytes.FromHexString("07")));
                 Assert.That(reader.Count, Is.EqualTo(count));
                 int nodeLength = PbtNodeCodec.BranchLength(4, 0, 0);
                 Assert.That(expected.Length, Is.EqualTo(count * nodeLength + 7 + 2 * count));
@@ -2136,7 +2159,7 @@ public class PbtNodeGroupTests
             case 16: payload.AsSpan(5, 32).Clear(); break;
             case 17:
                 payload = new byte[1 + ushort.MaxValue + 1 + 8];
-                payload[0] = 6;
+                payload[0] = 7;
                 payload[^3] = 0x40;
                 break;
             // A descendant mask bit must carry a nonzero size.
@@ -2183,7 +2206,7 @@ public class PbtNodeGroupTests
     public void Root_leaf_has_byte_exact_compact_encoding()
     {
         PbtNodePath groupKey = new([], 0);
-        byte[] expected = Bytes.FromHexString("060001000000000000400000");
+        byte[] expected = Bytes.FromHexString("070001000000000000400000");
         byte[] payload = EncodeGroup(groupKey, [new(groupKey.ToPath<PbtStorageNodePath>(), LeafEncoding(0x00))]);
         Assert.That(payload, Is.EqualTo(expected));
     }
@@ -2410,7 +2433,7 @@ public class PbtNodeGroupTests
         if (path.BitDepth >= PbtFourLevelGroupGeometry.MaxPathDepth) return LeafBranch([], marker);
         byte[] key = new byte[(path.BitDepth >> 3) + 1];
         PbtNodePathOperations.CopyTo(path, key);
-        return LeafBranch(key, marker);
+        return LeafBranch(key.AsSpan(PbtNodeCodec.InlineKeyOffset(path.BitDepth)), marker);
     }
 
     private static byte[] Value(byte marker)

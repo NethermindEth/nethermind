@@ -53,11 +53,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             int offset = writer.WrittenCount;
             int bitCount = stored.Prefix.BitCount - skippedBits;
-            int length = PbtNodeCodec.BranchLength(bitCount, stored.LeftKey.Length, stored.RightKey.Length);
+            // A reanchored branch stays in its group, so its inline keys omit the same bytes.
+            int length = PbtNodeCodec.BranchLength(bitCount, stored.LeftKeyPostfix.Length, stored.RightKeyPostfix.Length);
             Span<byte> branch = writer.Append(position, length);
             PbtNodeCodec.CreateBranchEncoding(branch, bitCount, stored.LeftHash, stored.RightHash);
             PbtBitPrefix.CopyBits(stored.Prefix.Bytes, skippedBits, bitCount, branch[3..], 0);
-            PbtNodeCodec.WriteBranchTrailer(branch[PbtNodeCodec.BranchPreimageLength(bitCount)..], stored.LeftKey, stored.RightKey);
+            PbtNodeCodec.WriteBranchTrailer(branch[PbtNodeCodec.BranchPreimageLength(bitCount)..], stored.LeftKeyPostfix, stored.RightKeyPostfix);
             return new(offset, length, default);
         }
 
@@ -112,16 +113,17 @@ internal static partial class TrieUpdater<TKey, TPath>
         Debug.Assert(node.Path.Length == PbtFourLevelGroupGeometry.LocalPathOf(position).Length, "A held result is anchored at the position that holds it.");
         CompressedPrefix prefix = node.Encoding.IsEmpty ? default : CompressedPrefix.FromValidated(node.Encoding);
         TKey rightKey = node.RightLeafKey;
-        int leftKeyLength = node.HasLeftLeaf ? leftKey.Length : 0;
-        int rightKeyLength = node.HasRightLeaf ? rightKey.Length : 0;
+        int keyOffset = writer.KeyOffsetAt(position);
+        int leftKeyLength = node.HasLeftLeaf ? leftKey.Length - keyOffset : 0;
+        int rightKeyLength = node.HasRightLeaf ? rightKey.Length - keyOffset : 0;
         int length = PbtNodeCodec.BranchLength(prefix.BitCount, leftKeyLength, rightKeyLength);
         Span<byte> branch = writer.Append(position, length);
         PbtNodeCodec.CreateBranchEncoding(branch, prefix.BitCount, node.LeftHash, node.RightHash);
         prefix.Bytes.CopyTo(branch[3..]);
         Span<byte> trailer = branch[PbtNodeCodec.BranchPreimageLength(prefix.BitCount)..];
         PbtNodeCodec.WriteBranchTrailer(trailer, leftKeyLength, rightKeyLength);
-        if (node.HasLeftLeaf) leftKey.Bytes.CopyTo(trailer[PbtNodeCodec.BranchTrailerHeaderLength..]);
-        if (node.HasRightLeaf) rightKey.Bytes.CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftKeyLength)..]);
+        if (node.HasLeftLeaf) leftKey.Bytes[keyOffset..].CopyTo(trailer[PbtNodeCodec.BranchTrailerHeaderLength..]);
+        if (node.HasRightLeaf) rightKey.Bytes[keyOffset..].CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftKeyLength)..]);
         bool hashKnown = node.KnownHash != default && prefix.BitCount == node.KnownHashBitCount;
         return new(offset, length, hashKnown ? node.KnownHash : default);
     }
@@ -211,7 +213,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 else
                 {
                     int leftPosition = position - frame.Path.Width;
-                    SettleLeft(writer, path, leftPosition, Land(ref reader, ref hashes, writer, prevSubtree, leftPosition), ref frame);
+                    SettleLeft(writer, path, leftPosition, Land(ref reader, ref hashes, writer, path, prevSubtree, leftPosition), ref frame);
                     frame.Stage = ComposeStage.AwaitingRight;
                 }
                 frames[frameCount] = new(frame.Path.Right, frame.ChildParent);
@@ -229,12 +231,12 @@ internal static partial class TrieUpdater<TKey, TPath>
             {
                 // Back up from the right child with both children present: settle the right one and append the branch
                 // over the two, returning it up to the parent frame.
-                prevSubtree = AppendBranch(writer, path, position, Land(ref reader, ref hashes, writer, prevSubtree, position - 1), ref frame);
+                prevSubtree = AppendBranch(writer, path, position, Land(ref reader, ref hashes, writer, path, prevSubtree, position - 1), ref frame);
                 frameCount--;
                 continue;
             }
         }
-        TakeRoot(writer, path, resultDepth, Land(ref reader, ref hashes, writer, prevSubtree, PbtFourLevelGroupGeometry.RootPosition), ref result);
+        TakeRoot(writer, path, resultDepth, Land(ref reader, ref hashes, writer, path, prevSubtree, PbtFourLevelGroupGeometry.RootPosition), ref result);
 
         // Settles the left child at leftPosition into frame, dropping it when the group does not keep it.
         // A leaf is inlined into the branch above it, so only its key and hash are kept. An omitted branch is hashed now,
@@ -288,16 +290,17 @@ internal static partial class TrieUpdater<TKey, TPath>
             else
                 writer.ValidateEntry(path, rightPosition, encoding);
 
-            int leftKeyLength = frame.LeftIsLeaf ? frame.LeftKey.Length : 0;
-            int rightKeyLength = rightIsLeaf ? rightKey.Length : 0;
+            int keyOffset = writer.KeyOffsetAt(position);
+            int leftKeyLength = frame.LeftIsLeaf ? frame.LeftKey.Length - keyOffset : 0;
+            int rightKeyLength = rightIsLeaf ? rightKey.Length - keyOffset : 0;
             int offset = writer.WrittenCount;
             int length = PbtNodeCodec.BranchLength(0, leftKeyLength, rightKeyLength);
             Span<byte> branch = writer.Append(position, length);
             PbtNodeCodec.CreateBranchEncoding(branch, 0, frame.LeftHash, rightHash);
             Span<byte> trailer = branch[PbtNodeCodec.BranchPreimageLength(0)..];
             PbtNodeCodec.WriteBranchTrailer(trailer, leftKeyLength, rightKeyLength);
-            if (frame.LeftIsLeaf) frame.LeftKey.Bytes.CopyTo(trailer[PbtNodeCodec.BranchTrailerHeaderLength..]);
-            if (rightIsLeaf) rightKey.Bytes.CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftKeyLength)..]);
+            if (frame.LeftIsLeaf) frame.LeftKey.Bytes[keyOffset..].CopyTo(trailer[PbtNodeCodec.BranchTrailerHeaderLength..]);
+            if (rightIsLeaf) rightKey.Bytes[keyOffset..].CopyTo(trailer[(PbtNodeCodec.BranchTrailerHeaderLength + leftKeyLength)..]);
             return new(offset, length, default);
 
             // Hashes the sibling preimages still pending, together when both are.
@@ -324,9 +327,12 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <remarks>
     /// A branch gains the side bits it rose over in front of its compressed prefix, and so needs hashing again; a leaf's
     /// encoding does not depend on its position. An implicit branch appended without its child hashes has them resolved here.
+    /// A branch landing at the root of a group on a byte boundary takes the group's last path byte back into its inline keys,
+    /// which <paramref name="path"/>, the group's, supplies.
     /// </remarks>
     [SkipLocalsInit]
-    private static ComposedNode Land<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer, in ComposedNode node, int position)
+    private static ComposedNode Land<TFrame>(scoped ref TFrame reader, scoped ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
+        scoped in PbtTraversalPath path, in ComposedNode node, int position)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         if (node.RiseBitCount == 0) return node;
@@ -352,12 +358,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         CompressedPrefix prefix = stored.Prefix;
         int riseBitCount = node.RiseBitCount;
         int bitCount = prefix.BitCount + riseBitCount;
-        int length = PbtNodeCodec.BranchLength(bitCount, stored.LeftKey.Length, stored.RightKey.Length);
+        int fromKeyOffset = writer.KeyOffsetAt(childPosition), toKeyOffset = writer.KeyOffsetAt(position);
+        int length = PbtNodeCodec.BranchPreimageLength(bitCount) + PbtNodeCodec.BranchTrailerHeaderLength + PbtNodeCodec.RebasedKeysLength(stored, fromKeyOffset, toKeyOffset);
         Span<byte> encoding = writer.Append(position, length);
         PbtNodeCodec.CreateBranchEncoding(encoding, bitCount, leftHash, rightHash);
         encoding[3] |= (byte)(node.RiseBits << (8 - riseBitCount));
         PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, encoding[3..], riseBitCount);
-        PbtNodeCodec.WriteBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..], stored.LeftKey, stored.RightKey);
+        PbtNodeCodec.WriteRebasedBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..], stored, fromKeyOffset, toKeyOffset, path.Bytes);
         return new(node.Offset, length, default);
     }
 
@@ -371,12 +378,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
         PbtNodeReader node = PbtNodeReader.FromValidated(writer.Entry(root.Offset, root.Length).Span);
         if (node.IsLeaf) result = new(TKey.Create(node.Key), root.Hash);
-        else ReanchoredRoot(path, resultDepth, node, ref result);
+        else ReanchoredRoot(path, resultDepth, node, writer.KeyOffsetAt(PbtFourLevelGroupGeometry.RootPosition), ref result);
         writer.DropLast(PbtFourLevelGroupGeometry.RootPosition);
 
         // A group's root branch, stored at the group's depth, as a result anchored at resultDepth.
         // A prefix jump leaves resultDepth above the group, so the bits in between are read from path.
-        static void ReanchoredRoot(scoped in PbtTraversalPath path, int resultDepth, scoped in PbtNodeReader root, ref FoldResult result)
+        static void ReanchoredRoot(scoped in PbtTraversalPath path, int resultDepth, scoped in PbtNodeReader root, int keyOffset, ref FoldResult result)
         {
             CompressedPrefix prefix = root.Prefix;
             int anchorDepth = path.BitDepth;
@@ -402,9 +409,9 @@ internal static partial class TrieUpdater<TKey, TPath>
 
             result = new(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
                 root.LeftHash, root.RightHash,
-                root.LeftKey.IsEmpty ? default : TKey.Create(root.LeftKey),
-                root.RightKey.IsEmpty ? default : TKey.Create(root.RightKey),
-                (byte)((root.LeftKey.IsEmpty ? 0 : LeftLeaf) | (root.RightKey.IsEmpty ? 0 : RightLeaf)), ownedPrefix);
+                root.LeftKeyPostfix.IsEmpty ? default : PbtKeyOperations.CreateKey<TKey>(path.Bytes[..keyOffset], root.LeftKeyPostfix),
+                root.RightKeyPostfix.IsEmpty ? default : PbtKeyOperations.CreateKey<TKey>(path.Bytes[..keyOffset], root.RightKeyPostfix),
+                (byte)((root.LeftKeyPostfix.IsEmpty ? 0 : LeftLeaf) | (root.RightKeyPostfix.IsEmpty ? 0 : RightLeaf)), ownedPrefix);
         }
     }
 

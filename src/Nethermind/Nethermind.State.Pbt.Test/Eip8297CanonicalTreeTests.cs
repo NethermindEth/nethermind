@@ -733,8 +733,8 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), "split root leaf");
             Assert.That(tree.Nodes, Has.Count.EqualTo(1));
-            Assert.That(branch.LeftKey.ToArray(), Is.EqualTo(first));
-            Assert.That(branch.RightKey.ToArray(), Is.EqualTo(second));
+            Assert.That(branch.LeftKeyPostfix.ToArray(), Is.EqualTo(first));
+            Assert.That(branch.RightKeyPostfix.ToArray(), Is.EqualTo(second));
             Assert.That(branch.LeftHash, Is.EqualTo(PbtNodeCodec.HashLeaf(first, Value(2))), "the split reuses the stored leaf hash");
             Assert.That(branch.RightHash, Is.EqualTo(PbtNodeCodec.HashLeaf(second, Value(3))));
         }
@@ -831,9 +831,9 @@ public class Eip8297CanonicalTreeTests
                 if (length != 0) Assert.That(reader.Prefix.Bytes.Overlaps(backing.AsSpan()), Is.True);
                 Assert.That(reader.LeftHash, Is.EqualTo(left));
                 Assert.That(reader.RightHash, Is.EqualTo(right));
-                Assert.That(reader.LeftKey.ToArray(), Is.EqualTo(leftKey));
-                Assert.That(reader.RightKey.ToArray(), Is.EqualTo(rightKey));
-                if (leafChildren != 0) Assert.That((leftKey.Length != 0 ? reader.LeftKey : reader.RightKey).Overlaps(backing.AsSpan()), Is.True);
+                Assert.That(reader.LeftKeyPostfix.ToArray(), Is.EqualTo(leftKey));
+                Assert.That(reader.RightKeyPostfix.ToArray(), Is.EqualTo(rightKey));
+                if (leafChildren != 0) Assert.That((leftKey.Length != 0 ? reader.LeftKeyPostfix : reader.RightKeyPostfix).Overlaps(backing.AsSpan()), Is.True);
             }
         }
     }
@@ -991,7 +991,7 @@ public class Eip8297CanonicalTreeTests
         PbtNodeReader reader = PbtNodeReader.FromValidated(encoding);
         return reader.Encoding.Length + (reader.IsLeaf
             ? reader.Key[0]
-            : reader.Prefix.BitCount + reader.Prefix.Bytes[0] + reader.LeftHash.Bytes[0] + reader.RightHash.Bytes[0] + reader.LeftKey[0] + reader.RightKey[0]);
+            : reader.Prefix.BitCount + reader.Prefix.Bytes[0] + reader.LeftHash.Bytes[0] + reader.RightHash.Bytes[0] + reader.LeftKeyPostfix[0] + reader.RightKeyPostfix[0]);
     }
 
     [Test]
@@ -1351,6 +1351,71 @@ public class Eip8297CanonicalTreeTests
         AssertEquivalentAfterReopen(bulk, serial, oracle, $"collapse divergence bit {divergenceBit}");
         ApplyAll(bulk, serial, oracle, [.. changes]);
         AssertEquivalentAfterReopen(bulk, serial, oracle, $"restore divergence bit {divergenceBit}");
+    }
+
+    [Test]
+    public void Inline_leaf_keys_omit_group_path_bytes_through_updates_deletes_and_reopen(
+        [Values(8, 12, 16, 20, 36, 44)] int sharedBits, [Values(0x00, 0xFF)] byte zone)
+    {
+        Random random = new(sharedBits * 256 + zone);
+        byte[] shared = ZoneKey($"{zone:X2}");
+        random.NextBytes(shared.AsSpan(1));
+        List<byte[]> keys = [];
+        for (int index = 0; index < 24; index++)
+        {
+            // Every key leaves the shared prefix at one of the next twelve bits, so branches and the leaves they inline
+            // land in groups on both sides of the byte boundaries inline keys are cut at.
+            byte[] key = ZoneKey($"{zone:X2}");
+            random.NextBytes(key.AsSpan(1));
+            int divergenceBit = sharedBits + index % 12;
+            for (int bit = 8; bit <= divergenceBit; bit++)
+            {
+                int sharedBit = TrieUpdater.GetBit(shared, bit) ^ (bit == divergenceBit ? 1 : 0);
+                key[bit >> 3] = (byte)(key[bit >> 3] & ~(0x80 >> (bit & 7)) | sharedBit << (7 - (bit & 7)));
+            }
+            keys.Add(key);
+        }
+
+        using PbtTreeHarness bulk = new();
+        using PbtTreeHarness serial = new();
+        EipReferenceTree oracle = new();
+        Dictionary<byte[], byte[]> live = new(Bytes.EqualityComparer);
+        Apply([.. keys.Select((key, index) => (key, (byte[]?)Value((byte)(index + 1))))], "insert");
+        Apply([.. keys.Where((_, index) => index % 2 == 0).Select(key => (key, (byte[]?)Value(0x80)))], "update");
+        // Deleting down to a single leaf promotes and lifts branches through every group on the way up.
+        while (live.Count > 1)
+            Apply([.. live.Keys.OrderBy(_ => random.Next()).Take(Math.Max(1, live.Count / 3)).Select(key => (key, (byte[]?)null))], $"delete to {live.Count}");
+
+        void Apply(List<(byte[] Key, byte[]? Value)> changes, string scenario)
+        {
+            ApplyAll(bulk, serial, oracle, changes);
+            foreach ((byte[] key, byte[]? value) in changes)
+            {
+                if (value is null) live.Remove(key);
+                else live[key] = value;
+            }
+            AssertEquivalentAfterReopen(bulk, serial, oracle, scenario);
+            using (Assert.EnterMultipleScope())
+            {
+                foreach (byte[] key in keys)
+                {
+                    ValueHash256 expected = live.TryGetValue(key, out byte[]? value) ? PbtNodeCodec.HashLeaf(key, value) : default;
+                    Assert.That(bulk.GetLeafHash(key), Is.EqualTo(expected), $"{scenario}: leaf {Convert.ToHexString(key)}");
+                }
+                foreach (PbtPhysicalPayload payload in bulk.PhysicalPayloads)
+                {
+                    int postfixLength = shared.Length - (payload.Key.BitDepth >> 3);
+                    PbtNodeGroupReader.Enumerator nodes = PbtStoreTestExtensions.ReadGroup(payload.Key, payload.Payload.Span).EnumerateNodes();
+                    while (nodes.MoveNext())
+                    {
+                        PbtNodeReader node = PbtNodeReader.FromValidated(nodes.Current);
+                        if (node.IsLeaf) continue;
+                        if (!node.LeftKeyPostfix.IsEmpty) Assert.That(node.LeftKeyPostfix.Length, Is.EqualTo(postfixLength), $"{scenario}: group depth {payload.Key.BitDepth}");
+                        if (!node.RightKeyPostfix.IsEmpty) Assert.That(node.RightKeyPostfix.Length, Is.EqualTo(postfixLength), $"{scenario}: group depth {payload.Key.BitDepth}");
+                    }
+                }
+            }
+        }
     }
 
     [TestCase("insert-only")]
@@ -1815,7 +1880,9 @@ public class Eip8297CanonicalTreeTests
         // Every leaf pair is inlined in a stored branch. A single pair is the root, whose prefix spans the zone byte;
         // otherwise the pairs are the prefixless branches of the zone's group at depth eight, below a root of their own.
         bool singlePair = leafCount == 2;
-        int pairBranchLength = PbtNodeCodec.BranchLength(singlePair ? 8 : 0, PbtPath.KeyLength, PbtPath.KeyLength);
+        // The pairs below the root omit the zone byte of their group's path from their inline keys.
+        int inlineKeyLength = singlePair ? PbtPath.KeyLength : PbtPath.KeyLength - 1;
+        int pairBranchLength = PbtNodeCodec.BranchLength(singlePair ? 8 : 0, inlineKeyLength, inlineKeyLength);
         int storedNodes = leafCount / 2;
         TrackingMemoryProvider provider = new() { FillByte = 0xFF };
         using PbtNodeGroupStore store = new();

@@ -233,9 +233,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         // A leaf, or a branch reaching past this group, is the whole subtree under one slot and needs no group read.
         if (frontier.Root.IsLeaf)
         {
-            // The key is decoded once: a span taken straight off the property would point at an unnamed temporary.
-            TKey rootLeafKey = frontier.Root.LeafKey;
-            int leafSlot = BoundarySlot(rootLeafKey.Bytes, bitDepth);
+            // The postfix omits whole bytes only, so the slot's nibble stays where the shifted depth finds it.
+            int leafSlot = BoundarySlot(frontier.Root.LeafKeyPostfix, bitDepth - (frontier.Root.KeyOffset << 3));
             frontier.Place(leafSlot, BoundaryPosition(leafSlot), EntrySource.AtPosition, RootSource);
             return;
         }
@@ -319,12 +318,12 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         int side = SlotBit(slot, bitDepth, branchDepth);
         PbtNodeReader branch = node.Node;
-        ReadOnlySpan<byte> leafKey = side == 0 ? branch.LeftKey : branch.RightKey;
+        ReadOnlySpan<byte> leafKey = side == 0 ? branch.LeftKeyPostfix : branch.RightKeyPostfix;
         if (!leafKey.IsEmpty)
         {
             // An inlined leaf is the whole subtree under its link, which is wider than this block when the link is
             // shallower than it; the block that holds the leaf's own slot claims it, the others hold nothing.
-            int leafSlot = BoundarySlot(leafKey, bitDepth);
+            int leafSlot = BoundarySlot(leafKey, bitDepth - (PbtNodeCodec.InlineKeyOffset(node.AnchorDepth) << 3));
             if ((uint)(leafSlot - slot) >= (uint)width) return;
             frontier.Place(leafSlot, BoundaryPosition(leafSlot), side == 0 ? EntrySource.LeftLeafOf : EntrySource.RightLeafOf,
                 covering < 0 ? RootSource : covering);

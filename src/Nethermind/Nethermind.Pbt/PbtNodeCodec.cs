@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
@@ -10,7 +11,8 @@ namespace Nethermind.Pbt;
 /// <remarks>
 /// A branch is its EIP-8297 hash preimage, <c>[0x01][bitCount u16 BE][prefix][left hash][right hash]</c>, followed by a
 /// trailer <c>[leftKeyLength u8][rightKeyLength u8][leftKey][rightKey]</c>. A non-zero key length declares that child a
-/// leaf and inlines its complete key; its hash is the child hash already in the preimage, so leaves are not stored as
+/// leaf and inlines its key past the whole bytes of the branch's group path (see <see cref="InlineKeyOffset"/>), which
+/// every key under the group shares; its hash is the child hash already in the preimage, so leaves are not stored as
 /// nodes. The only exception is a tree consisting of one leaf, whose root is stored as <c>[0x00][keyLength u8][key]</c>
 /// without a value: its hash is the tree root, which every reader of the root group already has.
 /// </remarks>
@@ -29,6 +31,46 @@ internal static class PbtNodeCodec
     /// <summary>The length of a complete branch encoding.</summary>
     internal static int BranchLength(int bitCount, int leftKeyLength, int rightKeyLength) =>
         BranchPreimageLength(bitCount) + BranchTrailerHeaderLength + leftKeyLength + rightKeyLength;
+
+    /// <summary>The number of leading key bytes an inline leaf key omits under a branch anchored at <paramref name="anchorDepth"/>.</summary>
+    /// <remarks>These are the whole bytes of the path of the group holding the branch; an odd-nibble group keeps its last nibble in the key.</remarks>
+    internal static int InlineKeyOffset(int anchorDepth) => PbtFourLevelGroupGeometry.GroupDepthOf(anchorDepth) >> 3;
+
+    /// <summary>The trailer length of <paramref name="stored"/>'s inline keys once rebased from key offset <paramref name="from"/> to <paramref name="to"/>.</summary>
+    internal static int RebasedKeysLength(PbtNodeReader stored, int from, int to) =>
+        RebasedKeyLength(stored.LeftKeyPostfix.Length, from, to) + RebasedKeyLength(stored.RightKeyPostfix.Length, from, to);
+
+    private static int RebasedKeyLength(int keyLength, int from, int to) => keyLength == 0 ? 0 : keyLength + from - to;
+
+    /// <summary>Writes <paramref name="stored"/>'s inline keys as a trailer under key offset <paramref name="to"/> instead of <paramref name="from"/>.</summary>
+    /// <param name="path">A path through the branch covering the bytes a shallower offset takes back.</param>
+    internal static void WriteRebasedBranchTrailer(Span<byte> trailer, PbtNodeReader stored, int from, int to, scoped ReadOnlySpan<byte> path)
+    {
+        ReadOnlySpan<byte> leftKey = stored.LeftKeyPostfix, rightKey = stored.RightKeyPostfix;
+        if (from == to)
+        {
+            WriteBranchTrailer(trailer, leftKey, rightKey);
+            return;
+        }
+        int leftLength = RebasedKeyLength(leftKey.Length, from, to);
+        WriteBranchTrailer(trailer, leftLength, RebasedKeyLength(rightKey.Length, from, to));
+        Span<byte> keys = trailer[BranchTrailerHeaderLength..];
+        RebaseKey(leftKey, keys, from, to, path);
+        RebaseKey(rightKey, keys[leftLength..], from, to, path);
+
+        static void RebaseKey(ReadOnlySpan<byte> key, Span<byte> destination, int from, int to, scoped ReadOnlySpan<byte> path)
+        {
+            if (key.IsEmpty) return;
+            if (to > from)
+            {
+                Debug.Assert(key.Length > to - from, "An inline leaf key extends past its branch.");
+                key[(to - from)..].CopyTo(destination);
+                return;
+            }
+            path[to..from].CopyTo(destination);
+            key.CopyTo(destination[(from - to)..]);
+        }
+    }
 
     /// <summary>The length of a root leaf encoding.</summary>
     internal static int LeafLength(int keyLength) => 2 + keyLength;
@@ -131,7 +173,7 @@ internal static class PbtNodeCodec
         right.Bytes.CopyTo(encoding[(3 + prefixLength + 32)..]);
     }
 
-    /// <summary>Writes the inline leaf keys that follow a branch's preimage; an empty key declares a branch child.</summary>
+    /// <summary>Writes the inline leaf keys, already past <see cref="InlineKeyOffset"/>, that follow a branch's preimage; an empty key declares a branch child.</summary>
     internal static void WriteBranchTrailer(Span<byte> trailer, ReadOnlySpan<byte> leftKey, ReadOnlySpan<byte> rightKey)
     {
         WriteBranchTrailer(trailer, leftKey.Length, rightKey.Length);

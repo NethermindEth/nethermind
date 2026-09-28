@@ -9,10 +9,10 @@ namespace Nethermind.Pbt;
 
 /// <summary>Encodes and reads a four-level node group's canonical node payload.</summary>
 /// <remarks>
-/// The physical payload starts with version byte 6, followed by entries and a variable-size footer.
+/// The physical payload starts with version byte 7, followed by entries and a variable-size footer.
 /// Entries are complete branch encodings in ascending post-order position order, with no padding or
-/// separators; leaves are inlined in their parent branch's trailer (see <see cref="PbtNodeCodec"/>),
-/// so the only leaf entry is the root of a single-leaf tree. The footer contains one little-endian
+/// separators; leaves are inlined in their parent branch's trailer past the whole bytes of the group
+/// path (see <see cref="PbtNodeCodec"/>), so the only leaf entry is the root of a single-leaf tree. The footer contains one little-endian
 /// unsigned 16-bit offset per physically stored node, in the same order, followed by a little-endian
 /// unsigned 32-bit availability bitmap, one little-endian descendant size per set bit of the closing
 /// little-endian unsigned 16-bit descendant mask, in ascending boundary-slot order, the width byte of
@@ -30,7 +30,7 @@ namespace Nethermind.Pbt;
 public static class PbtNodeGroupCodec
 {
     internal const int HeaderLength = 1;
-    internal static ReadOnlySpan<byte> Header => "\x06"u8;
+    internal static ReadOnlySpan<byte> Header => "\x07"u8;
 
     /// <summary>The number of positions represented by the offset table.</summary>
     public const int PositionCount = PbtFourLevelGroupGeometry.PositionCount;
@@ -337,28 +337,27 @@ public readonly ref struct PbtNodeGroupReader
         PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
         Span<byte> directions = stackalloc byte[PbtFourLevelGroupGeometry.LevelsPerGroup];
         int relativeDepth = RelativeDirections(position, directions);
-        ValidateInlineLeafPath(groupKey, node.LeftKey, directions[..relativeDepth]);
-        ValidateInlineLeafPath(groupKey, node.RightKey, directions[..relativeDepth]);
+        ValidateInlineLeafPath(groupKey, node.LeftKeyPostfix, directions[..relativeDepth]);
+        ValidateInlineLeafPath(groupKey, node.RightKeyPostfix, directions[..relativeDepth]);
     }
 
-    private static void ValidateInlineLeafPath(scoped in PbtTraversalPath groupKey, ReadOnlySpan<byte> key, ReadOnlySpan<byte> directions)
+    private static void ValidateInlineLeafPath(scoped in PbtTraversalPath groupKey, ReadOnlySpan<byte> keyPostfix, ReadOnlySpan<byte> directions)
     {
-        if (key.IsEmpty) return;
+        if (keyPostfix.IsEmpty) return;
         int relativeDepth = directions.Length;
         // The leaf hangs at least one level below the branch.
-        int requiredDepth = checked(groupKey.BitDepth + relativeDepth + 1);
-        if (key.Length * 8 < requiredDepth) throw new InvalidDataException("PBT leaf does not match its group position.");
         int completeBytes = groupKey.BitDepth >> 3;
-        if (!groupKey.Bytes[..completeBytes].SequenceEqual(key[..completeBytes]))
-            throw new InvalidDataException("PBT leaf does not match its group position.");
+        int requiredDepth = checked(groupKey.BitDepth + relativeDepth + 1);
+        if ((completeBytes + keyPostfix.Length) * 8 < requiredDepth) throw new InvalidDataException("PBT leaf does not match its group position.");
+        if (completeBytes + keyPostfix.Length > PbtStorageTreeKey.MaxLength) throw new InvalidDataException("An inline PBT leaf key exceeds the maximum key length.");
 
-        // Four-level group alignment keeps the group tail and relative path in one byte.
+        // Four-level group alignment keeps the group tail and relative path in the postfix's first byte.
         int groupTailBits = groupKey.BitDepth & 7;
         int expectedTail = groupTailBits == 0 ? 0 : groupKey.Bytes[completeBytes];
         for (int index = 0; index < relativeDepth; index++)
             expectedTail |= directions[index] << (7 - groupTailBits - index);
         int tailMask = 0xFF << (8 - groupTailBits - relativeDepth);
-        if (((key[completeBytes] ^ expectedTail) & tailMask) != 0)
+        if (((keyPostfix[0] ^ expectedTail) & tailMask) != 0)
             throw new InvalidDataException("PBT leaf does not match its group position.");
     }
     private static int RelativeDirections(int position, Span<byte> directions)

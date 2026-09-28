@@ -17,8 +17,9 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// A boundary node is a branch stored at the boundary, a branch anchored above it whose compressed prefix spans
     /// past it, or a leaf. A branch keeps its encoding exactly as the group stores it, together with the absolute
     /// depth that encoding is anchored at, so addressing it from another depth is a comparison rather than a rewrite.
-    /// A leaf has no node of its own: it points at the branch that inlines it, which already holds its complete key in
-    /// its trailer and its hash in its preimage, and <see cref="LeafSource"/> says which of the two children it is.
+    /// A leaf has no node of its own: it points at the branch that inlines it, which already holds its key past the
+    /// branch's group path in its trailer and its hash in its preimage, and <see cref="LeafSource"/> says which of the
+    /// two children it is. The anchor depth is then that branch's, which fixes how many key bytes the trailer omits.
     /// The one leaf stored as a node, a single-leaf tree's root, points at that encoding instead.
     /// <see cref="Hash"/> is always known, because decomposition reads it from the parent's child link; a boundary
     /// node is therefore never hashed again to be opened, moved or handed to another thread. An omitted prefixless
@@ -32,17 +33,18 @@ internal static partial class TrieUpdater<TKey, TPath>
         private readonly ushort _anchorDepth;
         private readonly LeafSource _source;
 
-        /// <summary>Creates the leaf <paramref name="parent"/> inlines on the given side.</summary>
+        /// <summary>Creates the leaf <paramref name="parent"/>, anchored at <paramref name="parentAnchorDepth"/>, inlines on the given side.</summary>
         /// <remarks>
         /// The hash is taken from the same branch that holds the key, so the two cannot disagree. The fold compares it
         /// to detect a write that changes nothing, and the branch composed above takes it straight back into its
         /// preimage while the key goes to its trailer, so neither is ever recomputed.
         /// </remarks>
-        internal BoundaryNode(ReadOnlyMemory<byte> parent, bool right)
+        internal BoundaryNode(ReadOnlyMemory<byte> parent, int parentAnchorDepth, bool right)
         {
             PbtNodeReader branch = PbtNodeReader.FromValidated(parent.Span);
-            Debug.Assert(!(right ? branch.RightKey : branch.LeftKey).IsEmpty, "An inlined leaf's branch holds its key.");
+            Debug.Assert(!(right ? branch.RightKeyPostfix : branch.LeftKeyPostfix).IsEmpty, "An inlined leaf's branch holds its key.");
             _encoding = parent;
+            _anchorDepth = (ushort)parentAnchorDepth;
             _source = right ? LeafSource.ParentRight : LeafSource.ParentLeft;
             _hash = right ? branch.RightHash : branch.LeftHash;
         }
@@ -83,21 +85,25 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly bool IsLeaf => _source != LeafSource.None;
         /// <summary>Where this leaf's key is read from, or <see cref="LeafSource.None"/> for a branch.</summary>
         internal readonly LeafSource Source => _source;
-        /// <summary>A leaf's complete key, read from the branch that inlines it or from its own encoding.</summary>
-        internal readonly TKey LeafKey
+        /// <summary>The number of leading key bytes this node's inline keys omit, which a cursor through it supplies.</summary>
+        internal readonly int KeyOffset => PbtNodeCodec.InlineKeyOffset(_anchorDepth);
+        /// <summary>A leaf's key past <see cref="KeyOffset"/>, read from the branch that inlines it or from its own encoding.</summary>
+        internal readonly ReadOnlySpan<byte> LeafKeyPostfix
         {
             get
             {
                 Debug.Assert(IsLeaf, "Only a leaf has a complete key.");
                 PbtNodeReader node = Reader;
-                return TKey.Create(_source switch
+                return _source switch
                 {
-                    LeafSource.ParentLeft => node.LeftKey,
-                    LeafSource.ParentRight => node.RightKey,
+                    LeafSource.ParentLeft => node.LeftKeyPostfix,
+                    LeafSource.ParentRight => node.RightKeyPostfix,
                     _ => node.Key,
-                });
+                };
             }
         }
+        /// <summary>A leaf's complete key, completed from <paramref name="cursor"/>, a path through its branch's group.</summary>
+        internal readonly TKey LeafKey(scoped in PbtTraversalPath cursor) => CompleteKey(cursor, LeafKeyPostfix);
         /// <summary>The hash of this node as it is stored, which its parent's link already held.</summary>
         /// <remarks>
         /// It is kept rather than derived because only an inlined leaf could derive it for free, from the branch it
@@ -114,15 +120,22 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly int BranchDepth => _anchorDepth + Prefix.BitCount;
         internal readonly ValueHash256 LeftHash => Reader.LeftHash;
         internal readonly ValueHash256 RightHash => Reader.RightHash;
-        internal readonly TKey LeftLeafKey => TKey.Create(Reader.LeftKey);
-        internal readonly TKey RightLeafKey => TKey.Create(Reader.RightKey);
+        internal readonly TKey LeftLeafKey(scoped in PbtTraversalPath cursor) => CompleteKey(cursor, Reader.LeftKeyPostfix);
+        internal readonly TKey RightLeafKey(scoped in PbtTraversalPath cursor) => CompleteKey(cursor, Reader.RightKeyPostfix);
+
+        private readonly TKey CompleteKey(scoped in PbtTraversalPath cursor, ReadOnlySpan<byte> keyPostfix)
+        {
+            int keyOffset = KeyOffset;
+            Debug.Assert(cursor.BitDepth >= keyOffset * 8, "The cursor covers the key bytes the encoding omits.");
+            return PbtKeyOperations.CreateKey<TKey>(cursor.Bytes[..keyOffset], keyPostfix);
+        }
         /// <summary>Which children are leaves: <see cref="LeftLeaf"/> and <see cref="RightLeaf"/> bits.</summary>
         internal readonly byte LeafChildrenMask
         {
             get
             {
                 PbtNodeReader reader = Reader;
-                return (byte)((reader.LeftKey.IsEmpty ? 0 : LeftLeaf) | (reader.RightKey.IsEmpty ? 0 : RightLeaf));
+                return (byte)((reader.LeftKeyPostfix.IsEmpty ? 0 : LeftLeaf) | (reader.RightKeyPostfix.IsEmpty ? 0 : RightLeaf));
             }
         }
 
@@ -146,7 +159,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>The leaf this branch inlines on one side, which stores no node of its own.</summary>
-        internal readonly BoundaryNode InlineLeaf(bool right) => new(_encoding, right);
+        internal readonly BoundaryNode InlineLeaf(bool right) => new(_encoding, _anchorDepth, right);
 
         /// <summary>This node with its encoding copied out of the frame it was read from, so it outlives that frame.</summary>
         /// <remarks>
@@ -154,9 +167,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// from, together with that branch's sibling. Nothing here may keep pointing into the frame: a detached node
         /// is what crosses a thread, where the frame it came from is not even open.
         /// </remarks>
-        internal readonly BoundaryNode Owned() => _source switch
+        internal readonly BoundaryNode Owned(scoped in PbtTraversalPath cursor) => _source switch
         {
-            LeafSource.ParentLeft or LeafSource.ParentRight => new BoundaryNode(PbtNodeCodec.EncodeLeaf(LeafKey), _hash),
+            LeafSource.ParentLeft or LeafSource.ParentRight => new BoundaryNode(PbtNodeCodec.EncodeLeaf(LeafKey(cursor)), _hash),
             _ => _encoding.IsEmpty ? this : new BoundaryNode(_encoding.ToArray(), _anchorDepth, _hash, _source),
         };
 
@@ -206,7 +219,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
             if (IsLeaf)
             {
-                result = new FoldResult(LeafKey, _hash);
+                result = new FoldResult(LeafKey(cursor), _hash);
                 return;
             }
 
@@ -218,8 +231,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             PbtNodeReader reader = Reader;
             result = new FoldResult(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
                 reader.LeftHash, reader.RightHash,
-                reader.LeftKey.IsEmpty ? default : TKey.Create(reader.LeftKey),
-                reader.RightKey.IsEmpty ? default : TKey.Create(reader.RightKey),
+                reader.LeftKeyPostfix.IsEmpty ? default : LeftLeafKey(cursor),
+                reader.RightKeyPostfix.IsEmpty ? default : RightLeafKey(cursor),
                 LeafChildrenMask,
                 OwnedPrefix(this, cursor, anchorDepth + localLength, splitDepth, stackalloc byte[FoldResult.MaxPrefixLength]), _hash, splitDepth - _anchorDepth);
 
