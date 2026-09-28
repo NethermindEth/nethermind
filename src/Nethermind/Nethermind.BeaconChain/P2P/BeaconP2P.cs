@@ -294,12 +294,20 @@ public sealed class BeaconP2P : IAsyncDisposable
             throw new OperationCanceledException("The dial was cancelled by the caller", e, token);
         }
         catch (Exception) when (remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? raced)
-                                && !(_sessionInfo.TryGetValue(raced, out TaskCompletionSource<SessionInfo>? slot) && slot.Task.IsCanceled))
+                                && IsNotDropped(_sessionInfo, raced))
         {
-            // A session whose identify failed is the one this dial lost, still closing, not a session the peer opened.
             return raced;
         }
     }
+
+    /// <summary>Whether <paramref name="session"/> still has a slot whose identify did not fail.</summary>
+    /// <remarks>
+    /// A session whose identify failed is the one a dial lost, still closing, not a session the peer opened. Its slot is
+    /// cancelled and then removed when the library drops it, which can happen between the session snapshot and this
+    /// read, so a missing slot means dropped too.
+    /// </remarks>
+    internal static bool IsNotDropped(ConcurrentDictionary<ISession, TaskCompletionSource<SessionInfo>> sessionInfo, ISession session) =>
+        sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot) && !slot.Task.IsCanceled;
 
     /// <summary>Exchanges <c>status</c> with the peer, preferring v2 and falling back to v1 (with <c>earliest_available_slot</c> of 0).</summary>
     /// <remarks>Falls back only when v2 failed as an exchange (<see cref="Eth2ReqRespException"/>) or went unanswered
