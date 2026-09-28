@@ -98,7 +98,7 @@ public sealed class ZkGasTxTracer : TxTracer
 
     public override void SetOperationMemorySize(ulong newSize) => _memorySize = newSize;
 
-    public override void SetOperationReturnData(ReadOnlyMemory<byte> returnData) => _returnDataLength = returnData.Length;
+    public override void SetOperationReturnData(ReadOnlySpan<byte> returnData) => _returnDataLength = returnData.Length;
 
     /// <summary>
     /// Computes the gas consumed by the current opcode. For spawn opcodes, defers
