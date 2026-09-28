@@ -126,6 +126,10 @@ internal class Program
 
     private static async Task<int> Run(ParseResult parseResult, CancellationToken cancellationToken)
     {
+        // stdout carries only the results document, so every other writer goes to stderr.
+        TextWriter resultsOut = Console.Out;
+        Console.SetOut(Console.Error);
+
         bool isStateTest = parseResult.GetValue(Options.StateTest);
         bool isBlockTest = parseResult.GetValue(Options.BlockTest);
         bool isEngineTest = parseResult.GetValue(Options.EngineTest);
@@ -135,7 +139,7 @@ internal class Program
         int testTypeCount = (isStateTest ? 1 : 0) + (isBlockTest ? 1 : 0) + (isEngineTest ? 1 : 0) + (isTxTest ? 1 : 0) + (isZkEvmTest ? 1 : 0);
         if (testTypeCount != 1)
         {
-            Console.Error.WriteLine("Please specify one of: --stateTest, --blockTest, --engineTest, --txTest, or --zkevmTest");
+            Console.WriteLine("Please specify one of: --stateTest, --blockTest, --engineTest, --txTest, or --zkevmTest");
             return 1;
         }
 
@@ -196,22 +200,22 @@ internal class Program
                     ParallelExecution: parallelExecution,
                     ParallelExecutionBatchRead: batchRead);
                 List<EthereumTestResult> results = await RunBlockTestFiles(files, runnerOptions, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
             else if (isStateTest)
             {
                 List<EthereumTestResult> results = RunStateTestFiles(files, whenTrace, traceMemory, !excludeStack, chainId, filter, enableWarmup, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
             else if (isTxTest)
             {
                 List<EthereumTestResult> results = RunTransactionTestFiles(files, filter, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
             else if (isZkEvmTest)
             {
                 List<EthereumTestResult> results = RunZkEvmTestFiles(files, filter, workers);
-                Console.Out.Write(_serializer.Serialize(results, true));
+                resultsOut.Write(_serializer.Serialize(results, true));
             }
 
             if (!parseResult.GetValue(Options.Stdin)) break;

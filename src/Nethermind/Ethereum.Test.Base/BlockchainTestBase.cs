@@ -886,8 +886,7 @@ public abstract class BlockchainTestBase
 
             if (differences.Count > 8)
             {
-                // stderr, not stdout: stdout carries nethtest's --jsonout results document.
-                Console.Error.WriteLine("More than 8 differences...");
+                Console.WriteLine("More than 8 differences...");
                 break;
             }
 

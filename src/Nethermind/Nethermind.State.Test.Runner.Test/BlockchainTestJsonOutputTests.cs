@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
@@ -18,22 +19,23 @@ using NUnit.Framework;
 namespace Nethermind.State.Test.Runner.Test;
 
 /// <summary>
-/// Stdout carries nethtest's <c>--jsonout</c> results document, so anything else written there
-/// corrupts it.
+/// Stdout carries nethtest's results document, so anything else written there corrupts it.
 /// </summary>
 /// <remarks>
 /// The workflow parses the captured stdout with <c>jq</c>; when that fails it falls back to a
 /// stderr-derived summary that has no per-error grouping and reports the run as a crash. The
-/// post-state comparison used to print its truncation notice to stdout once a test had gathered
-/// more than eight differences, which corrupted the results artifact of every run containing such
-/// a test. The runner is driven as a process here because the assertions inside it are NUnit ones,
-/// and those mark the surrounding test failed even when the runner catches them.
+/// post-state comparison writes its truncation notice to <see cref="Console.Out"/> once a test has
+/// gathered more than eight differences, which used to corrupt the results artifact of every run
+/// containing such a test. The runner is driven as a process here because the assertions inside
+/// it are NUnit ones, and those mark the surrounding test failed even when the runner catches them.
 /// </remarks>
 [TestFixture]
 public class BlockchainTestJsonOutputTests
 {
     /// <summary>Enough mismatching accounts to carry the comparison past its eight-difference truncation threshold.</summary>
     private const int MismatchingAccounts = 12;
+
+    private static readonly TimeSpan NethtestTimeout = TimeSpan.FromMinutes(2);
 
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
@@ -91,7 +93,16 @@ public class BlockchainTestJsonOutputTests
         // Both streams are drained before waiting, so neither can fill its buffer and block the run.
         Task<string> stdout = process.StandardOutput.ReadToEndAsync();
         Task<string> stderr = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
+        using CancellationTokenSource timeout = new(NethtestTimeout);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            Assert.Fail($"nethtest did not exit within {NethtestTimeout}");
+        }
 
         return (await stdout, await stderr);
     }
