@@ -341,37 +341,96 @@ public class FrameTxFloodMeasurement
         }
     }
 
-    /// <summary>Compares ceilings under a signature-stuffed flood at approximately 30M declared VERIFY gas/s.</summary>
+    /// <summary>Compares ceilings on the block-processing path under a signature-stuffed flood at approximately
+    /// 30M declared VERIFY gas/s.</summary>
+    [TestCaseSource(nameof(CeilingCases))]
+    public async Task Block_processing_delay_at_matched_declared_verify_gas_per_second(ulong ceiling)
+    {
+        SkipUnlessSingleCore();
+        await BuildChain("signature-stuffed", ceiling);
+
+        MeasureAtMatchedDeclaredVerifyGasRate(ceiling, "block_processing",
+            () => MeasureBlockProcessing(MeasureWindow, WarmupWindow),
+            rate => MeasureUnderFlood(rate, RejectionCounterFor("signature-stuffed")),
+            () => MeasureBlockProcessing(MeasureWindow, TimeSpan.Zero));
+    }
+
+    /// <summary>Compares ceilings on the producer path, which bounds the published rates, at the same matched
+    /// declared VERIFY gas/s.</summary>
+    /// <remarks>Each producer pass re-executes one failing signature-stuffed transaction sized to the ceiling, so
+    /// the idle baseline itself grows with the ceiling; compare ceilings on the relative deltas and the victim
+    /// throughput ratio, not only on absolute microseconds.</remarks>
     [TestCaseSource(nameof(CeilingCases))]
     public async Task Block_production_delay_at_matched_declared_verify_gas_per_second(ulong ceiling)
     {
         SkipUnlessSingleCore();
         await BuildChain("signature-stuffed", ceiling);
 
+        using ProducerRig rig = ProducerRig.Create(
+            _chain, kRetry: 1, [FrameTx(0, ceiling, "signature-stuffed")], BlockGasLimit);
+        MeasureAtMatchedDeclaredVerifyGasRate(ceiling, "block_production",
+            () =>
+            {
+                rig.RunFor(WarmupWindow);
+                return rig.Measure(MeasureWindow);
+            },
+            rate => MeasureProductionUnderFlood(rig, rate, RejectionCounterFor("signature-stuffed")),
+            () => rig.Measure(MeasureWindow));
+
+        Assert.That(rig.FailingExecutions, Is.GreaterThan(0),
+            "the producer never re-executed the failing transaction, so this measures an ordinary block");
+    }
+
+    /// <summary>
+    /// Floods at the integer rate closest to <see cref="MatchedDeclaredVerifyGasPerSecond"/> and reports the
+    /// victim's delay distribution against idle baselines taken before and after.
+    /// </summary>
+    /// <remarks>
+    /// Equal declared gas/s buys equal signature recoveries per second at every ceiling, so the ceiling can only
+    /// show up in how the work is chunked: a longer check lands inside fewer, but costlier, victim passes. That
+    /// moves the tail and the pass count before it moves the median of a short victim pass, so p95, p99 and the
+    /// throughput ratio are reported beside p50. Validity follows <c>flood_delay</c>: both baselines' median and
+    /// tail must agree, and the generator's lag must stay bounded.
+    /// </remarks>
+    private void MeasureAtMatchedDeclaredVerifyGasRate(
+        ulong ceiling, string arm, Func<List<double>> measureBaseline, Func<int, FloodOutcome> measureAtRate,
+        Func<List<double>> measureBaselineAfter)
+    {
         ulong declaredGasPerTransaction = FrameTxValidation.ValidationWorkGas(FloodFrameTx(0));
         int offeredRate = (int)Math.Round(
             (double)MatchedDeclaredVerifyGasPerSecond / declaredGasPerTransaction,
             MidpointRounding.AwayFromZero);
         double offeredDeclaredGasPerSecond = offeredRate * (double)declaredGasPerTransaction;
 
-        List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
-        FloodOutcome outcome = MeasureUnderFlood(offeredRate, RejectionCounterFor("signature-stuffed"));
-        List<double> baselineAfter = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
+        List<double> baseline = measureBaseline();
+        FloodOutcome outcome = measureAtRate(offeredRate);
+        List<double> baselineAfter = measureBaselineAfter();
 
-        double baselineP50 = Percentile(baseline, 0.50);
-        double floodP50 = Percentile(outcome.ProcessMicros, 0.50);
-        double baselineDriftPct = baselineP50 <= 0
-            ? 0
-            : Math.Abs(Percentile(baselineAfter, 0.50) - baselineP50) / baselineP50 * 100;
+        double w0 = Percentile(baseline, 0.50);
+        double w0p95 = Percentile(baseline, 0.95);
+        double w0p99 = Percentile(baseline, 0.99);
+        double w = Percentile(outcome.ProcessMicros, 0.50);
+        double wp95 = Percentile(outcome.ProcessMicros, 0.95);
+        double wp99 = Percentile(outcome.ProcessMicros, 0.99);
+        double baselineDriftPct = w0 <= 0 ? 0 : Math.Abs(Percentile(baselineAfter, 0.50) - w0) / w0 * 100;
+        double baselineTailDriftPct = w0p99 <= 0 ? 0 : Math.Abs(Percentile(baselineAfter, 0.99) - w0p99) / w0p99 * 100;
+        bool baselineValid = baselineDriftPct < MaxBaselineDriftPercent && baselineTailDriftPct < MaxBaselineTailDriftPercent;
+
+        double lagBudgetUs = 1_000_000.0 / offeredRate * MaxSustainedLagPeriods;
+        bool lagBounded = outcome.MaxLagUs <= lagBudgetUs;
+
         double signatureRejectedRate = outcome.Submitted > 0
             ? outcome.AchievedRate * outcome.Rejected / outcome.Submitted
             : 0;
         double signatureRejectedDeclaredGasPerSecond = signatureRejectedRate * declaredGasPerTransaction;
         bool matchedWorkReached = signatureRejectedRate >= offeredRate * RateHeldFloor;
-        bool baselineValid = baselineDriftPct < MaxBaselineDriftPercent;
-        bool valid = matchedWorkReached && baselineValid;
+        bool valid = matchedWorkReached && baselineValid && lagBounded;
 
-        Emit($"case=matched_declared_verify_gas_rate shape=signature-stuffed ceiling={ceiling} "
+        // Both windows span MeasureWindow, so the pass-count ratio is the share of the victim's throughput the
+        // flood left it: a short pass's median can stay flat while this falls.
+        double victimThroughputRatio = baseline.Count > 0 ? (double)outcome.ProcessMicros.Count / baseline.Count : 0;
+
+        Emit($"case=matched_declared_verify_gas_rate arm={arm} shape=signature-stuffed ceiling={ceiling} "
              + $"target_declared_gas_per_s={MatchedDeclaredVerifyGasPerSecond} "
              + $"declared_gas_per_tx={declaredGasPerTransaction} offered_rate={offeredRate} "
              + $"offered_declared_gas_per_s={offeredDeclaredGasPerSecond:F0} "
@@ -379,8 +438,15 @@ public class FrameTxFloodMeasurement
              + $"signature_rejected_declared_gas_per_s={signatureRejectedDeclaredGasPerSecond:F0} "
              + $"matched_work_reached={(matchedWorkReached ? "yes" : "no")} "
              + $"submitted={outcome.Submitted} signature_rejected={outcome.Rejected} shed={outcome.Shed} "
-             + $"baseline_p50_us={baselineP50:F1} flood_p50_us={floodP50:F1} "
-             + $"delta_p50_us={floodP50 - baselineP50:F1} baseline_drift_pct={baselineDriftPct:F1} "
+             + $"max_lag_us={outcome.MaxLagUs:F0} lag_budget_us={lagBudgetUs:F0} lag_bounded={(lagBounded ? "yes" : "no")} "
+             + $"baseline_passes={baseline.Count} flood_passes={outcome.ProcessMicros.Count} "
+             + $"victim_throughput_ratio={victimThroughputRatio:F3} "
+             + $"W0_p50_us={w0:F1} W0_p95_us={w0p95:F1} W0_p99_us={w0p99:F1} "
+             + $"W_p50_us={w:F1} W_p95_us={wp95:F1} W_p99_us={wp99:F1} "
+             + $"delta_p50_us={w - w0:F1} delta_p95_us={wp95 - w0p95:F1} delta_p99_us={wp99 - w0p99:F1} "
+             + $"delta_p50_pct={(w0 <= 0 ? 0 : (w - w0) / w0 * 100):F1} "
+             + $"delta_p99_pct={(w0p99 <= 0 ? 0 : (wp99 - w0p99) / w0p99 * 100):F1} "
+             + $"baseline_drift_pct={baselineDriftPct:F1} baseline_tail_drift_pct={baselineTailDriftPct:F1} "
              + $"baseline_valid={(baselineValid ? "yes" : "no")} valid={(valid ? "yes" : "no")} {CpuFields}");
 
         using (Assert.EnterMultipleScope())
@@ -389,7 +455,7 @@ public class FrameTxFloodMeasurement
                         / MatchedDeclaredVerifyGasPerSecond, Is.LessThan(0.01),
                 "the integer transaction rate does not approximate the target declared VERIFY gas/s closely enough");
             Assert.That(outcome.ProcessMicros, Has.Count.GreaterThan(10),
-                "too few production passes to compare the matched-work flood with its baseline");
+                "too few victim passes to compare the matched-work flood with its baseline");
             Assert.That(outcome.Submitted, Is.GreaterThan(10),
                 "the generator barely ran, so this is not a useful matched-work comparison");
             Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
@@ -400,6 +466,8 @@ public class FrameTxFloodMeasurement
                 "the signature-stuffed rejection rate did not reach 95% of the matched declared VERIFY gas/s target");
             Assert.That(baselineDriftPct, Is.LessThan(BrokenBaselineDriftPercent),
                 "the bracketing idle baselines' medians disagree too much for a valid comparison");
+            Assert.That(baselineTailDriftPct, Is.LessThan(BrokenBaselineTailDriftPercent),
+                "the bracketing idle baselines' p99s disagree too much for a valid comparison");
         }
     }
 

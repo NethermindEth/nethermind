@@ -263,11 +263,29 @@ jobs:
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]]; then
             run_harness Nethermind.Blockchain.Test FrameTxFloodMeasurement "${flood_markers[@]}" || status=1
             flood_results="${OUTPUT_DIR}/FrameTxFloodMeasurement-results.txt"
+            # Markers above only prove a shape ran somewhere; these prove each ceiling produced its row.
+            # Ceilings above the compiled constant self-ignore for EVM shapes, so those are required only
+            # when the build raised it; signature-stuffed is refused before the cap and runs on every build.
+            compiled_max_verify_gas=${RAISE_VERIFY_GAS:-300000}
             for ceiling in 100000 235800 250000 300000 400000 500000; do
-              if ! grep -Eq "^RESULT .*case=matched_declared_verify_gas_rate .*ceiling=${ceiling} .*valid=yes([[:space:]]|$)" "${flood_results}" 2>/dev/null; then
-                echo "::error::FrameTxFloodMeasurement has no valid matched-gas/s result for ceiling ${ceiling}; inspect its RESULT rows and rerun invalid cells."
-                status=1
-              fi
+              for arm in block_processing block_production; do
+                if ! grep -Eq "^RESULT case=matched_declared_verify_gas_rate arm=${arm} .*ceiling=${ceiling} .*[[:space:]]valid=yes([[:space:]]|$)" "${flood_results}" 2>/dev/null; then
+                  echo "::error::FrameTxFloodMeasurement has no valid ${arm} matched-gas/s result for ceiling ${ceiling}; inspect its RESULT rows and rerun invalid cells."
+                  status=1
+                fi
+              done
+              shapes=(signature-stuffed)
+              (( ceiling <= compiled_max_verify_gas )) && shapes+=(keccak-wide)
+              for shape in "${shapes[@]}"; do
+                for summary in capacity production_capacity; do
+                  if ! grep -Eq "^RESULT case=${summary} shape=${shape} ceiling=${ceiling} " "${flood_results}" 2>/dev/null; then
+                    echo "::error::FrameTxFloodMeasurement has no ${summary} row for ${shape} at ceiling ${ceiling}, so that ramp failed or was skipped."
+                    status=1
+                  elif ! grep -Eq "^RESULT case=${summary} shape=${shape} ceiling=${ceiling} .*[[:space:]]valid=yes([[:space:]]|$)" "${flood_results}" 2>/dev/null; then
+                    echo "::warning::FrameTxFloodMeasurement's ${summary} row for ${shape} at ceiling ${ceiling} has valid=no: its bracketing baselines drifted, so that capacity is not decision-grade."
+                  fi
+                done
+              done
             done
           fi
           if [[ "${HARNESS}" == "both" || "${HARNESS}" == "producer-retry" ]]; then
