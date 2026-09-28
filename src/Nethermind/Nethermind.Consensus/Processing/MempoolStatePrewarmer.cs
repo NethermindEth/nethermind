@@ -32,6 +32,10 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private readonly Lazy<ITxSource> _txSource;
     private readonly IBlockTree _blockTree;
     private readonly Lazy<IBlockProcessingQueue> _processingQueue;
+    private const int QueueNotSubscribed = 0;
+    private const int QueueSubscribed = 1;
+    // Disposed, or the queue could not be resolved; either way never subscribed again.
+    private const int QueueClosed = 2;
     private int _queueSubscription;
     private readonly ISpecProvider _specProvider;
     private readonly IBlockCachePreWarmer _preWarmer;
@@ -83,22 +87,22 @@ public sealed class MempoolStatePrewarmer : IDisposable
     // activated with. Under the session lock, so dispose cannot run between the check and the subscription.
     private void SubscribeToProcessingQueue()
     {
-        if (Volatile.Read(ref _queueSubscription) != 0) return;
+        if (Volatile.Read(ref _queueSubscription) != QueueNotSubscribed) return;
         using (_sessionLock.EnterScope())
         {
-            if (_queueSubscription != 0) return;
+            if (_queueSubscription != QueueNotSubscribed) return;
             try
             {
                 IBlockProcessingQueue queue = _processingQueue.Value;
                 queue.BlockAdded += OnBlockQueued;
                 queue.BlockRemoved += OnBlockRemoved;
-                _queueSubscription = 1;
+                _queueSubscription = QueueSubscribed;
             }
             catch (Exception ex)
             {
                 // Best effort, and the lazy caches a failed resolution: stay unsubscribed, so sessions are joined when a
                 // processing scope opens, rather than throw into every head notification.
-                _queueSubscription = 3;
+                _queueSubscription = QueueClosed;
                 if (_logger.IsDebug) _logger.Debug($"Mempool pre-warming could not subscribe to the processing queue: {ex}");
             }
         }
@@ -344,13 +348,13 @@ public sealed class MempoolStatePrewarmer : IDisposable
         CancellationTokenSource? session;
         using (_sessionLock.EnterScope())
         {
-            if (_queueSubscription == 1)
+            if (_queueSubscription == QueueSubscribed)
             {
                 IBlockProcessingQueue queue = _processingQueue.Value;
                 queue.BlockAdded -= OnBlockQueued;
                 queue.BlockRemoved -= OnBlockRemoved;
             }
-            _queueSubscription = 2;
+            _queueSubscription = QueueClosed;
             session = _session;
             _session = null;
         }
