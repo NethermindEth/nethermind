@@ -29,8 +29,10 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     private int[]? _frameLogStarts;
     private int _framesEnded;
     private int _frameLogEnd;
-    private HashSet<LogEntry>? _transferLogs;
+    private Stack<int>? _callLogStarts;
+    private byte[]? _frameRevertData;
     private EvmExceptionType? _frameError;
+    private byte[]? _frameErrorData;
 
     public SimulateTxTracer(
         bool isTracingTransfers,
@@ -61,11 +63,13 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        // A frame transaction's logs follow its receipt, which drops a reverted call's logs and transfers.
+        if (_tx.SupportsFrames) (_callLogStarts ??= new Stack<int>()).Push(_logs.Count);
         if (!_isTracingTransfers) return;
         if (callType == ExecutionType.DELEGATECALL) return;
         if (!value.IsZero)
         {
-            AddTransferLog(from, to, value);
+            _logs.Add(TransferLog.CreateSimulateTransfer(from, to, value));
         }
     }
 
@@ -75,15 +79,8 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         if (!_isTracingTransfers) return;
         if (!balance.IsZero)
         {
-            AddTransferLog(address, refundAddress, balance);
+            _logs.Add(TransferLog.CreateSimulateTransfer(address, refundAddress, balance));
         }
-    }
-
-    private void AddTransferLog(Address from, Address to, in UInt256 value)
-    {
-        LogEntry transferLog = TransferLog.CreateSimulateTransfer(from, to, value);
-        (_transferLogs ??= new HashSet<LogEntry>(ReferenceEqualityComparer.Instance)).Add(transferLog);
-        _logs.Add(transferLog);
     }
 
     public override void ReportLog(LogEntry log)
@@ -98,11 +95,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         // The validation-prefix simulation reports an empty set, which pins no frame's outcome.
         if (frameReceipts.Length == 0) return;
 
-        // Failed and rolled-back frames are already dropped; what is left is a reverted inner call's logs,
-        // which the receipt does not hold. The synthetic transfer logs are in no receipt, so they stay.
         _hasFrameReceipts = true;
-        HashSet<LogEntry> committed = new(TxFrameReceipt.ConcatLogs(frameReceipts), ReferenceEqualityComparer.Instance);
-        _logs.RemoveAll(log => !committed.Contains(log) && _transferLogs?.Contains(log) != true);
     }
 
     /// <inheritdoc/>
@@ -120,10 +113,16 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         if (error is not null)
         {
             // The first failed frame is the one the aggregate status fails on.
-            _frameError ??= error == EvmExceptionType.None ? EvmExceptionType.Revert : error;
+            if (_frameError is null)
+            {
+                _frameError = error == EvmExceptionType.None ? EvmExceptionType.Revert : error;
+                _frameErrorData = _frameRevertData;
+            }
+
             TruncateLogs(_frameLogStarts[frameIndex]);
         }
 
+        _frameRevertData = null;
         _frameLogEnd = _logs.Count;
     }
 
@@ -156,7 +155,8 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
             Message = FailureMessage(error),
             // A frame transaction fails for the frame that failed, not for whichever call last errored.
             EvmException = _frameError ?? _exceptionType,
-            Data = output
+            // The processor reports no output for a frame transaction, so the revert data is the frame's own.
+            Data = _frameError is null ? output : _frameErrorData ?? []
         },
         ReturnData = [],
         Status = StatusCode.Failure,
@@ -183,15 +183,40 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
 
     private EvmExceptionType _exceptionType = EvmExceptionType.None;
 
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionEnd(gas, output);
+        _callLogStarts?.TryPop(out _);
+    }
+
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    {
+        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
+        _callLogStarts?.TryPop(out _);
+    }
+
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
         _exceptionType = evmExceptionType;
+        EndFailedCall(default);
     }
 
     public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
         base.ReportActionRevert(gas, output);
         _exceptionType = EvmExceptionType.Revert;
+        EndFailedCall(output);
+    }
+
+    private void EndFailedCall(ReadOnlyMemory<byte> output)
+    {
+        if (_callLogStarts is null || !_callLogStarts.TryPop(out int logStart)) return;
+
+        TruncateLogs(logStart);
+        if (_callLogStarts.Count == 0)
+        {
+            _frameRevertData = output.ToArray();
+        }
     }
 }

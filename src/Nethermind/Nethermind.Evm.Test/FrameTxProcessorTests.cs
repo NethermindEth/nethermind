@@ -4969,6 +4969,70 @@ public class FrameTxProcessorTests
         }
     }
 
+    /// <summary>A reverted inner call's state goes with it, so a committed frame's receipt drops the call's logs
+    /// and simulate must drop the transfer it synthesised for the call's value too.</summary>
+    [Test]
+    public void Simulate_RevertedInnerValueCallInACommittedFrame_DropsItsTransferAndLog()
+    {
+        _spec.IsEip7708Enabled = false;
+        Address reverter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(reverter, Prepare.EvmCode
+            .PushData(5).PushData(0).PushData(0).Op(Instruction.LOG1)
+            .PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(Recipient, Prepare.EvmCode
+            .CallWithValue(reverter, 100_000, 1)
+            .PushData(7).PushData(0).PushData(0).Op(Instruction.LOG1)
+            .Op(Instruction.STOP).Done, balance: 10);
+
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Recipient));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: true, _specProvider);
+        TxReceipt receipt = ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.Logs, Has.Length.EqualTo(1), "only the frame's own log is committed");
+            Assert.That(result.Logs.Select(static log => $"{log.Address}:{log.Topics[^1]}"),
+                Is.EqualTo(receipt.Logs!.Select(static log => $"{log.Address}:{log.Topics[^1]}")),
+                "the reverted call's log and its transfer never happened");
+        }
+    }
+
+    /// <summary>The processor reports no output for a frame transaction, so simulate has to carry the revert data
+    /// of the frame it reports the error for: the first failed one.</summary>
+    [Test]
+    public void Simulate_FramesRevertingWithData_SurfacesTheFirstFailedFramesRevertData()
+    {
+        Address secondReverter = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, RevertWithWord(0xaa));
+        DeployContract(secondReverter, RevertWithWord(0xbb));
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Sender, target: Observer),
+            Frame(FrameMode.Sender, target: secondReverter));
+        tx.Hash = tx.CalculateHash();
+
+        SimulateBlockTracer blockTracer = new(isTracingLogs: false, _specProvider);
+        ProcessThroughReceiptsTracer(tx, _ => blockTracer);
+        SimulateCallResult result = blockTracer.BuildResult().Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error!.EvmException, Is.EqualTo(EvmExceptionType.Revert));
+            Assert.That(result.Error.Data, Is.EqualTo(new UInt256(0xaa).ToBigEndian()));
+        }
+    }
+
+    private static byte[] RevertWithWord(UInt256 word) => Prepare.EvmCode
+        .PushData(word).PushData(0).Op(Instruction.MSTORE)
+        .PushData(32).PushData(0).Op(Instruction.REVERT).Done;
+
     /// <summary>Runs <paramref name="tx"/> through the receipts tracer under <paramref name="consumer"/>,
     /// returning whether it reported a failure, the logs it reported when it reports any, and the receipt.</summary>
     private (bool Failed, int? LogCount, TxReceipt Receipt) TraceStatus(Transaction tx, FrameTxStatusConsumer consumer)
