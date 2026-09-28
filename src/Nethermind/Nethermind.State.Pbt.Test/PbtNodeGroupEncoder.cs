@@ -83,7 +83,7 @@ internal static class PbtNodeGroupEncoder
                 offset = checked(offset + encoding.Length);
             }
 
-            int trailerLength = PbtNodeGroupCodec.GetTrailerLength(availability, descendantMask);
+            int trailerLength = PbtNodeGroupCodec.GetTrailerLength(availability, descendantMask, descendantBytes);
             PbtNodeGroupCodec.WriteFooter(writer.GetSpan(trailerLength), offsets, availability, descendantMask, descendantBytes);
             writer.Advance(trailerLength);
         }
@@ -136,7 +136,7 @@ internal static class PbtNodeGroupEncoder
                 offset = checked(offset + encoding.Length);
             }
 
-            int trailerLength = PbtNodeGroupCodec.GetTrailerLength(availability, descendantMask);
+            int trailerLength = PbtNodeGroupCodec.GetTrailerLength(availability, descendantMask, descendantBytes);
             PbtNodeGroupCodec.WriteFooter(writer.GetSpan(trailerLength), offsets, availability, descendantMask, descendantBytes);
             writer.Advance(trailerLength);
         }

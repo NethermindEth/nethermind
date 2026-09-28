@@ -417,7 +417,7 @@ public class ImportPbtFromPreimageFlatTests
         IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000014")));
+            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000015")));
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             Assert.That(metadata.Get("currentState"u8), Is.Null);
             Assert.That(metadata.Get("validState"u8), Is.Null);
