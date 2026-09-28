@@ -201,6 +201,33 @@ public class MempoolStatePrewarmerTests
     }
 
     /// <summary>
+    /// The session's token must reach selection: a block queued mid-pass stops the pull from the producer's source, and
+    /// the pass yields no delta rather than warming a partial one.
+    /// </summary>
+    [Test]
+    public async Task NextDelta_CancelledDuringSelection_ReturnsNoDelta()
+    {
+        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(30_000_000).TestObject;
+        Transaction[] transactions = BuildSenderTxs(TestItem.PrivateKeyA, 2);
+        using CancellationTokenSource cancellation = new();
+        DeltaCapturingPreWarmer preWarmer = new() { DeltaToken = cancellation.Token };
+        using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, headHeader, out IBlockTree blockTree, out ITxSource txSource, out _);
+        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+            .Returns(CancellingSource());
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(headHeader)));
+
+        Assert.That(await preWarmer.CapturedHeader.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.Null, "a pass cancelled during selection has no delta");
+
+        IEnumerable<Transaction> CancellingSource()
+        {
+            yield return transactions[0];
+            cancellation.Cancel();
+            yield return transactions[1];
+        }
+    }
+
+    /// <summary>
     /// A block queued for processing has its processing scope join the running session, so the session is cancelled
     /// when the block is queued and drains while it is recovered. A suggestion alone may never be processed, so it must
     /// not stop warming.
@@ -272,7 +299,7 @@ public class MempoolStatePrewarmerTests
     /// </summary>
     [Test]
     public void RemovedBlock_WithoutSuccess_StartsWarmingAgain(
-        [Values(ProcessingResult.Success, ProcessingResult.InclusionListUnsatisfied, ProcessingResult.MissingBlock)] ProcessingResult result)
+        [Values(ProcessingResult.Success, ProcessingResult.InclusionListUnsatisfied, ProcessingResult.QueueException, ProcessingResult.MissingBlock)] ProcessingResult result)
     {
         BlockHeader headHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(30_000_000).TestObject;
         Block head = new(headHeader);
@@ -286,13 +313,13 @@ public class MempoolStatePrewarmerTests
         queue.BlockAdded += Raise.EventWith(new BlockEventArgs(child));
         queue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(child.Hash!, result));
 
-        bool processed = result is ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied;
-        bool restarted = preWarmer.TryNextSession(processed ? TimeSpan.FromMilliseconds(200) : TimeSpan.FromSeconds(5), out CancellationToken second);
+        bool expectRestart = result is not (ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied or ProcessingResult.QueueException);
+        bool restarted = preWarmer.TryNextSession(expectRestart ? TimeSpan.FromSeconds(5) : TimeSpan.FromMilliseconds(200), out CancellationToken second);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first.IsCancellationRequested, Is.True, "precondition: queueing the block cancels the session");
-            Assert.That(restarted, Is.EqualTo(!processed), "only a block that was not processed restarts warming");
+            Assert.That(restarted, Is.EqualTo(expectRestart), "only a block dropped by a working queue restarts warming");
             if (restarted) Assert.That(second.IsCancellationRequested, Is.False, "the new session must be running");
         }
     }
@@ -379,6 +406,7 @@ public class MempoolStatePrewarmerTests
     private sealed class DeltaCapturingPreWarmer : IBlockCachePreWarmer
     {
         public readonly TaskCompletionSource<BlockHeader> CapturedHeader = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public CancellationToken DeltaToken { get; init; }
 
         public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
         public CacheType ClearCaches() => default;
@@ -386,7 +414,7 @@ public class MempoolStatePrewarmerTests
 
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
         {
-            CapturedHeader.TrySetResult(nextDelta(CancellationToken.None)?.Block.Header);
+            CapturedHeader.TrySetResult(nextDelta(DeltaToken)?.Block.Header);
             return Task.CompletedTask;
         }
 

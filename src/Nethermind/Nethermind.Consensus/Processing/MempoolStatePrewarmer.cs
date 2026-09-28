@@ -109,8 +109,8 @@ public sealed class MempoolStatePrewarmer : IDisposable
     // follows to start another session; warm again from the unchanged head.
     private void OnBlockRemoved(object? sender, BlockRemovedEventArgs e)
     {
-        // Both were processed and committed; a new head, if any, starts the next session.
-        if (e.ProcessingResult is ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied) return;
+        // Processed and committed, so a new head, if any, starts the next session; or the queue itself failed, as at shutdown.
+        if (e.ProcessingResult is ProcessingResult.Success or ProcessingResult.InclusionListUnsatisfied or ProcessingResult.QueueException) return;
 
         // Read before the head: a head published after this read must win, so the restart claims the next generation
         // only if none has been taken since, and a newer head's session is never displaced by the old head's.
