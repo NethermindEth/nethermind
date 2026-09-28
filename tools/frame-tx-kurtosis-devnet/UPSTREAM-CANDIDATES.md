@@ -1,7 +1,7 @@
 # Nethermind changes this devnet needs, and whether they belong upstream
 
 Running ledger for the EIP-8141 `MAX_VERIFY_GAS` campaign. Every item here is applied to a
-**copy** of the source inside `images/nethermind/Dockerfile`, never to the working tree, so
+**copy** of the source that `images/build.sh` exports, never to the working tree, so
 nothing in this list is currently a diff against `eip8141-frame-txs-devnet7`.
 
 Status values: `candidate` (worth a PR, needs a decision), `devnet-only` (must not be
