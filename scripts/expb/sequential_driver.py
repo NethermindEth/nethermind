@@ -162,7 +162,13 @@ def render(base: dict, image: dict, run: int) -> tuple[dict, str]:
         if "EXPB_EVM_WARMUP" in parse_pairs(get("EXPB_ENV_PASSTHROUGH")): raise ValueError("compute-warm conflicts with EVM warmup override")
         extra.append("--JsonRpc.GasCap=1000000000000")
     scenario.setdefault("extra_flags", []).extend(extra)
-    scenario.setdefault("extra_env", {}).update(parse_pairs(get("CLIENT_ENV")))
+    client_env = parse_pairs(get("CLIENT_ENV"))
+    scenario.setdefault("extra_env", {}).update(client_env)
+    # NETHERMIND_COUNT_INSTRUCTIONS=1 reads the client's own hardware counters with perf_event_open, which Docker's
+    # default seccomp profile refuses unless the container holds CAP_PERFMON; an expb without cap_add ignores that key.
+    if client_env.get("NETHERMIND_COUNT_INSTRUCTIONS") == "1":
+        scenario["security_opt"] = ["seccomp=unconfined"]
+        scenario["cap_add"] = ["PERFMON"]
     if get("TRACE_BLOCKS"): scenario["extra_env"]["NETHERMIND_PROFILE_BLOCKS"] = get("TRACE_BLOCKS")
     return config, name
 def verify_clean(config: dict) -> None:

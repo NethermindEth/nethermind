@@ -20,6 +20,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 {
     private static readonly TimeSpan GatherGiveUpDeadline = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// Benchmark switch (<c>NETHERMIND_FLAT_NO_TIMED_CLEARS=1</c>): drop the clock-driven clears of the read-only bundle
+    /// cache and the cached reader, so which block rebuilds them depends on the chain, not on timing. Compactions and
+    /// writes still clear both.
+    /// </summary>
+    internal static bool NoTimedClears { get; } = Environment.GetEnvironmentVariable("NETHERMIND_FLAT_NO_TIMED_CLEARS") == "1";
+
     private readonly ILogger _logger;
     private readonly IPersistenceManager _persistenceManager;
     private readonly ISnapshotCompactor _snapshotCompactor;
@@ -473,6 +480,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunClearBundleCache(CancellationToken cancellationToken)
     {
+        if (NoTimedClears) return;
+
         using PeriodicTimer timer = new(TimeSpan.FromSeconds(15));
         try
         {

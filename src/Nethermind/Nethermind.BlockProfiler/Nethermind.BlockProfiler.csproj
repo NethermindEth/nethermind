@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+    <ProjectReference Include="..\Nethermind.State.Flat\Nethermind.State.Flat.csproj" />
   </ItemGroup>
 
   <ItemGroup>
