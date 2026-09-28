@@ -201,7 +201,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public Account? GetAccount(Address address)
         {
             bool current = parent.IsCurrent(generation);
-            if (current && parent._accounts.TryGetValue(address, out Account? cached))
+            // Checked again after the lookup: the cache can hold an entry filled after this reader's generation ended.
+            if (current && parent._accounts.TryGetValue(address, out Account? cached) && parent.IsCurrent(generation))
             {
                 if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountHits();
                 return cached;
@@ -217,7 +218,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             (Address, UInt256) key = (address, slot);
             bool current = parent.IsCurrent(generation);
-            if (current && parent._slots.TryGetValue(key, out CachedSlot cached))
+            // Checked again after the lookup: the cache can hold an entry filled after this reader's generation ended.
+            if (current && parent._slots.TryGetValue(key, out CachedSlot cached) && parent.IsCurrent(generation))
             {
                 if (_recordDetailedMetrics) Metrics.IncrementCarryForwardSlotHits();
                 if (cached.Found) outValue = cached.Value;
