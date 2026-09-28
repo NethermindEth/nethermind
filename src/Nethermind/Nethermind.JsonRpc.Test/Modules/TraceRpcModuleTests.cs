@@ -1242,6 +1242,15 @@ public class TraceRpcModuleTests
 
         Assert.That(serialized, Is.EqualTo("[{\"action\":{\"creationMethod\":\"create\",\"from\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"gas\":\"0x9a6c\",\"init\":\"0x60006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f160006000600060006000736b5887043de753ecfa6269f947129068263ffbe261c350f1fd\",\"value\":\"0x1\"},\"blockHash\":\"0xeb0d05efb43e565c4a677e64dde4cd1339459310afe8f578acab57ad45dd8f44\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0xab9\",\"output\":\"0x00\"},\"subtraces\":2,\"traceAddress\":[],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"create\",\"error\":\"Reverted\"},{\"action\":{\"callType\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x8def\",\"input\":\"0x\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x0\"},\"blockHash\":\"0xeb0d05efb43e565c4a677e64dde4cd1339459310afe8f578acab57ad45dd8f44\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0xd6a48bcd4c5ad5adacfab677519c25ce7b2805a5\",\"gas\":\"0x8d78\",\"input\":\"0x\",\"to\":\"0x6b5887043de753ecfa6269f947129068263ffbe2\",\"value\":\"0x0\"},\"blockHash\":\"0xeb0d05efb43e565c4a677e64dde4cd1339459310afe8f578acab57ad45dd8f44\",\"blockNumber\":18,\"result\":{\"gasUsed\":\"0x0\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[1],\"transactionHash\":\"0x787616b8756424622f162fc3817331517ef941366f28db452defc0214bc36b22\",\"transactionPosition\":0,\"type\":\"call\"}]"), serialized.Replace("\"", "\\\""));
     }
+
+    // PUSH4 PUSH1 MSTORE (with one word of memory) PUSH1 PUSH1 REVERT: 3 + 3 + 6 + 3 + 3 = 18 gas.
+    private static readonly byte[] RevertDeadbeefCode = Prepare.EvmCode
+        .PushData("0xdeadbeef")
+        .PushData(0)
+        .Op(Instruction.MSTORE)
+        .Revert(4, 28)
+        .Done;
+
     [Test]
     public async Task Trace_call_keeps_result_of_reverted_frame([Values] bool nested, [Values] bool streaming)
     {
@@ -1249,9 +1258,7 @@ public class TraceRpcModuleTests
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
-        // PUSH4 PUSH1 MSTORE (with one word of memory) PUSH1 PUSH1 REVERT: 3 + 3 + 6 + 3 + 3 = 18 gas.
-        byte[] revert = Prepare.EvmCode.PushData("0xdeadbeef").PushData(0).Op(Instruction.MSTORE).Revert(4, 28).Done;
-        byte[] data = nested ? Prepare.EvmCode.Create(revert, 0).Op(Instruction.STOP).Done : revert;
+        byte[] data = nested ? Prepare.EvmCode.Create(RevertDeadbeefCode, 0).Op(Instruction.STOP).Done : RevertDeadbeefCode;
         object transaction = new { from = TestItem.AddressA, gas = "0x186a0", data = data.ToHexString(true) };
 
         string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", transaction, new[] { "trace" }, "latest");
@@ -1273,10 +1280,9 @@ public class TraceRpcModuleTests
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
-        byte[] revert = Prepare.EvmCode.PushData("0xdeadbeef").PushData(0).Op(Instruction.MSTORE).Revert(4, 28).Done;
         byte[] deploy = Prepare.EvmCode.ForInitOf([0x2a]).Done;
         byte[] halt = Prepare.EvmCode.Op(Instruction.ADD).Done;
-        object[] calls = new[] { revert, deploy, halt }
+        object[] calls = new[] { RevertDeadbeefCode, deploy, halt }
             .Select(static object (byte[] data) => new object[] { new { from = TestItem.AddressA, gas = "0x186a0", data = data.ToHexString(true) }, new[] { "trace" } })
             .ToArray();
 
