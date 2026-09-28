@@ -87,33 +87,22 @@ namespace Nethermind.Evm.TransactionProcessing
             && (ReferenceEquals(tracer, NullTxTracer.Instance)
                 || tracer is CancellationTxTracer { InnerTracer: NullTxTracer } && !tracer.IsTracing);
 
-        /// <summary>Per-transaction cache of the <see cref="ITxTracer"/> flags the processor branches on.</summary>
+        /// <summary>Per-transaction snapshot of the <see cref="ITxTracer"/> flags the processor branches on.</summary>
         /// <remarks>A tracer's flags are fixed for the transaction it traces, yet each read is an interface call, two
-        /// through a forwarding tracer such as the block receipts tracer. Each flag is read on first use, so a path pays
-        /// only for the flags it consults.</remarks>
-        private protected struct TracerFlags(ITxTracer tracer)
+        /// through a forwarding tracer such as the block receipts tracer. The flags are copied, not the tracer,
+        /// so the snapshot does not keep the tracer alive while a pooled processor sits idle.
+        /// <see cref="ITxTracer.IsTracing"/> is left out: it combines most other flags and is read only on halt paths.</remarks>
+        private protected readonly struct TracerFlags(ITxTracer tracer)
         {
-            private bool? _isTracing;
-            private bool? _isTracingState;
-            private bool? _isTracingReceipt;
-            private bool? _isCollectingLogs;
-            private bool? _isTracingLogs;
-            private bool? _isTracingInstructions;
-            private bool? _isTracingMemory;
-            private bool? _isTracingAccess;
-            private bool? _isTracingRefunds;
-            private bool? _isTracingActions;
-
-            public bool IsTracing => _isTracing ??= tracer.IsTracing;
-            public bool IsTracingState => _isTracingState ??= tracer.IsTracingState;
-            public bool IsTracingReceipt => _isTracingReceipt ??= tracer.IsTracingReceipt;
-            public bool IsCollectingLogs => _isCollectingLogs ??= tracer.IsCollectingLogs;
-            public bool IsTracingLogs => _isTracingLogs ??= tracer.IsTracingLogs;
-            public bool IsTracingInstructions => _isTracingInstructions ??= tracer.IsTracingInstructions;
-            public bool IsTracingMemory => _isTracingMemory ??= tracer.IsTracingMemory;
-            public bool IsTracingAccess => _isTracingAccess ??= tracer.IsTracingAccess;
-            public bool IsTracingRefunds => _isTracingRefunds ??= tracer.IsTracingRefunds;
-            public bool IsTracingActions => _isTracingActions ??= tracer.IsTracingActions;
+            public readonly bool IsTracingState = tracer.IsTracingState;
+            public readonly bool IsTracingReceipt = tracer.IsTracingReceipt;
+            public readonly bool IsCollectingLogs = tracer.IsCollectingLogs;
+            public readonly bool IsTracingLogs = tracer.IsTracingLogs;
+            public readonly bool IsTracingInstructions = tracer.IsTracingInstructions;
+            public readonly bool IsTracingMemory = tracer.IsTracingMemory;
+            public readonly bool IsTracingAccess = tracer.IsTracingAccess;
+            public readonly bool IsTracingRefunds = tracer.IsTracingRefunds;
+            public readonly bool IsTracingActions = tracer.IsTracingActions;
         }
 
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
@@ -253,6 +242,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
+            _tracerFlags = new(tracer);
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             IReleaseSpec spec = GetSpec(header);
             if (tx.Type == TxType.FrameTx)
@@ -295,7 +285,6 @@ namespace Nethermind.Evm.TransactionProcessing
         [SkipLocalsInit]
         private TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas)
         {
-            _tracerFlags = new(tracer);
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
             // commit - is for standard execute, we will commit the state after execution
@@ -1421,7 +1410,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (topFrameOutOfGas)
             {
                 TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
-                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, _tracerFlags.IsTracing);
+                substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
                 TGasPolicy oogIntrinsicGasStandard = gas.Standard;
                 gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in oogIntrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
                 goto CompleteWithoutFrame;
@@ -1438,7 +1427,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
                         WorldState.Restore(snapshot);
-                        substate = new TransactionSubstate(EvmExceptionType.TransactionCollision, _tracerFlags.IsTracing);
+                        substate = new TransactionSubstate(EvmExceptionType.TransactionCollision, tracer.IsTracing);
                         TGasPolicy collisionIntrinsicGasStandard = gas.Standard;
                         gasConsumed = RefundOnContractCollision(
                             tx,
@@ -1470,7 +1459,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (spec.IsEip8037Enabled && topLevelCreateStateGasCharged && !TGasPolicy.TryConsumeCreateStateGas(ref state.Gas))
                 {
                     TraceHaltedTopFrameAction(tx, env, tracer, in gasAvailable);
-                    substate = new TransactionSubstate(EvmExceptionType.OutOfGas, _tracerFlags.IsTracing);
+                    substate = new TransactionSubstate(EvmExceptionType.OutOfGas, tracer.IsTracing);
                     gasAvailable = state.Gas;
                     WorldState.Restore(snapshot);
                     TGasPolicy createStateOogIntrinsicGasStandard = gas.Standard;
