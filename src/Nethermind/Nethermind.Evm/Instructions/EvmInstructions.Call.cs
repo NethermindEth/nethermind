@@ -240,8 +240,9 @@ public static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth ||
             (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < callValue))
         {
-            if (vm.IsTracingActions && env.CallDepth < MaxCallDepth)
-                vm.TraceRejectedCall(gasLimitUl, callValue, env.ExecutingAccount, codeSource, dataOffset, dataLength, TOpCall.ExecutionType);
+            if (vm.IsTracingActions)
+                vm.TraceRejectedCall(gasLimitUl, callValue, env.ExecutingAccount, codeSource, dataOffset, dataLength, TOpCall.ExecutionType,
+                    env.CallDepth >= MaxCallDepth ? EvmExceptionType.StackOverflow : EvmExceptionType.NotEnoughBalance);
 
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = default;

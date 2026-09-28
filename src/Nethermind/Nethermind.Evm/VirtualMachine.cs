@@ -1562,14 +1562,14 @@ public partial class VirtualMachine<TGasPolicy>(
             });
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal void TraceRejectedCall(ulong gas, UInt256 value, Address from, Address to, UInt256 dataOffset, UInt256 dataLength, ExecutionType callType) =>
-        _txTracer.ForEach<ITraceRejectedCall, (VirtualMachine<TGasPolicy> Machine, ulong Gas, UInt256 Value, Address From, Address To, UInt256 Offset, UInt256 Length, ExecutionType Type)>(
+    internal void TraceRejectedCall(ulong gas, UInt256 value, Address from, Address to, UInt256 dataOffset, UInt256 dataLength, ExecutionType callType, EvmExceptionType error) =>
+        _txTracer.ForEach<ITraceRejectedCall, (VirtualMachine<TGasPolicy> Machine, ulong Gas, UInt256 Value, Address From, Address To, UInt256 Offset, UInt256 Length, ExecutionType Type, EvmExceptionType Error)>(
             static tracer => tracer.IsTracingActions,
-            (this, gas, value, from, to, dataOffset, dataLength, callType),
+            (this, gas, value, from, to, dataOffset, dataLength, callType, error),
             static (tracer, call) =>
             {
                 if (call.Machine.VmState.Memory.TryLoad(in call.Offset, call.Length, out ReadOnlyMemory<byte> input))
-                    tracer.ReportRejectedCall(call.Gas, call.Value, call.From, call.To, input, call.Type, EvmExceptionType.NotEnoughBalance);
+                    tracer.ReportRejectedCall(call.Gas, call.Value, call.From, call.To, input, call.Type, call.Error);
             });
 
     [MethodImpl(MethodImplOptions.NoInlining)]

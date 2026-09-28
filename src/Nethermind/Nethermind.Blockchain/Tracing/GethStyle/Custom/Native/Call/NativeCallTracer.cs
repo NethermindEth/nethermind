@@ -133,7 +133,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, ITraceRejectedCal
             To = to,
             Gas = gas,
             GasUsed = 0,
-            Value = value,
+            Value = callType == ExecutionType.STATICCALL ? null : value,
             Input = input.Span.ToPooledList(),
             Error = error.GetEvmExceptionDescription()
         });
