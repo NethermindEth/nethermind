@@ -113,8 +113,8 @@ public class FrameTransactionForRpcTests
             Assert.That(frames[0].GetProperty("mode").GetInt32(), Is.EqualTo((byte)FrameMode.Verify));
             Assert.That(frames[0].GetProperty("flags").GetInt32(), Is.EqualTo((byte)FrameFlags.ApproveExecutionAndPayment));
             Assert.That(frames[0].GetProperty("target").GetString(), Is.EqualTo(TestItem.AddressB.ToString()));
-            Assert.That(frames[0].GetProperty("executionGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
-            Assert.That(frames[0].GetProperty("stateGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
+            Assert.That(frames[0].GetProperty("executionGas").GetString(), Does.Match("^0x[0-9a-f]+$"));
+            Assert.That(frames[0].GetProperty("stateGas").GetString(), Does.Match("^0x[0-9a-f]+$"));
         }
     }
 
@@ -745,7 +745,7 @@ public class FrameTransactionForRpcTests
     /// every other scalar is a hex quantity; <c>eth_sendTransaction</c> callers and t8n fixture input both rely
     /// on that. Pinning the string rather than round-tripping catches a change that moved both ends together.</remarks>
     private const string PinnedFramesJson =
-        """[{"mode":1,"flags":3,"executionGasLimit":"0xc350","stateGasLimit":"0x3e8","value":"0x0","data":"0x"},{"mode":2,"flags":4,"target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGasLimit":"0x5208","stateGasLimit":"0x0","value":"0x7","data":"0xdead"},{"mode":3,"flags":0,"target":"0x76e68a8696537e4141926f3e528733af9e237d69","executionGasLimit":"0x3e8","stateGasLimit":"0x7d0","value":"0x0","data":"0x"}]""";
+        """[{"mode":1,"flags":3,"executionGas":"0xc350","stateGas":"0x3e8","value":"0x0","data":"0x"},{"mode":2,"flags":4,"target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGas":"0x5208","stateGas":"0x0","value":"0x7","data":"0xdead"},{"mode":3,"flags":0,"target":"0x76e68a8696537e4141926f3e528733af9e237d69","executionGas":"0x3e8","stateGas":"0x7d0","value":"0x0","data":"0x"}]""";
 
     /// <summary>The frames <see cref="PinnedFramesJson"/> was captured from: every mode, an approval scope, the
     /// atomic-batch bit, an omitted target and a present one, both gas limits, a value and calldata.</summary>
