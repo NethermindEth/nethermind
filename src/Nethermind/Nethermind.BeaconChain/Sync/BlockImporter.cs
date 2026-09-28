@@ -97,11 +97,18 @@ public sealed class BlockImporter : IBlockImporter
 
     private EpochCache _gloasLineageCache = new();
 
+    /// <summary>A Gloas anchor's root and its bid's <c>parent_block_hash</c>, which fork choice records only for blocks it imported; <c>null</c> for a Fulu anchor.</summary>
+    private readonly Hash256? _gloasAnchorRoot;
+
+    private readonly Hash256? _gloasAnchorParentBlockHash;
+
     private readonly record struct DeferredBlock(Hash256 AncestorRoot, ulong Slot);
 
     /// <param name="isEnvelopeDataAvailable">The Gloas <c>is_data_available</c> an execution payload envelope is checked against; see <see cref="ExecutionPayloadEnvelopeImporter"/>.</param>
     /// <param name="clock">The node's slot clock; a block after its current slot (within <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>) is refused.</param>
+    /// <param name="anchorState">The post-state of <paramref name="anchorBlock"/>, of the same fork.</param>
     /// <param name="forkChoiceSnapshots">Where <see cref="ComputeHead"/> publishes a copy of the fork-choice store for readers off the import thread; <c>null</c> publishes nothing.</param>
+    /// <exception cref="ArgumentException">The anchor state and block belong to different forks.</exception>
     public BlockImporter(
         BeaconChainSpec spec,
         BeaconChainStore store,
@@ -112,8 +119,8 @@ public sealed class BlockImporter : IBlockImporter
         IDataAvailabilityRule availability,
         Func<Hash256, ExecutionPayloadBid, bool> isEnvelopeDataAvailable,
         SlotClock clock,
-        BeaconStateFulu anchorState,
-        SignedBeaconBlock anchorBlock,
+        ForkedBeaconState anchorState,
+        ForkedSignedBeaconBlock anchorBlock,
         Hash256 anchorRoot,
         ForkChoiceSnapshotHolder? forkChoiceSnapshots = null)
     {
@@ -127,18 +134,39 @@ public sealed class BlockImporter : IBlockImporter
         _availability = availability;
         _forkChoiceSnapshots = forkChoiceSnapshots;
 
-        _states = new PostStateCache(store, spec, anchorRoot, anchorState);
-        _runner = new ForkChoiceRunner(spec, anchorState, anchorBlock.Message!, _states, pubkeys, _states);
+        switch (anchorState, anchorBlock)
+        {
+            case (ForkedBeaconState.OfFulu { State: BeaconStateFulu fuluState }, ForkedSignedBeaconBlock.OfFulu { Block: SignedBeaconBlock fuluBlock }):
+                _states = new PostStateCache(store, spec, anchorRoot, fuluState, IsGloasBlock, GetJustifiedRoot, logManager);
+                _runner = new ForkChoiceRunner(spec, fuluState, fuluBlock.Message!, _states, pubkeys, _states);
+                _lastSnapshotEpoch = fuluState.GetCurrentEpoch();
+                break;
+            case (ForkedBeaconState.OfGloas { State: BeaconStateGloas gloasState }, ForkedSignedBeaconBlock.OfGloas { Block: SignedBeaconBlockGloas gloasBlock }):
+                // specs/gloas/fork-choice.md get_forkchoice_store: block_states holds the anchor state, the finalized checkpoint's.
+                _states = new PostStateCache(store, spec, null, null, IsGloasBlock, GetJustifiedRoot, logManager);
+                _states.PinGloas(anchorRoot, gloasState);
+                _runner = new ForkChoiceRunner(spec, gloasState, gloasBlock.Message!, _states, pubkeys, _states);
+                _gloasAnchorRoot = anchorRoot;
+                _gloasAnchorParentBlockHash = gloasBlock.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash;
+                _lastSnapshotEpoch = gloasState.GetCurrentEpoch();
+                break;
+            default:
+                throw new ArgumentException($"The anchor state at slot {anchorState.Slot} is a {anchorState.Fork} state, but its block at slot {anchorBlock.Slot} is a {anchorBlock.GetType().Name} block", nameof(anchorBlock));
+        }
+
         _envelopes = new ExecutionPayloadEnvelopeImporter(_states, engine, pubkeys, isEnvelopeDataAvailable, logManager);
         _canonicalHead = anchorRoot;
-        _lastSnapshotEpoch = anchorState.GetCurrentEpoch();
-        store.SetCanonicalRoot(anchorBlock.Message!.Slot, anchorRoot);
+        store.SetCanonicalRoot(anchorBlock.Slot, anchorRoot);
         // A restart must clear what the previous run indexed above the head it replays up to.
-        _canonicalIndexTopSlot = Math.Max(anchorBlock.Message!.Slot, store.GetCanonicalIndexTopSlot() ?? 0);
+        _canonicalIndexTopSlot = Math.Max(anchorBlock.Slot, store.GetCanonicalIndexTopSlot() ?? 0);
     }
 
     /// <inheritdoc/>
     public bool IsKnown(Hash256 blockRoot) => _runner.ContainsBlock(blockRoot);
+
+    private bool IsGloasBlock(Hash256 blockRoot) => _runner.GetBlockSlot(blockRoot) is ulong slot && SignedBeaconBlockCodec.IsGloasSlot(slot, _spec);
+
+    private Hash256 GetJustifiedRoot() => _runner.JustifiedCheckpoint.Root;
 
     /// <inheritdoc/>
     public bool IsExpectedProposer(ForkedSignedBeaconBlock block)
@@ -150,7 +178,12 @@ public sealed class BlockImporter : IBlockImporter
                 || IsInLookahead(parentState.GetCurrentEpoch(), parentState.ProposerLookahead!, block.Slot, block.ProposerIndex);
         }
 
-        BeaconStateFulu state = _states.LineageState;
+        // Without a Fulu lineage (a Gloas anchor) the transition, which refuses a Fulu block there, decides.
+        if (_states.LineageState is not { } state)
+        {
+            return true;
+        }
+
         ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(block.Slot);
         ulong stateEpoch = state.GetCurrentEpoch();
         if (epoch != stateEpoch && epoch != stateEpoch + 1)
@@ -639,7 +672,7 @@ public sealed class BlockImporter : IBlockImporter
         return new HeadView(
             head,
             _runner.GetBlockSlot(head) ?? 0,
-            _runner.GetParentBlockHash(head) is { } headParentHash && !_runner.IsPayloadVerified(head) ? headParentHash : _runner.GetExecutionBlockHash(head),
+            GetParentBlockHash(head) is { } headParentHash && !_runner.IsPayloadVerified(head) ? headParentHash : _runner.GetExecutionBlockHash(head),
             CheckpointExecutionHash(_runner.JustifiedCheckpoint.Root),
             CheckpointExecutionHash(_runner.FinalizedCheckpoint.Root),
             _runner.JustifiedCheckpoint,
@@ -647,7 +680,10 @@ public sealed class BlockImporter : IBlockImporter
     }
 
     /// <summary>specs/gloas/fork-choice.md <c>notify_forkchoice_updated</c>: a Gloas checkpoint block maps to its bid's <c>parent_block_hash</c>.</summary>
-    private Hash256? CheckpointExecutionHash(Hash256 root) => _runner.GetParentBlockHash(root) ?? _runner.GetExecutionBlockHash(root);
+    private Hash256? CheckpointExecutionHash(Hash256 root) => GetParentBlockHash(root) ?? _runner.GetExecutionBlockHash(root);
+
+    /// <summary>The bid's <c>parent_block_hash</c> of a Gloas block fork choice holds, a Gloas anchor's included; <c>null</c> for a Fulu block.</summary>
+    private Hash256? GetParentBlockHash(Hash256 root) => _runner.GetParentBlockHash(root) ?? (root == _gloasAnchorRoot ? _gloasAnchorParentBlockHash : null);
 
     /// <inheritdoc/>
     public void OnInvalidExecutionPayload(Hash256 blockRoot, Hash256? latestValidHash) =>
@@ -658,17 +694,16 @@ public sealed class BlockImporter : IBlockImporter
     {
         ulong finalizedSlot = _runner.GetBlockSlot(finalized.Root) ?? BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch);
 
-        BeaconStateFulu? finalizedState = _states.GetBlockState(finalized.Root);
-        if (finalizedState is not null)
+        // Chosen by slot, so a Fulu root never costs the Gloas getter a store read.
+        bool gloasFinalized = SignedBeaconBlockCodec.IsGloasSlot(finalizedSlot, _spec);
+        if (gloasFinalized && _states.GetGloasBlockState(finalized.Root) is { } gloasState)
         {
-            _store.PutState(finalized.Root, BeaconStateFulu.Encode(finalizedState));
-            _store.SetAnchor(finalized.Root, finalizedSlot);
-            // TryLoad requires an exact registry-length match against the anchor state, so only
-            // persist when the cache has not yet been extended past the finalized registry.
-            if (_pubkeys.Count == finalizedState.Validators!.Length)
-            {
-                _pubkeys.Persist(_store);
-            }
+            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateGloas.Encode(gloasState), gloasState.Validators!.Length);
+            _states.PinGloas(finalized.Root, gloasState);
+        }
+        else if (!gloasFinalized && _states.GetBlockState(finalized.Root) is { } finalizedState)
+        {
+            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateFulu.Encode(finalizedState), finalizedState.Validators!.Length);
         }
         else if (_logger.IsDebug)
         {
@@ -685,6 +720,18 @@ public sealed class BlockImporter : IBlockImporter
             {
                 _deferred.Remove(root);
             }
+        }
+    }
+
+    private void PersistAnchor(Hash256 root, ulong slot, byte[] stateSsz, int validatorCount)
+    {
+        _store.PutState(root, stateSsz);
+        _store.SetAnchor(root, slot);
+        // TryLoad requires an exact registry-length match against the anchor state, so only
+        // persist when the cache has not yet been extended past the finalized registry.
+        if (_pubkeys.Count == validatorCount)
+        {
+            _pubkeys.Persist(_store);
         }
     }
 
@@ -829,7 +876,7 @@ public sealed class BlockImporter : IBlockImporter
         }
 
         if (_logger.IsInfo) _logger.Info($"Beacon chain reorg: adopting head {head} at slot {_runner.GetBlockSlot(head)} (was {_states.LineageRoot})");
-        _states.Retain(_states.LineageRoot, _states.LineageState);
+        _states.Retain(_states.LineageRoot!, _states.LineageState!);
         _states.SetLineage(head, headState.Clone());
         _lineageCache = new EpochCache { Hasher = new CachedBeaconStateHasher() };
         // Unknown here; forces retention at the next epoch advance, which is harmless.
@@ -999,7 +1046,7 @@ public sealed class BlockImporterFactory(
     BeaconDiscovery? discovery = null,
     ForkChoiceSnapshotHolder? forkChoiceSnapshots = null) : IBlockImporterFactory
 {
-    public IBlockImporter Create(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot)
+    public IBlockImporter Create(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot)
     {
         DiscoveryNodeCustodySource custody = new(discovery);
         return new BlockImporter(

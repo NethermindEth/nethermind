@@ -134,5 +134,5 @@ public interface IBlockImporter
 /// <summary>Creates the importer once the anchor is known; lets tests script the consensus core.</summary>
 public interface IBlockImporterFactory
 {
-    IBlockImporter Create(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot);
+    IBlockImporter Create(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot);
 }

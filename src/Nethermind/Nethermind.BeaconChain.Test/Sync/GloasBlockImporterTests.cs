@@ -318,7 +318,7 @@ public class GloasBlockImporterTests
         pubkeys.Build(chain.AnchorState.Validators!);
         BlockImporterFactory factory = new(chain.Spec, chain.CreateStore(), pubkeys, engine, new BeaconChainConfig(), LimboLogs.Instance, new DataColumnSidecarPool(),
             clock: new SlotClock(chain.Spec, new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (ForkSlot + 1) * chain.Spec.SecondsPerSlot))));
-        IBlockImporter importer = factory.Create(chain.AnchorState, chain.AnchorBlock, chain.AnchorRoot);
+        IBlockImporter importer = factory.Create(new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
         SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1, blobCommitments: [default]);
         importer.Import(first.Forked, first.Root, verifySignatures: true);
 

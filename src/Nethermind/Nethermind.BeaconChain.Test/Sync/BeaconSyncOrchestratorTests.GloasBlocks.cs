@@ -604,7 +604,7 @@ public partial class BeaconSyncOrchestratorTests
             new GossipRouter(spec, slotClock, LimboLogs.Instance),
             new BeaconChainStatusHolder(spec, timestamper),
             LimboLogs.Instance);
-        orchestrator.Initialize(importer, chain.AnchorBlock, chain.AnchorRoot);
+        orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
         orchestrator.GossipStarted = true;
         return (orchestrator, importer, engine);
     }

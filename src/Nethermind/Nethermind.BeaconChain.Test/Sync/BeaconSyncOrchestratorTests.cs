@@ -439,7 +439,7 @@ public partial class BeaconSyncOrchestratorTests
             envelopePool: envelopePool);
 
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
-        orchestrator.Initialize(importer, anchorBlock, anchorRoot);
+        orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot);
         return new Harness(orchestrator, importer, engine, pool, router, statusHolder, timestamper, envelopePool);
     }
 
@@ -464,7 +464,7 @@ public partial class BeaconSyncOrchestratorTests
 
     private sealed class ScriptedFactory(IBlockImporter importer) : IBlockImporterFactory
     {
-        public IBlockImporter Create(BeaconStateFulu anchorState, SignedBeaconBlock anchorBlock, Hash256 anchorRoot) => importer;
+        public IBlockImporter Create(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot) => importer;
     }
 
     private sealed class ScriptedImporter : IBlockImporter
