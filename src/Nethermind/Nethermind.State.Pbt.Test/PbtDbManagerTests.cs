@@ -25,6 +25,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Steps;
 using Nethermind.Api.Steps;
+using Nethermind.Init.Steps;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -62,9 +63,13 @@ public class PbtDbManagerTests
         List<Type> expectedTargets = [];
         if (import) expectedTargets.Add(typeof(ImportPbtFromPreimageFlat));
         if (scan && !mirror) expectedTargets.Add(typeof(ScanPbtTree));
-        IEnumerable<string?> commands = container.Resolve<IEnumerable<StepInfo>>().Select(static step => step.Command);
+        StepInfo[] steps = [.. container.Resolve<IEnumerable<StepInfo>>()];
+        IEnumerable<string?> commands = steps.Select(static step => step.Command);
         using (Assert.EnterMultipleScope())
         {
+            // A command run is pruned to its dependency closure, so metrics only start if the command asks for them.
+            Assert.That(steps.Where(static step => step.Command is "import-pbt" or "scan-pbt").Select(static step => step.Dependencies),
+                Has.All.Contains(typeof(StartMonitoring)));
             Assert.That(commands, Does.Contain("import-pbt"));
             Assert.That(commands.Contains("scan-pbt"), Is.EqualTo(!mirror));
             Assert.That(container.Resolve<IEnumerable<StepTarget>>().Select(static target => target.StepBaseType), Is.EquivalentTo(expectedTargets));

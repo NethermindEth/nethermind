@@ -13,7 +13,7 @@ namespace Nethermind.State.Pbt.Steps;
 /// Runs before the blockchain is initialized so nothing writes to the columns while the sweep reads them.
 /// </remarks>
 [StepCommand("scan-pbt", "Report what the persisted PBT columns hold.")]
-[RunnerStepDependencies(typeof(InitializeBlockTree))]
+[RunnerStepDependencies(typeof(InitializeBlockTree), typeof(StartMonitoring))]
 public class ScanPbtTree(
     PbtScanner scanner,
     IPbtPersistence persistence,

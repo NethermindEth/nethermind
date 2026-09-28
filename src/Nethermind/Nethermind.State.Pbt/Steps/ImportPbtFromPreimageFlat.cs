@@ -34,7 +34,7 @@ namespace Nethermind.State.Pbt.Steps;
 /// The phases cannot overlap because address partitions scatter across the entire stem space.
 /// </remarks>
 [StepCommand("import-pbt", "Rebuild the PBT state from a preimage-flat database.")]
-[RunnerStepDependencies(typeof(InitializeBlockTree))]
+[RunnerStepDependencies(typeof(InitializeBlockTree), typeof(StartMonitoring))]
 public class ImportPbtFromPreimageFlat(
     FlatPersistence flatSource,
     [KeyFilter(DbNames.Code)] IDb codeDb,
