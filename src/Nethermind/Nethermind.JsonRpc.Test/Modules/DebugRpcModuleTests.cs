@@ -848,6 +848,63 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("unknownTracer", "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)", false)]
+    [TestCase("unknownTracer", "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)", true)]
+    [TestCase("_unknownTracer", "ReferenceError: _unknownTracer is not defined at <eval>:1:2(0)", false)]
+    [TestCase("_unknownTracer", "ReferenceError: _unknownTracer is not defined at <eval>:1:2(0)", true)]
+    [TestCase("$unknownTracer", "ReferenceError: $unknownTracer is not defined at <eval>:1:2(0)", false)]
+    [TestCase("$unknownTracer", "ReferenceError: $unknownTracer is not defined at <eval>:1:2(0)", true)]
+    [TestCase(" unknownTracer ", "ReferenceError: unknownTracer is not defined at <eval>:1:3(0)", false)]
+    [TestCase(" unknownTracer ", "ReferenceError: unknownTracer is not defined at <eval>:1:3(0)", true)]
+    [TestCase("toHex", "trace object must expose a function result()", false)]
+    [TestCase("toHex", "trace object must expose a function result()", true)]
+    [TestCase("{}", "trace object must expose a function result()", false)]
+    [TestCase("{}", "trace object must expose a function result()", true)]
+    [TestCase("{result:1,fault:function(){}}", "trace object must expose a function result()", false)]
+    [TestCase("{result:1,fault:function(){}}", "trace object must expose a function result()", true)]
+    [TestCase("{result:function(){return 7;}}", "trace object must expose a function fault()", false)]
+    [TestCase("{result:function(){return 7;}}", "trace object must expose a function fault()", true)]
+    [TestCase("{result:function(){},fault:1}", "trace object must expose a function fault()", false)]
+    [TestCase("{result:function(){},fault:1}", "trace object must expose a function fault()", true)]
+    [TestCase("{result:function(){},fault:function(){},enter:function(){},exit:1}", "trace object must expose either both or none of enter() and exit()", false)]
+    [TestCase("{result:function(){},fault:function(){},enter:function(){},exit:1}", "trace object must expose either both or none of enter() and exit()", true)]
+    public async Task Debug_traceCall_javascript_selector_errors(string tracer, string message, bool mux)
+    {
+        using Context ctx = await Context.Create();
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", options);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null);
+            Assert.That(json["error"]!["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(json["error"]!["message"]!.Value<string>(), Is.EqualTo(message));
+            Assert.That(json["error"]!["data"], Is.Null);
+        }
+    }
+
+    [TestCase("({fault:function(){},result:function(){return 7;}})", false)]
+    [TestCase("({fault:function(){},result:function(){return 7;}})", true)]
+    [TestCase("Object.create({fault:function(){},result:function(){return 7;}})", false)]
+    [TestCase("Object.create({fault:function(){},result:function(){return 7;}})", true)]
+    [TestCase("{fault:function(){},result:function(){return 7;},step:1,enter:1,exit:1,setup:1}", false)]
+    [TestCase("{fault:function(){},result:function(){return 7;},step:1,enter:1,exit:1,setup:1}", true)]
+    public async Task Debug_traceCall_javascript_selector_expressions(string tracer, bool mux)
+    {
+        using Context ctx = await Context.Create();
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString() }, "latest", options);
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null);
+        Assert.That((mux ? json["result"]![tracer] : json["result"])!.Value<int>(), Is.EqualTo(7));
+    }
+
     [TestCase("[]", "json: cannot unmarshal array into Go value of type map[string]jsontext.Value")]
     [TestCase("1", "json: cannot unmarshal number into Go value of type map[string]jsontext.Value")]
     [TestCase("true", "json: cannot unmarshal bool into Go value of type map[string]jsontext.Value")]

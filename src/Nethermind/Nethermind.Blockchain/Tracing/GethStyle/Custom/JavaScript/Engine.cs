@@ -6,8 +6,10 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Core.Caching;
@@ -300,30 +302,16 @@ public class Engine : IDisposable
     {
         static V8Script LoadJavaScriptCode(string tracer)
         {
-            tracer = tracer.Trim();
-            if (tracer.StartsWith('_'))
+            if (Regex.IsMatch(tracer, @"\A[A-Za-z0-9$][A-Za-z0-9_$]*(?:\.js)?\z"))
             {
-                throw new ArgumentException($"Cannot access internal tracer '{tracer}'");
+                string fileName = Path.ChangeExtension(tracer, Extension);
+                if (_builtInScripts.TryGetValue(fileName, out V8Script script)) return script;
+                if (File.Exists(Path.Combine(TracersPath, fileName).GetApplicationResourcePath()))
+                    return LoadBuiltIn(fileName, LoadTracerCodeFromFile(fileName));
             }
-            else if (tracer.StartsWith('{') && tracer.EndsWith('}'))
-            {
-                return _runtimeScripts.SetOrGet(
-                    tracer,
-                    tracer,
-                    static (_, tracerCode) => _runtime.Compile(PackTracerCode(tracerCode)));
-            }
-            else
-            {
-                if (!Path.HasExtension(tracer) || Path.GetExtension(tracer) != Extension)
-                {
-                    tracer = Path.ChangeExtension(tracer, Extension);
-                }
 
-                return _builtInScripts.TryGetValue(tracer, out V8Script script)
-                    ? script
-                    // fallback, shouldn't happen if the tracers were initialized from file before
-                    : LoadBuiltIn(tracer, LoadTracerCodeFromFile(tracer));
-            }
+            return _runtimeScripts.SetOrGet(tracer, tracer,
+                static (_, tracerCode) => _runtime.Compile(PackTracerCode(tracerCode)));
         }
 
         static string LoadJavaScriptDebugCode(string tracer)
@@ -353,7 +341,25 @@ public class Engine : IDisposable
         }
         else
         {
-            return V8Engine.Evaluate(LoadJavaScriptCode(tracer));
+            try
+            {
+                return V8Engine.Evaluate(LoadJavaScriptCode(tracer));
+            }
+            catch (ScriptEngineException ex) when (Regex.IsMatch(tracer.Trim(), @"\A[A-Za-z_$][A-Za-z0-9_$]*\z")
+                && ex.Message == $"ReferenceError: {tracer.Trim()} is not defined")
+            {
+                int line = 1, column = 2;
+                foreach (char character in tracer.AsSpan(0, tracer.Length - tracer.TrimStart().Length))
+                {
+                    if (character == '\n')
+                    {
+                        line++;
+                        column = 1;
+                    }
+                    else column++;
+                }
+                throw new InvalidDataException($"{ex.Message} at <eval>:{line}:{column}(0)", ex);
+            }
         }
     }
 
