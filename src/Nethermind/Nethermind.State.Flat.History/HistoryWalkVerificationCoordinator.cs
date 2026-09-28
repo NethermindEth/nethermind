@@ -100,18 +100,15 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         if (!_metadata.TryGetWalkInProgress(out ulong from, out ulong to)) return;
 
         DiscardWalk();
+        _retrofit?.ResumeReclaim();
         if (_logger.IsInfo) _logger.Info($"History walk verification is off, so the run interrupted over [{from}, {to}] is abandoned: its checkpoint and scratch series are deleted and commitment reclaim no longer waits for it. Turning FlatDb.HistoryVerifyEveryBlock back on starts a new walk.");
     }
 
     private void DiscardWalk()
     {
         _metadata.ClearWalk(HistoryWalkRun.WorkItems);
-        using (SeriesWriter scratch = new(_history))
-        {
-            scratch.DeleteAllScratch();
-        }
-
-        _retrofit?.ResumeReclaim();
+        using SeriesWriter scratch = new(_history);
+        scratch.DeleteAllScratch();
     }
 
     /// <summary>Whether this instance actually started its background verification - false means
@@ -161,17 +158,41 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
                     if (_metadata.TryGetWalkInProgress(out ulong pendingFrom, out ulong pendingTo))
                     {
-                        if (TipCovers(pendingFrom, pendingTo) && VerifiedReaches(pendingFrom))
+                        if (TipCovers(pendingFrom, pendingTo) && VerifiedReaches(pendingFrom)
+                            && (_retrofit is null || CoverageIncludes(from, pendingTo)))
                         {
                             DiscardWalk();
+                            _retrofit?.ResumeReclaim();
                             if (_logger.IsInfo) _logger.Info(
                                 $"History walk verification dropped its unfinished run over [{pendingFrom}, {pendingTo}]: the tip has committed those blocks itself, and a walk over them would scan the whole key space to find them.");
                             return;
                         }
 
-                        from = pendingFrom;
-                        to = pendingTo;
-                        if (_logger.IsInfo) _logger.Info($"History walk verification resuming the interrupted run over [{from}, {to}].");
+                        string? restartReason = GetRestartReason(from, pendingFrom);
+                        if (restartReason is not null)
+                        {
+                            DiscardWalk();
+                            if (TryGetCompletedPrefix(from, out ulong completedTo))
+                            {
+                                if (completedTo >= to || TipCovers(completedTo + 1, to))
+                                {
+                                    _retrofit?.ResumeReclaim();
+                                    if (_logger.IsWarn) _logger.Warn($"History walk discarded checkpoint [{pendingFrom}, {pendingTo}]: {restartReason}; the requested range [{from}, {to}] is already complete.");
+                                    return;
+                                }
+
+                                ulong granularity = _retrofit?.WindowGranularity ?? 1;
+                                ulong next = completedTo + 1;
+                                from = Math.Max(from, next - next % granularity);
+                            }
+                            if (_logger.IsWarn) _logger.Warn($"History walk restarting over [{from}, {to}]: {restartReason} in the interrupted range [{pendingFrom}, {pendingTo}].");
+                        }
+                        else
+                        {
+                            from = pendingFrom;
+                            to = pendingTo;
+                            if (_logger.IsInfo) _logger.Info($"History walk verification resuming the interrupted run over [{from}, {to}].");
+                        }
                     }
                     while (true)
                     {
@@ -231,8 +252,37 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         }
     }
 
+    private string? GetRestartReason(ulong from, ulong pendingFrom)
+    {
+        if (!_metadata.TryGetWalkMode(out bool buildCommitments)) return "checkpoint mode is missing or invalid (legacy checkpoints require a one-time restart)";
+        if (buildCommitments != (_retrofit is not null)) return "checkpoint mode differs from the requested mode";
+        if (_retrofit is null) return null;
+        if (pendingFrom % _retrofit.WindowGranularity != 0) return "checkpoint start is not aligned for proof building";
+        return pendingFrom > from && !CoverageIncludes(from, pendingFrom - 1) ? "checkpoint leaves an unbuilt proof prefix" : null;
+    }
+
+    /// <summary>Finds a completed contiguous prefix of the requested range.</summary>
+    /// <remarks>A verified prefix is required even when tip capture has published coverage from genesis:
+    /// tip capture alone does not replace the first walk and its epoch snapshots. In build mode, published coverage
+    /// must contain the requested start; its frontier may trail verification or extend past it with contiguous
+    /// tip commitments. Verification alone cannot stand in for unbuilt proofs.</remarks>
+    private bool TryGetCompletedPrefix(ulong from, out ulong completedTo)
+    {
+        if (!_metadata.TryGetWalkVerified(out ulong verifiedFrom, out completedTo)
+            || verifiedFrom > from || completedTo < from) return false;
+        if (_retrofit is null) return true;
+        if (!_metadata.TryGetCoverage(out ulong coveredFrom, out ulong coveredTo)
+            || coveredFrom > from || coveredTo < from) return false;
+
+        completedTo = coveredTo;
+        return true;
+    }
+
     private bool TipCovers(ulong fromInclusive, ulong toInclusive) =>
         _metadata.TryGetTipSeries(out ulong start, out ulong frontier) && start <= fromInclusive && frontier >= toInclusive;
+
+    private bool CoverageIncludes(ulong fromInclusive, ulong toInclusive) =>
+        _metadata.TryGetCoverage(out ulong start, out ulong frontier) && start <= fromInclusive && frontier >= toInclusive;
 
     private bool VerifiedReaches(ulong fromInclusive) =>
         fromInclusive > 0 && _metadata.TryGetWalkVerified(out ulong _, out ulong verified) && verified >= fromInclusive - 1;

@@ -241,7 +241,11 @@ public class BlockDecoderTests
         Block blockWithEncoded = new(block.Header, block.Body) { EncodedTransactions = encodedTxs };
         Rlp fast = decoder.Encode(blockWithEncoded);
 
-        Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
+            Assert.That(decoder.GetLength(blockWithEncoded, RlpBehaviors.None), Is.EqualTo(standard.Bytes.Length));
+        }
     }
 
     [Test]

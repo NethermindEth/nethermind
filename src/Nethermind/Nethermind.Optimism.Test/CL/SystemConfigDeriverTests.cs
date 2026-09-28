@@ -22,20 +22,19 @@ public class SystemConfigDeriverTests
     private static readonly AbiSignature UInt256Signature = new("oneUint256", AbiType.UInt256);
     private static readonly AbiSignature UInt256TupleSignature = new("twoUint256", AbiType.UInt256, AbiType.UInt256);
 
+    private static LogEntryForRpc BuildLog(byte[] data, Hash256 topic) => new()
+    {
+        Address = SystemConfigProxy,
+        Topics = [SystemConfigUpdate.EventABIHash, SystemConfigUpdate.EventVersion0, topic],
+        Data = data,
+    };
+
     private ReceiptForRpc[] BuildReceipts(byte[] data, Hash256 topic) =>
     [
         new()
         {
             Status = StatusCode.Success,
-            Logs =
-            [
-                new()
-                {
-                    Address = SystemConfigProxy,
-                    Topics = [SystemConfigUpdate.EventABIHash, SystemConfigUpdate.EventVersion0, topic],
-                    Data = data,
-                }
-            ]
+            Logs = [BuildLog(data, topic)]
         }
     ];
 
@@ -189,6 +188,40 @@ public class SystemConfigDeriverTests
         };
 
         Assert.That(actualConfig, Is.EqualTo(expectedConfig));
+    }
+
+    /// <summary>EIP-8141: the receipt status is the aggregate over the frames, so an update is applied exactly
+    /// when the frame that emitted it succeeded, not when every frame of the transaction did.</summary>
+    [TestCase(TxFrameReceipt.StatusSuccess, 0xBBul)]
+    [TestCase(TxFrameReceipt.StatusFailure, 0ul)]
+    [TestCase(TxFrameReceipt.StatusSkipped, 0ul)]
+    public void UpdateSystemConfigFromL1BLock_FrameTx_AppliesByEmittingFrameStatus(byte updateFrameStatus, ulong expectedGasLimit)
+    {
+        UInt256 gasLimit = 0xBB;
+
+        byte[] encodedGasLimit = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, gasLimit);
+        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedGasLimit);
+        LogEntryForRpc log = BuildLog(encodedData, SystemConfigUpdate.GasLimit);
+
+        ReceiptForRpc[] receipts =
+        [
+            new()
+            {
+                Type = TxType.FrameTx,
+                Status = StatusCode.Failure, // Aggregate: the second frame reverted
+                Logs = [log],
+                FrameReceipts =
+                [
+                    new FrameReceiptForRpc { Status = updateFrameStatus, Logs = [log.ToLogEntry()] },
+                    new FrameReceiptForRpc { Status = TxFrameReceipt.StatusFailure, Logs = [] },
+                ]
+            }
+        ];
+
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
+        SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
+
+        Assert.That(actualConfig, Is.EqualTo(new SystemConfig { GasLimit = expectedGasLimit }));
     }
 
     [Test]

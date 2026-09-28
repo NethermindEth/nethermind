@@ -4,13 +4,18 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -40,11 +45,7 @@ public partial class DebugRpcModuleTests
     {
         using Context context = await Context.Create();
 
-        Transaction transaction = Build.A.Transaction
-            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
-            .SignedAndResolved(TestItem.PrivateKeyA)
-            .TestObject;
-        await context.Blockchain.AddBlock(transaction);
+        Transaction transaction = await AddBlockWithTransfer(context);
 
         BlockHeader header = context.Blockchain.BlockTree.Head!.Header;
         UInt256 baseFee = header.BaseFeePerGas;
@@ -56,6 +57,27 @@ public partial class DebugRpcModuleTests
         await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
 
         Assert.That(header.BaseFeePerGas, Is.EqualTo(baseFee), "block override must not write into the block-tree-cached header");
+    }
+
+    // Zero is the case where the overridden target would pass for genesis and open pre-genesis state; a cold
+    // header cache is the case where the parent lookup keys on the overridden number and misses the store.
+    [Test]
+    public async Task Debug_traceTransaction_with_block_number_override_traces_against_the_original_parent_state([Values(0ul, 1000ul)] ulong numberOverride)
+    {
+        using Context context = await Context.Create();
+
+        Transaction transaction = await AddBlockWithTransfer(context);
+        ((IClearableCache)context.Blockchain.Container.Resolve<IHeaderStore>()).ClearCache();
+
+        GethTraceOptions options = new() { BlockOverrides = new BlockOverride { Number = numberOverride } };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
+
+        JToken result = JToken.Parse(response)["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["failed"]?.Value<bool>(), Is.False, response);
+            Assert.That(result["gas"]?.Value<ulong>(), Is.EqualTo(GasCostOf.Transaction));
+        }
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -73,6 +95,121 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
     }
 
+    [TestCase("latest")]
+    [TestCase("pending")]
+    [TestCase(null, TestName = "Debug_traceTransactionByBlockAndIndex_accepts_block_hash")]
+    public async Task Debug_traceTransactionByBlockAndIndex_accepts_block_tag_or_hash(string? blockTag)
+    {
+        using Context context = await Context.Create();
+
+        await AddBlockWithTransfer(context);
+
+        Block head = context.Blockchain.BlockTree.Head!;
+        // A hash cannot be a constant TestCase argument, so a null tag stands for the head's hash
+        object blockParameter = blockTag ?? (object)head.Hash!;
+        string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", head.Number, "0x0");
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockParameter, "0x0");
+
+        JToken expectedToken = JToken.Parse(expected);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedToken["result"]?["failed"]?.Value<bool>(), Is.False, "the numeric baseline must actually trace, otherwise the comparison below is vacuous");
+            Assert.That(JToken.Parse(response), Is.EqualTo(expectedToken).Using(JToken.EqualityComparer));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransactionByBlockAndIndex_does_not_fall_back_to_the_canonical_block()
+    {
+        using Context context = await Context.Create();
+
+        await AddBlockWithTransfer(context);
+        Block canonical = context.Blockchain.BlockTree.Head!;
+        BlockHeader parent = context.Blockchain.BlockTree.FindHeader(canonical.ParentHash!, BlockTreeLookupOptions.None)!;
+
+        Block sideChain = Build.A.Block
+            .WithParent(parent)
+            .WithStateRoot(TestItem.KeccakA)
+            .WithExtraData([1])
+            .TestObject;
+        AddBlockResult suggested = context.Blockchain.BlockTree.SuggestBlock(sideChain, BlockTreeSuggestOptions.ForceDontSetAsMain);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(suggested, Is.EqualTo(AddBlockResult.Added), "the sibling must actually reach the block tree for this test to mean anything");
+            Assert.That(context.Blockchain.BlockTree.FindBlock(canonical.Number, BlockTreeLookupOptions.RequireCanonical)!.Hash,
+                Is.EqualTo(canonical.Hash), "the suggested sibling must stay off the canonical chain for this test to mean anything");
+        }
+
+        string byNumber = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", canonical.Number, "0x0");
+        string byHash = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", sideChain.Hash!, "0x0");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(byNumber)["result"]?["failed"]?.Value<bool>(), Is.False, "the canonical block at that height does have a transaction to trace");
+            AssertTracerWasReached(byHash, "has only 0 transactions",
+                "a non-canonical hash must not silently trace the canonical block at the same height");
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransactionByBlockAndIndex_rejects_a_negative_index()
+    {
+        using Context context = await Context.Create();
+
+        await AddBlockWithTransfer(context);
+        Block head = context.Blockchain.BlockTree.Head!;
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", head.Number, -1);
+
+        AssertTracerWasReached(response, $"has only {head.Transactions.Length} transactions and the requested tx index was -1",
+            "a negative index must be reported by the bounds check, not indexed into the transaction array");
+    }
+
+    [Test]
+    public async Task Debug_traceTransactionByBlockAndIndex_needs_no_state_for_genesis()
+    {
+        using Context context = await Context.Create();
+
+        await AddBlockWithTransfer(context);
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", 0UL, "0x0");
+
+        AssertTracerWasReached(response, "has only 0 transactions",
+            "genesis has no parent to replay from, so no base-state check applies and the request must not be rejected");
+    }
+
+    /// <summary>
+    /// Asserts that a trace request reached transaction tracing rather than being rejected by the base-state
+    /// guard, and that the resulting error contains <paramref name="expectedErrorSubstring"/>.
+    /// </summary>
+    /// <remarks>
+    /// A response rejected by the guard has no "result" node, so <c>["result"]?["error"]</c> silently
+    /// evaluates to <see langword="null"/> and handing that to <see cref="Does.Contain"/> throws
+    /// <see cref="ArgumentException"/> instead of failing the assertion - checking for null first keeps
+    /// <paramref name="because"/> reaching the test report.
+    /// </remarks>
+    private static void AssertTracerWasReached(string response, string expectedErrorSubstring, string because)
+    {
+        string? error = JToken.Parse(response)["result"]?["error"]?.Value<string>();
+
+        Assert.That(error, Is.Not.Null, because);
+        if (error is not null)
+        {
+            Assert.That(error, Does.Contain(expectedErrorSubstring), because);
+        }
+    }
+
+    private static async Task<Transaction> AddBlockWithTransfer(Context context)
+    {
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await context.Blockchain.AddBlock(transaction);
+        return transaction;
+    }
+
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
     [TestCaseSource(nameof(TraceTransactionContractSource))]
     public async Task Debug_traceTransactionByBlockhashAndIndex(Func<TestRpcBlockchain, Transaction> factory, GethTraceOptions options, string expected)
@@ -86,6 +223,27 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", blockHash, "0x0", options);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
+    }
+
+    [Test]
+    public async Task Debug_traceTransactionByBlockhashAndIndex_traces_a_block_whose_own_state_was_never_committed()
+    {
+        using Context context = await Context.Create();
+
+        await AddBlockWithTransfer(context);
+        BlockHeader parent = context.Blockchain.BlockTree.Head!.Header;
+
+        // A root never committed anywhere, so HasStateForBlock fails under both backends.
+        Block unprocessed = Build.A.Block
+            .WithParent(parent)
+            .WithStateRoot(TestItem.KeccakA)
+            .TestObject;
+        context.Blockchain.BlockTree.SuggestBlock(unprocessed, BlockTreeSuggestOptions.ForceDontSetAsMain);
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", unprocessed.Hash!, "0x0");
+
+        AssertTracerWasReached(response, "has only 0 transactions",
+            "the trace replays the block on top of its parent, so the block's own state is not a precondition");
     }
 
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
@@ -145,6 +303,13 @@ public partial class DebugRpcModuleTests
             """{"jsonrpc":"2.0","result":{},"id":67}"""
         )
         { TestName = "Transfer with " + Native4ByteTracer.FourByteTracer };
+
+        yield return new TestCaseData(
+            transferTransaction,
+            new GethTraceOptions { Tracer = NativeNoopTracer.NoopTracer },
+            """{"jsonrpc":"2.0","result":{},"id":67}"""
+        )
+        { TestName = "Transfer with " + NativeNoopTracer.NoopTracer };
 
         yield return new TestCaseData(
             transferTransaction,

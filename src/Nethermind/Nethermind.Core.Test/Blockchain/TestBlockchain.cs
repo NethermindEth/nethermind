@@ -47,6 +47,7 @@ namespace Nethermind.Core.Test.Blockchain;
 public class TestBlockchain : IDisposable
 {
     public const int DefaultTimeout = 30000;
+    public const int HeadNumber = 3;
     protected long TestTimeout { get; init; } = DefaultTimeout;
     public IStateReader StateReader => _fromContainer.StateReader;
     public IEthereumEcdsa EthereumEcdsa => _fromContainer.EthereumEcdsa;
@@ -221,7 +222,7 @@ public class TestBlockchain : IDisposable
 
         Configuration testConfiguration = _fromContainer.Configuration;
 
-        BlockchainProcessor.Start();
+        BlockProcessingQueue.Start();
 
         BlockProducer = CreateTestBlockProducer();
         BlockProducerRunner ??= CreateBlockProducerRunner();
@@ -354,7 +355,7 @@ public class TestBlockchain : IDisposable
 
             byte[] code = Bytes.FromHexString("0xabcd");
             state.InsertCode(TestItem.AddressA, code, specProvider.GenesisSpec);
-            state.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+            state.Set(new StorageCell(TestItem.AddressA, UInt256.One), (UInt256)0xabcdef);
 
             IReleaseSpec? finalSpec = specProvider.GetFinalSpec();
 
@@ -434,7 +435,7 @@ public class TestBlockchain : IDisposable
         while (true)
         {
             cts.Token.ThrowIfCancellationRequested();
-            if (BlockTree.Head?.Number == 3) return;
+            if (BlockTree.Head?.Number == HeadNumber) return;
             await Task.Delay(1, cts.Token);
         }
     }

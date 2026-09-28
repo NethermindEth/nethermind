@@ -60,6 +60,12 @@ public sealed class GCScheduler
         }
     }
 
+    internal void SetNextGcForTest(bool blocking, bool compacting)
+    {
+        _isNextGcBlocking = blocking;
+        _isNextGcCompacting = compacting;
+    }
+
     /// <summary>
     /// Activates background garbage collection when the processing queue is idle.
     /// </summary>
@@ -144,7 +150,7 @@ public sealed class GCScheduler
     /// <summary>
     /// Determines and performs the appropriate type of garbage collection.
     /// </summary>
-    private void PerformFullGC()
+    internal void PerformFullGC()
     {
         if (Interlocked.Exchange(ref _skipNextGC, false))
         {
@@ -161,8 +167,6 @@ public sealed class GCScheduler
         {
             // Collect all generations
             generation = GC.MaxGeneration;
-            // Compact large object heap
-            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
             // Release memory back to the OS
             mode = GCCollectionMode.Aggressive;
         }
@@ -191,7 +195,7 @@ public sealed class GCScheduler
     public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting) =>
         GCCollect(generation, mode, blocking, compacting, trimNativeMemory: true);
 
-    private bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory)
+    internal bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory, bool compactLoh = false)
     {
         if (Volatile.Read(ref _forcedGCExclusions) > 0)
         {
@@ -210,6 +214,10 @@ public sealed class GCScheduler
         if (generation >= GC.MaxGeneration)
         {
             Volatile.Write(ref _sweepBaselineAllocatedBytes, GC.GetTotalAllocatedBytes(precise: false));
+        }
+        if (compactLoh)
+        {
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
         }
         System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
         if (trimNativeMemory)

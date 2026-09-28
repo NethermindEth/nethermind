@@ -15,7 +15,6 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -276,7 +275,7 @@ namespace Nethermind.Network
                     {
                         await SetupOutgoingPeerConnection(peer);
                     }
-                    catch (TaskCanceledException)
+                    catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested)
                     {
                         if (_logger.IsDebug) DebugConnectWorker(idx, isCancelled: true);
                         break;
@@ -785,7 +784,6 @@ namespace Nethermind.Network
             }
         }
 
-        [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupOutgoingPeerConnection(Peer peer, bool cancelIfThrottled = false)
         {
             if (cancelIfThrottled && _outgoingConnectionRateLimiter.IsThrottled()) return;
@@ -868,7 +866,11 @@ namespace Nethermind.Network
                 if (_logger.IsTrace) TraceConnectingToCandidate();
                 candidate.IsAwaitingConnection = true;
                 _stats.ReportEvent(candidate.Node, NodeStatsEventType.Connecting);
-                return await _rlpxHost.ConnectAsync(candidate.Node);
+                return await _rlpxHost.ConnectAsync(candidate.Node, _cancellationTokenSource.Token);
+            }
+            catch (OperationCanceledException) when (_cancellationTokenSource.IsCancellationRequested)
+            {
+                throw;
             }
             catch (NetworkingException ex)
             {
@@ -1097,14 +1099,18 @@ namespace Nethermind.Network
             ConnectionDirection sessionDirection = session.Direction;
             bool newSessionIsIn = sessionDirection == ConnectionDirection.In;
 
-            if (CanAttachSessionDirectly(session, peer))
+            // Decided and attached as one step, or an IN and an OUT session added on different threads could both
+            // find the other direction empty and both attach directly. The disconnect waits until the lock is
+            // released: its handlers take the session lock, which the IN path holds while it waits for this one.
+            (ISession Session, DisconnectReason Reason)? disconnect;
+            lock (peer.SessionLock)
             {
-                AttachSession(peer, session, sessionDirection, disconnectOpposite: false);
+                disconnect = CanAttachSessionDirectly(session, peer)
+                    ? AttachSession(peer, session, sessionDirection, disconnectOpposite: false)
+                    : ResolveSessionConflict(session, peer, sessionDirection);
             }
-            else
-            {
-                ResolveSessionConflict(session, peer, sessionDirection);
-            }
+
+            disconnect?.Session.InitiateDisconnect(disconnect.Value.Reason, "same");
 
             AddActivePeer(peer.Node.Id, peer, newSessionIsIn ? "new IN session" : "new OUT session");
 
@@ -1113,31 +1119,29 @@ namespace Nethermind.Network
                 => _logger.Trace($"ADDING {session} {peer}");
         }
 
+        // An IN session attached while the dial was in flight still has to go through the conflict resolution,
+        // or both directions stay open.
         private bool CanAttachSessionDirectly(ISession session, Peer peer)
-            => !IsConnected(peer) || (peer.IsAwaitingConnection && session.Direction == ConnectionDirection.Out);
+            => !IsConnected(peer) || (peer.IsAwaitingConnection && session.Direction == ConnectionDirection.Out && !HasOpenSession(peer.InSession));
 
-        private void AttachSession(Peer peer, ISession session, ConnectionDirection sessionDirection, bool disconnectOpposite)
+        private static (ISession Session, DisconnectReason Reason)? AttachSession(Peer peer, ISession session, ConnectionDirection sessionDirection, bool disconnectOpposite)
         {
-            lock (peer.SessionLock)
+            if (sessionDirection == ConnectionDirection.In)
             {
-                if (sessionDirection == ConnectionDirection.In)
-                {
-                    peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
-                    peer.InSession = session;
-                }
-                else
-                {
-                    peer.OutSession = session;
-                }
+                peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
+                peer.InSession = session;
+            }
+            else
+            {
+                peer.OutSession = session;
             }
 
-            if (disconnectOpposite)
-            {
-                GetSession(peer, GetOppositeDirection(sessionDirection))?.InitiateDisconnect(DisconnectReason.OppositeDirectionCleanup, "same");
-            }
+            return disconnectOpposite && GetSession(peer, GetOppositeDirection(sessionDirection)) is { } opposite
+                ? (opposite, DisconnectReason.OppositeDirectionCleanup)
+                : null;
         }
 
-        private void ResolveSessionConflict(ISession session, Peer peer, ConnectionDirection sessionDirection)
+        private (ISession Session, DisconnectReason Reason)? ResolveSessionConflict(ISession session, Peer peer, ConnectionDirection sessionDirection)
         {
             bool peerHasAnOpenSameDirectionSession = HasOpenSession(GetSession(peer, sessionDirection));
             bool peerHasAnOpenOppositeDirectionSession = HasOpenSession(GetSession(peer, GetOppositeDirection(sessionDirection)));
@@ -1145,14 +1149,12 @@ namespace Nethermind.Network
             if (peerHasAnOpenSameDirectionSession)
             {
                 if (_logger.IsDebug) DebugSessionConflict(session, SessionConflictLogEvent.AlreadyConnected);
-                session.InitiateDisconnect(DisconnectReason.SessionAlreadyExist, "same");
-                return;
+                return (session, DisconnectReason.SessionAlreadyExist);
             }
 
-            if (peerHasAnOpenOppositeDirectionSession)
-            {
-                ResolveOppositeDirectionSessionConflict(session, peer, sessionDirection);
-            }
+            return peerHasAnOpenOppositeDirectionSession
+                ? ResolveOppositeDirectionSessionConflict(session, peer, sessionDirection)
+                : null;
         }
 
         private static bool HasOpenSession(ISession? session)
@@ -1160,19 +1162,18 @@ namespace Nethermind.Network
                && !session.IsClosing
                && !session.IsChannelClosed;
 
-        private void ResolveOppositeDirectionSessionConflict(ISession session, Peer peer, ConnectionDirection sessionDirection)
+        private (ISession Session, DisconnectReason Reason)? ResolveOppositeDirectionSessionConflict(ISession session, Peer peer, ConnectionDirection sessionDirection)
         {
             ConnectionDirection directionToKeep = ChooseDirectionToKeep(session.RemoteNodeId);
             if (session.Direction != directionToKeep)
             {
                 if (_logger.IsDebug) DebugSessionConflict(session, SessionConflictLogEvent.NewSessionAlreadyConnected, directionToKeep);
-                session.InitiateDisconnect(DisconnectReason.ReplacingSessionWithOppositeDirection, "same");
                 AttachSession(peer, session, sessionDirection, disconnectOpposite: false);
-                return;
+                return (session, DisconnectReason.ReplacingSessionWithOppositeDirection);
             }
 
             if (_logger.IsDebug) DebugSessionConflict(session, SessionConflictLogEvent.ExistingSessionReplacing, directionToKeep);
-            AttachSession(peer, session, sessionDirection, disconnectOpposite: true);
+            return AttachSession(peer, session, sessionDirection, disconnectOpposite: true);
         }
 
         private static ConnectionDirection GetOppositeDirection(ConnectionDirection sessionDirection)

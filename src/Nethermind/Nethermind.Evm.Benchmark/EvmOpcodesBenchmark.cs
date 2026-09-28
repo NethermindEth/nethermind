@@ -54,8 +54,8 @@ public unsafe class EvmOpcodesBenchmark
     private const string OpcodeFilterEnvironmentVariable = "NETHERMIND_EVM_BENCHMARK_OPCODES";
     private const string InvocationCountEnvironmentVariable = "NETHERMIND_EVM_BENCHMARK_INVOCATION_COUNT";
 
-    private delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] _opcodeHandlers = null!;
-    private delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, int, EvmExceptionType>* _continuationHandlers;
+    private delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] _opcodeHandlers = null!;
+    private delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>* _continuationHandlers;
     private GCHandle _continuationHandlersHandle;
     private BenchmarkVm _vm = null!;
     private byte[] _opcodeCode = null!;
@@ -270,15 +270,15 @@ public unsafe class EvmOpcodesBenchmark
         }
 
         _opcodeHandlers = _vm.GetOpcodeHandlers<OffFlag, OffFlag>();
-        delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[] continuationHandlers =
-            new delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, int, EvmExceptionType>[byte.MaxValue + 1];
+        delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] continuationHandlers =
+            new delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[byte.MaxValue + 1];
         for (int i = 0; i < continuationHandlers.Length; i++)
             continuationHandlers[i] = &CompleteOpcode;
 
         _continuationHandlersHandle = GCHandle.Alloc(continuationHandlers, GCHandleType.Pinned);
         // Safety: the handle pins the complete table until GlobalCleanup, and every entry has the
         // exact managed function-pointer signature expected by the production tail dispatcher.
-        _continuationHandlers = (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, int, EvmExceptionType>*)
+        _continuationHandlers = (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>*)
             _continuationHandlersHandle.AddrOfPinnedObject();
 
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
@@ -315,6 +315,7 @@ public unsafe class EvmOpcodesBenchmark
     private EvmExceptionType ExecuteOpcodeWithStackWalk()
     {
         EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
+        stack.HoistInputData(_env.InputData.Span);
         DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
         int remaining = InnerCount;
@@ -339,6 +340,7 @@ public unsafe class EvmOpcodesBenchmark
     private EvmExceptionType ExecuteOpcodeWithPerRunRefresh()
     {
         EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
+        stack.HoistInputData(_env.InputData.Span);
         DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
         for (int runIndex = 0; runIndex < InnerCount; runIndex++)
@@ -357,6 +359,7 @@ public unsafe class EvmOpcodesBenchmark
     private EvmExceptionType ExecuteOpcodeWithIndependentBinaryInputs()
     {
         EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
+        stack.HoistInputData(_env.InputData.Span);
         DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
         int remaining = InnerCount;
@@ -713,6 +716,7 @@ public unsafe class EvmOpcodesBenchmark
     private long ExecuteOpcodeOnceForGas()
     {
         EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
+        stack.HoistInputData(_env.InputData.Span);
         if (RequiresPerRunLocationSetup(Opcode))
         {
             stack.Head = _stackDepth;
@@ -756,7 +760,7 @@ public unsafe class EvmOpcodesBenchmark
         ref EthereumGasPolicy gas,
         ref DispatchState state,
         nint programCounter,
-        int opCodeCount) => EvmExceptionType.None;
+        nint opCodeCount) => EvmExceptionType.None;
 
     private void DisposeNestedReturnFrame()
     {
@@ -785,7 +789,7 @@ public unsafe class EvmOpcodesBenchmark
             // Seed a larger storage keyspace so SLOAD/SSTORE do not benchmark an empty trie
             // or repeatedly hit the same small hot subset across benchmark iterations.
             UInt256 initialValue = (i & 1) == 0 ? ValueA : ValueB;
-            _stateProvider.Set(new StorageCell(executingAddress, key), ToStorageBytes(initialValue));
+            _stateProvider.Set(new StorageCell(executingAddress, key), initialValue);
         }
     }
 
@@ -814,13 +818,6 @@ public unsafe class EvmOpcodesBenchmark
         }
     }
 
-    private static byte[] ToStorageBytes(in UInt256 value)
-    {
-        byte[] bytes = new byte[KeccakWordSize];
-        value.ToBigEndian(bytes);
-        return bytes;
-    }
-
     /// <summary>
     /// Pre-populates transient storage with the keys that will be accessed in this iteration.
     /// For TLOAD, entries remain so reads hit populated slots.
@@ -830,14 +827,13 @@ public unsafe class EvmOpcodesBenchmark
     private void PreSeedTransientStorageForIteration()
     {
         Address address = _env.ExecutingAccount;
-        byte[] seedValue = ToStorageBytes(ValueA);
         for (int i = 0; i < InnerCount; i++)
         {
             long sequence = ((long)_iterationId * InnerCount) + i;
             int index = (int)(sequence % _dynamicStorageKeys.Length);
             UInt256 key = _dynamicStorageKeys[index];
             StorageCell cell = new(address, key);
-            _stateProvider.SetTransientState(in cell, seedValue);
+            _stateProvider.SetTransientState(in cell, ValueA);
         }
     }
 

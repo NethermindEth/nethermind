@@ -5,7 +5,10 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -14,6 +17,119 @@ namespace Nethermind.Evm.Test.Tracing;
 [Parallelizable(ParallelScope.All)]
 public class CompositeTxTracerTests
 {
+    [Test]
+    public void Storage_instruction_reports_follow_instruction_tracing(
+        [Values] bool instructions, [Values] bool storage)
+    {
+        StorageInstructionTracer observer = new(instructions, storage);
+        ParityLikeTxTracer stateDiff = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
+        using CompositeTxTracer tracer = new(observer, stateDiff);
+        ReadOnlySpan<byte> key = [1, 2];
+        ReadOnlySpan<byte> value = [3, 4];
+
+        tracer.ReportOperationStorageChange(key, value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observer.Reports, Is.EqualTo(instructions ? 1 : 0));
+            Assert.That(observer.Key, Is.EqualTo(instructions ? key.ToArray() : null));
+            Assert.That(observer.Value, Is.EqualTo(instructions ? value.ToArray() : null));
+        }
+    }
+
+    private sealed class StorageInstructionTracer : TxTracer
+    {
+        public int Reports { get; private set; }
+        public byte[]? Key { get; private set; }
+        public byte[]? Value { get; private set; }
+
+        public StorageInstructionTracer(bool instructions, bool storage)
+        {
+            IsTracingInstructions = instructions;
+            IsTracingStorage = storage;
+        }
+
+        public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        {
+            Reports++;
+            Key = key.ToArray();
+            Value = value.ToArray();
+        }
+    }
+
+    [Test]
+    public void InstructionMask_WhenSiblingNeedsSnapshots_RequiresFullTracing(
+        [Values] bool stack, [Values] bool memory, [Values] bool returnData)
+    {
+        ITxTracer filtered = Substitute.For<ITxTracer, IInstructionTracingFilter>();
+        filtered.IsTracingInstructions.Returns(true);
+        ((IInstructionTracingFilter)filtered).InstructionMask.Returns(UInt256.One);
+        ITxTracer observer = Substitute.For<ITxTracer>();
+        observer.IsTracingStack.Returns(stack);
+        observer.IsTracingMemory.Returns(memory);
+        observer.IsTracingReturnData.Returns(returnData);
+        using CompositeTxTracer tracer = new(filtered, observer);
+
+        Assert.That(tracer.InstructionMask, Is.EqualTo(stack || memory || returnData ? UInt256.MaxValue : UInt256.One));
+    }
+
+    [Test]
+    public void InstructionMask_WhenCancellationForcesSnapshots_RequiresFullTracing(
+        [Values] bool stack, [Values] bool memory, [Values] bool returnData, [Values] bool instructions)
+    {
+        ITxTracer filtered = Substitute.For<ITxTracer, IInstructionTracingFilter>();
+        filtered.IsTracingInstructions.Returns(true);
+        ((IInstructionTracingFilter)filtered).InstructionMask.Returns(UInt256.One);
+        using CancellationTxTracer tracer = new(filtered)
+        {
+            IsTracingStack = stack,
+            IsTracingMemory = memory,
+            IsTracingReturnData = returnData,
+            IsTracingInstructions = instructions,
+        };
+
+        Assert.That(tracer.InstructionMask, Is.EqualTo(stack || memory || returnData || instructions ? UInt256.MaxValue : UInt256.One));
+    }
+
+    [Test]
+    public void StartOperation_WhenRequirementsChange_PreservesOtherTracers(
+        [Values] bool otherStack, [Values] bool otherMemory)
+    {
+        ITxTracer changing = Substitute.For<ITxTracer>();
+        changing.IsTracingInstructions.Returns(true);
+        changing.IsTracingStack.Returns(true);
+        changing.IsTracingMemory.Returns(true);
+        changing.When(tracer => tracer.StartOperation(0, Instruction.ADD, 100, null!)).Do(_ =>
+        {
+            changing.IsTracingStack.Returns(false);
+            changing.IsTracingMemory.Returns(false);
+        });
+        ITxTracer other = Substitute.For<ITxTracer>();
+        other.IsTracingStack.Returns(otherStack);
+        other.IsTracingMemory.Returns(otherMemory);
+        using CompositeTxTracer tracer = new(new CompositeTxTracer(changing), other);
+
+        tracer.StartOperation(0, Instruction.ADD, 100, null!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.IsTracingStack, Is.EqualTo(otherStack));
+            Assert.That(tracer.IsTracingMemory, Is.EqualTo(otherMemory));
+        }
+    }
+
+    [Test]
+    public void Forwards_action_gas_only_to_action_tracers([Values] bool tracingActions, [Values] bool cancellation)
+    {
+        ITxTracer inner = Substitute.For<ITxTracer>();
+        inner.IsTracingActions.Returns(tracingActions);
+        using ITxTracer tracer = cancellation ? new CancellationTxTracer(inner) : new CompositeTxTracer(inner);
+
+        tracer.ReportActionRemainingGas(1234);
+
+        inner.Received(tracingActions ? 1 : 0).ReportActionRemainingGas(1234);
+    }
+
     [Test]
     public void Aggregates_receipt_log_requirements([Values] bool firstRequiresLogs, [Values] bool secondRequiresLogs)
     {

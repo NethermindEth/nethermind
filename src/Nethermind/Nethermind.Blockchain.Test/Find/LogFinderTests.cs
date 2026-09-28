@@ -6,7 +6,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
@@ -339,22 +338,22 @@ public class LogFinderTests
         Assert.That(logs.Length, Is.EqualTo(expectedCount));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
+    [Test]
     [NonParallelizable]
-    public async Task Throw_log_finder_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
+    public void FindLogs_WhenEnumerated_ObservesCancellation([Values] bool cancelBeforeEnumeration)
     {
-        TimeSpan timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
-        using CancellationTokenSource cancellationTokenSource = new(timeout);
+        using CancellationTokenSource cancellationTokenSource = new();
         CancellationToken cancellationToken = cancellationTokenSource.Token;
         _logFinder = CreateLogFinder();
         LogFilter logFilter = AllBlockFilter().Build();
         IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter, cancellationToken);
 
-        await Task.Delay(timeout * waitTime);
+        if (cancelBeforeEnumeration) cancellationTokenSource.Cancel();
 
-        Action action = () => _ = logs.ToArray();
+        FilterLog[] result = [];
+        Action action = () => result = logs.ToArray();
 
-        if (waitTime > 1)
+        if (cancelBeforeEnumeration)
         {
             Assert.That(action, Throws
                 .Exception.InstanceOf<OperationCanceledException>()
@@ -364,83 +363,35 @@ public class LogFinderTests
         else
         {
             Assert.DoesNotThrow(action);
+            Assert.That(result, Has.Length.EqualTo(5), "uncancelled enumeration must return every fixture log");
         }
     }
 
-    [TestCase("Empty index",
-        1UL, 2UL,
-        null, null,
-        null, null
-    )]
-    [TestCase("No intersection, left",
-        1UL, 2UL,
-        4, 6,
-        null, null
-    )]
-    [TestCase("No intersection, adjacent left",
-        1UL, 3UL,
-        4, 6,
-        null, null
-    )]
-    [TestCase("1 block intersection, left",
-        1UL, 4UL,
-        4, 6,
-        4, 4
-    )]
-    [TestCase("Partial intersection, left",
-        1UL, 5UL,
-        4, 6,
-        4, 5
-    )]
-    [TestCase("Full containment, border right",
-        1UL, 6UL,
-        4, 6,
-        4, 6
-    )]
-    [TestCase("Full containment",
-        1UL, 9UL,
-        4, 6,
-        4, 6
-    )]
-    [TestCase("Full containment, border left",
-        4UL, 9UL,
-        4, 6,
-        4, 6
-    )]
-    [TestCase("Partial intersection, right",
-        5UL, 9UL,
-        4, 6,
-        5, 6
-    )]
-    [TestCase("1 block intersection, right",
-        6UL, 9UL,
-        4, 6,
-        6, 6
-    )]
-    [TestCase("No intersection, adjacent right",
-        7UL, 9UL,
-        4, 6,
-        null, null
-    )]
-    [TestCase("No intersection, right",
-        8UL, 9UL,
-        4, 6,
-        null, null
-    )]
-    public void query_intersected_range_from_log_index(string name,
-        ulong from, ulong to,
-        int? indexFrom, int? indexTo,
-        int? exFrom, int? exTo
-    )
+    private static IEnumerable<TestCaseData> LogIndexRangeCases()
+    {
+        yield return Case("Empty index", 1UL, 2UL, null, null, null, null);
+        yield return Case("No intersection, left", 1UL, 2UL, 4, 6, null, null);
+        yield return Case("No intersection, adjacent left", 1UL, 3UL, 4, 6, null, null);
+        yield return Case("1 block intersection, left", 1UL, 4UL, 4, 6, 4, 4);
+        yield return Case("Partial intersection, left", 1UL, 5UL, 4, 6, 4, 5);
+        yield return Case("Full containment, border right", 1UL, 6UL, 4, 6, 4, 6);
+        yield return Case("Full containment", 1UL, 9UL, 4, 6, 4, 6);
+        yield return Case("Full containment, border left", 4UL, 9UL, 4, 6, 4, 6);
+        yield return Case("Partial intersection, right", 5UL, 9UL, 4, 6, 5, 6);
+        yield return Case("1 block intersection, right", 6UL, 9UL, 4, 6, 6, 6);
+        yield return Case("No intersection, adjacent right", 7UL, 9UL, 4, 6, null, null);
+        yield return Case("No intersection, right", 8UL, 9UL, 4, 6, null, null);
+
+        static TestCaseData Case(string name, ulong from, ulong to, int? indexFrom, int? indexTo, int? exFrom, int? exTo) =>
+            new TestCaseData(from, to, indexFrom, indexTo, exFrom, exTo).SetName($"{{m}}({name})");
+    }
+
+    [TestCaseSource(nameof(LogIndexRangeCases))]
+    public void query_intersected_range_from_log_index(ulong from, ulong to, int? indexFrom, int? indexTo, int? exFrom, int? exTo)
     {
         SetUp(true, chainLength: 10);
 
-        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
-        logIndexStorage.Enabled.Returns(true);
-        logIndexStorage.MinBlockNumber.Returns(indexFrom);
-        logIndexStorage.MaxBlockNumber.Returns(indexTo);
-        logIndexStorage.GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>())
-            .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
+        ILogIndexStorage logIndexStorage = CreateLogIndexStorage(indexFrom, indexTo);
 
         Address address = TestItem.AddressA;
         BlockHeader fromHeader = Build.A.BlockHeader.WithNumber(from).TestObject;
@@ -450,10 +401,7 @@ public class LogFinderTests
             .WithAddress(address)
             .Build();
 
-        IndexedLogFinder logFinder = new(
-            _blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery,
-            logIndexStorage, minBlocksToUseIndex: 1
-        );
+        IndexedLogFinder logFinder = CreateIndexedLogFinder(logIndexStorage);
         _ = logFinder.FindLogs(filter, fromHeader, toHeader).ToArray();
 
         if (exTo is not null && exFrom is not null)
@@ -616,6 +564,23 @@ public class LogFinderTests
     }
 
     [Test]
+    public void Should_ConsultTheIndex_OnALaterPollOfAStoredFilter_OnceTheIndexCoversTheRange()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index, indexFrom: null, lowestStored: 1UL);
+        LogFilter stored = BoundaryFilter();
+
+        _ = finder.FindLogs(stored, BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray();
+        index.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
+
+        index.MinBlockNumber.Returns(0);
+        index.MaxBlockNumber.Returns(BoundaryTo);
+
+        _ = finder.FindLogs(stored, BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray();
+
+        index.Received().GetEnumerator(TestItem.AddressA, BoundaryFrom, BoundaryTo);
+    }
+
+    [Test]
     public void Should_FallBackToThePlainScan_ForAnAddressLessFilter()
     {
         IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index);
@@ -722,6 +687,20 @@ public class LogFinderTests
 
     private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>
         new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery);
+
+    private IndexedLogFinder CreateIndexedLogFinder(ILogIndexStorage logIndexStorage) =>
+        new(_blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, logIndexStorage, minBlocksToUseIndex: 1);
+
+    private static ILogIndexStorage CreateLogIndexStorage(int? indexFrom, int? indexTo)
+    {
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.Enabled.Returns(true);
+        logIndexStorage.MinBlockNumber.Returns(indexFrom);
+        logIndexStorage.MaxBlockNumber.Returns(indexTo);
+        logIndexStorage.GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => Array.Empty<int>().Cast<int>().GetEnumerator());
+        return logIndexStorage;
+    }
 
     private PersistentReceiptStorage CreateCompactEncodedReceiptStorage()
     {

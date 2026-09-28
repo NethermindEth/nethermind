@@ -89,7 +89,7 @@ public class StartupTreeFixerTests
     public async Task Suggesting_blocks_works_correctly_after_processor_restart([Values(0ul, 1ul, 2ul, 4ul, 5ul, 6ul, 65ul)] ulong suggestedBlocksAmount)
     {
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev, testTimeout: Timeout.MaxTestTime * 4).Build();
-        await testRpc.BlockchainProcessor.StopAsync();
+        await testRpc.BlockProcessingQueue.StopAsync();
         IBlockTree tree = testRpc.BlockTree;
         ulong startingBlockNumber = tree.Head!.Number;
 
@@ -115,7 +115,7 @@ public class StartupTreeFixerTests
     public async Task Fixer_should_not_suggest_block_without_state([Values(0ul, 1ul, 2ul, 6ul)] ulong suggestedBlocksAmount)
     {
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-        await testRpc.BlockchainProcessor.StopAsync();
+        await testRpc.BlockProcessingQueue.StopAsync();
         IBlockTree tree = testRpc.BlockTree;
 
         SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
@@ -133,7 +133,7 @@ public class StartupTreeFixerTests
     public async Task Fixer_should_not_suggest_block_with_null_block()
     {
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-        await testRpc.BlockchainProcessor.StopAsync();
+        await testRpc.BlockProcessingQueue.StopAsync();
         IBlockTree tree = testRpc.BlockTree;
 
         SuggestNumberOfBlocks(tree, 1ul);

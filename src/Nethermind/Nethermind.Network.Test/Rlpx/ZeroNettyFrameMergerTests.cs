@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
@@ -8,6 +9,7 @@ using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
@@ -75,6 +77,133 @@ public class ZeroNettyFrameMergerTests
         output.WriteBytes(payload);
         output.WriteZero(paddingSize);
         return output;
+    }
+
+    [Test]
+    public void Decodes_encrypted_packets_across_socket_read_boundaries([Values(-1, 0, 1, 17, 4096)] int readSize, [Values] bool combinedEncoder)
+    {
+        (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
+        using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, b);
+        EmbeddedChannel outbound = combinedEncoder
+            ? new(new ZeroPacketSplitter(new FrameCipher(a.AesSecret), outboundMac))
+            : new(new ZeroFrameEncoder(new FrameCipher(a.AesSecret), outboundMac), new ZeroPacketSplitter());
+        EmbeddedChannel inbound = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac), new ZeroFrameMerger(LimboLogs.Instance));
+        byte[][] payloads = [Enumerable.Range(0, 31).Select(i => (byte)i).ToArray(),
+            Enumerable.Range(0, 2050).Select(i => (byte)i).ToArray(), [99]];
+        using DisposableByteBuffer wire = Unpooled.Buffer().AsDisposable();
+        Random random = new(13592);
+        try
+        {
+            for (int i = 0; i < payloads.Length; i++)
+            {
+                IByteBuffer message = Unpooled.Buffer();
+                message.WriteByte(i + 2);
+                message.WriteBytes(payloads[i]);
+                outbound.WriteOutbound(message);
+                using DisposableByteBuffer encoded = outbound.ReadOutbound<IByteBuffer>().AsDisposable();
+                wire.WriteBytes(encoded);
+            }
+
+            while (wire.IsReadable())
+            {
+                int chunkSize = readSize switch
+                {
+                    -1 => wire.ReadableBytes,
+                    0 => random.Next(1, 1025),
+                    _ => readSize
+                };
+                inbound.WriteInbound(wire.ReadBytes(Math.Min(chunkSize, wire.ReadableBytes)));
+            }
+
+            for (int i = 0; i < payloads.Length; i++)
+            {
+                ZeroPacket packet = inbound.ReadInbound<ZeroPacket>();
+                Assert.That(packet, Is.Not.Null);
+                try
+                {
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(packet.PacketType, Is.EqualTo(i + 2));
+                        Assert.That(packet.Content.AsSpan().ToArray(), Is.EqualTo(payloads[i]));
+                    }
+                }
+                finally
+                {
+                    packet.Release();
+                }
+            }
+            Assert.That(inbound.ReadInbound<ZeroPacket>(), Is.Null);
+        }
+        finally
+        {
+            outbound.FinishAndReleaseAll();
+            inbound.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
+    public void Transfers_frame_buffer_and_preserves_retained_packet([Values(0, 1, 15, 16, 100)] int payloadLength)
+    {
+        EmbeddedChannel channel = new(new ZeroFrameMerger(LimboLogs.Instance));
+        byte[] payload = Enumerable.Range(0, payloadLength + 1).Select(i => (byte)(i + 2)).ToArray();
+        IByteBuffer frame = BuildFrame(payload, contextId: 0);
+        ZeroPacket packet = null;
+        try
+        {
+            Assert.That(channel.WriteInbound(frame), Is.True);
+            packet = channel.ReadInbound<ZeroPacket>();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(packet.Content, Is.SameAs(frame), "the complete frame needs no slice wrapper");
+                Assert.That(packet.PacketType, Is.EqualTo(2));
+                Assert.That(packet.Content.AsSpan().ToArray(), Is.EqualTo(payload[1..]));
+                Assert.That(frame.ReferenceCount, Is.EqualTo(1));
+            }
+
+            channel.WriteInbound(BuildFrame([3, 42], contextId: 0));
+            channel.FinishAndReleaseAll();
+            Assert.That(packet.Content.AsSpan().ToArray(), Is.EqualTo(payload[1..]),
+                "a downstream owner may retain the packet across subsequent reads and channel shutdown");
+        }
+        finally
+        {
+            packet?.Release();
+            channel.FinishAndReleaseAll();
+        }
+        Assert.That(frame.ReferenceCount, Is.Zero);
+    }
+
+    [Test]
+    public void Releases_wrong_length_frame_and_accepts_next_message([Values(-1, 1)] int lengthDelta)
+    {
+        EmbeddedChannel channel = new(new ZeroFrameMerger(LimboLogs.Instance));
+        IByteBuffer frame = BuildFrame([2, 42], contextId: 0);
+        if (lengthDelta < 0) frame.SetWriterIndex(frame.WriterIndex - 1);
+        else frame.WriteByte(0);
+        try
+        {
+            Assert.That(() => channel.WriteInbound(frame), Throws.InstanceOf<CorruptedFrameException>());
+            Assert.That(frame.ReferenceCount, Is.Zero);
+            Assert.That(channel.WriteInbound(BuildFrame([3, 99], contextId: 0)), Is.True);
+            ZeroPacket recovered = channel.ReadInbound<ZeroPacket>();
+            try
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(recovered.PacketType, Is.EqualTo(3));
+                    Assert.That(recovered.Content.ReadByte(), Is.EqualTo(99));
+                }
+            }
+            finally
+            {
+                recovered.Release();
+            }
+        }
+        finally
+        {
+            channel.FinishAndReleaseAll();
+        }
     }
 
     [Test]

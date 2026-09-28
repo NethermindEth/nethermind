@@ -150,12 +150,16 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
     private async Task StartChannel()
     {
+        CancellationTokenSource? cts = null;
         try
         {
             while (await _taskQueue.Reader.WaitToReadAsync(_mainCancellationTokenSource.Token))
             {
-                // Create fresh CancellationTokenSource for current block processing
-                CancellationTokenSource cts = CreateTaskCancellationTokenSource();
+                if (cts is null || cts.IsCancellationRequested)
+                {
+                    cts?.Dispose();
+                    cts = CreateTaskCancellationTokenSource();
+                }
                 try
                 {
                     CancellationToken token = cts.Token;
@@ -196,15 +200,9 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 {
                     if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
                 }
-                finally
-                {
-                    cts.Dispose();
-                }
-
                 continue;
 
             WaitForBlockProcessing:
-                // cts already disposed by the finally block above (goto exits the try)
                 // Wait for block processing to finish, but wake up periodically to drain expired tasks
                 TaskCompletionSource? signal = _blockProcessingDoneSignal;
                 if (signal is not null && !signal.Task.IsCompleted)
@@ -215,6 +213,10 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         }
         catch (OperationCanceledException) when (_mainCancellationTokenSource.IsCancellationRequested)
         {
+        }
+        finally
+        {
+            cts?.Dispose();
         }
     }
 
@@ -386,9 +388,8 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             {
                 TimeSpan timeToComplete = Deadline - DateTimeOffset.UtcNow;
                 CancellationToken token;
-                if (timeToComplete <= TimeSpan.Zero)
+                if (timeToComplete <= TimeSpan.Zero || cancellationToken.IsCancellationRequested)
                 {
-                    // Cancel immediately. Got no time left.
                     token = CancellationTokenExtensions.AlreadyCancelledToken;
                 }
                 else
@@ -434,9 +435,10 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                                 Thread thread = new (ProcessBackgroundTasks)
                                 {
                                     IsBackground = true,
-                                    Priority = ThreadPriority.BelowNormal,
                                     Name = $"Nethermind Background {i + 1}",
                                 };
+                                // Assume the default Linux policy (SCHED_OTHER), where priority changes only add native calls.
+                                if (!OperatingSystem.IsLinux()) thread.Priority = ThreadPriority.BelowNormal;
                                 thread.Start();
                                 return thread;
                             })];

@@ -3,11 +3,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Tracing;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+using Newtonsoft.Json.Linq;
+using NSubstitute;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -15,9 +22,11 @@ using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -27,6 +36,64 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task Debug_traceBlock_SuppliedBody_DoesNotUseIndexedHeaderState()
+    {
+        IParallelBlockTracer parallel = Substitute.For<IParallelBlockTracer>();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton(parallel));
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block original = await chain.AddBlock(transactions);
+        GethTraceOptions options = new() { Tracer = "prestateTracer" };
+        string baseline = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", original.Hash, options);
+        Assert.That(parallel.ReceivedCalls(), Is.Not.Empty, "the RPC tracer must be wired to the indexed path for verified blocks");
+        parallel.ClearReceivedCalls();
+        Transaction[] changed = (Transaction[])original.Transactions.Clone();
+        changed[0] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce)
+            .WithValue(100).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block supplied = new(original.Header.Clone(), changed, original.Uncles, original.Withdrawals);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlock", Rlp.Encode(supplied).ToString(), options);
+        JToken expected = JToken.Parse(baseline);
+        JToken actual = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["error"], Is.Null);
+            Assert.That(parallel.ReceivedCalls(), Is.Empty, "an unverified body must never open indexed prefixes");
+            Assert.That(supplied.Hash, Is.EqualTo(original.Hash));
+        }
+        string sender = TestItem.AddressB.ToString();
+        UInt256 before = Bytes.FromHexString(expected["result"]![1]!["result"]![sender]!["balance"]!.Value<string>()!).ToUInt256();
+        UInt256 after = Bytes.FromHexString(actual["result"]![1]!["result"]![sender]!["balance"]!.Value<string>()!).ToUInt256();
+        Assert.That(after, Is.EqualTo(before - 99), "the second transaction must see the modified first transfer, not the indexed prefix");
+    }
+
+    [TestCase("debug_traceBlockByHash")]
+    [TestCase("debug_traceBlockByNumber")]
+    public async Task Debug_traceBlock_preimage_results_preserve_transaction_hash(string method)
+    {
+        using Context context = await Context.Create();
+        ulong nonce = context.Blockchain.WorldStateManager.GlobalStateReader.GetNonce(context.Blockchain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce)
+            .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await context.Blockchain.AddBlock(transaction);
+        object selector = method == "debug_traceBlockByHash" ? block.Hash! : block.Number;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new { tracer = "keccak256PreimageTracer" });
+        JToken result = JToken.Parse(response);
+        Assert.That(result["error"], Is.Null, response);
+        Assert.That(result["result"]!.Count(), Is.EqualTo(block.Transactions.Length));
+        for (int i = 0; i < block.Transactions.Length; i++)
+            Assert.That(result["result"]![i]!["txHash"]!.Value<string>(), Is.EqualTo(block.Transactions[i].Hash!.ToString()));
+    }
+
     [Test]
     public async Task Debug_traceBlock_with_invalid_rlp()
     {
@@ -213,6 +280,28 @@ public partial class DebugRpcModuleTests
             """
         )
         { TestName = "Contract with " + Native4ByteTracer.FourByteTracer };
+
+        yield return new TestCaseData(
+            transactions,
+            new GethTraceOptions { Tracer = NativeNoopTracer.NoopTracer },
+            """
+            {
+                "jsonrpc": "2.0",
+                "result": [
+                    {
+                        "result": {},
+                        "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
+                    },
+                    {
+                        "result": {},
+                        "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
+                    }
+                ],
+                "id": 67
+            }
+            """
+        )
+        { TestName = "Contract with " + NativeNoopTracer.NoopTracer };
 
         yield return new TestCaseData(
             transactions,

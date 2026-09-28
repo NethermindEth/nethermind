@@ -426,6 +426,7 @@ public class ProofRpcModuleCallTests
             new TrieStoreScopeProvider(
                 new RawTrieStore(proof.Witness.CreateNodeStorage()),
                 proof.Witness.CreateCodeDb(),
+                UnavailableStateHeaderProvider.Instance,
                 blockchain.LogManager),
             blockchain.LogManager);
 
@@ -437,7 +438,7 @@ public class ProofRpcModuleCallTests
         Assert.That(reconstructedCode, Is.EqualTo(runtimeCode),
             "the contract bytecode must be reconstructible from witness.Codes");
 
-        UInt256 slot0 = new(statelessWorld.Get(new StorageCell(contractAddress, 0)), isBigEndian: true);
+        statelessWorld.Get(new StorageCell(contractAddress, 0), out UInt256 slot0);
         Assert.That(slot0, Is.EqualTo((UInt256)0xAB),
             "slot 0 must be reachable through witness state nodes");
     }
@@ -562,6 +563,7 @@ public class ProofRpcModuleCallTests
             new TrieStoreScopeProvider(
                 new RawTrieStore(proof.Witness.CreateNodeStorage()),
                 proof.Witness.CreateCodeDb(),
+                UnavailableStateHeaderProvider.Instance,
                 blockchain.LogManager),
             blockchain.LogManager);
         using IDisposable scope = statelessWorld.BeginScope(witnessHeader);

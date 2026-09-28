@@ -78,10 +78,12 @@ public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
 
         RlpBehaviors behavior = (receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)
             | RlpBehaviors.SkipTypedWrapping;
-        return new IndexedTrieRoot.Calculator<TxReceipt, ReceiptEncoder>(txReceipts, new(receiptDecoder, behavior)).Calculate();
+        return new IndexedTrieRoot.Calculator<TxReceipt, ReceiptEncoder>(txReceipts, new(receiptDecoder, behavior))
+            .Calculate(minItemsForParallel: IndexedTrieRoot.MinReceiptsForParallelRootHash);
     }
     private readonly struct ReceiptEncoder(ReceiptMessageDecoder decoder, RlpBehaviors behavior) : IndexedTrieRoot.IValueEncoder<TxReceipt>
     {
+        public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.MultiBlock;
         public ReadOnlySpan<byte> GetEncodedValue(TxReceipt item) => default;
         public int GetLength(TxReceipt item) => decoder.GetLength(item, behavior);
         public void Encode<TWriter>(ref TWriter writer, TxReceipt item) where TWriter : struct, IRlpWriteBackend, allows ref struct => decoder.Encode(ref writer, item, behavior);

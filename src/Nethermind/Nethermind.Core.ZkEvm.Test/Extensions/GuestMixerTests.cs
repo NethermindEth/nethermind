@@ -182,13 +182,15 @@ public class GuestMixerTests
         Assert.That(after, Has.Count.EqualTo(collisions.Count), "replacement seed");
     }
 
-    /// <summary>Checks the 32-byte mixer against an independent widening-product reference.</summary>
+    private static readonly UInt256[] ReferenceSeeds = [UInt256.Zero, UInt256.MaxValue, SeedGuestHashes.Seed, SecondSeed];
+
+    /// <summary>Checks the 32-byte mixer against a reference with BigInteger products and finalization.</summary>
     [Test]
-    public void Guest_word_mixer_matches_reference()
+    public void Guest_word_mixer_matches_reference([ValueSource(nameof(ReferenceSeeds))] UInt256 seed)
     {
-        UInt256 seed = SeedGuestHashes.Seed;
         SpanExtensions.SeedHashes(seed);
-        foreach (UInt256 value in new[] { UInt256.Zero, UInt256.One, UInt256.MaxValue, SecondSeed })
+        foreach (UInt256 value in new[] { UInt256.Zero, UInt256.One, UInt256.MaxValue, SecondSeed,
+            new UInt256(0xffffffff00000000UL, 0xffffffffUL, 0xffffffff00000000UL, 0xffffffffUL) })
         {
             ulong expected = ReferenceMix(value, seed);
             byte[] bytes = value.ToLittleEndian();

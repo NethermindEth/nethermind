@@ -78,13 +78,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private Task _pruningTask = Task.CompletedTask;
     private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
-    private readonly IFinalizedStateProvider _finalizedStateProvider;
+    private readonly IStateHeaderProvider _finalizedStateProvider;
 
     public TrieStore(
         INodeStorage nodeStorage,
         IPruningStrategy pruningStrategy,
         IPersistenceStrategy persistenceStrategy,
-        IFinalizedStateProvider finalizedStateProvider,
+        IStateHeaderProvider finalizedStateProvider,
         IPruningConfig pruningConfig,
         ILogManager logManager)
     {
@@ -807,7 +807,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             using ArrayPoolListRef<BlockCommitSet> commitSetsAtFinalizedBlock = _commitSetQueue.GetCommitSetsAtBlockNumber(effectiveFinalizedBlockNumber);
 
             BlockCommitSet? finalizedBlockCommitSet = null;
-            Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedStateRootAt(effectiveFinalizedBlockNumber);
+            Hash256? finalizedStateRoot = _finalizedStateProvider.GetFinalizedHeader(effectiveFinalizedBlockNumber)?.StateRoot;
             if (finalizedStateRoot is not null)
             {
                 foreach (BlockCommitSet blockCommitSet in commitSetsAtFinalizedBlock)
@@ -1473,7 +1473,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     ) : IBlockCommitter
     {
         internal TrieNode? StateRoot;
-        private int _concurrency = Environment.ProcessorCount;
 
         public void Dispose() => trieStore.FinishBlockCommit(commitSet, StateRoot);
 
@@ -1483,18 +1482,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             return new PruningTrieStoreCommitter(this, trieStore, commitSet.BlockNumber, address, root);
         }
 
-        public bool TryRequestConcurrencyQuota()
-        {
-            if (Interlocked.Decrement(ref _concurrency) >= 0)
-            {
-                return true;
-            }
-
-            ReturnConcurrencyQuota();
-            return false;
-        }
-
-        public void ReturnConcurrencyQuota() => Interlocked.Increment(ref _concurrency);
+        public bool SupportsParallelCommit => true;
     }
 
     private class PruningTrieStoreCommitter(
@@ -1526,9 +1514,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         public TrieNode CommitNode(ref TreePath path, TrieNode node) =>
             trieStore.CommitAndInsertToDirtyNodes(blockNumber, address, ref path, node);
 
-        public bool TryRequestConcurrentQuota() => blockCommitter.TryRequestConcurrencyQuota();
-
-        public void ReturnConcurrencyQuota() => blockCommitter.ReturnConcurrencyQuota();
+        public bool TryEnableParallelCommit() => true;
     }
 
     internal static class HashHelpers

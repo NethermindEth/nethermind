@@ -232,7 +232,7 @@ namespace Nethermind.Trie.Test
                 _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, _finalizedStateProvider, _pruningConfig, _logManager);
                 _finalizedStateProvider.TrieStore = _trieStore;
                 _stateProvider = new WorldState(
-                    new TrieStoreScopeProvider(_trieStore, _codeDb, _logManager), _logManager);
+                    new TrieStoreScopeProvider(_trieStore, _codeDb, UnavailableStateHeaderProvider.Instance, _logManager), _logManager);
                 _stateReader = new StateReader(_trieStore, _codeDb, _logManager);
                 _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
             }
@@ -355,7 +355,7 @@ namespace Nethermind.Trie.Test
             {
                 _stateProvider.Set(
                     new StorageCell(Address.FromNumber((UInt256)accountIndex), (UInt256)storageKey),
-                    ((UInt256)storageValue).ToBigEndian());
+                    new UInt256(((UInt256)storageValue).ToBigEndian(), isBigEndian: true));
                 return this;
             }
 
@@ -371,7 +371,7 @@ namespace Nethermind.Trie.Test
                 _logger.Info($"READ   STORAGE {accountIndex}.{storageKey}");
                 StorageCell storageCell =
                     new(Address.FromNumber((UInt256)accountIndex), (UInt256)storageKey);
-                _stateProvider.Get(storageCell);
+                _stateProvider.Get(storageCell, out _);
                 return this;
             }
 
@@ -426,6 +426,12 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext BeforePersistedPruneCheck(Action callback)
+            {
+                _pruningStrategy.BeforePersistedPruneCheck = callback;
+                return this;
+            }
+
             public Task StartSyncPruneInBackground() => Task.Run(() => _trieStore.SyncPruneQueue());
 
             public PruningContext DisposeAndRecreate()
@@ -435,7 +441,7 @@ namespace Nethermind.Trie.Test
                 TestFinalizedStateProvider finalizedStateProvider = new(_pruningConfig.PruningBoundary);
                 _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, finalizedStateProvider, _pruningConfig, _logManager);
                 _stateProvider = new WorldState(
-                    new TrieStoreScopeProvider(_trieStore, _codeDb, _logManager), _logManager);
+                    new TrieStoreScopeProvider(_trieStore, _codeDb, UnavailableStateHeaderProvider.Instance, _logManager), _logManager);
                 _stateReader = new StateReader(_trieStore, _codeDb, _logManager);
                 return this;
             }
@@ -466,7 +472,8 @@ namespace Nethermind.Trie.Test
 
             public PruningContext VerifyStorageValue(int account, UInt256 index, int value)
             {
-                Assert.That(_stateProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index)).ToArray(), Is.EqualTo(((UInt256)value).ToBigEndian()));
+                _stateProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index), out UInt256 storageValue1);
+                Assert.That(storageValue1, Is.EqualTo((UInt256)value));
                 return this;
             }
 
@@ -1366,29 +1373,28 @@ namespace Nethermind.Trie.Test
 
             ctx.TurnOnPrune();
 
-            TimeSpan syncPruneCheckTime = TimeSpan.Zero;
-            Task pruneTime = Task.Run(() =>
+            ctx.ExitScope();
+            using ManualResetEventSlim pruningEntered = new(false);
+            using ManualResetEventSlim releasePruning = new(false);
+            ctx.BeforePersistedPruneCheck(() =>
             {
-                long sw = Stopwatch.GetTimestamp();
-                ctx.SyncPruneCheck();
-                ctx.TurnOffPrune();
-                ctx.AssertThatCachedPersistedNodeCountIs(21747L);
-                syncPruneCheckTime = Stopwatch.GetElapsedTime(sw);
+                pruningEntered.Set();
+                Assert.That(releasePruning.Wait(TimeSpan.FromSeconds(30)), Is.True, "the test must release the pruning worker");
             });
-
-            long sw = Stopwatch.GetTimestamp();
-            for (int i = 0; i < 1000; i++)
+            Task pruning = Task.Run(() => ctx.SyncPruneCheck().TurnOffPrune());
+            try
             {
-                ctx.ExitScope();
-                ctx.EnterScope();
+                Assert.That(pruningEntered.Wait(TimeSpan.FromSeconds(30)), Is.True, "pruning must hold its lock before scopes are opened");
+                for (int i = 0; i < 1000; i++)
+                    ctx.EnterScope().ExitScope();
+                Assert.That(pruning.IsCompleted, Is.False, "scopes must open while pruning is still active");
             }
-
-            TimeSpan exitEnterScopeTime = Stopwatch.GetElapsedTime(sw);
-
-            await pruneTime;
-
-            Assert.That(syncPruneCheckTime, Is.LessThan(TimeSpan.FromSeconds(5))); // Does not hang
-            Assert.That(exitEnterScopeTime, Is.LessThan(syncPruneCheckTime)); // Is not blocked by prune
+            finally
+            {
+                releasePruning.Set();
+                await pruning.WaitAsync(TimeSpan.FromSeconds(30));
+            }
+            ctx.AssertThatCachedPersistedNodeCountIs(21747L);
         }
     }
 }

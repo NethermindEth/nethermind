@@ -57,10 +57,10 @@ public class SnapshotCompactorTests
         }
     }
 
-    private static void AssertSlotValueEqual(SlotValue? expected, SlotValue? actual)
+    private static void AssertSlotValueEqual(UInt256? expected, UInt256? actual)
     {
         Assert.That(actual, Is.Not.Null);
-        Assert.That(actual!.Value.AsReadOnlySpan.ToArray(), Is.EqualTo(expected!.Value.AsReadOnlySpan.ToArray()));
+        Assert.That(actual!.Value.ToBigEndian(), Is.EqualTo(expected!.Value.ToBigEndian()));
     }
 
     private static void AssertAccountSame(Account expected, Account? actual)
@@ -108,8 +108,8 @@ public class SnapshotCompactorTests
         TreePath storageNodePath2 = TreePath.FromHexString("5678");
         Hash256 storageNodeHash1 = Keccak.Zero;
         Hash256 storageNodeHash2 = Keccak.Zero;
-        SlotValue slotValue1 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
-        SlotValue slotValue2 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
+        UInt256 slotValue1 = (UInt256)100;
+        UInt256 slotValue2 = (UInt256)200;
 
         // Add accounts
         snapshot.Content.Accounts[address1] = new Account(1, 100);
@@ -144,9 +144,9 @@ public class SnapshotCompactorTests
         AssertAccountSame(new Account(2, 200), account2);
 
         Assert.That(compacted.StoragesCount, Is.EqualTo(2));
-        Assert.That(compacted.TryGetStorage((address1, storageIndex1), out SlotValue? storedSlot1), Is.True);
+        Assert.That(compacted.TryGetStorage((address1, storageIndex1), out UInt256? storedSlot1), Is.True);
         AssertSlotValueEqual(slotValue1, storedSlot1);
-        Assert.That(compacted.TryGetStorage((address2, storageIndex2), out SlotValue? storedSlot2), Is.True);
+        Assert.That(compacted.TryGetStorage((address2, storageIndex2), out UInt256? storedSlot2), Is.True);
         AssertSlotValueEqual(slotValue2, storedSlot2);
 
         Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
@@ -169,8 +169,8 @@ public class SnapshotCompactorTests
         TreePath statePath2 = TreePath.FromHexString("ef01");
         TreePath storageNodePath1 = TreePath.FromHexString("1234");
         TreePath storageNodePath2 = TreePath.FromHexString("5678");
-        SlotValue slotValue1 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
-        SlotValue slotValue2 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
+        UInt256 slotValue1 = (UInt256)100;
+        UInt256 slotValue2 = (UInt256)200;
 
         // First snapshot
         StateId from0 = new(0, Keccak.Zero);
@@ -214,8 +214,8 @@ public class SnapshotCompactorTests
         UInt256 storageIndex = new(1);
         TreePath statePath = TreePath.FromHexString("abcd");
         TreePath storageNodePath = TreePath.FromHexString("1234");
-        SlotValue slotValue1 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
-        SlotValue slotValue2 = new(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
+        UInt256 slotValue1 = (UInt256)100;
+        UInt256 slotValue2 = (UInt256)200;
 
         // First snapshot with initial values
         StateId from0 = new(0, Keccak.Zero);
@@ -250,7 +250,7 @@ public class SnapshotCompactorTests
         AssertAccountSame(new Account(2, 200), account);
 
         Assert.That(compacted.StoragesCount, Is.EqualTo(1));
-        Assert.That(compacted.TryGetStorage((address, storageIndex), out SlotValue? storedSlot), Is.True);
+        Assert.That(compacted.TryGetStorage((address, storageIndex), out UInt256? storedSlot), Is.True);
         AssertSlotValueEqual(slotValue2, storedSlot);
 
         Assert.That(compacted.StateNodesCount, Is.EqualTo(1));
@@ -264,7 +264,7 @@ public class SnapshotCompactorTests
         UInt256 storageIndex = new(1);
         TreePath storagePath = TreePath.FromHexString("1234");
         Hash256 storageHash = Keccak.Zero;
-        SlotValue slotValue = new(new byte[32]);
+        UInt256 slotValue = default;
 
         StateId from0 = new(0, Keccak.Zero);
         StateId to0 = new(1, Keccak.Zero);
@@ -303,7 +303,7 @@ public class SnapshotCompactorTests
         TreePath pSame = TreePath.FromHexString("02");
         TreePath pAfter = TreePath.FromHexString("03");
         TreePath pB = TreePath.FromHexString("04");
-        static SlotValue Slot(byte marker) => new(new byte[] { marker });
+        static UInt256 Slot(byte marker) => (UInt256)marker << 248;
         static TrieNode Node() => new(NodeType.Leaf, Keccak.Zero);
 
         // Block 0 -> 1: A gets a slot/node written before it is ever self-destructed; B is unrelated.
@@ -333,7 +333,7 @@ public class SnapshotCompactorTests
         Assert.That(compacted.TryGetStorageNode((aHash, pBefore), out _), Is.False);
 
         // Written after the last clear: always kept.
-        Assert.That(compacted.TryGetStorage((a, new UInt256(3)), out SlotValue? slotAfter), Is.True);
+        Assert.That(compacted.TryGetStorage((a, new UInt256(3)), out UInt256? slotAfter), Is.True);
         AssertSlotValueEqual(Slot(0xA3), slotAfter);
         Assert.That(compacted.TryGetStorageNode((aHash, pAfter), out _), Is.True);
 
@@ -343,7 +343,7 @@ public class SnapshotCompactorTests
         Assert.That(compacted.TryGetStorageNode((aHash, pSame), out _), Is.EqualTo(slotSameKept));
 
         // Unrelated address is never touched by another address's self-destruct.
-        Assert.That(compacted.TryGetStorage((b, new UInt256(1)), out SlotValue? slotB), Is.True);
+        Assert.That(compacted.TryGetStorage((b, new UInt256(1)), out UInt256? slotB), Is.True);
         AssertSlotValueEqual(Slot(0xBB), slotB);
         Assert.That(compacted.TryGetStorageNode((bHash, pB), out _), Is.True);
     }

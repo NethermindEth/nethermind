@@ -39,12 +39,7 @@ public static partial class EvmInstructions
             return false;
         }
 
-        if (!vm.VmState.Memory.TryLoad(in dataOffset, dataLength, out ReadOnlyMemory<byte> callData))
-        {
-            result = EvmExceptionType.OutOfGas;
-            return true;
-        }
-
+        ReadOnlyMemory<byte> callData = vm.VmState.Memory.LoadAfterGas(in dataOffset, in dataLength);
         TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
         IReleaseSpec spec = vm.Spec;
 
@@ -56,34 +51,38 @@ public static partial class EvmInstructions
             return true;
         }
 
-        if (!(vm.TryRunPrecompileDirectly(precompile, callData, spec, out Result<byte[]> output) && output))
+        ReadOnlyMemory<byte> outputData;
+        if (precompile is IdentityPrecompile)
         {
-            TGasPolicy.ClearExecutionGas(ref childGas);
-            TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
-            vm.ReturnDataBuffer = default;
-            result = stack.PushZero<TTracingInst, OnFlag>();
-            return true;
+            // ID cannot fail and returns its input unchanged, so copy straight into a reusable buffer
+            // rather than allocating an array per call. The data still has to live somewhere this frame
+            // cannot overwrite, because RETURNDATACOPY may read it after the frame writes memory again.
+            outputData = vm.CopyToPrecompileScratch(callData.Span);
+        }
+        else
+        {
+            if (!(vm.TryRunPrecompileDirectly(precompile, callData, spec, out Result<byte[]> output) && output))
+            {
+                TGasPolicy.ClearExecutionGas(ref childGas);
+                TGasPolicy.RestoreChildStateGasOnHalt(ref gas, in childGas);
+                vm.ReturnDataBuffer = default;
+                result = stack.PushZero<TTracingInst, OnFlag>();
+                return true;
+            }
+
+            outputData = output.Data;
         }
 
         vm.WorldState.AddToBalanceAndCreateIfNotExists(target, UInt256.Zero, spec);
 
         TGasPolicy.Refund(ref gas, in childGas);
-
-        ReadOnlyMemory<byte> outputData = output.Data;
         vm.ReturnDataBuffer = outputData;
 
         int copyLength = outputData.Length;
         if (outputLength < (UInt256)copyLength)
             copyLength = (int)outputLength.ToLong();
 
-        if (copyLength > 0)
-        {
-            if (!vm.VmState.Memory.TrySave(in outputOffset, outputData.Span[..copyLength]))
-            {
-                result = EvmExceptionType.OutOfGas;
-                return true;
-            }
-        }
+        vm.VmState.Memory.SaveAfterGas(in outputOffset, outputData.Span[..copyLength]);
 
         result = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
         return true;

@@ -112,7 +112,7 @@ public class Eip8038Tests(bool eip8038Enabled, bool tracing = true, bool cancela
     {
         StorageCell cell = new(Recipient, 0);
         TestState.CreateAccount(Recipient, 1.Ether);
-        TestState.Set(in cell, [originalValue]);
+        TestState.Set(in cell, new UInt256((ReadOnlySpan<byte>)[originalValue], isBigEndian: true));
         TestState.Commit(SpecProvider.GenesisSpec);
         byte[] code = Prepare.EvmCode.PushData(2).PushData(0).Op(Instruction.SSTORE)
             .PushData(originalValue).PushData(0).Op(Instruction.SSTORE).Done;
@@ -129,7 +129,7 @@ public class Eip8038Tests(bool eip8038Enabled, bool tracing = true, bool cancela
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(result.Refund, Is.EqualTo(refund));
             Assert.That(result.GasSpent, Is.EqualTo(spent - Math.Min(spent / 5, refund)));
-            Assert.That(TestState.Get(in cell).ToArray(), Is.EqualTo(new byte[] { originalValue }));
+            AssertStorage(cell, originalValue);
         }
     }
 

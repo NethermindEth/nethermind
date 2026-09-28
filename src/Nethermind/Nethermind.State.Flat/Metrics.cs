@@ -4,6 +4,7 @@
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
+using Nethermind.Core.Threading;
 using NonBlocking;
 
 
@@ -11,6 +12,18 @@ namespace Nethermind.State.Flat;
 
 public static class Metrics
 {
+    private static long _unreadableTransactionChangesetRows;
+
+    [CounterMetric]
+    [Description("Times a transaction changeset row could not be read. Repeated attempts on the same damaged row count separately; tracing falls back to replay.")]
+    public static long UnreadableTransactionChangesetRows
+    {
+        get => Volatile.Read(ref _unreadableTransactionChangesetRows);
+        set => Interlocked.Exchange(ref _unreadableTransactionChangesetRows, value);
+    }
+
+    public static void RecordUnreadableTransactionChangesetRow() => Interlocked.Increment(ref _unreadableTransactionChangesetRows);
+
     [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }
@@ -86,6 +99,65 @@ public static class Metrics
     [Description("Readonly snapshot bundle times")]
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30, LabelNames = ["type"])]
     public static IMetricObserver ReadOnlySnapshotBundleTimes { get; set; } = new NoopMetricObserver();
+
+    // --- Carry-forward cache metrics ---
+    //
+    // Hit/miss counters are the cross-block state-cache signal: they count only reads that already
+    // fell through the pre-block caches and the whole snapshot chain, so the hit rate here is the
+    // share of otherwise-cold reads a cross-block cache answers. Account/slot wipes indicate which
+    // per-kind entry cap is binding (the cache clears that kind wholesale rather than evicting).
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Carry-forward account cache hits")]
+    public static long CarryForwardAccountHits => _carryForwardAccountHits.Sum;
+    private static readonly StripedLong _carryForwardAccountHits = new();
+    internal static void IncrementCarryForwardAccountHits() => _carryForwardAccountHits.Increment();
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Carry-forward account cache misses")]
+    public static long CarryForwardAccountMisses => _carryForwardAccountMisses.Sum;
+    private static readonly StripedLong _carryForwardAccountMisses = new();
+    internal static void IncrementCarryForwardAccountMisses() => _carryForwardAccountMisses.Increment();
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Carry-forward slot cache hits")]
+    public static long CarryForwardSlotHits => _carryForwardSlotHits.Sum;
+    private static readonly StripedLong _carryForwardSlotHits = new();
+    internal static void IncrementCarryForwardSlotHits() => _carryForwardSlotHits.Increment();
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Carry-forward slot cache misses")]
+    public static long CarryForwardSlotMisses => _carryForwardSlotMisses.Sum;
+    private static readonly StripedLong _carryForwardSlotMisses = new();
+    internal static void IncrementCarryForwardSlotMisses() => _carryForwardSlotMisses.Increment();
+
+    [CounterMetric]
+    [Description("Times the carry-forward account cache was cleared wholesale because its entry cap was reached")]
+    public static long CarryForwardAccountWipes => Volatile.Read(ref _carryForwardAccountWipes.Value);
+    private static CacheLinePaddedLong _carryForwardAccountWipes;
+    internal static void IncrementCarryForwardAccountWipes() => Interlocked.Increment(ref _carryForwardAccountWipes.Value);
+
+    [CounterMetric]
+    [Description("Times the carry-forward slot cache was cleared wholesale because its entry cap was reached")]
+    public static long CarryForwardSlotWipes => Volatile.Read(ref _carryForwardSlotWipes.Value);
+    private static CacheLinePaddedLong _carryForwardSlotWipes;
+    internal static void IncrementCarryForwardSlotWipes() => Interlocked.Increment(ref _carryForwardSlotWipes.Value);
+
+    [GaugeMetric]
+    [Description("Accounts currently held by the carry-forward cache")]
+    public static long CarryForwardAccountCount => Volatile.Read(ref _carryForwardAccountCount);
+    private static long _carryForwardAccountCount;
+    internal static void PublishCarryForwardAccountCount(long count) => Volatile.Write(ref _carryForwardAccountCount, count);
+
+    [GaugeMetric]
+    [Description("Slots currently held by the carry-forward cache")]
+    public static long CarryForwardSlotCount => Volatile.Read(ref _carryForwardSlotCount);
+    private static long _carryForwardSlotCount;
+    internal static void PublishCarryForwardSlotCount(long count) => Volatile.Write(ref _carryForwardSlotCount, count);
 
     [DetailedMetric]
     [Description("Time spend compacting snapshots")]
@@ -304,6 +376,14 @@ public static class Metrics
     [GaugeMetric]
     [Description("Highest block whose state history is captured (the contiguous-from-genesis watermark); 0 when history is disabled or empty")]
     public static long FlatHistoryWatermark { get; set; }
+
+    [GaugeMetric]
+    [Description("Lowest block the per-transaction changeset index covers; 0 when the index is disabled or has indexed nothing yet")]
+    public static long TransactionChangesetIndexFrom { get; set; }
+
+    [GaugeMetric]
+    [Description("Highest block the per-transaction changeset index covers; 0 when the index is disabled or has indexed nothing yet")]
+    public static long TransactionChangesetIndexTo { get; set; }
 
     [GaugeMetric]
     [Description("1 when history capture has self-disabled (permanent gap, reorged capture, or repeated write failures); as-of reads above the watermark are refused until the flatHistory DB is resynced")]

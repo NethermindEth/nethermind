@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -22,6 +24,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.Trie.Test.Pruning;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Trie.Test
 {
@@ -30,6 +33,16 @@ namespace Nethermind.Trie.Test
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class TrieTests
     {
+        [Test]
+        public void Oversized_storage_leaf_is_rejected()
+        {
+            StorageTree tree = new(NullTrieStore.Instance, LimboLogs.Instance);
+            byte[] oversized = new byte[33];
+            Array.Fill(oversized, (byte)1);
+            tree.Set(UInt256.One, oversized);
+            Assert.Throws<TrieException>(() => tree.Get(UInt256.One, out _));
+        }
+
         private ILogger _logger;
         private ILogManager _logManager;
         private Random _random = new();
@@ -1160,7 +1173,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), new UInt256(storage, isBigEndian: true));
                         }
                         else if (!account.IsTotallyEmpty)
                         {
@@ -1168,7 +1181,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), new UInt256(storage, isBigEndian: true));
                         }
                     }
                 }
@@ -1198,14 +1211,14 @@ namespace Nethermind.Trie.Test
             {
                 try
                 {
-                    using IDisposable _ = stateProvider.BeginScope(baseBlock);
+                    using IDisposable scope = stateProvider.BeginScope(baseBlock);
                     for (int i = 0; i < addresses.Length; i++)
                     {
                         if (stateProvider.AccountExists(addresses[i]))
                         {
                             for (int j = 0; j < 256; j++)
                             {
-                                stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                                stateProvider.Get(new StorageCell(addresses[i], (UInt256)j), out _);
                             }
                         }
                     }
@@ -1321,13 +1334,140 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
-        public void WarmUpPath_DoesNotThrow_WhenPersistenceServesAnotherVersionOfTheNode()
+        public void Commit_matches_serial_nodes_and_root(
+            [Values(4, 16, 128, 1200)] int count,
+            [Values(0, 4)] int sharedPrefix,
+            [Values] bool skipRoot)
         {
-            StaleWarmerTrieStore trieStore = new();
-            PatriciaTree patriciaTree = new(trieStore, _logManager) { RootHash = StaleWarmerTrieStore.RootHashToWarm };
+            CommitRecorder serial = new(parallel: false);
+            CommitRecorder parallel = new(parallel: true);
+            PatriciaTree expected = CreateCommitTree(serial, count, sharedPrefix);
+            PatriciaTree actual = CreateCommitTree(parallel, count, sharedPrefix);
+            TrieNode root = actual.RootRef!;
+            expected.Commit(skipRoot);
+            actual.Commit(skipRoot);
 
-            Assert.That(() => patriciaTree.WarmUpPath(_keyA), Throws.Nothing);
-            Assert.That(patriciaTree.RootRef!.NodeType, Is.EqualTo(NodeType.Unknown));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual.RootHash, Is.EqualTo(expected.RootHash));
+                Assert.That(parallel.Nodes.Count, Is.EqualTo(serial.Nodes.Count));
+                foreach ((TreePath path, byte[] rlp) in serial.Nodes)
+                    Assert.That(parallel.Nodes.GetValueOrDefault(path), Is.EqualTo(rlp), $"Node at {path}");
+                Assert.That(parallel.DuplicateWrites, Is.Zero);
+                Assert.That(parallel.ActiveAtDispose, Is.Zero);
+                Assert.That(parallel.Disposed, Is.True);
+                Assert.That(serial.Threads.Count, Is.EqualTo(1));
+            }
+
+            // The tree must keep the committer's sealed replacements, not the nodes it handed over.
+            // Commit reloads RootRef from the store, so walk the children of the root held before it.
+            int reachable = 0;
+            AssertKeepsReplacements(root, TreePath.Empty);
+            Assert.That(reachable, Is.EqualTo(parallel.Replacements.Count - (skipRoot ? 0 : 1)));
+
+            void AssertKeepsReplacements(TrieNode node, TreePath path)
+            {
+                if (path.Length > 0)
+                {
+                    if (parallel.Replacements.ContainsKey(node)) reachable++;
+                    Assert.That(parallel.Originals.ContainsKey(node), Is.False, $"Committed original kept at {path}");
+                }
+
+                int children = node.IsBranch ? 16 : node.NodeType == NodeType.Extension ? 1 : 0;
+                for (int i = 0; i < children; i++)
+                {
+                    TreePath childPath = path;
+                    node.AppendChildPath(ref childPath, i);
+                    if (node.GetChildWithChildPath(actual.TrieStore, ref childPath, i, keepChildRef: true) is { } child)
+                        AssertKeepsReplacements(child, childPath);
+                }
+            }
+        }
+
+        [Test]
+        public void Commit_obeys_shared_worker_limit([Values(1, 2)] int concurrency, [Values] bool fail)
+        {
+            CommitRecorder recorder = new(parallel: true, fail);
+            PatriciaTree tree = CreateCommitTree(recorder, 1200, 0);
+            using ParallelUnbalancedWork.WorkerScope scope = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
+            if (fail)
+                Assert.Throws<InvalidOperationException>(() => tree.Commit());
+            else
+                tree.Commit();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(recorder.MaxActive, Is.InRange(1, concurrency));
+                if (concurrency == 1) Assert.That(recorder.Threads.Count, Is.EqualTo(1));
+                Assert.That(recorder.ActiveAtDispose, Is.Zero);
+                Assert.That(recorder.Disposed, Is.True);
+            }
+        }
+
+        private static PatriciaTree CreateCommitTree(CommitRecorder recorder, int count, int sharedPrefix)
+        {
+            IScopedTrieStore store = Substitute.For<IScopedTrieStore>();
+            store.BeginCommit(Arg.Any<TrieNode>(), Arg.Any<WriteFlags>()).Returns(recorder);
+            store.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>())
+                .Returns(call => new TrieNode(NodeType.Unknown, call.Arg<Hash256>()));
+            PatriciaTree tree = new(store, LimboLogs.Instance);
+            Random random = new(42);
+            for (int i = 0; i < count; i++)
+            {
+                byte[] key = new byte[32];
+                random.NextBytes(key);
+                key.AsSpan(0, sharedPrefix).Clear();
+                tree.Set(key, key);
+            }
+            return tree;
+        }
+
+        private sealed class CommitRecorder(bool parallel, bool fail = false) : ICommitter
+        {
+            public readonly ConcurrentDictionary<TreePath, byte[]> Nodes = new();
+            public readonly ConcurrentDictionary<int, byte> Threads = new();
+            public readonly ConcurrentDictionary<TrieNode, byte> Originals = new(ReferenceEqualityComparer.Instance);
+            public readonly ConcurrentDictionary<TrieNode, byte> Replacements = new(ReferenceEqualityComparer.Instance);
+            public int DuplicateWrites;
+            public int ActiveAtDispose;
+            public int MaxActive;
+            public bool Disposed;
+            private int _active;
+
+            public bool TryEnableParallelCommit() => parallel;
+
+            public TrieNode CommitNode(ref TreePath path, TrieNode node)
+            {
+                int active = Interlocked.Increment(ref _active);
+                int previous;
+                do
+                {
+                    previous = Volatile.Read(ref MaxActive);
+                } while (active > previous && Interlocked.CompareExchange(ref MaxActive, active, previous) != previous);
+                try
+                {
+                    Threads.TryAdd(Environment.CurrentManagedThreadId, 0);
+                    if (fail) throw new InvalidOperationException("Commit failed");
+                    if (!Nodes.TryAdd(path, node.FullRlp.AsSpan().ToArray())) Interlocked.Increment(ref DuplicateWrites);
+                    if (!parallel) return node;
+                    TrieNode replacement = node.Clone();
+                    replacement.Keccak = node.Keccak;
+                    replacement.Seal();
+                    Originals.TryAdd(node, 0);
+                    Replacements.TryAdd(replacement, 0);
+                    return replacement;
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _active);
+                }
+            }
+
+            public void Dispose()
+            {
+                ActiveAtDispose = Volatile.Read(ref _active);
+                Disposed = true;
+            }
         }
 
         [Test]
@@ -1359,41 +1499,5 @@ namespace Nethermind.Trie.Test
             Assert.That(task.Wait(TimeSpan.FromSeconds(10)), Is.True, "Commit deadlocked on bounded scheduler");
         }
 
-        /// <summary>
-        /// A path-keyed store that answers a warmer read with the RLP of another version of the node at that path,
-        /// which is what the flat DB does when the warmer runs ahead of, or behind, the live reads.
-        /// </summary>
-        private class StaleWarmerTrieStore : IScopedTrieStore
-        {
-            public static readonly Hash256 RootHashToWarm = Keccak.Compute("root to warm");
-
-            private readonly byte[] _rlpOfAnotherNode;
-
-            public StaleWarmerTrieStore()
-            {
-                TrieNode leaf = TrieNodeFactory.CreateLeaf([0x1, 0x2], new byte[32]);
-                TreePath path = TreePath.Empty;
-                leaf.ResolveKey(NullTrieNodeResolver.Instance, ref path);
-                _rlpOfAnotherNode = leaf.FullRlp.ToArray()!;
-            }
-
-            public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
-            {
-                TrieNode node = new(NodeType.Unknown, hash);
-                node.MarkWarmerOwned();
-                return node;
-            }
-
-            public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _rlpOfAnotherNode;
-
-            public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _rlpOfAnotherNode;
-
-            public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => this;
-
-            public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
-
-            public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-                throw new NotSupportedException();
-        }
     }
 }

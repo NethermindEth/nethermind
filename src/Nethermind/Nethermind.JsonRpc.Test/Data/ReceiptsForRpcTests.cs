@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             UInt256 effectiveGasPrice = new(5526);
             ReceiptForRpc receiptForRpc = new(txHash, receipt1, 0, new(effectiveGasPrice));
-            long?[] indexes = receiptForRpc.Logs.Select(static log => log.LogIndex).ToArray();
+            long?[] indexes = receiptForRpc.Logs!.Select(static log => log.LogIndex).ToArray();
             long?[] expected = { 0, 1, 2 };
 
             Assert.That(indexes, Is.EqualTo(expected));
@@ -92,6 +92,53 @@ namespace Nethermind.JsonRpc.Test.Data
 
             using JsonDocument document = JsonDocument.Parse(serialized);
             Assert.That(document.RootElement.GetProperty("root").GetString(), Is.EqualTo(expectedRoot));
+        }
+
+        [Test]
+        public void Receipt_with_no_logs_survives_the_converter_round_trip()
+        {
+            // Write emits "logs": null for an empty log set, and the deserializer honours it.
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            EthereumJsonSerializer serializer = new(new JsonConverter[] { new TxReceiptConverter() });
+
+            TxReceipt? roundTripped = serializer.Deserialize<TxReceipt>(serializer.Serialize(receipt));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(roundTripped!.Logs, Is.Empty);
+                Assert.That(roundTripped.BlockGasUsed, Is.EqualTo(10));
+                Assert.That(roundTripped.ExecutionGasUsed, Is.EqualTo(11));
+                Assert.That(roundTripped.StorageGasUsed, Is.EqualTo(12));
+            }
+        }
+
+        // blockGasUsed is gated on its own value while executionGasUsed/storageGasUsed are written as a pair,
+        // so a zero of the pair is emitted explicitly where a zero blockGasUsed is omitted.
+        [TestCase(0ul, 0ul, 0ul)]
+        [TestCase(10ul, 11ul, 0ul)]
+        [TestCase(0ul, 0ul, 12ul)]
+        public void Block_gas_breakdown_survives_the_converter_round_trip(ulong blockGasUsed, ulong executionGasUsed, ulong storageGasUsed)
+        {
+            TxReceipt receipt = CreateDiagnosticReceipt();
+            receipt.BlockGasUsed = blockGasUsed;
+            receipt.ExecutionGasUsed = executionGasUsed;
+            receipt.StorageGasUsed = storageGasUsed;
+            EthereumJsonSerializer serializer = new(new JsonConverter[] { new TxReceiptConverter() });
+
+            string serialized = serializer.Serialize(receipt);
+            TxReceipt? roundTripped = serializer.Deserialize<TxReceipt>(serialized);
+
+            using JsonDocument document = JsonDocument.Parse(serialized);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(document.RootElement.TryGetProperty("blockGasUsed", out _), Is.EqualTo(blockGasUsed > 0));
+                bool pairEmitted = executionGasUsed > 0 || storageGasUsed > 0;
+                Assert.That(document.RootElement.TryGetProperty("executionGasUsed", out _), Is.EqualTo(pairEmitted));
+                Assert.That(document.RootElement.TryGetProperty("storageGasUsed", out _), Is.EqualTo(pairEmitted));
+                Assert.That(roundTripped!.BlockGasUsed, Is.EqualTo(blockGasUsed));
+                Assert.That(roundTripped.ExecutionGasUsed, Is.EqualTo(executionGasUsed));
+                Assert.That(roundTripped.StorageGasUsed, Is.EqualTo(storageGasUsed));
+            }
         }
 
         [Test]

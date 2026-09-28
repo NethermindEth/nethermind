@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Memory;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -27,7 +28,7 @@ using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
+public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig, GCKeeper gcKeeper) : IJsonRpcService
 {
     private const int MaxPooledParameterCount = 8;
     private const int MaxReportedExceptionChainDepth = 8;
@@ -39,6 +40,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
+        if (context.IsAuthenticated && rpcRequest?.Method?.StartsWith("engine_newPayload", StringComparison.Ordinal) == true)
+            gcKeeper.CancelPendingGC();
+
         (int? errorCode, string? errorMessage, string methodName, ResolvedMethodInfo? method, bool operatorActionable) = Validate(rpcRequest, context);
         if (errorCode.HasValue)
         {
@@ -181,7 +185,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         if (resultWrapper is JsonRpcResponse response)
         {
-            return response.WithResponseContext(in request.IdRef, returnAction);
+            response = response.WithResponseContext(in request.IdRef, returnAction);
+            if (response.TryGetStreamableResult(out IStreamableResult? streamable) && streamable is IDeferredExecutionResult)
+            {
+                response.Streaming = new StreamingContext(this, request, methodName);
+            }
+            return response;
         }
 
         return HandleUnsupportedResultWrapper(request, methodName, returnAction);
@@ -583,7 +592,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
     }
 
-    private JsonRpcErrorResponse HandleInvocationException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
+    private JsonRpcErrorResponse HandleInvocationException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction, bool isStreaming = false)
     {
         return ex switch
         {
@@ -597,7 +606,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             TargetParameterCountException or ArgumentException =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction)),
 
-            JsonException or TargetInvocationException and { InnerException: JsonException } =>
+            JsonException or TargetInvocationException and { InnerException: JsonException } when !isStreaming =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
 
             OperationCanceledException or { InnerException: OperationCanceledException } =>
@@ -606,6 +615,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
             // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
+            ModuleRentalTimeoutException or { InnerException: ModuleRentalTimeoutException } =>
+                GetErrorResponse(methodName, ErrorCodes.ModuleTimeout, "Timeout", null, in request.IdRef, returnAction, suppressWarning: true),
+
             LimitExceededException or ConcurrencyLimitReachedException
                 or { InnerException: LimitExceededException }
                 or { InnerException: ConcurrencyLimitReachedException } =>
@@ -620,11 +632,25 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, in request.IdRef, returnAction),
 
+            // Only state this node legitimately does not hold is -32002. A corrupt or untrusted history row is wrapped
+            // the same way but must fall through to HandleMissingTrieNode, whose WARN is its only sign at default log level.
+            MissingTrieNodeException { InnerException: StateNotRetainedException inner } =>
+                HandleStateNotRetained(inner, methodName, request, returnAction),
+
+            TargetInvocationException { InnerException: MissingTrieNodeException { InnerException: StateNotRetainedException inner } } =>
+                HandleStateNotRetained(inner, methodName, request, returnAction),
+
             MissingTrieNodeException e =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
 
             TargetInvocationException { InnerException: MissingTrieNodeException e } =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
+
+            StateNotRetainedException e =>
+                HandleStateNotRetained(e, methodName, request, returnAction),
+
+            TargetInvocationException { InnerException: StateNotRetainedException e } =>
+                HandleStateNotRetained(e, methodName, request, returnAction),
 
             _ => HandleException(ex, methodName, request, returnAction)
         };
@@ -657,6 +683,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // The Warn above carries the message but not the exception, so the trace still needs KeepTrace.
             return KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
         }
+
+        JsonRpcErrorResponse HandleStateNotRetained(StateNotRetainedException ex, string methodName, JsonRpcRequest request, Action? returnAction) =>
+            KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
     }
 
     /// <summary>Renders an exception chain for <c>error.data</c> without exposing its stack trace.</summary>
@@ -1044,8 +1073,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         // rejections reach this point along two distinct paths (module rental before invocation,
         // and the override-environment cap during invocation), and their warnings are suppressed
         // by design — without a counter operators cannot see that callers are being shed.
-        // suppressWarning scopes the count to exactly those shedding sites: batch-size and
-        // response-body caps also produce LimitExceeded but keep their warnings.
+        // suppressWarning scopes the count to exactly those shedding sites. The batch-size cap keeps its own Warn,
+        // and the response-body cap's entries never reached CreateSingleRequestEntry's WARN at all (the HTTP sink
+        // warns when it trips); the one -32005 that WARN now demotes is eth_getLogs' "Too many logs requested".
         if (suppressWarning && errorCode is ErrorCodes.LimitExceeded or ErrorCodes.ModuleTimeout)
         {
             Metrics.IncrementJsonRpcOverloadRejections();
@@ -1103,5 +1133,29 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated.", false),
             _ => (null, null, false)
         };
+    }
+
+    /// <summary>Maps deferred execution errors and reports the final response outcome.</summary>
+    internal sealed class StreamingContext(JsonRpcService service, JsonRpcRequest request, string methodName)
+    {
+        internal bool ReportCompletion { get; set; }
+
+        /// <summary>The outcome of the error that replaced a failed deferred result, if any.</summary>
+        internal JsonRpcResponseWriteOutcome? Replacement { get; set; }
+
+        /// <summary>Maps a deferred error through the normal invocation error mapping.</summary>
+        /// <remarks>The original response owns the module rental; the replacement must not return it twice.</remarks>
+        internal JsonRpcErrorResponse MapException(Exception exception) =>
+            service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
+
+        /// <summary>Reports one completed execution, excluding an unwritten or request-cancelled response.</summary>
+        /// <remarks>A failure without request cancellation, including a transport exception, counts as an error.</remarks>
+        internal void Complete(bool? success)
+        {
+            if (!ReportCompletion) return;
+            ReportCompletion = false;
+            if (success is true) Metrics.JsonRpcSuccesses++;
+            else if (success is false) Metrics.JsonRpcErrors++;
+        }
     }
 }

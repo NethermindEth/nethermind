@@ -37,6 +37,44 @@ namespace Nethermind.Network.Discovery.Test.Discv5;
 public class WireTests
 {
     [Test]
+    [CancelAfter(10000)]
+    public async Task Ping_timeout_does_not_throw_but_caller_cancellation_does(CancellationToken token)
+    {
+        await using TestPeer peer = CreatePeer(TestItem.PrivateKeyA, IPEndPoint.Parse("127.0.0.1:10000"), pingTimeout: 100);
+        Node remote = new(TestItem.PublicKeyB, IPEndPoint.Parse("127.0.0.1:10001"));
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        System.Threading.AsyncLocal<bool> observing = new() { Value = true };
+        int exceptions = 0;
+        void OnException(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs args)
+        {
+            if (observing.Value && args.Exception is OperationCanceledException) Interlocked.Increment(ref exceptions);
+        }
+
+        AppDomain.CurrentDomain.FirstChanceException += OnException;
+        bool result;
+        try
+        {
+            result = await peer.Adapter.Ping(remote, caller.Token);
+        }
+        finally
+        {
+            observing.Value = false;
+            AppDomain.CurrentDomain.FirstChanceException -= OnException;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(exceptions, Is.Zero);
+        }
+
+        Task<bool> cancelled = peer.Adapter.Ping(remote, caller.Token);
+        await caller.CancelAsync();
+        Assert.That(async () => await cancelled, Throws.InstanceOf<OperationCanceledException>());
+        peer.Kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
+    }
+
+    [Test]
     public async Task Ping_Completes_After_WhoAreYou_Handshake()
     {
         IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
@@ -469,7 +507,8 @@ public class WireTests
         ulong enrSequence = 1,
         IKademlia<PublicKey, Node>? kademlia = null,
         int bucketSize = 16,
-        IPAddress? recordIp = null)
+        IPAddress? recordIp = null,
+        int pingTimeout = 1000)
     {
         IKademlia<PublicKey, Node> table = kademlia ?? Substitute.For<IKademlia<PublicKey, Node>>();
         IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
@@ -514,8 +553,7 @@ public class WireTests
             handler,
             packetCodec,
             nodeRecordProvider,
-            ipResolver,
-            new DiscoveryConfig(),
+            new DiscoveryConfig { PingTimeout = pingTimeout },
             new KademliaConfig<Node> { CurrentNodeId = currentNode, KSize = bucketSize },
             new CryptoRandom(),
             ValueHash256KademliaDistance.Instance,

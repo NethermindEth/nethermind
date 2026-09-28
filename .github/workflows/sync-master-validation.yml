@@ -1,5 +1,4 @@
-# NOTE: Requires repository secret SLACK_SYNC_WEBHOOK_URL for failure notifications.
-# Create a Slack incoming webhook and add it as a repo secret.
+# NOTE: Requires repository secret SLACK_WEBHOOK_URL for failure notifications.
 
 name: Sync Master Validation
 
@@ -46,6 +45,13 @@ on:
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
+
+# cancel-in-progress would abandon a running sync, which is why #12817 removed this guard.
+# The event_name suffix gives a manual dispatch its own slot: it is the tool for debugging
+# a broken validation, so it must not queue behind the run it is meant to investigate.
+concurrency:
+  group: sync-master-validation-${{ github.event_name }}
+  cancel-in-progress: false
 
 jobs:
   setup-matrix:
@@ -120,11 +126,12 @@ jobs:
                     + $run_id + "-master-" + $config.network
                   ),
                   machine_type: (if $machine_type == "" then $config.machine_type else $machine_type end),
-                  # This is the path that pages people on Slack, and a reclaimed Spot VM is
-                  # indistinguishable from a real regression in that alert. Default to
-                  # STANDARD regardless of the matrix flag; Spot stays available on demand.
                   provisioning_model: (
-                    if $model == "Spot" then "SPOT" else "STANDARD" end
+                    if $model == "Spot" then "SPOT"
+                    elif $model == "Standard" then "STANDARD"
+                    elif $config.spot then "SPOT"
+                    else "STANDARD"
+                    end
                   ),
                   timeout: (
                     if $mode == "Flat" and ($config.network == "mainnet" or $config.network == "gnosis") then 360
@@ -190,23 +197,82 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          MATRIX: ${{ needs.setup-matrix.outputs.matrix }}
         run: |
-          failed=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
-            --paginate -q '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled") | .name' \
-            | cut -c1-60 | tr '\n' ', ' | sed 's/,$//')
-          if [ -z "$failed" ]; then
-            failed="(check run for details)"
+          # Neither lookup may abort the step: without an output the Slack gate below reads
+          # as false, which would drop the alert this job exists to send.
+          if ! jobs=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
+            --paginate -q '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled")
+                           | [.name, ((.completed_at // "") | fromdateiso8601? // 0)] | @tsv'); then
+            echo "::warning title=Sync master validation::could not list failed jobs"
+            jobs=""
           fi
-          echo "failed_jobs=$failed" >> "$GITHUB_OUTPUT"
+
+          # A reclaimed runner leaves a marker artifact; only unexplained failures may page.
+          # Markers carry the attempt because a re-run inherits the earlier attempt's artifacts.
+          if ! names=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts" \
+            --paginate -q '.artifacts[].name'); then
+            echo "::warning title=Sync master validation::could not list artifacts, so no failure counts as preempted"
+            names=""
+          fi
+          markers=$(printf '%s\n' "$names" \
+            | sed -n "s/^preempted-${RUN_ATTEMPT}-\([0-9][0-9]*\)-\(.*\)$/\1 \2/p") || markers=""
+          reclaims=$(jq -r --arg markers "$markers" \
+            '($markers | split("\n") | map(select(length > 0)) | map(split(" "))) as $m
+             | . as $matrix
+             | $m[] as $one
+             | $matrix[] | select(.runner_label == $one[1])
+             | "\($one[0])\tSync \(.network) (\(.mode))"' <<<"$MATRIX") || reclaims=""
+
+          listed=0
+          unexplained=""
+          while IFS=$'\t' read -r job ended; do
+            [ -n "$job" ] || continue
+            listed=$((listed + 1))
+            case "$ended" in '' | *[!0-9]*) ended=0 ;; esac
+            explained=false
+            while IFS=$'\t' read -r at prefix; do
+              [ -n "$prefix" ] || continue
+              case "$job" in "${prefix}"*) ;; *) continue ;; esac
+              # A reclaim only explains a failure it could have caused. One that finished
+              # before the VM was taken was already broken, and an unknown time on either
+              # side is not evidence of anything.
+              if [ "$at" -gt 0 ] && [ "$ended" -gt 0 ] && [ "$at" -le "$ended" ]; then
+                explained=true
+                break
+              fi
+            done <<<"$reclaims"
+            if [ "$explained" = true ]; then
+              echo "ignoring ${job}: its runner was preempted"
+            else
+              unexplained="${unexplained}$(cut -c1-60 <<<"$job"), "
+            fi
+          done <<<"$jobs"
+          unexplained="${unexplained%, }"
+
+          # An empty list means the lookup told us nothing, not that every failure was a
+          # reclaim, so it must still page.
+          if [ "$listed" -gt 0 ] && [ -z "$unexplained" ]; then
+            echo "every failure was a preemption, not paging" >> "$GITHUB_STEP_SUMMARY"
+            echo "should_page=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$unexplained" ]; then
+            unexplained="(check run for details)"
+          fi
+          echo "should_page=true" >> "$GITHUB_OUTPUT"
+          echo "failed_jobs=$unexplained" >> "$GITHUB_OUTPUT"
 
       - name: Send Slack notification
-        uses: slackapi/slack-github-action@v2
+        if: ${{ steps.failures.outputs.should_page == 'true' }}
+        uses: slackapi/slack-github-action@v3
         env:
           FAILED_JOBS: ${{ steps.failures.outputs.failed_jobs }}
           COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
-          webhook: ${{ secrets.SLACK_SYNC_WEBHOOK_URL }}
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
             {

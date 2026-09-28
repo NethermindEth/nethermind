@@ -29,5 +29,4 @@ public class LogIndexConfig : ILogIndexConfig
     public string? CompressionAlgorithm { get; set; } = LogIndexStorage.CompressionAlgorithm.Best.Key;
 
     public bool DetailedLogs { get; set; } = false;
-    public bool VerifyRpcResponse { get; set; } = false;
 }

@@ -30,5 +30,16 @@ public enum RlpBehaviors
     /// See https://eips.ethereum.org/EIPS/eip-4844#networking
     /// </summary>
     InMempoolForm = 64,
-    ExcludeHashes = 128
+    ExcludeHashes = 128,
+
+    /// <summary>
+    /// Pools blob buffers for exclusively owned incoming P2P transactions. Their payload may be
+    /// released on rejection; callers must relinquish pooling ownership before sharing the transaction.
+    /// </summary>
+    PoolBlobBuffers = 256,
+
+    /// <summary>
+    /// Creates fresh transaction objects for long-lived payloads instead of renting them from the object pool.
+    /// </summary>
+    SkipPooledTransactions = 512
 }

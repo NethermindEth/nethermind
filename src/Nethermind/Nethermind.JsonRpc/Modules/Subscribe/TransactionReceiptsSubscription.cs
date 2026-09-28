@@ -29,7 +29,7 @@ public class TransactionReceiptsSubscription : Subscription
         IBlockTree blockTree,
         ILogManager logManager,
         TransactionHashesFilter? filter)
-        : base(jsonRpcDuplexClient)
+        : base(jsonRpcDuplexClient, MaxQueuedBlocks)
     {
         ArgumentNullException.ThrowIfNull(receiptCanonicalityMonitor);
         ArgumentNullException.ThrowIfNull(blockTree);
@@ -85,7 +85,7 @@ public class TransactionReceiptsSubscription : Subscription
 
             // Create receipt for RPC
             // Using basic TxGasInfo with null values since tests don't check gas info
-            ReceiptForRpc receiptForRpc = new(
+            using ReceiptForRpc receiptForRpc = new(
                 receipt.TxHash!,
                 receipt,
                 e.BlockHeader.Timestamp,

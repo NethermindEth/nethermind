@@ -43,10 +43,11 @@ public static class EvmWordExtensions
             Unsafe.SkipInit(out EvmWord result);
             ref ulong source = ref Unsafe.As<EvmWord, ulong>(ref word);
             ref ulong destination = ref Unsafe.As<EvmWord, ulong>(ref result);
-            destination = Bytes.Bswap64(Unsafe.Add(ref source, 3));
-            Unsafe.Add(ref destination, 1) = Bytes.Bswap64(Unsafe.Add(ref source, 2));
-            Unsafe.Add(ref destination, 2) = Bytes.Bswap64(Unsafe.Add(ref source, 1));
-            Unsafe.Add(ref destination, 3) = Bytes.Bswap64(source);
+            Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
+            destination = swap.Bswap64(Unsafe.Add(ref source, 3));
+            Unsafe.Add(ref destination, 1) = swap.Bswap64(Unsafe.Add(ref source, 2));
+            Unsafe.Add(ref destination, 2) = swap.Bswap64(Unsafe.Add(ref source, 1));
+            Unsafe.Add(ref destination, 3) = swap.Bswap64(source);
             return result;
         }
     }

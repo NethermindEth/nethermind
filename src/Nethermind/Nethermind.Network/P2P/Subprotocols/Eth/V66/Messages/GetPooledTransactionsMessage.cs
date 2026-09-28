@@ -7,15 +7,15 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
-public class GetPooledTransactionsMessage : Eth66Message<V65.Messages.GetPooledTransactionsMessage>, INew<IOwnedReadOnlyList<Hash256>, GetPooledTransactionsMessage>
+public class GetPooledTransactionsMessage : Eth66Message<V65.Messages.GetPooledTransactionsMessage>, INew<IOwnedReadOnlyList<ValueHash256>, GetPooledTransactionsMessage>
 {
     public GetPooledTransactionsMessage()
     {
     }
 
-    public GetPooledTransactionsMessage(IOwnedReadOnlyList<Hash256> hashes) : base(MessageConstants.Random.NextLong(), new V65.Messages.GetPooledTransactionsMessage(hashes))
+    public GetPooledTransactionsMessage(IOwnedReadOnlyList<ValueHash256> hashes) : base(MessageConstants.Random.NextLong(), new V65.Messages.GetPooledTransactionsMessage(hashes))
     {
     }
 
-    public static GetPooledTransactionsMessage New(IOwnedReadOnlyList<Hash256> arg) => new(arg);
+    public static GetPooledTransactionsMessage New(IOwnedReadOnlyList<ValueHash256> arg) => new(arg);
 }

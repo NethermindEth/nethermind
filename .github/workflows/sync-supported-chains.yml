@@ -42,6 +42,11 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
+# Queues a second dispatch rather than letting two full runs starve master validation.
+concurrency:
+  group: sync-supported-chains
+  cancel-in-progress: false
+
 jobs:
   setup-matrix:
     runs-on: ubuntu-latest
