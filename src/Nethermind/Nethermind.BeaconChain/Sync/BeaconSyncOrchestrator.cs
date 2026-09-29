@@ -95,6 +95,9 @@ public sealed class BeaconSyncOrchestrator(
 
     internal const int VoteQueueCapacity = 1024;
 
+    /// <summary>The most queued votes that wait for a slot tick the worker has not reached.</summary>
+    internal const int MaxVotesAheadOfTick = VoteQueueCapacity / 4;
+
     /// <summary>The most gossip votes and slashings verified per worker pass, so a flood of them delays queued blocks by one batch at most.</summary>
     internal const int VotesPerPass = 64;
 
@@ -125,6 +128,12 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>The newest slot tick the worker has read; a vote queued after a newer tick waits for that tick.</summary>
     private ulong _reachedSlotTick;
+
+    /// <summary>The newest slot tick fork choice has been ticked to; touched by the worker only.</summary>
+    private ulong _appliedSlotTick;
+
+    /// <summary>Votes queued and not yet read that were stamped with a tick the worker had not reached.</summary>
+    private int _votesAheadOfTick;
 
     /// <summary>The newest slot tick queued, written before the tick is; a queued tick older than it is skipped.</summary>
     private ulong _newestSlotTick;
@@ -235,7 +244,7 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>A queued gossip vote; <paramref name="NewestSlotTick"/> is the newest slot tick queued before it.</summary>
-    private readonly record struct QueuedVote(WorkItem Item, ulong NewestSlotTick);
+    private readonly record struct QueuedVote(WorkItem Item, ulong NewestSlotTick, bool AheadOfTick);
 
     /// <summary>An execution payload envelope to import; <paramref name="Source"/> is the req/resp peer that served it, if any.</summary>
     internal abstract record EnvelopeItem(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer? Source) : WorkItem;
@@ -457,9 +466,9 @@ public sealed class BeaconSyncOrchestrator(
     internal async Task ProcessQueuedAsync(CancellationToken token)
     {
         // Votes first, so one queued before a slot tick is not checked against the next slot, but none queued after a tick the worker has not reached (gloas/fork-choice.md on_payload_attestation_message).
-        for (int i = 0; i < VotesPerPass && TryReadVoteBefore(_reachedSlotTick + 1, out QueuedVote vote); i++)
+        for (int i = 0; i < VotesPerPass && TryReadVoteBefore(Volatile.Read(ref _reachedSlotTick) + 1, out QueuedVote vote); i++)
         {
-            await ProcessItemAsync(vote.Item, token);
+            await ProcessVoteAsync(vote, token);
         }
 
         while (_work.Reader.TryRead(out WorkItem? item))
@@ -468,10 +477,10 @@ public sealed class BeaconSyncOrchestrator(
             {
                 while (TryReadVoteBefore(tick.Slot, out QueuedVote vote))
                 {
-                    await ProcessItemAsync(vote.Item, token);
+                    await ProcessVoteAsync(vote, token);
                 }
 
-                _reachedSlotTick = Math.Max(_reachedSlotTick, tick.Slot);
+                Volatile.Write(ref _reachedSlotTick, Math.Max(_reachedSlotTick, tick.Slot));
             }
 
             await ProcessItemAsync(item, token);
@@ -492,8 +501,32 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     // Reads the next vote only if it was queued before the tick of tickSlot; the single reader makes the peek and the read one step.
-    private bool TryReadVoteBefore(ulong tickSlot, out QueuedVote vote) =>
-        _votes.Reader.TryPeek(out vote) && vote.NewestSlotTick < tickSlot && _votes.Reader.TryRead(out vote);
+    private bool TryReadVoteBefore(ulong tickSlot, out QueuedVote vote)
+    {
+        if (!(_votes.Reader.TryPeek(out vote) && vote.NewestSlotTick < tickSlot && _votes.Reader.TryRead(out vote)))
+        {
+            return false;
+        }
+
+        if (vote.AheadOfTick)
+        {
+            Interlocked.Decrement(ref _votesAheadOfTick);
+        }
+
+        return true;
+    }
+
+    // A tick skipped in a backlog never ran on_tick, but a vote queued after it is checked against that slot (gloas/fork-choice.md on_payload_attestation_message).
+    private async Task ProcessVoteAsync(QueuedVote vote, CancellationToken token)
+    {
+        if (vote.NewestSlotTick > _appliedSlotTick)
+        {
+            _appliedSlotTick = vote.NewestSlotTick;
+            _importer!.OnSlotTick(vote.NewestSlotTick);
+        }
+
+        await ProcessItemAsync(vote.Item, token);
+    }
 
     private async Task ProcessItemAsync(WorkItem item, CancellationToken token)
     {
@@ -535,6 +568,7 @@ public sealed class BeaconSyncOrchestrator(
             // on_tick steps through every skipped slot, so only the newest tick of a backlog needs the per-slot work;
             // each older one would send another forkchoiceUpdated for the same head.
             case SlotTickItem tick when tick.Slot >= Volatile.Read(ref _newestSlotTick):
+                _appliedSlotTick = tick.Slot;
                 await ProcessSlotAsync(tick.Slot, token);
                 break;
             case EnvelopeItem envelope:
@@ -1640,10 +1674,21 @@ public sealed class BeaconSyncOrchestrator(
 
     private bool QueueVote(WorkItem vote)
     {
-        if (_votes.Writer.TryWrite(new QueuedVote(vote, Volatile.Read(ref _newestSlotTick))))
+        ulong newestTick = Volatile.Read(ref _newestSlotTick);
+        // A vote stamped with a tick the worker has not reached cannot be read until then, so a tick stuck behind a full work channel must not let them fill the queue.
+        bool ahead = newestTick > Volatile.Read(ref _reachedSlotTick);
+        if (ahead && Interlocked.Increment(ref _votesAheadOfTick) > MaxVotesAheadOfTick)
+        {
+            Interlocked.Decrement(ref _votesAheadOfTick);
+        }
+        else if (_votes.Writer.TryWrite(new QueuedVote(vote, newestTick, ahead)))
         {
             WakeForVotes();
             return true;
+        }
+        else if (ahead)
+        {
+            Interlocked.Decrement(ref _votesAheadOfTick);
         }
 
         Metrics.BeaconChainGossipDropped++;
