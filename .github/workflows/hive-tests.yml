@@ -127,6 +127,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nethermind-image-${{ github.run_id }}
+          overwrite: true
           path: image.tar
           retention-days: 1
 
