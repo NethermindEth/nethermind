@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -70,11 +73,39 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(inner.AccountReads, Is.EqualTo(3), "second distinct address overflows capacity 1, clearing the first");
     }
 
-    [TestCase(false, 1, true, TestName = "WriteBatch_SlotSetWithinCapacity_KeptForTheNextBatch")]
-    [TestCase(false, 2, false, TestName = "WriteBatch_SlotSetBeyondCapacity_NotKept")]
-    [TestCase(true, 1, true, TestName = "WriteBatch_AccountSetWithinCapacity_KeptForTheNextBatch")]
-    [TestCase(true, 2, false, TestName = "WriteBatch_AccountSetBeyondCapacity_NotKept")]
-    public void WriteBatch_CommittedWrittenSet_KeptOnlyWithinTheCacheCapacity(bool accounts, int written, bool kept)
+    [TestCase(false, 1, 1, TestName = "GetAccount_WriteSetWithinCap_UnwrittenAccountCarriedForward")]
+    [TestCase(false, 2, 2, TestName = "GetAccount_WriteSetOverCap_DropsAllCachedAccounts")]
+    [TestCase(true, 1, 1, TestName = "TryGetSlot_WriteSetWithinCap_UnwrittenSlotCarriedForward")]
+    [TestCase(true, 2, 2, TestName = "TryGetSlot_WriteSetOverCap_DropsAllCachedSlots")]
+    public void Read_AfterCommit_WriteSetCapDecidesCarryForward(bool writeSlots, int writes, int expectedInnerReads)
+    {
+        FakePersistence inner = new();
+        CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
+        Address[] writtenAccounts = [TestItem.AddressB, TestItem.AddressC];
+
+        ReadUnwritten();
+        using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
+        {
+            for (int i = 0; i < writes; i++)
+            {
+                if (writeSlots) batch.SetStorage(Address, (UInt256)(i + 2), BaseFlatPersistence.DecodeSlotValue([0x22]));
+                else batch.SetAccount(writtenAccounts[i], new Account(1, 100));
+            }
+        }
+        inner.ReaderState = Basis1;
+        ReadUnwritten();
+
+        Assert.That(writeSlots ? inner.SlotReads : inner.AccountReads, Is.EqualTo(expectedInnerReads));
+
+        void ReadUnwritten()
+        {
+            if (writeSlots) ReadSlot(cache, 1);
+            else ReadAccount(cache, TestItem.AddressA);
+        }
+    }
+
+    [Test]
+    public void WriteBatch_CommittedWrittenSet_KeptForTheNextBatch([Values] bool accounts, [Values(1, 2)] int written)
     {
         FakePersistence inner = new();
         CarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
@@ -88,7 +119,7 @@ public class CarryForwardCachingPersistenceTests
             }
         }
 
-        Assert.That(accounts ? cache.HasSpareWrittenAccounts : cache.HasSpareWrittenSlots, Is.EqualTo(kept));
+        Assert.That(accounts ? cache.HasSpareWrittenAccounts : cache.HasSpareWrittenSlots, Is.True);
     }
 
     [TestCaseSource(nameof(CacheReadCases))]
@@ -270,6 +301,180 @@ public class CarryForwardCachingPersistenceTests
         }
     }
 
+    [Test]
+    public async Task CreateReader_SyncReader_BypassesTheCache()
+    {
+        FakePersistence inner = new();
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
+
+        for (int i = 0; i < 2; i++)
+        {
+            using IPersistence.IPersistenceReader reader = cache.CreateReader(ReaderFlags.Sync);
+            UInt256 value = default;
+            reader.TryGetSlot(Address, 1, ref value);
+        }
+
+        Assert.That(inner.SlotReads, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task RandomOperations_EveryReadMatchesThePersistenceAtTheReaderState([Values(4, 8, 262144)] int capacity)
+    {
+        const int operations = 1_000_000;
+        const int maxOpenReaders = 8;
+        bool detailedMetricsEnabled = Db.Metrics.DetailedMetricsEnabled;
+        Db.Metrics.DetailedMetricsEnabled = true;
+        long hits;
+        int reads = 0;
+        List<string> mismatches = [];
+        try
+        {
+            long hitsBefore = Metrics.CarryForwardSlotHits;
+            Random random = new(capacity);
+            ModelPersistence model = new(addresses: 4, slotsPerAddress: 8);
+            await using IContainer container = CreateCacheContainer();
+            CarryForwardCachingPersistence cache = ResolveCache(container, model, capacity);
+            List<(IPersistence.IPersistenceReader Reader, ModelPersistence.State State)> readers = [];
+
+            for (int i = 0; i < operations && mismatches.Count < 10; i++)
+            {
+                int operation = random.Next(1000);
+                if (operation < 850)
+                {
+                    if (readers.Count == 0 || random.Next(4) == 0)
+                    {
+                        if (readers.Count == maxOpenReaders)
+                        {
+                            readers[0].Reader.Dispose();
+                            readers.RemoveAt(0);
+                        }
+                        readers.Add((cache.CreateReader(), ModelPersistence.LastReaderState!));
+                    }
+
+                    (IPersistence.IPersistenceReader reader, ModelPersistence.State state) = random.Next(2) == 0
+                        ? readers[^1]
+                        : readers[random.Next(readers.Count)];
+                    reads++;
+                    string? mismatch = random.Next(4) == 0
+                        ? model.CheckAccountRead(reader, state, random)
+                        : model.CheckSlotRead(reader, state, random);
+                    if (mismatch is not null) mismatches.Add($"operation {i}: {mismatch}");
+                }
+                else if (operation < 880)
+                {
+                    if (readers.Count == 0) continue;
+                    int index = random.Next(readers.Count);
+                    readers[index].Reader.Dispose();
+                    readers.RemoveAt(index);
+                }
+                else if (operation < 998)
+                {
+                    model.CommitRandomBatch(cache, random, clearAllShare: 0.03);
+                }
+                else
+                {
+                    // Snap sync clears the persistence before anything reads it, so no reader spans the clear.
+                    foreach ((IPersistence.IPersistenceReader reader, _) in readers) reader.Dispose();
+                    readers.Clear();
+                    cache.Clear();
+                }
+            }
+
+            foreach ((IPersistence.IPersistenceReader reader, _) in readers) reader.Dispose();
+            hits = Metrics.CarryForwardSlotHits - hitsBefore;
+        }
+        finally
+        {
+            Db.Metrics.DetailedMetricsEnabled = detailedMetricsEnabled;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatches, Is.Empty);
+            Assert.That(reads, Is.GreaterThan(operations / 2));
+            Assert.That(hits, Is.GreaterThan(reads / 100), "the cache served a share of the reads");
+        }
+    }
+
+    // A cache smaller than the model's key set keeps wiping and refilling, and every fill takes the lock each commit
+    // needs, so that case commits less.
+    [TestCase(64, 500, 0)]
+    [TestCase(262144, 30_000, 0)]
+    [TestCase(64, 0, 30, Explicit = true, Reason = "Time-based stress run")]
+    [TestCase(262144, 0, 30, Explicit = true, Reason = "Time-based stress run")]
+    public async Task ConcurrentReadersAndCommitter_ReadEachReaderState(int capacity, int commits, int stressSeconds)
+    {
+        const int readerThreads = 16;
+        const int readsPerReader = 64;
+        TimeSpan stress = TimeSpan.FromSeconds(stressSeconds);
+        MismatchLog mismatches = new();
+        ModelPersistence model = new(addresses: 8, slotsPerAddress: 16);
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, model, capacity);
+        using Barrier startLine = new(readerThreads + 1);
+        using CancellationTokenSource stopReaders = new();
+
+        Task committer = Task.Factory.StartNew(() =>
+        {
+            Random random = new(1);
+            startLine.SignalAndWait();
+            Stopwatch elapsed = Stopwatch.StartNew();
+            for (int committed = 0; committed < commits || elapsed.Elapsed < stress; committed++)
+            {
+                model.CommitRandomBatch(cache, random, clearAllShare: 0.005);
+                Thread.SpinWait(random.Next(2000));
+            }
+        }, TaskCreationOptions.LongRunning);
+
+        Task[] readerTasks = new Task[readerThreads];
+        for (int t = 0; t < readerThreads; t++)
+        {
+            int seed = t + 2;
+            readerTasks[t] = Task.Factory.StartNew(() =>
+            {
+                Random random = new(seed);
+                startLine.SignalAndWait();
+                do
+                {
+                    using IPersistence.IPersistenceReader reader = cache.CreateReader();
+                    ModelPersistence.State state = ModelPersistence.LastReaderState!;
+                    for (int i = 0; i < readsPerReader; i++)
+                    {
+                        string? mismatch = random.Next(4) == 0
+                            ? model.CheckAccountRead(reader, state, random)
+                            : model.CheckSlotRead(reader, state, random);
+                        if (mismatch is not null) mismatches.Add(mismatch);
+                    }
+                } while (!committer.IsCompleted && !stopReaders.IsCancellationRequested);
+            }, TaskCreationOptions.LongRunning);
+        }
+
+        // Only a hang guard: the work is fixed, so a slow machine takes longer rather than failing. A run that times
+        // out stops its readers, so they do not keep spinning through the tests that follow.
+        try
+        {
+            await Task.WhenAll([committer, .. readerTasks]).WaitAsync(TimeSpan.FromMinutes(5));
+        }
+        finally
+        {
+            stopReaders.Cancel();
+        }
+
+        Assert.That(mismatches.Count, Is.Zero, mismatches.ToString());
+    }
+
+    private const int PatternVersionBits = 40;
+
+    /// <summary>A slot value, unique per <paramref name="key"/> and <paramref name="version"/>, that fills all four limbs.</summary>
+    private static UInt256 Pattern(int key, ulong version)
+    {
+        ulong u0 = ((ulong)key << PatternVersionBits) | version;
+        ulong u1 = u0 * 0x9E3779B97F4A7C15UL;
+        ulong u2 = u1 ^ 0xBF58476D1CE4E5B9UL;
+        return new UInt256(u0, u1, u2, ~u0);
+    }
+
     private static IEnumerable<TestCaseData> SlotReadCases()
     {
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((_, _) => { }), 1)
@@ -315,7 +520,7 @@ public class CarryForwardCachingPersistenceTests
         .AddModule(new FlatWorldStateModule(new FlatDbConfig()))
         .Build();
 
-    private static CarryForwardCachingPersistence ResolveCache(IContainer container, FakePersistence inner, int? maxEntriesPerKind = null)
+    private static CarryForwardCachingPersistence ResolveCache(IContainer container, IPersistence inner, int? maxEntriesPerKind = null)
     {
         if (maxEntriesPerKind is int capacity)
         {
@@ -413,6 +618,240 @@ public class CarryForwardCachingPersistenceTests
     private static int GetInnerReads(CacheKind kind, FakePersistence inner) => kind == CacheKind.Account
         ? inner.AccountReads
         : inner.SlotReads;
+
+    /// <summary>Counts mismatches from many threads and keeps the first few messages.</summary>
+    private sealed class MismatchLog
+    {
+        private const int Kept = 5;
+        private readonly string?[] _messages = new string?[Kept];
+        private int _count;
+
+        public int Count => Volatile.Read(ref _count);
+
+        public void Add(string mismatch)
+        {
+            int index = Interlocked.Increment(ref _count) - 1;
+            if (index < Kept) Volatile.Write(ref _messages[index], mismatch);
+        }
+
+        public override string ToString() => string.Join(Environment.NewLine, _messages);
+    }
+
+    /// <summary>
+    /// A versioned in-memory persistence: each commit publishes an immutable <see cref="State"/>, and a reader keeps the
+    /// state it was created at, like a database snapshot. It is the reference the cache's reads are checked against.
+    /// </summary>
+    private sealed class ModelPersistence : IPersistence
+    {
+        [ThreadStatic] private static State? _lastReaderState;
+
+        private readonly Address[] _addresses;
+        private readonly UInt256[] _slots;
+        private readonly Dictionary<ValueHash256, Address> _addressesByHash = [];
+        private readonly Dictionary<ValueHash256, UInt256> _slotsByHash = [];
+        private State _state = new(0, ImmutableDictionary<Address, Account>.Empty, ImmutableDictionary<(Address, UInt256), UInt256>.Empty);
+
+        public ModelPersistence(int addresses, int slotsPerAddress)
+        {
+            _addresses = new Address[addresses];
+            for (int i = 0; i < addresses; i++)
+            {
+                _addresses[i] = TestItem.Addresses[i];
+                _addressesByHash[HashOf(_addresses[i])] = _addresses[i];
+            }
+
+            _slots = new UInt256[slotsPerAddress];
+            for (int i = 0; i < slotsPerAddress; i++)
+            {
+                // Small slots and hashed-looking ones, as contracts use both.
+                _slots[i] = i % 2 == 0 ? new UInt256((ulong)i) : new UInt256(Keccak.Compute([(byte)i]).Bytes, isBigEndian: true);
+                _slotsByHash[HashOf(_slots[i])] = _slots[i];
+            }
+        }
+
+        /// <summary>The state the calling thread's last <see cref="CreateReader"/> call pinned.</summary>
+        public static State? LastReaderState => _lastReaderState;
+
+        public State Current => Volatile.Read(ref _state);
+
+        public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
+        {
+            State state = Current;
+            _lastReaderState = state;
+            return new Reader(state);
+        }
+
+        public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) =>
+            new WriteBatch(this, Current, to.BlockNumber);
+
+        public void Flush() { }
+
+        public void Clear()
+        {
+            State current = Current;
+            Volatile.Write(ref _state, current with { Accounts = current.Accounts.Clear(), Slots = current.Slots.Clear() });
+        }
+
+        /// <summary>Commits one random write batch through <paramref name="cache"/>.</summary>
+        /// <param name="clearAllShare">The share of batches carrying a write that makes the cache clear everything.</param>
+        public void CommitRandomBatch(CarryForwardCachingPersistence cache, Random random, double clearAllShare)
+        {
+            State current = Current;
+            ulong block = current.Block + 1;
+            using IPersistence.IWriteBatch batch = cache.CreateWriteBatch(current.Id, new StateId(block, Keccak.EmptyTreeHash));
+
+            int writes = random.Next(6);
+            for (int i = 0; i < writes; i++)
+            {
+                int key = random.Next(_addresses.Length * _slots.Length);
+                Address address = _addresses[key / _slots.Length];
+                UInt256 slot = _slots[key % _slots.Length];
+                if (random.Next(3) == 0)
+                {
+                    batch.SetAccount(address, random.Next(5) == 0 ? null : new Account(block, (UInt256)key));
+                }
+                else
+                {
+                    batch.SetStorage(address, slot, random.Next(5) == 0 ? null : Pattern(key, block));
+                }
+            }
+
+            if (random.NextDouble() >= clearAllShare) return;
+
+            int keyToClear = random.Next(_addresses.Length * _slots.Length);
+            Address clearedAddress = _addresses[keyToClear / _slots.Length];
+            UInt256 clearedSlot = _slots[keyToClear % _slots.Length];
+            switch (random.Next(5))
+            {
+                case 0:
+                    batch.SelfDestruct(clearedAddress);
+                    break;
+                case 1:
+                    batch.SetStorageRawEncoded(HashOf(clearedAddress), HashOf(clearedSlot),
+                        Pattern(keyToClear, block).ToBigEndian());
+                    break;
+                case 2:
+                    batch.SetAccountRaw(HashOf(clearedAddress), new Account(block + 1, (UInt256)keyToClear));
+                    break;
+                case 3:
+                    ValueHash256 slotHash = HashOf(clearedSlot);
+                    batch.DeleteStorageRange(HashOf(clearedAddress), slotHash, random.Next(2) == 0 ? slotHash : ValueKeccak.Zero);
+                    break;
+                default:
+                    ValueHash256 addressHash = HashOf(clearedAddress);
+                    batch.DeleteAccountRange(addressHash, addressHash);
+                    break;
+            }
+        }
+
+        public string? CheckSlotRead(IPersistence.IPersistenceReader reader, State state, Random random)
+        {
+            Address address = _addresses[random.Next(_addresses.Length)];
+            UInt256 slot = _slots[random.Next(_slots.Length)];
+            UInt256 value = default;
+            bool found = reader.TryGetSlot(address, slot, ref value);
+            bool expectedFound = state.Slots.TryGetValue((address, slot), out UInt256 expected);
+            return found == expectedFound && (!found || value == expected)
+                ? null
+                : $"slot {address}:{slot} at block {state.Block}: read ({found}, {value}), expected ({expectedFound}, {expected})";
+        }
+
+        public string? CheckAccountRead(IPersistence.IPersistenceReader reader, State state, Random random)
+        {
+            Address address = _addresses[random.Next(_addresses.Length)];
+            Account? account = reader.GetAccount(address);
+            Account? expected = state.Accounts.GetValueOrDefault(address);
+            return Equals(account, expected)
+                ? null
+                : $"account {address} at block {state.Block}: read {account}, expected {expected}";
+        }
+
+        private static ValueHash256 HashOf(Address address) => ValueKeccak.Compute(address.Bytes);
+
+        private static ValueHash256 HashOf(in UInt256 slot) => ValueKeccak.Compute(slot.ToBigEndian());
+
+        public sealed record State(ulong Block, ImmutableDictionary<Address, Account> Accounts, ImmutableDictionary<(Address, UInt256), UInt256> Slots)
+        {
+            public StateId Id => new(Block, Keccak.EmptyTreeHash);
+        }
+
+        private sealed class Reader(State state) : IPersistence.IPersistenceReader
+        {
+            public Account? GetAccount(Address address) => state.Accounts.GetValueOrDefault(address);
+
+            public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
+            {
+                if (!state.Slots.TryGetValue((address, slot), out UInt256 value)) return false;
+                outValue = value;
+                return true;
+            }
+
+            public StateId CurrentState => state.Id;
+            public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
+            public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+            public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
+            public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
+            public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+            public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+            public bool IsPreimageMode => false;
+            public void Dispose() { }
+        }
+
+        /// <summary>Applies its writes in order and publishes them as one new state on dispose, as a database batch does.</summary>
+        private sealed class WriteBatch(ModelPersistence model, State from, ulong block) : IPersistence.IWriteBatch
+        {
+            private readonly ImmutableDictionary<Address, Account>.Builder _accounts = from.Accounts.ToBuilder();
+            private readonly ImmutableDictionary<(Address, UInt256), UInt256>.Builder _slots = from.Slots.ToBuilder();
+
+            public void SelfDestruct(Address addr) => RemoveSlots(addr, ValueKeccak.Zero, ValueKeccak.Zero, all: true);
+
+            public void SetAccount(Address addr, Account? account)
+            {
+                if (account is null) _accounts.Remove(addr);
+                else _accounts[addr] = account;
+            }
+
+            public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
+            {
+                if (value is null) _slots.Remove((addr, slot));
+                else _slots[(addr, slot)] = value.Value;
+            }
+
+            public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
+                _slots[(model._addressesByHash[addrHash], model._slotsByHash[slotHash])] = new UInt256(rlpValue, isBigEndian: true);
+
+            public void SetAccountRaw(in ValueHash256 addrHash, Account account) => _accounts[model._addressesByHash[addrHash]] = account;
+
+            public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+            {
+                foreach (Address address in model._addresses)
+                {
+                    ValueHash256 hash = HashOf(address);
+                    if (hash.CompareTo(fromPath) >= 0 && hash.CompareTo(toPath) <= 0) _accounts.Remove(address);
+                }
+            }
+
+            // A zero upper bound stands for the whole range here.
+            public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+                RemoveSlots(model._addressesByHash[addressHash], fromPath, toPath, all: toPath == ValueKeccak.Zero);
+
+            public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
+            public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
+            public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
+            public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) { }
+
+            public void Dispose() => Volatile.Write(ref model._state, new State(block, _accounts.ToImmutable(), _slots.ToImmutable()));
+
+            private void RemoveSlots(Address address, in ValueHash256 fromPath, in ValueHash256 toPath, bool all)
+            {
+                foreach (UInt256 slot in model._slots)
+                {
+                    ValueHash256 hash = HashOf(slot);
+                    if (all || (hash.CompareTo(fromPath) >= 0 && hash.CompareTo(toPath) <= 0)) _slots.Remove((address, slot));
+                }
+            }
+        }
+    }
 
     public sealed class FakePersistence : IPersistence
     {
