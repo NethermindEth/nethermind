@@ -42,8 +42,8 @@ public partial class EthRpcModuleTests
         MaxPriorityFeePerGas = 0,
         Frames =
         [
-            new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGasLimit = 50_000 },
-            new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGasLimit = 50_000 },
+            new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = 50_000 },
+            new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressB, ExecutionGas = 50_000 },
         ],
         Signatures = [new FrameSignatureForRpc { Scheme = TxFrameSignature.SchemeSecp256k1 }],
     };

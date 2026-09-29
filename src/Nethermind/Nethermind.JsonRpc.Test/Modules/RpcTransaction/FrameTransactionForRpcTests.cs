@@ -60,7 +60,7 @@ public class FrameTransactionForRpcTests
         FrameTransactionForRpc rpc = new()
         {
             From = TestItem.AddressA,
-            Frames = [new FrameForRpc { Target = TestItem.AddressB, ExecutionGasLimit = 50_000 }],
+            Frames = [new FrameForRpc { Target = TestItem.AddressB, ExecutionGas = 50_000 }],
         };
 
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true);
@@ -253,7 +253,7 @@ public class FrameTransactionForRpcTests
             To = TestItem.AddressB,
             Frames =
             [
-                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGasLimit = frameGasLimit },
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = frameGasLimit },
                 new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressC },
             ],
         };
@@ -277,8 +277,8 @@ public class FrameTransactionForRpcTests
             Gas = 12,
             Frames =
             [
-                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGasLimit = 30_000 },
-                new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressC, ExecutionGasLimit = 40_000 },
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = 30_000 },
+                new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressC, ExecutionGas = 40_000 },
             ],
         };
 
@@ -297,7 +297,7 @@ public class FrameTransactionForRpcTests
             To = TestItem.AddressB,
             Frames =
             [
-                new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGasLimit = ulong.MaxValue, StateGasLimit = 1 },
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGas = ulong.MaxValue, StateGas = 1 },
             ],
         };
 
@@ -312,7 +312,7 @@ public class FrameTransactionForRpcTests
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
-            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGasLimit = ulong.MaxValue }],
+            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGas = ulong.MaxValue }],
         };
 
         Assert.That(rpc.ToTransaction(validateUserInput: true).IsError, Is.False);
@@ -373,7 +373,7 @@ public class FrameTransactionForRpcTests
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
-            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGasLimit = GasCap + 1 }],
+            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = GasCap + 1 }],
             Signatures = Secp256k1Signatures(entries),
         };
 
@@ -392,7 +392,7 @@ public class FrameTransactionForRpcTests
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
-            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGasLimit = frameGas }],
+            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGas = frameGas }],
             Signatures = Secp256k1Signatures(1),
         };
 
