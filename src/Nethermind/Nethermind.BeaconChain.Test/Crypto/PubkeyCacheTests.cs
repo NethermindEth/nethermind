@@ -3,6 +3,8 @@
 
 using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
@@ -146,6 +148,119 @@ public class PubkeyCacheTests
         Assert.That((before, cache.IsInSubgroup(1)), Is.EqualTo((false, true)));
     }
 
+    /// <summary>
+    /// A block import that finds a remembered verdict does no subgroup work, so warming must leave a verdict for every key,
+    /// including the ones outside G1, and must stop when cancelled.
+    /// </summary>
+    [Test]
+    public void Warming_remembers_the_verdict_of_every_key_and_can_be_cancelled()
+    {
+        Validator[] validators = MixedRegistry(30);
+        PubkeyCache cache = new();
+        cache.Build(validators);
+
+        Assert.That(() => cache.WarmSubgroupChecks(new CancellationToken(canceled: true)), Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(Enumerable.Range(0, validators.Length).Any(cache.HasSubgroupCheck), Is.False, "a cancelled warm-up checks nothing");
+
+        cache.WarmSubgroupChecks(CancellationToken.None);
+
+        Assert.That(Enumerable.Range(0, validators.Length).All(cache.HasSubgroupCheck), Is.True);
+        Assert.That(Enumerable.Range(0, validators.Length).Select(cache.IsInSubgroup), Is.EqualTo(Enumerable.Range(0, validators.Length).Select(static i => !IsOffSubgroup(i))));
+    }
+
+    /// <summary>A block import that overlaps the warm-up must get the right verdict for every key, whether it computes it or reads the warm-up's.</summary>
+    [Test]
+    public async Task Readers_racing_the_warm_up_get_the_right_verdict_for_every_key()
+    {
+        Validator[] validators = MixedRegistry(1_500);
+        PubkeyCache cache = new();
+        cache.Build(validators);
+        using ManualResetEventSlim start = new();
+
+        Task warm = Task.Run(() => { start.Wait(); cache.WarmSubgroupChecks(CancellationToken.None); });
+        Task<int>[] readers = [.. Enumerable.Range(0, 4).Select(reader => Task.Run(() =>
+        {
+            start.Wait();
+            int wrong = 0;
+            do
+            {
+                for (int n = 0; n < validators.Length; n++)
+                {
+                    int i = reader % 2 == 0 ? n : validators.Length - 1 - n;
+                    if (cache.IsInSubgroup(i) == IsOffSubgroup(i))
+                        wrong++;
+                }
+            }
+            while (!warm.IsCompleted);
+            return wrong;
+        }))];
+        start.Set();
+
+        await warm;
+        Assert.That(await Task.WhenAll(readers), Is.All.Zero);
+        Assert.That(Enumerable.Range(0, validators.Length).All(cache.HasSubgroupCheck), Is.True);
+    }
+
+    /// <summary>Validators appended while the warm-up runs must not cost it the verdicts of the keys it already covered, or the imports that follow repeat those checks inline.</summary>
+    [Test]
+    public async Task A_registry_extension_during_the_warm_up_keeps_every_verdict_of_the_original_keys()
+    {
+        const int original = 16_000;
+        Validator[] validators = CycledRegistry(original + 1);
+        PubkeyCache cache = new();
+        cache.Build(validators[..original]);
+
+        Task warm = Task.Run(() => cache.WarmSubgroupChecks(CancellationToken.None));
+        SpinWait.SpinUntil(() => cache.HasSubgroupCheck(0));
+        cache.Extend(validators, original);
+        await warm;
+
+        AssertEveryVerdictRemembered(cache, original);
+    }
+
+    /// <summary>A warm-up that ends while a long extension is still decoding must still find its verdicts in the extended cache.</summary>
+    [Test]
+    public async Task A_warm_up_that_ends_inside_a_registry_extension_keeps_every_verdict_of_the_original_keys()
+    {
+        const int original = DistinctKeys;
+        Validator[] validators = CycledRegistry(original + 400_000);
+        // A loaded host can stretch the warm-up past the extension, which leaves nothing to observe, so such an attempt is repeated.
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            PubkeyCache cache = new();
+            cache.Build(validators[..original]);
+
+            Task extend = Task.Factory.StartNew(() => cache.Extend(validators, original), TaskCreationOptions.LongRunning);
+            await Task.Delay(100);
+            cache.WarmSubgroupChecks(CancellationToken.None);
+            bool warmUpEndedFirst = !extend.IsCompleted;
+            await extend;
+
+            if (warmUpEndedFirst)
+            {
+                AssertEveryVerdictRemembered(cache, original);
+                return;
+            }
+        }
+
+        Assert.Fail("every extension ended before the warm-up it was meant to outlast");
+    }
+
+    private const int DistinctKeys = 64;
+
+    /// <summary>A registry that repeats <see cref="MixedRegistry"/> keys, so a large one costs no key generation.</summary>
+    private static Validator[] CycledRegistry(int count)
+    {
+        Validator[] keys = MixedRegistry(DistinctKeys);
+        return [.. Enumerable.Range(0, count).Select(i => keys[i % DistinctKeys])];
+    }
+
+    private static void AssertEveryVerdictRemembered(PubkeyCache cache, int original)
+    {
+        Assert.That(Enumerable.Range(0, original).All(cache.HasSubgroupCheck), Is.True, "no original key is left to an inline check");
+        Assert.That(Enumerable.Range(0, original).Select(cache.IsInSubgroup), Is.EqualTo(Enumerable.Range(0, original).Select(static i => !IsOffSubgroup(i % DistinctKeys))));
+    }
+
     /// <summary>The batched sum must be the same point the per-key aggregation produces, or every aggregate attestation check changes meaning.</summary>
     [TestCase(1, 1)]
     [TestCase(2, 1)]
@@ -178,6 +293,12 @@ public class PubkeyCacheTests
 
         Assert.Throws<System.ArgumentOutOfRangeException>(() => cache.SumPublicKeys([0, 1], new long[Bls.P1.Sz]));
     }
+
+    private static bool IsOffSubgroup(int index) => index % 7 == 3;
+
+    /// <summary>A registry of distinct keys where every seventh one is outside G1.</summary>
+    private static Validator[] MixedRegistry(int count) =>
+        [.. Enumerable.Range(0, count).Select(static i => new Validator { Pubkey = IsOffSubgroup(i) ? OffSubgroupKeys.WithTorsion(SecretKey(i)) : new BlsPublicKey(CompressedPubkey(i)) })];
 
     private static byte[] CompressedPubkey(int index)
     {
