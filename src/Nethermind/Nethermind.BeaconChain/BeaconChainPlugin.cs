@@ -44,9 +44,9 @@ public class BeaconChainModule : Module
 
         builder
             .AddSingleton<BeaconChainService>()
-            // Derived from the execution layer's chain id, never a separate config knob: the two
-            // sides must never be able to disagree about which chain they follow.
-            .AddSingleton<BeaconChainSpec, ISpecProvider>(specProvider => BeaconChainSpec.ForChainId(specProvider.ChainId))
+            // The network comes from the execution layer's chain id so both sides follow the same chain;
+            // only the Gloas schedule can be overridden by config.
+            .AddSingleton<BeaconChainSpec, ISpecProvider, IBeaconChainConfig>((specProvider, chainConfig) => BeaconChainSpec.ForChainId(specProvider.ChainId).WithGloasForkOverride(chainConfig.GloasForkEpoch, chainConfig.GloasForkVersion))
             .AddSingleton<BeaconChainStore>()
             .AddSingleton<PubkeyCache>()
             .AddSingleton<CheckpointSync>()
