@@ -38,7 +38,7 @@ public class FrameTxWidthFinalizerTests
     }
 
     [Test]
-    public void Failure_mid_gap_resumes_without_crediting_a_block_twice()
+    public void Failure_mid_gap_resumes_without_crediting_a_block_twice([Values] bool lowerFinalizationBeforeResuming)
     {
         Block first = FrameBlock(number: 5);
         Block gap = FrameBlock(number: 6);
@@ -51,6 +51,7 @@ public class FrameTxWidthFinalizerTests
 
         blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(first.Header));
         blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(last.Header));
+        if (lowerFinalizationBeforeResuming) blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(first.Header));
         blockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(last.Header));
 
         using (Assert.EnterMultipleScope())
