@@ -277,7 +277,7 @@ public class FrameTxWidthFilterTests
 
     private static AcceptTxResult Accept(SenderWidthCache cache, Transaction tx, TxDistinctSortedPool pending, bool enabled = true, ulong permille = SafetyFactorPermille)
     {
-        TxPoolConfig config = new() { FrameTxWidthEnabled = enabled, FrameTxWidthSafetyFactorPermille = permille, MaxPendingTxsPerSender = (int)Baseline };
+        TxPoolConfig config = new() { FrameTxWidthEnabled = enabled, FrameTxWidthSafetyFactorPermille = permille };
         FrameTxWidthFilter filter = new(config, pending, Pool(), cache, LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>());
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
