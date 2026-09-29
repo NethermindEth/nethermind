@@ -73,6 +73,69 @@ public class FrameTransactionForRpcTests
         }
     }
 
+    [Test]
+    public void FrameSignature_DeserializesDefaultSigner(
+        [Values((byte)0, (byte)1, (byte)2)] byte scheme,
+        [Values(null, "null", "\"0x\"")] string? signer)
+    {
+        string signerField = signer is null ? "" : $"\"signer\":{signer},";
+        int signatureLength = scheme == TxFrameSignature.SchemeP256 ? 128 : 65;
+        string json = $"{{{signerField}\"scheme\":{scheme},\"signature\":\"0x{new string('1', signatureLength * 2)}\"}}";
+
+        FrameSignatureForRpc rpc = Serializer.Deserialize<FrameSignatureForRpc>(json)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.ToSignature().Signer, Is.Null);
+            Assert.That(rpc.Signature.Length, Is.EqualTo(signatureLength));
+        }
+    }
+
+    [Test]
+    public void FrameSignature_DeserializesExplicitSigner()
+    {
+        string json = $"{{\"scheme\":1,\"signer\":\"{TestItem.AddressA}\"}}";
+        FrameSignatureForRpc rpc = Serializer.Deserialize<FrameSignatureForRpc>(json)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.Signer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(rpc.Signature.IsEmpty, Is.True);
+        }
+    }
+
+    [TestCase("0x12", typeof(ArgumentException))]
+    [TestCase("0xzz", typeof(FormatException))]
+    public void FrameSignature_RejectsMalformedSigner(string signer, Type expectedException)
+    {
+        string json = $"{{\"scheme\":1,\"signer\":\"{signer}\"}}";
+
+        Assert.That(() => Serializer.Deserialize<FrameSignatureForRpc>(json), Throws.TypeOf(expectedException));
+    }
+
+    [Test]
+    public void FrameSignature_Signer_FollowsStrictHexFormat([Values] bool strictHexFormat)
+    {
+        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);
+        options.Converters.Insert(0, new AddressConverter(strictHexFormat));
+        Address? ReadSigner(string signer) =>
+            JsonSerializer.Deserialize<FrameSignatureForRpc>($$"""{"scheme":1,"signer":"{{signer}}"}""", options)!.Signer;
+        string unprefixed = TestItem.AddressA.ToString(withZeroX: false, withEip55Checksum: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSigner("0x"), Is.Null);
+            if (strictHexFormat)
+                Assert.That(() => ReadSigner(unprefixed), Throws.InstanceOf<FormatException>());
+            else
+                Assert.That(ReadSigner(unprefixed), Is.EqualTo(TestItem.AddressA));
+        }
+    }
+
+    [Test]
+    public void Frame_RejectsEmptyTarget() =>
+        Assert.That(() => Serializer.Deserialize<FrameForRpc>("""{"target":"0x"}"""), Throws.ArgumentException);
+
     private static JsonDocument SerializeToJson(TransactionForRpc rpc) => JsonDocument.Parse(Serializer.Serialize(rpc));
 
     [Test]
