@@ -19,9 +19,11 @@ namespace Nethermind.Eez.Execution.Settlement;
 public static class DerivedHeader
 {
     /// <summary>The header derivation builds on <paramref name="parent"/>, before execution fills in its roots and gas.</summary>
+    /// <remarks>Carries the parent's total difficulty, which a zero difficulty leaves unchanged, so a block built on it can be processed.</remarks>
     public static BlockHeader Build(BlockHeader parent, IReleaseSpec spec, EezSettlementContext context, Address beneficiary, byte[] extraData) =>
         new(parent.Hash!, Keccak.OfAnEmptySequenceRlp, beneficiary, UInt256.Zero, parent.Number + 1, context.GasLimit, Timestamp(parent, context), extraData)
         {
+            TotalDifficulty = parent.TotalDifficulty,
             MixHash = Keccak.Zero,
             Nonce = 0,
             ParentBeaconBlockRoot = spec.IsBeaconBlockRootAvailable ? Keccak.Zero : null,

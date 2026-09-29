@@ -14,9 +14,11 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution.Settlement;
+using Nethermind.Eez.Follower;
 using Nethermind.Eez.Sequencer;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -69,6 +71,20 @@ public class LiveBlockProducerTests
 
         Assert.That(block.Transactions, Is.Empty, "a slot's blocks are produced on the clock whether or not the pool has anything");
         Assert.That(DerivedHeader.Mismatch(block, parent, _chain.SpecProvider.GetSpec(block.Header), _context), Is.Null, "an empty block still has the derived header");
+    }
+
+    [Test]
+    public void Execute_DerivedBlock_KeepsTheTotalDifficultyALiveBlockOnItNeeds()
+    {
+        BlockHeader parent = _chain.BlockTree.Head!.Header;
+        DerivedBlockExecutor executor = new(_chain.Container, _chain.Container.Resolve<IWorldStateManager>(), new DerivedBlockBuilder(_chain.SpecProvider, _context));
+        Block derived;
+        using (IDerivedBlockSession session = executor.BeginSession())
+        {
+            derived = session.Execute(parent, new DerivedBlock(Beneficiary, [], []));
+        }
+
+        Assert.That(derived.TotalDifficulty, Is.EqualTo(parent.TotalDifficulty), "the chain processor refuses a block on a parent without one");
     }
 
     private static Transaction Transfer(ulong nonce) =>

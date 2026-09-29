@@ -37,7 +37,6 @@ public sealed class LiveBlockProducer(IBlockProducerEnvFactory envFactory, ISpec
         BlockHeader header = DerivedHeader.Build(parent, spec, context, beneficiary, []);
         Withdrawal[]? withdrawals = DerivedHeader.Withdrawals(spec);
         header.WithdrawalsRoot = withdrawals is null ? null : WithdrawalTrie.CalculateRoot(withdrawals);
-        header.TotalDifficulty = parent.TotalDifficulty;
         BlockToProduce block = new(header, _env.TxSource.GetTransactions(parent, header, header.GasLimit, null, filterSource: true), [], withdrawals);
         return _env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, token);
     }
