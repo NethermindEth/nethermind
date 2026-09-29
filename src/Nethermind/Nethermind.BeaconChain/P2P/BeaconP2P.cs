@@ -367,10 +367,35 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ISession session, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
     {
-        using CancellationTokenSource cts = Timeout(token, RequestTimeout + TimeSpan.FromSeconds(count));
-        ForkedDataColumnSidecars sidecars = await session.DialAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(
-            new(new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }, Gloas: false), cts.Token);
-        return sidecars.Fulu;
+        ConcurrentQueue<DataColumnSidecar> received = new();
+        // A wedged stream open is cut at the fixed bound; only a peer that has delivered a chunk earns the scaled budget.
+        using CancellationTokenSource cts = Timeout(token);
+        TimeSpan budget = DataColumnSidecarsByRangeProtocol.ResponseBudget(count, columns.Length);
+        try
+        {
+            ForkedDataColumnSidecars sidecars = await session.DialAsync<DataColumnSidecarsByRangeProtocol, DataColumnSidecarsDial<DataColumnSidecarsByRangeRequest>, ForkedDataColumnSidecars>(
+                new(new DataColumnSidecarsByRangeRequest { StartSlot = startSlot, Count = count, Columns = columns }, Gloas: false, sidecar =>
+                {
+                    if (received.IsEmpty)
+                    {
+                        try
+                        {
+                            cts.CancelAfter(budget);
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            // The request already ended; a late chunk has nothing left to extend.
+                        }
+                    }
+
+                    received.Enqueue(sidecar);
+                }), cts.Token);
+            return sidecars.Fulu;
+        }
+        catch (Exception e) when (!token.IsCancellationRequested && !received.IsEmpty)
+        {
+            throw new PartialSidecarsException(e, [.. received]);
+        }
     }
 
     public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(ISession session, DataColumnsByRootIdentifier[] identifiers, CancellationToken token)

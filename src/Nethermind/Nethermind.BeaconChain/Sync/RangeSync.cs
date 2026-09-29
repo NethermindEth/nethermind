@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
@@ -68,6 +69,15 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
     /// <summary>How many distinct peers one batch's Fulu columns are requested from.</summary>
     private const int MaxColumnPeersPerBatch = 8;
+
+    /// <summary>The fewest columns one peer is asked for in a batch, so a small sample still spreads over several custodians rather than one supernode.</summary>
+    private const int MinColumnsPerPeer = 2;
+
+    /// <summary>How many times one batch's still-missing columns are requested, each time from peers that have not failed it.</summary>
+    private const int MaxColumnRounds = 3;
+
+    /// <summary>No further column round starts once a batch has spent this long on columns; the importer fetches what is left by root.</summary>
+    private static readonly TimeSpan ColumnBatchBudget = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(1);
 
     private readonly ILogger _logger = logManager.GetClassLogger<RangeSync>();
@@ -230,6 +240,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// commitments are in its bid and its sidecars have the Gloas shape, so it has no part in a Fulu request. Each column is asked of one
     /// peer that custodies it (<see cref="AssignColumns"/>), since fulu/p2p-interface.md DataColumnSidecarsByRange serves custodied columns only.
     /// Peers whose <c>earliest_available_slot</c> is at or before the request's start are preferred; when none is, those serving from at or before the last blob-carrying slot are asked from their earliest slot.
+    /// A peer that fails or leaves a requested column unserved is not asked again for the batch; the sidecars a failed reply had already delivered are kept, and up to <see cref="MaxColumnRounds"/> rounds request only what is still missing, within <see cref="ColumnBatchBudget"/>.
+    /// Blocks are yielded whatever the outcome: the importer defers a block still missing columns and fetches them by root.
     /// </remarks>
     private async Task FetchColumnsForBatchAsync(IReadOnlyList<ForkedSignedBeaconBlock> blocks, Hash256[] roots, CancellationToken token)
     {
@@ -266,55 +278,114 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             return;
         }
 
-        List<ulong> missing = [];
-        foreach (ulong column in custody.SampledColumns)
+        HashSet<string> spent = [];
+        long startedAt = Stopwatch.GetTimestamp();
+        for (int round = 0; round < MaxColumnRounds; round++)
         {
-            foreach (Hash256 root in blobBlocksByRoot.Keys)
+            List<ulong> missing = MissingBatchColumns(custody, blobBlocksByRoot, out ulong firstMissingSlot, out ulong lastMissingSlot);
+            if (missing.Count == 0 || (round > 0 && Stopwatch.GetElapsedTime(startedAt) >= ColumnBatchBudget))
             {
-                if (!sidecarPool.TryGet(root, column, out _))
-                {
-                    missing.Add(column);
-                    break;
-                }
+                return;
             }
-        }
 
-        if (missing.Count == 0)
-        {
-            return;
-        }
-
-        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignBatchColumns(missing, startSlot, lastBlobSlot);
-        Task<IReadOnlyList<DataColumnSidecar>?>[] responses = new Task<IReadOnlyList<DataColumnSidecar>?>[requests.Count];
-        for (int i = 0; i < requests.Count; i++)
-        {
-            // A peer serves from its earliest slot; a request below it may be answered ResourceUnavailable (fulu/p2p-interface.md).
-            ulong from = Math.Max(startSlot, requests[i].Peer.EarliestAvailableSlot);
-            responses[i] = RequestColumnsByRangeAsync(requests[i].Peer, from, endSlot - from + 1, requests[i].Columns, token);
-        }
-
-        await Task.WhenAll(responses);
-        for (int i = 0; i < requests.Count; i++)
-        {
-            if (responses[i].Result is { } sidecars)
+            // Later rounds ask only for the slots still lacking a column, not the whole batch again.
+            ulong roundStart = round == 0 ? startSlot : firstMissingSlot;
+            ulong roundEnd = round == 0 ? endSlot : lastMissingSlot;
+            List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignBatchColumns(missing, roundStart, round == 0 ? lastBlobSlot : lastMissingSlot, spent, boundPerPeer: true);
+            if (requests.Count == 0)
             {
-                AddVerifiedSidecars(requests[i].Peer, sidecars, blobBlocksByRoot);
+                return;
+            }
+
+            Task<ColumnsReply>[] responses = new Task<ColumnsReply>[requests.Count];
+            for (int i = 0; i < requests.Count; i++)
+            {
+                // A peer serves from its earliest slot; a request below it may be answered ResourceUnavailable (fulu/p2p-interface.md).
+                ulong from = Math.Max(roundStart, requests[i].Peer.EarliestAvailableSlot);
+                responses[i] = RequestColumnsByRangeAsync(requests[i].Peer, from, roundEnd - from + 1, requests[i].Columns, token);
+            }
+
+            await Task.WhenAll(responses);
+            for (int i = 0; i < requests.Count; i++)
+            {
+                ColumnsReply reply = responses[i].Result;
+                AddVerifiedSidecars(requests[i].Peer, reply.Sidecars, blobBlocksByRoot);
+                // A peer that failed, or left a column it was asked for unserved, is not asked again for this batch.
+                if (reply.Failed || requests[i].Columns.Any(column => !HoldsColumnForAll(column, blobBlocksByRoot)))
+                {
+                    spent.Add(requests[i].Peer.Id);
+                }
             }
         }
     }
 
-    /// <summary>Assigns each of <paramref name="missing"/> to a peer reaching <paramref name="startSlot"/> that custodies it and serves the range; empty when no such peer exists.</summary>
-    private List<(IBeaconSyncPeer Peer, ulong[] Columns)> AssignBatchColumns(List<ulong> missing, ulong startSlot, ulong lastBlobSlot)
+    /// <returns>The sampled columns some blob-carrying block of the batch lacks, and the first and last slot of a block lacking one.</returns>
+    private List<ulong> MissingBatchColumns(NodeColumnCustody custody, Dictionary<Hash256, BeaconBlock> blobBlocksByRoot, out ulong firstSlot, out ulong lastSlot)
+    {
+        firstSlot = ulong.MaxValue;
+        lastSlot = 0;
+        List<ulong> missing = [];
+        foreach (ulong column in custody.SampledColumns)
+        {
+            bool lacking = false;
+            foreach ((Hash256 root, BeaconBlock block) in blobBlocksByRoot)
+            {
+                if (!sidecarPool.TryGet(root, column, out _))
+                {
+                    lacking = true;
+                    firstSlot = Math.Min(firstSlot, block.Slot);
+                    lastSlot = Math.Max(lastSlot, block.Slot);
+                }
+            }
+
+            if (lacking)
+            {
+                missing.Add(column);
+            }
+        }
+
+        return missing;
+    }
+
+    private bool HoldsColumnForAll(ulong column, Dictionary<Hash256, BeaconBlock> blobBlocksByRoot)
+    {
+        foreach (Hash256 root in blobBlocksByRoot.Keys)
+        {
+            if (!sidecarPool.TryGet(root, column, out _))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Assigns each of <paramref name="missing"/> to a peer reaching <paramref name="startSlot"/> that custodies it, serves the range and is not in
+    /// <paramref name="excluded"/>; empty when no such peer exists.
+    /// </summary>
+    /// <param name="boundPerPeer">Caps each peer at an even share of <paramref name="missing"/>, at least <see cref="MinColumnsPerPeer"/>; a column the cap leaves out
+    /// waits for a later round, so only a caller that retries sets it.</param>
+    private List<(IBeaconSyncPeer Peer, ulong[] Columns)> AssignBatchColumns(List<ulong> missing, ulong startSlot, ulong lastSlot, HashSet<string>? excluded, bool boundPerPeer)
     {
         IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(startSlot);
-        IBeaconSyncPeer[] custodians = [.. reaching.Where(p => p.Custody.CountCustodied(missing) > 0)];
+        IBeaconSyncPeer[] custodians = [.. reaching.Where(p => excluded?.Contains(p.Id) is not true && p.Custody.CountCustodied(missing) > 0)];
         if (custodians.Length == 0)
         {
             LogNoCustodian(missing, reaching.Count);
             return [];
         }
 
-        return AssignColumns(missing, ServingFrom(custodians, startSlot, lastBlobSlot), MaxColumnPeersPerBatch);
+        IReadOnlyList<IBeaconSyncPeer> serving = ServingFrom(custodians, startSlot, lastSlot);
+        if (!boundPerPeer || serving.Count == 0)
+        {
+            return AssignColumns(missing, serving, MaxColumnPeersPerBatch);
+        }
+
+        // A lone custodian has to take the lot.
+        int askedPeers = Math.Min(MaxColumnPeersPerBatch, serving.Count);
+        int perPeer = Math.Max(MinColumnsPerPeer, (missing.Count + askedPeers - 1) / askedPeers);
+        return AssignColumns(missing, serving, MaxColumnPeersPerBatch, perPeer);
     }
 
     /// <summary>
@@ -340,17 +411,25 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         if (_logger.IsDebug) _logger.Debug($"No connected sync peer custodies the missing sampled columns [{string.Join(", ", missing)}]: 0 custodians among {connectedPeers} peers");
     }
 
-    /// <returns>The peer's sidecars, or <c>null</c> when the request failed and the peer was penalized.</returns>
-    private static async Task<IReadOnlyList<DataColumnSidecar>?> RequestColumnsByRangeAsync(IBeaconSyncPeer peer, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
+    /// <summary>What a by-range column request delivered: every sidecar it read, also when the request then failed and the peer was penalized.</summary>
+    private readonly record struct ColumnsReply(IReadOnlyList<DataColumnSidecar> Sidecars, bool Failed);
+
+    private async Task<ColumnsReply> RequestColumnsByRangeAsync(IBeaconSyncPeer peer, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
     {
+        long startedAt = Stopwatch.GetTimestamp();
         try
         {
-            return await peer.RequestDataColumnSidecarsByRangeAsync(startSlot, count, columns, token);
+            IReadOnlyList<DataColumnSidecar> sidecars = await peer.RequestDataColumnSidecarsByRangeAsync(startSlot, count, columns, token);
+            if (_logger.IsDebug) _logger.Debug($"Columns [{string.Join(", ", columns)}] of slots [{startSlot}, {startSlot + count}) by range from {peer.Id}: {sidecars.Count} sidecars in {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms");
+            return new ColumnsReply(sidecars, Failed: false);
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
+            IReadOnlyList<DataColumnSidecar> kept = (e as PartialSidecarsException)?.Received ?? [];
+            Exception cause = e is PartialSidecarsException { InnerException: { } inner } ? inner : e;
+            if (_logger.IsDebug) _logger.Debug($"Columns [{string.Join(", ", columns)}] of slots [{startSlot}, {startSlot + count}) by range from {peer.Id} failed after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms, keeping {kept.Count} sidecars read: {PeerManager.DescribeFailure(cause)}");
             peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Data-column-sidecars-by-range [{startSlot}, {startSlot + count}) failed: {e.Message}");
-            return null;
+            return new ColumnsReply(kept, Failed: true);
         }
     }
 
@@ -386,14 +465,15 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
     /// <summary>
     /// Assigns each of <paramref name="columns"/> to one of <paramref name="peers"/> that custodies it, using at most
-    /// <paramref name="maxPeers"/> distinct peers. A column no usable peer custodies is left out.
+    /// <paramref name="maxPeers"/> distinct peers and at most <paramref name="maxColumnsPerPeer"/> columns each, so one supernode
+    /// cannot take the whole batch. A column no usable peer with room custodies is left out.
     /// </summary>
     /// <remarks>
     /// Deterministic: a peer with advertised custody is preferred over one known only by its <c>CUSTODY_REQUIREMENT</c>
     /// floor, then the peer with the fewest columns so far, then the earlier peer in <paramref name="peers"/>.
     /// </remarks>
     /// <returns>One entry per chosen peer, in the order the peers were first chosen.</returns>
-    internal static List<(IBeaconSyncPeer Peer, ulong[] Columns)> AssignColumns(IReadOnlyList<ulong> columns, IReadOnlyList<IBeaconSyncPeer> peers, int maxPeers)
+    internal static List<(IBeaconSyncPeer Peer, ulong[] Columns)> AssignColumns(IReadOnlyList<ulong> columns, IReadOnlyList<IBeaconSyncPeer> peers, int maxPeers, int maxColumnsPerPeer = int.MaxValue)
     {
         PeerColumnCustody[] custodies = new PeerColumnCustody[peers.Count];
         for (int i = 0; i < peers.Count; i++)
@@ -408,7 +488,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             int best = -1;
             for (int i = 0; i < peers.Count; i++)
             {
-                if (!custodies[i].Custodies(column) || (assigned[i] is null && chosenOrder.Count >= maxPeers))
+                if (!custodies[i].Custodies(column) || (assigned[i] is null && chosenOrder.Count >= maxPeers) || (assigned[i]?.Count ?? 0) >= maxColumnsPerPeer)
                 {
                     continue;
                 }
@@ -677,7 +757,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             return;
         }
 
-        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignBatchColumns(missing, startSlot, lastBlobSlot);
+        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignBatchColumns(missing, startSlot, lastBlobSlot, excluded: null, boundPerPeer: false);
         Task<IReadOnlyList<DataColumnSidecarGloas>?>[] responses = new Task<IReadOnlyList<DataColumnSidecarGloas>?>[requests.Count];
         for (int i = 0; i < requests.Count; i++)
         {

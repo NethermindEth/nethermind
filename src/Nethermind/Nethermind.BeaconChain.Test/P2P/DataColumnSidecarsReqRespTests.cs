@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
@@ -307,6 +308,116 @@ public class DataColumnSidecarsReqRespTests
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new DataColumnSidecarsByRootProtocol(Spec, new DataColumnSidecarPool()).DialAsync(null!, null!, new(request, Gloas: false)));
     }
 
+    /// <summary>A reply cut short must leave the caller every chunk read before the cut, or the batch asks for them again.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task The_real_dial_hands_out_each_chunk_read_before_the_reply_is_cut_short(CancellationToken token)
+    {
+        DataColumnSidecar[] good = [.. Enumerable.Range(0, 3).Select(i => DataColumnSidecarTestFixture.BuildValidSidecar(i % 2 == 0 ? 3UL : 4UL, slot: 100 + (ulong)i))];
+        byte[] cut = await EncodeChunkAsync(DataColumnSidecarTestFixture.BuildValidSidecar(3, slot: 103));
+        List<DataColumnSidecar> seen = [];
+
+        Eth2ReqRespException? thrown = Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRangeAsync(good, cut[..(cut.Length / 2)], seen.Add, token: token));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seen.Select(Key), Is.EqualTo(good.Select(Key)), "a chunk fully read is kept when a later chunk is truncated");
+            Assert.That(thrown!.Message, Does.StartWith("Truncated response chunk"));
+        }
+    }
+
+    /// <summary>A chunk outside the requested slots or columns is a protocol violation and must never reach the caller's pool of kept sidecars.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task The_real_dial_refuses_a_chunk_outside_the_request_before_handing_it_out([Values] bool unrequestedColumn, CancellationToken token)
+    {
+        DataColumnSidecar valid = DataColumnSidecarTestFixture.BuildValidSidecar(3, slot: 100);
+        DataColumnSidecar stray = unrequestedColumn
+            ? DataColumnSidecarTestFixture.BuildValidSidecar(9, slot: 101)
+            : DataColumnSidecarTestFixture.BuildValidSidecar(3, slot: 104);
+        List<DataColumnSidecar> seen = [];
+
+        Assert.ThrowsAsync<Eth2ReqRespException>(() => DialRangeAsync([valid, stray], [], seen.Add, token: token));
+
+        Assert.That(seen.Select(Key), Is.EqualTo(new[] { Key(valid) }));
+    }
+
+    private static (ulong Slot, ulong Column) Key(DataColumnSidecar sidecar) => (sidecar.SignedBlockHeader!.Message!.Slot, sidecar.Index);
+
+    /// <summary>The dial must stop reading at the budget scaled for the chunks it asked for, not at a longer generic ceiling: one slot of three columns gets 16 s, so a third chunk 21 s in is too late.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task The_real_dial_is_cut_at_the_budget_scaled_to_the_request_though_each_chunk_arrives_in_time(CancellationToken token)
+    {
+        DataColumnSidecar[] chunks = [.. new ulong[] { 3, 4, 5 }.Select(column => DataColumnSidecarTestFixture.BuildValidSidecar(column, slot: 100))];
+        DataColumnSidecarsByRangeRequest request = new() { StartSlot = 100, Count = 1, Columns = [3, 4, 5] };
+        Assert.That(DataColumnSidecarsByRangeProtocol.ResponseBudget(1, 3), Is.EqualTo(TimeSpan.FromSeconds(16)));
+        List<DataColumnSidecar> seen = [];
+
+        Assert.CatchAsync<OperationCanceledException>(() => DialRangeAsync(chunks, [], seen.Add, request, chunkGap: TimeSpan.FromSeconds(7), token));
+
+        Assert.That(seen, Has.Count.EqualTo(2), "the third chunk was never read");
+    }
+
+    private static async Task DialRangeAsync(DataColumnSidecar[] whole, byte[] trailingBytes, Action<DataColumnSidecar> onSidecar, DataColumnSidecarsByRangeRequest? request = null, TimeSpan chunkGap = default, CancellationToken token = default)
+    {
+        DataColumnSidecarsByRangeProtocol protocol = new(Spec, new DataColumnSidecarPool(), new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()));
+        ISessionContext context = Substitute.For<ISessionContext>();
+        context.State.Returns(new Nethermind.Libp2p.Core.State());
+        Channel channel = new();
+        using CancellationTokenSource serverStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+
+        Task server = Task.Run(async () =>
+        {
+            Stream stream = new ChannelStreamAdapter(channel.Reverse);
+            byte[] scratch = new byte[4096];
+            while (await stream.ReadAsync(scratch, serverStop.Token) > 0)
+            {
+            }
+
+            try
+            {
+                foreach (DataColumnSidecar sidecar in whole)
+                {
+                    await Task.Delay(chunkGap, serverStop.Token);
+                    await WriteSidecarChunkAsync(stream, sidecar, serverStop.Token);
+                }
+
+                await stream.WriteAsync(trailingBytes, serverStop.Token);
+                await channel.Reverse.WriteEofAsync(serverStop.Token);
+            }
+            catch (OperationCanceledException) when (chunkGap > TimeSpan.Zero)
+            {
+                // The dialer cut the reply and stopped reading while this server was still dripping chunks.
+            }
+        }, token);
+
+        request ??= new() { StartSlot = 100, Count = 4, Columns = [3, 4] };
+        try
+        {
+            await protocol.DialAsync(channel, context, new(request, Gloas: false, onSidecar));
+        }
+        finally
+        {
+            await serverStop.CancelAsync();
+            try
+            {
+                await server;
+            }
+            catch (Exception e) when (e is OperationCanceledException or IOException)
+            {
+                // Raised only by the stop above, once the dial is over.
+            }
+        }
+    }
+
+    private static async Task<byte[]> EncodeChunkAsync(DataColumnSidecar sidecar)
+    {
+        using MemoryStream stream = new();
+        await WriteSidecarChunkAsync(stream, sidecar);
+        return stream.ToArray();
+    }
+
     private static async Task<IReadOnlyList<DataColumnSidecar>> RequestRangeAsync(DataColumnSidecarPool pool, BeaconChainStore store, ulong startSlot, ulong count, ulong[] columns, SlotClock? clock = null)
     {
         DataColumnSidecarsByRangeProtocol protocol = new(Spec, pool, store, clock);
@@ -332,10 +443,10 @@ public class DataColumnSidecarsReqRespTests
     private static long FailureCount(string protocolId, ReqRespFailureReason reason) =>
         Metrics.BeaconChainReqRespFailures.TryGetValue(new ReqRespFailureKey(protocolId, reason), out long count) ? count : 0;
 
-    private static Task WriteSidecarChunkAsync(Stream stream, DataColumnSidecar sidecar)
+    private static Task WriteSidecarChunkAsync(Stream stream, DataColumnSidecar sidecar, CancellationToken token = default)
     {
         byte[] contextBytes = ForkDigest.Compute(Spec, Spec.GetEpoch(sidecar.SignedBlockHeader!.Message!.Slot));
-        return ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, contextBytes, DataColumnSidecar.Encode(sidecar), default);
+        return ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, contextBytes, DataColumnSidecar.Encode(sidecar), token);
     }
 
     /// <summary>Exposes the protected chunked-response reader for direct testing.</summary>
