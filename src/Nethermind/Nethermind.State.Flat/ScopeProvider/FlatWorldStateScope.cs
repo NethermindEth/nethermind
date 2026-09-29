@@ -562,7 +562,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int restored = Interlocked.Exchange(ref _earlyRestoredSlots, 0);
         int abandoned = Interlocked.Exchange(ref _earlyAbandonedTrees, 0);
         ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-        if (logger.IsInfo) logger.Info($"Early storage apply block={blockNumber} applied={applied} reused={reused} restored={restored} abandoned={abandoned}");
+        if (logger.IsDebug) logger.Debug($"Early storage apply block={blockNumber} applied={applied} reused={reused} restored={restored} abandoned={abandoned}");
 
         // The next block in this scope starts with its own trees, and right after this one, so back to back.
         _earlyApplier!.BlockCommitted();
