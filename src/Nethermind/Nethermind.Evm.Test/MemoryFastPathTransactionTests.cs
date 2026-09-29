@@ -4,19 +4,18 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using Nethermind.Blockchain;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -133,9 +132,11 @@ public class MemoryFastPathTransactionTests
         }
     }
 
-    /// <summary>A world state and a transaction processor over it.</summary>
+    /// <summary>A world state and a transaction processor over it, resolved from the production modules.</summary>
     private sealed class Chain : IDisposable
     {
+        private readonly IContainer _container;
+        private readonly ILifetimeScope _processingScope;
         private readonly IWorldState _state;
         private readonly IDisposable _scope;
         private readonly ITransactionProcessor _processor;
@@ -144,10 +145,15 @@ public class MemoryFastPathTransactionTests
         public Chain(ISpecProvider specProvider)
         {
             _genesisSpec = specProvider.GenesisSpec;
-            _state = TestWorldStateFactory.CreateForTest(TestMemDbProvider.Init(), LimboLogs.Instance);
+            _container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddSingleton<ISpecProvider>(specProvider)
+                .Build();
+            _processingScope = _container.BeginLifetimeScope(builder => builder
+                .AddSingleton<IWorldStateScopeProvider>(_container.Resolve<IWorldStateManager>().GlobalWorldState));
+            _state = _processingScope.Resolve<IWorldState>();
+            _processor = _processingScope.Resolve<ITransactionProcessor>();
             _scope = _state.BeginScope(IWorldState.PreGenesis);
-            EthereumVirtualMachine vm = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-            _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, _state, vm, new EthereumCodeInfoRepository(_state), LimboLogs.Instance);
             _state.CreateAccount(Sender, (UInt256)ulong.MaxValue);
             _state.Commit(_genesisSpec);
             _state.CommitTree(0);
@@ -210,7 +216,12 @@ public class MemoryFastPathTransactionTests
             return digest.ToString();
         }
 
-        public void Dispose() => _scope.Dispose();
+        public void Dispose()
+        {
+            _scope.Dispose();
+            _processingScope.Dispose();
+            _container.Dispose();
+        }
     }
 
     private sealed class DigestTracer : TxTracer, ITxTracer
