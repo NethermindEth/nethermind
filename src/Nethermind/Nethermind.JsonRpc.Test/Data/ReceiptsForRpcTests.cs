@@ -52,28 +52,38 @@ namespace Nethermind.JsonRpc.Test.Data
         }
 
         [Test]
-        public void Serializing_receipt_does_not_allocate_per_log()
+        public void Serializing_receipt_does_not_allocate_per_log([Values] bool throughTxReceiptConverter)
         {
             const int logCount = 256;
             LogEntry[] logEntries = new LogEntry[logCount];
             Array.Fill(logEntries, Build.A.LogEntry.TestObject);
             TxReceipt receipt = Build.A.Receipt.WithLogs(logEntries).TestObject;
+            receipt.TxHash = Keccak.OfAnEmptyString;
             ArrayBufferWriter<byte> buffer = new(1 << 20);
-            JsonSerializerOptions options = EthereumJsonSerializer.JsonOptions;
-            WriteReceipt(receipt, buffer, options);
+            JsonSerializerOptions options = throughTxReceiptConverter
+                ? new(EthereumJsonSerializer.JsonOptions) { Converters = { new TxReceiptConverter() } }
+                : EthereumJsonSerializer.JsonOptions;
+            WriteReceipt(receipt, buffer, options, throughTxReceiptConverter);
 
             long before = GC.GetAllocatedBytesForCurrentThread();
-            WriteReceipt(receipt, buffer, options);
+            WriteReceipt(receipt, buffer, options, throughTxReceiptConverter);
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
             Assert.That(allocated, Is.LessThan(logCount * 8), "receipt logs must be written from the stored entries, not materialized per log");
         }
 
-        private static void WriteReceipt(TxReceipt receipt, ArrayBufferWriter<byte> buffer, JsonSerializerOptions options)
+        private static void WriteReceipt(TxReceipt receipt, ArrayBufferWriter<byte> buffer, JsonSerializerOptions options, bool throughTxReceiptConverter)
         {
             buffer.ResetWrittenCount();
             using Utf8JsonWriter writer = new(buffer);
-            JsonSerializer.Serialize(writer, new ReceiptForRpc(Keccak.OfAnEmptyString, receipt, 0, new(UInt256.One)), options);
+            if (throughTxReceiptConverter)
+            {
+                JsonSerializer.Serialize(writer, receipt, options);
+            }
+            else
+            {
+                JsonSerializer.Serialize(writer, new ReceiptForRpc(Keccak.OfAnEmptyString, receipt, 0, new(UInt256.One)), options);
+            }
         }
 
         [Test]

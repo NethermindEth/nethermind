@@ -96,7 +96,10 @@ namespace Nethermind.JsonRpc.Data
         public Address? ContractAddress { get; set; }
 
         /// <summary>The transaction's log entries.</summary>
-        /// <remarks>Nullable because a caller can send <c>"logs": null</c>, which the deserializer honours.</remarks>
+        /// <remarks>
+        /// Nullable because a caller can send <c>"logs": null</c>, which the deserializer honours.
+        /// Built from a <see cref="TxReceipt"/>, every access returns a new entry, so a change to an entry is not kept.
+        /// </remarks>
         [JsonConverter(typeof(LogsForRpcConverter))]
         public IReadOnlyList<LogEntryForRpc>? Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
