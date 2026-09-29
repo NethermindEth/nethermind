@@ -762,7 +762,11 @@ public sealed class BeaconSyncOrchestrator(
             _rangeHeld = new HeldRange(deferredRoot, new Tip(root, block.Slot));
         }
 
-        _rangeHeldRoots.Add(root);
+        // A block waiting on another chain's deferred block must not take this chain over.
+        if (_rangeHeld?.DeferredRoot == deferredRoot)
+        {
+            _rangeHeldRoots.Add(root);
+        }
     }
 
     /// <summary>Starts the by-root column fetch of each deferred block that misses a column <paramref name="peer"/> custodies.</summary>
