@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Globalization;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -19,8 +20,9 @@ namespace Nethermind.BeaconChain.Api;
 /// Each such request holds a whole persisted state in memory, so an unbounded number of them is a
 /// memory exhaustion vector for a node that serves checkpoint sync. Saturation is refused at once,
 /// never queued: 503 when the node is busy, 429 when one client already has such a request in flight
-/// or exceeds its download rate, and a response still unfinished after the configured deadline is
-/// aborted, so one slow reader cannot hold every permit. The
+/// or exceeds its download rate, and a response is aborted when, once started, it goes unwritten for the idle
+/// bound or runs past the total cap, so a stalled reader cannot hold every permit while a slow but
+/// steady download of a large state still completes. The
 /// beacon-APIs v5.0.0-alpha.2 state routes list neither status; 503 carries the spec's
 /// <c>ErrorMessage</c> shape as its <c>CurrentlySyncing</c> response does.
 /// </remarks>
@@ -32,9 +34,13 @@ internal sealed class StateRequestLimiter : IDisposable
     /// <summary>The longest deadline <see cref="CancellationTokenSource.CancelAfter(TimeSpan)"/> accepts, in whole seconds.</summary>
     internal const int MaxResponseTimeoutSeconds = 4294967;
 
+    /// <summary>The largest single write forwarded to the response, so a slow reader shows progress within a chunk rather than only after a whole state.</summary>
+    internal const int WriteChunkBytes = 256 * 1024;
+
     private readonly int _maxConcurrent;
     private readonly int _maxPerClient;
     private readonly TimeSpan _responseTimeout;
+    private readonly TimeSpan _idleTimeout;
     private readonly ConcurrencyLimiter _inFlight;
     private readonly PartitionedRateLimiter<HttpContext> _inFlightPerClient;
     private readonly PartitionedRateLimiter<HttpContext>? _downloadsPerClient;
@@ -48,9 +54,12 @@ internal sealed class StateRequestLimiter : IDisposable
         ArgumentOutOfRangeException.ThrowIfLessThan(config.MaxConcurrentStateRequestsPerClient, 1, nameof(IBeaconApiConfig.MaxConcurrentStateRequestsPerClient));
         ArgumentOutOfRangeException.ThrowIfLessThan(config.StateResponseTimeoutSeconds, 1, nameof(IBeaconApiConfig.StateResponseTimeoutSeconds));
         ArgumentOutOfRangeException.ThrowIfGreaterThan(config.StateResponseTimeoutSeconds, MaxResponseTimeoutSeconds, nameof(IBeaconApiConfig.StateResponseTimeoutSeconds));
+        ArgumentOutOfRangeException.ThrowIfLessThan(config.StateResponseIdleTimeoutSeconds, 1, nameof(IBeaconApiConfig.StateResponseIdleTimeoutSeconds));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(config.StateResponseIdleTimeoutSeconds, MaxResponseTimeoutSeconds, nameof(IBeaconApiConfig.StateResponseIdleTimeoutSeconds));
 
         _maxConcurrent = config.MaxConcurrentStateRequests;
         _responseTimeout = TimeSpan.FromSeconds(config.StateResponseTimeoutSeconds);
+        _idleTimeout = TimeSpan.FromSeconds(config.StateResponseIdleTimeoutSeconds);
         int perClient = _maxPerClient = config.MaxConcurrentStateRequestsPerClient;
         _inFlight = new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = _maxConcurrent, QueueLimit = 0 });
         _inFlightPerClient = PartitionedRateLimiter.Create<HttpContext, UInt128>(c => RateLimitPartition.GetConcurrencyLimiter(
@@ -118,17 +127,86 @@ internal sealed class StateRequestLimiter : IDisposable
         CancellationToken clientAborted = c.RequestAborted;
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(clientAborted);
         deadline.CancelAfter(_responseTimeout);
+        // Armed by the first write: loading a state before it is the node's own time, bounded by the total cap.
+        using CancellationTokenSource idle = new(Timeout.InfiniteTimeSpan);
+        using CancellationTokenRegistration idleExpiry = idle.Token.Register(static state => ((CancellationTokenSource)state!).Cancel(), deadline);
         // Endpoints observe RequestAborted, and Abort fails a write blocked on a reader that stopped reading.
         c.RequestAborted = deadline.Token;
         using CancellationTokenRegistration abort = deadline.Token.Register(static state => ((HttpContext)state!).Abort(), c);
+        // Left in place once the request ends, so a late write from the server's own completion finds a disposed timer and ignores it.
+        c.Response.Body = new ProgressStream(c.Response.Body, () =>
+        {
+            try
+            {
+                idle.CancelAfter(_idleTimeout);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        });
         try
         {
             await next(c);
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested && !clientAborted.IsCancellationRequested)
         {
-            // The deadline passed and the response was aborted; the permits are released as this method returns.
+            // The idle bound or the total cap passed and the response was aborted; the permits are released as this method returns.
         }
+    }
+
+    /// <summary>Forwards writes to the response body in chunks of at most <see cref="WriteChunkBytes"/> and reports each chunk as it starts and completes, so one huge write cannot look like a stall and a first write that never completes still arms the idle bound.</summary>
+    private sealed class ProgressStream(Stream inner, Action progress) : Stream
+    {
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            while (!buffer.IsEmpty)
+            {
+                ReadOnlySpan<byte> chunk = buffer[..Math.Min(buffer.Length, WriteChunkBytes)];
+                progress();
+                inner.Write(chunk);
+                progress();
+                buffer = buffer[chunk.Length..];
+            }
+        }
+
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            while (!buffer.IsEmpty)
+            {
+                ReadOnlyMemory<byte> chunk = buffer[..Math.Min(buffer.Length, WriteChunkBytes)];
+                progress();
+                await inner.WriteAsync(chunk, cancellationToken);
+                progress();
+                buffer = buffer[chunk.Length..];
+            }
+        }
+
+        public override void Flush()
+        {
+            inner.Flush();
+            progress();
+        }
+
+        public override async Task FlushAsync(CancellationToken cancellationToken)
+        {
+            await inner.FlushAsync(cancellationToken);
+            progress();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 
     /// <summary>Whether a route under <c>/eth/v1/beacon/states</c> is <c>/{state_id}/root</c>, which reads the block's <c>state_root</c> rather than the state.</summary>
