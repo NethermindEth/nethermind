@@ -85,6 +85,33 @@ public class TxTraceFilterTests
         Assert.That(actual, Is.EqualTo(expected));
     }
 
+    // A creation by A of B that succeeded, reverted or halted, and a reverted call from A to B. A failed creation's
+    // action still carries the address it would have created, but its result reports none.
+    private static readonly ParityTraceAction ACreatesB = new() { Type = "create", From = TestItem.AddressA, To = TestItem.AddressB, Result = new() { Address = TestItem.AddressB } };
+    private static readonly ParityTraceAction ARevertedCreateOfB = new() { Type = "create", From = TestItem.AddressA, To = TestItem.AddressB, Result = new() { GasUsed = 0x12 }, Error = "Reverted" };
+    private static readonly ParityTraceAction AHaltedCreateOfB = new() { Type = "create", From = TestItem.AddressA, To = TestItem.AddressB, Result = null, Error = "Out of gas" };
+    private static readonly ParityTraceAction ARevertedCallToB = new() { Type = "call", From = TestItem.AddressA, To = TestItem.AddressB, Error = "Reverted" };
+
+    private static IEnumerable<TestCaseData> CreationCases()
+    {
+        Address[] a = [TestItem.AddressA];
+        Address[] b = [TestItem.AddressB];
+        // Expected matches for ACreatesB, ARevertedCreateOfB, AHaltedCreateOfB, ARevertedCallToB.
+        yield return new TestCaseData(TraceFilterMode.Intersection, null, b, new[] { true, false, false, true }).SetName("failed creation has no created address");
+        yield return new TestCaseData(TraceFilterMode.Intersection, a, b, new[] { true, false, false, true }).SetName("failed creation has no recipient side to intersect");
+        yield return new TestCaseData(TraceFilterMode.Intersection, a, null, new[] { true, true, true, true }).SetName("failed creation matches its creator");
+        yield return new TestCaseData(TraceFilterMode.Union, a, b, new[] { true, true, true, true }).SetName("failed creation matches its creator in union");
+        yield return new TestCaseData(TraceFilterMode.Union, new[] { TestItem.AddressC }, b, new[] { true, false, false, true }).SetName("failed creation has no created address in union");
+    }
+
+    [TestCaseSource(nameof(CreationCases))]
+    public void Trace_filter_matches_creation_only_by_the_address_its_result_reports(TraceFilterMode mode, Address[]? from, Address[]? to, bool[] expected)
+    {
+        TxTraceFilter filter = new(from, to, 0, null, mode);
+        bool[] actual = [.. new[] { ACreatesB, ARevertedCreateOfB, AHaltedCreateOfB, ARevertedCallToB }.Select(filter.ShouldUseTxTrace)];
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
     [Test]
     public void Trace_filter_mode_round_trips_through_json([Values] TraceFilterMode mode)
     {

@@ -1303,6 +1303,46 @@ public class TraceRpcModuleTests
         }
     }
 
+    // A reverted top-level creation, and a successful creation whose nested creation reverts, in one block.
+    [Test]
+    public async Task Trace_filter_matches_failed_creation_only_by_its_creator([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        ulong nonceA = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        ulong nonceB = blockchain.ReadOnlyState.GetNonce(TestItem.AddressB);
+        Address failed = ContractAddress.From(TestItem.AddressA, nonceA);
+        Address creator = ContractAddress.From(TestItem.AddressB, nonceB);
+        Address nestedFailed = ContractAddress.From(creator, 1);
+        byte[] createReverting = Prepare.EvmCode.Create(RevertDeadbeefCode, 0).Op(Instruction.STOP).Done;
+        await blockchain.AddBlock(
+            Build.A.Transaction.WithNonce(nonceA).WithTo(null).WithData(RevertDeadbeefCode).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(nonceB).WithTo(null).WithData(createReverting).WithGasLimit(200_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject);
+        string block = $"0x{blockchain.BlockTree.Head!.Number:x}";
+
+        // Each match as its transaction position and trace address.
+        async Task<string[]> Filter(Address[]? fromAddress, Address[]? toAddress)
+        {
+            string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", new { fromBlock = block, toBlock = block, fromAddress, toAddress });
+            using JsonDocument document = JsonDocument.Parse(response);
+            return [.. document.RootElement.GetProperty("result").EnumerateArray()
+                .Select(static trace => $"{trace.GetProperty("transactionPosition").GetInt32()}:{trace.GetProperty("traceAddress").GetRawText()}")];
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await Filter(null, [failed]), Is.Empty, "a failed top-level creation has no created address");
+            Assert.That(await Filter(null, [nestedFailed]), Is.Empty, "a failed nested creation has no created address");
+            Assert.That(await Filter([TestItem.AddressA], [failed]), Is.Empty, "a failed top-level creation has no recipient side");
+            Assert.That(await Filter([creator], [nestedFailed]), Is.Empty, "a failed nested creation has no recipient side");
+            Assert.That(await Filter([TestItem.AddressA], null), Is.EqualTo(new[] { "0:[]" }), "a failed top-level creation matches its creator");
+            Assert.That(await Filter([creator], null), Is.EqualTo(new[] { "1:[0]" }), "a failed nested creation matches its creator");
+            Assert.That(await Filter(null, [creator]), Is.EqualTo(new[] { "1:[]" }), "a successful creation matches its created address");
+        }
+    }
+
     [Test]
     public async Task trace_timeout_is_separate_for_rpc_calls()
     {
