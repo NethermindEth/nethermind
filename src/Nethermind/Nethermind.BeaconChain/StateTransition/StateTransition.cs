@@ -40,7 +40,7 @@ public static class StateTransition
         SlotProcessing.ProcessSlots(state, block.Slot, cache);
 
         if (verifySignatures && !SignatureSets.VerifyProposerSignature(state, signedBlock, pubkeys))
-            throw new BeaconStateException($"Invalid proposer signature for the block at slot {block.Slot}");
+            throw new ProposerSignatureException($"Invalid proposer signature for the block at slot {block.Slot}");
 
         // Pre-Fulu epochs have no blob schedule entry; the Electra limit applies.
         ulong maxBlobsPerBlock = spec.GetBlobParameters(state.GetCurrentEpoch())?.MaxBlobsPerBlock ?? spec.MaxBlobsPerBlockElectra;

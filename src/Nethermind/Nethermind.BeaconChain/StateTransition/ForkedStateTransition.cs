@@ -222,7 +222,7 @@ public static class ForkedStateTransition
             GloasSlotProcessing.ProcessSlots(state, block.Slot, cache);
 
         if (verifySignatures && !GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, pubkeys))
-            throw new BeaconStateException($"Invalid proposer signature for the block at slot {block.Slot}");
+            throw new ProposerSignatureException($"Invalid proposer signature for the block at slot {block.Slot}");
 
         GloasBlockProcessing.ProcessBlock(state, block, cache, pubkeys, notifier, spec, verifySignatures);
 

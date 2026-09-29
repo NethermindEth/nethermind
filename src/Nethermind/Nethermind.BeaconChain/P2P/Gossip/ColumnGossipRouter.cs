@@ -80,6 +80,9 @@ public enum ColumnGossipDropReason
 
     /// <summary>A Fulu sidecar for a (block root, index) that already ran <see cref="ColumnGossipRouter.KzgBatchesPerColumn"/> KZG batches.</summary>
     KzgBatchLimit,
+
+    /// <summary>A Fulu sidecar whose block's parent, or a Gloas sidecar whose block, the importer refused for failing validation.</summary>
+    FailedBlockValidation,
 }
 
 /// <summary>
@@ -114,6 +117,7 @@ public enum ColumnGossipDropReason
 /// Where a Fulu header's expected proposer is read from; <c>null</c> applies no expected-proposer rule, so no sidecar of
 /// a header this node has not imported is forwarded.
 /// </param>
+/// <param name="failedBlocks">Where the roots of blocks the importer refused are read from; <c>null</c> applies no failed-validation rule.</param>
 public sealed class ColumnGossipRouter(
     BeaconChainSpec spec,
     SlotClock slotClock,
@@ -123,7 +127,8 @@ public sealed class ColumnGossipRouter(
     IBeaconChainStatusSource? status = null,
     ForkChoiceSnapshotHolder? forkChoice = null,
     PubkeyCache? pubkeys = null,
-    ProposerLookaheadHolder? proposerLookahead = null)
+    ProposerLookaheadHolder? proposerLookahead = null,
+    FailedBlockRoots? failedBlocks = null)
 {
     private const int SeenCacheSize = 4096;
     internal const int GloasBlockCacheSize = 64;
@@ -407,6 +412,12 @@ public sealed class ColumnGossipRouter(
         if (_storedBlockSlots?.TryRead(header.ParentRoot!, _parentSlotReads, out ulong parentSlot) == true && slot <= parentSlot)
         {
             return Drop(ColumnGossipDropReason.NotAboveParentSlot, MessageValidity.Rejected);
+        }
+
+        // [REJECT] the block's parent passes validation: a failed parent is never imported, so this runs before any signature or KZG work.
+        if (failedBlocks?.Contains(header.ParentRoot!) == true)
+        {
+            return Drop(ColumnGossipDropReason.FailedBlockValidation, MessageValidity.Rejected);
         }
 
         // [REJECT] the proposer signature is valid: an imported block's signature was verified at import.
@@ -925,6 +936,12 @@ public sealed class ColumnGossipRouter(
         if (!blockCached && spec.GetEpoch(sidecar.Slot) < spec.GloasForkEpoch)
         {
             return Drop(ColumnGossipDropReason.UnknownBlock, MessageValidity.Ignored);
+        }
+
+        // [REJECT] the block passes validation: a refused block is never stored, so it would otherwise read as unseen and be parked.
+        if (failedBlocks?.Contains(blockRoot) == true)
+        {
+            return Drop(ColumnGossipDropReason.FailedBlockValidation, MessageValidity.Rejected);
         }
 
         // [IGNORE] the block has been seen, and [REJECT] it passes validation: the store holds only blocks fork choice accepted.

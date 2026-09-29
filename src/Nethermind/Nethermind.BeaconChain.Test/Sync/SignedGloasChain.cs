@@ -141,7 +141,7 @@ internal sealed class SignedGloasChain
     }
 
     /// <summary>A real importer on the anchor whose store can hold Gloas blocks.</summary>
-    public BlockImporter CreateImporter(IEngineDriver engine, System.Func<Hash256, ExecutionPayloadBid, bool>? isEnvelopeDataAvailable = null, ForkChoiceSnapshotHolder? snapshots = null, BeaconChainStore? store = null, ILogManager? logManager = null, SlotClock? clock = null)
+    public BlockImporter CreateImporter(IEngineDriver engine, System.Func<Hash256, ExecutionPayloadBid, bool>? isEnvelopeDataAvailable = null, ForkChoiceSnapshotHolder? snapshots = null, BeaconChainStore? store = null, ILogManager? logManager = null, SlotClock? clock = null, FailedBlockRoots? failedBlocks = null)
     {
         PubkeyCache pubkeys = new();
         pubkeys.Build(AnchorState.Validators!);
@@ -158,7 +158,8 @@ internal sealed class SignedGloasChain
             new ForkedBeaconState.OfFulu(AnchorState),
             new ForkedSignedBeaconBlock.OfFulu(AnchorBlock),
             AnchorRoot,
-            snapshots);
+            snapshots,
+            failedBlocks: failedBlocks);
     }
 
     public BeaconChainStore CreateStore() => new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
