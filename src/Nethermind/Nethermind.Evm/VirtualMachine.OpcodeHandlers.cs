@@ -43,7 +43,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         static virtual int StackGrowth => 0;
         /// <summary>Whether a checked Execute does nothing but move the head by <see cref="StackGrowth"/>, so guest dispatch skips it.</summary>
         static virtual bool MovesHeadOnly => false;
-        static virtual int PushSize => -1;
         /// <summary>Whether Execute can move the program counter to a jump target.</summary>
         static virtual bool MayJump => false;
 
@@ -1355,7 +1354,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct Push0Opcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
-        public static int PushSize => 0;
         public static bool HasCheckedBody
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1395,7 +1393,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TOpCount : struct, EvmInstructions.IOpCount
         where TTracingInst : struct, IFlag
     {
-        public static int PushSize => TOpCount.Count;
         public static bool HasCheckedBody
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

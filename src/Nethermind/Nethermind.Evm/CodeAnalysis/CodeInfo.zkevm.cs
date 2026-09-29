@@ -2,38 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo
 {
-    /// <summary>The number of zero bytes that follow every non-empty code in memory.</summary>
-    /// <remarks>
-    /// A PUSH32 in the last byte reads 32 immediate bytes, and the next opcode read then lands on the last
-    /// padding byte. Zero is STOP, so dispatch that runs off the end halts as the implicit STOP would.
-    /// </remarks>
-    internal const int DispatchPadding = 33;
-
-    /// <remarks>
-    /// Always copies, as a caller's buffer promises nothing about the bytes after the code. This constructor is
-    /// the only way code reaches a <see cref="CodeInfo"/>, so it covers every source: a witness entry, a deployed
-    /// code, a delegation designator, and init code taken from a transaction or from memory.
-    /// See <see cref="DispatchFlags.PaddedCode"/>.
-    /// </remarks>
-    static partial void PadForDispatch(ref ReadOnlyMemory<byte> code)
-    {
-        if (code.IsEmpty)
-            return;
-
-        byte[] padded = GC.AllocateUninitializedArray<byte>(code.Length + DispatchPadding);
-        code.Span.CopyTo(padded);
-        padded.AsSpan(code.Length).Clear();
-        code = padded.AsMemory(0, code.Length);
-    }
-
-    // Guest execution is single-threaded; bitmap writes and the resume cursor are not synchronized.
+    // Guest execution is single-threaded; bitmap writes, the resume cursor and the execution copy are not synchronized.
     private long[]? _incrementalJumpBitmap;
     private nint _analyzedUntil;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private byte[] GetExecutionCode() =>
+        _code is byte[] code && code.Length != _codeLength ? code : (byte[])(_code = CreatePaddedCode(ViewOf(_code).Span));
 
     /// <summary>The jump-destination bitmap of this code, holding only the destinations analyzed so far.</summary>
     /// <remarks>
