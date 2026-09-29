@@ -17,6 +17,7 @@ using Newtonsoft.Json.Linq;
 using NSubstitute;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -92,6 +93,87 @@ public partial class DebugRpcModuleTests
         Assert.That(result["result"]!.Count(), Is.EqualTo(block.Transactions.Length));
         for (int i = 0; i < block.Transactions.Length; i++)
             Assert.That(result["result"]![i]!["txHash"]!.Value<string>(), Is.EqualTo(block.Transactions[i].Hash!.ToString()));
+    }
+
+    // The supplied body keeps the stored header's hash, and the new header has no stored receipts: both must number
+    // logs from the body that runs, not from receipts looked up by hash.
+    [TestCase(false, false, false, TestName = "Debug_traceBlock_callTracer_log_index_follows_supplied_body_under_stored_hash")]
+    [TestCase(true, false, false, TestName = "Debug_traceBlock_callTracer_log_index_follows_supplied_body_under_unstored_hash")]
+    [TestCase(true, true, false, TestName = "Debug_traceBlock_callTracer_log_index_follows_supplied_body_after_reverted_tx")]
+    [TestCase(false, false, true, TestName = "Debug_traceBlock_callTracer_log_index_follows_supplied_body_filtered_to_one_tx")]
+    public async Task Debug_traceBlock_callTracer_log_index_follows_supplied_body(bool unstoredHeader, bool revertFirst, bool filterToSecond)
+    {
+        using Context context = await Context.Create();
+
+        ulong nonce = context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        static Transaction LoggingTransaction(ulong txNonce, int logs, bool revert = false)
+        {
+            Prepare code = Prepare.EvmCode;
+            for (int i = 0; i < logs; i++) code = code.Log(0, 0);
+            code = revert ? code.Revert(0, 0) : code.STOP();
+            return Build.A.Transaction.WithNonce(txNonce).WithCode(code.Done).WithGasLimit(100000)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        }
+
+        Block original = await context.Blockchain.AddBlock(LoggingTransaction(nonce, 1), LoggingTransaction(nonce + 1, 1));
+        BlockHeader header = original.Header.Clone();
+        if (unstoredHeader)
+        {
+            header.ExtraData = [0x01];
+            header.Hash = header.CalculateHash();
+        }
+        Block supplied = new(header, [LoggingTransaction(nonce, 2, revertFirst), original.Transactions[1]], original.Uncles, original.Withdrawals);
+
+        GethTraceOptions options = new()
+        {
+            Tracer = NativeCallTracer.CallTracer,
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}"""),
+            TxHash = filterToSecond ? supplied.Transactions[1].Hash : null
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", Rlp.Encode(supplied).ToString(), options);
+        if (filterToSecond)
+        {
+            string single = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionInBlockByHash",
+                Rlp.Encode(supplied).ToString(), supplied.Transactions[1].Hash, options with { TxHash = null });
+            Assert.That((string)JToken.Parse(single)["result"]!["logs"]![0]!["index"]!, Is.EqualTo("0x2"), single);
+        }
+
+        JToken result = JToken.Parse(response)["result"]!;
+        if (filterToSecond)
+        {
+            Assert.That((string)result.Single()["result"]!["logs"]![0]!["index"]!, Is.EqualTo("0x2"), response);
+            return;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result[0]!["result"]!["logs"]?.Select(static log => (string)log["index"]!), revertFirst ? Is.Null : Is.EqualTo(new[] { "0x0", "0x1" }), response);
+            Assert.That((string)result[1]!["result"]!["logs"]![0]!["index"]!, Is.EqualTo(revertFirst ? "0x0" : "0x2"), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_callTracer_filtered_supplied_body_stops_after_target()
+    {
+        using Context context = await Context.Create();
+
+        ulong nonce = context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Transaction target = Build.A.Transaction.WithNonce(nonce).WithCode(Prepare.EvmCode.Log(0, 0).STOP().Done).WithGasLimit(100000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block original = await context.Blockchain.AddBlock(target);
+        Transaction belowIntrinsicGas = Build.A.Transaction.WithNonce(nonce + 1).WithTo(TestItem.AddressC).WithGasLimit(1000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block supplied = new(original.Header.Clone(), [target, belowIntrinsicGas], original.Uncles, original.Withdrawals);
+
+        GethTraceOptions options = new()
+        {
+            Tracer = NativeCallTracer.CallTracer,
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}"""),
+            TxHash = target.Hash
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", Rlp.Encode(supplied).ToString(), options);
+
+        Assert.That((string)JToken.Parse(response)["result"]!.Single()["result"]!["logs"]![0]!["index"]!, Is.EqualTo("0x0"), response);
     }
 
     [Test]
