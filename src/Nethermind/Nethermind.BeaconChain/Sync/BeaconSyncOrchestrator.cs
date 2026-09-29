@@ -202,6 +202,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The newest range-synced block that waits in <see cref="_pendingRetry"/> or is held under it, so a round starts past it; written by the worker, read by the feed.</summary>
     private volatile HeldRange? _rangeHeld;
 
+    /// <summary>The roots of the range-synced blocks held on the chain of <see cref="_rangeHeld"/>; touched by the worker only.</summary>
+    private readonly HashSet<Hash256> _rangeHeldRoots = [];
+
     /// <summary>The head slot at the latest slot tick, and the first tick it was seen at.</summary>
     private (ulong HeadSlot, ulong SinceSlot)? _headSlotSeen;
     private Hash256 _anchorExecutionHash = Hash256.Zero;
@@ -751,8 +754,15 @@ public sealed class BeaconSyncOrchestrator(
 
         if (held is null || block.Slot > held.Tip.Slot)
         {
+            if (held?.DeferredRoot != deferredRoot)
+            {
+                _rangeHeldRoots.Clear();
+            }
+
             _rangeHeld = new HeldRange(deferredRoot, new Tip(root, block.Slot));
         }
+
+        _rangeHeldRoots.Add(root);
     }
 
     /// <summary>Starts the by-root column fetch of each deferred block that misses a column <paramref name="peer"/> custodies.</summary>
@@ -806,6 +816,7 @@ public sealed class BeaconSyncOrchestrator(
             Metrics.BeaconChainLastBlockImportMs = Environment.TickCount64 - startMs;
             _importMsSinceProgressLog += Metrics.BeaconChainLastBlockImportMs;
             _pendingRetry.Remove(root);
+            _rangeHeldRoots.Remove(root);
             if (TrackColumnRecovery(root, block) is { } recovery)
             {
                 RecoverColumns(root, recovery, slotClock.CurrentSlot, token);
@@ -1011,7 +1022,8 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         _pendingRetry[root] = new PendingRetry(block, slotClock.CurrentSlot);
-        if (_rangeHeld is { } held && held.DeferredRoot == block.ParentRoot)
+        // A held block that waits once the blocks before it imported holds the rest of the chain, as fulu/fork-choice.md is_data_available lets none of it import before it.
+        if (_rangeHeld is { } held && (held.DeferredRoot == block.ParentRoot || _rangeHeldRoots.Contains(root)))
         {
             _rangeHeld = held with { DeferredRoot = root };
         }
@@ -1028,6 +1040,7 @@ public sealed class BeaconSyncOrchestrator(
         if (_rangeHeld?.DeferredRoot == root)
         {
             _rangeHeld = null;
+            _rangeHeldRoots.Clear();
         }
     }
 
