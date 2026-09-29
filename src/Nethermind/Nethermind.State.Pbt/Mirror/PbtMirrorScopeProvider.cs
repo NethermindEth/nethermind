@@ -176,7 +176,6 @@ public class PbtMirrorScopeProvider(
         // PBT accounts have no per-account storage root.
         public Hash256 RootHash => authoritative.RootHash;
 
-        public bool IsKnownEmpty => authoritative.IsKnownEmpty;
 
         public void Get(in UInt256 index, out UInt256 value)
         {

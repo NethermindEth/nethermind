@@ -403,7 +403,6 @@ public class PrewarmerScopeProvider(
 
         public Hash256 RootHash => baseStorageTree.RootHash;
 
-        public bool IsKnownEmpty => baseStorageTree.IsKnownEmpty;
 
         public void Get(in UInt256 index, out UInt256 value)
         {

@@ -18,14 +18,6 @@ public sealed class PbtStorageTree(
 
     public Hash256 RootHash => Keccak.EmptyTreeHash;
 
-    /// <inheritdoc/>
-    /// <remarks>
-    /// PBT has no per-account storage root, and enumerating a contract's storage can exhaust memory, especially during
-    /// parallel prewarming. Only an absent account is known empty, since removing an account removes its slots. Taken
-    /// once, when the tree is created; the scope drops its trees after every write batch so none outlives the answer.
-    /// </remarks>
-    public bool IsKnownEmpty { get; } = scope.Get(address) is null;
-
     public void Get(in UInt256 index, out UInt256 value)
     {
         EvmWord word = scope.Bundle.GetSlot(address, _addressHash, index);

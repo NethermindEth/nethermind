@@ -86,6 +86,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     internal PbtSnapshotBundle Bundle { get; }
     public Hash256 RootHash => _rootHash;
+
+    // PBT has no per-account storage root.
+    public bool StorageRootsAreAuthoritative => false;
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
 
     internal void UseAuthoritativeRoot(Hash256 root)
@@ -293,12 +296,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
             new StorageWriteBatch(scope, key);
 
-        public void Dispose()
-        {
-            // A tree created before these writes may have cached an emptiness that they just ended.
-            lock (scope._storages) scope._storages.Clear();
-            Metrics.PbtWriteBatchTime.Observe(Stopwatch.GetTimestamp() - _start);
-        }
+        public void Dispose() => Metrics.PbtWriteBatchTime.Observe(Stopwatch.GetTimestamp() - _start);
     }
 
     private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address) : IWorldStateScopeProvider.IStorageWriteBatch

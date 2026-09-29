@@ -855,7 +855,7 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    /// <summary>Only <c>IStorageTree.IsKnownEmpty</c> may suppress reads for missing slots.</summary>
+    /// <summary>Only a scope with authoritative storage roots may suppress reads for missing slots.</summary>
     [Test]
     public void Storage_of_a_backend_that_cannot_prove_emptiness_is_still_read()
     {
@@ -2678,6 +2678,8 @@ public class StorageProviderTests(bool useFlat)
         {
             public Hash256 RootHash => baseScope.RootHash;
 
+            public bool StorageRootsAreAuthoritative => false;
+
             public void UpdateRootHash() => baseScope.UpdateRootHash();
 
             public Account Get(Address address) => baseScope.Get(address);
@@ -2690,7 +2692,7 @@ public class StorageProviderTests(bool useFlat)
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
             public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
-                new StorageTreeDecorator(baseScope.CreateStorageTree(address));
+                baseScope.CreateStorageTree(address);
 
             public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
                 baseScope.StartWriteBatch(estimatedAccountNum);
@@ -2698,17 +2700,6 @@ public class StorageProviderTests(bool useFlat)
             public void Commit(ulong blockNumber) => baseScope.Commit(blockNumber);
 
             public void Dispose() => baseScope.Dispose();
-        }
-
-        private sealed class StorageTreeDecorator(IWorldStateScopeProvider.IStorageTree baseStorageTree) : IWorldStateScopeProvider.IStorageTree
-        {
-            public Hash256 RootHash => baseStorageTree.RootHash;
-
-            public bool IsKnownEmpty => false;
-
-            public void Get(in UInt256 index, out UInt256 value) => baseStorageTree.Get(in index, out value);
-
-            public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);
         }
     }
 
