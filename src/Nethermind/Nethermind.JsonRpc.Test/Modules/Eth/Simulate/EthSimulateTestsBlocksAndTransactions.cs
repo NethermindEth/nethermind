@@ -1943,13 +1943,12 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
-    /// Pins how a delegation to a move destination resolves. Where the repository follows the delegation itself
-    /// (a transaction before EIP-8037) it runs empty code, as EIP-7702 requires. Where the caller looks the target up
-    /// on its own (EIP-8037 transactions and nested <c>CALL</c>s), the repository cannot tell that from a direct call,
-    /// so the precompile runs: a known limitation.
+    /// Regression test: a delegation to a move destination runs empty code (EIP-7702), both from the transaction and
+    /// from a nested <c>CALL</c>, on the EIP-7928 path and on the sequential one. A plain call to the destination
+    /// still runs the precompile.
     /// </summary>
     [Test]
-    public async Task eth_simulateV1_resolves_delegation_to_moved_precompile([Values] bool balPath)
+    public async Task eth_simulateV1_delegation_to_moved_precompile_runs_empty_code([Values] bool balPath)
     {
         Address movedTo = Address.FromNumber(0x123456);
         Address delegator = new("0xc400000000000000000000000000000000000000");
@@ -1988,8 +1987,8 @@ public class EthSimulateTestsBlocksAndTransactions
         using (Assert.EnterMultipleScope())
         {
             Assert.That(calls.Select(static c => c.Error), Is.All.Null);
-            Assert.That(calls[0].ReturnData, balPath ? Is.EqualTo(input) : Is.Empty);
-            Assert.That(calls[1].ReturnData, Is.EqualTo(new UInt256(32).ToBigEndian()));
+            Assert.That(calls[0].ReturnData, Is.Empty);
+            Assert.That(calls[1].ReturnData, Is.EqualTo(UInt256.Zero.ToBigEndian()));
             Assert.That(calls[2].ReturnData, Is.EqualTo(input));
         }
     }

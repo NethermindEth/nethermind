@@ -31,16 +31,20 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
             return !result.IsEmpty &&
                    ICodeInfoRepository.TryGetDelegatedAddress(result.CodeSpan, out delegationAddress) &&
                    followDelegation
-                ? GetDelegatedCodeInfo(this, delegationAddress, vmSpec)
+                ? GetDelegatedCodeInfo(delegationAddress, vmSpec)
                 : result;
         }
 
         return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
-    /// <summary>Returns the code a delegation to <paramref name="target"/> executes: empty for a precompile, moved or not (EIP-7702).</summary>
-    internal static CodeInfo GetDelegatedCodeInfo(ICodeInfoRepository repository, Address target, IReleaseSpec vmSpec) =>
-        repository.GetCachedCodeInfoNoDelegation(target, vmSpec) is { IsPrecompile: false } codeInfo ? codeInfo : CodeInfo.Empty;
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A code override, including one at a precompile's address, runs as code. A move destination resolves to its
+    /// own code, not to the precompile moved there.
+    /// </remarks>
+    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
+        _codeOverrides.TryGetValue(target, out CodeInfo? result) ? result : codeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
 
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
         _precompileOverrides.TryGetValue(codeSource, out (CodeInfo codeInfo, Address initialAddr) precompile) ? precompile.codeInfo.Precompile

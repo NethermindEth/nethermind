@@ -32,7 +32,7 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
             worldState.RecordAccountAccess(codeSource);
             if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
             {
-                return followDelegation ? OverridableCodeInfoRepository.GetDelegatedCodeInfo(this, delegationAddress, vmSpec) : codeInfo;
+                return followDelegation ? GetDelegatedCodeInfo(delegationAddress, vmSpec) : codeInfo;
             }
 
             delegationAddress = null;
@@ -44,6 +44,17 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
 
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
         TryGetMoved(codeSource, out CodeInfo? codeInfo) ? codeInfo.Precompile : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A code override at a precompile's address runs as code, as in <see cref="OverridableCodeInfoRepository"/>;
+    /// no transaction can change the code there, so the env's copy is current. Any other target, a move destination
+    /// included, resolves to its code in the world state.
+    /// </remarks>
+    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
+        vmSpec.IsPrecompile(target) && overrides.Code.TryGetValue(target, out CodeInfo? codeInfo)
+            ? codeInfo
+            : codeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(code, codeOwner, spec);
