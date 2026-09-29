@@ -1418,10 +1418,12 @@ namespace Nethermind.TxPool
                 default:
                     // Opaque: with no simulator wired the prefix stays unresolved, exactly as at admission.
                     if (_frameTxPrefixSimulator is null) return true;
-                    if (_txPoolConfig.FrameTxWidthEnabled
+                    UInt256 widthCharge = _txPoolConfig.FrameTxWidthEnabled
                         && KeyedNonceManager.UsesKeyedNonce(tx)
                         && !baselineExempt.Add(tx.SenderAddress!)
-                        && !_senderWidth.TrySpend(tx.SenderAddress!, FrameTxWidthCharge.For(tx, _txPoolConfig.FrameTxWidthSafetyFactorPermille)))
+                        ? FrameTxWidthCharge.For(tx, _txPoolConfig.FrameTxWidthSafetyFactorPermille)
+                        : UInt256.Zero;
+                    if (_senderWidth.GetWidth(tx.SenderAddress!) < widthCharge)
                     {
                         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
                         return false;
@@ -1429,6 +1431,11 @@ namespace Nethermind.TxPool
                     // validate_signature reads no state, so admission's verdict still holds and re-verifying
                     // would only spend the per-head simulation budget this pool rations.
                     FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx, signaturesPreValidated: true, token: _cts.Token);
+                    if (!simulated.NodeBound && !_senderWidth.TrySpend(tx.SenderAddress!, widthCharge))
+                    {
+                        Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
+                        return false;
+                    }
                     if (simulated.Outcome != FrameTxSimulationOutcome.Accepted)
                     {
                         // A node fault or an admission bound decides nothing, so the transaction stays

@@ -4882,6 +4882,37 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "the deferred revalidation must be retried");
         }
 
+        [Test]
+        public async Task Revalidation_deferred_by_an_admission_bound_spends_no_width()
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxWidthEnabled = true, FrameTxRevalidationDeferralBudget = 4 },
+                KeyedNonceSpecProvider(), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction first = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1]);
+            Transaction second = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2]);
+            UInt256 charge = FrameTxWidthCharge.For(second, 1000);
+            _txPool.EarnWidthOnFinalization(Build.A.Block.WithTransactions(first).TestObject, [new TxReceipt { GasUsed = (ulong)(charge * 2) }]);
+
+            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(second, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+            Block head = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            head = Build.A.Block.WithNumber(2).WithParent(head).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            head = Build.A.Block.WithNumber(3).WithParent(head).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
+        }
+
         // Each carried deferral costs a simulation under the head write lock, so an unbounded carry lets a
         // backlog the per-head budget cannot clear hold that lock for the whole budget on every later head.
         [TestCase(0, 1)]
