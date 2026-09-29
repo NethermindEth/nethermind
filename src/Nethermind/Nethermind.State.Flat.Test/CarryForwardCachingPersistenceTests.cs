@@ -533,8 +533,8 @@ public class CarryForwardCachingPersistenceTests
         }
     }
 
-    // A cache smaller than the model's key set keeps wiping and refilling, and every fill takes the lock each commit
-    // needs, so that case commits less.
+    // A slot table smaller than the model's key set keeps replacing entries in full sets, so that case commits less to
+    // keep its run time close to the default-capacity case.
     [TestCase(64, 500, 0)]
     [TestCase(CarryForwardCachingPersistence.DefaultSlotCapacity, 30_000, 0)]
     [TestCase(64, 0, 30, Explicit = true, Reason = "Time-based stress run")]
