@@ -7,6 +7,7 @@ using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -76,12 +77,14 @@ public enum ExecutionPayloadEnvelopeImportResult
 /// committed (whose <c>blob_kzg_commitments</c> the columns must match). Required so availability
 /// can never be skipped by omission.
 /// </param>
+/// <param name="hasher">Supplies the hasher for the block-root check's state root, asked once per envelope; <c>null</c> merkleizes the whole state.</param>
 public sealed class ExecutionPayloadEnvelopeImporter(
     IGloasBlockStateProvider states,
     INewPayloadNotifier engine,
     PubkeyCache pubkeys,
     Func<Hash256, ExecutionPayloadBid, bool> isDataAvailable,
-    ILogManager logManager)
+    ILogManager logManager,
+    Func<IBeaconStateHasher>? hasher = null)
 {
     // No gossip_ prefix: envelopes also arrive by req/resp and from the local builder, and every source is judged here.
     private static readonly StringLabel EnvelopeRejected = new("execution_payload_envelope");
@@ -119,7 +122,7 @@ public sealed class ExecutionPayloadEnvelopeImporter(
         EnvelopeVerdict verdict = new(engine);
         try
         {
-            GloasBlockProcessing.VerifyExecutionPayloadEnvelope(states, signedEnvelope, verdict, pubkeys);
+            GloasBlockProcessing.VerifyExecutionPayloadEnvelope(states, signedEnvelope, verdict, pubkeys, hasher?.Invoke());
         }
         catch (EngineUnavailableException e)
         {

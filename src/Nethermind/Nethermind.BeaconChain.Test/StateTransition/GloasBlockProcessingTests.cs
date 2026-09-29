@@ -164,7 +164,7 @@ public class GloasBlockProcessingTests
         // directly: every field agrees with the state it is compared against, so it passes.
         MethodInfo unbound = typeof(GloasBlockProcessing).GetMethod("VerifyExecutionPayloadEnvelopeAgainst", BindingFlags.NonPublic | BindingFlags.Static)
             ?? throw new InvalidOperationException("the per-field verification body was renamed; update this test");
-        Assert.That(() => unbound.Invoke(null, [fabricated, envelope, new AcceptingNotifier(), new PubkeyCache()]), Throws.Nothing,
+        Assert.That(() => unbound.Invoke(null, [fabricated, envelope, new AcceptingNotifier(), new PubkeyCache(), null]), Throws.Nothing,
             "the per-field checks alone cannot tell a fabricated post-state from a real one; if this starts failing the binding below may have become redundant");
 
         // The bound entry point knows which blocks exist and refuses the one that does not.

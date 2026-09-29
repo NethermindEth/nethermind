@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
@@ -62,6 +63,32 @@ public class ExecutionPayloadEnvelopeImporterTests
             Assert.That(result, Is.EqualTo(expected));
             Assert.That(Rejections() - rejectionsBefore, Is.EqualTo(expectedRejections));
             engine.ReceivedWithAnyArgs(1).engine_newPayloadV5(default!, default!, default, default);
+        }
+    }
+
+    /// <summary>
+    /// The block-root check hashes the block's post-state, which the import that produced it already hashed: the hasher the importer
+    /// is given supplies that root, and a root it gets wrong refuses the envelope before the engine is asked.
+    /// </summary>
+    [Test]
+    public void The_block_root_check_takes_the_state_root_from_the_supplied_hasher([Values] bool hasherAgrees)
+    {
+        BeaconStateGloas state = StateWithCommittedBid(out SignedExecutionPayloadBid bid, out Bls.SecretKey builderSk);
+        SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
+        IEngineRpcModule engine = ScriptedEngine(ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
+        GloasLineageHasherTests.CountingStateHasher hasher = new(hasherAgrees ? new CachedBeaconStateHasher() : new WrongRootHasher());
+        long rejectionsBefore = Rejections();
+
+        ExecutionPayloadEnvelopeImportResult result = CreateImporter(new BlockStates().Add(state), engine, hasher: hasher).Import(envelope);
+
+        Assert.That(hasher.GloasCalls, Is.EqualTo(1));
+        if (hasherAgrees)
+        {
+            Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+        }
+        else
+        {
+            AssertCountedRejectionWithoutEngineCall(result, rejectionsBefore, engine);
         }
     }
 
@@ -452,11 +479,11 @@ public class ExecutionPayloadEnvelopeImporterTests
     }
 
     /// <summary>An importer over the <see cref="EngineDriver"/> the production module wires in front of <paramref name="engine"/>.</summary>
-    private ExecutionPayloadEnvelopeImporter CreateImporter(IGloasBlockStateProvider states, IEngineRpcModule engine, Func<Hash256, ExecutionPayloadBid, bool>? isDataAvailable = null, PubkeyCache? pubkeys = null)
+    private ExecutionPayloadEnvelopeImporter CreateImporter(IGloasBlockStateProvider states, IEngineRpcModule engine, Func<Hash256, ExecutionPayloadBid, bool>? isDataAvailable = null, PubkeyCache? pubkeys = null, IBeaconStateHasher? hasher = null)
     {
         IContainer container = BeaconChainTestContainer.Builder(engine: engine, config: new BeaconChainConfig { Enabled = true }).Build();
         _containers.Add(container);
-        return new ExecutionPayloadEnvelopeImporter(states, container.Resolve<EngineDriver>(), pubkeys ?? new PubkeyCache(), isDataAvailable ?? ((_, _) => true), LimboLogs.Instance);
+        return new ExecutionPayloadEnvelopeImporter(states, container.Resolve<EngineDriver>(), pubkeys ?? new PubkeyCache(), isDataAvailable ?? ((_, _) => true), LimboLogs.Instance, hasher is null ? null : () => hasher);
     }
 
     private static IEngineRpcModule ScriptedEngine(ResultWrapper<PayloadStatusV1> answer)
@@ -477,4 +504,11 @@ public class ExecutionPayloadEnvelopeImporterTests
     }
 
     private static long Rejections() => Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(EnvelopeRejected);
+
+    private sealed class WrongRootHasher : IBeaconStateHasher
+    {
+        public Hash256 HashTreeRoot(BeaconStateFulu state) => Keccak.Zero;
+
+        public Hash256 HashTreeRoot(BeaconStateGloas state) => Keccak.Zero;
+    }
 }

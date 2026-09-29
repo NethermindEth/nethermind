@@ -39,7 +39,9 @@ namespace Nethermind.BeaconChain.Sync;
 /// <para>
 /// Gloas blocks have no in-place lineage: each runs on a clone of its parent's post-state (a Fulu
 /// parent is carried across the fork boundary on that clone), and the frozen result is retained for
-/// fork choice and for verifying the block's execution payload envelope.
+/// fork choice and for verifying the block's execution payload envelope. A child of the last Gloas block
+/// reuses its <see cref="CachedBeaconStateHasher"/>, which the envelope's state-root check shares; a fork
+/// branch starts with a fresh one.
 /// </para>
 /// <para>
 /// Post-states around epoch boundaries (both the last block of an epoch and the first block of the
@@ -99,7 +101,7 @@ public sealed class BlockImporter : IBlockImporter
     /// <summary>The last Gloas block imported; only its children may reuse <see cref="_gloasLineageCache"/>, which refuses a memo built on another branch.</summary>
     private Hash256? _gloasLineageRoot;
 
-    private EpochCache _gloasLineageCache = new();
+    private EpochCache _gloasLineageCache = new() { Hasher = new CachedBeaconStateHasher() };
 
     /// <summary>A Gloas anchor's root and its bid's <c>parent_block_hash</c>, which fork choice records only for blocks it imported; <c>null</c> for a Fulu anchor.</summary>
     private readonly Hash256? _gloasAnchorRoot;
@@ -164,7 +166,7 @@ public sealed class BlockImporter : IBlockImporter
                 throw new ArgumentException($"The anchor state at slot {anchorState.Slot} is a {anchorState.Fork} state, but its block at slot {anchorBlock.Slot} is a {anchorBlock.GetType().Name} block", nameof(anchorBlock));
         }
 
-        _envelopes = new ExecutionPayloadEnvelopeImporter(_states, engine, pubkeys, isEnvelopeDataAvailable, logManager);
+        _envelopes = new ExecutionPayloadEnvelopeImporter(_states, engine, pubkeys, isEnvelopeDataAvailable, logManager, () => _gloasLineageCache.Hasher);
         store.SetCanonicalRoot(anchorBlock.Slot, anchorRoot);
         // A restart must clear what the previous run indexed above the head it replays up to.
         _canonicalIndexTopSlot = Math.Max(anchorBlock.Slot, store.GetCanonicalIndexTopSlot() ?? 0);
@@ -428,6 +430,7 @@ public sealed class BlockImporter : IBlockImporter
         catch (ForkChoiceException e)
         {
             if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {block.Slot} rejected by fork choice: {e.Message}");
+            RecordIfRefusalIsPermanent(blockRoot, block.Slot, parentRoot);
             return BlockImportResult.Invalid;
         }
 
@@ -494,7 +497,9 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.UnknownParent;
         }
 
-        EpochCache cache = parentRoot == _gloasLineageRoot ? _gloasLineageCache : new EpochCache();
+        // A fork block hashes with the stateless hasher, so one that fails allocates no memo and cannot disturb the lineage's.
+        bool extendsLineage = parentRoot == _gloasLineageRoot;
+        EpochCache cache = extendsLineage ? _gloasLineageCache : new EpochCache();
         BeaconStateGloas postState;
         try
         {
@@ -522,6 +527,7 @@ public sealed class BlockImporter : IBlockImporter
         catch (Exception e) when (e is ForkChoiceException or BeaconStateException)
         {
             if (_logger.IsWarn) _logger.Warn($"Dropping block {blockRoot} at slot {block.Slot} rejected by fork choice: {e.Message}");
+            RecordIfRefusalIsPermanent(blockRoot, block.Slot, parentRoot);
             return BlockImportResult.Invalid;
         }
 
@@ -538,9 +544,24 @@ public sealed class BlockImporter : IBlockImporter
 
         _store.PutForkedBlock(blockRoot, forked);
         _unfinalized[blockRoot] = block.Slot;
+        if (!extendsLineage)
+        {
+            cache.Hasher = new CachedBeaconStateHasher();
+        }
+
         _gloasLineageRoot = blockRoot;
         _gloasLineageCache = cache;
         return BlockImportResult.Imported;
+    }
+
+    /// <summary>Records a block <c>on_block</c> refused after <see cref="TickToClock"/>, when the ticked store shows the refusal is permanent.</summary>
+    /// <remarks>The tick pulls up unrealized finality (specs/phase0/fork-choice.md on_tick), which the checks before the transition never saw; a refusal for any other reason, such as data availability, stays unrecorded.</remarks>
+    private void RecordIfRefusalIsPermanent(Hash256 blockRoot, ulong slot, Hash256 parentRoot)
+    {
+        if (_failedBlocks is not null && CheckBeforeTransition(slot, parentRoot, out bool failedValidation) is not null && failedValidation)
+        {
+            _failedBlocks.Add(blockRoot, slot);
+        }
     }
 
     /// <summary>Records a block the state transition refused, unless only its proposer signature failed: that signature is not part of the block root, so a forged copy would mark the honest block.</summary>
@@ -1018,7 +1039,7 @@ public sealed class BlockImporter : IBlockImporter
     /// <remarks>
     /// The walk stops below the first already-canonical ancestor whose empty slots under it hold no entry. So one head change
     /// costs one write per block and per stale entry above the common ancestor, one read per slot from the common ancestor's
-    /// parent up to the higher of the new head and the index's recorded top slot, and never walks past the fork-choice root.
+    /// parent up to the higher of the new head and the index's recorded top slot (capped at the clock's next slot, above which nothing is indexed), and never walks past the fork-choice root.
     /// Every change is computed from the index as it was and applied in one batch, so an interrupted update leaves the
     /// previous index whole and the next head change starts from it.
     /// </remarks>
@@ -1037,7 +1058,7 @@ public sealed class BlockImporter : IBlockImporter
         {
             headSlot ??= node.Slot;
             // Above the head, clear up to the index's top slot; below it, the slots between this block and its child.
-            ulong clearTo = childSlot is ulong child ? child - 1 : Math.Max(_canonicalIndexTopSlot, node.Slot);
+            ulong clearTo = childSlot is ulong child ? child - 1 : Math.Max(Math.Min(_canonicalIndexTopSlot, _clock.CurrentSlot + 1), node.Slot);
             bool skippedSlotsWereEmpty = true;
             for (ulong slot = node.Slot + 1; slot <= clearTo; slot++)
             {
