@@ -26,7 +26,7 @@ public static class GoodbyeReason
 }
 
 /// <summary>The eth2 <c>goodbye</c> protocol.</summary>
-/// <remarks>Fire-and-forget on the dial side: like other clients, no response chunk is awaited before disconnecting.</remarks>
+/// <remarks>The listener answers with one success chunk echoing the reason (p2p-interface Goodbye); the dial side does not await it before disconnecting.</remarks>
 public sealed class GoodbyeProtocol : ReqRespProtocolBase, ISessionProtocol<ulong, ulong>
 {
     public string Id => "/eth2/beacon_chain/req/goodbye/1/ssz_snappy";
@@ -51,11 +51,13 @@ public sealed class GoodbyeProtocol : ReqRespProtocolBase, ISessionProtocol<ulon
         using CancellationTokenSource cts = StartTimeout(RespTimeout);
         try
         {
-            Eth2PingProtocol.DecodeUint64(await ReqRespFraming.ReadRequestAsync(stream, sizeof(ulong), cts.Token));
+            ulong reason = Eth2PingProtocol.DecodeUint64(await ReqRespFraming.ReadRequestAsync(stream, sizeof(ulong), cts.Token));
+            await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, Eth2PingProtocol.EncodeUint64(reason), cts.Token);
         }
-        catch (Eth2ReqRespException)
+        catch (Eth2ReqRespException e)
         {
             RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
         }
         catch (OperationCanceledException)
         {
