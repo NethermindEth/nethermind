@@ -142,6 +142,49 @@ public class ReqRespFramingTests
         }
     }
 
+    // A listener serves an empty request once its zero length prefix is in; frames the requester still owes are legal, anything else that follows is a violation.
+    [TestCase("0x", null, Description = "the requester ends its stream")]
+    [TestCase("0xff060000734e61507059", null, Description = "a stream identifier still owed")]
+    [TestCase("0xff060000734e6150705900050000d8ea82a200", null, Description = "the empty data frame still owed")]
+    [TestCase("0xff060000734e61507059fe030000000000", null, Description = "a padding frame")]
+    [TestCase("0xff060000734e6150705900050000d8ea82a200fe", "Unexpected bytes", Description = "a byte after the data frame")]
+    [TestCase("0xff060000734e61507059fe09000000000000000000000000050000d8ea82a2002a", null, Description = "framing that fills max_compressed_len(0) exactly is not read past")]
+    [TestCase("0x01040000d8ea82a2", "stream identifier", Description = "a data frame before the stream identifier")]
+    [TestCase("0xff060000734e61507058", "identifier", Description = "a stream identifier with the wrong content")]
+    [TestCase("0xff060000734e", "Truncated", Description = "a cut frame")]
+    public async Task Bytes_after_the_prefix_of_an_empty_request_are_owed_framing_or_a_violation(string lateHex, string? violation)
+    {
+        using MemoryStream head = new(Bytes.FromHexString("0x00"));
+        (_, ReqRespFraming.RequestTail tail) = await ReqRespFraming.ReadRequestWithTailAsync(head, maxSize: 8, default, allowEmpty: true);
+
+        using MemoryStream late = new(Bytes.FromHexString(lateHex));
+        string? result = await tail.WatchAsync(late, default);
+
+        if (violation is null)
+        {
+            Assert.That(result, Is.Null);
+        }
+        else
+        {
+            Assert.That(result, Does.Contain(violation));
+        }
+    }
+
+    [TestCase("0x", false)]
+    [TestCase("0x2a", true)]
+    public async Task Bytes_after_a_request_payload_are_a_violation_and_the_end_of_the_stream_is_not(string lateHex, bool violation)
+    {
+        using MemoryStream head = new(Bytes.FromHexString(PingRequestWire));
+        (byte[] payload, ReqRespFraming.RequestTail tail) = await ReqRespFraming.ReadRequestWithTailAsync(head, maxSize: 8, default);
+        using MemoryStream late = new(Bytes.FromHexString(lateHex));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload, Is.EqualTo(Bytes.FromHexString(PingSsz)));
+            Assert.That(await tail.WatchAsync(late, default), violation ? Is.Not.Null : Is.Null);
+        }
+    }
+
     // A peer that repeats the stream-identifier frame forever never advances uncompressedTotal (the
     // loop's only exit condition before the fix), so it would buffer without bound. The 20,000
     // repeats here supply far more than the compressed-size bound for an 8-byte payload; asserting

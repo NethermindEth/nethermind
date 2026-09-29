@@ -48,7 +48,7 @@ internal static class PeerSessionNodes
 
     /// <param name="served">What the node answers <c>status</c> with; defaults to its own holder.</param>
     /// <param name="privateKey">The node's secp256k1 libp2p key; a fresh one by default.</param>
-    public static Node Create(IBeaconChainStatusSource? served = null, byte[]? privateKey = null)
+    public static Node Create(IBeaconChainStatusSource? served = null, byte[]? privateKey = null, Lazy<IBeaconSyncPeerPool>? peerPool = null)
     {
         BeaconChainConfig config = new() { P2PPort = 0 };
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default) { CurrentStatus = Status };
@@ -59,7 +59,7 @@ internal static class PeerSessionNodes
         }
 
         BeaconP2P p2p = new(config, Spec, store, served ?? statusHolder, new LocalMetadataSource(),
-            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance);
+            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance, peerPool: peerPool);
         return new Node(p2p, statusHolder, config);
     }
 
