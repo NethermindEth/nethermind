@@ -112,6 +112,7 @@ public class ReqRespFramingTests
     [TestCase("0x00ff060000734e6150705900050000d8ea82a201", true, Description = "a compressed block declaring a byte it does not carry")]
     [TestCase("0x00ff060000734e6150705900050000d8ea82a280", true, Description = "a compressed block whose length varint never ends")]
     [TestCase("0x00ff060000734e6150705900060000d8ea82a28001", true, Description = "a non-canonical length varint that is not zero")]
+    [TestCase("0x00ff060000734e6150705900060000d8ea82a28100", true, Description = "a non-canonical length of one with no byte")]
     [TestCase("0x00ff060000734e6150705900070000d8ea82a2800000", true, Description = "a non-canonical zero length with a trailing byte")]
     [TestCase("0x00ff060000734e61507059000a0000d8ea82a2808080808000", true, Description = "a zero length varint longer than five bytes")]
     [TestCase("0x00ff060000734e61507058", true, Description = "a stream identifier with the wrong content")]
