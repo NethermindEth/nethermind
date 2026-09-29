@@ -34,4 +34,7 @@ public sealed class EezL1Api(IJsonRpcClient rpcClient) : IEezL1Api
 
     public Task<EezL1Transaction?> GetTransactionByBlockHashAndIndex(Hash256 blockHash, ulong index, CancellationToken token) =>
         rpcClient.Post<EezL1Transaction?>("eth_getTransactionByBlockHashAndIndex", blockHash, index.ToHexString(true)).WaitAsync(token);
+
+    public Task<byte[]?> Call(Address to, byte[] data, CancellationToken token) =>
+        rpcClient.Post<byte[]?>("eth_call", new { to, data }, "latest").WaitAsync(token);
 }

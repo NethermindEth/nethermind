@@ -12,18 +12,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Eez.Execution\Nethermind.Eez.Execution.csproj" />
+    <ProjectReference Include="..\Nethermind.Eez.Prove\Nethermind.Eez.Prove.csproj" />
     <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" />
     <PackageReference Include="Grpc.AspNetCore.Server" />
-    <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
     <PackageReference Include="System.CommandLine" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Protobuf Include="Protos\prove.proto" GrpcServices="Both" />
   </ItemGroup>
 
 </Project>

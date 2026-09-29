@@ -7,7 +7,7 @@ using Grpc.Core;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Eez.Attester.Rpc;
+using Nethermind.Eez.Prove;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Logging;

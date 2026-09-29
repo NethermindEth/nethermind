@@ -7,7 +7,7 @@ using Grpc.Core;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Eez.Attester.Rpc;
+using Nethermind.Eez.Prove;
 using Nethermind.Eez.Execution.Stateless;
 
 namespace Nethermind.Eez.Attester;

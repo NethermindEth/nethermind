@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Eez.Follower;
 
@@ -25,6 +26,9 @@ public interface IEezL1Api
 
     /// <summary>Looks a transaction up by its block hash and index, which every node serves, unlike a lookup by hash.</summary>
     Task<EezL1Transaction?> GetTransactionByBlockHashAndIndex(Hash256 blockHash, ulong index, CancellationToken token);
+
+    /// <returns>What a view call on the latest block returns, or <see langword="null"/> when the node refuses it.</returns>
+    Task<byte[]?> Call(Address to, byte[] data, CancellationToken token);
 }
 
 public static class EezL1ApiExtensions
@@ -66,6 +70,10 @@ public readonly struct EezL1Block
     public Hash256 ParentHash { get; init; }
     public ulong Number { get; init; }
     public ulong Timestamp { get; init; }
+    public UInt256? BaseFeePerGas { get; init; }
+
+    /// <summary>The hashes of the block's transactions.</summary>
+    public Hash256[]? Transactions { get; init; }
 }
 
 public readonly struct EezL1Log

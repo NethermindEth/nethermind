@@ -6,7 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
-using Nethermind.Eez.Attester.Rpc;
+using Nethermind.Eez.Prove;
 
 namespace Nethermind.Eez.Attester;
 

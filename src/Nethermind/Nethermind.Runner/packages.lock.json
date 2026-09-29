@@ -108,6 +108,19 @@
         "resolved": "6.0.2",
         "contentHash": "8GZqv6buY71KQlWT+cl2eMi+aNX9xQ61RgI3Pzv9zPxPOX6tWCLRrBj0MYQ3h871r2RhiHUl7f0AXUD/POr8eA=="
       },
+      "Grpc.Core.Api": {
+        "type": "Transitive",
+        "resolved": "2.84.0",
+        "contentHash": "p2SOMl6q/GZ4/5MLkgboC/z55g4zKUEruRn/g46QgppjQBVnsLZVBU/9VO7n60ll38G3Eo8Zu9b7x+W01GKFVg=="
+      },
+      "Grpc.Net.Common": {
+        "type": "Transitive",
+        "resolved": "2.84.0",
+        "contentHash": "DPxm/H8G/lDRrz997wM0M2zN/PGqVeZKDakhBbtABEbv6WIW4HI9g3BvntBQT6ZUROuGacMzfyyF9e5kiTVFfQ==",
+        "dependencies": {
+          "Grpc.Core.Api": "2.84.0"
+        }
+      },
       "Humanizer.Core": {
         "type": "Transitive",
         "resolved": "2.14.1",
@@ -755,6 +768,7 @@
         "dependencies": {
           "Nethermind.Api": "[2.1.0-preview, )",
           "Nethermind.Eez.Execution": "[2.1.0-preview, )",
+          "Nethermind.Eez.Prove": "[2.1.0-preview, )",
           "Nethermind.Init": "[2.1.0-preview, )",
           "Nethermind.Merge.Plugin": "[2.1.0-preview, )"
         }
@@ -763,6 +777,13 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Consensus": "[2.1.0-preview, )"
+        }
+      },
+      "nethermind.eez.prove": {
+        "type": "Project",
+        "dependencies": {
+          "Google.Protobuf": "[3.35.1, )",
+          "Grpc.Net.Client": "[2.84.0, )"
         }
       },
       "nethermind.era1": {
@@ -1393,6 +1414,15 @@
         "requested": "[3.35.1, )",
         "resolved": "3.35.1",
         "contentHash": "pxtkuXhR8svkvDTQrYew9GZQt6eWhblz/V/WKUFrQgkHYlQPsumJTeF6ppHRJpe6j9ffukkd5lQULiiKaek4xA=="
+      },
+      "Grpc.Net.Client": {
+        "type": "CentralTransitive",
+        "requested": "[2.84.0, )",
+        "resolved": "2.84.0",
+        "contentHash": "My6Fms2YCyAbihTBZZ3kLS39iTY2pkMAzGDBTC6XhPOujg70eB07AEJ7tPiW3tZ70bhFzHcc3+d4j3DaIPF3aA==",
+        "dependencies": {
+          "Grpc.Net.Common": "2.84.0"
+        }
       },
       "JetBrains.Profiler.Api": {
         "type": "CentralTransitive",

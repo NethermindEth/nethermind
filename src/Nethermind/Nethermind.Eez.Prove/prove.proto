@@ -14,7 +14,7 @@ syntax = "proto3";
 
 package prove.v1;
 
-option csharp_namespace = "Nethermind.Eez.Attester.Rpc";
+option csharp_namespace = "Nethermind.Eez.Prove";
 
 service Prover {
   // Client-stream a whole posted window, receive the settlement attestation.
