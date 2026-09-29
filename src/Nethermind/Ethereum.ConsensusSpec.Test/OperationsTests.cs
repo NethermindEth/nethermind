@@ -299,9 +299,12 @@ public class OperationsTests
             throw new NotImplementedInDriverException($"expected operand file '{handler.File}' is missing for this vector.");
 
         TState state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
+        EpochCache cache = driver.NewCache();
+        // Primes the incremental hasher so the post-state root is taken as a diff against the pre-state, as in production.
+        driver.CachedRoot(state, cache);
         OpContext<TState> ctx = new(
             state,
-            driver.NewCache(),
+            cache,
             FuluDriverSupport.BuildPubkeyCache(driver.ValidatorsOf(state)),
             FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath),
             FuluDriverSupport.ReadExecutionValid(testCase.CasePath),
@@ -321,7 +324,7 @@ public class OperationsTests
             if (thrown is not null)
                 Assert.Fail($"expected the operation to be accepted, but it threw: {thrown}");
 
-            FuluDriverSupport.AssertPostStateRoot(driver, postPath, ctx.State);
+            FuluDriverSupport.AssertPostStateRoot(driver, postPath, ctx.State, cache);
         }
         else
         {
