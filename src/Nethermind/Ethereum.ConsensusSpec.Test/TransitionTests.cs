@@ -70,7 +70,7 @@ public class TransitionTests
 
         BeaconStateFulu pre = FuluDriverSupport.DecodeState(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
         ForkedBeaconState state = new ForkedBeaconState.OfFulu(pre);
-        EpochCache cache = new();
+        EpochCache cache = new() { Hasher = new DifferentialBeaconStateHasher() };
         PubkeyCache pubkeys = FuluDriverSupport.BuildPubkeyCache(pre.Validators!);
         ValidPayloadNotifier notifier = new();
 
@@ -118,7 +118,7 @@ public class TransitionTests
             return;
         }
 
-        FuluDriverSupport.AssertPostStateRoot((ForkDriver<BeaconStateGloas>)FuluDriverSupport.RequireForkDriver("gloas"), postPath, gloas);
+        FuluDriverSupport.AssertPostStateRoot((ForkDriver<BeaconStateGloas>)FuluDriverSupport.RequireForkDriver("gloas"), postPath, gloas, cache);
     }
 
     private static ForkedSignedBeaconBlock DecodeFulu(byte[] ssz)

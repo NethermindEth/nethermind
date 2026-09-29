@@ -122,7 +122,7 @@ public class SanityTests
             if (thrown is not null)
                 Assert.Fail($"expected all {blocksCount} block(s) to apply, but it threw: {thrown}");
 
-            FuluDriverSupport.AssertPostStateRoot(driver, postPath, state);
+            FuluDriverSupport.AssertPostStateRoot(driver, postPath, state, cache);
         }
         else
         {
@@ -157,7 +157,7 @@ public class SanityTests
 
         driver.ProcessSlots(state, driver.SlotOf(state) + (ulong)slots, cache);
 
-        FuluDriverSupport.AssertPostStateRoot(driver, Path.Combine(testCase.CasePath, "post.ssz_snappy"), state);
+        FuluDriverSupport.AssertPostStateRoot(driver, Path.Combine(testCase.CasePath, "post.ssz_snappy"), state, cache);
     }
 
     private const string BlocksSubSuite = "blocks";
