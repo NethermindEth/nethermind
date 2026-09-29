@@ -84,8 +84,8 @@ internal static class BeaconEndpoints
 
     /// <summary>
     /// <c>headers?parent_root=...[&amp;slot=...]</c>: every stored child of the parent, from the store's
-    /// children index. Served only when that index is complete for the parent; a parent stored before
-    /// the index existed is refused, because an empty or shorter list would read as a real answer.
+    /// children index. Every stored block's entry is complete; a stored block without one means the index
+    /// is damaged, and is refused because an empty or shorter list would read as a real answer.
     /// </summary>
     private static Task HeadersByParent(HttpContext c, string parentRootRaw, BeaconApiContext ctx)
     {
@@ -112,8 +112,14 @@ internal static class BeaconEndpoints
 
         if (!ctx.Store.TryGetChildren(parentRoot!, out Hash256[] childRoots, out bool complete) || !complete)
         {
-            return ApiErrors.Write(c, StatusCodes.Status501NotImplemented,
-                $"Children of block {parentRoot} are not indexed: it was stored before this node kept a root-to-children index, so any list would be incomplete.", c.RequestAborted);
+            // A prune between the two reads leaves no entry; only a block that is still stored means damage.
+            if (!ctx.Store.HasBlock(parentRoot!))
+            {
+                return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"Block {parentRoot} is not retained by this node.", c.RequestAborted);
+            }
+
+            return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
+                $"The root-to-children index holds no complete entry for the stored block {parentRoot}, so no child list can be served.", c.RequestAborted);
         }
 
         List<HeaderEntryDto> entries = [];

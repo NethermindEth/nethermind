@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -209,9 +210,99 @@ public class StateRequestLimiterTests
     }
 
     [Test]
-    public async Task A_client_that_stops_reading_a_state_cannot_hold_its_permit_past_the_deadline()
+    public async Task A_slow_but_steady_download_completes_past_the_idle_bound_even_when_one_write_is_larger_than_it_can_send_in_that_time()
     {
-        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 1 });
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 60, StateResponseIdleTimeoutSeconds = 1 });
+        PacedStream reader = new(TimeSpan.FromMilliseconds(400));
+        DefaultHttpContext download = StateRequest(Download, "192.0.2.7");
+        download.Response.Body = reader;
+        byte[] state = new byte[4 * StateRequestLimiter.WriteChunkBytes];
+
+        await limiter.InvokeAsync(download, c => c.Response.Body.WriteAsync(state, c.RequestAborted).AsTask()).WaitAsync(Wait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.Written, Is.EqualTo(state.Length), "every byte reaches a reader that never stalls longer than the idle bound between chunks");
+            Assert.That(download.RequestAborted.IsCancellationRequested, Is.False, "1.6 s of steady progress exceeds the 1 s idle bound and must not trip it");
+        }
+    }
+
+    [Test]
+    public async Task A_response_that_stops_being_written_is_cut_at_the_idle_bound_however_generous_the_total_cap()
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { MaxConcurrentStateRequests = 1, StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 3600, StateResponseIdleTimeoutSeconds = 1 });
+        DefaultHttpContext stalled = StateRequest(Download, "192.0.2.7");
+        stalled.Response.Body = new PacedStream(TimeSpan.Zero);
+
+        await limiter.InvokeAsync(stalled, async c =>
+        {
+            await c.Response.Body.WriteAsync(new byte[16], c.RequestAborted);
+            await Task.Delay(Timeout.Infinite, c.RequestAborted);
+        }).WaitAsync(Wait);
+
+        DefaultHttpContext next = StateRequest(Download, "192.0.2.7");
+        bool reached = false;
+        await limiter.InvokeAsync(next, _ =>
+        {
+            reached = true;
+            return Task.CompletedTask;
+        });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stalled.RequestAborted.IsCancellationRequested, Is.True, "the handler must see the idle bound through RequestAborted");
+            Assert.That(reached, Is.True, "the permits of a stalled response are free once it is cut");
+        }
+    }
+
+    [Test]
+    public async Task A_state_that_takes_longer_than_the_idle_bound_to_load_is_not_cut_before_its_first_write()
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 60, StateResponseIdleTimeoutSeconds = 1 });
+        PacedStream reader = new(TimeSpan.Zero);
+        DefaultHttpContext download = StateRequest(Download, "192.0.2.7");
+        download.Response.Body = reader;
+
+        await limiter.InvokeAsync(download, async c =>
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(1600), c.RequestAborted);
+            await c.Response.Body.WriteAsync(new byte[16], c.RequestAborted);
+        }).WaitAsync(Wait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.Written, Is.EqualTo(16), "loading a state is the node's own time, not a stalled reader, so only the total cap bounds it");
+            Assert.That(download.RequestAborted.IsCancellationRequested, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task A_first_write_that_never_completes_is_cut_at_the_idle_bound_however_generous_the_total_cap()
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 3600, StateResponseIdleTimeoutSeconds = 1 });
+        DefaultHttpContext blocked = StateRequest(Download, "192.0.2.7");
+        blocked.Response.Body = new PacedStream(Timeout.InfiniteTimeSpan);
+
+        await limiter.InvokeAsync(blocked, c => c.Response.Body.WriteAsync(new byte[16], c.RequestAborted).AsTask()).WaitAsync(Wait);
+
+        Assert.That(blocked.RequestAborted.IsCancellationRequested, Is.True, "a reader that never takes the first bytes stalls the response as surely as one that stops later");
+    }
+
+    [Test]
+    public async Task A_response_never_written_is_cut_at_the_total_cap()
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 1, StateResponseIdleTimeoutSeconds = 3600 });
+        DefaultHttpContext silent = StateRequest(Download, "192.0.2.7");
+
+        await limiter.InvokeAsync(silent, c => Task.Delay(Timeout.Infinite, c.RequestAborted)).WaitAsync(Wait);
+
+        Assert.That(silent.RequestAborted.IsCancellationRequested, Is.True);
+    }
+
+    [TestCase(1, 120, TestName = "A client that stops reading a state cannot hold its permit past the total cap")]
+    [TestCase(3600, 1, TestName = "A client that stops reading a state cannot hold its permit past the idle bound")]
+    public async Task A_client_that_stops_reading_a_state_cannot_hold_its_permit_past_the_deadline(int totalSeconds, int idleSeconds)
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = totalSeconds, StateResponseIdleTimeoutSeconds = idleSeconds });
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -293,6 +384,11 @@ public class StateRequestLimiterTests
         Assert.CatchAsync<OperationCanceledException>(async () => await invocation.WaitAsync(Wait));
     }
 
+    [Test]
+    public void An_idle_bound_out_of_range_fails_the_host_start([Values(0, StateRequestLimiter.MaxResponseTimeoutSeconds + 1)] int idleSeconds) =>
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet,
+            apiConfig: new BeaconApiConfig { StateResponseIdleTimeoutSeconds = idleSeconds }));
+
     [TestCase(0, 600, TestName = "No state request per client allowed")]
     [TestCase(1, 0, TestName = "No time to answer a state request")]
     [TestCase(1, StateRequestLimiter.MaxResponseTimeoutSeconds + 1, TestName = "A deadline CancelAfter cannot schedule")]
@@ -327,6 +423,30 @@ public class StateRequestLimiterTests
             Assert.That(reached, Is.EqualTo(served));
             Assert.That(probe.Response.StatusCode, Is.EqualTo(served ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable));
         }
+    }
+
+    /// <summary>A body that takes <c>perChunk</c> for every <see cref="StateRequestLimiter.WriteChunkBytes"/> (rounded up) of each write, honouring cancellation.</summary>
+    private sealed class PacedStream(TimeSpan perChunk) : Stream
+    {
+        public long Written { get; private set; }
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(perChunk * ((buffer.Length + StateRequestLimiter.WriteChunkBytes - 1) / StateRequestLimiter.WriteChunkBytes), cancellationToken);
+            Written += buffer.Length;
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush() { }
+        public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 
     private static DefaultHttpContext StateRequest(string path, string client)
