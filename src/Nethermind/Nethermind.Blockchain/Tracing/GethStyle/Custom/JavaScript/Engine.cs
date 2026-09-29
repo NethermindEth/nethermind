@@ -34,6 +34,8 @@ public class Engine : IDisposable
 
     private readonly IReleaseSpec _spec;
 
+    internal long SelfDestructRefund => (long)_spec.GasCosts.DestroyRefund;
+
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
     private int _disposed;

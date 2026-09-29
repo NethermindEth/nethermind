@@ -417,6 +417,8 @@ public static partial class EvmInstructions
 
         // Determine the effective byte-length of the exponent.
         int leadingZeros = exponent.CountLeadingZeros() >> 3;
+        if (TTracingInst.IsActive)
+            vm.TraceOperationReady(GasCostOf.Exp + vm.Spec.GasCosts.ExpByteCost * (ulong)(32 - leadingZeros));
         if (leadingZeros == 32)
         {
             // Exponent is zero, so the result is 1.

@@ -246,6 +246,9 @@ public static partial class EvmInstructions
     {
         vm.MetricsCounters.IncrementSelfDestructs();
 
+        if (DispatchFlags.ConstTracing && vm.TxTracer.IsTracingInstructions)
+            TraceSelfDestructGas<TGasPolicy, TEip8037, TSpec>(stack, in gas, vm);
+
         VmState<TGasPolicy> vmState = vm.VmState;
         IReleaseSpec spec = vm.Spec;
         IWorldState state = vm.WorldState;
@@ -328,6 +331,63 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceSelfDestructGas<TGasPolicy, TEip8037, TSpec>(EvmStack stack, in TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TEip8037 : struct, IFlag
+        where TSpec : struct, ISelfDestructSpec
+    {
+        Address? beneficiary = stack.PopAddress(vm.AddressCache);
+        if (beneficiary is null) return;
+
+        TGasPolicy scratch = TGasPolicy.FromULong(ulong.MaxValue);
+        if (TSpec.UseShanghaiDDosProtection)
+            TGasPolicy.TryConsumeSelfDestructGas(ref scratch);
+        ulong baseCost = ulong.MaxValue - TGasPolicy.GetRemainingGas(in scratch);
+        ulong constantCost = vm.Spec.UseHotAndColdStorage ? baseCost : 0;
+        ulong initialGas = TGasPolicy.GetRemainingGas(in gas);
+        ulong cost = constantCost;
+        string? error = null;
+        if (initialGas < constantCost)
+            error = "out of gas";
+        else if (vm.VmState.IsStatic)
+            error = "out of gas: write protection";
+        else
+        {
+            bool cold = vm.Spec.UseHotAndColdStorage && !vm.IsTracingAccess &&
+                vm.VmState.AccessTracker.IsCold(beneficiary) && !vm.Spec.IsPrecompile(beneficiary);
+            ulong accessCost = !cold ? 0 : TSpec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
+            if (initialGas - constantCost < accessCost)
+                error = "out of gas: out of gas";
+            else
+            {
+                IWorldState state = vm.WorldState;
+                bool newAccount = TSpec.ClearEmptyAccountWhenTouched
+                    ? !state.GetBalance(vm.VmState.Env.ExecutingAccount).IsZero && state.IsDeadAccount(beneficiary)
+                    : TSpec.UseShanghaiDDosProtection && !state.AccountExists(beneficiary);
+                TGasPolicy.UpdateGas(ref scratch, accessCost);
+                if (newAccount)
+                {
+                    if (TSpec.IsEip8038Enabled)
+                        TGasPolicy.UpdateGas(ref scratch, Eip8038Constants.AccountWrite);
+                    TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref scratch);
+                }
+                if (vm.Spec.GasCosts.DestroyRefund != 0 && !vm.VmState.AccessTracker.DestroyList.Contains(vm.VmState.Env.ExecutingAccount))
+                    vm.TraceStorageRefund((long)vm.Spec.GasCosts.DestroyRefund);
+                ulong stateSpill = TEip8037.IsActive ? (ulong)TGasPolicy.GetStateGasSpill(in scratch) : 0;
+                cost = ulong.MaxValue - TGasPolicy.GetRemainingGas(in scratch) - stateSpill;
+                ulong requiredSpill = newAccount && TEip8037.IsActive
+                    ? TGasPolicy.CalculateStateGasSpill(in gas, TGasPolicy.GetNewAccountStateCost()) : 0;
+                if (initialGas < cost + requiredSpill)
+                    error = "out of gas";
+            }
+        }
+
+        vm.TraceOperationGasCost(cost);
+        if (error is not null) vm.TraceActionErrorDetails(error);
+        vm.TraceOperationReady(cost, error);
     }
 
     /// <summary>

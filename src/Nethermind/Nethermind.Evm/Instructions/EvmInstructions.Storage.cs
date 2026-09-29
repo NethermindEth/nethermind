@@ -330,6 +330,9 @@ public static partial class EvmInstructions
 
         // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
         ulong words = EvmCalculations.Div32Ceiling(c, out bool outOfGas);
+        if (TTracingInst.IsActive)
+            TraceDynamicMemoryGas(vm, TGasPolicy.GetRemainingGas(in gas), GasCostOf.VeryLow,
+                GasCostOf.VeryLow + GasCostOf.VeryLow * words, UInt256.Max(a, b), in c);
         if (!TGasPolicy.TryConsumeMemoryCopy(ref gas, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 

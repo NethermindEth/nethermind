@@ -78,6 +78,9 @@ public static partial class EvmInstructions
     {
         vm.MetricsCounters.IncrementCreates();
 
+        if (TTracingInst.IsActive)
+            TraceCreateGas<TGasPolicy, TOpCreate, TEip8037, TSpec>(stack, in gas, vm);
+
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
         IReleaseSpec spec = vm.Spec;
         if (vm.VmState.IsStatic)
@@ -242,5 +245,47 @@ public static partial class EvmInstructions
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
 
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceCreateGas<TGasPolicy, TOpCreate, TEip8037, TSpec>(EvmStack stack, in TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+        where TEip8037 : struct, IFlag
+        where TSpec : struct, ICreateSpec
+    {
+        // A stack copy preserves the pre-execution operands, including on static-call failures.
+        if (!stack.PopUInt256(out _, out UInt256 position, out UInt256 length) ||
+            typeof(TOpCreate) == typeof(OpCreate2) && !stack.PopUInt256(out _))
+            return;
+
+        TGasPolicy scratch = TGasPolicy.FromULong(ulong.MaxValue);
+        TSpec.TryConsumeCreateGas<TGasPolicy, TEip8037, TOpCreate>(ref scratch, vm.Spec, 0);
+        ulong constantCost = ulong.MaxValue - TGasPolicy.GetRemainingGas(in scratch);
+        ulong initialGas = TGasPolicy.GetRemainingGas(in gas);
+        string? error;
+        if (initialGas < constantCost)
+            error = "out of gas";
+        else if (!TryGetTraceMemorySize(in position, in length, out ulong memorySize))
+            error = "gas uint64 overflow";
+        else if (vm.VmState.IsStatic)
+            error = "out of gas: write protection";
+        else if (memorySize > 0x1FFFFFFFE0UL)
+            error = "out of gas: gas uint64 overflow";
+        else if (TSpec.IsEip3860Enabled && length > vm.Spec.MaxInitCodeSize)
+            error = $"out of gas: max initcode size exceeded: code size {length} limit {vm.Spec.MaxInitCodeSize}";
+        else
+        {
+            ulong initCodeWords = EvmCalculations.Div32Ceiling(in length, out _);
+            scratch = TGasPolicy.FromULong(ulong.MaxValue);
+            TSpec.TryConsumeCreateGas<TGasPolicy, TEip8037, TOpCreate>(ref scratch, vm.Spec, initCodeWords);
+            ulong baseCost = ulong.MaxValue - TGasPolicy.GetRemainingGas(in scratch);
+            TraceDynamicMemoryGas(vm, initialGas, constantCost, baseCost, in position, in length);
+            return;
+        }
+
+        vm.TraceOperationGasCost(constantCost);
+        vm.TraceActionErrorDetails(error);
+        vm.TraceOperationReady(constantCost, error);
     }
 }
