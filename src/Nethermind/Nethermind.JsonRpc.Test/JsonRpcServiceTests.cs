@@ -1492,14 +1492,14 @@ public class JsonRpcServiceTests
             RpcTest.AssertSuccess<HexBytes>(completed);
         }
 
-        Assert.That(queuedPublic.IsCompleted, Is.False, "the released slot went to the trusted request, which arrived later");
-        slotAbove.Dispose();
+        // Once the trusted request is done, the public one takes the public slot while the slot above is still held.
         using (JsonRpcResponse completed = await queuedPublic.WaitAsync(TestTimeout))
         {
             RpcTest.AssertSuccess<HexBytes>(completed);
         }
 
-        Assert.That(calls, Is.EqualTo(new (ulong?, int, int)[] { (2, 2, 1), (1, 1, 0) }));
+        slotAbove.Dispose();
+        Assert.That(calls, Is.EqualTo(new (ulong?, int, int)[] { (2, 2, 1), (1, 2, 0) }), "the released slot went to the trusted request, which arrived later");
     }
 
     [TestCase(RpcEndpoint.Http, true, TestName = "Authenticated HTTP")]

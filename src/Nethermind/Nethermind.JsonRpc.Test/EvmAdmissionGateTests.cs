@@ -72,20 +72,136 @@ public class EvmAdmissionGateTests
         Task<Lease> nextPriority = Admit(gate, priority: true).AsTask();
         Assert.That((nextPriority.IsCompleted, gate.Queued), Is.EqualTo((false, 2)), "only one slot above the permits");
 
-        first.Dispose();
+        (await priority).Dispose();
         Lease nextPriorityLease = await nextPriority.WaitAsync(TestTimeout);
         Assert.That((queued.IsCompleted, gate.InFlight, gate.Queued), Is.EqualTo((false, 3, 1)), "a slot released above the permits passes only to priority");
 
-        (await priority).Dispose();
-        Assert.That((queued.IsCompleted, gate.InFlight, gate.Queued), Is.EqualTo((false, 2, 1)), "or is freed");
-
         nextPriorityLease.Dispose();
+        Assert.That((queued.IsCompleted, gate.InFlight, gate.PublicInFlight, gate.Queued), Is.EqualTo((false, 2, 2, 1)), "or is freed");
+
+        first.Dispose();
         Lease queuedLease = await queued.WaitAsync(TestTimeout);
         Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((2, 0)), "a slot released within the permits passes to anyone");
 
         queuedLease.Dispose();
         second.Dispose();
         Assert.That(gate.InFlight, Is.Zero);
+    }
+
+    // The slot above the permits is whichever one the requests without priority do not hold, not the one a priority request
+    // happened to take: with N = 2, P1, P2 and a priority T running, P1's release must not leave the others one slot.
+    [Test]
+    public async Task Requests_without_priority_keep_every_permit_while_a_priority_request_runs_above_them([Values] bool alreadyWaiting)
+    {
+        EvmAdmissionGate gate = CreateGate(permits: 2);
+        Lease p1 = await TakeFreeSlot(gate);
+        Lease p2 = await TakeFreeSlot(gate);
+        Lease trusted = await TakeFreeSlot(gate, priority: true);
+        Task<Lease>? waiting = alreadyWaiting ? Admit(gate).AsTask() : null;
+        Assert.That((gate.InFlight, gate.PublicInFlight, gate.Queued), Is.EqualTo((3, 2, alreadyWaiting ? 1 : 0)));
+
+        p1.Dispose();
+        Lease p3 = waiting is null ? await TakeFreeSlot(gate) : await waiting.WaitAsync(TestTimeout);
+        Assert.That((gate.InFlight, gate.PublicInFlight, gate.Queued), Is.EqualTo((3, 2, 0)), "P1's slot passes on while T still runs");
+        Assert.That(async () => await TakeFreeSlot(gate, priority: true), Throws.TypeOf<LimitExceededException>(), "never more than one above the permits in all");
+
+        Task<Lease> next = Admit(gate).AsTask();
+        trusted.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((gate.InFlight, gate.PublicInFlight, gate.Queued), Is.EqualTo((2, 2, 1)), "the slot T releases is freed, not passed on above the permits");
+            Assert.That(async () => await TakeFreeSlot(gate), Throws.TypeOf<LimitExceededException>(), "nor taken above them at once");
+        }
+
+        p2.Dispose();
+        Lease p4 = await next.WaitAsync(TestTimeout);
+        p3.Dispose();
+        p4.Dispose();
+        Assert.That((gate.InFlight, gate.PublicInFlight), Is.EqualTo((0, 0)));
+    }
+
+    [Test]
+    public async Task Priority_waiter_still_takes_a_released_slot_first_and_only_the_total_keeps_the_others_below_the_permits()
+    {
+        EvmAdmissionGate gate = CreateGate(permits: 2);
+        Lease p1 = await TakeFreeSlot(gate);
+        Lease p2 = await TakeFreeSlot(gate);
+        Lease t1 = await TakeFreeSlot(gate, priority: true);
+        Task<Lease> publicWaiter = Admit(gate).AsTask();
+        Task<Lease> priorityWaiter = Admit(gate, priority: true).AsTask();
+
+        p1.Dispose();
+        Lease t2 = await priorityWaiter.WaitAsync(TestTimeout);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((publicWaiter.IsCompleted, gate.InFlight, gate.PublicInFlight), Is.EqualTo((false, 3, 1)), "the priority waiter goes first, though it came later");
+            Assert.That(async () => await TakeFreeSlot(gate), Throws.TypeOf<LimitExceededException>(),
+                "with two priority requests in flight, the total keeps the others below the permits");
+        }
+
+        t1.Dispose();
+        Lease p3 = await publicWaiter.WaitAsync(TestTimeout);
+        Assert.That((gate.InFlight, gate.PublicInFlight), Is.EqualTo((3, 2)), "a slot a priority request releases passes to a waiter that may take it");
+
+        p2.Dispose();
+        p3.Dispose();
+        t2.Dispose();
+        Assert.That((gate.InFlight, gate.PublicInFlight), Is.EqualTo((0, 0)));
+    }
+
+    // After every step, requests without priority hold at most the permits and all requests at most one more, and a waiter
+    // waits only while it may take no slot: a priority one while every slot is taken, the others also while the permits are.
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(4)]
+    public async Task Random_admissions_and_releases_keep_both_caps_and_leave_no_waiter_behind_a_slot_it_may_take(int permits)
+    {
+        const int Admissions = 2_000;
+        EvmAdmissionGate gate = CreateGate(permits: permits);
+        Random random = new(permits);
+        List<(bool Priority, Lease Lease)> held = [];
+        List<(bool Priority, Task<Lease> Admission)> waiting = [];
+
+        for (int step = 0, admitted = 0; admitted < Admissions || held.Count > 0; step++)
+        {
+            if (admitted < Admissions && (held.Count == 0 || random.Next(2) == 0))
+            {
+                admitted++;
+                bool priority = random.Next(3) == 0;
+                Task<Lease> admission = Admit(gate, priority: priority).AsTask();
+                if (admission.IsCompleted) held.Add((priority, await admission));
+                else waiting.Add((priority, admission));
+            }
+            else
+            {
+                int index = random.Next(held.Count);
+                Lease released = held[index].Lease;
+                held.RemoveAt(index);
+                int inFlight = gate.InFlight;
+                released.Dispose();
+                if (gate.InFlight == inFlight)
+                {
+                    Task<Lease> granted = await Task.WhenAny(waiting.Select(static w => w.Admission)).WaitAsync(TestTimeout);
+                    int grantedIndex = waiting.FindIndex(w => w.Admission == granted);
+                    bool priority = waiting[grantedIndex].Priority;
+                    Assert.That(priority || !waiting.Any(static w => w.Priority), Is.True, $"step {step}: a priority waiter goes first");
+                    held.Add((priority, await granted));
+                    waiting.RemoveAt(grantedIndex);
+                }
+            }
+
+            int publicHeld = held.Count(static h => !h.Priority);
+            Assert.That(
+                (gate.InFlight, gate.PublicInFlight, gate.Queued),
+                Is.EqualTo((held.Count, publicHeld, waiting.Count)), $"step {step}: the gate counts what the test holds");
+            Assert.That(publicHeld <= permits && held.Count <= permits + 1, Is.True, $"step {step}: {publicHeld} without priority, {held.Count} in all");
+            Assert.That(!waiting.Any(static w => w.Priority) || held.Count == permits + 1, Is.True,
+                $"step {step}: a priority waiter waits only while every slot is taken");
+            Assert.That(!waiting.Any(static w => !w.Priority) || publicHeld == permits || held.Count == permits + 1, Is.True,
+                $"step {step}: a waiter without priority waits only while the permits or every slot are taken");
+        }
+
+        Assert.That(waiting, Is.Empty, "every waiter is served once the others are done");
     }
 
     [TestCase(0, 0, BudgetMs, 0, 0, 1, TestName = "Zero budget disables queueing")]
@@ -179,7 +295,7 @@ public class EvmAdmissionGateTests
         waiters.Add(("light priority", Admit(gate, priority: true).AsTask()));
 
         held.Dispose();
-        // Once the priority waiters are served, the slot above the permits is freed, so the others wait for the last one.
+        // The others take the one permit in turn, so the slot above it is freed only when the test releases it.
         List<string> order = [await DisposeNextGrant(waiters), await DisposeNextGrant(waiters)];
         order.AddRange(await ReleaseAndRecordGrantOrder(above, waiters));
 
