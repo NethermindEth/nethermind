@@ -38,6 +38,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -66,11 +67,13 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules.Trace;
 using System.Linq;
 using Nethermind.Trie;
+using Nethermind.State.Proofs;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class BlockProcessorTests
+public partial class BlockProcessorTests
 {
     public static IEnumerable<TestCaseData> TransactionTraceBoundaryCases()
     {
@@ -158,6 +161,25 @@ public class BlockProcessorTests
         chain.BlockProcessor.ProcessOne(block, options, NullBlockTracer.Instance, Prague.Instance, CancellationToken.None);
 
         artifacts.AssertUntouched(block);
+    }
+
+    [TestCase(TraceProcessingOptions.ReadOnlyReplay, false, TestName = "ReadOnlyReplay_SkipsCommitments")]
+    [TestCase(ProcessingOptions.None, true, TestName = "Validated_ComputesCommitments")]
+    public async Task TransactionTraceBlockProcessor_ComputesCommitmentsOnlyWhenTheyAreRead(ProcessingOptions options, bool expectStateRoot)
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+
+        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+        (Block processed, TxReceipt[] _) = chain.BlockProcessor.ProcessOne(block, options, NullBlockTracer.Instance, Prague.Instance, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed.Header.StateRoot, expectStateRoot ? Is.EqualTo(block.Header.StateRoot) : Is.Null,
+                "only a validated or persisted block needs its state root derived");
+            Assert.That(processed.Hash, Is.EqualTo(block.Hash), "the processed header must keep the canonical hash either way");
+        }
     }
 
     [Test]
@@ -554,7 +576,7 @@ public class BlockProcessorTests
         GethTraceOptions traceOptions = new() { Tracer = tracerName! };
         ExecutionCounter executions = new();
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions), seeds, Budgets(chain, budget), LimboLogs.Instance);
 
         string expected = chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(TraceWholeBlockThroughTraceEnvironment(chain, parent, block,
             state => GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions, state, chain.SpecProvider))));
@@ -584,7 +606,7 @@ public class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
         using CancellationTokenSource cancellation = new();
         DisposalCounter sentinel = new();
         GethTraceOptions traceOptions = new() { Tracer = "callTracer" };
@@ -663,8 +685,11 @@ public class BlockProcessorTests
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Prague.Instance;
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
-        ChangesetPrefixStateSeedSource seeds = new(index);
-        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary()));
+        // As the node wires it: on an Amsterdam block the access list seeds, on any other the changesets do.
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, new ChangesetPrefixStateSeedSource(index), builder => builder
+            .AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary())
+            .AddDecorator<IPrefixStateSeedSource, BlockAccessListPrefixStateSeedSource>());
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
         BlockHeader parent = chain.BlockTree.Head!.Header;
         // The transfers create the beneficiary inside the block: a reward applied on the parent state would create
         // the account a second time, and the state diff of the reward trace would say so.
@@ -672,7 +697,7 @@ public class BlockProcessorTests
         IndexThroughTheCapture(chain, index, block, parent, spec);
         ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.Rewards;
         using ParallelTraceBudget budget = new(3);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, refuseNonEmpty: refuseNonEmpty), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, refuseNonEmpty: refuseNonEmpty), seeds, Budgets(chain, budget), LimboLogs.Instance);
 
         IReadOnlyCollection<ParityLikeTxTrace> sequential = TraceWholeBlockThroughTraceEnvironment(chain, parent, block, _ => new ParityLikeBlockTracer(types));
         List<ParityLikeTxTrace> emitted = [];
@@ -685,16 +710,6 @@ public class BlockProcessorTests
                 (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
                 _ => new ParityLikeBlockTracer(types), CancellationToken.None, out traces);
 
-        Assert.That(traced, Is.EqualTo(!amsterdam), "BAL processing must fall back before emitting any parallel results");
-        if (amsterdam)
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(emitted, Is.Empty, "a fallback must not leave a partial streamed response");
-                Assert.That(traces, Is.Null);
-            }
-            return;
-        }
         if (stream) traces = emitted;
 
         using (Assert.EnterMultipleScope())
@@ -727,7 +742,7 @@ public class BlockProcessorTests
         using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
         GethTraceOptions traceOptions = new() { Tracer = "prestateTracer" };
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
 
         // The beneficiary takes the reward after the transactions, so the rows never describe it; it is also what
         // every block's transactions pay here, which is the shape the chain has to refuse: the first block holds a
@@ -827,7 +842,7 @@ public class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
         using ParallelTraceBudget budget = new(3);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
         ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff;
 
         using ManualResetEventSlim secondEntered = new(false);
@@ -884,7 +899,7 @@ public class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
         using ParallelTraceBudget budget = new(2);
-        ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
         using ManualResetEventSlim started = new(false);
         using ManualResetEventSlim release = new(false);
         GethTraceOptions traceOptions = new() { Tracer = "callTracer" };
@@ -944,7 +959,7 @@ public class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, Prague.Instance);
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
         using CountdownEvent occupied = new(4);
         using ManualResetEventSlim releaseWorkers = new(false);
         using ManualResetEventSlim callerStarted = new(false);
@@ -1002,7 +1017,7 @@ public class BlockProcessorTests
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => throw new InvalidOperationException("Uncovered blocks must not build an environment"), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => throw new InvalidOperationException("Uncovered blocks must not build an environment"), seeds, Budgets(chain, budget), LimboLogs.Instance);
         budget.Wait(CancellationToken.None);
         budget.Wait(CancellationToken.None);
         using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(5));
@@ -1043,11 +1058,13 @@ public class BlockProcessorTests
         public void Dispose() => (inner as IDisposable)?.Dispose();
     }
 
+    private static ParallelTraceBudgets Budgets(BasicTestBlockchain chain, ParallelTraceBudget budget) => new(chain.SpecProvider, budget, budget);
+
     private static ParallelBlockTracer.OwnedEnvironment BuildParallelEnvironment(
         BasicTestBlockchain chain, bool? hideRewardBoundary = null, bool refuseOverlay = false, bool refuseNonEmpty = false, ExecutionCounter? executions = null)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
-        IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
+        IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
         ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder =>
         {
             builder
@@ -1059,7 +1076,8 @@ public class BlockProcessorTests
                 builder.AddDecorator<IBlockProcessor>((_, inner) => new BoundaryHidingBlockProcessor(inner, hideRewardBoundary.Value));
             if (refuseOverlay) builder.AddDecorator<IWorldState, OverlayRefusingState>();
             if (refuseNonEmpty) builder.AddDecorator<IWorldState, NonEmptyOverlayRefusingState>();
-            if (executions is not null) builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new CountingTransactionAdapter(inner, executions));
+            // The factory, not the adapter, so that the processors the access list manager builds are counted too.
+            if (executions is not null) builder.AddDecorator<TransactionProcessorAdapterFactory>((_, inner) => processor => new CountingTransactionAdapter(inner(processor), executions));
         });
         return new ParallelBlockTracer.OwnedEnvironment(scope.Resolve<IOverridableEnv<ParallelBlockTracer.Components>>(), scope);
     }
@@ -1075,7 +1093,7 @@ public class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, Prague.Instance);
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, refuseOverlay: true), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, refuseOverlay: true), seeds, Budgets(chain, budget), LimboLogs.Instance);
         List<ParityLikeTxTrace> emitted = [];
         IReadOnlyList<ParityLikeTxTrace>? traces = null;
 
@@ -1105,7 +1123,7 @@ public class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, rewards), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, rewards), seeds, Budgets(chain, budget), LimboLogs.Instance);
         List<ParityLikeTxTrace> emitted = [];
         Func<IWorldState, IBlockTracer<ParityLikeTxTrace>>? afterTransactions = rewards
             ? _ => new ParityLikeBlockTracer(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)
@@ -1143,7 +1161,7 @@ public class BlockProcessorTests
     private static IReadOnlyCollection<TTrace> TraceWholeBlockThroughTraceEnvironment<TTrace>(BasicTestBlockchain chain, BlockHeader parent, Block block, Func<IWorldState, IBlockTracer<TTrace>> tracerFor)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
-        IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
+        IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
         using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
             .AddModule(validation)
             .AddModule(new TransactionTraceModule(validation))
@@ -1168,7 +1186,7 @@ public class BlockProcessorTests
         BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? processed = null)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
-        IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
+        IOverridableEnv env = chain.Container.Resolve<ITraceEnvFactory>().CreateForTracing();
         using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder =>
         {
             builder
@@ -1488,26 +1506,44 @@ public class BlockProcessorTests
             yield return RuntimeInformation.ProcessorCount + 1;
     }
 
-    [Test]
-    public async Task Block_processing_preserves_receipt_logs_without_a_log_tracer()
+    [TestCase(1, 1)]
+    [TestCase(1, 64)]
+    [TestCase(16, 1)]
+    [TestCase(65, 1)]
+    public async Task Block_processing_preserves_receipt_logs_without_a_log_tracer(int count, int logCount)
     {
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false }));
-        Transaction tx = Build.A.Transaction.WithTo(null)
-            .WithCode(Prepare.EvmCode.Log(32, 0, [TestItem.KeccakA]).STOP().Done)
-            .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        byte[] code = Enumerable.Repeat(Prepare.EvmCode.Log(32, 0, [TestItem.KeccakA]).Done, logCount)
+            .SelectMany(bytes => bytes).ToArray();
+        Transaction[] transactions = Enumerable.Range(0, count).Select(i => Build.A.Transaction.WithTo(null)
+            .WithNonce((ulong)i).WithCode(code)
+            .WithGasLimit(logCount > 1 ? 250_000ul : 100_000ul).SignedAndResolved(TestItem.PrivateKeyB).TestObject).ToArray();
 
-        Block block = await chain.AddBlock(tx);
+        Block block = await chain.AddBlock(transactions);
 
         TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
-        Assert.That(receipts, Has.Length.EqualTo(1));
-        Assert.That(receipts[0].Logs, Has.Length.EqualTo(1));
+        Assert.That(receipts, Has.Length.EqualTo(count));
+        Bloom expectedBloom = new();
+        foreach (TxReceipt receipt in receipts)
+        {
+            Assert.That(receipt.Logs, Has.Length.EqualTo(logCount));
+            Bloom expectedReceiptBloom = new(receipt.Logs);
+            expectedBloom.Accumulate(expectedReceiptBloom);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+                Assert.That(receipt.Logs[0].Topics, Is.EqualTo(new[] { TestItem.KeccakA }));
+                Assert.That(receipt.Bloom, Is.EqualTo(expectedReceiptBloom));
+            }
+        }
+        using TrackingCappedArrayPool pool = new();
+        Hash256 expectedRoot = new ReceiptTrie(Prague.Instance, receipts, new ReceiptMessageDecoder(), pool,
+            canBeParallel: false).RootHash;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(receipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(receipts[0].Logs[0].Topics, Is.EqualTo(new[] { TestItem.KeccakA }));
-            Assert.That(receipts[0].Bloom, Is.Not.EqualTo(Bloom.Empty));
-            Assert.That(block.Header.Bloom, Is.Not.EqualTo(Bloom.Empty));
+            Assert.That(block.Header.Bloom, Is.EqualTo(expectedBloom));
+            Assert.That(block.Header.ReceiptsRoot, Is.EqualTo(expectedRoot));
         }
     }
 
@@ -1558,6 +1594,50 @@ public class BlockProcessorTests
                 {
                     Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.True);
                     Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)25));
+                }
+            });
+    }
+
+    // A predeploy mandating runtime code alone, leaving balance and nonce as they stand (EIP-8141's expiry
+    // verifier), produces an account whose only BAL entry is a code change, so nothing else creates it.
+    // A slot write on a missing account is not an account change, so the hoisted creation must skip it.
+    [Test]
+    public void ApplyStateChanges_does_not_create_an_account_from_storage_changes_alone()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageChanges(1, new StorageChange(0, 0x2Au))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: null,
+            assertState: stateProvider =>
+                Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.False));
+    }
+
+    [Test]
+    public void ApplyStateChanges_creates_missing_account_from_code_change()
+    {
+        byte[] code = [0x60, 0x00];
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithCodeChanges(new CodeChange(0, code))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: null,
+            assertState: stateProvider =>
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.True);
+                    Assert.That(stateProvider.GetCode(TestItem.AddressA), Is.EqualTo(code));
                 }
             });
     }
@@ -1726,8 +1806,10 @@ public class BlockProcessorTests
     private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider, TestStateHeaderProvider stateHeaderProvider) CreateProcessorAndBranch(
         IRewardCalculator? rewardCalculator = null,
         IBlockCachePreWarmer? preWarmer = null,
-        BlockHeader? parentHeader = null)
+        BlockHeader? parentHeader = null,
+        ISpecProvider? specProvider = null)
     {
+        specProvider ??= HoodiSpecProvider.Instance;
         TestStateHeaderProvider stateHeaderProvider = new() { Parent = parentHeader };
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest(stateHeaderProvider);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
@@ -1735,8 +1817,8 @@ public class BlockProcessorTests
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
-            stateProvider, HoodiSpecProvider.Instance, balManager, LimboLogs.Instance);
-        BlockProcessor processor = new(HoodiSpecProvider.Instance,
+            stateProvider, specProvider, balManager, LimboLogs.Instance);
+        BlockProcessor processor = new(specProvider,
             TestBlockValidator.AlwaysValid,
             rewardCalculator ?? NoBlockRewards.Instance,
             transactionsExecutor,
@@ -1751,7 +1833,7 @@ public class BlockProcessorTests
 
         BranchProcessor branchProcessor = new(
             processor,
-            HoodiSpecProvider.Instance,
+            specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
             new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()),
@@ -1797,6 +1879,85 @@ public class BlockProcessorTests
             Assert.That(executed, Is.False, "an unavailable parent must stop the branch before any transaction runs");
             Assert.That(preWarmer.CapturedToken, Is.EqualTo(default(CancellationToken)));
         }
+    }
+
+    /// <summary>Installs the EIP-7002/7251/8282 predeploys that Amsterdam-based specs read while processing
+    /// a post-genesis block; without them execution-request processing rejects the block.</summary>
+    private static void InstallExecutionRequestPredeploys(IWorldState stateProvider, IReleaseSpec spec)
+    {
+        stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+        stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, spec);
+        stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+        stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, spec);
+        stateProvider.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
+        stateProvider.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, spec);
+        stateProvider.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
+        stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, spec);
+    }
+
+    private static IEnumerable<TestCaseData> PredeployInstallCases()
+    {
+        // EIP-8141 mandates the runtime code alone, so its account keeps the nonce it already had.
+        yield return new TestCaseData(Eip8141Prototype.Instance, Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, 0ul)
+            .SetName("Installs_eip8141_expiry_verifier_predeploy_once_and_captures_it_in_bal");
+        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray(), 1ul)
+            .SetName("Installs_eip8250_nonce_manager_predeploy_once_and_captures_it_in_bal");
+        // A storage namespace with empty canonical code: its activation update is the nonce alone, so a
+        // code-only idempotency probe would never fire it.
+        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true }, Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray(), 1ul)
+            .SetName("Installs_eip8272_recent_root_predeploy_once_and_captures_it_in_bal");
+    }
+
+    [TestCaseSource(nameof(PredeployInstallCases)), MaxTime(Timeout.MaxTestTime)]
+    public void Installs_predeploy_once_and_captures_it_in_bal(IReleaseSpec releaseSpec, Address predeploy, byte[] code, ulong expectedNonce)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(releaseSpec);
+        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: specProvider);
+        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
+
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        InstallExecutionRequestPredeploys(stateProvider, spec);
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+
+        // First post-activation block installs the predeploy.
+        Block block1 = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        (Block processed1, _) = processor.ProcessOne(block1, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+
+        Assert.That(stateProvider.GetCode(predeploy), Is.EqualTo(code));
+        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
+        if (!spec.IsEip8250Enabled)
+        {
+            // An unrelated predeploy must stay absent: only what the spec activates is installed.
+            Assert.That(stateProvider.GetCode(Eip8250Constants.NonceManagerAddress), Is.Empty);
+        }
+
+        GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(predeploy);
+        Assert.That(installChanges, Is.Not.Null, "predeploy install must be captured in the BAL");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(installChanges!.CodeChanges, Has.Count.EqualTo(code.Length == 0 ? 0 : 1));
+            if (code.Length != 0)
+            {
+                Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(code));
+            }
+
+            // An unmandated nonce entry moves the BAL hash, and the block is then rejected before execution.
+            Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(expectedNonce == 0 ? 0 : 1));
+            if (expectedNonce != 0)
+            {
+                Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(expectedNonce));
+            }
+        }
+
+        // Second block must be a no-op.
+        Block block2 = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
+        (Block processed2, _) = processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+
+        Assert.That(stateProvider.GetCode(predeploy), Is.EqualTo(code));
+        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
+        Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(predeploy), Is.Null,
+            "a re-install must not churn state or the BAL once the code is already present");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1920,9 +2081,10 @@ public class BlockProcessorTests
 
     [Test]
     [MaxTime(Timeout.MaxTestTime)]
-    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event([Values(2, 3)] int transactionCount)
+    public void BranchProcessor_cancels_and_drains_prewarmer_before_clearing_caches(
+        [Values(2, 3)] int transactionCount, [Values] bool startSession)
     {
-        TokenCapturingPreWarmer preWarmer = new();
+        TokenCapturingPreWarmer preWarmer = new() { StartSession = startSession };
         (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -1934,8 +2096,14 @@ public class BlockProcessorTests
             ProcessingOptions.NoValidation,
             NullBlockTracer.Instance);
 
-        Assert.That(preWarmer.CapturedToken.IsCancellationRequested, Is.True,
-            "prewarmer CancellationToken should be cancelled via TransactionsExecuted event after tx processing");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preWarmer.CapturedToken.IsCancellationRequested, Is.True);
+            Assert.That(preWarmer.Starts, Is.EqualTo(1), "a skipped pass must not prepare the caches twice");
+            Assert.That(preWarmer.SessionDisposals, Is.EqualTo(startSession ? 1 : 0));
+            Assert.That(preWarmer.Clears, Is.EqualTo(1));
+            Assert.That(preWarmer.ClearedBeforeDrain, Is.False);
+        }
     }
 
     /// <param name="mispredictedSlot">
@@ -2145,7 +2313,7 @@ public class BlockProcessorTests
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;
 
-        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), WorldStateStab.GetUntrackedReader());
+        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), WorldStateStab.GetUntrackedReader(), newBlock.GasUsed, 0);
 
         Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
     }
@@ -2157,15 +2325,31 @@ public class BlockProcessorTests
     private class TokenCapturingPreWarmer : IBlockCachePreWarmer
     {
         public CancellationToken CapturedToken { get; private set; }
+        public bool StartSession { get; init; }
+        public int Starts { get; private set; }
+        public int SessionDisposals { get; private set; }
+        public int Clears { get; private set; }
+        public bool ClearedBeforeDrain { get; private set; }
 
-        public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec,
+        public IDisposable? PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec,
             CancellationToken cancellationToken = default)
         {
             CapturedToken = cancellationToken;
-            return Task.CompletedTask;
+            Starts++;
+            return StartSession ? new Session(this) : null;
         }
 
-        public CacheType ClearCaches() => default;
+        private sealed class Session(TokenCapturingPreWarmer owner) : IDisposable
+        {
+            public void Dispose() => owner.SessionDisposals++;
+        }
+
+        public CacheType ClearCaches()
+        {
+            Clears++;
+            ClearedBeforeDrain |= StartSession && SessionDisposals == 0;
+            return default;
+        }
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;
         public void Dispose() { }
@@ -3492,6 +3676,10 @@ public class BlockProcessorTests
         }
 
         public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
+        {
+        }
+
+        public void InstallPredeploys(IReleaseSpec spec)
         {
         }
 

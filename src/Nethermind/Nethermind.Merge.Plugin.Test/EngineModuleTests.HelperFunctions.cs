@@ -25,6 +25,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -108,6 +109,17 @@ namespace Nethermind.Merge.Plugin.Test
                 AmountInGwei = 3
             }
         ];
+
+        private static PayloadAttributes CreateAmsterdamPayloadAttributes(BlockHeader parent) => new()
+        {
+            Timestamp = parent.Timestamp + 12,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressC,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Zero,
+            SlotNumber = 1,
+            TargetGasLimit = parent.GasLimit,
+        };
 
         private static byte[] RandomBytes(int length)
         {

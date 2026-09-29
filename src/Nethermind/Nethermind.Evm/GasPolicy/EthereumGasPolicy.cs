@@ -21,7 +21,7 @@ namespace Nethermind.Evm.GasPolicy;
 /// <remarks>
 /// The spill split fields below follow EIP-8037 block-gas accounting.
 /// </remarks>
-public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
+public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 {
     /// <summary>Execution gas budget (legacy gas_left).</summary>
     public ulong Value;
@@ -33,9 +33,22 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasSpill;
     /// <summary>State gas spill repaid to execution gas and excluded from net spill accounting.</summary>
     public long StateGasSpillRefunded;
+    /// <summary>Indicates that execution encountered an out of gas condition.</summary>
+    public bool OutOfGas;
+    /// <summary>When set, a state charge exceeding the reservoir halts rather than spilling into <see cref="Value"/> (EIP-8141: no EIP-8037 reservoir spill within a frame transaction).</summary>
+    public bool IndependentStatePool;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy FromULong(ulong value) => new() { Value = value };
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EthereumGasPolicy FromFrameLimits(ulong executionGasLimit, ulong stateGasLimit) =>
+        new()
+        {
+            Value = executionGasLimit,
+            StateReservoir = stateGasLimit > long.MaxValue ? long.MaxValue : (long)stateGasLimit,
+            IndependentStatePool = true
+        };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy CreateSystemTransactionIntrinsicGas(ulong blockGasLimit) =>
@@ -121,6 +134,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             gas.StateReservoir -= stateGasCost;
             gas.StateGasUsed += stateGasCost;
             return true;
+        }
+
+        if (gas.IndependentStatePool)
+        {
+            gas.OutOfGas = true;
+            return false;
         }
 
         ulong spillAmount = CalculateStateGasSpill(in gas, stateGasCost);
@@ -255,7 +274,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     private readonly struct ColdAccountGasCost : ISpecGasCost
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ulong GasCost(IReleaseSpec spec) => ColdAccountAccessCost(spec);
+        public static ulong GasCost(IReleaseSpec spec) => GetColdAccountAccessCost(spec);
     }
 
     private readonly struct ColdAccountGasCost<Eip8038> : ISpecGasCost where Eip8038 : struct, IFlag
@@ -264,9 +283,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         public static ulong GasCost(IReleaseSpec spec) => Eip8038.IsActive ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
     }
 
+    /// <inheritdoc cref="IGasPolicy{TSelf}.GetColdAccountAccessCost"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ColdAccountAccessCost(IReleaseSpec spec) =>
-        spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
+    public static ulong GetColdAccountAccessCost(IReleaseSpec spec) => spec.GasCosts.ColdAccountAccessCost;
 
     public static bool TryConsumeStorageAccessGas(ref EthereumGasPolicy gas,
         ref readonly StackAccessTracker accessTracker,
@@ -384,14 +403,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return gasAvailable;
         }
 
-        if (accessTracker.IsCold(in storageCell))
-        {
-            if (!UpdateGas(ref gas, TMode.IsEip8038Enabled(spec) ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad))
-                return false;
-
-            accessTracker.WarmUp(in storageCell);
-            return true;
-        }
+        // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
+        if (accessTracker.WarmUp(in storageCell))
+            return UpdateGas(ref gas, TMode.IsEip8038Enabled(spec) ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad);
 
         // EIP-8038 charges the warm-access cost on SSTORE too; the net-metered charge is dropped.
         if (storageAccessType == StorageAccessType.SLOAD || TMode.IsEip8038Enabled(spec))
@@ -414,6 +428,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return UpdateGas(ref gas, memoryCost);
     }
 
+    /// <remarks>
+    /// The fast paths of MLOAD and MSTORE in the untraced tables (<c>TryExecuteFast</c> in VirtualMachine.OpcodeHandlers.cs)
+    /// charge a word's access without calling this; a change to this charge must be made there too.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
         in UInt256 position,
@@ -699,6 +717,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             StateReservoir = childStateReservoir,
             StateGasUsed = 0,
             StateGasSpill = 0,
+            IndependentStatePool = parentGas.IndependentStatePool,
         };
     }
 
@@ -829,7 +848,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         // Self-transfers coalesce into the sender leaf write already priced into TX_BASE_COST.
         if (tx.SenderAddress == tx.To) return 0;
 
-        ulong cost = ColdAccountAccessCost(spec);
+        ulong cost = GetColdAccountAccessCost(spec);
         if (!tx.Value.IsZero)
             cost += GasCostOf.TxValueCostEip2780;
 

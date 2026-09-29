@@ -49,10 +49,7 @@ internal class TestMainProcessingContext : IMainProcessingContext
     public IWorldState WorldState => null!;
     public IGenesisLoader GenesisLoader => null!;
 
-    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
+    public event EventHandler<TxProcessedEventArgs>? TransactionProcessed { add { } remove { } }
 
     public TestBranchProcessor TestBranchProcessor => _branchProcessor;
-
-    public void RaiseTransactionProcessed(TxProcessedEventArgs args)
-        => TransactionProcessed?.Invoke(this, args);
 }

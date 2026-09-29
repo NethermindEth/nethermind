@@ -130,6 +130,10 @@ public static partial class EvmInstructions
     /// <param name="stack">The EVM stack.</param>
     /// <param name="gasAvailable">The remaining gas, which is decremented by both the base and memory extension costs.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
+    /// <remarks>
+    /// The untraced tables run the common case under <see cref="EthereumGasPolicy"/> in <c>MStoreOpcode.TryExecuteFast</c>,
+    /// which charges the base and expansion gas itself; a change to either charge must be made there too.
+    /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionMStore<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
@@ -246,6 +250,10 @@ public static partial class EvmInstructions
     /// <param name="stack">The EVM stack.</param>
     /// <param name="gasAvailable">The remaining gas, adjusted for memory access.</param>
     /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
+    /// <remarks>
+    /// The untraced tables run the common case under <see cref="EthereumGasPolicy"/> in <c>MLoadOpcode.TryExecuteFast</c>,
+    /// which charges the base gas itself; a change to the charge must be made there too.
+    /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EvmExceptionType InstructionMLoad<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
@@ -520,6 +528,10 @@ public static partial class EvmInstructions
                 {
                     bool ssetOutOfGas = !TGasPolicy.TryConsumeStorageWrite<TEip8037, OnFlag, Eip8038>(ref gas, spec);
                     if (ssetOutOfGas) goto OutOfGas;
+                    if (TEip8037.IsActive && vm.TxExecutionContext.FrameTxContext is { } chargeFrameCtx)
+                    {
+                        chargeFrameCtx.RecordStateChargeOwner(in storageCell, chargeFrameCtx.CurrentFrameIndex);
+                    }
                 }
                 else
                 {
@@ -569,7 +581,18 @@ public static partial class EvmInstructions
 
                     if (TEip8037.IsActive && originalIsZero)
                     {
-                        vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetStorageSetStateCost());
+                        long stateGasCost = TGasPolicy.GetStorageSetStateCost();
+                        FrameTxContext? reversalFrameCtx = vm.TxExecutionContext.FrameTxContext;
+                        if (reversalFrameCtx is not null
+                            && reversalFrameCtx.TryResolveStateChargeOwner(in storageCell, out int chargeOwner)
+                            && chargeOwner != reversalFrameCtx.CurrentFrameIndex)
+                        {
+                            reversalFrameCtx.ReduceFrameStateGas(chargeOwner, stateGasCost);
+                        }
+                        else
+                        {
+                            vm.CreditStateGasRefund<TEip8037>(ref gas, stateGasCost);
+                        }
                         if (!Eip8038.IsActive)
                             refundFromReversal = (long)(GasCostOf.SSetExecution - GasCostOf.WarmStateRead);
                     }
@@ -656,7 +679,7 @@ public static partial class EvmInstructions
         Unsafe.SkipInit(out EvmWord word);
         EvmWord storageWord = storageCell.Index.ToBigEndianWord();
         ReadOnlySpan<byte> storageBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref storageWord, 1));
-        vm.TxTracer.ReportStorageChange(storageBytes, value.ToMinimalBigEndian(ref word));
+        vm.TxTracer.ReportOperationStorageChange(storageBytes, value.ToMinimalBigEndian(ref word));
     }
 
     /// <summary>
@@ -730,7 +753,7 @@ public static partial class EvmInstructions
         ref byte slot = ref stack.PeekBytesByRefUnchecked();
         EvmStack.ReadMemoryPositionFromSlot(ref slot, out UInt256 result);
 
-        ReadOnlySpan<byte> inputData = vm.VmState.Env.InputData.Span;
+        ReadOnlySpan<byte> inputData = MemoryMarshal.CreateReadOnlySpan(in stack.InputData, (int)stack.InputDataLength);
 
         ulong offset = result.u0;
         if (!result.IsUint64 || offset >= (uint)inputData.Length)

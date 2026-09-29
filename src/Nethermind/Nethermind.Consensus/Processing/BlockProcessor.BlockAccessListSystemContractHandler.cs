@@ -41,6 +41,9 @@ public partial class BlockProcessor
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => balManager.ProcessWithdrawals(block, spec);
 
+        public void InstallPredeploys(IReleaseSpec spec)
+            => balManager.InstallPredeploys(spec);
+
         public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
             => balManager.CommitIndexTableRoots(block, receipts, spec, tracer);
 

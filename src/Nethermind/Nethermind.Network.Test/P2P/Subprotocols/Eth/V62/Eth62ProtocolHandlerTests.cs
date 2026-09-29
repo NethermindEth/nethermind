@@ -453,6 +453,46 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _transactionPool.Received(canGossipTransactions ? 3 : 0).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
 
+        // TxFloodController's legacy-downgrade threshold is _notAcceptedSinceLastCheck > 600 (60s check interval,
+        // downgrade once unaccepted-per-second exceeds 10) - one report per skip, so this pair pins the boundary
+        // exactly rather than just "eventually downgrades", which a double-report bug would still satisfy.
+        [TestCase(600, false, TestName = "Skips_oversized_broadcast_transactions_and_reports_them_to_the_flood_controller_at_threshold")]
+        [TestCase(601, true, TestName = "Skips_oversized_broadcast_transactions_and_reports_them_to_the_flood_controller_past_threshold")]
+        public void Skips_oversized_broadcast_transactions_and_reports_them_to_the_flood_controller(int skipCount, bool expectDowngraded)
+        {
+            // >= 256 so EncodeOversizedTypedItem's hardcoded 2-byte length prefix is the canonical (non-leading-
+            // zero) encoding for maxTxSize + 1.
+            const int maxTxSize = 300;
+
+            _svc = new SerializationBuilder().WithEth()
+                .With(new TransactionsMessageSerializer(new TxPoolConfig { MaxTxSize = maxTxSize }))
+                .TestObject;
+            _handler = new Eth62ProtocolHandler(
+                _session,
+                _svc,
+                new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager,
+                RunImmediatelyScheduler.Instance,
+                _transactionPool,
+                _gossipPolicy,
+                LimboLogs.Instance,
+                _txGossipPolicy);
+            _handler.Init();
+
+            byte[][] oversizedItems = new byte[skipCount][];
+            for (int i = 0; i < oversizedItems.Length; i++)
+            {
+                oversizedItems[i] = TransactionsMessageSerializerTests.EncodeOversizedTypedItem(maxTxSize + 1, (byte)TxType.EIP1559);
+            }
+            IByteBuffer packet = Unpooled.WrappedBuffer(TransactionsMessageSerializerTests.EncodeAsSequence(oversizedItems));
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(packet, Eth62MessageCode.Transactions);
+
+            Assert.That(_handler.IsFloodDowngraded, Is.EqualTo(expectDowngraded), $"{skipCount} skips should {(expectDowngraded ? "have" : "not have")} crossed the downgrade threshold");
+            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+
         [Test]
         public void Should_schedule_transactions_without_value_tuple_request()
         {

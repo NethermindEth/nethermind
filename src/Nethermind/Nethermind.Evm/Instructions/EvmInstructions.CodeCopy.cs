@@ -31,8 +31,25 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
-            goto StackUnderflow;
+            return EvmExceptionType.StackUnderflow;
 
+        return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in a, in b, in result, source);
+    }
+
+    /// <summary>Copy-to-memory core with the three copy operands already popped, for callers that pop
+    /// preceding operands first (SIGPARAM, FRAMEDATACOPY).</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType DataCopyCore<TGasPolicy, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ref TGasPolicy gas,
+        in UInt256 a,
+        in UInt256 b,
+        in UInt256 result,
+        scoped ReadOnlySpan<byte> source)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
@@ -55,8 +72,52 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>
+    /// Copy-to-memory core for sources that halt on an out-of-range read instead of zero-padding it
+    /// (RETURNDATACOPY per EIP-211, EVENTDATACOPY per EIP-7906), operands already popped.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType BoundedDataCopyCore<TGasPolicy, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ref TGasPolicy gas,
+        in UInt256 destOffset,
+        in UInt256 sourceOffset,
+        in UInt256 size,
+        scoped ReadOnlySpan<byte> source)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
+        if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) goto OutOfGas;
+        if (outOfGas) goto OutOfGas;
+
+        // Ahead of the zero-length short-circuit: a zero-length read past the end still halts.
+        if (UInt256.AddOverflow(size, sourceOffset, out UInt256 end) || end > source.Length)
+            goto AccessViolation;
+
+        if (!size.IsZero)
+        {
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, ref vm.VmState.Memory))
+                goto OutOfGas;
+
+            vm.VmState.Memory.SaveAfterGas(in destOffset, source.Slice((int)sourceOffset, (int)size));
+
+            if (TTracingInst.IsActive)
+            {
+                ReadOnlySpan<byte> memoryChange = vm.VmState.Memory.LoadSpanAfterGas(in destOffset, (ulong)size);
+                vm.TxTracer.ReportMemoryChange(destOffset, in memoryChange);
+            }
+        }
+
+        return EvmExceptionType.None;
+        // Jump forward to be unpredicted by the branch predictor.
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    AccessViolation:
+        return EvmExceptionType.AccessViolation;
     }
 
     /// <summary>
@@ -81,7 +142,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
-            vm.VmState.Env.InputData.Span);
+            MemoryMarshal.CreateReadOnlySpan(in stack.InputData, (int)stack.InputDataLength));
 
     /// <summary>
     /// Copies data from the previous call's return buffer into memory.
@@ -94,38 +155,9 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
-            goto StackUnderflow;
+            return EvmExceptionType.StackUnderflow;
 
-        ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
-        if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) return EvmExceptionType.OutOfGas;
-        if (outOfGas) goto OutOfGas;
-
-        ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
-        if (UInt256.AddOverflow(size, sourceOffset, out UInt256 result) || result > returnDataBuffer.Length)
-            goto AccessViolation;
-
-        if (!size.IsZero)
-        {
-            if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, ref vm.VmState.Memory))
-                goto OutOfGas;
-
-            ReadOnlySpan<byte> source = returnDataBuffer.Span.Slice((int)sourceOffset, (int)size);
-            vm.VmState.Memory.SaveAfterGas(in destOffset, source);
-
-            if (TTracingInst.IsActive)
-            {
-                ReadOnlySpan<byte> memoryChange = vm.VmState.Memory.LoadSpanAfterGas(in destOffset, (ulong)size);
-                vm.TxTracer.ReportMemoryChange(destOffset, in memoryChange);
-            }
-        }
-
-        return EvmExceptionType.None;
-    OutOfGas:
-        return EvmExceptionType.OutOfGas;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
-    AccessViolation:
-        return EvmExceptionType.AccessViolation;
+        return BoundedDataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in destOffset, in sourceOffset, in size, vm.ReturnDataBuffer.Span);
     }
 
     /// <summary>
@@ -281,13 +313,12 @@ public static partial class EvmInstructions
 
         vm.WorldState.AddAccountRead(address);
 
-        // Attempt a peephole optimization when tracing is not active and code is available.
-        ReadOnlySpan<byte> codeSection = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (!TTracingInst.IsActive && programCounter < codeSection.Length)
+        // Attempt a peephole optimization when tracing is not active.
+        if (!TTracingInst.IsActive)
         {
             bool optimizeAccess = false;
-            // Peek at the next instruction to detect patterns.
-            Instruction nextInstruction = (Instruction)codeSection[(int)programCounter];
+            // Peek at the next instruction to detect patterns. Untraced code is padded, so past the end this reads STOP.
+            Instruction nextInstruction = (Instruction)Unsafe.Add(ref stack.Code, programCounter);
             // If the next instruction is ISZERO, optimize for a simple contract check.
             if (nextInstruction == Instruction.ISZERO)
             {
@@ -307,7 +338,8 @@ public static partial class EvmInstructions
             {
                 // Peephole optimization for EXTCODESIZE when checking for contract existence.
                 // This reduces storage access by using the preloaded CodeHash.
-                vm.OpCodeCount++;
+                if (DispatchFlags.CountOpcodes)
+                    vm.OpCodeCount++;
                 programCounter++;
                 // Deduct very-low gas cost for the next operation (ISZERO, GT, or EQ).
                 if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);

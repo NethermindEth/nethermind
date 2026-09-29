@@ -65,9 +65,9 @@ public class AdminModuleTests
         _logManager = Substitute.For<ILogManager>();
         _txPool = Substitute.For<ITxPool>();
         _receiptStorage = Substitute.For<IReceiptStorage>();
-        _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
         _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
+        _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager);
         _stateReader = Substitute.For<IStateReader>();
         _networkConfig = new NetworkConfig();
 

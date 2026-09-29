@@ -28,9 +28,37 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [Test]
+    public async Task GetPayloadV5_should_return_unsupported_fork_at_amsterdam()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Amsterdam.Instance);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        Block head = chain.BlockTree.Head!;
+        PayloadAttributes payloadAttributes = CreateAmsterdamPayloadAttributes(head.Header);
+        ForkchoiceStateV1 forkchoiceState = new(head.Hash!, head.Hash!, head.Hash!);
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse =
+            await rpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcuResponse.Result, Is.EqualTo(Result.Success));
+            Assert.That(fcuResponse.Data.PayloadId, Is.Not.Null);
+        }
+
+        ResultWrapper<GetPayloadV5Result?> result =
+            await rpcModule.engine_getPayloadV5(Bytes.FromHexString(fcuResponse.Data.PayloadId!));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Fail(MergeErrorMessages.UnsupportedFork)));
+            Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        }
+    }
+
+    [Test]
     public async Task GetPayloadV5_should_return_all_the_blobs([Values(0, 1, 2, 3, 4)] int blobTxCount, [Values(true, false)] bool oneBlobPerTx)
     {
-        (IEngineRpcModule rpcModule, string? payloadId, _, _) = await BuildAndGetPayloadV3Result(Osaka.Instance, blobTxCount, oneBlobPerTx: oneBlobPerTx);
+        (IEngineRpcModule rpcModule, string? payloadId, _, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Osaka.Instance, blobTxCount, oneBlobPerTx: oneBlobPerTx);
+        using MergeTestBlockchain disposeChain = chain;
         ResultWrapper<GetPayloadV5Result?> result = await rpcModule.engine_getPayloadV5(Bytes.FromHexString(payloadId!));
         BlobsBundleV2 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
         ShardBlobNetworkWrapper wrapper = new(getPayloadResultBlobsBundle.Blobs,
@@ -48,7 +76,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Testing_buildBlockV1_empty_block_with_empty_withdrawals_has_valid_hash()
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         ITestingRpcModule testingRpcModule = chain.Container.Resolve<ITestingRpcModule>();
 
         Block head = chain.BlockTree.Head!;
@@ -92,7 +120,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Testing_commitBlockV1_advances_chain_head()
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         ITestingRpcModule testingRpcModule = chain.Container.Resolve<ITestingRpcModule>();
 
         Block head = chain.BlockTree.Head!;
@@ -121,7 +149,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV2_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         List<byte[]> request = new(requestSize);
@@ -147,7 +175,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobs_should_handle_empty_request([Values(2, 3)] int version)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         string response = await RpcTest.TestSerializedRequest(rpcModule, $"engine_getBlobsV{version}", (object)Array.Empty<byte[]>());
@@ -158,7 +186,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV2_should_return_requested_blobs([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -186,7 +214,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV2_should_return_empty_array_when_blobs_not_found([Values(1, 2, 3, 4, 5, 6)] int numberOfRequestedBlobs)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         // we are not adding this tx
@@ -209,7 +237,7 @@ public partial class EngineModuleTests
     {
         int requestSize = multiplier * numberOfBlobs;
 
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -255,7 +283,7 @@ public partial class EngineModuleTests
     {
         int requestSize = multiplier * numberOfBlobs;
 
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         Transaction blobTx = Build.A.Transaction
@@ -312,7 +340,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV1_should_return_invalid_fork_post_osaka()
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);

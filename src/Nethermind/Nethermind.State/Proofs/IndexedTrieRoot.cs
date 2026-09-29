@@ -5,15 +5,14 @@ using System;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.ExceptionServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 
 using MemoryMarshal = System.Runtime.InteropServices.MemoryMarshal;
@@ -218,51 +217,44 @@ internal static class IndexedTrieRoot
             using ArrayPoolList<int>? valueLengths = _valueLengths.IsEmpty ? null : new(_valueLengths);
             using ArrayPoolList<NodeReference> references = new(_items.Length, _items.Length);
             TEncoder leafEncoder = encoder;
-            try
+            ParallelUnbalancedWork.For(0, (_items.Length - 1) / LeafBatchSize + 1, RuntimeInformation.ParallelOptionsLogicalCores, batch =>
             {
-                Parallel.For(0, (_items.Length - 1) / LeafBatchSize + 1, RuntimeInformation.ParallelOptionsLogicalCores, batch =>
+                int start = batch * LeafBatchSize;
+                int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
+                Span<int> batchLengths = stackalloc int[leafEncoder.Batching == LeafBatching.MultiBlock && valueLengths is null ? LeafBatchSize : 0];
+                batchLengths.Fill(-1);
+                Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder,
+                    valueLengths: valueLengths is null ? batchLengths : valueLengths.AsSpan(),
+                    valueLengthsStart: valueLengths is null ? start : 0);
+                if (Avx2.IsSupported && leafEncoder.Batching == LeafBatching.MultiBlock
+                    && calculator.GetLength(start) is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
                 {
-                    int start = batch * LeafBatchSize;
-                    int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
-                    Span<int> batchLengths = stackalloc int[leafEncoder.Batching == LeafBatching.MultiBlock && valueLengths is null ? LeafBatchSize : 0];
-                    batchLengths.Fill(-1);
-                    Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder,
-                        valueLengths: valueLengths is null ? batchLengths : valueLengths.AsSpan(),
-                        valueLengthsStart: valueLengths is null ? start : 0);
-                    if (Avx2.IsSupported && leafEncoder.Batching == LeafBatching.MultiBlock
-                        && calculator.GetLength(start) is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
+                    calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
+                    return;
+                }
+                if (Avx2.IsSupported && leafEncoder.Batching == LeafBatching.Encoded)
+                {
+                    int valueLength = leafEncoder.GetEncodedValue(inputs[calculator.GetIndex(start)]).Length;
+                    if (valueLength is >= Keccak.Size and <= MaxSingleBlockValueLength)
+                    {
+                        calculator.CalculateEncodedLeafBatch(start, end, references.AsSpan());
+                        return;
+                    }
+                    if (valueLength is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
                     {
                         calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
                         return;
                     }
-                    if (Avx2.IsSupported && leafEncoder.Batching == LeafBatching.Encoded)
-                    {
-                        int valueLength = leafEncoder.GetEncodedValue(inputs[calculator.GetIndex(start)]).Length;
-                        if (valueLength is >= Keccak.Size and <= MaxSingleBlockValueLength)
-                        {
-                            calculator.CalculateEncodedLeafBatch(start, end, references.AsSpan());
-                            return;
-                        }
-                        if (valueLength is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
-                        {
-                            calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
-                            return;
-                        }
-                    }
-                    for (int position = start; position < end; position++)
-                    {
-                        Key key = calculator.GetKey(position);
-                        int depth = position == 0 ? 0 : CommonPrefix(key, calculator.GetKey(position - 1), 0);
-                        if (position + 1 < inputs.Count)
-                            depth = Math.Max(depth, CommonPrefix(key, calculator.GetKey(position + 1), 0));
-                        references[position] = calculator.Leaf(key, depth + 1, position);
-                    }
-                });
-            }
-            catch (AggregateException exception)
-            {
-                ExceptionDispatchInfo.Throw(exception.InnerExceptions[0]);
-            }
+                }
+                for (int position = start; position < end; position++)
+                {
+                    Key key = calculator.GetKey(position);
+                    int depth = position == 0 ? 0 : CommonPrefix(key, calculator.GetKey(position - 1), 0);
+                    if (position + 1 < inputs.Count)
+                        depth = Math.Max(depth, CommonPrefix(key, calculator.GetKey(position + 1), 0));
+                    references[position] = calculator.Leaf(key, depth + 1, position);
+                }
+            });
             // Indices 0-15 never form a batchable branch, so this is the smallest root holding a batch.
             // Avoid scanning tiny-value tries when the first full branch is already ineligible.
             bool batchBranches = Avx2.IsSupported && _items.Length >= (MinimumBranchBatch + 1) * BranchChildCount
@@ -555,8 +547,11 @@ internal static class IndexedTrieRoot
             int encodedValueLength = Rlp.LengthOfByteString(valueLength, unprefixedByte ? (byte)0 : (byte)128);
             int contentLength = Rlp.LengthOf(path[..pathLength]) + encodedValueLength;
             int totalLength = Rlp.LengthOfSequence(contentLength);
-            using ArrayPoolDisposableReturn rental = ArrayPoolDisposableReturn.Rent(totalLength, out byte[] buffer);
-            RlpWriter writer = new(buffer.AsSpan(0, totalLength));
+            byte[]? rented = null;
+            Span<byte> buffer = totalLength <= StackLeafLength
+                ? stackalloc byte[StackLeafLength]
+                : rented = SafeArrayPool<byte>.Shared.Rent(totalLength);
+            RlpWriter writer = new(buffer[..totalLength]);
             writer.StartSequence(contentLength);
             writer.Encode(path[..pathLength]);
             if (valueLength <= 1)
@@ -573,8 +568,15 @@ internal static class IndexedTrieRoot
                 else writer.Encode(encodedValue);
             }
             Debug.Assert(writer.Position == totalLength);
-            return NodeReference.FromRlp(buffer.AsSpan(0, writer.Position));
+            NodeReference reference = NodeReference.FromRlp(buffer[..writer.Position]);
+
+            if (rented is not null) SafeArrayPool<byte>.Shared.Return(rented);
+
+            return reference;
         }
+
+        // Most transaction and receipt leaves fit, sparing them a pool round trip.
+        private const int StackLeafLength = 1024;
 
         private int GetLength(int position)
         {

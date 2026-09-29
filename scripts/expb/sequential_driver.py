@@ -90,12 +90,57 @@ def pin_client_cpus(resources: dict) -> None:
     # Zero disables the CPU quota; omitting cpu would restore EXPB's default quota.
     resources["cpu"] = 0
 
+CPU_OVERRIDES = (("cpu", "DOCKER_CPU"), ("cpuset", "DOCKER_CPUSET"), ("infra_cpuset", "DOCKER_INFRA_CPUSET"))
+CPUSET = re.compile(r"[0-9]+(?:-[0-9]+)?(?:,[0-9]+(?:-[0-9]+)?)*")
+INFRA_CONTAINER = re.compile(r"-(?:k6|alloy|payload-server)$")
+
+def cpu_overrides_active() -> bool: return any(get(name).strip() for _, name in CPU_OVERRIDES)
+
+def apply_cpu_overrides(resources: dict) -> None:
+    """Apply the dispatch's docker_cpu_overrides to the rendered copy, before pin_client_cpus consumes them.
+
+    Empty keeps the runner's value; `all` lifts the limit: cpu=0 pins the whole cpuset, and a missing
+    cpuset gives Docker no --cpuset-cpus.
+    """
+    for key, name in CPU_OVERRIDES:
+        value = get(name).strip().lower()
+        if not value: continue
+        if key == "cpu":
+            if value != "all" and not re.fullmatch(r"[0-9]+", value): raise ValueError(f"{name} must be a whole number of CPUs or 'all', got {value!r}")
+            resources["cpu"] = 0 if value == "all" else int(value)
+        elif value == "all": resources.pop(key, None)
+        elif CPUSET.fullmatch(value): resources[key] = value
+        else: raise ValueError(f"{name} must be a Docker cpuset list or 'all', got {value!r}")
+
+def read_cgroup_limits(done: threading.Event, report: list[str]) -> None:
+    """Best effort: once the client is up, record the CPU limits the host cgroup enforces on every expb container."""
+    docker = get("DOCKER_BIN", "docker")
+    def docker_out(*args: str) -> str:
+        try: return subprocess.run([docker, *args], capture_output=True, text=True, timeout=30).stdout.strip()
+        except Exception: return ""
+    for _ in range(300):
+        if done.wait(2): return
+        if any(not INFRA_CONTAINER.search(name) for name in docker_out("ps", "--filter", "label=expb", "--format", "{{.Names}}").splitlines()): break
+    if done.wait(30): return
+    for container in docker_out("ps", "-q", "--no-trunc", "--filter", "label=expb").split():
+        limits = docker_out("inspect", "-f", "{{.Name}} NanoCpus={{.HostConfig.NanoCpus}} CpusetCpus={{.HostConfig.CpusetCpus}}", container).lstrip("/")
+        cgroup = "cgroup dir not found"
+        for directory in (Path(f"/sys/fs/cgroup/system.slice/docker-{container}.scope"), Path(f"/sys/fs/cgroup/docker/{container}")):
+            if directory.is_dir():
+                def read(leaf: str) -> str:
+                    try: return (directory / leaf).read_text(encoding="utf-8").strip()
+                    except OSError: return ""
+                cgroup = f"cpu.max='{read('cpu.max')}' cpuset.cpus.effective='{read('cpuset.cpus.effective')}'"
+                break
+        report.append(f"{limits or container} {cgroup}")
+
 def render(base: dict, image: dict, run: int) -> tuple[dict, str]:
     config = json.loads(json.dumps(base))
     amount = parse_amount(get("AMOUNT"))
     for old, new in (("<<DELAY>>", get("DELAY_SECONDS", "0")), ("<<AMOUNT>>", get("AMOUNT")), ("/mnt/sda/expb-data", get("EXPB_DATA_DIR")), ("/mnt/sda/nethermind-flat-snapshot", get("FLAT_SNAPSHOT_DIR")), ("/mnt/sda/nethermind-flat-25490000", get("FLAT_SNAPSHOT_BLOCK_DIR"))):
         config = json.loads(json.dumps(config).replace(old, new))
-    pin_client_cpus(config.setdefault("resources", {}))
+    apply_cpu_overrides(config.setdefault("resources", {}))
+    pin_client_cpus(config["resources"])
     scenarios = config.get("scenarios")
     if not isinstance(scenarios, dict) or not isinstance(scenarios.get("nethermind"), dict): raise ValueError("config has no scenarios.nethermind mapping")
     client = get("CLIENT", "nethermind")
@@ -289,10 +334,20 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
             child_env = os.environ.copy()
             child_env.update(parse_pairs(get("EXPB_ENV_PASSTHROUGH")))
             if get("MEASUREMENT_MODE", "standard") == "compute-warm": child_env["EXPB_EVM_WARMUP"] = "1"
+            # With a CPU override in play, read the limits the kernel enforces rather than what expb asked Docker for.
+            readout_done, readout = threading.Event(), []
+            reader = threading.Thread(target=read_cgroup_limits, args=(readout_done, readout), daemon=True) if cpu_overrides_active() else None
             with log_path.open("wb") as output:
                 current = subprocess.Popen(command, cwd=get("EXPB_DATA_DIR"), env=child_env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+                if reader is not None: reader.start()
                 if cancelled: stop(signal.SIGTERM, None)
                 code = current.wait()
+            if reader is not None:
+                readout_done.set()
+                reader.join(timeout=60)
+                result["cgroup_limits"] = list(readout)
+                print(f"{sample_id}: container CPU limits as enforced by the host cgroup:")
+                for line in readout or ["(no readout captured)"]: print(f"  {line}")
     except Exception as error:
         code = 125
         result["error"] = str(error)

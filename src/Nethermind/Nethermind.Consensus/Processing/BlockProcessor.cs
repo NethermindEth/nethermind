@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -47,6 +48,7 @@ public partial class BlockProcessor(
     IIndexTableHandler? indexTableHandler = null)
     : IBlockProcessor
 {
+    private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
     protected readonly ISpecProvider _specProvider = specProvider;
     protected readonly IWorldState _stateProvider = stateProvider;
     protected readonly IBlockAccessListManager _balManager = balManager;
@@ -60,7 +62,7 @@ public partial class BlockProcessor(
             balManager
         ));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
-        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, indexTableHandler ?? NullIndexTableHandler.Instance));
+        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, stateProvider, indexTableHandler ?? NullIndexTableHandler.Instance));
     private ISystemContractHandler _systemContractHandler;
 
     /// <summary>
@@ -175,6 +177,10 @@ public partial class BlockProcessor(
 
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
+        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec))
+        {
+            _systemContractHandler.InstallPredeploys(spec);
+        }
         CommitState(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
@@ -187,9 +193,26 @@ public partial class BlockProcessor(
     }
 
     protected virtual TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options,
-        IReleaseSpec spec, TxReceipt[] receipts)
+        IReleaseSpec spec, TxReceipt[] receipts) =>
+        FinalizeBlock<OnFlag>(block, blockTracer, spec, receipts);
+
+    /// <summary>
+    /// Finalizes the block; <typeparamref name="TComputesCommitments"/> selects whether the blooms, the receipts root,
+    /// the storage and state roots and the header hash are derived. A replay whose only product is its trace reads none of them.
+    /// </summary>
+    protected TxReceipt[] FinalizeBlock<TComputesCommitments>(Block block, IBlockTracer blockTracer, IReleaseSpec spec, TxReceipt[] receipts)
+        where TComputesCommitments : struct, IFlag
     {
         BlockHeader header = block.Header;
+
+        using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+        (Bloom BlockBloom, Hash256 ReceiptsRoot) receiptResults = default;
+        // Receipts are immutable apart from their blooms now; overlap with the first state commit too.
+        using ParallelUnbalancedWork.BackgroundWork? bloomWork = TComputesCommitments.IsActive && ShouldCalculateReceiptsInBackground(receipts)
+            ? StartBloomComputation(receipts)
+            : null;
+        using ParallelUnbalancedWork.BackgroundWork? receiptWork = bloomWork?.ContinueWith(() => receiptResults =
+            (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block)));
 
         CommitState(spec);
 
@@ -198,71 +221,56 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
-        if (ShouldCalculateReceiptsInBackground(receipts))
-        {
-            bloomsAndReceiptsRootTask = Task.Run(() =>
-            {
-                CalculateBlooms(receipts);
-                return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
-            });
-        }
-        else
+        if (receiptWork is null && TComputesCommitments.IsActive)
         {
             CalculateBlooms(receipts);
             header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
         }
 
-        try
+        ApplyMinerRewards(block, blockTracer, spec);
+        _systemContractHandler.ProcessWithdrawals(block, spec);
+
+        // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
+        // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
+        CommitState(spec);
+
+        _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+
+        _systemContractHandler.CommitIndexTableRoots(block, receipts, spec, NullTxTracer.Instance);
+
+        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: receiptWork is null && TComputesCommitments.IsActive);
+
+        if (TComputesCommitments.IsActive)
         {
-            ApplyMinerRewards(block, blockTracer, spec);
-            _systemContractHandler.ProcessWithdrawals(block, spec);
-
-            // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
-            // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
-            CommitState(spec);
-
-            _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
-
-            _systemContractHandler.CommitIndexTableRoots(block, receipts, spec, NullTxTracer.Instance);
-
-            ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);
-
             CommitStateAndStorageRoots(spec);
-
-            if (BlockchainProcessor.IsMainProcessingThread)
-            {
-                SetAccountChanges(block);
-            }
-
-            if (ShouldComputeStateRoot(header))
-            {
-                ComputeStateRoot(header);
-            }
-
-            if (bloomsAndReceiptsRootTask is not null)
-            {
-                (header.Bloom, header.ReceiptsRoot) = bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
-            }
-
-            _balManager.SetBlockAccessList(block);
         }
-        finally
+        else
         {
-            if (bloomsAndReceiptsRootTask is { IsCompletedSuccessfully: false })
-            {
-                try
-                {
-                    bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
-                }
-                catch
-                {
-                    // Preserve the processing failure while ensuring the background task is observed.
-                }
-            }
+            CommitState(spec);
         }
 
-        header.Hash = header.CalculateHash();
+        if (BlockchainProcessor.IsMainProcessingThread)
+        {
+            SetAccountChanges(block);
+        }
+
+        if (TComputesCommitments.IsActive && ShouldComputeStateRoot(header))
+        {
+            ComputeStateRoot(header);
+        }
+
+        if (receiptWork is not null)
+        {
+            receiptWork.WaitForCompletion();
+            (header.Bloom, header.ReceiptsRoot) = receiptResults;
+        }
+
+        _balManager.SetBlockAccessList(block);
+
+        if (TComputesCommitments.IsActive)
+        {
+            header.Hash = header.CalculateHash();
+        }
 
         _systemContractHandler.UpdateFinalBlockHash(block);
 
@@ -318,6 +326,20 @@ public partial class BlockProcessor(
     {
         using MetricsTimer<ReceiptsRootTimeSink> _ = new();
         return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ParallelUnbalancedWork.BackgroundWork StartBloomComputation(TxReceipt[] receipts)
+    {
+        long started = ExecutionMetricsFlag.IsActive ? Stopwatch.GetTimestamp() : 0;
+        ParallelOptions options = receipts.Length <= Environment.ProcessorCount
+            ? SmallBloomOptions : ParallelUnbalancedWork.DefaultOptions;
+        return ParallelUnbalancedWork.BackgroundFor(0, receipts.Length, options,
+            i => receipts[i].CalculateBloom(), () =>
+            {
+                if (ExecutionMetricsFlag.IsActive)
+                    BloomsTimeSink.AddTicks(Stopwatch.GetElapsedTime(started).Ticks);
+            });
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

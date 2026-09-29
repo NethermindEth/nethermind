@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -14,9 +15,11 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.OverridableEnv;
@@ -70,6 +73,31 @@ public class DisposableScopeOverridableEnvTests
 
         Assert.That(ctx.ChildComponents.WorldState.StateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
         Assert.That(scope.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));
+    }
+
+    // Idle is what keeps state overrides in the prestate, and the processor must share the very
+    // instance the scope hands out or the opcodes see no diff.
+    [TestCase(false, TestName = "BuildAndOverride_ForkNeverScheduled_NoDiffRecorder")]
+    [TestCase(true, TestName = "BuildAndOverride_ForkScheduled_CarriesAnIdleDiffRecorderSharedWithTheProcessor")]
+    public void BuildAndOverride_DiffRecorderFollowsTheForkSchedule(bool schedulesEip7906)
+    {
+        using TestContext ctx = new(new TestSpecProvider(
+            new OverridableReleaseSpec(Cancun.Instance) { IsEip7906Enabled = schedulesEip7906, IsEip7928Enabled = schedulesEip7906 }));
+
+        using Scope<Components> scope = ctx.Env.BuildAndOverride(
+            Build.A.BlockHeader.TestObject,
+            new Dictionary<Address, AccountOverride>
+            {
+                { TestItem.AddressA, new AccountOverride { Balance = 123 } }
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Component.WorldState is IBlockAccessListSource, Is.EqualTo(schedulesEip7906));
+            Assert.That(scope.Component.WorldState is not IBlockAccessListSource { GeneratedBlockAccessList: not null });
+            Assert.That(((TestTransactionProcessor)scope.Component.TransactionProcessor).WorldState,
+                Is.SameAs(scope.Component.WorldState));
+        }
     }
 
     [Test]
@@ -142,7 +170,7 @@ public class DisposableScopeOverridableEnvTests
         public IOverridableEnv<Components> Env { get; }
         public TestStateHeaderProvider StateHeaderProvider { get; } = new();
 
-        public TestContext()
+        public TestContext(ISpecProvider? specProvider = null)
         {
             _container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule())
@@ -152,8 +180,10 @@ public class DisposableScopeOverridableEnvTests
                 .Build();
 
             WorldStateManager = _container.Resolve<IWorldStateManager>();
-            IOverridableEnvFactory envFactory = _container.Resolve<IOverridableEnvFactory>();
             ILifetimeScope rootLifetime = _container.Resolve<ILifetimeScope>();
+            IOverridableEnvFactory envFactory = specProvider is null
+                ? _container.Resolve<IOverridableEnvFactory>()
+                : new OverridableEnvFactory(WorldStateManager, rootLifetime, specProvider);
             IOverridableEnv envModule = envFactory.Create();
 
             _childLifetime = rootLifetime.BeginLifetimeScope(builder => builder.AddModule(envModule));
