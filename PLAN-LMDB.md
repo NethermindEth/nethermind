@@ -260,6 +260,50 @@ periodic key-count/size diagnostic logging pattern (adapt `BtdbDb.NativeMemoryBy
 equivalent concept, since there's no separate off-heap index allocator to query; see "Validation
 methodology" below for what replaces it).
 
+## Known issues (found after implementation, not during the spike)
+
+**`MDB_READERS_FULL` (`MDBResultCode.ReadersFull`, -30790) is process-fatal in LightningDB 0.23.0, not a
+recoverable error — sizing `MaxReaders` generously is the only real defense.** Reported in practice as
+`Error when handling response LightningDB -30790: MDB_READERS_FULL: Environment maxreaders limit reached`.
+Root cause: `CreateSnapshot()` opens a whole pool of `Environment.ProcessorCount` read-only transactions per
+snapshot and holds them for the snapshot's entire lifetime (by design — see `LmdbDbSnapshot`'s remarks) —
+LMDB's own default reader-lock table is only 126 slots, which a handful of concurrently-alive snapshots on a
+many-core machine exhausts easily. The fix that matters is `ILmdbConfig.MaxReaders`, now defaulted to 8192
+(previously unconfigurable, implicitly 126).
+
+What made this worse than a normal bug to track down: **a *failed* `LightningEnvironment.BeginTransaction`
+call leaks an internal transaction handle that the library itself still tracks against that environment —
+one the caller never receives a reference to and so can never dispose.** That handle is only discovered
+later, when the GC gets around to finalizing it, at which point it throws `InvalidOperationException: "A
+transaction must be disposed before closing the environment"` **from inside the finalizer**, which is fatal
+to the whole process (unhandled finalizer exceptions terminate .NET processes by design). Verified
+empirically (throwaway spike, not committed) with `MaxReaders` deliberately set too low:
+- The crash reproduces even when every failed `BeginTransaction` call is caught and handled correctly.
+- It reproduces even when a **subsequent retry on the same call succeeds** (e.g. after freeing capacity) —
+  the damage from the one failed attempt is already permanent by then.
+- It is not tied to any specific call site — it was first found via a *test* (`CreateSnapshot_throws_a_clear_
+  MDB_READERS_FULL_error_when_the_reader_table_is_genuinely_undersized`, written to confirm the exhaustion
+  path failed cleanly) that itself reliably crashed the test process, and was only removed once its actual
+  purpose (validating the `MaxReaders` fix) could be served by a test that never trips `ReadersFull` at all
+  (`CreateSnapshot_supports_many_concurrent_snapshots_without_exhausting_the_reader_table`).
+
+Consequence for the design: an earlier version of `LmdbDb.BeginReadOnlyTransaction` caught `ReadersFull` and
+retried once via `LightningEnvironment.CheckStaleReaders()` (a real, documented recovery mechanism for
+slots stuck because their owning thread died). That retry is not wrong on its own, but it cannot prevent the
+process-fatal outcome above — at best it avoids surfacing an exception to *this* caller while leaving the
+process just as compromised, which is arguably worse: the eventual crash then has no visible connection to
+its real cause. Removed in favor of a plain `BeginTransaction` call with a loud doc comment: if this ever
+throws in practice, the fix is raising `MaxReaders`, not handling the exception better.
+
+Two smaller, related leaks were fixed alongside this (both are cases where a *real*, valid transaction —
+not the phantom kind above — was left undisposed on an exception path): `CreateSnapshot()` failing partway
+through its pool loop now disposes whatever it already opened before rethrowing, and `GetViewBetween`
+(both the top-level and the pooled-snapshot version) now disposes/returns its transaction if creating the
+cursor fails partway through.
+
+This is arguably worth reporting upstream to `CoreyKaylor/Lightning.NET` — a failed `BeginTransaction` should
+not leave unmanaged/tracked state that only a later GC can (fatally) discover.
+
 ## Validation methodology — this is the part that genuinely changes, not just the library
 
 BTDB's central measurement was "resident bytes per key," because its architecture makes that a fixed,

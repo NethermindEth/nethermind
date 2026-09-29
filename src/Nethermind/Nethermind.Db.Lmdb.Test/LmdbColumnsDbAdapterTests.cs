@@ -13,6 +13,7 @@ namespace Nethermind.Db.Lmdb.Test;
 public class LmdbColumnsDbAdapterTests
 {
     private const long TestMapSize = 64L * 1024 * 1024;
+    private const int TestMaxReaders = 8192;
 
     private string DbPath => Path.Combine("testdb-lmdb-columns", TestContext.CurrentContext.Test.ID);
     private SnapshotableMemColumnsDb<FlatDbColumns> _inner = null!;
@@ -27,8 +28,8 @@ public class LmdbColumnsDbAdapterTests
         _inner = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _adapter = new LmdbColumnsDbAdapter(
             _inner,
-            new LmdbDb("account", Path.Combine(DbPath, "account.lmdb"), TestMapSize),
-            new LmdbDb("storage", Path.Combine(DbPath, "storage.lmdb"), TestMapSize),
+            new LmdbDb("account", Path.Combine(DbPath, "account.lmdb"), TestMapSize, TestMaxReaders),
+            new LmdbDb("storage", Path.Combine(DbPath, "storage.lmdb"), TestMapSize, TestMaxReaders),
             LimboLogs.Instance);
     }
 

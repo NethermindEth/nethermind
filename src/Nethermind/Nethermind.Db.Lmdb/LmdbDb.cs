@@ -40,7 +40,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
 
     public string Name { get; }
 
-    public LmdbDb(string name, string path, long initialMapSizeBytes)
+    public LmdbDb(string name, string path, long initialMapSizeBytes, int maxReaders)
     {
         Name = name;
         _path = path;
@@ -49,7 +49,10 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         // NoThreadLocalStorage: CreateSnapshot's reader pool hands pooled read transactions out via rent/return,
         // so a given transaction's using thread can legitimately change between rentals - the default
         // TLS-slot-per-thread reader binding is not designed for that pattern (see PLAN-LMDB.md spike finding 2).
-        _env = new LightningEnvironment(path, new EnvironmentConfiguration { MapSize = initialMapSizeBytes });
+        // MaxReaders defaults to only 126 in LMDB itself, which CreateSnapshot's pool of
+        // Environment.ProcessorCount readers per snapshot burns through with just a handful of concurrently-alive
+        // snapshots on a many-core box (observed in practice: MDB_READERS_FULL) - see BeginReadOnlyTransaction.
+        _env = new LightningEnvironment(path, new EnvironmentConfiguration { MapSize = initialMapSizeBytes, MaxReaders = maxReaders });
         _env.Open(EnvironmentOpenFlags.NoThreadLocalStorage);
 
         using LightningTransaction tx = _env.BeginTransaction();
@@ -57,9 +60,26 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         tx.Commit();
     }
 
+    /// <summary>
+    /// Opens a read-only transaction. Do not wrap this in a catch-and-retry for <see cref="MDBResultCode.ReadersFull"/>:
+    /// the verification spike (see PLAN-LMDB.md "Known issues") confirmed that in LightningDB 0.23.0, a *failed*
+    /// <see cref="LightningEnvironment.BeginTransaction(TransactionBeginFlags)"/> call leaks an internal
+    /// transaction handle that the library still tracks against this environment - one that this method never
+    /// gets a reference to and so can never dispose. That handle later crashes the *entire process* with an
+    /// unrecoverable "must be disposed before closing the environment" exception thrown from a finalizer, on some
+    /// unrelated later GC, **even if a subsequent retry on the same call succeeds**. Catching and retrying only
+    /// hides the immediate symptom while leaving the process just as compromised - worse, actually, since the
+    /// eventual crash then has no visible connection to its real cause. The only real defense is never letting
+    /// the reader table fill up in the first place: size <see cref="ILmdbConfig.MaxReaders"/> comfortably above
+    /// the realistic concurrent load (<see cref="CreateSnapshot"/>'s pool size times how many snapshots can be
+    /// alive at once). If this ever throws in practice, treat it as a signal to raise that config value, not as
+    /// something to handle at the call site.
+    /// </summary>
+    private LightningTransaction BeginReadOnlyTransaction() => _env.BeginTransaction(TransactionBeginFlags.ReadOnly);
+
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        using LightningTransaction tx = _env.BeginTransaction(TransactionBeginFlags.ReadOnly);
+        using LightningTransaction tx = BeginReadOnlyTransaction();
         (MDBResultCode rc, _, MDBValue value) = tx.Get(_database, key);
         return rc == MDBResultCode.Success ? value.CopyToNewArray() : null;
     }
@@ -72,7 +92,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         get
         {
             KeyValuePair<byte[], byte[]?>[] result = new KeyValuePair<byte[], byte[]?>[keys.Length];
-            using LightningTransaction tx = _env.BeginTransaction(TransactionBeginFlags.ReadOnly);
+            using LightningTransaction tx = BeginReadOnlyTransaction();
             for (int i = 0; i < keys.Length; i++)
             {
                 byte[] key = keys[i];
@@ -89,7 +109,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
     {
         // LMDB's own index is a B+tree, so it is always ordered - the flag has nothing extra to opt into.
-        using LightningTransaction tx = _env.BeginTransaction(TransactionBeginFlags.ReadOnly);
+        using LightningTransaction tx = BeginReadOnlyTransaction();
         using LightningCursor cursor = tx.CreateCursor(_database);
         (MDBResultCode rc, MDBValue key, MDBValue value) = cursor.First();
         while (rc == MDBResultCode.Success)
@@ -101,7 +121,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
 
     public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
     {
-        using LightningTransaction tx = _env.BeginTransaction(TransactionBeginFlags.ReadOnly);
+        using LightningTransaction tx = BeginReadOnlyTransaction();
         using LightningCursor cursor = tx.CreateCursor(_database);
         (MDBResultCode rc, MDBValue key, MDBValue _) = cursor.First();
         while (rc == MDBResultCode.Success)
@@ -113,7 +133,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
 
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
     {
-        using LightningTransaction tx = _env.BeginTransaction(TransactionBeginFlags.ReadOnly);
+        using LightningTransaction tx = BeginReadOnlyTransaction();
         using LightningCursor cursor = tx.CreateCursor(_database);
         (MDBResultCode rc, MDBValue _, MDBValue value) = cursor.First();
         while (rc == MDBResultCode.Success)
@@ -127,7 +147,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     {
         get
         {
-            using LightningTransaction tx = _env.BeginTransaction(TransactionBeginFlags.ReadOnly);
+            using LightningTransaction tx = BeginReadOnlyTransaction();
             using LightningCursor cursor = tx.CreateCursor(_database);
             (MDBResultCode rc, MDBValue key, MDBValue _) = cursor.First();
             return rc == MDBResultCode.Success ? key.CopyToNewArray() : null;
@@ -138,7 +158,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     {
         get
         {
-            using LightningTransaction tx = _env.BeginTransaction(TransactionBeginFlags.ReadOnly);
+            using LightningTransaction tx = BeginReadOnlyTransaction();
             using LightningCursor cursor = tx.CreateCursor(_database);
             (MDBResultCode rc, MDBValue key, MDBValue _) = cursor.Last();
             return rc == MDBResultCode.Success ? key.CopyToNewArray() : null;
@@ -147,9 +167,17 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
     {
-        LightningTransaction tx = _env.BeginTransaction(TransactionBeginFlags.ReadOnly);
-        LightningCursor cursor = tx.CreateCursor(_database);
-        return new LmdbSortedView(tx, cursor, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray(), ownsTransaction: true);
+        LightningTransaction tx = BeginReadOnlyTransaction();
+        try
+        {
+            LightningCursor cursor = tx.CreateCursor(_database);
+            return new LmdbSortedView(tx, cursor, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray(), ownsTransaction: true);
+        }
+        catch
+        {
+            tx.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
@@ -176,9 +204,22 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     public IKeyValueStoreSnapshot CreateSnapshot()
     {
         LightningTransaction[] pool = new LightningTransaction[SnapshotReaderPoolSize];
-        lock (_writeCommitGate)
+        int opened = 0;
+        try
         {
-            for (int i = 0; i < pool.Length; i++) pool[i] = _env.BeginTransaction(TransactionBeginFlags.ReadOnly);
+            lock (_writeCommitGate)
+            {
+                for (; opened < pool.Length; opened++) pool[opened] = BeginReadOnlyTransaction();
+            }
+        }
+        catch
+        {
+            // A failure partway through must not strand the *successfully* opened transactions earlier in this
+            // same loop - each already consumes a real reader-table slot that would otherwise never be released.
+            // This does not fully mitigate the failure itself - see BeginReadOnlyTransaction's remarks on why a
+            // failure here is far more serious than a normal recoverable error.
+            for (int i = 0; i < opened; i++) pool[i].Dispose();
+            throw;
         }
 
         return new LmdbDbSnapshot(pool, _database);
@@ -196,7 +237,7 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
     {
         get
         {
-            using LightningTransaction tx = _env.BeginTransaction(TransactionBeginFlags.ReadOnly);
+            using LightningTransaction tx = BeginReadOnlyTransaction();
             return tx.GetEntriesCount(_database);
         }
     }
@@ -556,8 +597,18 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
             // Dispose (returnToPool), since the view keeps navigating this exact transaction across many
             // MoveNext calls.
             LightningTransaction tx = Rent();
-            LightningCursor cursor = tx.CreateCursor(database);
-            return new LmdbSortedView(tx, cursor, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray(), ownsTransaction: false, Return);
+            try
+            {
+                LightningCursor cursor = tx.CreateCursor(database);
+                return new LmdbSortedView(tx, cursor, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray(), ownsTransaction: false, Return);
+            }
+            catch
+            {
+                // Must go back to the pool, not be disposed - disposing a still-valid pooled transaction here
+                // would permanently shrink the pool below SnapshotReaderPoolSize for this snapshot's lifetime.
+                Return(tx);
+                throw;
+            }
         }
 
         public void Dispose()

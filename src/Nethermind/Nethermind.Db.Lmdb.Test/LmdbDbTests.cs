@@ -17,6 +17,7 @@ namespace Nethermind.Db.Lmdb.Test;
 public class LmdbDbTests
 {
     private const long TestMapSize = 64L * 1024 * 1024;
+    private const int TestMaxReaders = 8192;
 
     private string DbPath => Path.Combine("testdb-lmdb", TestContext.CurrentContext.Test.ID);
     private LmdbDb _db = null!;
@@ -25,7 +26,7 @@ public class LmdbDbTests
     public void Setup()
     {
         if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
-        _db = new LmdbDb("test", DbPath, TestMapSize);
+        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders);
     }
 
     [TearDown]
@@ -33,6 +34,8 @@ public class LmdbDbTests
     {
         _db.Dispose();
         if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
     }
 
     [Test]
@@ -160,7 +163,7 @@ public class LmdbDbTests
         _db.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
         _db.Dispose();
 
-        _db = new LmdbDb("test", DbPath, TestMapSize);
+        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders);
         Assert.That(_db.Get(TestItem.KeccakA.Bytes), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
     }
 
@@ -518,7 +521,7 @@ public class LmdbDbTests
         const long tinyMapSize = 128 * 1024; // small enough that a few KB of writes will exceed it at least once
         string path = Path.Combine("testdb-lmdb-mapgrowth", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("growth-test", path, tinyMapSize);
+        using LmdbDb db = new("growth-test", path, tinyMapSize, TestMaxReaders);
         try
         {
             const int count = 200;
@@ -535,6 +538,53 @@ public class LmdbDbTests
                 byte[] expected = new byte[256];
                 expected.AsSpan().Fill((byte)i);
                 Assert.That(db.Get(BitConverter.GetBytes(i)), Is.EqualTo(expected));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    // Deliberately no test exercises MDBResultCode.ReadersFull itself: the verification spike (see PLAN-LMDB.md
+    // "Known issues") confirmed that in LightningDB 0.23.0, a *failed* BeginTransaction call leaks an internal
+    // transaction handle the library still tracks against its environment - one that cannot be disposed because
+    // no caller ever receives a reference to it - and that handle later crashes the *entire process* via an
+    // unrecoverable finalizer exception, on some unrelated later GC, regardless of whether a subsequent retry
+    // succeeds. Deliberately reproducing that condition in a test would make the test process itself liable to
+    // crash (and did, during this change's own development). The test below instead validates the actual fix
+    // (generous MaxReaders headroom) without ever tripping the underlying library bug.
+
+    [Test]
+    public void CreateSnapshot_supports_many_concurrent_snapshots_without_exhausting_the_reader_table()
+    {
+        // The actual fix for the failure above: ILmdbConfig.MaxReaders defaults to 8192, not LMDB's own default of
+        // 126 - comfortably enough headroom for several concurrently-alive snapshots (each holding
+        // Environment.ProcessorCount readers) even on a many-core machine, which is exactly the shape
+        // RocksDbPersistence.CreateReader/CreateWriteBatch's per-call CreateSnapshot usage produces in practice.
+        int poolSize = Environment.ProcessorCount;
+        int snapshotsToHoldConcurrently = Math.Max(4, (126 / Math.Max(poolSize, 1)) + 2); // would exceed LMDB's own default of 126
+        string path = Path.Combine("testdb-lmdb-manysnapshots", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = new("many-snapshots-test", path, TestMapSize, TestMaxReaders);
+        try
+        {
+            db.Set([1], [1]);
+
+            List<IKeyValueStoreSnapshot> snapshots = [];
+            try
+            {
+                for (int i = 0; i < snapshotsToHoldConcurrently; i++)
+                {
+                    snapshots.Add(((IKeyValueStoreWithSnapshot)db).CreateSnapshot());
+                }
+
+                Assert.That(snapshots, Has.Count.EqualTo(snapshotsToHoldConcurrently));
+                Assert.That(snapshots[^1].Get([1]), Is.EqualTo(new byte[] { 1 }));
+            }
+            finally
+            {
+                foreach (IKeyValueStoreSnapshot snapshot in snapshots) snapshot.Dispose();
             }
         }
         finally

@@ -29,8 +29,8 @@ public sealed class LmdbDbFactoryDecorator(IDbFactory innerFactory, ILmdbConfig 
 
         IColumnsDb<T> rocksColumnsDb = innerFactory.CreateColumnsDb<T>(dbSettings);
         string basePath = innerFactory.GetFullDbPath(dbSettings);
-        LmdbDb account = new("LmdbAccount", Path.Combine(basePath, "account.lmdb"), config.InitialMapSizeBytes);
-        LmdbDb storage = new("LmdbStorage", Path.Combine(basePath, "storage.lmdb"), config.InitialMapSizeBytes);
+        LmdbDb account = new("LmdbAccount", Path.Combine(basePath, "account.lmdb"), config.InitialMapSizeBytes, config.MaxReaders);
+        LmdbDb storage = new("LmdbStorage", Path.Combine(basePath, "storage.lmdb"), config.InitialMapSizeBytes, config.MaxReaders);
 
         // T has just been confirmed to be FlatDbColumns above, so these casts merely tell the compiler what the
         // runtime already knows; IColumnsDb<T> cannot be constructed generically from a non-generic adapter type.
