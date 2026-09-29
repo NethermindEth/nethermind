@@ -14,7 +14,7 @@ from frame_traffic.accounts import FixedNonce, Sender, SenderRotation  # noqa: E
 
 failures: list[str] = []
 
-# Deterministic throwaway keys: they sign nothing that reaches a network.
+# ethereum-package's public default prefunded accounts 0 and 1; this test sends nothing.
 KEYS = [
     ("0x8943545177806ED17B9F23F0a21ee5948eCaa776",
      "bcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31"),

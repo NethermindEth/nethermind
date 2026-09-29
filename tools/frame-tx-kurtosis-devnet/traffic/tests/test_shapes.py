@@ -30,7 +30,7 @@ HARNESS_SIGNATURE_STUFFED = {
     500000: (178, 498800),
 }
 CHAIN_ID = 3151908
-# Deterministic throwaway key: this signs nothing that reaches a network.
+# ethereum-package's public default prefunded account 0; this test signs nothing it sends.
 TEST_KEY = "bcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31"
 TEST_ADDRESS = "0x8943545177806ED17B9F23F0a21ee5948eCaa776"
 

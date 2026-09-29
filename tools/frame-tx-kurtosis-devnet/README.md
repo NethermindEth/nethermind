@@ -32,7 +32,7 @@ It does not show:
 | | macOS (Apple Silicon) | Linux |
 |---|---|---|
 | Docker | Docker Desktop, 8 CPUs, 16 GB memory, 60 GB disk | Docker Engine |
-| Kurtosis CLI | `brew install kurtosis-tech/tap/kurtosis-cli` | [docs.kurtosis.com/install](https://docs.kurtosis.com/install) |
+| Kurtosis CLI | `brew install kurtosis-tech/tap/kurtosis-cli` (tested with 1.20.0) | [docs.kurtosis.com/install](https://docs.kurtosis.com/install) |
 | Python 3 | System `python3` | System `python3` |
 | GitHub CLI | `brew install gh` (for the Groth16 sweeps) | same |
 
@@ -50,8 +50,8 @@ runner/smoke_test.sh --no-build
 ```
 
 `images/build.sh` builds the Nethermind and ethrex images for one ceiling, plus the traffic
-generator. The first ethrex build compiles Rust and takes 15 to 30 minutes; later builds reuse
-the cache. The smoke test waits for EIP-8141 to activate (about 3 minutes after genesis), runs
+generator. The first build compiles ethrex (Rust) and takes 15 to 30 minutes. Each further
+ceiling takes about 5 minutes for Nethermind and 2 for ethrex, because the rest is cached. The smoke test waits for EIP-8141 to activate (about 3 minutes after genesis), runs
 24 seconds of honest traffic alone, then 2 minutes of keccak-wide attack at 5 tx/s alongside
 it. It prints one line per check and exits non-zero if any check fails. A run takes about
 10 minutes.
@@ -64,7 +64,7 @@ needs the `v2.0.0` sweeps from `NethermindEth/frame-verify-gas`:
 ```bash
 mkdir -p ~/frame-verify-gas-v2 && cd ~/frame-verify-gas-v2
 gh release download v2.0.0 --repo NethermindEth/frame-verify-gas
-shasum -a 256 -c SHA256SUMS
+shasum -a 256 -c SHA256SUMS      # or: sha256sum -c SHA256SUMS
 for t in sweep-*.tar.gz; do tar xzf "$t"; done
 ```
 
@@ -108,7 +108,9 @@ kurtosis enclave rm -f <enclave>
 
 ## Reading the results
 
-Each scenario writes `results/<scenario-id>/`:
+`run_scenario.py` and `smoke_test.sh` write to `results/<scenario-id>/` in this folder;
+`run_matrix.py` writes to `~/frame-tx-devnet-results/<scenario-id>/`. Running the same scenario id
+again replaces its results.
 
 | File | Content |
 |---|---|
@@ -168,41 +170,44 @@ transaction in flight per account.
 | Planner and argument rendering | `runner/run_matrix.py --list --standard`, `runner/run_scenario.py --dry-run` | Python |
 | End to end | `runner/smoke_test.sh` | Docker, Kurtosis |
 
-## Verified runs
+## What a passing run looks like
 
-Run on 2026-09-28 on one Linux x86_64 host (32 cores, Docker 29.7.2, Kurtosis 1.20.0). Images:
-Nethermind from `b3ee425d` (the images carry `8286cdba`, the same tree before a commit-message
-edit), ethrex `52c2e626`. Every run passed every check in
-`runner/check_results.py`. Refusal latency is the attack role's `submit_p50_us`; the honest
-baseline's is about 0.8 ms on both clients. Not yet run on macOS.
+Tested on Linux x86_64 with Kurtosis 1.20.0 and Docker 29.7.2; not yet on macOS.
 
-| Ceiling | Attack, rate | Nethermind: refused, p50 | ethrex: refused, p50 | Honest included | Frame txs in blocks built by Nethermind / ethrex |
-|---|---|---|---|---|---|
-| 235,800 | keccak-wide, 5/s | 300/300, 3.0 ms | 300/300, 3.2 ms | 146/146 | 81 / 66 |
-| 235,800 | signature-stuffed, 25/s | 1501/1501, 2.8 ms | 1500/1500, 2.9 ms | 146/146 | 66 / 82 |
-| 235,800 | soispoke-groth16 (`v2.0.0`), 25/s | 1501/1501, 2.4 ms | 1500/1500, 2.8 ms | 146/146 | 50 / 97 |
-| 500,000 | signature-stuffed, 10/s | 601/601, 5.3 ms | 600/600, 5.5 ms | 146/146 | 85 / 63 |
-| 500,000 | keccak-wide, 5/s | 301/301, 5.5 ms | 300/300, 5.2 ms | 145/145 | 78 / 68 |
+- `check_results.py` prints `[ok  ]` for every check and the smoke test ends with
+  `smoke test passed`.
+- Each client refuses every attack transaction, with these reasons:
 
-Refusal reasons, per client:
+  | Attack | Nethermind | ethrex |
+  |---|---|---|
+  | keccak-wide | `validation prefix frame reverted` | `validation prefix frame reverted` |
+  | signature-stuffed | `SECP256K1 signer does not match the recovered address` | `Invalid frame transaction signature` |
+  | soispoke-groth16 | `validation prefix never set a payer` | `validation prefix did not establish a payer` |
 
-| Attack | Nethermind | ethrex |
-|---|---|---|
-| keccak-wide | `validation prefix frame reverted` | `validation prefix frame reverted` |
-| signature-stuffed | `SECP256K1 signer does not match the recovered address` | `Invalid frame transaction signature` |
-| soispoke-groth16 | `validation prefix never set a payer` | `validation prefix did not establish a payer` |
+- As an order of magnitude on a 32-core host: an honest submission takes 0.8 to 1.2 ms, a
+  refused attack takes a few milliseconds at 235,800 and about twice that at 500,000. The
+  numbers depend on the host; compare clients and ceilings within one machine, not across
+  machines.
 
-**The compiled ceiling is live.** The 500,000 keccak-wide run was repeated with Nethermind on
-`vg300000`, an image whose compiled `MaxVerifyGas` is the stock 300,000, and the runtime flag
-still at 500,000:
+### Checking that the compiled ceiling is live
 
-| Nethermind image | Refusal p50 | Reason |
-|---|---|---|
-| `vg500000` | 5.5 ms | `validation prefix frame reverted` (the loop ran its 497k budget) |
-| `vg300000` | 3.5 ms | `validation prefix exceeds MAX_VERIFY_GAS` (simulation capped at 300k) |
+The runtime flag alone cannot raise Nethermind's ceiling above its compiled constant. To see it,
+run the 500,000 keccak-wide scenario twice, once on the image built for it and once on an image
+whose compiled constant is the stock 300,000:
 
-The runtime flag alone cannot raise the ceiling, and the `image_ceiling` check fails that run, as
-it should.
+```bash
+images/build.sh 500000
+images/build.sh 300000 --only nethermind
+runner/smoke_test.sh --no-build --ceiling 500000 --role keccak-wide --rate 5
+runner/run_scenario.py --ceiling 500000 --attacker-role keccak-wide --attacker-rate 5 \
+  --nethermind-image frame-tx-devnet/nethermind:vg300000 --scenario-id stock-constant-c500000
+runner/check_results.py results/stock-constant-c500000 keccak-wide
+```
+
+On `vg500000`, Nethermind refuses with `validation prefix frame reverted`: the prefix is built
+to burn about 497k gas and runs until it does. On `vg300000`, it refuses with
+`validation prefix exceeds MAX_VERIFY_GAS`, faster, because the simulation is capped at 300k.
+`check_results.py` fails the second run on `image_ceiling`, as it should.
 
 ## Troubleshooting
 
