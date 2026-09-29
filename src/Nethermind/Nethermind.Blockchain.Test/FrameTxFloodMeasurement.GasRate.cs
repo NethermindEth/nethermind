@@ -143,13 +143,15 @@ public partial class FrameTxFloodMeasurement
         RunFor(WarmupWindow);
         List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
         Func<long>? rejectionCounter = RejectionCounterFor(shape);
+        await using GossipSubmitter submitter = new(_chain, scheduled: false, static () => false);
 
         RunGasRamp(ceiling, shape, "gas_rate_ramp", "gas_capacity", "gossip_path=direct victim=transfer_block ", baseline,
             () => MeasureBlockProcessing(MeasureWindow, TimeSpan.Zero),
-            rate => DirectPoint(MeasureUnderFloodGeneric(rate,
+            rate => DirectPoint(MeasureAccounted(submitter, RefusalCounterFor(shape), () => MeasureUnderFloodGeneric(rate,
                 warmup: () => { RunFor(FloodSettle); RunFor(WarmupWindow); },
                 measure: window => MeasureBlockProcessing(window, TimeSpan.Zero),
-                rejectionCounter, poolSize: PoolSizeFor(rate, FloodSettle + WarmupWindow + MeasureWindow))));
+                rejectionCounter, submit: submitter.Submit,
+                poolSize: PoolSizeFor(rate, FloodSettle + WarmupWindow + MeasureWindow)))));
     }
 
     private async Task MeasureProductionGasRamp(string shape, ulong ceiling)
@@ -165,12 +167,13 @@ public partial class FrameTxFloodMeasurement
             "the producer never re-executed the failing transaction, so this measures an ordinary block");
 
         Func<long>? rejectionCounter = RejectionCounterFor(shape);
+        await using GossipSubmitter submitter = new(_chain, scheduled: false, static () => false);
         RunGasRamp(ceiling, shape, "production_gas_rate_ramp", "production_gas_capacity", "gossip_path=direct victim=producer_pass ",
             baseline, () => rig.Measure(MeasureWindow),
-            rate => DirectPoint(MeasureUnderFloodGeneric(rate,
+            rate => DirectPoint(MeasureAccounted(submitter, RefusalCounterFor(shape), () => MeasureUnderFloodGeneric(rate,
                 warmup: () => { Thread.Sleep(FloodSettle); rig.RunFor(WarmupWindow); },
-                measure: rig.Measure, rejectionCounter, onWindowStart: rig.MarkWindowStart,
-                poolSize: PoolSizeFor(rate, FloodSettle + WarmupWindow + MeasureWindow))));
+                measure: rig.Measure, rejectionCounter, onWindowStart: rig.MarkWindowStart, submit: submitter.Submit,
+                poolSize: PoolSizeFor(rate, FloodSettle + WarmupWindow + MeasureWindow)))));
     }
 
     private async Task MeasurePeriodicImportGasRamp(string shape, ulong ceiling, string path)
@@ -209,45 +212,25 @@ public partial class FrameTxFloodMeasurement
             {
                 GossipSubmitter.Counts atStart = default, atEnd = default;
                 int missedAtStart = 0, gen2AtStart = 0, gen2AtEnd = 0;
-                long refusedAtPointStart = rejectionCounter() + ShedCount();
-                int executedAtPointStart = submitter.Read().Executed;
-                FloodOutcome outcome = MeasureUnderFloodGeneric(rate,
+                FloodOutcome outcome = MeasureAccounted(submitter, RefusalCounterFor(shape), () => MeasureUnderFloodGeneric(rate,
                     warmup: () => { Thread.Sleep(FloodSettle); MeasurePeriodicComputeBlocks(PeriodicWarmup); },
                     measure: MeasurePeriodicComputeBlocks, rejectionCounter,
                     onWindowStart: () => { atStart = submitter.Read(); missedAtStart = _missedVictimPeriods; gen2AtStart = GC.CollectionCount(2); },
                     submit: submitter.Submit, window: PeriodicWindow,
                     poolSize: PoolSizeFor(rate, FloodSettle + PeriodicWarmup + PeriodicWindow),
-                    onWindowEnd: () => { atEnd = submitter.Read(); gen2AtEnd = GC.CollectionCount(2); });
-                Assert.That(submitter.WaitIdle(TimeSpan.FromSeconds(10)), Is.True,
-                    "the gossip scheduler did not drain after the window, so the next point would inherit its backlog");
+                    onWindowEnd: () => { atEnd = submitter.Read(); gen2AtEnd = GC.CollectionCount(2); }));
 
                 GossipSubmitter.Counts window = atEnd - atStart;
                 double executedRatio = outcome.Submitted > 0 ? (double)window.Executed / outcome.Submitted : 0;
                 double duringVictimPct = window.Starts > 0 ? 100.0 * window.StartsDuringVictim / window.Starts : 0;
                 bool drained = !scheduled || (executedRatio >= MinExecutedRatio && window.Dropped == 0 && window.Refused == 0);
 
-                if (scheduled)
-                {
-                    // Workers keep draining after the generator stops, so the window's counters are read a few
-                    // transactions apart; the whole point, read once the queue is empty, has to balance.
-                    long refusedInPoint = rejectionCounter() + ShedCount() - refusedAtPointStart;
-                    int executedInPoint = submitter.Read().Executed - executedAtPointStart;
-                    Assert.That(Math.Abs(refusedInPoint - executedInPoint), Is.LessThanOrEqualTo(ScheduledAccountingSlack),
-                        "scheduled flood transactions went missing between the handler and the pool's counters");
-                }
-                else
-                {
-                    Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
-                        "flood transactions went missing: they were neither simulated nor shed");
-                }
-
                 return new GasPoint(outcome, drained,
                     $"scheduled={window.Scheduled} executed={window.Executed} dropped={window.Dropped} refused={window.Refused} "
                     + $"executed_ratio={executedRatio:F3} handler_starts={window.Starts} "
                     + $"handler_starts_during_victim={window.StartsDuringVictim} handler_starts_during_victim_pct={duringVictimPct:F1} "
                     + $"missed_victim_periods={_missedVictimPeriods - missedAtStart} gc_gen2={gen2AtEnd - gen2AtStart} ");
-            },
-            checkAccounting: false);
+            });
     }
 
     private async Task MeasureFreshHeadGasRamp(ulong ceiling, string arm)
@@ -257,16 +240,18 @@ public partial class FrameTxFloodMeasurement
         await BuildChain("keccak-wide", ceiling, shedding: true);
 
         string extra = $"arm={arm} gossip_path=direct victim={(arm == "import" ? "transfer_block" : "producer_pass")} window_opens=fresh_head ";
+        await using GossipSubmitter submitter = new(_chain, scheduled: false, static () => false);
+        Func<long> refusals = RefusalCounterFor("keccak-wide");
         if (arm == "import")
         {
             RunFor(WarmupWindow);
             List<double> baseline = MeasureBlockProcessing(MeasureWindow, WarmupWindow);
             RunGasRamp(ceiling, "keccak-wide", "fresh_head_gas_ramp", "fresh_head_gas_capacity", extra, baseline,
                 () => MeasureBlockProcessing(MeasureWindow, TimeSpan.Zero),
-                rate => DirectPoint(MeasureUnderFloodGeneric(rate,
+                rate => DirectPoint(MeasureAccounted(submitter, refusals, () => MeasureUnderFloodGeneric(rate,
                     warmup: () => RunFor(FloodSettle),
-                    measure: window => MeasureBlockProcessing(window, TimeSpan.Zero),
-                    beforeWindow: AdvanceHead, poolSize: PoolSizeFor(rate, FloodSettle + MeasureWindow))));
+                    measure: window => MeasureBlockProcessing(window, TimeSpan.Zero), submit: submitter.Submit,
+                    beforeWindow: AdvanceHead, poolSize: PoolSizeFor(rate, FloodSettle + MeasureWindow)))));
             return;
         }
 
@@ -275,10 +260,10 @@ public partial class FrameTxFloodMeasurement
         List<double> producerBaseline = rig.Measure(MeasureWindow);
         RunGasRamp(ceiling, "keccak-wide", "fresh_head_gas_ramp", "fresh_head_gas_capacity", extra, producerBaseline,
             () => rig.Measure(MeasureWindow),
-            rate => DirectPoint(MeasureUnderFloodGeneric(rate,
+            rate => DirectPoint(MeasureAccounted(submitter, refusals, () => MeasureUnderFloodGeneric(rate,
                 warmup: () => Thread.Sleep(FloodSettle),
-                measure: rig.Measure, onWindowStart: rig.MarkWindowStart,
-                beforeWindow: AdvanceHead, poolSize: PoolSizeFor(rate, FloodSettle + MeasureWindow))));
+                measure: rig.Measure, onWindowStart: rig.MarkWindowStart, submit: submitter.Submit,
+                beforeWindow: AdvanceHead, poolSize: PoolSizeFor(rate, FloodSettle + MeasureWindow)))));
     }
 
     /// <summary>One ramp point: the flood outcome, whether any arm-specific condition held, and that condition's fields.</summary>
@@ -286,13 +271,36 @@ public partial class FrameTxFloodMeasurement
 
     private static GasPoint DirectPoint(FloodOutcome outcome) => new(outcome, true, "");
 
+    /// <summary>Pool refusals a flood caused: the shape's rejection counter plus admission sheds.</summary>
+    private static Func<long> RefusalCounterFor(string shape) => shape == "signature-stuffed"
+        ? () => Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSignatureInvalid + ShedCount()
+        : () => Volatile.Read(ref Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSimulationFailed) + ShedCount();
+
+    /// <summary>Runs one point and checks, over the whole point, that the pool refused or shed every submission.</summary>
+    /// <remarks>A window's counters are read while the generator still submits, so at hundreds of tx/s they can
+    /// disagree by a few transactions without any going missing. Once the generator has joined and the scheduler has
+    /// drained, nothing writes them.</remarks>
+    private static FloodOutcome MeasureAccounted(GossipSubmitter submitter, Func<long> refusals, Func<FloodOutcome> measure)
+    {
+        long refusedBefore = refusals();
+        int executedBefore = submitter.Read().Executed;
+        FloodOutcome outcome = measure();
+        Assert.That(submitter.WaitIdle(TimeSpan.FromSeconds(10)), Is.True,
+            "the gossip scheduler did not drain after the window, so the next point would inherit its backlog");
+
+        long refused = refusals() - refusedBefore;
+        int executed = submitter.Read().Executed - executedBefore;
+        Assert.That(Math.Abs(refused - executed), Is.LessThanOrEqualTo(submitter.IsScheduled ? ScheduledAccountingSlack : 1),
+            $"the pool refused or shed {refused} of {executed} submissions in this point; the rest went missing");
+        return outcome;
+    }
+
     /// <summary>Ramps the declared gas/s grid until a point is not sustained, as <see cref="RunRateRamp"/> does
     /// on the transaction-rate grid, and emits rows under their own case names.</summary>
     /// <remarks>Rows carry p95, p99 and max beside p50, because the periodic arm is read on its tail.</remarks>
     private void RunGasRamp(
         ulong ceiling, string shape, string rateCase, string summaryCase, string extraFields,
-        List<double> baseline, Func<List<double>> measureBaselineAfter, Func<int, GasPoint> measureAtRate,
-        bool checkAccounting = true)
+        List<double> baseline, Func<List<double>> measureBaselineAfter, Func<int, GasPoint> measureAtRate)
     {
         ulong declaredGasPerTx = FrameTxValidation.ValidationWorkGas(FloodFrameTx(0));
         List<(int Rate, long TargetGasPerSecond)> grid = GasGrid(declaredGasPerTx);
@@ -348,13 +356,6 @@ public partial class FrameTxFloodMeasurement
                          + $"W0_max_us={w0max:F1} W_max_us={wmax:F1} delta_max_us={wmax - w0max:F1} "
                          + $"baseline_passes={baseline.Count} flood_passes={outcome.ProcessMicros.Count} "
                          + $"victim_throughput_ratio={victimThroughputRatio:F3}", "unknown"));
-
-                    if (checkAccounting)
-                    {
-                        Assert.That(outcome.Rejected + outcome.Shed, Is.EqualTo(outcome.Submitted).Within(1),
-                            $"at {rate} tx/s {outcome.Rejected} of {outcome.Submitted} submissions were simulated and "
-                            + $"{outcome.Shed} were shed; the rest went missing");
-                    }
 
                     if (sustained) break;
                 }
@@ -563,6 +564,8 @@ public partial class FrameTxFloodMeasurement
             public static Counts operator -(Counts a, Counts b) => new(a.Scheduled - b.Scheduled, a.Refused - b.Refused,
                 a.Executed - b.Executed, a.Dropped - b.Dropped, a.Starts - b.Starts, a.StartsDuringVictim - b.StartsDuringVictim);
         }
+
+        public bool IsScheduled => _scheduler is not null;
 
         public Counts Read() => new(Volatile.Read(ref _scheduled), Volatile.Read(ref _refused), Volatile.Read(ref _executed),
             Volatile.Read(ref _dropped), Volatile.Read(ref _starts), Volatile.Read(ref _startsDuringVictim));
