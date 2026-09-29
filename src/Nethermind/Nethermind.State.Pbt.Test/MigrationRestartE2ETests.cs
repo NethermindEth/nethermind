@@ -79,7 +79,7 @@ public class MigrationRestartE2ETests
         try
         {
             // Flat alone runs the chain first, as a node that enables the migration later would have.
-            await using (MigrationLifecycleHarness flatOnly = await MigrationLifecycleHarness.Create(Path.Combine(directory, "db"), portable: true,
+            await using (MigrationLifecycleHarness flatOnly = await MigrationLifecycleHarness.Create(Path.Combine(directory, "db"), portable: true, FlatLayout.Flat,
                 builder => ConfigureRocks(builder), Path.Combine(MigrationLifecycleHarness.Fixtures, "builder-predeploys"), migration: false))
             {
                 ProcessBranch(flatOnly, ["a1", "a2", "a3"], expectPbt: false);
@@ -106,7 +106,7 @@ public class MigrationRestartE2ETests
         string directory = CreateTestDirectory();
         try
         {
-            await using (MigrationLifecycleHarness flatOnly = await MigrationLifecycleHarness.Create(Path.Combine(directory, "db"), portable: true,
+            await using (MigrationLifecycleHarness flatOnly = await MigrationLifecycleHarness.Create(Path.Combine(directory, "db"), portable: true, FlatLayout.Flat,
                 builder => ConfigureRocks(builder), Path.Combine(MigrationLifecycleHarness.Fixtures, "builder-predeploys"), migration: false))
             {
                 ProcessBranch(flatOnly, ["a1", "a2"], expectPbt: false);
@@ -114,7 +114,7 @@ public class MigrationRestartE2ETests
                 Persist(flatOnly);
             }
             // A follower that never runs keeps PBT at the anchor, behind the flat head.
-            await using MigrationLifecycleHarness migrating = await MigrationLifecycleHarness.Create(Path.Combine(directory, "db"), portable: true,
+            await using MigrationLifecycleHarness migrating = await MigrationLifecycleHarness.Create(Path.Combine(directory, "db"), portable: true, FlatLayout.Flat,
                 builder => ConfigureRocks(builder).AddSingleton<PbtBalFollowerScheduler>(_ => new PbtBalFollowerScheduler((_, _) => Task.FromResult(false), () => null, () => null)),
                 Path.Combine(MigrationLifecycleHarness.Fixtures, "builder-predeploys"));
             ProcessBranch(migrating, ["a3"], expectPbt: false);
@@ -137,7 +137,7 @@ public class MigrationRestartE2ETests
         {
             string producerPath = Path.Combine(directory, "producer");
             string sourcePath = Path.Combine(directory, "offline-source");
-            await using (MigrationLifecycleHarness producer = await MigrationLifecycleHarness.Create(producerPath, false, builder => ConfigureRocks(builder)))
+            await using (MigrationLifecycleHarness producer = await MigrationLifecycleHarness.Create(producerPath, false, FlatLayout.Flat, builder => ConfigureRocks(builder)))
             {
                 producer.Container.Resolve<MigrationGenesisSource>().Database.Flush();
                 producer.Container.Resolve<IDbProvider>().CodeDb.Flush();
@@ -148,7 +148,7 @@ public class MigrationRestartE2ETests
             string target = Path.Combine(directory, "target");
             for (int pass = 0; pass < 2; pass++)
             {
-                await using MigrationLifecycleHarness consumer = await MigrationLifecycleHarness.Create(target, true,
+                await using MigrationLifecycleHarness consumer = await MigrationLifecycleHarness.Create(target, true, FlatLayout.Flat,
                     builder => ConfigureRocks(builder), configureMigration: config =>
                     {
                         config.MigrationSnapshotPath = null;
@@ -214,7 +214,7 @@ public class MigrationRestartE2ETests
             .CreateColumnsDb<FlatDbColumns>(new DbSettings("Flat", "flat")));
 
     private static Task<MigrationLifecycleHarness> OpenLifecycle(string directory, bool portable)
-        => MigrationLifecycleHarness.Create(Path.Combine(directory, "db"), portable, builder => ConfigureRocks(builder),
+        => MigrationLifecycleHarness.Create(Path.Combine(directory, "db"), portable, FlatLayout.Flat, builder => ConfigureRocks(builder),
             Path.Combine(MigrationLifecycleHarness.Fixtures, "builder-predeploys"));
 
     private static void ProcessBranch(MigrationLifecycleHarness harness, string[] names, bool expectPbt = true)

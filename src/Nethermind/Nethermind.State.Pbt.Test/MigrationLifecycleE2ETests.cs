@@ -49,7 +49,7 @@ public class MigrationLifecycleE2ETests
     public async Task Delayed_follower_authenticates_bal_and_recovers_from_gap([Values] bool portable, [Values] bool corrupt)
     {
         using TempPath scratch = TempPath.GetTempDirectory();
-        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable);
+        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable, FlatLayout.Flat);
         await harness.Scheduler.DisposeAsync();
         IBlockAccessListStore store = harness.Container.Resolve<IBlockAccessListStore>();
         // Simulate a separately validated MPT chain ahead of the follower without executing these BAL-only fixtures.
@@ -82,10 +82,10 @@ public class MigrationLifecycleE2ETests
     }
 
     [Test]
-    public async Task Reference_transactions_cross_activation_and_recross_in_one_branch([Values] bool portable)
+    public async Task Reference_transactions_cross_activation_and_recross_in_one_branch([Values] bool portable, [Values] FlatLayout layout)
     {
         using TempPath scratch = TempPath.GetTempDirectory();
-        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable,
+        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable, layout,
             fixtureDirectory: Path.Combine(Fixtures, "builder-predeploys"));
         IContainer container = harness.Container;
         Dictionary<string, Block> blocks = harness.Blocks;
@@ -147,7 +147,7 @@ public class MigrationLifecycleE2ETests
         IPersistence flatPersistence = container.Resolve<IPersistence>();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(container.Resolve<IFlatDbConfig>().Layout, Is.EqualTo(FlatLayout.Flat));
+            Assert.That(container.Resolve<IFlatDbConfig>().Layout, Is.EqualTo(layout));
             // Flat gets no commits after activation; finalizing the activation persists it up to the activation parent.
             Assert.That(() => FlatState(flatPersistence), Is.EqualTo(new Flat.StateId(blocks["b3"].Header)).After(10_000, 50));
         }
@@ -210,7 +210,7 @@ public class MigrationLifecycleE2ETests
     public async Task Created_and_selfdestructed_account_is_absent_from_both_commitments([Values] bool portable, [Values] bool afterActivation)
     {
         using TempPath scratch = TempPath.GetTempDirectory();
-        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable,
+        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable, FlatLayout.Flat,
             fixtureDirectory: Path.Combine(Fixtures, "builder-predeploys"));
         await harness.Scheduler.DisposeAsync();
         IMainProcessingContext processing = harness.Container.Resolve<IMainProcessingContext>();

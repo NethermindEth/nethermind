@@ -19,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -39,7 +40,7 @@ public class MigrationEngineRpcE2ETests
     public async Task Known_headers_without_local_state_return_syncing_and_rpc_unavailable([Values] bool portable)
     {
         using TempPath scratch = TempPath.GetTempDirectory();
-        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable,
+        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable, FlatLayout.Flat,
             builder => builder.AddModule(new MergePluginModule()).AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>());
         await harness.Scheduler.DisposeAsync();
         IEngineRpcModule engine = harness.Container.Resolve<IEngineRpcModule>();
@@ -108,7 +109,7 @@ public class MigrationEngineRpcE2ETests
     public async Task Ready_pbt_state_rejects_mpt_proofs_through_production_eth_factory([Values] bool portable)
     {
         using TempPath scratch = TempPath.GetTempDirectory();
-        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable,
+        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable, FlatLayout.Flat,
             builder => builder.AddModule(new MergePluginModule()).AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>(),
             fixtureDirectory: Path.Combine(MigrationLifecycleHarness.Fixtures, "builder-predeploys"));
         await harness.Scheduler.DisposeAsync();

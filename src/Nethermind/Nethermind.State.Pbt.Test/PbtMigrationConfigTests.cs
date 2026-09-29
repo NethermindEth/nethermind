@@ -57,7 +57,7 @@ public class PbtMigrationConfigTests
     }
 
     [Test]
-    public void Accepts_distinct_sources([Values("genesis", "portable", "preimage", "none")] string source)
+    public void Accepts_distinct_sources([Values("genesis", "portable", "preimage", "none")] string source, [Values] FlatLayout layout)
     {
         PbtConfig config = Config();
         if (source != "genesis")
@@ -71,12 +71,14 @@ public class PbtMigrationConfigTests
             }
             else if (source == "preimage") config.MigrationPreimageSourcePath = "source/db";
         }
-        Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(config, Flat(), Chain(), "target"));
+        FlatDbConfig flat = Flat();
+        flat.Layout = layout;
+        Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(config, flat, Chain(), "target"));
     }
 
     [Test]
     public void Rejects_invalid_configuration([Values(
-        "mirror", "fake", "import", "scan", "flat-disabled", "layout",
+        "mirror", "fake", "import", "scan", "flat-disabled",
         "no-bal", "late-bal", "genesis-bal", "genesis-deletion", "no-deletion", "late-deletion", "partial", "mixed", "no-anchor", "negative-anchor", "overlap", "whitespace")] string invalid)
     {
         PbtConfig config = Config();
@@ -89,7 +91,6 @@ public class PbtMigrationConfigTests
             case "import": config.ImportFromPreimageFlat = true; break;
             case "scan": config.ScanTree = true; break;
             case "flat-disabled": flat.Enabled = false; break;
-            case "layout": flat.Layout = FlatLayout.PreimageFlat; break;
             case "no-bal": chain.Parameters.Eip7928TransitionTimestamp = null; break;
             case "late-bal": chain.Parameters.Eip7928TransitionTimestamp = 100; break;
             case "genesis-bal": chain.Parameters.Eip7928TransitionTimestamp = 11; break;

@@ -65,9 +65,6 @@ internal sealed class PbtMigrationBootstrap(
         if (header.StateRoot is null || header.Hash is null ||
             lease.Anchor.ActivationTimestamp is { } activation && header.Timestamp >= activation)
             throw new InvalidDataException("Migration requires a trusted pre-activation anchor.");
-        using (IPersistence.IPersistenceReader flatReader = flatPersistence.CreateReader())
-            if (flatReader.IsPreimageMode)
-                throw new InvalidDataException("Migration requires a standard-flat target; preimage-flat is an offline source only.");
         if (!lease.IsAnchorCurrent()) throw new InvalidOperationException("Migration anchor is no longer available.");
         if (lease.Snapshot is { } snapshot && lease.Preimages is { } preimages)
         {

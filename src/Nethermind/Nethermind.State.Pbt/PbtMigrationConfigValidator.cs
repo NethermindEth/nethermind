@@ -21,8 +21,8 @@ internal static class PbtMigrationConfigValidator
 
         if (config.MirrorFlat || config.FakeMatchingStateRoot || config.ImportFromPreimageFlat || config.ScanTree)
             Fail("A scheduled binaryTrieTime migration cannot be combined with mirror, fake-root, offline import or scan modes.");
-        if (!flatConfig.Enabled || flatConfig.Layout != FlatLayout.Flat)
-            Fail("A scheduled binaryTrieTime migration requires FlatDb.Enabled and FlatLayout.Flat; preimage-flat is an offline source only.");
+        if (!flatConfig.Enabled)
+            Fail("A scheduled binaryTrieTime migration requires FlatDb.Enabled.");
         if (flatConfig.HistoryEnabled)
             Fail("Migration uses its own retention and cannot enable native FlatDb.HistoryEnabled.");
         ulong activation = chainSpec.Parameters.Eip8347TransitionTimestamp!.Value;

@@ -42,7 +42,7 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
     public Dictionary<string, JsonElement> Expected => expected;
     public ValueTask DisposeAsync() => container.DisposeAsync();
 
-    public static async Task<MigrationLifecycleHarness> Create(string targetPath, bool portable, Action<ContainerBuilder>? configure = null, string? fixtureDirectory = null, Action<PbtConfig>? configureMigration = null, bool migration = true)
+    public static async Task<MigrationLifecycleHarness> Create(string targetPath, bool portable, FlatLayout layout, Action<ContainerBuilder>? configure = null, string? fixtureDirectory = null, Action<PbtConfig>? configureMigration = null, bool migration = true)
     {
         string fixtures = fixtureDirectory ?? Fixtures;
         using Stream genesisInput = fixtureDirectory is null
@@ -69,7 +69,7 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
             config.MigrationAnchor = (long)blocks["anchor"].Number;
         }
         configureMigration?.Invoke(config);
-        FlatDbConfig flatConfig = new() { Enabled = true, Layout = FlatLayout.Flat };
+        FlatDbConfig flatConfig = new() { Enabled = true, Layout = layout };
         InitConfig initConfig = new() { BaseDbPath = targetPath };
         BlocksConfig blocksConfig = new() { PreWarming = PreWarmMode.None };
         ContainerBuilder builder = new ContainerBuilder()
