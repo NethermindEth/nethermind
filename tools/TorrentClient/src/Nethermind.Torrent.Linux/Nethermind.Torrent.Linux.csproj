@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Nethermind.Torrent.Maui</RootNamespace>
+    <AssemblyName>Nethermind.Torrent.Linux</AssemblyName>
+    <ApplicationId>io.nethermind.torrent.linux</ApplicationId>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <DefineConstants>$(DefineConstants);LINUX</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" />
+    <PackageReference Include="Platform.Maui.Linux.Gtk4" />
+    <PackageReference Include="Platform.Maui.Linux.Gtk4.Essentials" />
+    <ProjectReference Include="..\Nethermind.Torrent\Nethermind.Torrent.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Nethermind.Torrent.Maui\*.cs" Exclude="..\Nethermind.Torrent.Maui\MauiProgram.cs" Link="%(Filename)%(Extension)" />
+    <MauiXaml Include="..\Nethermind.Torrent.Maui\App.xaml" Link="App.xaml" />
+    <MauiXaml Include="..\Nethermind.Torrent.Maui\AppShell.xaml" Link="AppShell.xaml" />
+    <MauiXaml Include="..\Nethermind.Torrent.Maui\Resources\Styles\*.xaml" Link="Resources\Styles\%(Filename)%(Extension)" />
+    <MauiIcon Include="Resources\AppIcon\appicon.svg" Color="#202A29" />
+    <MauiSplashScreen Include="..\Nethermind.Torrent.Maui\Resources\Splash\splash.svg" Color="#202A29" BaseSize="128,128" />
+    <MauiImage Include="..\Nethermind.Torrent.Maui\Resources\Images\ntmark.svg" Link="Resources\Images\ntmark.svg" BaseSize="28,28" />
+    <MauiFont Include="..\Nethermind.Torrent.Maui\Resources\Fonts\*" />
+  </ItemGroup>
+
+</Project>

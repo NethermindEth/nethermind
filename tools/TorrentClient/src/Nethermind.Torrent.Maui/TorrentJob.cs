@@ -271,6 +271,41 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         }
     }
 
+    public IReadOnlyList<TorrentFileItem> FindFiles(string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Files;
+        }
+
+        string term = query.Trim();
+        List<TorrentFileItem> matches = [];
+        foreach (TorrentFileItem file in Files)
+        {
+            if (file.Path.Contains(term, StringComparison.OrdinalIgnoreCase))
+            {
+                matches.Add(file);
+            }
+        }
+
+        return matches;
+    }
+
+    public string ResolveFilePath(TorrentFileItem file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        string root = Path.GetFullPath(OutputDirectory);
+        string path = Path.GetFullPath(Path.Combine(root, file.Path));
+        string relative = Path.GetRelativePath(root, path);
+        if (relative is "." or ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+            Path.IsPathFullyQualified(relative))
+        {
+            throw new InvalidOperationException("Torrent file path escapes the output directory.");
+        }
+
+        return path;
+    }
+
     public string DownloadRateText => FormatBytes((long)DownloadRateBytesPerSecond) + "/s";
 
     public string EffectiveDhtText => FormatEnabled(_effectiveDht);

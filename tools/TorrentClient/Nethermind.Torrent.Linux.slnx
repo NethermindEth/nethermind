@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Nethermind.Torrent.Linux/Nethermind.Torrent.Linux.csproj" />
+    <Project Path="src/Nethermind.Torrent/Nethermind.Torrent.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Nethermind.Torrent.Tests/Nethermind.Torrent.Tests.csproj" />
+  </Folder>
+</Solution>

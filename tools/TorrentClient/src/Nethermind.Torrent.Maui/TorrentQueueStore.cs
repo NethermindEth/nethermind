@@ -20,9 +20,9 @@ internal static class TorrentQueueStore
 
     public static string? LastLoadError { get; private set; }
 
-    public static string AppPath => Path.Combine(FileSystem.AppDataDirectory, "queue.json");
+    public static string AppPath => Path.Combine(TorrentAppData.DirectoryPath, "queue.json");
 
-    public static string AppMetainfoDirectory => Path.Combine(FileSystem.AppDataDirectory, "metainfo");
+    public static string AppMetainfoDirectory => Path.Combine(TorrentAppData.DirectoryPath, "metainfo");
 
     public static IReadOnlyList<TorrentQueueEntry> Load(string path)
     {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using NUnit.Framework;
+using System.Diagnostics;
 
 namespace Nethermind.Torrent.Maui.Tests;
 
@@ -114,6 +115,40 @@ public sealed class TorrentJobTests
     }
 
     [Test]
+    public void File_search_matches_relative_paths_without_case_or_surrounding_space()
+    {
+        TorrentJob job = new("source.torrent", Path.GetTempPath());
+        TorrentFileItem first = new(new TorrentFileEntry(Path.Combine("Slackware", "boot", "kernel"), 1, 0));
+        TorrentFileItem second = new(new TorrentFileEntry(Path.Combine("Slackware", "README"), 1, 1));
+        job.Files.Add(first);
+        job.Files.Add(second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(job.FindFiles(" BOOT "), Is.EqualTo(new[] { first }));
+            Assert.That(job.FindFiles("readme"), Is.EqualTo(new[] { second }));
+            Assert.That(job.FindFiles("slackware"), Is.EqualTo(new[] { first, second }));
+            Assert.That(job.FindFiles("missing"), Is.Empty);
+            Assert.That(job.FindFiles(" "), Is.SameAs(job.Files));
+        }
+    }
+
+    [Test]
+    public void File_reveal_path_stays_inside_the_download_directory()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "torrent-output");
+        TorrentJob job = new("source.torrent", root);
+        TorrentFileItem valid = new(new TorrentFileEntry(Path.Combine("album", "disc.iso"), 1, 0));
+        TorrentFileItem escaping = new(new TorrentFileEntry(Path.Combine("..", "outside.iso"), 1, 0));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(job.ResolveFilePath(valid), Is.EqualTo(Path.Combine(root, "album", "disc.iso")));
+            Assert.That(() => job.ResolveFilePath(escaping), Throws.InvalidOperationException);
+        }
+    }
+
+    [Test]
     public void Copied_magnet_retains_explicit_peers_and_stays_importable_with_many_trackers()
     {
         TorrentJob job = new("source.torrent", Path.GetTempPath())
@@ -135,6 +170,41 @@ public sealed class TorrentJobTests
             Assert.That(parsed.InfoHashHex, Is.EqualTo(job.InfoHashHex));
             Assert.That(parsed.ExplicitPeers, Is.EqualTo(new[] { "127.0.0.1:6881" }));
             Assert.That(parsed.Trackers, Is.Not.Empty);
+        }
+    }
+}
+
+[TestFixture]
+public sealed class TorrentFileRevealTests
+{
+    [Test]
+    public void Windows_reveal_selects_files_and_opens_directories()
+    {
+        ProcessStartInfo file = TorrentFileReveal.CreateWindowsStartInfo(@"C:\Downloads\disc one.iso", isFile: true);
+        ProcessStartInfo directory = TorrentFileReveal.CreateWindowsStartInfo(@"C:\Downloads\album one", isFile: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(file.FileName, Is.EqualTo("explorer.exe"));
+            Assert.That(file.Arguments, Is.EqualTo("/select,\"C:\\Downloads\\disc one.iso\""));
+            Assert.That(directory.Arguments, Is.EqualTo("\"C:\\Downloads\\album one\""));
+            Assert.That(file.UseShellExecute, Is.False);
+        }
+    }
+
+    [Test]
+    public void Linux_reveal_uses_file_manager_dbus_and_fallback_directory_openers()
+    {
+        ProcessStartInfo select = TorrentFileReveal.CreateLinuxSelectStartInfo(new Uri("file:///home/user/album/disc%20one,part.iso"));
+        ProcessStartInfo xdg = TorrentFileReveal.CreateLinuxOpenStartInfo("xdg-open", "/home/user/album one");
+        ProcessStartInfo gio = TorrentFileReveal.CreateLinuxOpenStartInfo("gio", "/home/user/album one");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(select.FileName, Is.EqualTo("dbus-send"));
+            Assert.That(select.ArgumentList, Does.Contain("array:string:file:///home/user/album/disc%20one%2Cpart.iso"));
+            Assert.That(xdg.ArgumentList, Is.EqualTo(new[] { "/home/user/album one" }));
+            Assert.That(gio.ArgumentList, Is.EqualTo(new[] { "open", "/home/user/album one" }));
         }
     }
 }

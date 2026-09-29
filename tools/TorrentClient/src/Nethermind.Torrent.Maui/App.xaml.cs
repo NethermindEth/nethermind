@@ -11,7 +11,7 @@ public partial class App : Application
     {
         Window window = new(new AppShell())
         {
-            Title = "Nethermind Torrent",
+            Title = "Nethermind Torrent Client",
             MinimumHeight = 560,
             MinimumWidth = 600,
         };

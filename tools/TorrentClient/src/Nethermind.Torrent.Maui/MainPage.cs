@@ -9,14 +9,53 @@ namespace Nethermind.Torrent.Maui;
 
 public sealed class MainPage : ContentPage
 {
-    private static readonly Color PageBackground = Color.FromArgb("#F6F8FA");
+    private static readonly Color PageBackground = Color.FromArgb("#F3F6F5");
     private static readonly Color PanelBackground = Color.FromArgb("#FFFFFF");
-    private static readonly Color MutedBackground = Color.FromArgb("#EEF2F4");
-    private static readonly Color BorderColor = Color.FromArgb("#DCE3E8");
+    private static readonly Color MutedBackground = Color.FromArgb("#EAF0ED");
+    private static readonly Color BorderColor = Color.FromArgb("#DCE5E0");
     private static readonly Color PrimaryColor = Color.FromArgb("#087F6D");
-    private static readonly Color TextColor = Color.FromArgb("#18232D");
-    private static readonly Color MutedTextColor = Color.FromArgb("#526371");
+    private static readonly Color PrimaryHover = Color.FromArgb("#0A927C");
+    private static readonly Color TextColor = Color.FromArgb("#192824");
+    private static readonly Color MutedTextColor = Color.FromArgb("#5E706A");
     private static readonly Color ErrorColor = Color.FromArgb("#B43D45");
+    private static readonly Color RailBackground = Color.FromArgb("#202A29");
+    private static readonly Color RailSurface = Color.FromArgb("#2D3937");
+    private static readonly Color RailSelected = Color.FromArgb("#3B4C47");
+    private static readonly Color RailSelectedHover = Color.FromArgb("#4A6057");
+    private static readonly Color RailMutedText = Color.FromArgb("#A9BBB4");
+    private static readonly Color StageBackground = Color.FromArgb("#173C34");
+    private static readonly Color StageAccent = Color.FromArgb("#72E5AA");
+    private static readonly Color StageAccentHover = Color.FromArgb("#94F2BE");
+    private static readonly Color StageMutedText = Color.FromArgb("#B3D3C6");
+    private static readonly Color WarmAccent = Color.FromArgb("#F3B777");
+    private static readonly string IconFontFamily = OperatingSystem.IsLinux()
+        ? "DejaVu Sans"
+        : OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)
+            ? "Segoe Fluent Icons"
+            : "Segoe MDL2 Assets";
+
+    private static string PlatformIcon(string icon)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return icon;
+        }
+
+        return icon switch
+        {
+            "\uE768" => "▶",
+            "\uE769" => "Ⅱ",
+            "\uE8B7" => "▤",
+            "\uE71B" => "↗",
+            "\uE74D" or "\uE711" => "×",
+            "\uE8C8" => "▣",
+            "\uE712" => "⋯",
+            "\uE713" => "⚙",
+            "\uE721" => "⌕",
+            "\uE72B" => "←",
+            _ => icon,
+        };
+    }
 
     private readonly ObservableCollection<TorrentJob> _jobs = [];
     private readonly ObservableCollection<TorrentJob> _visibleJobs = [];
@@ -25,23 +64,28 @@ public sealed class MainPage : ContentPage
     private readonly SemaphoreSlim _verificationGate = new(1, 1);
     private readonly TorrentUiSettings _settings = TorrentUiSettingsStore.Load();
     private readonly CollectionView _queueView;
+    private readonly ContentView _queueEmptyContent = new() { IsVisible = false };
     private readonly ContentView _detailContent = new();
     private readonly Label _statusLabel = SmallLabel("Ready");
     private readonly Label _queueCountLabel = SmallLabel("0 torrents");
     private readonly Label _summaryLabel = SmallLabel("0 active");
     private readonly Label _downloadRateLabel = SmallLabel("Down 0 B/s  \u00b7  0 peers");
-    private readonly Label _detailTitle = new() { FontSize = 20, FontAttributes = FontAttributes.Bold, TextColor = TextColor, LineBreakMode = LineBreakMode.TailTruncation };
+    private readonly Label _detailTitle = new() { FontSize = 24, FontAttributes = FontAttributes.Bold, TextColor = TextColor, LineBreakMode = LineBreakMode.TailTruncation };
     private readonly Label _detailSubtitle = SmallLabel(string.Empty);
     private readonly Dictionary<string, Button> _tabButtons = [];
+    private readonly Dictionary<string, BoxView> _tabIndicators = [];
     private readonly Entry _searchEntry = new()
     {
-        Placeholder = "Search torrents",
+        Placeholder = "Search library",
         FontSize = 13,
         HeightRequest = 36,
-        TextColor = TextColor,
-        PlaceholderColor = MutedTextColor,
+        TextColor = Colors.White,
+        PlaceholderColor = RailMutedText,
+        BackgroundColor = Colors.Transparent,
+        ClearButtonVisibility = ClearButtonVisibility.WhileEditing,
     };
     private readonly Dictionary<string, Button> _filterButtons = [];
+    private readonly Dictionary<Button, Action> _buttonFeedback = [];
     private readonly Button _startButton;
     private readonly Button _pauseButton;
     private readonly Button _removeButton;
@@ -49,6 +93,7 @@ public sealed class MainPage : ContentPage
     private readonly Button _copyMagnetButton;
     private readonly Button _addButton;
     private readonly Button _pasteButton;
+    private readonly Button _moreButton;
     private readonly ActivityIndicator _importIndicator = new() { Color = PrimaryColor, IsVisible = false, HorizontalOptions = LayoutOptions.End, VerticalOptions = LayoutOptions.Center };
     private readonly ContentView _progressContent = new();
     private Button _settingsButton = null!;
@@ -77,7 +122,7 @@ public sealed class MainPage : ContentPage
     public MainPage()
     {
         Active = this;
-        Title = "Nethermind Torrent";
+        Title = "Nethermind Torrent Client";
         BackgroundColor = PageBackground;
         Shell.SetNavBarIsVisible(this, false);
         _queueView = CreateQueueView();
@@ -86,8 +131,9 @@ public sealed class MainPage : ContentPage
         _folderButton = ToolButton("Open folder", "\uE8B7", OpenSelectedFolderAsync);
         _copyMagnetButton = ToolButton("Copy magnet link", "\uE71B", CopyMagnetAsync);
         _removeButton = ToolButton("Remove", "\uE74D", RemoveSelectedAsync);
-        _addButton = ToolButton("Add torrent", "\uE710", AddTorrentAsync, primary: true);
+        _addButton = ToolButton("Add torrent", "+", AddTorrentAsync, primary: true);
         _pasteButton = ToolButton("Paste link", "\uE8C8", PasteLinkAsync);
+        _moreButton = ToolButton("More actions", "\uE712", ShowMoreActionsAsync);
         Content = BuildLayout();
         RestoreQueue();
         SetQueueFilter("All");
@@ -140,17 +186,22 @@ public sealed class MainPage : ContentPage
     {
         Grid toolbar = new()
         {
-            Padding = new Thickness(16, 8),
+            Padding = new Thickness(16, 10),
             ColumnDefinitions =
             {
+                new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
             },
-            ColumnSpacing = 8,
-            BackgroundColor = PanelBackground,
+            ColumnSpacing = 12,
+            BackgroundColor = RailBackground,
         };
+
+        Image mark = new() { Source = OperatingSystem.IsLinux() ? "ntmark.svg" : "ntmark.png", WidthRequest = 28, HeightRequest = 28, Aspect = Aspect.AspectFit, VerticalOptions = LayoutOptions.Center };
+        SemanticProperties.SetDescription(mark, "Nethermind Torrent Client");
+        toolbar.Add(mark, 0, 0);
 
         HorizontalStackLayout commands = new() { Spacing = 4 };
         commands.Add(_addButton);
@@ -160,11 +211,13 @@ public sealed class MainPage : ContentPage
         commands.Add(_folderButton);
         commands.Add(_copyMagnetButton);
         commands.Add(_removeButton);
-        toolbar.Add(commands, 0, 0);
-        toolbar.Add(_importIndicator, 1, 0);
-        toolbar.Add(_summaryLabel, 2, 0);
-        _settingsButton = ToolButton("Settings", "\uE713", ShowSettingsAsync);
-        toolbar.Add(_settingsButton, 3, 0);
+        commands.Add(_moreButton);
+        toolbar.Add(commands, 1, 0);
+        toolbar.Add(_importIndicator, 2, 0);
+        _summaryLabel.TextColor = RailMutedText;
+        toolbar.Add(_summaryLabel, 3, 0);
+        _settingsButton = ToolButton("Settings", "\uE713", ShowSettingsAsync, selected: () => _showSettings);
+        toolbar.Add(_settingsButton, 4, 0);
 
         return toolbar;
     }
@@ -175,7 +228,7 @@ public sealed class MainPage : ContentPage
         {
             ColumnDefinitions =
             {
-                new ColumnDefinition(new GridLength(336)),
+                new ColumnDefinition(new GridLength(320)),
                 new ColumnDefinition(GridLength.Star),
             },
             BackgroundColor = PanelBackground,
@@ -199,20 +252,40 @@ public sealed class MainPage : ContentPage
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star),
             },
-            Padding = new Thickness(16, 12, 16, 0),
-            RowSpacing = 10,
+            Padding = new Thickness(16, 20, 16, 0),
+            RowSpacing = 14,
         };
 
         Grid heading = new()
         {
             ColumnDefinitions = { new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto) },
         };
-        heading.Add(new Label { Text = "Queue", FontSize = 16, FontAttributes = FontAttributes.Bold, TextColor = TextColor }, 0, 0);
+        heading.Add(new Label { Text = "Library", FontSize = 20, FontAttributes = FontAttributes.Bold, TextColor = Colors.White }, 0, 0);
+        _queueCountLabel.TextColor = RailMutedText;
         heading.Add(_queueCountLabel, 1, 0);
         queue.Add(heading, 0, 0);
 
         _searchEntry.TextChanged += (_, _) => FilterJobs();
-        queue.Add(_searchEntry, 0, 1);
+        RemoveNativeSearchBorder(_searchEntry);
+        Grid search = new()
+        {
+            Padding = new Thickness(10, 0),
+            ColumnDefinitions = { new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star) },
+            ColumnSpacing = 7,
+        };
+        search.Add(new Label { Text = PlatformIcon("\uE721"), FontFamily = IconFontFamily, FontSize = 16, TextColor = RailMutedText, VerticalTextAlignment = TextAlignment.Center }, 0, 0);
+        search.Add(_searchEntry, 1, 0);
+        Border searchFrame = new()
+        {
+            StrokeThickness = 1,
+            Stroke = Colors.Transparent,
+            StrokeShape = new RoundRectangle { CornerRadius = 6 },
+            BackgroundColor = RailSurface,
+            Content = search,
+        };
+        _searchEntry.Focused += (_, _) => searchFrame.Stroke = StageAccent;
+        _searchEntry.Unfocused += (_, _) => searchFrame.Stroke = Colors.Transparent;
+        queue.Add(searchFrame, 0, 1);
 
         HorizontalStackLayout filters = new() { Spacing = 4 };
         foreach (string filter in new[] { "All", "Active", "Done" })
@@ -225,21 +298,34 @@ public sealed class MainPage : ContentPage
                 Padding = new Thickness(12, 2),
                 CornerRadius = 4,
                 FontSize = 12,
+                BackgroundColor = Colors.Transparent,
+                TextColor = RailMutedText,
             };
             button.Clicked += (_, _) => SetQueueFilter(filter);
+            AddHoverFeedback(button, hovered =>
+            {
+                bool selected = string.Equals(_queueFilter, filter, StringComparison.Ordinal);
+                if (selected)
+                {
+                    return (hovered ? StageAccentHover : StageAccent, RailBackground);
+                }
+
+                return (hovered ? RailSelected : Colors.Transparent, hovered ? Colors.White : RailMutedText);
+            });
             _filterButtons[filter] = button;
             filters.Add(button);
         }
         queue.Add(filters, 0, 2);
-        queue.Add(_queueView, 0, 3);
+        Grid queueContent = new() { Children = { _queueView, _queueEmptyContent } };
+        queue.Add(queueContent, 0, 3);
 
         Grid frame = new()
         {
             ColumnDefinitions = { new ColumnDefinition(GridLength.Star), new ColumnDefinition(new GridLength(1)) },
-            BackgroundColor = PageBackground,
+            BackgroundColor = RailBackground,
         };
         frame.Add(queue, 0, 0);
-        frame.Add(new BoxView { BackgroundColor = BorderColor }, 1, 0);
+        frame.Add(new BoxView { BackgroundColor = RailSurface }, 1, 0);
         return frame;
     }
 
@@ -247,7 +333,7 @@ public sealed class MainPage : ContentPage
     {
         Grid details = new()
         {
-            Padding = new Thickness(24, 12, 24, 12),
+            Padding = 0,
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Auto),
@@ -255,11 +341,12 @@ public sealed class MainPage : ContentPage
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star),
             },
-            RowSpacing = 10,
+            RowSpacing = 0,
         };
 
         Grid heading = new()
         {
+            Padding = new Thickness(26, 20, 26, 18),
             ColumnDefinitions =
             {
                 new ColumnDefinition(GridLength.Auto),
@@ -267,7 +354,7 @@ public sealed class MainPage : ContentPage
             },
             ColumnSpacing = 10,
         };
-        _backButton = ToolButton("Back to queue", "\uE72B", BackToQueueAsync);
+        _backButton = ToolButton("Back to queue", "\uE72B", BackToQueueAsync, onLightSurface: true);
         _backButton.IsVisible = false;
         heading.Add(_backButton, 0, 0);
         VerticalStackLayout title = new() { Spacing = 2 };
@@ -278,17 +365,16 @@ public sealed class MainPage : ContentPage
 
         details.Add(_progressContent, 0, 1);
         _tabStrip = BuildTabStrip();
+        _tabStrip.Padding = new Thickness(26, 14, 26, 0);
         details.Add(_tabStrip, 0, 2);
+        _detailContent.Margin = new Thickness(26, 18, 26, 16);
         details.Add(_detailContent, 0, 3);
         return details;
     }
 
     private HorizontalStackLayout BuildTabStrip()
     {
-        HorizontalStackLayout tabs = new()
-        {
-            Spacing = 4,
-        };
+        HorizontalStackLayout tabs = new() { Spacing = 16, HorizontalOptions = LayoutOptions.Start };
 
         string[] names = ["Overview", "Files", "Trackers", "Peers", "Activity"];
         for (int i = 0; i < names.Length; i++)
@@ -297,15 +383,39 @@ public sealed class MainPage : ContentPage
             Button button = new()
             {
                 Text = name,
-                CornerRadius = 4,
-                HeightRequest = 34,
-                MinimumHeightRequest = 34,
-                Padding = new Thickness(12, 4),
+                CornerRadius = 0,
+                HeightRequest = 36,
+                MinimumHeightRequest = 36,
+                Padding = new Thickness(0, 3),
                 FontSize = 13,
+                BackgroundColor = Colors.Transparent,
+                TextColor = MutedTextColor,
             };
             button.Clicked += (_, _) => SetActiveTab(name);
+            AddHoverFeedback(button, hovered =>
+            {
+                bool selected = string.Equals(_activeTab, name, StringComparison.Ordinal);
+                return (hovered ? MutedBackground : Colors.Transparent,
+                    selected ? TextColor : hovered ? PrimaryColor : MutedTextColor);
+            });
             _tabButtons[name] = button;
-            tabs.Add(button);
+            BoxView indicator = new() { HeightRequest = 3, BackgroundColor = WarmAccent, IsVisible = false };
+            _tabIndicators[name] = indicator;
+            VerticalStackLayout tab = new()
+            {
+                Spacing = 0,
+                HorizontalOptions = LayoutOptions.Start,
+                WidthRequest = name switch
+                {
+                    "Overview" => 84,
+                    "Trackers" => 72,
+                    "Activity" => 70,
+                    _ => 48,
+                },
+            };
+            tab.Add(button);
+            tab.Add(indicator);
+            tabs.Add(tab);
         }
 
         return tabs;
@@ -316,7 +426,7 @@ public sealed class MainPage : ContentPage
         _statusLabel.LineBreakMode = LineBreakMode.TailTruncation;
         Grid bar = new()
         {
-            Padding = new Thickness(18, 6),
+            Padding = new Thickness(18, 7),
             ColumnDefinitions =
             {
                 new ColumnDefinition(GridLength.Star),
@@ -337,7 +447,7 @@ public sealed class MainPage : ContentPage
             ItemsSource = _visibleJobs,
             SelectionMode = SelectionMode.Single,
             ItemTemplate = CreateQueueTemplate(),
-            EmptyView = EmptyState("Queue is empty"),
+            BackgroundColor = RailBackground,
         };
         view.SelectionChanged += (_, e) =>
         {
@@ -367,7 +477,7 @@ public sealed class MainPage : ContentPage
         {
             Grid grid = new()
             {
-                Padding = new Thickness(10, 12),
+                Padding = new Thickness(12, 14),
                 RowDefinitions =
                 {
                     new RowDefinition(GridLength.Auto),
@@ -380,20 +490,24 @@ public sealed class MainPage : ContentPage
                     new ColumnDefinition(GridLength.Star),
                     new ColumnDefinition(GridLength.Auto),
                 },
-                RowSpacing = 4,
+                RowSpacing = 6,
                 ColumnSpacing = 8,
             };
 
-            Label name = new() { FontAttributes = FontAttributes.Bold, FontSize = 14, TextColor = TextColor, LineBreakMode = LineBreakMode.TailTruncation };
+            Label name = new() { FontAttributes = FontAttributes.Bold, FontSize = 14, TextColor = Colors.White, LineBreakMode = LineBreakMode.TailTruncation };
             name.SetBinding(Label.TextProperty, nameof(TorrentJob.Name));
             Label status = SmallLabel(string.Empty);
+            status.TextColor = StageAccent;
             status.SetBinding(Label.TextProperty, nameof(TorrentJob.Status));
-            ProgressBar progress = BoundProgressBar(7);
+            ProgressBar progress = BoundProgressBar(6, onDark: true);
             Label progressText = SmallLabel(string.Empty);
+            progressText.TextColor = Colors.White;
             progressText.SetBinding(Label.TextProperty, nameof(TorrentJob.ProgressText));
             Label speed = SmallLabel(string.Empty);
+            speed.TextColor = RailMutedText;
             speed.SetBinding(Label.TextProperty, nameof(TorrentJob.DownloadRateText));
             Label message = SmallLabel(string.Empty);
+            message.TextColor = RailMutedText;
             message.LineBreakMode = LineBreakMode.TailTruncation;
             message.SetBinding(Label.TextProperty, nameof(TorrentJob.Message));
 
@@ -408,12 +522,19 @@ public sealed class MainPage : ContentPage
 
             Border item = new()
             {
-                Margin = new Thickness(0, 0, 0, 1),
+                Margin = new Thickness(0, 0, 0, 8),
                 StrokeThickness = 0,
-                StrokeShape = new RoundRectangle { CornerRadius = 4 },
-                BackgroundColor = PanelBackground,
+                StrokeShape = new RoundRectangle { CornerRadius = 6 },
+                BackgroundColor = RailSurface,
                 Content = grid,
             };
+            VisualState selected = new() { Name = "Selected" };
+            selected.Setters.Add(new Setter { Property = Border.BackgroundColorProperty, Value = RailSelected });
+            VisualStateGroup group = new() { Name = "CommonStates" };
+            group.States.Add(new VisualState { Name = "Normal" });
+            group.States.Add(selected);
+            VisualStateGroupList states = [group];
+            VisualStateManager.SetVisualStateGroups(item, states);
             TapGestureRecognizer tap = new();
             tap.Tapped += (_, _) =>
             {
@@ -439,8 +560,10 @@ public sealed class MainPage : ContentPage
         foreach ((string tabName, Button button) in _tabButtons)
         {
             bool selected = string.Equals(tabName, name, StringComparison.Ordinal);
-            button.BackgroundColor = selected ? MutedBackground : Colors.Transparent;
-            button.TextColor = selected ? PrimaryColor : MutedTextColor;
+            button.FontAttributes = selected ? FontAttributes.Bold : FontAttributes.None;
+            _tabIndicators[tabName].IsVisible = selected;
+            SemanticProperties.SetDescription(button, selected ? $"{tabName}, selected tab" : $"{tabName} tab");
+            _buttonFeedback[button]();
         }
 
         RefreshDetails();
@@ -449,7 +572,7 @@ public sealed class MainPage : ContentPage
     private void RefreshDetails()
     {
         _detailTitle.Text = _showSettings ? "Settings" : _selectedJob?.Name ?? "Torrents";
-        _detailSubtitle.Text = _showSettings ? "" : _selectedJob is null ? "" : $"{_selectedJob.Status}  \u00b7  {_selectedJob.TotalText}";
+        _detailSubtitle.Text = _showSettings || _selectedJob is null ? "" : DetailSubtitle(_selectedJob);
         if (!ReferenceEquals(_progressJob, _selectedJob))
         {
             _progressJob = _selectedJob;
@@ -458,8 +581,8 @@ public sealed class MainPage : ContentPage
 
         _progressContent.IsVisible = !_showSettings && _selectedJob is not null;
         _tabStrip.IsVisible = !_showSettings && _selectedJob is not null;
-        _settingsButton.BackgroundColor = _showSettings ? MutedBackground : Colors.Transparent;
-        _detailContent.Content = _showSettings ? BuildOptionsPanel() : _selectedJob is null ? EmptyState("No torrent selected") : _activeTab switch
+        _buttonFeedback[_settingsButton]();
+        _detailContent.Content = _showSettings ? BuildOptionsPanel() : _selectedJob is null ? BuildDetailEmptyView() : _activeTab switch
         {
             "Overview" => BuildOverviewPanel(_selectedJob),
             "Files" => BuildFilesPanel(_selectedJob),
@@ -476,9 +599,9 @@ public sealed class MainPage : ContentPage
         foreach ((string name, Button button) in _filterButtons)
         {
             bool selected = string.Equals(name, filter, StringComparison.Ordinal);
-            button.BackgroundColor = selected ? PanelBackground : Colors.Transparent;
-            button.TextColor = selected ? PrimaryColor : MutedTextColor;
             button.FontAttributes = selected ? FontAttributes.Bold : FontAttributes.None;
+            SemanticProperties.SetDescription(button, selected ? $"{name}, selected filter" : $"{name} filter");
+            _buttonFeedback[button]();
         }
 
         FilterJobs();
@@ -522,7 +645,13 @@ public sealed class MainPage : ContentPage
             _filteringJobs = false;
         }
 
-        _queueView.EmptyView = EmptyState(_jobs.Count == 0 ? "Queue is empty" : "No matching torrents");
+        if (matching.Count == 0)
+        {
+            _queueEmptyContent.Content = BuildQueueEmptyView(_jobs.Count == 0);
+        }
+
+        _queueEmptyContent.IsVisible = matching.Count == 0;
+        _queueView.IsVisible = matching.Count > 0;
         _queueCountLabel.Text = search.Length == 0 && _queueFilter == "All"
             ? $"{_jobs.Count} {(_jobs.Count == 1 ? "torrent" : "torrents")}"
             : $"{matching.Count} of {_jobs.Count}";
@@ -579,7 +708,7 @@ public sealed class MainPage : ContentPage
                 RefreshActionState();
                 if (!_showSettings && _selectedJob is not null)
                 {
-                    _detailSubtitle.Text = $"{_selectedJob.Status}  \u00b7  {_selectedJob.TotalText}";
+                    _detailSubtitle.Text = DetailSubtitle(_selectedJob);
                 }
             };
         }
@@ -594,11 +723,13 @@ public sealed class MainPage : ContentPage
         _folderButton.IsEnabled = _selectedJob is not null;
         _copyMagnetButton.IsEnabled = _selectedJob is not null && _selectedJob.InfoHashHex.Length == 40;
         _removeButton.IsEnabled = _selectedJob is not null;
+        _moreButton.IsEnabled = _selectedJob is not null;
         _startButton.Opacity = _startButton.IsEnabled ? 1 : 0.35;
         _pauseButton.Opacity = _pauseButton.IsEnabled ? 1 : 0.35;
         _folderButton.Opacity = _folderButton.IsEnabled ? 1 : 0.35;
         _copyMagnetButton.Opacity = _copyMagnetButton.IsEnabled ? 1 : 0.35;
         _removeButton.Opacity = _removeButton.IsEnabled ? 1 : 0.35;
+        _moreButton.Opacity = _moreButton.IsEnabled ? 1 : 0.35;
     }
 
     private void UpdateAdaptiveLayout()
@@ -606,11 +737,16 @@ public sealed class MainPage : ContentPage
         if (Width <= 0) return;
 
         _isCompact = Width < 850;
-        _summaryLabel.IsVisible = !_isCompact;
+        _summaryLabel.IsVisible = Width >= 1000;
+        bool overflow = Width < 740;
+        _folderButton.IsVisible = !overflow;
+        _copyMagnetButton.IsVisible = !overflow;
+        _removeButton.IsVisible = !overflow;
+        _moreButton.IsVisible = overflow;
         bool showQueue = !_isCompact || _showQueueOnCompact && !_showSettings;
         _bodyGrid.ColumnDefinitions[0].Width = _isCompact
             ? new GridLength(showQueue ? 1 : 0, GridUnitType.Star)
-            : new GridLength(336);
+            : new GridLength(320);
         _bodyGrid.ColumnDefinitions[1].Width = _isCompact
             ? new GridLength(showQueue ? 0 : 1, GridUnitType.Star)
             : GridLength.Star;
@@ -647,6 +783,50 @@ public sealed class MainPage : ContentPage
         return Task.CompletedTask;
     }
 
+    private async Task ShowMoreActionsAsync()
+    {
+        TorrentJob? job = _selectedJob;
+        if (job is null)
+        {
+            return;
+        }
+
+        List<string> actions = ["Open folder"];
+        if (_copyMagnetButton.IsEnabled)
+        {
+            actions.Add("Copy magnet link");
+        }
+
+        actions.Add("Remove torrent");
+        string? choice = await DisplayActionSheetAsync("Torrent actions", "Cancel", null, [.. actions]);
+        if (choice is null or "Cancel")
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(_selectedJob, job))
+        {
+            _statusLabel.Text = "Selection changed; choose an action again";
+            return;
+        }
+
+        switch (choice)
+        {
+            case "Open folder":
+                await OpenSelectedFolderAsync();
+                break;
+            case "Copy magnet link":
+                await CopyMagnetAsync();
+                break;
+            case "Remove torrent":
+                await RemoveSelectedAsync();
+                break;
+        }
+    }
+
+    private static string DetailSubtitle(TorrentJob job)
+        => $"{job.TotalText}  \u00b7  {job.Files.Count} {(job.Files.Count == 1 ? "file" : "files")}";
+
     private View BuildOverviewPanel(TorrentJob? job)
     {
         if (job is null)
@@ -655,6 +835,7 @@ public sealed class MainPage : ContentPage
         }
 
         VerticalStackLayout stack = new() { Spacing = 16, BindingContext = job };
+        stack.Add(new Label { Text = "At a glance", FontSize = 16, FontAttributes = FontAttributes.Bold, TextColor = TextColor });
 
         Grid metrics = new()
         {
@@ -662,25 +843,37 @@ public sealed class MainPage : ContentPage
             {
                 new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
             },
-            ColumnSpacing = 28,
+            ColumnSpacing = 18,
         };
-        metrics.Add(InfoPanel("Transfer", [
-            BoundInfo("Status", nameof(TorrentJob.Status)),
-            BoundInfo("Progress", nameof(TorrentJob.ProgressText)),
-            BoundInfo("Downloaded", nameof(TorrentJob.DownloadedText)),
-            BoundInfo("Remaining", nameof(TorrentJob.RemainingText)),
-            BoundInfo("Down rate", nameof(TorrentJob.DownloadRateText)),
-        ]), 0, 0);
+        metrics.Add(MetricCell("ON DISK", nameof(TorrentJob.DownloadedText)), 0, 0);
+        metrics.Add(MetricCell("REMAINING", nameof(TorrentJob.RemainingText)), 1, 0);
+        metrics.Add(MetricCell("CURRENT SPEED", nameof(TorrentJob.DownloadRateText)), 2, 0);
+        stack.Add(metrics);
+        stack.Add(new BoxView { HeightRequest = 1, BackgroundColor = BorderColor });
 
-        metrics.Add(InfoPanel("Swarm", [
+        Grid details = new()
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
+            },
+            ColumnSpacing = 20,
+        };
+        details.Add(InfoPanel("Integrity", [
             BoundInfo("Pieces", nameof(TorrentJob.PiecesText)),
-            BoundInfo("Active peers", nameof(TorrentJob.ActivePeers)),
-            BoundInfo("Known peers", nameof(TorrentJob.KnownPeers)),
             BoundInfo("Phase", nameof(TorrentJob.Phase)),
             BoundInfo("Message", nameof(TorrentJob.Message)),
+        ]), 0, 0);
+        details.Add(InfoPanel("Connections", [
+            BoundInfo("Active peers", nameof(TorrentJob.ActivePeers)),
+            BoundInfo("Known peers", nameof(TorrentJob.KnownPeers)),
+            BoundInfo("DHT", nameof(TorrentJob.EffectiveDhtText)),
+            BoundInfo("Trackers", nameof(TorrentJob.EffectiveTrackersText)),
         ]), 1, 0);
-        stack.Add(metrics);
+        stack.Add(details);
 
         return new ScrollView { Content = stack };
     }
@@ -692,16 +885,60 @@ public sealed class MainPage : ContentPage
             return EmptyState("No torrent selected.");
         }
 
-        Grid grid = TabContentGrid();
+        Grid grid = new()
+        {
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Star),
+            },
+            RowSpacing = 12,
+        };
+        Entry search = new()
+        {
+            Placeholder = "Search files",
+            ClearButtonVisibility = ClearButtonVisibility.WhileEditing,
+            FontSize = 13,
+            HeightRequest = 36,
+            TextColor = TextColor,
+            PlaceholderColor = MutedTextColor,
+            BackgroundColor = Colors.Transparent,
+        };
+        RemoveNativeSearchBorder(search);
+        Border searchFrame = new()
+        {
+            Stroke = BorderColor,
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = 6 },
+            BackgroundColor = PanelBackground,
+            Padding = new Thickness(10, 0),
+            Content = search,
+        };
+        search.Focused += (_, _) => searchFrame.Stroke = PrimaryColor;
+        search.Unfocused += (_, _) => searchFrame.Stroke = BorderColor;
+        Label count = SmallLabel(string.Empty);
+        count.HorizontalTextAlignment = TextAlignment.End;
+        Grid searchRow = new()
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+            },
+            ColumnSpacing = 12,
+        };
+        searchRow.Add(searchFrame, 0, 0);
+        searchRow.Add(count, 1, 0);
+        grid.Add(searchRow, 0, 0);
+
         CollectionView files = new()
         {
             ItemsSource = job.Files,
-            EmptyView = EmptyState("No files in this torrent"),
+            HorizontalOptions = LayoutOptions.Fill,
             ItemTemplate = new DataTemplate(() =>
             {
                 Grid row = new()
                 {
-                    Padding = new Thickness(8, 6),
                     ColumnDefinitions =
                     {
                         new ColumnDefinition(GridLength.Star),
@@ -709,19 +946,70 @@ public sealed class MainPage : ContentPage
                     },
                     ColumnSpacing = 10,
                 };
+                Button reveal = new()
+                {
+                    HeightRequest = 38,
+                    MinimumHeightRequest = 38,
+                    Padding = 0,
+                    CornerRadius = 4,
+                    BackgroundColor = Colors.Transparent,
+                };
+                reveal.SetBinding(SemanticProperties.DescriptionProperty,
+                    new Binding(nameof(TorrentFileItem.Path), stringFormat: "Reveal {0} in file manager"));
+                ToolTipProperties.SetText(reveal, "Show in file manager");
+                reveal.Clicked += (_, _) =>
+                {
+                    if (reveal.BindingContext is TorrentFileItem file)
+                    {
+                        _ = RunUiActionAsync(() => RevealTorrentFileAsync(job, file));
+                    }
+                };
+                AddHoverFeedback(reveal, hovered => (hovered ? MutedBackground : Colors.Transparent,
+                    hovered ? PrimaryColor : TextColor), track: false);
                 Label path = SmallLabel(string.Empty);
                 path.TextColor = TextColor;
+                path.Padding = new Thickness(8, 0);
+                path.LineBreakMode = OperatingSystem.IsLinux() ? LineBreakMode.NoWrap : LineBreakMode.TailTruncation;
+                path.MaxLines = 1;
+                path.InputTransparent = true;
+#if LINUX
+                path.HandlerChanged += (_, _) =>
+                {
+                    if (path.Handler?.PlatformView is Gtk.Label gtkLabel)
+                    {
+                        gtkLabel.Wrap = false;
+                        gtkLabel.Ellipsize = Pango.EllipsizeMode.End;
+                    }
+                };
+#endif
                 path.SetBinding(Label.TextProperty, nameof(TorrentFileItem.Path));
                 Label length = SmallLabel(string.Empty);
                 length.SetBinding(Label.TextProperty, nameof(TorrentFileItem.LengthText));
                 length.HorizontalTextAlignment = TextAlignment.End;
+                length.InputTransparent = true;
+                row.Add(reveal, 0, 0);
+                Grid.SetColumnSpan(reveal, 2);
                 row.Add(path, 0, 0);
                 row.Add(length, 1, 0);
                 return row;
             }),
         };
+        ContentView empty = new();
+        Grid list = new() { Children = { files, empty } };
+        grid.Add(list, 0, 1);
 
-        grid.Add(files, 0, 0);
+        void UpdateFilter()
+        {
+            IReadOnlyList<TorrentFileItem> matches = job.FindFiles(search.Text);
+            files.ItemsSource = matches;
+            count.Text = matches.Count == job.Files.Count ? $"{job.Files.Count} files" : $"{matches.Count} of {job.Files.Count}";
+            empty.Content = EmptyState(job.Files.Count == 0 ? "No files in this torrent" : "No matching files");
+            empty.IsVisible = matches.Count == 0;
+            files.IsVisible = matches.Count > 0;
+        }
+
+        search.TextChanged += (_, _) => UpdateFilter();
+        UpdateFilter();
         return grid;
     }
 
@@ -830,10 +1118,12 @@ public sealed class MainPage : ContentPage
     {
         Grid grid = new()
         {
-            Padding = new Thickness(0, 4),
+            Padding = new Thickness(26, 18, 26, 20),
+            BackgroundColor = StageBackground,
             BindingContext = job,
             RowDefinitions =
             {
+                new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
@@ -841,53 +1131,87 @@ public sealed class MainPage : ContentPage
             ColumnDefinitions =
             {
                 new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
             },
-            RowSpacing = 12,
+            RowSpacing = 8,
             ColumnSpacing = 12,
         };
 
-        Label name = new() { Text = "Progress", FontAttributes = FontAttributes.Bold, FontSize = 14, TextColor = TextColor };
-        Label percent = SmallLabel(string.Empty);
-        percent.TextColor = TextColor;
-        percent.FontSize = 22;
-        percent.FontAttributes = FontAttributes.Bold;
-        percent.HorizontalTextAlignment = TextAlignment.End;
-        percent.SetBinding(Label.TextProperty, nameof(TorrentJob.ProgressText));
+        Label status = new() { FontAttributes = FontAttributes.Bold, FontSize = 12, TextColor = StageAccent };
+        status.SetBinding(Label.TextProperty, nameof(TorrentJob.Status));
         Label rate = SmallLabel(string.Empty);
+        rate.TextColor = StageMutedText;
         rate.HorizontalTextAlignment = TextAlignment.End;
         rate.SetBinding(Label.TextProperty, nameof(TorrentJob.DownloadRateText));
+        Label percent = SmallLabel(string.Empty);
+        percent.TextColor = Colors.White;
+        percent.FontSize = 42;
+        percent.FontAttributes = FontAttributes.Bold;
+        percent.SetBinding(Label.TextProperty, nameof(TorrentJob.ProgressText));
+        Label total = SmallLabel(string.Empty);
+        total.TextColor = StageMutedText;
+        total.HorizontalTextAlignment = TextAlignment.End;
+        total.VerticalTextAlignment = TextAlignment.End;
+        total.SetBinding(Label.TextProperty, nameof(TorrentJob.TotalText), stringFormat: "of {0}");
 
-        ProgressBar progress = BoundProgressBar(8);
-        Label downloaded = SmallLabel(string.Empty);
-        downloaded.SetBinding(Label.TextProperty, nameof(TorrentJob.DownloadedText), stringFormat: "Downloaded {0}");
-        Label remaining = SmallLabel(string.Empty);
-        remaining.SetBinding(Label.TextProperty, nameof(TorrentJob.RemainingText), stringFormat: "Remaining {0}");
-        Label pieces = SmallLabel(string.Empty);
-        pieces.SetBinding(Label.TextProperty, nameof(TorrentJob.PiecesText), stringFormat: "Pieces {0}");
+        ProgressBar progress = BoundProgressBar(10, onDark: true, description: "Selected torrent progress");
+        Grid metrics = new()
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
+            },
+            ColumnSpacing = 14,
+            Margin = new Thickness(0, 3, 0, 0),
+        };
+        metrics.Add(StageMetric("Downloaded", nameof(TorrentJob.DownloadedText)), 0, 0);
+        metrics.Add(StageMetric("Remaining", nameof(TorrentJob.RemainingText)), 1, 0);
+        metrics.Add(StageMetric("Verified pieces", nameof(TorrentJob.PiecesText), highlight: true), 2, 0);
 
-        grid.Add(name, 0, 0);
-        grid.Add(percent, 1, 0);
-        grid.Add(rate, 2, 0);
-        grid.Add(progress, 0, 1);
-        Grid.SetColumnSpan(progress, 3);
-        grid.Add(downloaded, 0, 2);
-        grid.Add(remaining, 1, 2);
-        grid.Add(pieces, 2, 2);
+        grid.Add(status, 0, 0);
+        grid.Add(rate, 1, 0);
+        grid.Add(percent, 0, 1);
+        grid.Add(total, 1, 1);
+        grid.Add(progress, 0, 2);
+        Grid.SetColumnSpan(progress, 2);
+        grid.Add(metrics, 0, 3);
+        Grid.SetColumnSpan(metrics, 2);
 
         return grid;
     }
 
-    private static ProgressBar BoundProgressBar(double height)
+    private static View StageMetric(string title, string bindingPath, bool highlight = false)
+    {
+        VerticalStackLayout stack = new() { Spacing = 2 };
+        stack.Add(new Label { Text = title, FontSize = 11, TextColor = StageMutedText });
+        Label value = new() { FontSize = 14, FontAttributes = FontAttributes.Bold, TextColor = highlight ? WarmAccent : Colors.White, LineBreakMode = LineBreakMode.TailTruncation };
+        value.SetBinding(Label.TextProperty, bindingPath);
+        stack.Add(value);
+        return stack;
+    }
+
+    private static View MetricCell(string title, string bindingPath)
+    {
+        VerticalStackLayout stack = new() { Spacing = 5 };
+        stack.Add(new Label { Text = title, FontSize = 11, FontAttributes = FontAttributes.Bold, TextColor = MutedTextColor });
+        Label value = new() { FontSize = 22, FontAttributes = FontAttributes.Bold, TextColor = TextColor, LineBreakMode = LineBreakMode.TailTruncation };
+        value.SetBinding(Label.TextProperty, bindingPath);
+        stack.Add(value);
+        return stack;
+    }
+
+    private static ProgressBar BoundProgressBar(double height, bool onDark = false, string description = "Torrent progress")
     {
         ProgressBar progress = new()
         {
             HeightRequest = height,
-            BackgroundColor = MutedBackground,
-            ProgressColor = PrimaryColor,
+            BackgroundColor = onDark ? RailSelected : MutedBackground,
+            ProgressColor = onDark ? StageAccent : PrimaryColor,
         };
         progress.SetBinding(ProgressBar.ProgressProperty, nameof(TorrentJob.Progress));
+        SemanticProperties.SetDescription(progress, description);
         return progress;
     }
 
@@ -1218,6 +1542,17 @@ public sealed class MainPage : ContentPage
         _importPending = true;
         try
         {
+            if (OperatingSystem.IsLinux())
+            {
+                string? linuxSource = await DisplayPromptAsync("Add torrent", "Path to a .torrent file or magnet URI", "Add", "Cancel", "/home/user/file.torrent");
+                if (!string.IsNullOrWhiteSpace(linuxSource))
+                {
+                    await AddSourceAsync(linuxSource);
+                }
+
+                return;
+            }
+
             string? choice = await DisplayActionSheetAsync("Add torrent", "Cancel", null, "Choose a file", "Enter file path", "Enter magnet link", "Paste clipboard");
             if (choice == "Paste clipboard")
             {
@@ -1363,7 +1698,7 @@ public sealed class MainPage : ContentPage
         _addButton.IsEnabled = !importing;
         _importIndicator.IsVisible = importing;
         _importIndicator.IsRunning = importing;
-        _pasteButton.Text = importing ? "\uE711" : "\uE8C8";
+        _pasteButton.Text = PlatformIcon(importing ? "\uE711" : "\uE8C8");
         string label = importing ? "Cancel magnet import" : "Paste link";
         ToolTipProperties.SetText(_pasteButton, label);
         SemanticProperties.SetDescription(_pasteButton, label);
@@ -1570,18 +1905,18 @@ public sealed class MainPage : ContentPage
             return;
         }
 
-        if (!Directory.Exists(path) && !File.Exists(path))
+        if (!await TorrentFileReveal.RevealAsync(path))
         {
             await DisplayAlertAsync("Location unavailable", "This torrent has no files on disk yet.", "OK");
-            return;
         }
+    }
 
-        System.Diagnostics.ProcessStartInfo startInfo = new("explorer.exe")
+    private async Task RevealTorrentFileAsync(TorrentJob job, TorrentFileItem file)
+    {
+        if (!await TorrentFileReveal.RevealAsync(job.ResolveFilePath(file)))
         {
-            UseShellExecute = false,
-        };
-        startInfo.Arguments = File.Exists(path) ? "/select,\"" + path + "\"" : "\"" + path + "\"";
-        System.Diagnostics.Process.Start(startInfo);
+            await DisplayAlertAsync("File unavailable", "This file has not been created on disk yet.", "OK");
+        }
     }
 
     private async Task CopyMagnetAsync()
@@ -1686,26 +2021,135 @@ public sealed class MainPage : ContentPage
         _settings.DefaultDownloadDirectory = value;
     }
 
-    private Button ToolButton(string text, string icon, Func<Task> action, bool primary = false)
+    private Button ToolButton(string text, string icon, Func<Task> action, bool primary = false, bool onLightSurface = false, Func<bool>? selected = null)
     {
         Button button = new()
         {
-            Text = primary ? text : icon,
-            FontFamily = primary ? "Segoe UI" : "Segoe Fluent Icons",
+            Text = primary ? PlatformIcon(icon) + "  " + text : PlatformIcon(icon),
+            FontFamily = primary ? "Segoe UI Variable" : IconFontFamily,
             FontSize = primary ? 13 : 18,
-            CornerRadius = 4,
+            CornerRadius = 6,
             HeightRequest = 38,
             MinimumHeightRequest = 38,
-            WidthRequest = primary ? 128 : 40,
-            MinimumWidthRequest = primary ? 128 : 40,
+            WidthRequest = primary ? 132 : 40,
+            MinimumWidthRequest = primary ? 132 : 40,
             Padding = primary ? new Thickness(12, 5) : new Thickness(8, 5),
-            BackgroundColor = primary ? PrimaryColor : Colors.Transparent,
-            TextColor = primary ? Colors.White : TextColor,
         };
         ToolTipProperties.SetText(button, text);
         SemanticProperties.SetDescription(button, text);
         button.Clicked += (_, _) => _ = RunUiActionAsync(action);
+        AddHoverFeedback(button, hovered =>
+        {
+            if (primary)
+            {
+                return (hovered ? StageAccentHover : StageAccent, RailBackground);
+            }
+
+            if (onLightSurface)
+            {
+                return (hovered ? MutedBackground : Colors.Transparent, hovered ? PrimaryColor : TextColor);
+            }
+
+            if (selected?.Invoke() == true)
+            {
+                return (hovered ? RailSelectedHover : RailSelected, Colors.White);
+            }
+
+            return (hovered ? RailSelected : Colors.Transparent, Colors.White);
+        });
         return button;
+    }
+
+    private static void RemoveNativeSearchBorder(Entry entry)
+    {
+#if WINDOWS
+        entry.HandlerChanged += (_, _) =>
+        {
+            if (entry.Handler?.PlatformView is Microsoft.UI.Xaml.Controls.TextBox textBox)
+            {
+                // WinUI draws its focused underline from a theme brush even with zero border thickness.
+                textBox.Resources["TextControlBorderBrushFocused"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                textBox.BorderThickness = new Microsoft.UI.Xaml.Thickness(0);
+                textBox.BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                textBox.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            }
+        };
+#elif LINUX
+        entry.HandlerChanged += (_, _) =>
+        {
+            if (entry.Handler?.PlatformView is Gtk.Entry gtkEntry)
+            {
+                gtkEntry.HasFrame = false;
+            }
+        };
+#endif
+    }
+
+    private void AddHoverFeedback(Button button, Func<bool, (Color Background, Color Foreground)> colors, bool track = true)
+    {
+        bool hovered = false;
+        void Apply()
+        {
+            (Color background, Color foreground) = colors(hovered && button.IsEnabled);
+            button.BackgroundColor = background;
+            button.TextColor = foreground;
+        }
+
+#if WINDOWS
+        void OnPointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs args)
+        {
+            hovered = true;
+            Apply();
+        }
+
+        void OnPointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs args)
+        {
+            hovered = false;
+            Apply();
+        }
+
+        button.HandlerChanged += (_, _) =>
+        {
+            if (button.Handler?.PlatformView is Microsoft.UI.Xaml.UIElement nativeButton)
+            {
+                nativeButton.PointerEntered += OnPointerEntered;
+                nativeButton.PointerExited += OnPointerExited;
+            }
+        };
+        button.HandlerChanging += (_, args) =>
+        {
+            if (args.OldHandler?.PlatformView is Microsoft.UI.Xaml.UIElement nativeButton)
+            {
+                nativeButton.PointerEntered -= OnPointerEntered;
+                nativeButton.PointerExited -= OnPointerExited;
+            }
+        };
+#else
+        PointerGestureRecognizer pointer = new();
+        pointer.PointerEntered += (_, _) =>
+        {
+            hovered = true;
+            Apply();
+        };
+        pointer.PointerExited += (_, _) =>
+        {
+            hovered = false;
+            Apply();
+        };
+        button.GestureRecognizers.Add(pointer);
+#endif
+        button.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(Button.IsEnabled))
+            {
+                Apply();
+            }
+        };
+        if (track)
+        {
+            _buttonFeedback.Add(button, Apply);
+        }
+        Apply();
     }
 
     private async Task RunUiActionAsync(Func<Task> action)
@@ -1735,6 +2179,110 @@ public sealed class MainPage : ContentPage
                 },
             },
         };
+
+    private View BuildQueueEmptyView(bool emptyLibrary)
+    {
+        VerticalStackLayout stack = new()
+        {
+            Spacing = 12,
+            Padding = new Thickness(18, 42),
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+        };
+        stack.Add(new Label
+        {
+            Text = PlatformIcon(emptyLibrary ? "\uE8B7" : "\uE721"),
+            FontFamily = IconFontFamily,
+            FontSize = 28,
+            TextColor = StageAccent,
+            HorizontalTextAlignment = TextAlignment.Center,
+        });
+        stack.Add(new Label
+        {
+            Text = emptyLibrary ? "Library is empty" : "No matches",
+            FontSize = 15,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = Colors.White,
+            HorizontalTextAlignment = TextAlignment.Center,
+        });
+        if (emptyLibrary)
+        {
+            Button add = new()
+            {
+                Text = "Add torrent",
+                FontSize = 13,
+                CornerRadius = 6,
+                BackgroundColor = StageAccent,
+                TextColor = RailBackground,
+                Padding = new Thickness(16, 7),
+            };
+            add.Clicked += (_, _) => _ = RunUiActionAsync(AddTorrentAsync);
+            AddHoverFeedback(add, hovered => (hovered ? StageAccentHover : StageAccent, RailBackground), track: false);
+            stack.Add(add);
+        }
+        else
+        {
+            Button showAll = new()
+            {
+                Text = "Show all",
+                FontSize = 13,
+                CornerRadius = 6,
+                BackgroundColor = RailSurface,
+                TextColor = StageAccent,
+                Padding = new Thickness(16, 7),
+            };
+            showAll.Clicked += (_, _) =>
+            {
+                _searchEntry.Text = string.Empty;
+                SetQueueFilter("All");
+            };
+            AddHoverFeedback(showAll, hovered => (hovered ? RailSelected : RailSurface, StageAccent), track: false);
+            stack.Add(showAll);
+        }
+
+        return stack;
+    }
+
+    private View BuildDetailEmptyView()
+    {
+        VerticalStackLayout stack = new()
+        {
+            Spacing = 16,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+        };
+        stack.Add(new Label
+        {
+            Text = PlatformIcon("\uE8B7"),
+            FontFamily = IconFontFamily,
+            FontSize = 40,
+            TextColor = PrimaryColor,
+            HorizontalTextAlignment = TextAlignment.Center,
+        });
+        stack.Add(new Label
+        {
+            Text = _jobs.Count == 0 ? "Your library is ready" : "Select a torrent",
+            FontSize = 22,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = TextColor,
+            HorizontalTextAlignment = TextAlignment.Center,
+        });
+        if (_jobs.Count == 0)
+        {
+            HorizontalStackLayout actions = new() { Spacing = 8, HorizontalOptions = LayoutOptions.Center };
+            Button add = new() { Text = "Add torrent", FontSize = 13, CornerRadius = 6, BackgroundColor = PrimaryColor, TextColor = Colors.White, Padding = new Thickness(16, 8) };
+            add.Clicked += (_, _) => _ = RunUiActionAsync(AddTorrentAsync);
+            AddHoverFeedback(add, hovered => (hovered ? PrimaryHover : PrimaryColor, Colors.White), track: false);
+            Button paste = new() { Text = "Paste link", FontSize = 13, CornerRadius = 6, BackgroundColor = MutedBackground, TextColor = TextColor, Padding = new Thickness(16, 8) };
+            paste.Clicked += (_, _) => _ = RunUiActionAsync(PasteLinkAsync);
+            AddHoverFeedback(paste, hovered => (hovered ? BorderColor : MutedBackground, TextColor), track: false);
+            actions.Add(add);
+            actions.Add(paste);
+            stack.Add(actions);
+        }
+
+        return stack;
+    }
 
     private static Label SmallLabel(string text)
         => new()
@@ -1793,9 +2341,10 @@ public sealed class MainPage : ContentPage
         {
             ColumnDefinitions =
             {
-                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Star),
             },
+            ColumnSpacing = 8,
             Children =
             {
                 SmallLabel(label),

@@ -27,6 +27,11 @@ internal sealed class TorrentUiSettings
 
     private static string GetDefaultDownloadDirectory()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+        }
+
         Guid folderId = DownloadsFolderId;
         int result = SHGetKnownFolderPath(ref folderId, 0, IntPtr.Zero, out IntPtr path);
         try
@@ -122,7 +127,7 @@ internal static class TorrentUiSettingsStore
     }
 
     private static string GetSettingsPath()
-        => Path.Combine(FileSystem.AppDataDirectory, SettingsFileName);
+        => Path.Combine(TorrentAppData.DirectoryPath, SettingsFileName);
 
     private static void TryBackUpInvalidSettings(string path)
     {
