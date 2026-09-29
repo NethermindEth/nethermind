@@ -76,6 +76,9 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// <summary>Resolved lazily and cached internally, the same pattern <see cref="BlockImporterFactory"/> uses: discovery has not started when this object is constructed.</summary>
     private readonly INodeColumnCustodySource _custodySource = new DiscoveryNodeCustodySource(discovery);
 
+    /// <summary>The anchor a run restarts from when its first block does not link to the unverified anchor it was given; <paramref name="Rejected"/> runs when that happens.</summary>
+    public sealed record AnchorFallback(Hash256 Root, ulong Slot, Action Rejected);
+
     /// <summary>
     /// Streams verified-order blocks from <paramref name="anchorSlot"/> (exclusive) up to the target
     /// head; completes when the target is reached. The caller re-invokes as its target advances.
@@ -83,11 +86,13 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// <param name="anchorRoot">The block root the first yielded block must link to.</param>
     /// <param name="anchorSlot">The slot of the anchor block.</param>
     /// <param name="targetHeadSlot">Re-evaluated each batch, so the target may move while syncing.</param>
+    /// <param name="fallback">Marks the anchor as unverified: while no block has linked to it, a first block that does not is not held against its peer, and the run restarts from this one.</param>
     public async IAsyncEnumerable<ForkedSignedBeaconBlock> Run(
         Hash256 anchorRoot,
         ulong anchorSlot,
         Func<ulong> targetHeadSlot,
-        [EnumeratorCancellation] CancellationToken token)
+        [EnumeratorCancellation] CancellationToken token,
+        AnchorFallback? fallback = null)
     {
         Hash256 lastRoot = anchorRoot;
         ulong lastSlot = anchorSlot;
@@ -112,7 +117,18 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             // A peer may answer ResourceUnavailable below its earliest slot (phase0/p2p-interface.md); slots under it are taken as empty and block linkage still checks that.
             ulong from = Math.Max(nextSlot, peer.EarliestAvailableSlot);
             ulong count = Math.Min(batchSize, target - from + 1);
-            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256 LastRoot)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, token);
+            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256 LastRoot, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null, token);
+            if (batch is { Linked: false })
+            {
+                // The first block names another parent: the unverified anchor is off the peers' chain, not the peer at fault.
+                lastRoot = fallback!.Root;
+                lastSlot = fallback.Slot;
+                nextSlot = lastSlot + 1;
+                fallback.Rejected();
+                fallback = null;
+                continue;
+            }
+
             if (batch is null)
             {
                 consecutiveFailures++;
@@ -130,6 +146,11 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             }
 
             consecutiveFailures = 0;
+            if (batch.Value.Blocks.Count > 0)
+            {
+                fallback = null;
+            }
+
             if (batchSize != DefaultBatchSize && _logger.IsDebug) _logger.Debug($"Restoring range sync batch size to {DefaultBatchSize} from {batchSize} after a served batch");
             batchSize = DefaultBatchSize;
             await FetchColumnsForBatchAsync(batch.Value.Blocks, token);
@@ -149,12 +170,13 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
     }
 
-    /// <returns>The verified batch and its last block's root, or <c>null</c> when the request failed or the batch did not link up.</returns>
-    private async Task<(IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256 LastRoot)?> FetchAndVerifyBatchAsync(
+    /// <returns>The verified batch and its last block's root, or <c>null</c> when the request failed or the batch did not link up; not <c>Linked</c> when <paramref name="anchorUnverified"/> and the first block does not link to <paramref name="parentRoot"/>.</returns>
+    private async Task<(IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256 LastRoot, bool Linked)?> FetchAndVerifyBatchAsync(
         IBeaconSyncPeer peer,
         ulong startSlot,
         ulong count,
         Hash256 parentRoot,
+        bool anchorUnverified,
         CancellationToken token)
     {
         IReadOnlyList<ForkedSignedBeaconBlock> batch;
@@ -180,6 +202,11 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         {
             if (block.ParentRoot != expectedParent)
             {
+                if (anchorUnverified && expectedParent == parentRoot)
+                {
+                    return (batch, parentRoot, false);
+                }
+
                 peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Block at slot {block.Slot} has parent {block.ParentRoot}, expected {expectedParent}");
                 return null;
             }
@@ -187,7 +214,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             expectedParent = block.ComputeMessageRoot();
         }
 
-        return (batch, expectedParent);
+        return (batch, expectedParent, true);
     }
 
     /// <summary>
@@ -256,7 +283,15 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             return;
         }
 
-        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignColumns(missing, ServingFrom([.. peerPool.GetBestPeers(startSlot).Where(p => p.Custody.CountCustodied(missing) > 0)], startSlot, lastBlobSlot), MaxColumnPeersPerBatch);
+        IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(startSlot);
+        IBeaconSyncPeer[] custodians = [.. reaching.Where(p => p.Custody.CountCustodied(missing) > 0)];
+        if (custodians.Length == 0)
+        {
+            LogNoCustodian(missing, reaching.Count);
+            return;
+        }
+
+        List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = AssignColumns(missing, ServingFrom(custodians, startSlot, lastBlobSlot), MaxColumnPeersPerBatch);
         Task<IReadOnlyList<DataColumnSidecar>?>[] responses = new Task<IReadOnlyList<DataColumnSidecar>?>[requests.Count];
         for (int i = 0; i < requests.Count; i++)
         {
@@ -291,6 +326,11 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         IBeaconSyncPeer[] overlapping = [.. peers.Where(p => p.EarliestAvailableSlot <= endSlot)];
         if (_logger.IsDebug) _logger.Debug($"No sync peer serves from {startSlot}; {overlapping.Length} of {peers.Count} serve from at or before {endSlot}");
         return overlapping;
+    }
+
+    private void LogNoCustodian(List<ulong> missing, int connectedPeers)
+    {
+        if (_logger.IsDebug) _logger.Debug($"No connected sync peer custodies the missing sampled columns [{string.Join(", ", missing)}]: 0 custodians among {connectedPeers} peers");
     }
 
     /// <returns>The peer's sidecars, or <c>null</c> when the request failed and the peer was penalized.</returns>
@@ -438,7 +478,13 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         List<ulong> missing = MissingColumns(blockRoot, custody);
         // A by-root request names the block, so a custodian whose last status head is behind it may still serve it (fulu/p2p-interface.md DataColumnSidecarsByRoot).
         // OrderBy is stable, so the pool's own order breaks ties.
-        IBeaconSyncPeer[] custodians = [.. peerPool.GetBestPeers(0).Where(p => p.Custody.CountCustodied(missing) > 0).OrderByDescending(static p => p.Custody.IsAdvertised)];
+        IReadOnlyList<IBeaconSyncPeer> connected = peerPool.GetBestPeers(0);
+        IBeaconSyncPeer[] custodians = [.. connected.Where(p => p.Custody.CountCustodied(missing) > 0).OrderByDescending(static p => p.Custody.IsAdvertised)];
+        if (custodians.Length == 0 && missing.Count > 0)
+        {
+            LogNoCustodian(missing, connected.Count);
+        }
+
         List<IBeaconSyncPeer> asked = rotation.Take(custodians, MaxByRootColumnPeers);
         Task<IReadOnlyList<DataColumnSidecar>?>[] responses = new Task<IReadOnlyList<DataColumnSidecar>?>[asked.Count];
         for (int i = 0; i < asked.Count; i++)

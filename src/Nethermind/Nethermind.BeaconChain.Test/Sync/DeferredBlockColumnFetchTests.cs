@@ -371,47 +371,487 @@ public class DeferredBlockColumnFetchTests
     }
 
     /// <summary>
-    /// A head block stuck on its columns costs each range-sync round one refetch of the same batches and at most one by-root
-    /// fetch per slot, and imports in the first round after a custodian of its columns joins.
+    /// A head block stuck on its columns is fetched by range once: later rounds start past it, and the custodian that joins is asked
+    /// for its columns at once, without a round or a slot tick delivering the block again.
     /// </summary>
     [Test]
     [CancelAfter(30_000)]
-    public async Task A_stuck_head_block_costs_a_bounded_refetch_per_round_and_imports_once_a_custodian_joins(CancellationToken token)
+    public async Task A_stuck_head_block_is_not_refetched_by_later_rounds_and_imports_once_a_custodian_joins(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
-        StubPeer server = fixture.RangePeer("server", headSlot: fixture.Clock.CurrentSlot);
+        List<ulong> requestedStarts = [];
+        StubPeer server = fixture.RangePeer("server", headSlot: fixture.Clock.CurrentSlot, requestedStarts);
         BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
         fixture.Peers.Add(server);
         const int StuckRounds = 3;
+        ulong blockSlot = fixture.Chain.Block.Message!.Slot;
 
-        List<int> batchesPerRound = [];
+        List<int> requestsPerRound = [];
         for (int round = 0; round < StuckRounds; round++)
         {
             int before = server.Requests;
             await orchestrator.FeedRangeSyncRoundAsync(token);
             await orchestrator.ProcessQueuedAsync(token);
-            batchesPerRound.Add(server.Requests - before);
+            requestsPerRound.Add(server.Requests - before);
         }
 
         bool stuck = !fixture.Importer.IsKnown(fixture.Chain.BlockRoot);
         StubPeer custodian = fixture.Peer("custodian", fixture.Sampled);
-        fixture.Peers.Add(custodian);
+        fixture.AdmitPeer(custodian);
+        await orchestrator.SettleColumnFetchesAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stuck, Is.True, "no peer serves the block's columns");
+            Assert.That(requestedStarts.Count(start => start <= blockSlot), Is.EqualTo(1), "only the first round asks for the block's slot");
+            Assert.That(requestsPerRound, Is.All.EqualTo(requestsPerRound[0]), "each round asks for the slots past the block, no more");
+            Assert.That(server.RootColumnRequests, Is.EqualTo(1), "the block is not delivered again, so the same custodian is not asked again within the slot");
+            Assert.That(custodian.RootColumnRequests, Is.EqualTo(1));
+            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the admitted custodian is asked at once and the block imports");
+            Assert.That(orchestrator.SyncTip, Is.EqualTo((fixture.Chain.BlockRoot, blockSlot)));
+        }
+    }
+
+    /// <summary>
+    /// While the head waits for its columns, the blocks range sync fetched above it are held: rounds start past them, so a resume
+    /// of a stuck head never asks a peer for a block again. Fetching them again is what rate-limited the peers that served them.
+    /// </summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_deferred_head_with_held_descendants_makes_no_repeat_block_requests_across_resume_cycles(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        RangeSyncPeerSelectionTests.AllLevelsCapture log = new();
+        HeldChain held = await HoldChainAsync(fixture, slots: [2, 3, 4], token, advance: 10, logs: new OneLoggerLogManager(new ILogger(log)));
+        ulong heldSlot = held.Blocks[^1].Slot;
+        int firstRoundRequests = held.RequestedStarts.Count;
+        int firstRoundBlockRequests = held.RequestedStarts.Count(start => start <= heldSlot);
+
+        // A resume needs the head stalled for an epoch of ticks and one epoch since the last resume; the block's retry lives two epochs.
+        List<int> resumed = [];
+        foreach (ulong tickSlot in new ulong[] { 74, 106 })
+        {
+            fixture.AdvanceSlots(tickSlot - fixture.Clock.CurrentSlot);
+            await held.Orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+            await held.Orchestrator.FeedRangeSyncRoundAsync(token);
+            await held.Orchestrator.ProcessQueuedAsync(token);
+            resumed.Add(held.RequestedStarts.Count);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.False, "fixture: the head block waits for its columns");
+            Assert.That(log.Lines.Count(static line => line.Contains("resuming range sync from the head")), Is.EqualTo(2), "fixture: the head was resumed twice");
+            Assert.That(firstRoundBlockRequests, Is.EqualTo(1), "the first round fetches the held blocks with one request");
+            Assert.That(held.RequestedStarts.Count(start => start <= heldSlot), Is.EqualTo(firstRoundBlockRequests), "no later round asks for a held block's slot");
+            Assert.That(resumed, Has.Some.GreaterThan(firstRoundRequests), "fixture: the later rounds still ask for the slots above the held blocks");
+            Assert.That(held.Orchestrator.PendingGossipBlockCount, Is.EqualTo(held.Blocks.Length - 1), "the descendants wait for the head block");
+        }
+    }
+
+    /// <summary>
+    /// The blocks above a deferred head are held unverified, so a peer's fork child must not steer the rounds off the chain the other peers
+    /// serve: a round whose first block does not link to the held tip starts over from the sync tip, and holds nothing against its peer.
+    /// </summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_held_block_off_the_chain_of_the_peers_is_left_for_the_sync_tip_without_penalizing_them(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        ForkedSignedBeaconBlock deferred = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
+        ForkedSignedBeaconBlock[] canonical = [deferred, .. Fixture.ChainAbove(fixture.Chain.BlockRoot, slots: [2, 3, 4]).Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        ForkedSignedBeaconBlock[] forked = [deferred, new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(3, fixture.Chain.BlockRoot))];
+        List<ulong> honestStarts = [];
+        StubPeer forkPeer = fixture.RangePeer("fork", headSlot: 1000, blocks: forked);
+        StubPeer honest = fixture.RangePeer("honest", headSlot: 1000, honestStarts, canonical);
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
+        fixture.Peers.Add(forkPeer);
+        await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+        await orchestrator.FeedRangeSyncRoundAsync(token);
+        await orchestrator.ProcessQueuedAsync(token);
+        int heldFromFork = orchestrator.PendingGossipBlockCount;
+
+        fixture.Peers.Clear();
+        fixture.Peers.Add(honest);
+        await orchestrator.FeedRangeSyncRoundAsync(token);
+        await orchestrator.ProcessQueuedAsync(token);
+        int afterRestart = honestStarts.Count;
         await orchestrator.FeedRangeSyncRoundAsync(token);
         await orchestrator.ProcessQueuedAsync(token);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stuck, Is.True, "no peer serves the block's columns");
-            Assert.That(batchesPerRound, Is.All.EqualTo(batchesPerRound[0]), "each round refetches the same batches, no more");
-            Assert.That(server.RootColumnRequests, Is.EqualTo(1), "re-delivered copies of the block do not ask the same custodian again within the slot");
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the round after a custodian joins imports the block");
-            Assert.That(orchestrator.SyncTip, Is.EqualTo((fixture.Chain.BlockRoot, fixture.Chain.Block.Message!.Slot)));
+            Assert.That(heldFromFork, Is.EqualTo(1), "fixture: the fork child is held for the deferred block");
+            Assert.That(honest.Reports, Is.Empty, "a fork child held here is not the honest peer's fault");
+            Assert.That(honestStarts[0], Is.EqualTo(4), "the round first tried the block past the held fork child");
+            Assert.That(honestStarts.Skip(1).First(), Is.EqualTo(fixture.Chain.Block.Message!.Slot), "then it started over from the sync tip");
+            Assert.That(orchestrator.PendingGossipBlockCount, Is.EqualTo(1 + canonical.Length - 1), "the honest chain is held above the deferred block");
+            Assert.That(honestStarts.Skip(afterRestart), Is.All.GreaterThan(canonical[^1].Slot), "and later rounds start past it");
+        }
+    }
+
+    /// <summary>A block dropped for another reason leaves the held blocks alone, so they are neither fetched nor held a second time.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task An_unrelated_dropped_block_does_not_release_the_held_descendants(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        HeldChain held = await HoldChainAsync(fixture, slots: [2, 3, 4], token);
+        int heldCount = held.Orchestrator.PendingGossipBlockCount;
+        int requestsBefore = held.RequestedStarts.Count;
+
+        BlockImportResult unrelated = await held.Orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(5, fixture.Chain.AnchorRoot)), token);
+        await held.Orchestrator.FeedRangeSyncRoundAsync(token);
+        await held.Orchestrator.ProcessQueuedAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unrelated, Is.EqualTo(BlockImportResult.Invalid), "fixture: the block is dropped");
+            Assert.That(held.Orchestrator.PendingGossipBlockCount, Is.EqualTo(heldCount));
+            Assert.That(held.RequestedStarts.Skip(requestsBefore), Is.All.GreaterThan(held.Blocks[^1].Slot), "no held block is asked for again");
         }
     }
 
     /// <summary>
-    /// A round follows the wall clock past a head block that did not import, so without a restart the block is never fetched
-    /// again. Following gossip, a head more than two epochs behind restarts it; before that, the block's retry expiring does.
+    /// Rounds that start before the worker has taken the earlier round's blocks fetch them twice; each is held once, and a block
+    /// delivered again below the held tip does not pull the next round back to it.
+    /// </summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_block_a_repeated_round_delivers_again_is_held_once(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        HeldChain held = await HoldChainAsync(fixture, slots: [2, 3, 4], token, processRound: false);
+
+        await held.Orchestrator.FeedRangeSyncRoundAsync(token);
+        await held.Orchestrator.ProcessQueuedAsync(token);
+        held.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(held.Blocks[0]));
+        await held.Orchestrator.ProcessQueuedAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(held.Orchestrator.PendingGossipBlockCount, Is.EqualTo(held.Blocks.Length - 1));
+            Assert.That(held.Orchestrator.RangeHeldSlot, Is.EqualTo(held.Blocks[^1].Slot));
+        }
+    }
+
+    /// <summary>
+    /// A round that falls back to the sync tip fetches the held blocks once more, here because the peers reorged the held tip out;
+    /// that round rebuilds the held chain from the blocks already held, so the rounds after it start past it again.
+    /// </summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_round_that_falls_back_to_the_sync_tip_rebuilds_the_held_chain(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        HeldChain held = await HoldChainAsync(fixture, slots: [2, 3, 4], token);
+        ForkedSignedBeaconBlock reorg = new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(5, held.Blocks[2].ComputeMessageRoot()));
+        List<ulong> starts = [];
+        StubPeer peer = fixture.RangePeer("reorg", headSlot: 1000, starts, [.. held.Blocks[..3], reorg]);
+        fixture.Peers.Clear();
+        fixture.Peers.Add(peer);
+
+        await held.Orchestrator.FeedRangeSyncRoundAsync(token);
+        await held.Orchestrator.ProcessQueuedAsync(token);
+        int fallbackRequests = starts.Count;
+        await held.Orchestrator.FeedRangeSyncRoundAsync(token);
+        await held.Orchestrator.ProcessQueuedAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(starts.Take(fallbackRequests), Has.Some.EqualTo(held.Blocks[0].Slot), "fixture: the round fell back to the sync tip");
+            Assert.That(peer.Reports, Is.Empty);
+            Assert.That(held.Orchestrator.RangeHeldSlot, Is.EqualTo(reorg.Slot));
+            Assert.That(starts.Skip(fallbackRequests), Is.All.GreaterThan(reorg.Slot), "no held block is asked for again");
+        }
+    }
+
+    /// <summary>Only a first block off the held tip is laid on the held blocks; a peer whose blocks break their own chain after linking to it is penalized.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_peer_whose_blocks_break_their_chain_past_the_held_tip_is_penalized([Values] bool inLaterBatch, CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        HeldChain held = await HoldChainAsync(fixture, slots: [2, 3], token);
+        ForkedSignedBeaconBlock next = new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(4, held.Blocks[^1].ComputeMessageRoot()));
+        ulong brokenSlot = inLaterBatch ? next.Slot + RangeSync.DefaultBatchSize : next.Slot + 1;
+        ForkedSignedBeaconBlock broken = new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(brokenSlot, Keccak.Compute("elsewhere")));
+        ForkedSignedBeaconBlock[] served = [.. held.Blocks, next, broken];
+        // Served once, so the retry after the penalty completes the round.
+        bool brokenServed = false;
+        StubPeer peer = new("breaking", headSlot: 1000, (start, count) =>
+            {
+                ForkedSignedBeaconBlock[] batch = [.. served.Where(b => b.Slot >= start && b.Slot < start + count && (b != broken || !brokenServed))];
+                brokenServed |= batch.Contains(broken);
+                return batch;
+            },
+            custody: new PeerColumnCustody(fixture.Sampled, isAdvertised: true), rootHandler: static _ => []);
+        fixture.Peers.Clear();
+        fixture.Peers.Add(peer);
+
+        await held.Orchestrator.FeedRangeSyncRoundAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(brokenServed, Is.True, "fixture: the broken block was served");
+            Assert.That(peer.Reports, Is.EqualTo(new[] { PeerFailureReason.ProtocolViolation }));
+        }
+    }
+
+    /// <summary>Held range blocks take at most their share of the queue shared with gossip, and past it a round asks for nothing more.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Range_blocks_held_for_a_deferred_head_stop_at_their_share_of_the_queue(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        HeldChain held = await HoldChainAsync(fixture, slots: [.. Enumerable.Range(2, BeaconSyncOrchestrator.MaxRangeHeldBlocks + 6).Select(static slot => (ulong)slot)], token, advance: 100);
+        int heldCount = held.Orchestrator.PendingGossipBlockCount;
+        int requestsBefore = held.Server.Requests;
+
+        await held.Orchestrator.FeedRangeSyncRoundAsync(token);
+        await held.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(fixture.Clock.CurrentSlot, Keccak.Compute("unknown parent"))), token);
+        int gossipHeld = held.Orchestrator.PendingGossipBlockCount;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heldCount, Is.EqualTo(BeaconSyncOrchestrator.MaxRangeHeldBlocks));
+            Assert.That(held.Server.Requests, Is.EqualTo(requestsBefore), "a full share makes the next round ask for nothing");
+            Assert.That(gossipHeld, Is.EqualTo(heldCount + 1), "a gossip block still finds room in the queue");
+        }
+    }
+
+    /// <summary>
+    /// Once the deferred block imports, its held blocks import with it and the chain is over; one that waits in turn takes the chain
+    /// over, so rounds keep starting past it instead of fetching the held blocks again.
+    /// </summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task The_held_chain_ends_when_its_blocks_import_and_passes_to_a_child_that_waits_in_turn([Values] bool childWaits, CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        ForkedSignedBeaconBlock[] blocks = [new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), .. Fixture.ChainAbove(fixture.Chain.BlockRoot, slots: [2, 3, 4]).Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        List<ulong> requestedStarts = [];
+        fixture.Peers.Add(fixture.RangePeer("server", headSlot: 1000, requestedStarts, blocks));
+        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token, fillers: 0);
+        await orchestrator.FeedRangeSyncRoundAsync(token);
+        await orchestrator.ProcessQueuedAsync(token);
+        ulong? heldBefore = orchestrator.RangeHeldSlot;
+        // From here the importer answers for the held blocks as it would once their parent is known.
+        (childWaits ? importer.Stuck : importer.Accepted).Add(blocks[1].ComputeMessageRoot());
+        importer.Accepted.UnionWith(blocks[2..].Select(static b => b.ComputeMessageRoot()));
+
+        fixture.AdmitPeer(fixture.Peer("custodian", fixture.Sampled));
+        await orchestrator.SettleColumnFetchesAsync(token);
+        int requestsBefore = requestedStarts.Count;
+        await orchestrator.FeedRangeSyncRoundAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heldBefore, Is.EqualTo(blocks[^1].Slot), "fixture: the blocks are held for the deferred block");
+            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported");
+            Assert.That(orchestrator.RangeHeldSlot, Is.EqualTo(childWaits ? blocks[^1].Slot : null));
+            Assert.That(requestedStarts.Skip(requestsBefore), Is.All.GreaterThan(blocks[^1].Slot), "no held block is asked for again");
+        }
+    }
+
+    /// <summary>A deferred block that another route imported no longer holds the range blocks above it, whose blocks are fetched from the tip again.</summary>
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_deferred_block_another_route_imported_ends_the_held_chain(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        HeldChain held = await HoldChainAsync(fixture, slots: [2, 3], token);
+        foreach (ulong column in fixture.Sampled)
+        {
+            fixture.GiveColumn(column);
+        }
+
+        BlockImportResult otherRoute = fixture.Importer.Import(held.Blocks[0], held.Blocks[0].ComputeMessageRoot(), verifySignatures: true);
+        await held.Orchestrator.ProcessQueuedAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(otherRoute, Is.EqualTo(BlockImportResult.Imported), "fixture: the block imports once its columns are held");
+            Assert.That(held.Orchestrator.PendingRetryBlockCount, Is.Zero, "fixture: the retry ended");
+            Assert.That(held.Orchestrator.RangeHeldSlot, Is.Null);
+        }
+    }
+
+    /// <summary>A block range sync delivers that does not follow a held block or a deferred one is not held for anything.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_range_block_that_follows_no_held_or_deferred_block_is_not_held(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
+        await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+        ForkedSignedBeaconBlock stray = new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(3, Keccak.Compute("nobody")));
+
+        orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(stray));
+        await orchestrator.ProcessQueuedAsync(token);
+
+        Assert.That(orchestrator.PendingGossipBlockCount, Is.Zero);
+    }
+
+    /// <summary>A block the full retry set refuses is fetched again by a round, since nothing holds it for a retry.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_deferred_block_the_full_retry_set_refuses_is_not_treated_as_held(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        List<ulong> requestedStarts = [];
+        fixture.Peers.Add(fixture.RangePeer("server", headSlot: 1000, requestedStarts));
+        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token);
+        importer.Stuck.Add(fixture.Chain.BlockRoot);
+        orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block)));
+        await orchestrator.SettleColumnFetchesAsync(token);
+
+        await orchestrator.FeedRangeSyncRoundAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "fixture: the retry set refused the block");
+            Assert.That(requestedStarts, Has.Some.EqualTo(fixture.Chain.Block.Message!.Slot), "the round asks for the refused block again");
+        }
+    }
+
+    /// <summary>Blocks held above a deferred head are held for nothing once its retry expires, so the next round asks for them again from the head.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Blocks_held_above_a_deferred_head_are_fetched_again_once_the_head_is_dropped(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        SignedBeaconBlock[] chain = Fixture.ChainAbove(fixture.Chain.BlockRoot, slots: [2, 3]);
+        ForkedSignedBeaconBlock[] blocks = [new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), .. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        List<ulong> requestedStarts = [];
+        StubPeer server = fixture.RangePeer("server", headSlot: 1000, requestedStarts, blocks);
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
+        fixture.Peers.Add(server);
+        await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+        await orchestrator.FeedRangeSyncRoundAsync(token);
+        await orchestrator.ProcessQueuedAsync(token);
+        requestedStarts.Clear();
+
+        // The retry expires and drops the head block with the blocks held for it.
+        fixture.AdvanceSlots(2 * fixture.Chain.Spec.SlotsPerEpoch + 1);
+        await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+        await orchestrator.FeedRangeSyncRoundAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(orchestrator.PendingGossipBlockCount, Is.Zero);
+            Assert.That(requestedStarts.Min(), Is.EqualTo(fixture.Chain.Block.Message!.Slot), "the dropped blocks are fetched again from the head");
+        }
+    }
+
+    /// <summary>
+    /// A deferred block whose sampled columns have no connected custodian is asked for them by root as soon as a custodian is admitted,
+    /// not at the next slot tick; a peer custodying none of them costs no request.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_custodian_admitted_between_ticks_gets_the_by_root_fetch_at_once([Values] bool custodies, CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
+        await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+        ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
+        BlockImportResult withoutCustodian = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
+        StubPeer admitted = fixture.Peer("admitted", custodies ? fixture.Sampled : fixture.Unsampled);
+
+        fixture.AdmitPeer(admitted);
+        await orchestrator.SettleColumnFetchesAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withoutCustodian, Is.EqualTo(BlockImportResult.DataUnavailable));
+            Assert.That(admitted.RootColumnRequests, Is.EqualTo(custodies ? 1 : 0));
+            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.EqualTo(custodies), "the block imports before the next slot tick");
+        }
+    }
+
+    /// <summary>A peer that custodies no column the block still misses is not worth a request, even while other custodians are connected.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_peer_admitted_without_a_missing_column_costs_no_request([Values] bool custodiesOnlyAHeldColumn, CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        ulong held = fixture.Sampled[0];
+        fixture.GiveColumn(held);
+        // More silent custodians of the missing columns than one fetch asks, so an extra fetch would reach one.
+        StubPeer[] silent = [.. Enumerable.Range(0, CustodiansPerImport + 1).Select(i => fixture.SilentPeer($"silent-{i}", fixture.Sampled[1..]))];
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
+        fixture.Peers.AddRange(silent);
+        await orchestrator.ImportAndSettleAsync(fixture.Importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+        int beforeAdmission = silent.Sum(static p => p.RootColumnRequests);
+
+        fixture.AdmitPeer(fixture.Peer("admitted", custodiesOnlyAHeldColumn ? [held] : fixture.Unsampled));
+        await orchestrator.SettleColumnFetchesAsync(token);
+
+        Assert.That((beforeAdmission, silent.Sum(static p => p.RootColumnRequests)), Is.EqualTo((CustodiansPerImport, CustodiansPerImport)));
+    }
+
+    /// <summary>A custodian that connects while the fetch for its columns is running is asked once that fetch ends short, not a slot tick later.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_custodian_admitted_during_a_running_fetch_is_asked_when_that_fetch_ends_short(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        Gate slowFetch = new(expected: int.MaxValue);
+        fixture.Peers.Add(new UnansweringPeer("slow", fixture.Sampled, slowFetch, TimeSpan.FromSeconds(20)));
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
+        await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+        while (slowFetch.MaxInFlight == 0)
+        {
+            await Task.Delay(10, token);
+        }
+
+        StubPeer custodian = fixture.Peer("custodian", fixture.Sampled);
+        fixture.AdmitPeer(custodian);
+        await orchestrator.ProcessQueuedAsync(token);
+        int askedWhileRunning = custodian.RootColumnRequests;
+        slowFetch.Open();
+        await orchestrator.SettleColumnFetchesAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(askedWhileRunning, Is.Zero, "fixture: the running fetch had not reached the custodian");
+            Assert.That(custodian.RootColumnRequests, Is.EqualTo(1));
+            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the block imports without a slot tick");
+        }
+    }
+
+    /// <summary>The worker itself routes admissions to the fetch, and stops when it ends, so a stopped worker is not kept alive by the pool.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_running_worker_fetches_for_an_admitted_custodian_and_leaves_the_pool_when_it_stops(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator(routeAdmissions: false);
+        await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task worker = orchestrator.RunWorkerAsync(stop.Token);
+        int subscribedWhileRunning = fixture.AdmissionSubscribers;
+
+        fixture.AdmitPeer(fixture.Peer("custodian", fixture.Sampled));
+        while (!fixture.Importer.IsKnown(fixture.Chain.BlockRoot))
+        {
+            await Task.Delay(10, token);
+        }
+
+        await stop.CancelAsync();
+        Assert.CatchAsync<OperationCanceledException>(async () => await worker);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(subscribedWhileRunning, Is.EqualTo(1));
+            Assert.That(fixture.AdmissionSubscribers, Is.Zero);
+        }
+    }
+
+    /// <summary>
+    /// A round starts past a deferred head block, so once the block's retry expires it is fetched again only by a restarted round.
+    /// Following gossip, a head more than two epochs behind restarts it; before that, the block's retry expiring does.
     /// </summary>
     [Test]
     [CancelAfter(60_000)]
@@ -437,7 +877,7 @@ public class DeferredBlockColumnFetchTests
         bool restarted = await Task.WhenAny(firstRound, Task.Delay(TimeSpan.FromSeconds(5), token)) == firstRound;
 
         StubPeer custodian = fixture.Peer("custodian", fixture.Sampled);
-        fixture.Peers.Add(custodian);
+        fixture.AdmitPeer(custodian);
         Task secondRound = orchestrator.FeedRangeSyncRoundAsync(stopRounds.Token);
         await ProcessUntilAsync(orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
         await stopRounds.CancelAsync();
@@ -448,7 +888,7 @@ public class DeferredBlockColumnFetchTests
             Assert.That(roundWaiting, Is.True, "the round moved past the block and waits for a peer ahead of the wall clock");
             Assert.That(restarted, Is.True, "the round in flight is ended so the next starts from the head");
             Assert.That(await BeaconSyncOrchestratorTests.EndsAsync(firstRound, token), Is.True);
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the restarted round delivers the block again and it imports");
+            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "the block imports once the custodian is asked");
             Assert.That(orchestrator.SyncTip, Is.EqualTo((fixture.Chain.BlockRoot, fixture.Chain.Block.Message.Slot)));
             Assert.That(await BeaconSyncOrchestratorTests.EndsAsync(secondRound, token), Is.True);
         }
@@ -653,6 +1093,9 @@ public class DeferredBlockColumnFetchTests
 
         public HashSet<Hash256> EngineDown { get; } = [];
 
+        /// <summary>Blocks reported imported without the inner importer, so a test can import a chain its blocks cannot.</summary>
+        public HashSet<Hash256> Accepted { get; } = [];
+
         public List<Hash256> ImportCalls { get; } = [];
 
         public bool IsKnown(Hash256 blockRoot) => inner.IsKnown(blockRoot);
@@ -663,6 +1106,7 @@ public class DeferredBlockColumnFetchTests
         {
             ImportCalls.Add(blockRoot);
             return Stuck.Contains(blockRoot) ? BlockImportResult.DataUnavailable
+                : Accepted.Contains(blockRoot) ? BlockImportResult.Imported
                 : EngineDown.Contains(blockRoot) ? BlockImportResult.EngineUnavailable
                 : inner.Import(block, blockRoot, verifySignatures);
         }
@@ -698,11 +1142,36 @@ public class DeferredBlockColumnFetchTests
         }
     }
 
+    /// <summary>An orchestrator whose head block waits for its columns while range sync has fetched <see cref="Blocks"/> above it.</summary>
+    private sealed record HeldChain(BeaconSyncOrchestrator Orchestrator, StubPeer Server, List<ulong> RequestedStarts, ForkedSignedBeaconBlock[] Blocks);
+
+    /// <summary>Runs one range round serving the head block and a chain at <paramref name="slots"/> above it, and processes what it delivered.</summary>
+    /// <param name="advance">Slots to move the clock before the round.</param>
+    /// <param name="processRound">Whether the round's blocks are processed; when not, the caller does.</param>
+    private static async Task<HeldChain> HoldChainAsync(Fixture fixture, ulong[] slots, CancellationToken token, ulong advance = 0, ILogManager? logs = null, bool processRound = true)
+    {
+        ForkedSignedBeaconBlock[] blocks = [new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), .. Fixture.ChainAbove(fixture.Chain.BlockRoot, slots).Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        List<ulong> requestedStarts = [];
+        StubPeer server = fixture.RangePeer("server", headSlot: 1000, requestedStarts, blocks);
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator(logs: logs);
+        fixture.Peers.Add(server);
+        fixture.AdvanceSlots(advance);
+        await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+        await orchestrator.FeedRangeSyncRoundAsync(token);
+        if (processRound)
+        {
+            await orchestrator.ProcessQueuedAsync(token);
+        }
+
+        return new HeldChain(orchestrator, server, requestedStarts, blocks);
+    }
+
     internal sealed class Fixture : IAsyncDisposable
     {
         private readonly BeaconChainStore _store = new(new MemColumnsDb<BeaconChainDbColumns>());
         private BeaconDiscovery _discovery = null!;
         private ManualTimestamper _time = null!;
+        private MutablePool _pool = null!;
 
         public ImportableBlobBlock Chain { get; } = ImportableBlobBlock.Create();
         public DataColumnSidecarPool SidecarPool { get; } = new();
@@ -756,17 +1225,48 @@ public class DeferredBlockColumnFetchTests
             new(id, Chain.Block.Message!.Slot, static (_, _) => [], custody: new PeerColumnCustody(custodied, isAdvertised: true), rootHandler: static _ => []);
 
         /// <summary>A peer serving the block by range and custodying every sampled column, but serving no column.</summary>
-        public StubPeer RangePeer(string id, ulong headSlot)
+        /// <param name="requestStarts">Receives the first slot of every by-range request.</param>
+        /// <param name="blocks">The blocks it serves, in slot order; the chain's block when omitted.</param>
+        public StubPeer RangePeer(string id, ulong headSlot, List<ulong>? requestStarts = null, ForkedSignedBeaconBlock[]? blocks = null)
         {
-            ulong blockSlot = Chain.Block.Message!.Slot;
-            ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(Chain.Block);
-            return new StubPeer(id, headSlot, (start, count) => blockSlot >= start && blockSlot < start + count ? [block] : [],
+            ForkedSignedBeaconBlock[] served = blocks ?? [new ForkedSignedBeaconBlock.OfFulu(Chain.Block)];
+            return new StubPeer(id, headSlot, (start, count) =>
+                {
+                    requestStarts?.Add(start);
+                    return [.. served.Where(b => b.Slot >= start && b.Slot < start + count)];
+                },
                 custody: new PeerColumnCustody(Sampled, isAdvertised: true), rootHandler: static _ => []);
         }
 
-        public BeaconSyncOrchestrator CreateOrchestrator()
+        /// <summary>Blocks at <paramref name="slots"/>, each the child of the one before, the first the child of <paramref name="root"/>; they carry no blobs and are never importable.</summary>
+        public static SignedBeaconBlock[] ChainAbove(Hash256 root, ulong[] slots)
         {
-            MutablePool pool = new(Peers);
+            List<SignedBeaconBlock> chain = [];
+            Hash256 parentRoot = root;
+            foreach (ulong slot in slots)
+            {
+                SignedBeaconBlock block = Test.P2P.TestChain.CreateBlock(slot, parentRoot);
+                chain.Add(block);
+                parentRoot = new ForkedSignedBeaconBlock.OfFulu(block).ComputeMessageRoot();
+            }
+
+            return [.. chain];
+        }
+
+        /// <summary>Connects <paramref name="peer"/> and announces it, as the peer manager does once it has the peer's custody.</summary>
+        public void AdmitPeer(IBeaconSyncPeer peer)
+        {
+            Peers.Add(peer);
+            _pool.Admit(peer);
+        }
+
+        /// <summary>How many handlers are subscribed to the pool's admissions.</summary>
+        public int AdmissionSubscribers => _pool.Subscribers;
+
+        /// <param name="routeAdmissions">Whether the pool's admissions are routed here at once; a worker that runs routes them itself.</param>
+        public BeaconSyncOrchestrator CreateOrchestrator(bool routeAdmissions = true, ILogManager? logs = null)
+        {
+            MutablePool pool = _pool = new(Peers);
             BeaconSyncOrchestrator orchestrator = new(
                 new BeaconChainConfig(),
                 Chain.Spec,
@@ -778,7 +1278,7 @@ public class DeferredBlockColumnFetchTests
                 Clock,
                 new GossipRouter(Chain.Spec, Clock, LimboLogs.Instance),
                 new BeaconChainStatusHolder(Chain.Spec, Timestamper.Default),
-                LimboLogs.Instance,
+                logs ?? LimboLogs.Instance,
                 discovery: _discovery,
                 columnPool: SidecarPool)
             {
@@ -786,6 +1286,11 @@ public class DeferredBlockColumnFetchTests
                 GossipStarted = true,
             };
             orchestrator.Initialize(Importer, new ForkedSignedBeaconBlock.OfFulu(Chain.AnchorBlock), Chain.AnchorRoot);
+            if (routeAdmissions)
+            {
+                orchestrator.RoutePeerAdmissions();
+            }
+
             return orchestrator;
         }
 
@@ -795,6 +1300,12 @@ public class DeferredBlockColumnFetchTests
     private sealed class MutablePool(List<IBeaconSyncPeer> peers) : IBeaconSyncPeerPool
     {
         public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) => [.. peers.Where(p => p.HeadSlot >= minHeadSlot)];
+
+        public event Action<IBeaconSyncPeer>? PeerAdmitted;
+
+        public int Subscribers => PeerAdmitted?.GetInvocationList().Length ?? 0;
+
+        public void Admit(IBeaconSyncPeer peer) => PeerAdmitted?.Invoke(peer);
     }
 
     /// <summary>Opens once <paramref name="expected"/> requests are in flight together, recording the most ever in flight.</summary>
@@ -805,6 +1316,9 @@ public class DeferredBlockColumnFetchTests
         private int _maxInFlight;
 
         public int MaxInFlight => Volatile.Read(ref _maxInFlight);
+
+        /// <summary>Lets every waiting request through, whatever the number in flight.</summary>
+        public void Open() => _open.TrySetResult();
 
         public async Task WaitAsync(TimeSpan timeout, CancellationToken token)
         {

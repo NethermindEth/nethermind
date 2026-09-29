@@ -141,7 +141,7 @@ public class RangeSyncPeerSelectionTests
         }
     }
 
-    private sealed class AllLevelsCapture : InterfaceLogger
+    internal sealed class AllLevelsCapture : InterfaceLogger
     {
         public List<string> Lines { get; } = [];
 

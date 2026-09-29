@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -71,6 +72,13 @@ public interface IBeaconSyncPeerPool
 {
     /// <summary>Returns peers advertising a head at or past <paramref name="minHeadSlot"/>, best head first, leaving out peers whose requests keep failing (see <see cref="IBeaconSyncPeer.ReportFailure"/>).</summary>
     IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot);
+
+    /// <summary>Raised once a peer is admitted and its custody is known, so a waiter can ask it without waiting for its next poll; never raised by a pool that does not implement it.</summary>
+    event Action<IBeaconSyncPeer>? PeerAdmitted
+    {
+        add { }
+        remove { }
+    }
 }
 
 /// <summary>Connection direction of a tracked beacon chain peer.</summary>
