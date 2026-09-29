@@ -5087,7 +5087,7 @@ public partial class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
         DeployContract(Observer, Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done);
-        DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(reverter, RevertWithWord(0xbb));
         DeployContract(afterBatch, Prepare.EvmCode.Call(reverter, 50_000).Op(Instruction.STOP).Done);
 
         Transaction tx = revertFirst
@@ -5113,6 +5113,9 @@ public partial class FrameTxProcessorTests
             Assert.That(result.Error.Message, Is.EqualTo(expected == EvmExceptionType.Revert
                 ? "execution reverted: frame failed"
                 : expected.GetEvmExceptionDescription()));
+            Assert.That(result.Error.Data, Is.EqualTo(revertFirst ? new UInt256(0xbb).ToBigEndian() : []),
+                "the first failed frame's own output, not a later frame's inner revert data");
+            Assert.That(result.ReturnData, Is.EqualTo(result.Error.Data));
         }
     }
 
