@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -164,9 +165,11 @@ namespace Nethermind.Db.Test
         {
             SnapshotableMemColumnsDb<TestColumns> columnsDb = new();
             const int batchCount = 5000;
+            using ManualResetEventSlim readerStarted = new();
 
             Task writer = Task.Run(() =>
             {
+                readerStarted.Wait();
                 for (int i = 1; i <= batchCount; i++)
                 {
                     byte[] value = BitConverter.GetBytes(i);
@@ -177,9 +180,12 @@ namespace Nethermind.Db.Test
                 }
             });
 
+            int snapshotCount = 0;
             int tornSnapshots = 0;
+            readerStarted.Set();
             while (!writer.IsCompleted)
             {
+                snapshotCount++;
                 using IColumnDbSnapshot<TestColumns> snapshot = columnsDb.CreateSnapshot();
                 byte[]? column1A = snapshot.GetColumn(TestColumns.Column1).Get(TestItem.KeccakA);
                 byte[]? column1B = snapshot.GetColumn(TestColumns.Column1).Get(TestItem.KeccakB);
@@ -188,6 +194,7 @@ namespace Nethermind.Db.Test
             }
 
             writer.GetAwaiter().GetResult();
+            Assert.That(snapshotCount, Is.GreaterThan(0), "no snapshot overlapped the writer");
             Assert.That(tornSnapshots, Is.Zero);
         }
 
