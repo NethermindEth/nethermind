@@ -68,6 +68,8 @@ public static class ReqRespFraming
     // Frame data is capped at the snappy framing-format limits: 65536 bytes of uncompressed data
     // plus the 4-byte CRC, with headroom for the worst-case snappy block expansion of a 64 KiB frame.
     private const int MaxFrameDataLength = 4 + 65536 + 65536 / 6 + 32;
+    // A requester must half-close after its request; one that keeps the stream open is served once this passes with no further byte.
+    private static readonly TimeSpan TrailingBytesGrace = TimeSpan.FromMilliseconds(500);
     // phase0 p2p ssz_snappy: max_compressed_len(0); a stream identifier (10 bytes) and one empty data frame (at most 9) fit.
     private static readonly int MaxEmptyRequestFramingBytes = Eth2MessageId.MaxCompressedLength(0);
     private static readonly byte[] StreamIdentifierContent = "sNaPpY"u8.ToArray();
@@ -99,7 +101,7 @@ public static class ReqRespFraming
                 return [];
             }
 
-            return await ReadFramedPayloadAsync(stream, declaredLength, maxSize, token);
+            return await ReadFramedPayloadAsync(stream, declaredLength, maxSize, token, isRequest: true);
         }
         catch (EndOfStreamException e)
         {
@@ -159,14 +161,39 @@ public static class ReqRespFraming
         }
     }
 
-    // An empty payload has no data frame to end it, so its framing runs to the requester's half-close or to max_compressed_len(0); any legal framing that decodes to no bytes is accepted.
+    /// <summary>Throws <see cref="Eth2ReqRespException"/> when the requester sends a byte where its request has ended.</summary>
+    /// <remarks>phase0 p2p ssz_snappy: bytes remaining after the n SSZ bytes are invalid input. Reads one byte, inside <paramref name="token"/>'s deadline, so it never waits for EOF.</remarks>
+    internal static async Task RejectTrailingBytesAsync(Stream stream, CancellationToken token)
+    {
+        if (await TryReadByteWithinGraceAsync(stream, new byte[1], token))
+        {
+            throw new Eth2ReqRespException("Unexpected bytes after the end of the request");
+        }
+    }
+
+    private static async Task<bool> TryReadByteWithinGraceAsync(Stream stream, byte[] buffer, CancellationToken token)
+    {
+        using CancellationTokenSource grace = CancellationTokenSource.CreateLinkedTokenSource(token);
+        grace.CancelAfter(TrailingBytesGrace);
+        try
+        {
+            return await stream.ReadAsync(buffer.AsMemory(0, 1), grace.Token) != 0;
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            return false;
+        }
+    }
+
+    // An empty payload has no data frame to end it, so its framing runs to the requester's half-close, to max_compressed_len(0) or to the first data frame; any legal framing that decodes to no bytes is accepted.
     private static async Task ReadEmptyRequestFramingAsync(Stream stream, CancellationToken token)
     {
         using MemoryStream frames = new();
         byte[] header = new byte[4];
         int framedBytesRead = 0;
+        bool sawDataFrame = false;
         // phase0 p2p ssz_snappy: nothing past max_compressed_len(0) is read, so framing that fills the bound ends there.
-        while (framedBytesRead < MaxEmptyRequestFramingBytes && await stream.ReadAsync(header.AsMemory(0, 1), token) != 0)
+        while (!sawDataFrame && framedBytesRead < MaxEmptyRequestFramingBytes && await stream.ReadAsync(header.AsMemory(0, 1), token) != 0)
         {
             if (framedBytesRead + header.Length > MaxEmptyRequestFramingBytes)
             {
@@ -199,6 +226,7 @@ public static class ReqRespFraming
 
                     break;
                 case CompressedFrame or UncompressedFrame:
+                    sawDataFrame = true;
                     // Only an empty frame carries this checksum; the decompressor below rejects any data, but skips the checksum of an empty uncompressed frame.
                     if (data.Length < 4 || !data.AsSpan(0, 4).SequenceEqual(EmptyDataChecksum))
                     {
@@ -235,6 +263,12 @@ public static class ReqRespFraming
         {
             throw new Eth2ReqRespException($"Snappy decompression failed: {e.Message}");
         }
+
+        // The data frame ends the request, so any frame byte after it is refused unless the bound is already used.
+        if (sawDataFrame && framedBytesRead < MaxEmptyRequestFramingBytes)
+        {
+            await RejectTrailingBytesAsync(stream, token);
+        }
     }
 
     private static bool IsEmptySnappyBlock(ReadOnlySpan<byte> block)
@@ -259,7 +293,7 @@ public static class ReqRespFraming
     private static async Task<byte[]> ReadPayloadAsync(Stream stream, int maxSize, CancellationToken token) =>
         await ReadFramedPayloadAsync(stream, await ReadVarintAsync(stream, token), maxSize, token);
 
-    private static async Task<byte[]> ReadFramedPayloadAsync(Stream stream, ulong declaredLength, int maxSize, CancellationToken token)
+    private static async Task<byte[]> ReadFramedPayloadAsync(Stream stream, ulong declaredLength, int maxSize, CancellationToken token, bool isRequest = false)
     {
         if (declaredLength == 0 || declaredLength > (ulong)maxSize)
         {
@@ -350,6 +384,12 @@ public static class ReqRespFraming
         catch (Exception e) when (e is not Eth2ReqRespException)
         {
             throw new Eth2ReqRespException($"Snappy decompression failed: {e.Message}");
+        }
+
+        // The reader must not read past max_compressed_len(n), so a payload that used the whole bound is not probed.
+        if (isRequest && framedBytesRead < maxFramedBytes)
+        {
+            await RejectTrailingBytesAsync(stream, token);
         }
 
         return payload;
