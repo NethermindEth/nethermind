@@ -159,6 +159,17 @@ class CreateErrorClassificationTest(unittest.TestCase):
             "not-offered",
         )
 
+    def test_another_zonal_resource_the_zone_lacks_is_not_blamed_on_the_machine_type(self):
+        self.assertEqual(
+            self.classify(
+                "ERROR: (gcloud.compute.instances.create) Could not fetch resource:"
+                " - Invalid value for field 'resource.disks[0].initializeParams.diskType':"
+                " 'zones/europe-west2-a/diskTypes/hyperdisk-balanced'. Disk type with name"
+                " 'hyperdisk-balanced' does not exist in zone 'europe-west2-a'."
+            ),
+            "unrecognised",
+        )
+
     def test_an_unrecognised_message_matches_nothing(self):
         self.assertEqual(self.classify("ERROR: something entirely new"), "unrecognised")
 
