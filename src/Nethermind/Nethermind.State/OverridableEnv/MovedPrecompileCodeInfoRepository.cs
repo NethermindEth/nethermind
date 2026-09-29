@@ -28,7 +28,6 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
     {
         if (TryGetMoved(codeSource, out CodeInfo? codeInfo))
         {
-            // The inner repository would have read this account from the world state.
             worldState.AddAccountRead(codeSource);
             worldState.RecordAccountAccess(codeSource);
             if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))

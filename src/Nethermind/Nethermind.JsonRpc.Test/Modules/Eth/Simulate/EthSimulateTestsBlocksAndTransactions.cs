@@ -1787,6 +1787,22 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.InsufficientFunds));
     }
 
+    private static readonly Address Return42Contract = new("0xc300000000000000000000000000000000000000");
+    // PUSH1 0x2a PUSH0 MSTORE PUSH1 0x20 PUSH0 RETURN
+    private static readonly byte[] Return42Code = Bytes.FromHexString("0x602a5f5260205ff3");
+    // ecrecover(hash, v, r, s) input whose signer is 0xb11cad98ad3f8114e0b3a1f6e7228bc8424df48a.
+    private static readonly byte[] EcrecoverInput = Bytes.FromHexString("0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8000000000000000000000000000000000000000000000000000000000000001cb7cf302145348387b9e69fde82d8e634a0f8761e78da3bfa059efced97cbed0d2a66b69167cafe0ccfc726aec6ee393fea3cf0e4f3f9c394705e0f56d9bfe1c9");
+
+    /// <summary>Runs a one-block simulation, asserts that it succeeds and returns the block's call results.</summary>
+    private static SimulateCallResult[] SimulateSingleBlock(TestRpcBlockchain chain, SimulatePayload<TransactionForRpc> payload)
+    {
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        return result.Data![0].Calls.ToArray();
+    }
+
     /// <summary>
     /// Regression test: under EIP-7928 each call runs on a per-transaction processor, which must charge the
     /// blob fee at the <c>blobBaseFee</c> override rather than at the fee derived from <c>excessBlobGas</c>.
@@ -1843,11 +1859,7 @@ public class EthSimulateTestsBlocksAndTransactions
             Validation = true
         };
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
-
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
-        SimulateCallResult[] calls = result.Data![0].Calls.ToArray();
+        SimulateCallResult[] calls = SimulateSingleBlock(chain, payload);
         Assert.That(calls.Select(static c => c.Error), Is.All.Null);
         UInt256 expected = initialBalance - calls[0].GasUsed!.Value * baseFee - Eip4844Constants.GasPerBlob * (UInt256)blobBaseFee;
         Assert.That(new UInt256(calls[1].ReturnData, isBigEndian: true), Is.EqualTo(expected));
@@ -1861,8 +1873,6 @@ public class EthSimulateTestsBlocksAndTransactions
     public async Task eth_simulateV1_moves_precompile_on_bal_path()
     {
         Address movedTo = Address.FromNumber(0x123456);
-        // ecrecover(hash, v, r, s) input whose signer is 0xb11cad98ad3f8114e0b3a1f6e7228bc8424df48a.
-        byte[] ecrecoverInput = Bytes.FromHexString("0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8000000000000000000000000000000000000000000000000000000000000001cb7cf302145348387b9e69fde82d8e634a0f8761e78da3bfa059efced97cbed0d2a66b69167cafe0ccfc726aec6ee393fea3cf0e4f3f9c394705e0f56d9bfe1c9");
         byte[] signer = Bytes.FromHexString("0x000000000000000000000000b11cad98ad3f8114e0b3a1f6e7228bc8424df48a");
 
         using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
@@ -1879,31 +1889,28 @@ public class EthSimulateTestsBlocksAndTransactions
                     },
                     Calls =
                     [
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = movedTo, Input = ecrecoverInput, GasPrice = UInt256.Zero },
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(1), Input = ecrecoverInput, GasPrice = UInt256.Zero }
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = movedTo, Input = EcrecoverInput, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(1), Input = EcrecoverInput, GasPrice = UInt256.Zero }
                     ]
                 }
             ]
         };
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
-
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
-        SimulateCallResult[] calls = result.Data![0].Calls.ToArray();
+        SimulateCallResult[] calls = SimulateSingleBlock(chain, payload);
         Assert.That(calls[0].ReturnData, Is.EqualTo(signer));
         Assert.That(calls[1].ReturnData, Is.Empty);
     }
 
     /// <summary>
-    /// Under EIP-7928 a moved precompile's origin runs its overriding code, and a delegation designation there
-    /// resolves like on any other account.
+    /// Under EIP-7928 a delegation designation at a moved precompile's origin resolves like on any other account: to
+    /// the target's code, and to empty code when the target is a precompile (EIP-7702).
     /// </summary>
-    [Test]
-    public async Task eth_simulateV1_delegation_at_moved_precompile_origin_on_bal_path()
+    [TestCase("0xc300000000000000000000000000000000000000", true, TestName = "designation at a moved origin runs the target's code")]
+    [TestCase("0x0000000000000000000000000000000000000004", false, TestName = "designation at a moved origin to a precompile runs empty code")]
+    public async Task eth_simulateV1_resolves_designation_at_moved_precompile_origin_on_bal_path(string target, bool expectReturn42)
     {
-        Address delegate42 = new("0xc300000000000000000000000000000000000000");
-        byte[] designation = Bytes.Concat(Eip7702Constants.DelegationHeader, delegate42.Bytes);
+        Address origin = Address.FromNumber(1);
+        byte[] designation = Bytes.Concat(Eip7702Constants.DelegationHeader, new Address(target).Bytes);
 
         using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
 
@@ -1915,22 +1922,18 @@ public class EthSimulateTestsBlocksAndTransactions
                 {
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        { Address.FromNumber(1), new AccountOverride { MovePrecompileToAddress = Address.FromNumber(0x123456), Code = designation } },
-                        // PUSH1 0x2a PUSH0 MSTORE PUSH1 0x20 PUSH0 RETURN
-                        { delegate42, new AccountOverride { Code = Bytes.FromHexString("0x602a5f5260205ff3") } }
+                        { origin, new AccountOverride { MovePrecompileToAddress = Address.FromNumber(0x123456), Code = designation } },
+                        { Return42Contract, new AccountOverride { Code = Return42Code } }
                     },
-                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = Address.FromNumber(1), GasPrice = UInt256.Zero }]
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = origin, Input = EcrecoverInput, GasPrice = UInt256.Zero }]
                 }
             ]
         };
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        SimulateCallResult call = SimulateSingleBlock(chain, payload).Single();
 
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
-        SimulateCallResult call = result.Data![0].Calls.Single();
         Assert.That(call.Error, Is.Null);
-        Assert.That(new UInt256(call.ReturnData, isBigEndian: true), Is.EqualTo((UInt256)42));
+        Assert.That(call.ReturnData, expectReturn42 ? Is.EqualTo(new UInt256(42).ToBigEndian()) : Is.Empty);
     }
 
     /// <summary>
@@ -1940,12 +1943,11 @@ public class EthSimulateTestsBlocksAndTransactions
     [Test]
     public async Task eth_simulateV1_delegation_replaces_code_override_on_bal_path()
     {
-        Address delegate42 = new("0xc300000000000000000000000000000000000000");
 
         using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
 
         AuthorizationTuple authorization = new EthereumEcdsa(chain.SpecProvider.ChainId)
-            .Sign(TestItem.PrivateKeyB, chain.SpecProvider.ChainId, delegate42, 0);
+            .Sign(TestItem.PrivateKeyB, chain.SpecProvider.ChainId, Return42Contract, 0);
         SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls =
@@ -1955,8 +1957,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
                         { TestItem.AddressB, new AccountOverride { Code = [] } },
-                        // PUSH1 0x2a PUSH0 MSTORE PUSH1 0x20 PUSH0 RETURN
-                        { delegate42, new AccountOverride { Code = Bytes.FromHexString("0x602a5f5260205ff3") } }
+                        { Return42Contract, new AccountOverride { Code = Return42Code } }
                     },
                     Calls =
                     [
@@ -1975,11 +1976,7 @@ public class EthSimulateTestsBlocksAndTransactions
             ]
         };
 
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
-
-        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
-        SimulateCallResult[] calls = result.Data![0].Calls.ToArray();
+        SimulateCallResult[] calls = SimulateSingleBlock(chain, payload);
         Assert.That(calls.Select(static c => c.Error), Is.All.Null);
         Assert.That(new UInt256(calls[1].ReturnData, isBigEndian: true), Is.EqualTo((UInt256)42));
     }
