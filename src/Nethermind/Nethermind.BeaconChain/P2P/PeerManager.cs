@@ -134,6 +134,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <summary>Raised with the dropped peer's id so dial dedup can allow a later re-dial.</summary>
     public event Action<string>? PeerDropped;
 
+    /// <inheritdoc/>
+    public event Action<IBeaconSyncPeer>? PeerAdmitted;
+
     /// <summary>The number of connected, status-exchanged peers.</summary>
     public int PeerCount => _peers.Count;
 
@@ -972,6 +975,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         Metrics.BeaconChainPeerCount = _peers.Count;
         if (_logger.IsInfo) _logger.Info($"Connected to beacon chain peer {address} ({info.Direction.ToString().ToLowerInvariant()}, head slot {peer.HeadSlot})");
         await RefreshCustodyAsync(peer, token, AdmissionMetadataTimeout);
+        PeerAdmitted?.Invoke(peer);
         return true;
     }
 

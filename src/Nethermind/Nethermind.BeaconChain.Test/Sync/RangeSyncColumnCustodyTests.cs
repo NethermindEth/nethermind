@@ -136,6 +136,36 @@ public class RangeSyncColumnCustodyTests
         }
     }
 
+    /// <summary>An empty custodian set is a custody shortfall, not an earliest_available_slot problem, so the log names the columns and zero custodians.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_fetch_with_no_custodian_logs_the_custody_shortfall_not_the_earliest_available_slot([Values] bool byRoot, CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer bystander = fixture.Peer("bystander", [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c).Except(fixture.Sampled)]);
+        RangeSyncPeerSelectionTests.AllLevelsCapture log = new();
+        RangeSync sync = new(new StubPool(bystander), new OneLoggerLogManager(new ILogger(log)), fixture.SidecarPool, fixture.Chain.Spec, fixture.Clock, fixture.Discovery);
+
+        if (byRoot)
+        {
+            await sync.FetchColumnsByRootAsync(fixture.Chain.BlockRoot, fixture.Chain.Block.Message!, token);
+        }
+        else
+        {
+            await foreach (ForkedSignedBeaconBlock _ in sync.Run(fixture.Chain.AnchorRoot, fixture.Chain.AnchorBlock.Message!.Slot, () => fixture.Chain.Block.Message!.Slot, token))
+            {
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.Lines, Has.Some.Contains("0 custodians").And.Contains(fixture.Sampled[0].ToString()), "the shortfall names the missing columns");
+            Assert.That(log.Lines, Has.None.Contains("serve from"), "the earliest available slot is not what is wrong");
+            Assert.That(log.Lines, Has.None.Contains("Exception"));
+            Assert.That(bystander.ColumnRequests + bystander.RootColumnRequests, Is.Zero);
+        }
+    }
+
     private static StubPeer PeerWithCustody(string id, PeerColumnCustody custody) => new(id, headSlot: 0, static (_, _) => [], custody: custody);
 
     private sealed class Fixture : IAsyncDisposable
@@ -146,6 +176,8 @@ public class RangeSyncColumnCustodyTests
 
         public ImportableBlobBlock Chain { get; } = ImportableBlobBlock.Create();
         public DataColumnSidecarPool SidecarPool { get; } = new();
+
+        public BeaconDiscovery Discovery => _discovery;
 
         /// <summary>At epoch 1, which keeps the epoch-0 block inside the data availability window.</summary>
         public SlotClock Clock { get; private set; } = null!;
