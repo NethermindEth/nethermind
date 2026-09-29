@@ -41,8 +41,8 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// call, including one that failed in process.
     /// </summary>
     /// <remarks>
-    /// A failed call counts as answered: <see cref="Unwrap"/> cannot tell an unreachable execution
-    /// layer from one that is genuinely syncing, so this reports only that the path has been driven.
+    /// A failed call counts as answered: this reports only that the path has been driven, not that
+    /// the execution layer returned a verdict.
     /// </remarks>
     public bool HasAnsweredNewPayload { get; private set; }
 
@@ -75,6 +75,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// Applies the fork-choice state via <c>engine_forkchoiceUpdatedV3</c> (no payload attributes)
     /// and returns the head status, including SYNCING while the execution layer catches up.
     /// </summary>
+    /// <exception cref="EngineUnavailableException">The call produced no status; a failure is not SYNCING.</exception>
     public async Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
     {
         Metrics.BeaconChainForkchoiceUpdatedCalls++;
@@ -155,20 +156,10 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     private PayloadStatusV1 UnwrapNewPayload(Result result, PayloadStatusV1? status, string method)
     {
         HasAnsweredNewPayload = true;
-        if (result.ResultType == ResultType.Success && status is not null)
-        {
-            return status;
-        }
-
-        if (_logger.IsError) _logger.Error($"In-process engine_{method} call failed: {result.Error}");
-        throw new EngineUnavailableException(method, result.Error);
+        return Unwrap(result, status, method);
     }
 
-    /// <remarks>
-    /// Only <see cref="ForkchoiceUpdated"/> reports SYNCING for a failed call, because it is a
-    /// statement about the head rather than a verdict on a block the caller is about to import.
-    /// The <c>newPayload</c> path goes through <see cref="UnwrapNewPayload"/> and throws instead.
-    /// </remarks>
+    /// <exception cref="EngineUnavailableException">The call produced no status.</exception>
     private PayloadStatusV1 Unwrap(Result result, PayloadStatusV1? status, string method)
     {
         if (result.ResultType == ResultType.Success && status is not null)
@@ -177,6 +168,6 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         }
 
         if (_logger.IsError) _logger.Error($"In-process engine_{method} call failed: {result.Error}");
-        return PayloadStatusV1.Syncing;
+        throw new EngineUnavailableException(method, result.Error);
     }
 }

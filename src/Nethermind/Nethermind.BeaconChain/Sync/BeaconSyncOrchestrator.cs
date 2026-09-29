@@ -318,8 +318,8 @@ public sealed class BeaconSyncOrchestrator(
         // Engine kick: point the execution layer at the anchor payload so it starts beacon/snap
         // syncing toward it; SYNCING is the expected (successful) answer here.
         if (_logger.IsInfo) _logger.Info($"Beacon sync starting from anchor slot {_anchorSlot} ({anchorRoot}); kicking execution layer with forkchoiceUpdated(head=safe=finalized={_anchorExecutionHash})");
-        PayloadStatusV1 kick = await KickExecutionAsync(anchorRoot).WaitAsync(token);
-        if (_logger.IsInfo) _logger.Info($"Engine kick returned {kick.Status}{(kick.Status == PayloadStatus.Syncing ? " - execution layer is syncing toward the anchor" : "")}");
+        PayloadStatusV1? kick = await KickExecutionAsync(anchorRoot).WaitAsync(token);
+        if (_logger.IsInfo) _logger.Info(kick is null ? "Engine kick failed; the next head step sends it again" : $"Engine kick returned {kick.Status}{(kick.Status == PayloadStatus.Syncing ? " - execution layer is syncing toward the anchor" : "")}");
 
         // A run stopped during the kick must not start the work that follows it.
         token.ThrowIfCancellationRequested();
@@ -392,6 +392,7 @@ public sealed class BeaconSyncOrchestrator(
         _nextRotation = GossipTopics.NextRotation(spec, epoch);
 
         importer.OnSlotTick(slotClock.CurrentSlot);
+        statusHolder.EarliestAvailableSlotSource = EarliestAvailableSlot;
         statusHolder.CurrentStatus = new StatusMessageV2
         {
             ForkDigest = _currentDigest,
@@ -399,7 +400,6 @@ public sealed class BeaconSyncOrchestrator(
             FinalizedEpoch = spec.GetEpoch(_anchorSlot),
             HeadRoot = anchorRoot,
             HeadSlot = _anchorSlot,
-            EarliestAvailableSlot = EarliestAvailableSlot(),
         };
     }
 
@@ -409,7 +409,8 @@ public sealed class BeaconSyncOrchestrator(
     /// serve every block of the sidecar retention period but not every sidecar advertises the earliest slot from which it can
     /// serve all sidecars. So the held columns raise it only once the anchor is at or below the start of
     /// <c>data_column_serve_range</c>, and only when they start inside that range. The range ends at the current slot, so the
-    /// slot after it is servable even with no columns held.
+    /// slot after it is servable even with no columns held. The sidecar retention period is bounded by both the blob and
+    /// the column window, so while the blob window reaches before Fulu and the anchor covers it, the earliest servable slot is at least the fork slot.
     /// </remarks>
     private ulong EarliestAvailableSlot()
     {
@@ -425,7 +426,19 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         ulong columnsFrom = Math.Min(columnPool.EarliestCompletelyServableSlot, slotClock.CurrentSlot + 1);
-        return columnsFrom <= serveFrom ? _anchorSlot : columnsFrom;
+        return columnsFrom <= serveFrom ? BlobSidecarFloor() : columnsFrom;
+    }
+
+    /// <summary>
+    /// The anchor, or the Fulu fork slot when the anchor covers every block of the blob sidecar retention period and that period
+    /// reaches before Fulu: this node keeps no blob sidecars, so it cannot serve every sidecar of a pre-Fulu block in it.
+    /// </summary>
+    private ulong BlobSidecarFloor()
+    {
+        ulong epoch = slotClock.CurrentEpoch;
+        ulong blobWindowStart = (epoch >= DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests ? epoch - DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests : 0) * spec.SlotsPerEpoch;
+        ulong fuluSlot = spec.FuluForkEpoch * spec.SlotsPerEpoch;
+        return _anchorSlot <= blobWindowStart && blobWindowStart < fuluSlot ? fuluSlot : _anchorSlot;
     }
 
     /// <summary>
@@ -1666,8 +1679,8 @@ public sealed class BeaconSyncOrchestrator(
         if (_logger.IsDebug) _logger.Debug($"Head step: head {head.HeadRoot} at slot {head.HeadSlot}, sync tip slot {_syncTip.Slot}, justified epoch {head.Justified.Epoch}, finalized epoch {head.Finalized.Epoch}, wall slot {slotClock.CurrentSlot}");
         if (head.HeadExecutionHash is { } headExec)
         {
-            PayloadStatusV1 status = await ForkchoiceUpdatedAsync(head, headExec);
-            if (status.Status == PayloadStatus.Invalid)
+            PayloadStatusV1? status = await ForkchoiceUpdatedAsync(head, headExec);
+            if (status?.Status == PayloadStatus.Invalid)
             {
                 if (_logger.IsWarn) _logger.Warn($"Execution layer reported head {head.HeadRoot} INVALID (latest valid hash {status.LatestValidHash}); invalidating and re-running fork choice");
                 importer.OnInvalidExecutionPayload(head.HeadRoot, status.LatestValidHash);
@@ -1678,7 +1691,10 @@ public sealed class BeaconSyncOrchestrator(
                 }
             }
 
-            TrackExecutionSyncTransition(status);
+            if (status is not null)
+            {
+                TrackExecutionSyncTransition(status);
+            }
         }
 
         if (_lastHead is { } previous && head.Finalized.Epoch > previous.Finalized.Epoch)
@@ -1703,7 +1719,6 @@ public sealed class BeaconSyncOrchestrator(
                 FinalizedEpoch = head.Finalized.Epoch,
                 HeadRoot = head.HeadRoot,
                 HeadSlot = head.HeadSlot,
-                EarliestAvailableSlot = EarliestAvailableSlot(),
             },
             head.HeadPayloadFull ? head.HeadRoot : null);
 
@@ -1715,7 +1730,7 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Points the execution layer at the anchor payload through <see cref="ForkchoiceUpdatedAsync"/>, so the first head step does not repeat an unchanged state.</summary>
-    internal Task<PayloadStatusV1> KickExecutionAsync(Hash256 anchorRoot)
+    internal Task<PayloadStatusV1?> KickExecutionAsync(Hash256 anchorRoot)
     {
         CheckpointRef anchor = new(spec.GetEpoch(_anchorSlot), anchorRoot);
         return ForkchoiceUpdatedAsync(new HeadView(anchorRoot, _anchorSlot, _anchorExecutionHash, null, null, anchor, anchor), _anchorExecutionHash);
@@ -1725,8 +1740,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <remarks>
     /// The Engine API asks for the call when the fork choice state changes; an unchanged repeat each slot tells the EL nothing.
     /// It is still resent at that interval, as the EL treats a CL that sends neither this nor <c>newPayload</c> for a while as gone.
+    /// A failed call returns <c>null</c> and is not remembered, so the next head step sends it again.
     /// </remarks>
-    private async Task<PayloadStatusV1> ForkchoiceUpdatedAsync(HeadView head, Hash256 headExec)
+    private async Task<PayloadStatusV1?> ForkchoiceUpdatedAsync(HeadView head, Hash256 headExec)
     {
         ForkchoiceHashes sent = new(headExec, head.JustifiedExecutionHash ?? headExec, head.FinalizedExecutionHash ?? _anchorExecutionHash);
         long now = slotClock.UnixMilliseconds;
@@ -1736,7 +1752,17 @@ public sealed class BeaconSyncOrchestrator(
             return last.Status;
         }
 
-        PayloadStatusV1 status = await engine.ForkchoiceUpdated(sent.Head, sent.Safe, sent.Finalized);
+        PayloadStatusV1 status;
+        try
+        {
+            status = await engine.ForkchoiceUpdated(sent.Head, sent.Safe, sent.Finalized);
+        }
+        catch (EngineUnavailableException e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"forkchoiceUpdated returned no status; it is sent again on the next head step: {e.Message}");
+            return null;
+        }
+
         _lastForkchoice = (sent, now, status);
         return status;
     }

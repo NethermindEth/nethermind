@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
@@ -17,6 +18,7 @@ using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
@@ -107,6 +109,75 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(pastFulu ? fuluStart + 5 : anchorSlot));
     }
 
+    /// <summary>A Status sent between head steps must reflect columns evicted since the last one, or a peer is told a slot this node can no longer serve.</summary>
+    [Test]
+    public async Task Status_earliest_slot_is_computed_when_the_status_is_read()
+    {
+        DataColumnSidecarPool pool = new(1);
+        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, FuluAnchorSlot, FuluWallSlot);
+        AddColumn(pool, ServeRangeStart + 1);
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        AddColumn(pool, ServeRangeStart + 2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 2), "status read");
+            Assert.That(statusHolder.CurrentHead.Status.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 2), "status and head read together");
+        }
+    }
+
+    /// <summary>
+    /// fulu/p2p-interface.md Status v2: the sidecar retention period is bounded by MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS as well as the
+    /// column window. This node keeps no blob sidecars, so while the blob window reaches before Fulu and the node holds every block of
+    /// the period it advertises the fork slot; a node missing blocks of the period advertises its earliest block.
+    /// </summary>
+    [TestCase(3UL, 0L, true, TestName = "Blob window open just after Fulu, every block held")]
+    [TestCase(4095UL, 0L, true, TestName = "Blob window open on its last epoch, every block held")]
+    [TestCase(3UL, 1L, false, TestName = "Blob window open, first block of the period missing")]
+    [TestCase(4096UL, -40L, false, TestName = "Blob window closed")]
+    public async Task Status_earliest_slot_is_the_fork_slot_while_the_blob_window_reaches_before_fulu(ulong epochsPastFulu, long anchorOffsetFromWindowStart, bool expectFuluSlot)
+    {
+        ulong fuluStart = Spec.FuluForkEpoch * Spec.SlotsPerEpoch;
+        ulong blobWindowStart = (Spec.FuluForkEpoch + epochsPastFulu - DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests) * Spec.SlotsPerEpoch;
+        ulong anchorSlot = (ulong)((long)blobWindowStart + anchorOffsetFromWindowStart);
+        DataColumnSidecarPool pool = new();
+        AddColumn(pool, fuluStart);
+        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, anchorSlot, (Spec.FuluForkEpoch + epochsPastFulu) * Spec.SlotsPerEpoch + 5);
+
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(expectFuluSlot ? fuluStart : anchorSlot));
+    }
+
+    /// <summary>A genesis anchor early in the chain: the blob window then starts at slot 0, so it still reaches before a Fulu fork that is not at genesis.</summary>
+    [Test]
+    public async Task Status_earliest_slot_is_the_fork_slot_for_a_genesis_anchor_before_the_blob_window_has_a_start()
+    {
+        BeaconChainSpec spec = new()
+        {
+            SecondsPerSlot = 12,
+            SlotsPerEpoch = 32,
+            GenesisTime = Spec.GenesisTime,
+            GenesisValidatorsRoot = Hash256.Zero,
+            Forks = [new(Bytes.FromHexString("0x06000000"), 0)],
+            BlobSchedule = [],
+            ElectraForkEpoch = 0,
+            FuluForkEpoch = 2,
+            MaxBlobsPerBlockElectra = 9,
+            GloasForkEpoch = ulong.MaxValue,
+            GloasForkVersion = Bytes.FromHexString("0x07000000"),
+            Bootnodes = [],
+        };
+        DataColumnSidecarPool pool = new();
+        AddColumn(pool, 2 * spec.SlotsPerEpoch);
+        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, 0, 10 * spec.SlotsPerEpoch + 5, forkSpec: spec);
+
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(2 * spec.SlotsPerEpoch));
+    }
+
     /// <summary>fulu/p2p-interface.md Status v2: a by-range request from the advertised slot must not be refused, whether sent at startup or after a head step.</summary>
     [TestCase(new long[0], FuluHeadOffset, TestName = "The advertised slot is served by range with no columns held")]
     [TestCase(new long[] { 10 }, 5UL, TestName = "The advertised slot is served by range with the head below the first held column")]
@@ -156,23 +227,24 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 10), "the orchestrator must read the pool the column protocols serve from");
     }
 
-    private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset, bool headFull = false)
+    private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset, bool headFull = false, BeaconChainSpec? forkSpec = null)
     {
+        BeaconChainSpec spec = forkSpec ?? Spec;
         ManualTimestamper timestamper = new(WallTime(wallSlot));
-        SlotClock slotClock = new(Spec, timestamper);
+        SlotClock slotClock = new(spec, timestamper);
         StubPool peers = new([]);
         ScriptedImporter importer = ImporterWithHead(anchorSlot, headOffset, headFull);
-        BeaconChainStatusHolder statusHolder = new(Spec, timestamper);
+        BeaconChainStatusHolder statusHolder = new(spec, timestamper);
         BeaconSyncOrchestrator orchestrator = new(
             new BeaconChainConfig(),
-            Spec,
+            spec,
             new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
             new ScriptedFactory(importer),
             new ScriptedEngine(),
             peers,
-            new RangeSync(peers, LimboLogs.Instance, pool, Spec, RangeSyncTests.ClockAtGenesis(Spec)),
+            new RangeSync(peers, LimboLogs.Instance, pool, spec, RangeSyncTests.ClockAtGenesis(spec)),
             slotClock,
-            new GossipRouter(Spec, slotClock, LimboLogs.Instance),
+            new GossipRouter(spec, slotClock, LimboLogs.Instance),
             statusHolder,
             LimboLogs.Instance,
             columnPool: pool);
