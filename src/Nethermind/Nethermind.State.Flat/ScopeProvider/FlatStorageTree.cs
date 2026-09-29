@@ -113,7 +113,10 @@ public sealed class FlatStorageTree(
 
         ConcurrentQueue<(UInt256 Slot, UInt256 Value)> writes = Volatile.Read(ref _earlyWrites) ?? CreateEarlyWrites();
         writes.Enqueue((index, value));
-        if (Interlocked.Exchange(ref _earlyQueued, 1) == 0) _scope.EarlyApplier.Enqueue(this);
+        // The tree is usually still queued, and a plain read then skips the locked write. Enqueue reserves the write's
+        // slot with an interlocked operation, which orders it before this read, and a pass clears the flag with one
+        // before it reads the queue: if this still sees the flag set, the pass that clears it sees the write.
+        if (Volatile.Read(ref _earlyQueued) == 0 && Interlocked.Exchange(ref _earlyQueued, 1) == 0) _scope.EarlyApplier.Enqueue(this);
     }
 
     private ConcurrentQueue<(UInt256 Slot, UInt256 Value)> CreateEarlyWrites()
@@ -128,8 +131,8 @@ public sealed class FlatStorageTree(
     [SkipLocalsInit]
     internal void ApplyEarlyWrites()
     {
-        // Cleared first, so a hint that lands during this pass queues the tree again.
-        Volatile.Write(ref _earlyQueued, 0);
+        // Cleared first, and before the queue is read, so a hint that lands during this pass queues the tree again.
+        Interlocked.Exchange(ref _earlyQueued, 0);
         if (_scope.EarlyApplyClosed || _scope.EarlyApplyGeneration != _earlyGeneration
             || Interlocked.CompareExchange(ref _earlyState, EarlyApplying, EarlyIdle) != EarlyIdle) return;
 
