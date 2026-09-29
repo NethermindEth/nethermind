@@ -711,6 +711,193 @@ public class PeerBandTests
     }
 
     [Test]
+    public void Drops_for_silence_alone_never_ban_a_peer_that_answered_before()
+    {
+        // A slow peer is not a hostile one: banning it starves the pool while few peers are usable.
+        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 3);
+
+        for (int i = 0; i < 10; i++)
+        {
+            manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "repeated failures, last: request timed out", unresponsive: true);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.IsBannedForTest("peerA"), Is.False);
+            Assert.That(manager.GetPeerDiagnostics().Single(d => d.PeerId == "peerA").DisconnectCount, Is.EqualTo(10), "the drops stay in the diagnostics");
+        }
+    }
+
+    [Test]
+    public void A_drop_for_silence_does_not_excuse_the_violations_around_it()
+    {
+        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 3);
+
+        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "invalid response");
+        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "repeated failures, last: request timed out", unresponsive: true);
+        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "invalid response");
+        Assert.That(manager.IsBannedForTest("peerA"), Is.False, "two violations are below the threshold");
+
+        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "invalid response");
+        Assert.That(manager.IsBannedForTest("peerA"), Is.True, "three violations ban the peer however many timeouts sit between them");
+    }
+
+    [Test]
+    public void A_ban_ends_after_the_configured_time_and_the_peer_then_starts_from_a_clean_streak()
+    {
+        ManualTimestamper time = new();
+        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 3, time);
+        for (int i = 0; i < 3; i++)
+        {
+            manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "invalid response");
+        }
+
+        Assert.That(manager.IsBannedForTest("peerA"), Is.True, "test setup: three violations ban the peer");
+        time.Add(TimeSpan.FromMinutes(new BeaconChainConfig().PeerBanMinutes) - TimeSpan.FromSeconds(1));
+        Assert.That(manager.IsBannedForTest("peerA"), Is.True, "the ban holds until its time is up");
+
+        time.Add(TimeSpan.FromSeconds(1));
+        Assert.That(manager.GetPeerDiagnostics().Single(d => d.PeerId == "peerA").Banned, Is.False, "the diagnostics must not report a ban that has run out");
+        Assert.That(manager.IsBannedForTest("peerA"), Is.False, "the ban must end once its time is up");
+
+        manager.RecordDisconnect("peerA", 1, 1, GoodbyeReason.Fault, "invalid response");
+        Assert.That(manager.IsBannedForTest("peerA"), Is.False, "the old streak must not carry over: one violation after the ban is not three");
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_banned_static_peer_is_reconnected_once_its_ban_has_ended(CancellationToken token)
+    {
+        Node server = CreateNode();
+        Node client = CreateNode();
+        SetMatchingStatus(server, client);
+
+        await using (client.P2P)
+        await using (server.P2P)
+        {
+            await server.P2P.StartAsync(token);
+            await client.P2P.StartAsync(token);
+
+            string address = LoopbackAddress(server.P2P);
+            client.Config.StaticPeers = address;
+            ManualTimestamper time = new();
+            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, timestamper: time);
+            string peerId = PeerManager.ExtractPeerIdForTest(address);
+            for (int i = 0; i < client.Config.FaultDisconnectsBeforeBan; i++)
+            {
+                peerManager.RecordDisconnect(peerId, 0, 0, GoodbyeReason.Fault, "invalid response");
+            }
+
+            await peerManager.RunMaintenanceRoundAsync(token);
+            Assert.That(peerManager.PeerCount, Is.EqualTo(0), "test setup: the ban must hold before it ends");
+
+            time.Add(TimeSpan.FromMinutes(client.Config.PeerBanMinutes));
+            await peerManager.RunMaintenanceRoundAsync(token);
+
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "a peer whose ban has ended is admitted like any other");
+        }
+    }
+
+    [Test]
+    public void The_ban_table_stays_within_its_cap_when_every_entry_is_banned()
+    {
+        ManualTimestamper time = new();
+        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 1, time);
+
+        const int capacity = 8192;
+        for (int i = 0; i < capacity; i++)
+        {
+            manager.RecordDisconnect($"peer-{i}", 0, 0, GoodbyeReason.Fault, "invalid response");
+            time.Add(TimeSpan.FromMilliseconds(1));
+        }
+
+        manager.RecordDisconnect("peer-new", 0, 0, GoodbyeReason.Fault, "invalid response");
+
+        HashSet<string> remaining = [.. manager.GetPeerDiagnostics().Select(d => d.PeerId)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(remaining.Count, Is.EqualTo(capacity), "a table of active bans must not grow past the cap");
+            Assert.That(remaining.Contains("peer-0"), Is.False, "the ban closest to running out is the one that goes");
+            Assert.That(remaining.Contains("peer-new"), Is.True);
+        }
+    }
+
+    [Test]
+    public void A_fault_during_a_ban_does_not_extend_it()
+    {
+        ManualTimestamper time = new();
+        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 1, time);
+        TimeSpan banTime = TimeSpan.FromMinutes(new BeaconChainConfig().PeerBanMinutes);
+        manager.RecordDisconnect("peerA", 0, 0, GoodbyeReason.Fault, "invalid response");
+        time.Add(banTime / 2);
+
+        manager.RecordDisconnect("peerA", 0, 0, GoodbyeReason.Fault, "invalid response");
+        time.Add(banTime / 2);
+
+        Assert.That(manager.IsBannedForTest("peerA"), Is.False, "the ban ends when the first ban's time is up, a later fault must not restart it");
+    }
+
+    [TestCase(int.MinValue, false)]
+    [TestCase(-1, false)]
+    [TestCase(0, false)]
+    [TestCase(int.MaxValue, true)]
+    public void An_out_of_range_ban_duration_does_not_throw(int banMinutes, bool expectedBanned)
+    {
+        Node node = CreateNode();
+        node.Config.FaultDisconnectsBeforeBan = 1;
+        node.Config.PeerBanMinutes = banMinutes;
+        PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+
+        Assert.DoesNotThrow(() => manager.RecordDisconnect("peerA", 0, 0, GoodbyeReason.Fault, "invalid response"));
+        Assert.That(manager.IsBannedForTest("peerA"), Is.EqualTo(expectedBanned));
+    }
+
+    [Test]
+    public void A_full_table_evicts_the_oldest_entry_that_is_not_banned_before_any_active_ban()
+    {
+        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 2);
+        manager.RecordDisconnect("peer-0", 0, 0, GoodbyeReason.Fault, "invalid response");
+        manager.RecordDisconnect("peer-0", 0, 0, GoodbyeReason.Fault, "invalid response");
+        for (int i = 1; i < 8192; i++)
+        {
+            manager.RecordDisconnect($"peer-{i}", 0, 0, GoodbyeReason.Fault, "invalid response");
+        }
+
+        manager.RecordDisconnect("peer-new", 0, 0, GoodbyeReason.Fault, "invalid response");
+
+        HashSet<string> remaining = [.. manager.GetPeerDiagnostics().Select(d => d.PeerId)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.IsBannedForTest("peer-0"), Is.True, "a flood of new ids must not push an active ban out of the table");
+            Assert.That(remaining.Contains("peer-1"), Is.False, "the oldest entry that is not banned goes instead");
+            Assert.That(remaining.Count, Is.EqualTo(8192));
+        }
+    }
+
+    [Test]
+    public void A_full_table_treats_an_expired_ban_as_an_ordinary_entry()
+    {
+        ManualTimestamper time = new();
+        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 2, time);
+        manager.RecordDisconnect("peer-0", 0, 0, GoodbyeReason.Fault, "invalid response");
+        manager.RecordDisconnect("peer-0", 0, 0, GoodbyeReason.Fault, "invalid response");
+        time.Add(TimeSpan.FromMinutes(new BeaconChainConfig().PeerBanMinutes));
+        for (int i = 1; i < 8192; i++)
+        {
+            manager.RecordDisconnect($"peer-{i}", 0, 0, GoodbyeReason.Fault, "invalid response");
+        }
+
+        manager.RecordDisconnect("peer-new", 0, 0, GoodbyeReason.Fault, "invalid response");
+
+        HashSet<string> remaining = [.. manager.GetPeerDiagnostics().Select(d => d.PeerId)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(remaining.Contains("peer-0"), Is.False, "a ban that has run out protects nothing, and this entry is the oldest");
+            Assert.That(remaining.Contains("peer-1"), Is.True);
+        }
+    }
+
+    [Test]
     public void The_ban_diagnostics_table_evicts_the_oldest_non_banned_entry_once_over_capacity()
     {
         // A real (deterministic) bound, not "some arbitrary entry from undefined dictionary order":
@@ -742,11 +929,11 @@ public class PeerBandTests
     private static long FailureCount(string reason) =>
         Metrics.BeaconChainPeerFailuresByReason.TryGetValue(new StringLabel(reason), out long count) ? count : 0;
 
-    private static PeerManager NewManagerWithoutSessions(int faultDisconnectsBeforeBan)
+    private static PeerManager NewManagerWithoutSessions(int faultDisconnectsBeforeBan, ITimestamper? timestamper = null)
     {
         Node node = CreateNode();
         node.Config.FaultDisconnectsBeforeBan = faultDisconnectsBeforeBan;
-        return new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+        return new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: timestamper);
     }
 
     internal static void SetMatchingStatus(params Node[] nodes)
