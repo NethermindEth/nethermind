@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public bool ShouldUseTxTrace(ParityTraceAction? tx)
         {
-            if (tx is not null && !IsExhausted && MatchAddresses(tx.From, tx.Type == "reward" ? tx.Author : tx.To))
+            if (tx is not null && !IsExhausted && MatchAddresses(tx.From, GetRecipient(tx)))
             {
                 if (_after > 0)
                 {
@@ -58,6 +58,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             return false;
         }
+
+        /// <summary>
+        /// The recipient side a record reports: a reward's author, and a creation's address from its result, which a
+        /// failed creation does not report even though its action carries the address it would have created.
+        /// </summary>
+        private static Address? GetRecipient(ParityTraceAction action) => action.Type switch
+        {
+            "reward" => action.Author,
+            "create" => action.Result?.Address,
+            _ => action.To,
+        };
 
         private bool MatchAddresses(Address? fromAddress, Address? toAddress)
         {

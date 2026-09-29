@@ -323,20 +323,27 @@ public class TraceStoreRpcModuleTests
     private static readonly string StoreAToC = $"{TestItem.AddressA} -> {TestItem.AddressC}";
     private static readonly string StoreRewardToC = $"reward -> {TestItem.AddressC}";
 
-    // Stores A -> B, B -> B, A -> C and a reward to C at the latest block, then filters them with the given fields.
-    private static async Task<string[]> FilterStore(bool streaming, string fields)
+    private static ParityTraceAction Call(Address from, Address to) => new() { Type = "call", CallType = "call", From = from, To = to };
+
+    // A -> B, B -> B, A -> C and a reward to C.
+    private static readonly ParityTraceAction[] StoreActions =
+    [
+        Call(TestItem.AddressA, TestItem.AddressB), Call(TestItem.AddressB, TestItem.AddressB), Call(TestItem.AddressA, TestItem.AddressC),
+        new() { Type = "reward", Author = TestItem.AddressC, RewardType = "block" },
+    ];
+
+    // Stores the actions (by default StoreActions) at the latest block, then filters them with the given fields.
+    private static async Task<string[]> FilterStore(bool streaming, string fields, ParityTraceAction[]? actions = null)
     {
         TestContext test = new(streaming: streaming);
         Hash256 block = test.DbTrace.BlockHash!;
-        ParityLikeTxTrace Call(Address from, Address to) => new()
-        {
-            BlockHash = block,
-            TransactionHash = test.DbTrace.TransactionHash,
-            Action = new ParityTraceAction { Type = "call", CallType = "call", From = from, To = to }
-        };
-        ParityLikeTxTrace reward = new() { BlockHash = block, Action = new ParityTraceAction { Type = "reward", Author = TestItem.AddressC, RewardType = "block" } };
         test.Store.Set(block, new ParityLikeTraceSerializer(LimboLogs.Instance).Serialize(
-            new[] { Call(TestItem.AddressA, TestItem.AddressB), Call(TestItem.AddressB, TestItem.AddressB), Call(TestItem.AddressA, TestItem.AddressC), reward }));
+            [.. (actions ?? StoreActions).Select(action => new ParityLikeTxTrace
+            {
+                BlockHash = block,
+                TransactionHash = action.Type == "reward" ? null : test.DbTrace.TransactionHash,
+                Action = action
+            })]));
 
         // Read as the RPC server reads it, so an omitted or null mode takes the default.
         TraceFilterForRpc filter = JsonSerializer.Deserialize<TraceFilterForRpc>(
@@ -346,7 +353,29 @@ public class TraceStoreRpcModuleTests
 
         // Written as the RPC server writes it, so the streaming case runs the streamed filter, not the buffered one.
         JToken result = JToken.Parse(Encoding.UTF8.GetString(await Serialize(response)))["result"]!;
-        return [.. result.Select(static trace => $"{trace["action"]!["from"] ?? "reward"} -> {trace["action"]!["to"] ?? trace["action"]!["author"]}")];
+        return [.. result.Select(static trace => $"{trace["action"]!["from"] ?? "reward"} -> {trace["action"]!["to"] ?? trace["action"]!["author"] ?? trace["result"]?["address"]}")];
+    }
+
+    [Test]
+    public async Task trace_filter_from_store_matches_creation_only_by_the_address_its_result_reports(
+        [Values("\"intersection\"", "\"union\"")] string mode,
+        [Values] bool streaming)
+    {
+        // A creation by A of B that succeeded, reverted or halted: a failed one still carries B as its action's To.
+        ParityTraceAction[] creations =
+        [
+            new() { Type = "create", CallType = "create", CreationMethod = "create", From = TestItem.AddressA, To = TestItem.AddressB, Result = new() { Address = TestItem.AddressB } },
+            new() { Type = "create", CallType = "create", CreationMethod = "create", From = TestItem.AddressA, To = TestItem.AddressB, Result = new() { GasUsed = 0x12 }, Error = "Reverted" },
+            new() { Type = "create", CallType = "create", CreationMethod = "create", From = TestItem.AddressA, To = TestItem.AddressB, Result = null, Error = "Out of gas" },
+        ];
+        string created = $"{TestItem.AddressA} -> {TestItem.AddressB}";
+        string failed = $"{TestItem.AddressA} -> ";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await FilterStore(streaming, $",\"toAddress\":[\"{TestItem.AddressB}\"],\"mode\":{mode}", creations), Is.EqualTo(new[] { created }));
+            Assert.That(await FilterStore(streaming, $",\"fromAddress\":[\"{TestItem.AddressA}\"],\"toAddress\":[\"{TestItem.AddressB}\"],\"mode\":{mode}", creations),
+                Is.EqualTo(mode == "\"union\"" ? new[] { created, failed, failed } : new[] { created }));
+        }
     }
 
     [Test]
