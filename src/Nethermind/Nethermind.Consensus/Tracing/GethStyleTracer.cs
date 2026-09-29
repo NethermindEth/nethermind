@@ -381,6 +381,7 @@ public class GethStyleTracer(
             { Tracer: GethLikeBlockMuxTracer.TracerName } => new GethLikeBlockMuxTracer(options,
                 child => CreateOptionsTracer(block, child, worldState, specProvider, isTraceCall)),
             { Tracer: GethLikeBlockFlatCallTracer.TracerName } => new GethLikeBlockFlatCallTracer(options, specProvider.GetSpec(block), isTraceCall),
+            { Tracer: GethLikeBlockErc7562Tracer.TracerName } => new GethLikeBlockErc7562Tracer(options, worldState, specProvider),
             _ when RequiresLogIndices(options) => new GethLikeBlockCallTracer(options.TxHash, (b, tx) => new NativeCallTracer(tx, specProvider.GetSpec(b.Header), options)),
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, worldState, specProvider.GetSpec(b.Header))),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
@@ -441,7 +442,7 @@ public class GethStyleTracer(
                 if (RequiresLogIndices(options with { Tracer = name, TracerConfig = childConfig })) return true;
             return false;
         }
-        if (options.Tracer != NativeCallTracer.CallTracer || options.TracerConfig is not { ValueKind: JsonValueKind.Object } config)
+        if (options.Tracer is not (NativeCallTracer.CallTracer or GethLikeBlockErc7562Tracer.TracerName) || options.TracerConfig is not { ValueKind: JsonValueKind.Object } config)
             return false;
 
         bool withLog = false;
@@ -455,7 +456,7 @@ public class GethStyleTracer(
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>
     private static bool IsJavaScriptTracer(GethTraceOptions options) =>
-        options.Tracer is { Length: > 0 } tracer && !GethLikeNativeTracerFactory.IsNativeTracer(tracer);
+        options.Tracer is { Length: > 0 } tracer && tracer != GethLikeBlockErc7562Tracer.TracerName && !GethLikeNativeTracerFactory.IsNativeTracer(tracer);
 
     private BlockHeader? FindParent(Block block)
     {
