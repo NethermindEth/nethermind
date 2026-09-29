@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.RateLimiting;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -18,7 +19,8 @@ namespace Nethermind.BeaconChain.Api;
 /// Each such request holds a whole persisted state in memory, so an unbounded number of them is a
 /// memory exhaustion vector for a node that serves checkpoint sync. Saturation is refused at once,
 /// never queued: 503 when the node is busy, 429 when one client already has such a request in flight
-/// or exceeds its download rate, so one slow reader cannot hold every permit. The
+/// or exceeds its download rate, and a response still unfinished after the configured deadline is
+/// aborted, so one slow reader cannot hold every permit. The
 /// beacon-APIs v5.0.0-alpha.2 state routes list neither status; 503 carries the spec's
 /// <c>ErrorMessage</c> shape as its <c>CurrentlySyncing</c> response does.
 /// </remarks>
@@ -27,7 +29,12 @@ internal sealed class StateRequestLimiter : IDisposable
     private static readonly PathString StatesPrefix = new("/eth/v1/beacon/states");
     private static readonly PathString DebugStatesPrefix = new("/eth/v2/debug/beacon/states");
 
+    /// <summary>The longest deadline <see cref="CancellationTokenSource.CancelAfter(TimeSpan)"/> accepts, in whole seconds.</summary>
+    internal const int MaxResponseTimeoutSeconds = 4294967;
+
     private readonly int _maxConcurrent;
+    private readonly int _maxPerClient;
+    private readonly TimeSpan _responseTimeout;
     private readonly ConcurrencyLimiter _inFlight;
     private readonly PartitionedRateLimiter<HttpContext> _inFlightPerClient;
     private readonly PartitionedRateLimiter<HttpContext>? _downloadsPerClient;
@@ -38,11 +45,17 @@ internal sealed class StateRequestLimiter : IDisposable
         ArgumentOutOfRangeException.ThrowIfLessThan(config.MaxConcurrentStateRequests, 1, nameof(IBeaconApiConfig.MaxConcurrentStateRequests));
         ArgumentOutOfRangeException.ThrowIfNegative(config.StateDownloadsPerMinutePerClient, nameof(IBeaconApiConfig.StateDownloadsPerMinutePerClient));
 
+        ArgumentOutOfRangeException.ThrowIfLessThan(config.MaxConcurrentStateRequestsPerClient, 1, nameof(IBeaconApiConfig.MaxConcurrentStateRequestsPerClient));
+        ArgumentOutOfRangeException.ThrowIfLessThan(config.StateResponseTimeoutSeconds, 1, nameof(IBeaconApiConfig.StateResponseTimeoutSeconds));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(config.StateResponseTimeoutSeconds, MaxResponseTimeoutSeconds, nameof(IBeaconApiConfig.StateResponseTimeoutSeconds));
+
         _maxConcurrent = config.MaxConcurrentStateRequests;
+        _responseTimeout = TimeSpan.FromSeconds(config.StateResponseTimeoutSeconds);
+        int perClient = _maxPerClient = config.MaxConcurrentStateRequestsPerClient;
         _inFlight = new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = _maxConcurrent, QueueLimit = 0 });
         _inFlightPerClient = PartitionedRateLimiter.Create<HttpContext, UInt128>(c => RateLimitPartition.GetConcurrencyLimiter(
             ClientKey(c.Connection.RemoteIpAddress),
-            _ => new ConcurrencyLimiterOptions { PermitLimit = 1, QueueLimit = 0 }));
+            _ => new ConcurrencyLimiterOptions { PermitLimit = perClient, QueueLimit = 0 }));
 
         int perMinute = config.StateDownloadsPerMinutePerClient;
         if (perMinute > 0)
@@ -83,7 +96,7 @@ internal sealed class StateRequestLimiter : IDisposable
         if (!ownLease.IsAcquired)
         {
             await ApiErrors.Write(c, StatusCodes.Status429TooManyRequests,
-                "This client already has a beacon state request in flight; retry once it completes.", c.RequestAborted);
+                $"This client already has {_maxPerClient} beacon state {(_maxPerClient == 1 ? "request" : "requests")} in flight; retry once one completes.", c.RequestAborted);
             return;
         }
 
@@ -102,7 +115,20 @@ internal sealed class StateRequestLimiter : IDisposable
             }
         }
 
-        await next(c);
+        CancellationToken clientAborted = c.RequestAborted;
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(clientAborted);
+        deadline.CancelAfter(_responseTimeout);
+        // Endpoints observe RequestAborted, and Abort fails a write blocked on a reader that stopped reading.
+        c.RequestAborted = deadline.Token;
+        using CancellationTokenRegistration abort = deadline.Token.Register(static state => ((HttpContext)state!).Abort(), c);
+        try
+        {
+            await next(c);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !clientAborted.IsCancellationRequested)
+        {
+            // The deadline passed and the response was aborted; the permits are released as this method returns.
+        }
     }
 
     /// <summary>Whether a route under <c>/eth/v1/beacon/states</c> is <c>/{state_id}/root</c>, which reads the block's <c>state_root</c> rather than the state.</summary>
