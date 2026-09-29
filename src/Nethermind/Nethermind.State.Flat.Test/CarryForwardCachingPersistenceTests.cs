@@ -339,7 +339,8 @@ public class CarryForwardCachingPersistenceTests
     public async Task Reader_Dispose_WhenTheInnerReaderThrows_StillReleasesTheSlotTable()
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
         IPersistence.IPersistenceReader reader = cache.CreateReader();
         await cache.DisposeAsync();
         inner.ThrowOnReaderDispose = true;
@@ -353,7 +354,8 @@ public class CarryForwardCachingPersistenceTests
     {
         const int slots = 131072;
         FakePersistence inner = new();
-        await using CarryForwardCachingPersistence cache = new(inner);
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
         using IPersistence.IPersistenceReader reader = cache.CreateReader();
         UInt256 value = default;
 
@@ -370,7 +372,8 @@ public class CarryForwardCachingPersistenceTests
     public async Task TryGetSlot_WhileTheCacheLockIsHeld_ReadsWithoutWaitingOrCaching()
     {
         FakePersistence inner = new();
-        await using CarryForwardCachingPersistence cache = new(inner);
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
         using IPersistence.IPersistenceReader reader = cache.CreateReader();
         UInt256 value = default;
         bool completed;
@@ -413,7 +416,8 @@ public class CarryForwardCachingPersistenceTests
     public async Task DisposeAsync_FreesTheSlotTableOnceTheLastReaderIsDisposed()
     {
         FakePersistence inner = new();
-        CarryForwardCachingPersistence cache = new(inner);
+        await using IContainer container = CreateCacheContainer();
+        CarryForwardCachingPersistence cache = ResolveCache(container, inner);
         IPersistence.IPersistenceReader reader = cache.CreateReader();
         UInt256 value = default;
         reader.TryGetSlot(Address, 1, ref value);
