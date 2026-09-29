@@ -183,7 +183,7 @@ public class FrameTxBlockReceiptsTests
     [Test]
     public void Execute_PostTxReverts_FailedReceiptKeepsThePrefixLogs()
     {
-        (IDisposable scope, EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec) = PostTxRevertingFrameTx();
+        (IDisposable scope, EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec) = LoggingFrameTx();
         using IDisposable _ = scope;
 
         BlockReceiptsTracer receiptsTracer = new();
@@ -211,9 +211,45 @@ public class FrameTxBlockReceiptsTests
     [Test]
     public void Execute_PostTxReverts_CallTracerLogIndexCountsThePrefixLogs()
     {
-        (IDisposable scope, EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec) = PostTxRevertingFrameTx();
+        (IDisposable scope, EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec) = LoggingFrameTx();
         using IDisposable _ = scope;
         BlockLogIndex logIndex = new();
+
+        (TxReceipt receipt, GethLikeTxTrace trace) = TraceWithLog(processor, tx, block, spec, logIndex);
+        using GethLikeTxTrace __ = trace;
+
+        Assert.That(logIndex.Next, Is.EqualTo(receipt.Logs!.Length));
+    }
+
+    // An unrolled atomic batch keeps its frames' success status but drops their logs, so a frame after
+    // the batch must number its logs as the receipt does.
+    [Test]
+    public void Execute_AtomicBatchUnrolls_CallTracerLogIndexSkipsTheUnrolledLogs()
+    {
+        (IDisposable scope, EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec) = LoggingFrameTx(
+        [
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, null, 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Payer, 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, FrameFlags.AtomicBatch, Observer, 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Asserter, 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
+        ]);
+        using IDisposable _ = scope;
+
+        (TxReceipt receipt, GethLikeTxTrace trace) = TraceWithLog(processor, tx, block, spec, new BlockLogIndex());
+        using GethLikeTxTrace __ = trace;
+
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.FrameReceipts![2].Logs, Is.Empty, "the unrolled frame's log goes with its state");
+            Assert.That(root.Calls[2].Logs, Is.Null);
+            Assert.That(root.Calls[4].Logs!.Single().Index, Is.EqualTo(0UL));
+        }
+    }
+
+    private static (TxReceipt Receipt, GethLikeTxTrace Trace) TraceWithLog(EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec, BlockLogIndex logIndex)
+    {
         GethTraceOptions options = GethTraceOptions.Default with
         {
             Tracer = NativeCallTracer.CallTracer,
@@ -229,12 +265,11 @@ public class FrameTxBlockReceiptsTests
         processor.Execute(tx, new BlockExecutionContext(block.Header, spec), receiptsTracer);
         receiptsTracer.EndTxTrace();
         receiptsTracer.EndBlockTrace();
-        using GethLikeTxTrace trace = callTracer.BuildResult().Single();
 
-        Assert.That(logIndex.Next, Is.EqualTo(receiptsTracer.TxReceipts[0].Logs!.Length));
+        return (receiptsTracer.TxReceipts[0], callTracer.BuildResult().Single());
     }
 
-    private static (IDisposable Scope, EthereumTransactionProcessor Processor, Transaction Tx, Block Block, IReleaseSpec Spec) PostTxRevertingFrameTx()
+    private static (IDisposable Scope, EthereumTransactionProcessor Processor, Transaction Tx, Block Block, IReleaseSpec Spec) LoggingFrameTx(TxFrame[]? frames = null)
     {
         ISpecProvider specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true });
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
@@ -257,7 +292,7 @@ public class FrameTxBlockReceiptsTests
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = Sender,
-            Frames =
+            Frames = frames ??
             [
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, null, 200_000, UInt256.Zero, default),
                 new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),

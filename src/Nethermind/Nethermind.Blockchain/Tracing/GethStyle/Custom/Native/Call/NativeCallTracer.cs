@@ -60,6 +60,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private NativeCallTracerCallFrame?[]? _frameRoots;
     private EvmExceptionType?[]? _frameErrors;
     private TxFrameReceipt[]? _frameReceipts;
+    private ulong?[]? _logIndexAfterFrame;
     private int _rootsClaimed;
 
     public NativeCallTracer(
@@ -310,11 +311,43 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _frameErrors ??= new EvmExceptionType?[_frames.Length];
         _frameErrors[frameIndex] = error;
 
+        if (_config.WithLog)
+        {
+            _logIndexAfterFrame ??= new ulong?[_frames.Length];
+            _logIndexAfterFrame[frameIndex] = _logIndex;
+        }
+
         // Only a frame that entered the VM pushed a root, and it pushed exactly one.
         if (_callStack.Count > _rootsClaimed)
         {
             _frameRoots[frameIndex] = _callStack[_rootsClaimed++];
         }
+    }
+
+    /// <inheritdoc/>
+    public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex)
+    {
+        if (_logIndexAfterFrame is null) return;
+
+        // The rolled-back frames keep their success status but lose their logs, so the frames after them
+        // number from where the rollback started.
+        _logIndex = LogIndexBeforeFrame(fromFrameIndex);
+        for (int i = fromFrameIndex; i <= toFrameIndex && i < _logIndexAfterFrame.Length; i++)
+        {
+            _logIndexAfterFrame[i] = _logIndex;
+        }
+    }
+
+    /// <summary>The log index left by the last frame before <paramref name="frameIndex"/> that ran; skipped frames
+    /// report no end.</summary>
+    private ulong LogIndexBeforeFrame(int frameIndex)
+    {
+        for (int i = Math.Min(frameIndex, _logIndexAfterFrame!.Length) - 1; i >= 0; i--)
+        {
+            if (_logIndexAfterFrame[i] is ulong logIndex) return logIndex;
+        }
+
+        return _logIndexStart;
     }
 
     /// <summary>Roots an EIP-8141 frame transaction's trace in one synthetic transaction frame whose

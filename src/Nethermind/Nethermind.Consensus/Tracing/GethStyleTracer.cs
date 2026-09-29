@@ -28,6 +28,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
@@ -289,7 +290,8 @@ public class GethStyleTracer(
     /// <summary>A supplied body has no receipts of its own, so its callTracer log indexes can only come from tracing
     /// the transactions before the requested one.</summary>
     private static bool TracesPrecedingForLogIndex(GethTraceOptions options, bool allowIndexed) =>
-        !allowIndexed && options.Tracer == NativeCallTracer.CallTracer;
+        !allowIndexed && options.Tracer == NativeCallTracer.CallTracer
+        && options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions)?.WithLog == true;
 
     private static List<GethLikeTxTrace> KeepTrace(IReadOnlyCollection<GethLikeTxTrace> traces, Hash256 txHash)
     {
