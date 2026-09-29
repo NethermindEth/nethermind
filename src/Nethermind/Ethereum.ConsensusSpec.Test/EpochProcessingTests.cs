@@ -140,6 +140,8 @@ public class EpochProcessingTests
 
         TState state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
         EpochCache cache = driver.NewCache();
+        // Primes the incremental hasher so the post-state root is taken as a diff against the pre-state, as in production.
+        driver.CachedRoot(state, cache);
 
         // Most epoch_processing vectors are unconditional (no invalid-input case: a sub-transition
         // is a mechanical fold over existing state, not a signature or bounds check on attacker
@@ -160,7 +162,7 @@ public class EpochProcessingTests
             if (thrown is not null)
                 Assert.Fail($"expected the sub-transition to succeed, but it threw: {thrown}");
 
-            FuluDriverSupport.AssertPostStateRoot(driver, postPath, state);
+            FuluDriverSupport.AssertPostStateRoot(driver, postPath, state, cache);
         }
         else
         {

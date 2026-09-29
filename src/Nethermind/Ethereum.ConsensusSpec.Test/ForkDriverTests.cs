@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
@@ -221,6 +222,44 @@ public class ForkDriverTests
 
     /// <summary>Null lists and fixed-size fields merkleize as zero, but the generated merkleizer rejects a null variable-size container.</summary>
     private static BeaconStateElectra MerkleizableElectra() => new() { LatestExecutionPayloadHeader = new ExecutionPayloadHeader() };
+
+    /// <summary>A vector whose incremental hasher misses a change would still pass on the full root alone, so the differential must fail it.</summary>
+    [Test]
+    public void The_differential_hasher_fails_when_the_incremental_root_misses_an_in_place_change()
+    {
+        ulong[] balances = [.. Enumerable.Repeat(32 * Gwei, 8)];
+        BeaconStateFulu state = WorkingStateAtEndOfEpochZero(effectiveBalances: [.. balances], balances, exitEpoch: Presets.FarFutureEpoch);
+        DifferentialBeaconStateHasher hasher = new(new FirstRootHasher(), new FullBeaconStateHasher());
+        Hash256 first = hasher.HashTreeRoot(state);
+
+        state.Balances![3] += Gwei;
+
+        Assert.That(new FullBeaconStateHasher().HashTreeRoot(state), Is.Not.EqualTo(first), "fixture bug: the change must move the root");
+        Assert.That(() => hasher.HashTreeRoot(state), Throws.TypeOf<HasherDivergenceException>());
+    }
+
+    [Test]
+    public void The_differential_hasher_returns_the_full_root_when_the_cached_hasher_follows_in_place_changes()
+    {
+        ulong[] balances = [.. Enumerable.Repeat(32 * Gwei, 8)];
+        BeaconStateFulu state = WorkingStateAtEndOfEpochZero(effectiveBalances: [.. balances], balances, exitEpoch: Presets.FarFutureEpoch);
+        DifferentialBeaconStateHasher hasher = new();
+        Hash256 before = hasher.HashTreeRoot(state);
+
+        state.Balances![3] += Gwei;
+        state.Slot++;
+
+        Hash256 after = hasher.HashTreeRoot(state);
+        Assert.That(after, Is.Not.EqualTo(before));
+        Assert.That(after, Is.EqualTo(new FullBeaconStateHasher().HashTreeRoot(state)));
+    }
+
+    private sealed class FirstRootHasher : IBeaconStateHasher
+    {
+        private Hash256? _first;
+
+        public Hash256 HashTreeRoot(BeaconStateFulu state) => _first ??= new FullBeaconStateHasher().HashTreeRoot(state);
+    }
 
     /// <summary>
     /// No pinned sync or fork_choice vector answers INVALID_BLOCK_HASH or ACCEPTED, so only this pins how an on_payload_info

@@ -111,11 +111,15 @@ public static class FuluDriverSupport
     /// <summary>
     /// Fails the vector unless the working state's root, taken in the fork's own shape, equals the
     /// expected post-state's; on mismatch names the diverging fields so the failure is debuggable.
+    /// The root is also taken through <paramref name="cache"/>'s hasher, which must agree.
     /// </summary>
-    public static void AssertPostStateRoot<TState>(ForkDriver<TState> driver, string postPath, TState actual) where TState : class
+    public static void AssertPostStateRoot<TState>(ForkDriver<TState> driver, string postPath, TState actual, EpochCache cache) where TState : class
     {
         (object expectedPost, Hash256 expectedRoot) = driver.DecodePost(postPath);
         Hash256 actualRoot = driver.StateRoot(actual);
+        Hash256 cachedRoot = driver.CachedRoot(actual, cache);
+        if (cachedRoot != actualRoot)
+            Assert.Fail($"the cache's hasher root {cachedRoot} differs from the full state root {actualRoot}");
         if (expectedRoot == actualRoot)
             return;
 
