@@ -22,8 +22,8 @@ namespace Nethermind.Evm.Test;
 /// <see cref="VmState{TGasPolicy}"/> instances that were rented and never returned.
 /// </summary>
 /// <remarks>
-/// The recycled cases cover instances reused from the pool, which a per-object check disabled on first
-/// dispose (such as <see cref="GC.SuppressFinalize"/>) would hide.
+/// The recycled cases cover instances reused from the pool, whose tracking must be re-armed on every rent
+/// rather than only on first use.
 /// </remarks>
 [NonParallelizable]
 public class PooledObjectLeakDetectionTests
