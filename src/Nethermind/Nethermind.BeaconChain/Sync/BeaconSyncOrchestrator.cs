@@ -5,6 +5,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -448,9 +450,10 @@ public sealed class BeaconSyncOrchestrator(
     /// <remarks>
     /// Blocks are imported with signature verification off: they were fully verified before being
     /// persisted. Parent linkage is still checked so a stale index tail (e.g. entries past an
-    /// unfinalized reorg point) stops the replay and leaves the rest to range sync. Envelopes are not
-    /// persisted, so a stored Gloas block that builds on its parent's full payload stands in for that
-    /// parent's verified envelope (see <see cref="IBlockImporter.Import"/>).
+    /// unfinalized reorg point) stops the replay and leaves the rest to range sync. The anchor's and every stored Gloas block's
+    /// verified envelope is imported right after its block, so its full children need no fetch; without one,
+    /// a stored Gloas block that builds on its parent's full payload stands in for that parent's verified
+    /// envelope (see <see cref="IBlockImporter.Import"/>).
     /// </remarks>
     internal async Task ReplayStoredBlocksAsync(CancellationToken token)
     {
@@ -458,6 +461,12 @@ public sealed class BeaconSyncOrchestrator(
         Hash256 expectedParent = _syncTip.Root;
         int replayed = 0;
         ulong wallSlot = slotClock.CurrentSlot;
+        // Fork choice starts with no payloads (gloas/fork-choice.md get_forkchoice_store), so the anchor's stored envelope is imported first.
+        if (TryReadStoredEnvelope(expectedParent, out SignedExecutionPayloadEnvelope? anchorEnvelope))
+        {
+            await ImportEnvelopeAsync(anchorEnvelope, token);
+        }
+
         for (ulong slot = _syncTip.Slot + 1; slot <= wallSlot; slot++)
         {
             token.ThrowIfCancellationRequested();
@@ -471,6 +480,11 @@ public sealed class BeaconSyncOrchestrator(
                 break;
             }
 
+            if (block is ForkedSignedBeaconBlock.OfGloas && TryReadStoredEnvelope(root, out SignedExecutionPayloadEnvelope? envelope))
+            {
+                await ImportEnvelopeAsync(envelope, token);
+            }
+
             expectedParent = root;
             _syncTip = new Tip(root, slot);
             replayed++;
@@ -480,6 +494,21 @@ public sealed class BeaconSyncOrchestrator(
         {
             if (_logger.IsInfo) _logger.Info($"Replayed {replayed} canonical beacon blocks from the store up to slot {_syncTip.Slot}");
             await RunHeadStepAsync(token);
+        }
+    }
+
+    /// <summary>Reads the stored envelope of <paramref name="root"/>; an unreadable record is logged and treated as absent, so it cannot stop the restart.</summary>
+    private bool TryReadStoredEnvelope(Hash256 root, [NotNullWhen(true)] out SignedExecutionPayloadEnvelope? envelope)
+    {
+        try
+        {
+            return store.TryGetExecutionPayloadEnvelope(root, out envelope);
+        }
+        catch (InvalidDataException e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Stored execution payload envelope {root} is unreadable and is not replayed: {e.Message}");
+            envelope = null;
+            return false;
         }
     }
 
@@ -790,6 +819,7 @@ public sealed class BeaconSyncOrchestrator(
         {
             if (!QueuePendingRetry(root, block))
             {
+                ReleaseImporterDeferral(root);
                 DropPendingChildren(root);
                 // The refused block's own fetch feeds back one import attempt; that attempt never fetches again, so the set stays the only place a block waits.
                 if (result == BlockImportResult.DataUnavailable && !retryingOnColumns)
@@ -989,6 +1019,9 @@ public sealed class BeaconSyncOrchestrator(
         return true;
     }
 
+    /// <summary>Has the importer forget the deferral it kept for <paramref name="root"/>, a block the orchestrator dropped, instead of holding it until finality.</summary>
+    private void ReleaseImporterDeferral(Hash256 root) => (_importer as BlockImporter)?.Release(root);
+
     /// <summary>Ends the held range chain of the deferred block <paramref name="root"/> once it leaves the retry set, so a round starts from the sync tip again.</summary>
     private void ReleaseRangeHeld(Hash256 root)
     {
@@ -1021,6 +1054,7 @@ public sealed class BeaconSyncOrchestrator(
             {
                 Hash256 childRoot = child.ComputeMessageRoot();
                 _heldForPayload.Remove(childRoot);
+                ReleaseImporterDeferral(childRoot);
                 dropped.Push(childRoot);
             }
         }
@@ -1049,6 +1083,7 @@ public sealed class BeaconSyncOrchestrator(
             if (retry.Block.Slot <= finalizedSlot || IsRetryExpired(retry.QueuedAtSlot, currentSlot))
             {
                 _pendingRetry.Remove(root);
+                ReleaseImporterDeferral(root);
                 ReleaseRangeHeld(root);
                 _columnFetchRotations.Remove(root);
                 ReleaseColumnWatch(root);
