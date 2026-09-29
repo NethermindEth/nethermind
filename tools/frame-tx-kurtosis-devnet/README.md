@@ -1,60 +1,65 @@
 # frame-tx-kurtosis-devnet
 
-Local Kurtosis devnet for the EIP-8141 `MAX_VERIFY_GAS` campaign. It runs the campaign's attack
-shapes against real nodes: gossip, mempool admission, block production and import, with a
-consensus client driving slots.
+A local two-client devnet for the EIP-8141 `MAX_VERIFY_GAS` campaign. One Nethermind and one
+ethrex node, each with a Lighthouse beacon node, run the fork schedule of the public
+frames-devnet-0: Amsterdam from genesis, frame transactions from `bogotaTime`. A traffic
+generator sends honest frame transactions and one attack shape, then the runner checks what
+each client did.
 
-It measures **behaviour** (does an honest frame transaction still land under attack, what do
-the clients' own metrics show). It does not produce `R_max`: the campaign takes capacity from
-the single-core in-process harnesses on the `reproducible-benchmarks` runner.
+## What a run shows, and what it does not
 
-## Status
+A passing run shows, for each client and at the ceiling built into its image:
 
-| Item | State |
-|---|---|
-| Profile | soispoke v2 (`position-notes-v2`, `6dedda19`): 235,800 declared |
-| Ceilings | 100,000 · 235,800 · 250,000 · 300,000 · 400,000 · 500,000 |
-| Topology | Two Nethermind nodes, each with Lighthouse. ethrex is excluded, see [Limitations](#limitations) |
-| Results before 2026-09-19 | Withdrawn, see [CORRECTIONS.md](CORRECTIONS.md) |
-| v1 results (322,800) | Historical, in CORRECTIONS.md. No v2 devnet results yet |
+- EIP-8141 activates and both clients stay on the same chain.
+- A validation prefix declared just over the ceiling is refused.
+- Every attack transaction is refused at admission, after the expensive work ran (the prefix
+  simulation or the signature recoveries), not on a cheap early check.
+- Every honest frame transaction is included, and each client builds blocks carrying frame
+  transactions that the other imports.
 
-## Prerequisites
+It does not show:
 
-| Tool | macOS (Apple Silicon) | Linux |
+- Capacity or `R_max`. The load is light (a few percent of a core per client) and everything
+  shares one host. Capacity comes from the single-core harnesses in PR #13914 on the
+  `reproducible-benchmarks` runner.
+- Attack traffic over devp2p. Attacks enter through JSON-RPC; an invalid frame transaction is
+  never gossiped.
+- Transactions that are admitted and fail later, or retry behaviour (`K_retry`).
+- A valid privacy transfer. No valid proof ships with the Groth16 sweeps.
+
+## Requirements
+
+| | macOS (Apple Silicon) | Linux |
 |---|---|---|
-| Docker | Docker Desktop, at least 8 CPUs, 16 GB memory, 40 GB disk | Docker Engine |
+| Docker | Docker Desktop, 8 CPUs, 16 GB memory, 60 GB disk | Docker Engine |
 | Kurtosis CLI | `brew install kurtosis-tech/tap/kurtosis-cli` | [docs.kurtosis.com/install](https://docs.kurtosis.com/install) |
-| Python | System `python3` (runner uses the standard library only) | same |
-| GitHub CLI | `brew install gh`, for the Groth16 release | same |
+| Python 3 | System `python3` | System `python3` |
+| GitHub CLI | `brew install gh` (for the Groth16 sweeps) | same |
 
-The traffic generator and its tests run inside a Docker image, so the host needs no Python
-packages.
-
-Kurtosis's engine listens on port 8081. Free it before starting (see
-[Troubleshooting](#troubleshooting)).
+The host scripts use bash 3.2, `python3` and no GNU-only tools. The traffic generator and its
+tests run in a Docker image. The Kurtosis engine needs port 8081 free.
 
 ## Quick start
 
-From the repository root, on this branch:
+From the repository root, on branch `test/frame-tx-kurtosis-devnet`:
 
 ```bash
 cd tools/frame-tx-kurtosis-devnet
-
-# 1. Nethermind at the v2 ceiling, plus the traffic generator. About 10 minutes the first time.
 images/build.sh 235800
-
-# 2. Short end-to-end run with assertions: both nodes ready, blocks produced, EIP-8141 active,
-#    ceiling enforced, baseline frame transactions included, attacker refused.
 runner/smoke_test.sh --no-build
 ```
 
-The smoke test prints one `[ok  ]` or `[FAIL]` line per check and exits non-zero on any
-failure. Raw output lands in `results/smoke-c235800/`.
+`images/build.sh` builds the Nethermind and ethrex images for one ceiling, plus the traffic
+generator. The first ethrex build compiles Rust and takes 15 to 30 minutes; later builds reuse
+the cache. The smoke test waits for EIP-8141 to activate (about 3 minutes after genesis), runs
+24 seconds of honest traffic alone, then 2 minutes of keccak-wide attack at 5 tx/s alongside
+it. It prints one line per check and exits non-zero if any check fails. A run takes about
+10 minutes.
 
-## Groth16 artifacts
+## Groth16 sweeps
 
-The `soispoke-groth16` role deploys a real Groth16 verifier and floods it with invalid proofs.
-It needs the v2 sweeps from `NethermindEth/frame-verify-gas`:
+The `soispoke-groth16` role deploys a real Groth16 verifier and sends it invalid proofs. It
+needs the `v2.0.0` sweeps from `NethermindEth/frame-verify-gas`:
 
 ```bash
 mkdir -p ~/frame-verify-gas-v2 && cd ~/frame-verify-gas-v2
@@ -63,185 +68,155 @@ shasum -a 256 -c SHA256SUMS
 for t in sweep-*.tar.gz; do tar xzf "$t"; done
 ```
 
-Each `sweep-*/` directory holds `verifier.hex` and `calldata-invalid.hex`. Kurtosis can only
-upload files inside this package, so the runner copies those files into the gitignored `groth16/`
-before each run. The role picks the
-sweep by ceiling: `sweep-soispoke` at 100,000 and 235,800, and the matching control at 250,000,
-300,000, 400,000 and 500,000.
+At 100,000 and 235,800 the role uses `sweep-soispoke`, the real v2 verifier. At 250,000,
+300,000, 400,000 and 500,000 it uses the synthetic control of that size.
 
 ## Running scenarios
 
-One scenario, end to end (render args, start the enclave, run traffic, collect, tear down):
+One attack shape, with checks:
 
 ```bash
-runner/run_scenario.py --ceiling 235800 --attacker-role signature-stuffed --k-retry 1 \
-  --attacker-rate 25 --groth16-artifacts ~/frame-verify-gas-v2
+runner/smoke_test.sh --no-build --role signature-stuffed --rate 25
+runner/smoke_test.sh --no-build --role soispoke-groth16 --rate 25 --groth16-artifacts ~/frame-verify-gas-v2
+runner/smoke_test.sh --no-build --ceiling 500000 --role signature-stuffed --rate 10
 ```
 
-Useful flags: `--keep` leaves the enclave up, `--dry-run` prints the rendered args,
-`--split-traffic` aims the attack at the first node and honest traffic at the second, to separate
-local damage from damage to the chain.
+A ceiling other than 235,800 needs its images first: `images/build.sh 500000`.
 
-The matrix (ceiling × role × `K_retry`, plus a privacy probe per ceiling):
+Several scenarios, each followed by the same checks:
 
 ```bash
-runner/run_matrix.py --standard --list          # 78 scenarios; prints the plan only
-runner/run_matrix.py --ceilings 235800 500000 --roles signature-stuffed --k-retries 1 \
-  --groth16-artifacts ~/frame-verify-gas-v2
+runner/run_matrix.py --list --standard            # 18 scenarios: 6 ceilings x 3 roles
+runner/run_matrix.py --ceilings 235800 500000 --roles signature-stuffed --attacker-rate 10
 ```
 
-Each ceiling needs its own image: `images/build.sh <ceiling>`, or `images/build.sh --all`.
+`run_matrix.py` writes to `~/frame-tx-devnet-results` by default. `kurtosis run .` uploads the
+whole package folder, so results kept inside it would be uploaded again by every later
+scenario.
 
-`kurtosis run .` uploads this whole folder, gitignored files included. For a long matrix pass
-`--results-dir` outside the package, for example `--results-dir ~/frame-tx-devnet-results`, so the
-upload does not grow with every run.
+Useful `runner/run_scenario.py` options: `--keep` leaves the enclave up for inspection,
+`--dry-run` prints the rendered Kurtosis arguments, `--split-traffic` sends the attack to the
+first node only and the honest traffic to the second, `--nethermind-image` or `--ethrex-image`
+replaces a ceiling image.
 
-Teardown if a run was interrupted:
+If a run is interrupted:
 
 ```bash
+kurtosis enclave ls
 kurtosis enclave rm -f <enclave>
-kurtosis clean -a
 ```
+
+## Reading the results
+
+Each scenario writes `results/<scenario-id>/`:
+
+| File | Content |
+|---|---|
+| `<scenario-id>.result` | One `RESULT key=value` line per measurement |
+| `<scenario-id>.events.jsonl` | One record per submission and per inclusion |
+| `run.json` | Parameters, images and their labels, checkout commit |
+| `el-*.log`, `traffic.log` | Full client and generator logs |
+| `metrics/*.json` | Prometheus range queries over the run |
+
+`runner/check_results.py results/<scenario-id> <role>` re-runs the checks on saved results.
+
+The rows most worth reading:
+
+| Case | Fields |
+|---|---|
+| `admission` | per node and role: `samples`, `accepted`, `rejected`, `submit_p50_us`, `submit_p95_us`, `top_reject_reason`. The submit latency of the attack role is the cost of one refusal as that client's JSON-RPC caller sees it. |
+| `inclusion` | honest traffic: `submitted`, `included`, `outstanding`, `starved`, inclusion latency |
+| `ceiling_probe` | the verdict on a prefix declared just over the ceiling |
+| `image_ceiling` | the ceiling label of the image each container ran |
+| `chain_agreement` | one block's hash on every client |
+| `block_builders` | blocks and frame transactions per building client |
+| `generator_capacity` | whether the generator can build the offered rate; the run aborts if not |
 
 ## How it works
 
-```
-scenarios/base.yaml ──► runner/run_scenario.py ──► kurtosis run .
-                          renders frame_tx block        │
-                                                        ▼
-                                             main.star (this package)
-                                   ┌────────────────────┼──────────────────┐
-                                   ▼                    ▼                  ▼
-                       ethereum-package run()   src/scenario.star   src/traffic.star
-                       Nethermind + Lighthouse  image + ceiling     traffic generator
-                       Prometheus, Grafana,     flag per node       service
-                       Dora
-```
-
-- `ethereum-package` is imported, not forked, and pinned in `kurtosis.yml` to `c0db06b2`.
-- The generator (`traffic/`) builds frame transactions with soispoke's encoder, fetched at
-  image build time from `6dedda19` and checked against a SHA-256 pin.
-
-### The ceiling
-
-`Eip8141Constants.MaxVerifyGas` is a compile-time constant. `--TxPool.FrameTxMaxVerifyGas`
-bounds only the declared-gas check; simulated prefixes and signature verification stay at the
-constant. So each ceiling is its own image:
-
-- `images/build.sh` exports `HEAD` with `git archive`, applies `images/nethermind/patch.sh`
-  and builds the repository `Dockerfile`. Uncommitted changes are never in the image.
-- The runner also sets the runtime flag to the same value.
-- Before timing anything, the generator sends a prefix just over the ceiling to each node and
-  records the verdict as `case=ceiling_probe`. A stock image accepts what a patched one refuses.
-
-### EIP-8141 activation
-
-The genesis stays on Fulu, as public devnets do. The patched image reads
-`NETHERMIND_EIP8141_ACTIVATION_OFFSET_SECONDS` and activates EIP-8141 that long after genesis
-(120 s by default). The generator records `case=fork_gate` once each node accepts frame
-transactions.
-
-### K_retry
-
-Neither EIP-8141 nor either client has a retry counter. The devnet expresses `K_retry` as an
-expiry deadline `K_retry` slots ahead: a pending transaction can meet at most that many build
-attempts before the pool must evict it. A missed slot costs an attempt.
-
-## Traffic roles
-
-Every role submits round-robin to all execution nodes: an invalid frame transaction is refused
-at admission and never gossiped.
-
-| Role | Shape | Expected outcome |
+| Piece | Pin | Where |
 |---|---|---|
-| baseline | Self-verifying transfer | Admitted and included |
-| `keccak-wide` | VERIFY frame into a 4 KB `KECCAK256` loop sized to the ceiling | Refused after burning the budget |
-| `signature-stuffed` | `floor((C - 400) / 2800)` secp256k1 entries, last one wrong | Refused before the EVM runs |
-| `soispoke-groth16` | Real v2 verifier, invalid proof | Refused after the pairing |
+| Network, genesis, consensus layer, Prometheus, Grafana | `ethpandaops/ethereum-package` `c0db06b2` | `kurtosis.yml`, `scenarios/base.yaml` |
+| Consensus client | `ethpandaops/lighthouse:unstable-4b1f3c2` | `scenarios/base.yaml` |
+| Nethermind | this checkout (`NETHERMIND_REF`, default `HEAD`) | `images/build.sh`, `images/nethermind/patch.sh` |
+| ethrex | `lambdaclass/ethrex` `52c2e626` (branch `frames-devnet-0`) | `images/build.sh`, `images/ethrex/patch.sh` |
+| Frame-transaction encoder | `soispoke/minimal-shielded-pool` `6dedda19`, SHA-256 pinned | `traffic/vendor/fetch.sh` |
 
-The baseline runs alone during warm-up and then throughout the attack; both phases are
-reported (`phase=warmup`, `phase=measured`). Declared gas follows Nethermind's
-`FrameTxValidation.ValidationWorkGas`.
+**The ceiling.** Both clients compile `MAX_VERIFY_GAS` in. Each ceiling is therefore its own
+pair of images, tagged `vg<ceiling>` and labelled with the value. Nethermind also takes the
+runtime flag `--TxPool.FrameTxMaxVerifyGas`, which the scenario sets to the same value: the flag
+bounds the declared gas at admission, while the constant caps the simulated prefix. The
+`image_ceiling` check confirms each container ran the image built for the scenario's ceiling.
 
-## Results
+**Activation.** `heze_fork_epoch: 1` with `frames_enabled: true` writes `bogotaTime` into the
+execution genesis and keeps the consensus layer off Heze. Both clients read `bogotaTime` as
+Amsterdam plus EIP-8141. Nethermind's upstream code maps it to its Bogota fork (with EIP-7805),
+which the consensus layer does not speak, so `patch.sh` routes it to EIP-8141 alone, as the
+upstream frames-devnet-0 deployment does.
 
-```
-results/<scenario-id>/
-  <scenario-id>.result        RESULT key=value lines
-  <scenario-id>.events.jsonl  one record per submission and inclusion
-  run.json                    provenance: parameters, commit, images
-  traffic.log, el-*.log       generator and client logs
-  metrics/*.json              Prometheus range queries over the run window
-```
-
-`RESULT` cases: `scenario`, `preflight`, `fork_gate`, `ceiling_probe`, `fixture_deployed`,
-`admission`, `inclusion`, `offered_load`, `head_progress`, `privacy_inclusion`,
-`scenario_complete`, `scenario_aborted`. The generator reports offered and achieved rate
-separately; a gap between them is a measurement, not a failure.
-
-Grafana and Prometheus URLs are written to the results directory. Nethermind's frame-transaction
-counters (`PendingTransactionsFrameTxVerifyGasTooHigh`, `FrameTxSimulations*`,
-`FrameTxRevalidation*`) are scraped automatically; the queries live in
-`runner/metrics_queries.json`.
+**Nonces.** ethrex simulates a frame transaction at admission only if its nonce is the sender's
+state nonce. Attack transactions all carry the attacker's state nonce (they are never included,
+so it never moves). Honest traffic rotates across the remaining prefunded accounts with one
+transaction in flight per account.
 
 ## Tests
 
 | Check | Command | Needs |
 |---|---|---|
-| Shapes, prefix gas, watcher | `docker run --rm --entrypoint python frame-tx-devnet/traffic:local tests/test_shapes.py` (and `tests/test_watcher.py`) | Traffic image |
-| Nethermind patch still applies and compiles | `images/nethermind/check-patch.sh` | .NET SDK |
-| Matrix planner and args renderer | `runner/run_matrix.py --standard --list`, `runner/run_scenario.py --dry-run` | Python |
+| Shapes, prefix gas, nonce rotation, chain watcher | `for t in shapes accounts watcher; do docker run --rm --entrypoint python frame-tx-devnet/traffic:local tests/test_$t.py; done` | traffic image |
+| Nethermind patch applies and compiles | `images/nethermind/check-patch.sh` | .NET SDK |
+| Planner and argument rendering | `runner/run_matrix.py --list --standard`, `runner/run_scenario.py --dry-run` | Python |
 | End to end | `runner/smoke_test.sh` | Docker, Kurtosis |
-
-## Limitations
-
-1. **ethrex cannot join.** ethrex `main` still decodes a frame as
-   `[mode, flags, target, gas_limit, value, data]` with flat fee fields. Nethermind reads
-   `limits = [execution, state]` and a nested `fees` list, the envelope soispoke v2 encodes. The
-   two cannot share a chain until ethrex moves. `images/build.sh <ceiling> --only ethrex` still
-   builds it for when that happens. See [UPSTREAM-CANDIDATES.md](UPSTREAM-CANDIDATES.md).
-2. **No valid privacy transaction.** The sweeps carry invalid proofs only, so the
-   privacy-inclusion probe reports `available=no` instead of substituting a synthetic proof.
-3. **One host.** All nodes share the host's CPUs; the devnet has spare capacity a home staker
-   would not. Do not read capacity numbers from it.
-4. **`K_retry` is modelled** as an expiry deadline, not a client counter.
-5. **Offered rate is not achieved rate** when the generator or a node saturates. Both are
-   recorded.
-
-## Troubleshooting
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| `Bind for 0.0.0.0:8081 failed: port is already allocated` | Another container holds the Kurtosis engine port | Stop it: `docker ps --format '{{.Names}} {{.Ports}}' \| grep 8081` |
-| `Expected exactly one network matching the name ... 'bridge', but got 2` | Docker Swarm is active and created `docker_gwbridge` | `docker swarm leave --force`, then `docker network rm docker_gwbridge` |
-| `patch.sh`: `expected 1 occurrence of ...` | An anchor moved upstream | Update `images/nethermind/patch.sh`, confirm with `check-patch.sh` |
-| `frametx.py checksum mismatch` | The soispoke pin was changed without re-pinning the hash | Review the encoder diff, then update `traffic/vendor/fetch.sh` |
-| Baseline transactions never included | EIP-8141 not active yet | Wait for `case=fork_gate ... active=yes`, about 120 s after genesis |
 
 ## Verified runs
 
-Run on 2026-09-28 on one Linux x86_64 host (32 cores, Docker 29.7.2, Kurtosis 1.20.0), images
-built from this branch. Behaviour checks, not capacity measurements. Not yet run on macOS.
+Run on 2026-09-28 on one Linux x86_64 host (32 cores, Docker 29.7.2, Kurtosis 1.20.0). Images:
+Nethermind from `b3ee425d` (the images carry `8286cdba`, the same tree before a commit-message
+edit), ethrex `52c2e626`. Every run passed every check in
+`runner/check_results.py`. Refusal latency is the attack role's `submit_p50_us`; the honest
+baseline's is about 0.8 ms on both clients. Not yet run on macOS.
 
-| Ceiling | Role | `K_retry` | Rate (tx/s) | Attack refused | Baseline included | Refusal reason |
-|---|---|---|---|---|---|---|
-| 235,800 | keccak-wide (`smoke_test.sh`, 9/9 checks) | 1 | 5 | 601 / 601 | 145 / 145 | prefix frame reverted |
-| 235,800 | signature-stuffed | 1 | 25 | 6,001 / 6,001 | 481 / 481 | SECP256K1 signer mismatch |
-| 235,800 | soispoke-groth16 (`v2.0.0`) | 1 | 25 | 6,001 / 6,001 | 481 / 481 | prefix never set a payer |
-| 500,000 | signature-stuffed | 1 | 10 | 1,201 / 1,201 | 241 / 241 | SECP256K1 signer mismatch |
-| 235,800 | keccak-wide | 4 | 10 | 1,201 / 1,201 | 241 / 241 | prefix frame reverted |
+| Ceiling | Attack, rate | Nethermind: refused, p50 | ethrex: refused, p50 | Honest included | Frame txs in blocks built by Nethermind / ethrex |
+|---|---|---|---|---|---|
+| 235,800 | keccak-wide, 5/s | 300/300, 3.0 ms | 300/300, 3.2 ms | 146/146 | 81 / 66 |
+| 235,800 | signature-stuffed, 25/s | 1501/1501, 2.8 ms | 1500/1500, 2.9 ms | 146/146 | 66 / 82 |
+| 235,800 | soispoke-groth16 (`v2.0.0`), 25/s | 1501/1501, 2.4 ms | 1500/1500, 2.8 ms | 146/146 | 50 / 97 |
+| 500,000 | signature-stuffed, 10/s | 601/601, 5.3 ms | 600/600, 5.5 ms | 146/146 | 85 / 63 |
+| 500,000 | keccak-wide, 5/s | 301/301, 5.5 ms | 300/300, 5.2 ms | 145/145 | 78 / 68 |
 
-- Every run: EIP-8141 active on both nodes after about 114 s, the ceiling probe refused just
-  over the ceiling, no `Exception` or `Invalid Block` in client logs.
-- At 500,000 every stuffed transaction reached its last signature, so all 178 recoveries ran:
-  the compiled ceiling is live above the stock 300,000.
-- Generator build capacity on this host: about 420 signature-stuffed tx/s at 235,800 and 82 at
-  500,000. The runner checks this before loading (`case=generator_capacity`) and aborts rather
-  than report a generator limit as a node limit.
+Refusal reasons, per client:
+
+| Attack | Nethermind | ethrex |
+|---|---|---|
+| keccak-wide | `validation prefix frame reverted` | `validation prefix frame reverted` |
+| signature-stuffed | `SECP256K1 signer does not match the recovered address` | `Invalid frame transaction signature` |
+| soispoke-groth16 | `validation prefix never set a payer` | `validation prefix did not establish a payer` |
+
+**The compiled ceiling is live.** The 500,000 keccak-wide run was repeated with Nethermind on
+`vg300000`, an image whose compiled `MaxVerifyGas` is the stock 300,000, and the runtime flag
+still at 500,000:
+
+| Nethermind image | Refusal p50 | Reason |
+|---|---|---|
+| `vg500000` | 5.5 ms | `validation prefix frame reverted` (the loop ran its 497k budget) |
+| `vg300000` | 3.5 ms | `validation prefix exceeds MAX_VERIFY_GAS` (simulation capped at 300k) |
+
+The runtime flag alone cannot raise the ceiling, and the `image_ceiling` check fails that run, as
+it should.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `Bind for 0.0.0.0:8081 failed: port is already allocated` | Stop the container on 8081: `docker ps --format '{{.Names}} {{.Ports}}' \| grep 8081` |
+| `Expected exactly one network matching the name ... 'bridge', but got 2` | Docker Swarm is on: `docker swarm leave --force`, then `docker network rm docker_gwbridge` |
+| `scenario_aborted ... generator cannot build the offered rate` | Lower `--rate` or give Docker more CPUs. It is a generator limit, not a client result. |
+| `patch.sh: expected 1 occurrence of ...` | Upstream moved the anchor. Update the patch and run `images/nethermind/check-patch.sh`. |
+| `frametx.py checksum mismatch` | The encoder pin changed. Review the encoder diff, then update `traffic/vendor/fetch.sh`. |
 
 ## History
 
-- [CORRECTIONS.md](CORRECTIONS.md): the withdrawn pre-2026-09-19 results, the generator fixes,
-  and the v1 re-measurement at 322,800.
-- [UPSTREAM-CANDIDATES.md](UPSTREAM-CANDIDATES.md): the Nethermind changes this devnet patches
-  in, and which of them belong upstream.
+- [UPSTREAM-CANDIDATES.md](UPSTREAM-CANDIDATES.md): the client changes this devnet needs, and
+  which of them belong upstream.
+- [CORRECTIONS.md](CORRECTIONS.md): the withdrawn September 2026 v1 results and the generator
+  fixes behind them.
