@@ -22,9 +22,8 @@ namespace Nethermind.Evm.Test;
 /// pooled instances that were rented and never returned.
 /// </summary>
 /// <remarks>
-/// Both checks were previously unable to fire: <see cref="GC.SuppressFinalize"/> in Dispose is permanent per
-/// object, so a recycled instance was never finalized again, and the environment's condition was inverted.
-/// The recycled cases below are the ones that regress if either returns.
+/// <see cref="GC.SuppressFinalize"/> in Dispose is permanent per object, so it would hide every recycled
+/// instance from the check. The recycled cases below are the ones that regress if it returns.
 /// </remarks>
 [NonParallelizable]
 public class PooledObjectLeakDetectionTests
