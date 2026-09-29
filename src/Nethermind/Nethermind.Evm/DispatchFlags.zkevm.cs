@@ -21,6 +21,9 @@ internal static partial class DispatchFlags
     /// <summary>Every code the guest builds a <c>CodeInfo</c> for is padded, which saves dispatch its end-of-code tests.</summary>
     public static bool PaddedCode => true;
 
+    /// <summary>The guest's dispatch handlers run no fast paths, so its tables need no plain copy to fall back on.</summary>
+    public static bool UntracedFastPaths => false;
+
     public static bool Tracing(bool isTracing) => ConstTracing;
 
     public static bool Cancelable(bool tracerIsCancelable) => ConstCancelable;
