@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -91,7 +92,7 @@ public static class Eip8369Profile2
     /// is ignored; otherwise the signature cost is debited, and the prefix cost too once the signatures verify.
     /// An entry is admitted when any occurrence is, so one list exhausting its own budget cannot excuse another's.
     /// Taking each member's occurrences rather than a wire layout keeps the fill independent of how the engine
-    /// API conveys membership.
+    /// API conveys membership. An entry carried by several members is verified once, however many lists carry it.
     /// </remarks>
     /// <param name="inclusionLists">Each committee member's occurrences, in the order the fill processes them.</param>
     /// <param name="maxVerifyGasPerTx"><c>MAX_VERIFY_GAS_PER_TX</c>; <c>0</c> lifts the cap.</param>
@@ -100,6 +101,7 @@ public static class Eip8369Profile2
         IEnumerable<IEnumerable<Transaction>> inclusionLists, ulong maxVerifyGasPerTx, Func<Transaction, bool>? signaturesValid)
     {
         HashSet<Hash256AsKey> admitted = [];
+        Dictionary<Hash256AsKey, bool>? verified = null;
         foreach (IEnumerable<Transaction> inclusionList in inclusionLists)
         {
             ulong remaining = Eip8369Constants.MaxVerifyGasPerIl;
@@ -112,12 +114,21 @@ public static class Eip8369Profile2
 
                 ulong signatureCost = FrameTxValidation.SignatureVerificationWorkGas(tx);
                 remaining -= signatureCost;
-                if (signaturesValid is not null && !signaturesValid(tx)) continue;
+                if (signaturesValid is not null && !AreSignaturesValid(tx, tx.Hash, signaturesValid, ref verified)) continue;
 
                 remaining -= cost - signatureCost;
+                // EIP-8369 § Includers: "A failed candidate keeps the budget debit but is not admitted."
                 if (Classify(tx, maxVerifyGasPerTx) == Profile2Exclusion.None) admitted.Add(tx.Hash);
             }
         }
         return admitted;
+    }
+
+    private static bool AreSignaturesValid(Transaction tx, Hash256 hash, Func<Transaction, bool> signaturesValid, ref Dictionary<Hash256AsKey, bool>? verified)
+    {
+        verified ??= [];
+        ref bool valid = ref CollectionsMarshal.GetValueRefOrAddDefault(verified, hash, out bool exists);
+        if (!exists) valid = signaturesValid(tx);
+        return valid;
     }
 }

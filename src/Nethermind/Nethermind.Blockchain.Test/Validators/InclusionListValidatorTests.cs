@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -148,8 +149,11 @@ public class InclusionListValidatorTests
             // Condition 4, and the knob that sets it: the same transaction is judged once the cap is lifted.
             yield return Case("Omitted frame transaction over the VERIFY budget is excused",
                 [BuildFrameTx([SelfVerify(2_000_000)])], true);
-            yield return Case("Omitted frame transaction over the VERIFY budget is judged once the cap is lifted",
-                [BuildFrameTx([SelfVerify(2_000_000)])], false, maxVerifyGasPerTx: 0);
+            // Lifting the per-transaction cap cannot admit it: it still overruns MAX_VERIFY_GAS_PER_IL.
+            yield return Case("Omitted frame transaction over the per-IL VERIFY budget stays excused once the per-transaction cap is lifted",
+                [BuildFrameTx([SelfVerify(2_000_000)])], true, maxVerifyGasPerTx: 0);
+            yield return Case("Omitted frame transaction within the per-IL VERIFY budget is judged once the per-transaction cap is lifted",
+                [BuildFrameTx([SelfVerify(1_000_000)])], false, maxVerifyGasPerTx: 0);
             // Condition 1: a candidate shape is not enough, the transaction must also be statically valid.
             yield return Case("Omitted malformed frame transaction is excused",
                 [BuildFrameTx([SelfVerify(value: UInt256.One)])], true, wellFormed: false);
@@ -202,6 +206,9 @@ public class InclusionListValidatorTests
             .WithTransactions(blockTxs)
             .WithInclusionListTransactions(il)
             .TestObject;
+        // Admission is by hash and by membership, so every entry gets a hash and sits at position 0.
+        for (int i = 0; i < il.Length; i++) il[i].Hash ??= Keccak.Compute($"frame-case-{i}");
+        block.InclusionListMembership = [.. Enumerable.Repeat((ushort)1, il.Length)];
         IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
         IReadOnlyStateProvider state = StateWith((TestItem.AddressA, senderBalance, 0), (TestItem.AddressB, payerBalance, 0));
 
@@ -239,7 +246,7 @@ public class InclusionListValidatorTests
             yield return Case("Claim leaves enforced a candidate eligible where the builder tried",
                 [new(hash, 1)], [1, end], false, [end, 1]);
             yield return Case("Claim cannot condemn a candidate eligible only before the end",
-                [new(hash, 1)], [1], true, [end]);
+                [new(hash, 1)], [1], true, [end, 1]);
             yield return Case("Out-of-range claim resolves to the end of the payload",
                 [new(hash, 99)], [end], false, [end]);
             yield return Case("Claim at the end is the default index", [new(hash, end)], [end], false, [end]);
@@ -261,6 +268,7 @@ public class InclusionListValidatorTests
         {
             Assert.That(IsSatisfied(block, replayer), Is.EqualTo(satisfied));
             Assert.That(replayer.ReplayedAt, Is.EqualTo(replayedAt));
+            Assert.That(replayer.Batches, Is.EqualTo(1));
         }
     }
 
@@ -299,7 +307,7 @@ public class InclusionListValidatorTests
             Transaction first = Candidate(1, 600_000);
             Transaction second = Candidate(3, 600_000);
             yield return Case("Candidate over its own position's remaining budget is excused", [[first, second]], second, true);
-            yield return Case("A list without membership applies no per-position budget", [[first, second]], second, false, withMembership: false);
+            yield return Case("A list without membership admits no candidate", [[first]], first, true, withMembership: false);
             yield return Case("The fill takes a position's entries by hash, not by arrival", [[second, first]], second, true);
             yield return Case("Candidate carried at several positions is enforced when any admits it",
                 [[first, second], [second]], second, false);
@@ -323,23 +331,59 @@ public class InclusionListValidatorTests
         Transaction[][] lists, bool withMembership, Transaction candidate, Transaction? badSignature, bool satisfied)
     {
         (Transaction[] il, ushort[] membership) = Membership(lists);
-        Block block = Profile2Block(il, blockTxCount: 0, membership: withMembership ? membership : null);
+        Block block = Profile2Block(il, blockTxCount: 0, membership: membership);
+        if (!withMembership) block.InclusionListMembership = null;
         FakeReplayer replayer = new((tx, _) => ReferenceEquals(tx, candidate), tx => !ReferenceEquals(tx, badSignature));
 
         Assert.That(IsSatisfied(block, replayer), Is.EqualTo(satisfied));
     }
 
-    /// <summary>A membership that is not one mask per entry attributes nothing, so no per-position budget applies.</summary>
-    [TestCase(false, true, TestName = "Aligned membership fills the per-position budget")]
-    [TestCase(true, false, TestName = "Misaligned membership is ignored")]
-    public void Misaligned_membership_is_ignored(bool truncate, bool satisfied)
+    /// <summary>A membership that is not one mask per entry attributes nothing, so no candidate is admitted.</summary>
+    [TestCase(false, false, TestName = "Aligned membership admits the candidate")]
+    [TestCase(true, true, TestName = "Misaligned membership admits nothing")]
+    public void Misaligned_membership_admits_nothing(bool truncate, bool satisfied)
     {
-        Transaction first = Candidate(1, 600_000);
-        Transaction second = Candidate(2, 600_000);
+        Transaction first = Candidate(1, 100_000);
+        Transaction second = Candidate(2, 100_000);
         (Transaction[] il, ushort[] membership) = Membership([[first, second]]);
         Block block = Profile2Block(il, blockTxCount: 0, membership: truncate ? membership[..1] : membership);
 
         Assert.That(IsSatisfied(block, new FakeReplayer((tx, _) => ReferenceEquals(tx, second))), Is.EqualTo(satisfied));
+    }
+
+    /// <summary>An entry carried at every committee position is verified once, not once per position.</summary>
+    [Test]
+    public void Signatures_are_verified_once_per_entry_across_positions()
+    {
+        Transaction signed = Candidate(1, 100_000, signatures: 1);
+        // The unsigned candidate is what reaches the fill; the signed one is malformed and never would.
+        Transaction[][] lists = [.. Enumerable.Repeat(new[] { signed, Candidate(2, 100_000) }, Eip7805Constants.InclusionListCommitteeSize)];
+        (Transaction[] il, ushort[] membership) = Membership(lists);
+        FakeReplayer replayer = new((_, _) => false);
+
+        IsSatisfied(Profile2Block(il, blockTxCount: 0, membership: membership), replayer);
+
+        // Both entries sit at all 16 positions: 2 verifications, not 32.
+        Assert.That(replayer.SignatureChecks, Is.EqualTo(2));
+    }
+
+    /// <summary>Every omitted candidate of a block, at every index it is judged at, reaches the replayer in one
+    /// batch, so the block's state is reconstructed once however many candidates and claimed indices there are.</summary>
+    [Test]
+    public void Candidates_are_replayed_in_one_batch()
+    {
+        Transaction[] candidates = [Candidate(1, 100_000), Candidate(2, 100_000), Candidate(3, 100_000)];
+        (Transaction[] il, ushort[] membership) = Membership([candidates]);
+        Block block = Profile2Block(il, blockTxCount: 3, membership: membership,
+            claims: [new(candidates[0].Hash!, 0), new(candidates[1].Hash!, 2)]);
+        FakeReplayer replayer = new((_, index) => index != 3);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(IsSatisfied(block, replayer), Is.True);
+            Assert.That(replayer.Batches, Is.EqualTo(1));
+            Assert.That(replayer.ReplayedAt, Is.EquivalentTo(new[] { 3, 0, 3, 2, 3 }));
+        }
     }
 
     /// <summary>Deduplicates committee positions' lists into one list and a membership mask per entry.</summary>
@@ -369,12 +413,26 @@ public class InclusionListValidatorTests
     {
         public List<int> ReplayedAt { get; } = [];
 
-        public bool AreSignaturesValid(Transaction transaction, IReleaseSpec spec) => signaturesValid?.Invoke(transaction) ?? true;
+        public int Batches { get; private set; }
 
-        public bool IsEligible(Block block, Transaction transaction, int index, IReleaseSpec spec)
+        public int SignatureChecks { get; private set; }
+
+        public bool AreSignaturesValid(Transaction transaction, IReleaseSpec spec)
         {
-            ReplayedAt.Add(index);
-            return eligible(transaction, index);
+            SignatureChecks++;
+            return signaturesValid?.Invoke(transaction) ?? true;
+        }
+
+        public bool[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
+        {
+            Batches++;
+            bool[] verdicts = new bool[requests.Count];
+            for (int i = 0; i < requests.Count; i++)
+            {
+                ReplayedAt.Add(requests[i].Index);
+                verdicts[i] = eligible(requests[i].Transaction, requests[i].Index);
+            }
+            return verdicts;
         }
     }
 
@@ -393,7 +451,8 @@ public class InclusionListValidatorTests
             .WithTransactions([.. blockTxs])
             .WithInclusionListTransactions(il)
             .TestObject;
-        block.InclusionListMembership = membership;
+        // Every entry at committee position 0 unless the case says otherwise.
+        block.InclusionListMembership = membership ?? [.. Enumerable.Repeat((ushort)1, il.Length)];
         block.InclusionListClaims = claims;
         return block;
     }

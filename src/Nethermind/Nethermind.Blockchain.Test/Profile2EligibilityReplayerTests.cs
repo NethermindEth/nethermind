@@ -67,7 +67,7 @@ public class Profile2EligibilityReplayerTests
         IProfile2EligibilityReplayer replayer = chain.Container.Resolve<IProfile2EligibilityReplayer>();
         Block block = ChildOfHead(chain, new ReadOnlyBlockAccessList([changes ?? Changes()], 1));
 
-        Assert.That(replayer.IsEligible(block, FrameTx(), index, Spec), Is.EqualTo(eligible));
+        Assert.That(IsEligible(replayer, block, FrameTx(), index), Is.EqualTo(eligible));
     }
 
     /// <summary>EIP-8369 Profile 2 bounds the prefix by <c>MAX_VERIFY_GAS_PER_TX</c>, not EIP-8141's mempool
@@ -82,7 +82,7 @@ public class Profile2EligibilityReplayerTests
         IProfile2EligibilityReplayer replayer = chain.Container.Resolve<IProfile2EligibilityReplayer>();
 
         Transaction tx = FrameTx(verifyGas: 500_000);
-        Assert.That(replayer.IsEligible(ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1)), tx, 0, Spec), Is.True);
+        Assert.That(IsEligible(replayer, ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1)), tx, 0), Is.True);
     }
 
     /// <summary>EIP-8369 § Attesters takes <c>current_slot</c> from the block itself, so a reference exactly
@@ -104,7 +104,7 @@ public class Profile2EligibilityReplayerTests
 
         Transaction tx = FrameTx();
         tx.RecentRootReferences = [new RecentRootReference(sourceId, referenceSlot, root)];
-        Assert.That(replayer.IsEligible(ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1)), tx, 0, Spec), Is.EqualTo(eligible));
+        Assert.That(IsEligible(replayer, ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1)), tx, 0), Is.EqualTo(eligible));
     }
 
     /// <summary>With no access list there is no state to reconstruct, and EIP-8369 makes that no excuse.</summary>
@@ -114,8 +114,33 @@ public class Profile2EligibilityReplayerTests
         using BasicTestBlockchain chain = await CreateChain(slot: (byte)Eip8369Constants.AaVopsSlotCount);
         IProfile2EligibilityReplayer replayer = chain.Container.Resolve<IProfile2EligibilityReplayer>();
 
-        Assert.That(replayer.IsEligible(ChildOfHead(chain, null), FrameTx(), 0, Spec), Is.True);
+        Assert.That(IsEligible(replayer, ChildOfHead(chain, null), FrameTx(), 0), Is.True);
     }
+
+    /// <summary>Several candidates at several indices, in no particular order, reconstruct the block's state
+    /// once and still see each index's own state.</summary>
+    [Test]
+    public async Task A_batch_reconstructs_the_state_once_and_judges_each_index_on_its_own_state()
+    {
+        using BasicTestBlockchain chain = await CreateChain(slot: 0);
+        Profile2EligibilityReplayer replayer = (Profile2EligibilityReplayer)chain.Container.Resolve<IProfile2EligibilityReplayer>();
+        Block block = ChildOfHead(chain, new ReadOnlyBlockAccessList(
+            [Changes(storage: [new ReadOnlySlotChanges(0, [new StorageChange(2, 1), new StorageChange(3, 0)])])], 1));
+        long before = replayer.StateReconstructions;
+
+        bool[] eligible = replayer.AreEligible(block,
+            [(FrameTx(), 2), (FrameTx(), 0), (FrameTx(), 1), (FrameTx(), 0), (FrameTx(), 2), (FrameTx(), 1), (FrameTx(), 3)], Spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Slot 0 is set by transaction 1 and cleared by transaction 2, so only index 2 sees it set.
+            Assert.That(eligible, Is.EqualTo(new[] { false, true, true, true, false, true, true }));
+            Assert.That(replayer.StateReconstructions - before, Is.EqualTo(1));
+        }
+    }
+
+    private static bool IsEligible(IProfile2EligibilityReplayer replayer, Block block, Transaction tx, int index) =>
+        replayer.AreEligible(block, [(tx, index)], Spec)[0];
 
     private static Task<BasicTestBlockchain> CreateChain(byte slot) => CreateChain(ApproveWhileSlotIsZero(slot));
 

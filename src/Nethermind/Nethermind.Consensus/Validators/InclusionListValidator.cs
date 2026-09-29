@@ -26,7 +26,7 @@ public static class InclusionListValidator
     /// <param name="maxVerifyGasPerTx">EIP-8369 <c>MAX_VERIFY_GAS_PER_TX</c>, above which a frame transaction is
     /// no Profile 2 candidate and its omission is excused; <c>0</c> lifts the cap.</param>
     /// <param name="ilMembership">One <see cref="InclusionListMembership"/> mask per entry of <paramref name="il"/>, which
-    /// the EIP-8369 per-IL VERIFY budget is filled over; <c>null</c> skips the fill, as nothing attributes an entry.</param>
+    /// the EIP-8369 per-IL VERIFY budget is filled over; <c>null</c> admits no Profile 2 candidate.</param>
     /// <param name="claims">The builder's EIP-8369 claimed evaluation indices.</param>
     /// <param name="replayer">Decides Profile 2 eligibility; <c>null</c> enforces every omitted candidate that
     /// passes the determinate checks.</param>
@@ -76,6 +76,7 @@ public static class InclusionListValidator
 
         Dictionary<AddressAsKey, AccountStruct>? accountCache = null;
         HashSet<Hash256AsKey>? admitted = null;
+        List<Transaction>? toReplay = null;
         for (int i = 0; i < il.Length; i++)
         {
             if (included[i]) continue;
@@ -86,24 +87,24 @@ public static class InclusionListValidator
                 if (Eip8369Profile2.Classify(il[i], profile2.MaxVerifyGasPerTx) != Profile2Exclusion.None) continue;
                 // Eligibility is a property of the bytes, so the first occurrence answers for every copy.
                 if (il[i].Hash is { } frameHash && ilByHash[frameHash] != i) continue;
-                if (IsProfile2OmissionUnjustified(il[i], block, il, state, spec, txValidator, in profile2, ref accountCache, ref admitted)) return false;
+                if (!IsReplayableOmission(il[i], block, il, state, spec, txValidator, in profile2, ref accountCache, ref admitted)) continue;
+                if (profile2.Replayer is null) return false;
+                (toReplay ??= []).Add(il[i]);
                 continue;
             }
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref accountCache)) return false;
         }
-        return true;
+        return toReplay is null || !AnyUnjustified(block, toReplay, spec, in profile2);
     }
 
     /// <summary>The inputs EIP-8369 Profile 2 enforcement takes beyond the list itself.</summary>
     private readonly record struct Profile2Inputs(ulong MaxVerifyGasPerTx, ushort[]? IlMembership, InclusionListClaim[]? Claims, IProfile2EligibilityReplayer? Replayer);
 
-    /// <summary>EIP-8369 § Attesters: whether omitting a Profile 2 candidate is unjustified.</summary>
-    /// <remarks>
-    /// Judged at the default index, the end of the payload, and again at a claimed index when the builder
-    /// committed one; the omission is unjustified only at both, so a claim can excuse but never condemn.
-    /// Gas remaining only grows towards the start of the payload, so the fit at the end covers the claim.
-    /// </remarks>
-    private static bool IsProfile2OmissionUnjustified(
+    /// <summary>Whether an omitted Profile 2 candidate passes every check but the replay: the determinate
+    /// conditions at the end of the payload and admission by some committee position's VERIFY budget fill.</summary>
+    /// <remarks>Only these reach the replay, so replay work is bounded by the per-IL budgets. Without membership no
+    /// position carries the entry, so it is not admitted (EIP-7805 as amended by EIP-8369).</remarks>
+    private static bool IsReplayableOmission(
         Transaction tx,
         Block block,
         Transaction[] il,
@@ -114,23 +115,45 @@ public static class InclusionListValidator
         ref Dictionary<AddressAsKey, AccountStruct>? accountCache,
         ref HashSet<Hash256AsKey>? admitted)
     {
+        if (tx.Hash is null || profile2.IlMembership is not { } ilMembership) return false;
         if (!CouldIncludeTx(tx, block, state, spec, txValidator, ref accountCache)) return false;
 
-        if (profile2.IlMembership is { } ilMembership)
+        admitted ??= Eip8369Profile2.AdmitByVerifyBudget(InclusionListMembership.ByPosition(il, ilMembership), profile2.MaxVerifyGasPerTx,
+            profile2.Replayer is { } signatures ? occurrence => signatures.AreSignaturesValid(occurrence, spec) : null);
+        return admitted.Contains(tx.Hash);
+    }
+
+    /// <summary>EIP-8369 § Attesters: whether omitting any of <paramref name="candidates"/> is unjustified.</summary>
+    /// <remarks>
+    /// Each is judged at the default index, the end of the payload, and again at its claimed index when the
+    /// builder committed one; the omission is unjustified only at both, so a claim can excuse but never condemn.
+    /// Gas remaining only grows towards the start of the payload, so the fit at the end covers the claim. Every
+    /// replay goes to the replayer in one batch, so it reconstructs the block's state once.
+    /// </remarks>
+    private static bool AnyUnjustified(Block block, List<Transaction> candidates, IReleaseSpec spec, in Profile2Inputs profile2)
+    {
+        int end = block.Transactions.Length;
+        List<(Transaction Transaction, int Index)> requests = new(candidates.Count * 2);
+        int[] claimedAt = new int[candidates.Count];
+        for (int i = 0; i < candidates.Count; i++)
         {
-            admitted ??= Eip8369Profile2.AdmitByVerifyBudget(InclusionListMembership.ByPosition(il, ilMembership), profile2.MaxVerifyGasPerTx,
-                profile2.Replayer is { } signatures ? occurrence => signatures.AreSignaturesValid(occurrence, spec) : null);
-            if (tx.Hash is null || !admitted.Contains(tx.Hash)) return false;
+            requests.Add((candidates[i], end));
+            claimedAt[i] = -1;
+            if (ResolveClaimedIndex(profile2.Claims, candidates[i].Hash!, end) is { } claimed && claimed != end)
+            {
+                claimedAt[i] = requests.Count;
+                requests.Add((candidates[i], claimed));
+            }
         }
 
-        if (profile2.Replayer is not { } replayer) return true;
-
-        int end = block.Transactions.Length;
-        if (!replayer.IsEligible(block, tx, end, spec)) return false;
-        return tx.Hash is null
-            || ResolveClaimedIndex(profile2.Claims, tx.Hash, end) is not { } claimed
-            || claimed == end
-            || replayer.IsEligible(block, tx, claimed, spec);
+        bool[] eligible = profile2.Replayer!.AreEligible(block, requests, spec);
+        for (int i = 0, next = 0; i < candidates.Count; i++, next++)
+        {
+            bool unjustified = eligible[next] && (claimedAt[i] < 0 || eligible[claimedAt[i]]);
+            if (claimedAt[i] >= 0) next++;
+            if (unjustified) return true;
+        }
+        return false;
     }
 
     /// <summary>The index <paramref name="claims"/> commits for <paramref name="hash"/>, or <c>null</c> for none.</summary>

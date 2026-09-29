@@ -20,7 +20,8 @@ namespace Nethermind.Consensus.Transactions;
 public class InclusionListTxSource(
     IEthereumEcdsa ecdsa,
     ISpecProvider specProvider,
-    ILogManager logManager) : IInclusionListTxSource
+    ILogManager logManager,
+    IProfile2EligibilityReplayer? profile2Replayer = null) : IInclusionListTxSource
 {
     // Lazy<T> defaults to ExecutionAndPublication: constructed once even under racing FCUs.
     private readonly Lazy<InclusionListDecoder> _decoder = new(() => new InclusionListDecoder(ecdsa, specProvider, logManager));
@@ -32,7 +33,11 @@ public class InclusionListTxSource(
 
     /// <summary>A build's list decoded twice over: ordered for production, and in list order beside the
     /// membership masks the EIP-8369 budget fill reads, which stay aligned after undecodable entries are dropped.</summary>
-    private sealed record DecodedInclusionList(Transaction[] ForProduction, Transaction[] InListOrder, ushort[]? Masks, IReleaseSpec Spec);
+    private sealed record DecodedInclusionList(Transaction[] ForProduction, Transaction[] InListOrder, ushort[]? Masks, IReleaseSpec Spec)
+    {
+        /// <summary>The fill under the cap it ran with; every improvement of one build asks again.</summary>
+        public (ulong MaxVerifyGasPerTx, IReadOnlySet<Hash256AsKey>? Candidates)? Profile2Candidates;
+    }
 
     // gasLimit is ignored: the downstream tx selection pipeline enforces it.
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
@@ -40,21 +45,17 @@ public class InclusionListTxSource(
 
     public IReadOnlySet<Hash256AsKey>? GetProfile2Candidates(PayloadAttributes? payloadAttributes, ulong maxVerifyGasPerTx)
     {
-        if (!TryGetDecoded(payloadAttributes, out DecodedInclusionList? decoded)) return null;
+        // Without membership no committee position carries an entry, so none is admitted (EIP-7805 as amended).
+        if (!TryGetDecoded(payloadAttributes, out DecodedInclusionList? decoded) || decoded.Masks is not { } masks) return null;
+        if (decoded.Profile2Candidates is { } cached && cached.MaxVerifyGasPerTx == maxVerifyGasPerTx) return cached.Candidates;
 
-        if (decoded.Masks is { } masks)
-        {
-            HashSet<Hash256AsKey> admitted = Eip8369Profile2.AdmitByVerifyBudget(InclusionListMembership.ByPosition(decoded.InListOrder, masks), maxVerifyGasPerTx,
-                tx => Profile2EligibilityReplayer.AreSignaturesValid(tx, ecdsa, decoded.Spec));
-            return admitted.Count > 0 ? admitted : null;
-        }
-
-        HashSet<Hash256AsKey>? candidates = null;
-        foreach (Transaction tx in decoded.InListOrder)
-        {
-            if (tx.SupportsFrames && tx.Hash is not null && Eip8369Profile2.Classify(tx, maxVerifyGasPerTx) == Profile2Exclusion.None)
-                (candidates ??= []).Add(tx.Hash);
-        }
+        IReleaseSpec spec = decoded.Spec;
+        Func<Transaction, bool> signaturesValid = profile2Replayer is not null
+            ? tx => profile2Replayer.AreSignaturesValid(tx, spec)
+            : tx => Profile2EligibilityReplayer.AreSignaturesValid(tx, ecdsa, spec);
+        HashSet<Hash256AsKey> admitted = Eip8369Profile2.AdmitByVerifyBudget(InclusionListMembership.ByPosition(decoded.InListOrder, masks), maxVerifyGasPerTx, signaturesValid);
+        IReadOnlySet<Hash256AsKey>? candidates = admitted.Count > 0 ? admitted : null;
+        decoded.Profile2Candidates = (maxVerifyGasPerTx, candidates);
         return candidates;
     }
 
