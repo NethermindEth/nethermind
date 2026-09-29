@@ -105,24 +105,13 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             }
         }
 
-        /// <summary>The result a failed action keeps: a reverted frame keeps its gasUsed and revert output, as a
-        /// REVERT frame does in the execution-apis trace profile; anything else keeps none.</summary>
-        public ParityTraceResult? FailedActionResult(ParityTraceAction action, EvmExceptionType error, ulong gasLeft, ReadOnlyMemory<byte> output)
-        {
-            if (error != EvmExceptionType.Revert || !IsFrame(action)) return null;
-
-            ParityTraceResult result = action.Result!;
-            result.GasUsed = action.Gas - gasLeft;
-            result.Output = output.ToArray();
-            return result;
-        }
-
         public void OnPopped(ParityTraceAction action)
         {
             if (!IsFrame(action) || !tracer.IsTracingInstructions) return;
             // A frame is not an operation of its caller, so no call's gas carries over to the next frame's first one.
             tracer._treatGasParityStyle = false;
-            // The gas the VM left, until a receipt reports the frame's own spend; an exceptional halt leaves none.
+            // The gas the VM left until a receipt reports the frame's spend: a frame that halted exceptionally has no
+            // result and consumed all its gas; a reverted one keeps its result.
             _lastFrameOperation?.Used = action.Result is null ? 0 : action.Gas - action.Result.GasUsed;
         }
 
