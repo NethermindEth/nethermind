@@ -152,6 +152,26 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
+    public void Simulate_SkipSignatureValidation_StillRunsCustomVerifier(
+        [Values(TxFrameSignature.SchemeSecp256k1, TxFrameSignature.SchemeP256)] byte scheme,
+        [Values] bool placeholder, [Values] bool reverts, [Values] bool simulation)
+    {
+        DeploySmartSender(reverts ? RevertWithWord(1) : ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        int length = scheme == TxFrameSignature.SchemeSecp256k1 ? TxFrameSignature.Secp256k1SignatureLength : TxFrameSignature.P256SignatureLength;
+        tx.FrameSignatures = [new TxFrameSignature(scheme, null, default, placeholder ? default : new byte[length])];
+        Block block = Build.A.Block.WithNumber(1).WithBeneficiary(Beneficiary).WithGasLimit(30_000_000).TestObject;
+        EthereumTransactionProcessor processor = BuildProcessor(_stateProvider, new EthereumCodeInfoRepository(_stateProvider));
+        processor.SkipSenderChecks = simulation;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Spec));
+
+        TransactionResult result = processor.Process(tx, NullTxTracer.Instance, ExecutionOptions.Commit);
+
+        Assert.That(result.TransactionExecuted, Is.EqualTo(simulation && !reverts));
+        if (simulation && reverts) Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+    }
+
+    [Test]
     public void CallAndRestore_UnsignedCustomVerifier_StillExecutes([Values] bool reverts,
         [Values(TxFrameSignature.SchemeP256, TxFrameSignature.SchemeArbitrary)] byte scheme)
     {
