@@ -631,7 +631,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     },
                     Calls =
                     [
-                        // A reverted transaction emits no logs, so it must not consume log indices either.
+                        // As in geth, logs a revert drops still consume their log indices.
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = reverter, Gas = 200_000, GasPrice = 0 },
                         new LegacyTransactionForRpc { From = TestItem.AddressA, To = caller, Gas = 200_000, GasPrice = 0 }
                     ]
@@ -655,7 +655,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(logs.Select(static l => l.Address), Is.EqualTo(new[] { transferSender, logger, caller }));
         Assert.That(logs[0].Topics, Is.EqualTo(new[] { TransferLog.TransferSignature, caller.ToHash().ToHash256(), logger.ToHash().ToHash256() }));
         Assert.That(new UInt256(logs[0].Data, isBigEndian: true), Is.EqualTo((UInt256)2));
-        Assert.That(logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 0, 1, 2 }));
+        Assert.That(logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 5, 6, 7 }));
     }
 
     [TestCase(
