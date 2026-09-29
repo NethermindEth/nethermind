@@ -163,9 +163,19 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
             : weight - magnitude;
     }
 
+    /// <summary>The highest checkpoint epoch whose start slot (<c>epoch * SLOTS_PER_EPOCH</c>) fits in a <see cref="ulong"/>.</summary>
+    internal static ulong MaxCheckpointEpoch(ulong slotsPerEpoch) => ulong.MaxValue / slotsPerEpoch;
+
+    private void ThrowIfBeyondMaxEpoch(Hash256 root, ulong epoch)
+    {
+        ulong maxEpoch = MaxCheckpointEpoch(slotsPerEpoch);
+        if (epoch > maxEpoch)
+            throw new ProtoArrayException($"Block {root} names checkpoint epoch {epoch}, beyond the maximum {maxEpoch}");
+    }
+
     /// <summary>Registers a block with the fork choice; already-known blocks are ignored.</summary>
     /// <remarks>Only the anchor (root) block may have a <c>null</c> or unknown parent.</remarks>
-    /// <exception cref="ProtoArrayException">The parent has an invalid execution payload, or the block's payload is valid and an optimistic ancestor's is invalid; the tree is left unchanged.</exception>
+    /// <exception cref="ProtoArrayException">The parent has an invalid execution payload, or the block's payload is valid and an optimistic ancestor's is invalid, or a checkpoint epoch of the block is beyond <see cref="MaxCheckpointEpoch"/>; the tree is left unchanged.</exception>
     public void OnBlock(ProtoBlock block, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
     {
         if (Indices.ContainsKey(block.Root)) return;
@@ -174,6 +184,11 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         {
             throw new ProtoArrayException($"Block {block.Root} must carry an execution block hash if and only if execution is enabled");
         }
+
+        ThrowIfBeyondMaxEpoch(block.Root, block.JustifiedCheckpoint.Epoch);
+        ThrowIfBeyondMaxEpoch(block.Root, block.FinalizedCheckpoint.Epoch);
+        if (block.UnrealizedJustifiedCheckpoint is { } unrealizedJustified) ThrowIfBeyondMaxEpoch(block.Root, unrealizedJustified.Epoch);
+        if (block.UnrealizedFinalizedCheckpoint is { } unrealizedFinalized) ThrowIfBeyondMaxEpoch(block.Root, unrealizedFinalized.Epoch);
 
         int nodeIndex = Nodes.Count;
         int? parentIndex = block.ParentRoot is not null && Indices.TryGetValue(block.ParentRoot, out int parent) ? parent : null;

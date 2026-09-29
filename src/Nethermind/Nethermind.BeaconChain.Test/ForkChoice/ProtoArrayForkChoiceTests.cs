@@ -143,6 +143,46 @@ public class ProtoArrayForkChoiceTests
         Assert.That(forkChoice.LatestMessage(0), Is.Null);
     }
 
+    /// <summary>The last epoch whose start slot fits in 64 bits: <c>ulong.MaxValue / 32</c>, written out so the bound cannot drift with the production constant.</summary>
+    private const ulong LastEpochWithAStartSlot = 576460752303423487;
+
+    private static ulong[] CheckpointEpochsAroundTheBound() => [LastEpochWithAStartSlot, LastEpochWithAStartSlot + 1, ulong.MaxValue];
+
+    /// <summary>
+    /// A block naming a checkpoint epoch whose start slot overflows
+    /// would wrap the finality checks or throw <see cref="OverflowException"/> mid-import. It is refused whole with the tree unchanged, and the epoch at
+    /// the bound is still accepted.
+    /// </summary>
+    [Test]
+    public void A_block_naming_a_checkpoint_epoch_is_refused_beyond_the_bound_and_accepted_at_it(
+        [Values(0, 1, 2, 3)] int field,
+        [ValueSource(nameof(CheckpointEpochsAroundTheBound))] ulong epoch)
+    {
+        bool refused = epoch > LastEpochWithAStartSlot;
+        if (!refused)
+            Assert.That(() => checked(epoch * 32), Throws.Nothing, "fixture bug: the accepted epoch's start slot must fit");
+        CheckpointRef anchor = new(0, GetRoot(0));
+        CheckpointRef beyond = new(epoch, GetRoot(0));
+        ProtoArrayForkChoice forkChoice = new(0, 0, Hash256.Zero, anchor, anchor, ExecutionStatus.Optimistic, Hash256.Zero, slotsPerEpoch: 32);
+        ProtoBlock block = new(
+            Slot: 1,
+            Root: GetRoot(1),
+            ParentRoot: GetRoot(0),
+            StateRoot: Hash256.Zero,
+            JustifiedCheckpoint: field == 0 ? beyond : anchor,
+            FinalizedCheckpoint: field == 1 ? beyond : anchor,
+            ExecutionStatus: ExecutionStatus.Optimistic,
+            ExecutionBlockHash: GetRoot(1),
+            UnrealizedJustifiedCheckpoint: field == 2 ? beyond : anchor,
+            UnrealizedFinalizedCheckpoint: field == 3 ? beyond : anchor);
+
+        if (refused)
+            Assert.That(() => forkChoice.ProcessBlock(block, 1, anchor, anchor), Throws.TypeOf<ProtoArrayException>());
+        else
+            Assert.That(() => forkChoice.ProcessBlock(block, 1, anchor, anchor), Throws.Nothing);
+        Assert.That(forkChoice.ContainsBlock(GetRoot(1)), Is.Not.EqualTo(refused));
+    }
+
     /// <summary>A default <see cref="ScoreDeltas"/> has no arrays: it is refused as a proto-array error before any weight moves, never a <see cref="NullReferenceException"/>.</summary>
     [Test]
     public void Score_changes_without_delta_arrays_are_refused()

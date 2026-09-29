@@ -166,17 +166,17 @@ public class ProposerBoostDependentRootTests
         FuluChain chain = new();
         ForkChoiceRunner runner = chain.CreateRunner();
         FuluChain.Block justified = chain.ImportAt(runner, chain.AnchorRoot, 1, 0x01, ExecutionStatus.Optimistic);
-        FuluChain.Block child = chain.Extend(justified.Root, 2, 0x02);
+        FuluChain.Block child = chain.Extend(justified.Root, Presets.SlotsPerEpoch + 1, 0x02);
         BeaconStateFulu doctored = child.PostState.Clone();
         doctored.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = 1, Root = justified.Root };
-        TickTo(runner, 2);
+        TickTo(runner, Presets.SlotsPerEpoch + 1);
         chain.Import(runner, child with { PostState = doctored }, ExecutionStatus.Optimistic);
         Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(justified.Root), "fixture bug: the child must justify its parent");
         runner.OnInvalidExecutionPayload(justified.Root);
-        FuluChain.Block block = chain.Extend(chain.AnchorRoot, 3, 0x03);
-        TickTo(runner, 3);
+        FuluChain.Block block = chain.Extend(chain.AnchorRoot, Presets.SlotsPerEpoch + 2, 0x03);
+        TickTo(runner, Presets.SlotsPerEpoch + 2);
         if (!timely)
-            runner.OnTick(runner.GenesisTime + 4 * Presets.SecondsPerSlot - 1);
+            runner.OnTick(runner.GenesisTime + (Presets.SlotsPerEpoch + 3) * Presets.SecondsPerSlot - 1);
 
         using (Assert.EnterMultipleScope())
         {

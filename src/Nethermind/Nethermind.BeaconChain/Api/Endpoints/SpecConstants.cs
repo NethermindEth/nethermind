@@ -31,7 +31,7 @@ internal static class SpecConstants
         ["GENESIS_EPOCH"] = Number(Presets.GenesisEpoch),
         ["FAR_FUTURE_EPOCH"] = Number(Presets.FarFutureEpoch),
         ["BASE_REWARDS_PER_EPOCH"] = "4",
-        ["JUSTIFICATION_BITS_LENGTH"] = "4",
+        ["JUSTIFICATION_BITS_LENGTH"] = Number((ulong)Presets.JustificationBitsLength),
         ["ENDIANNESS"] = "little",
         // Withdrawal prefixes: phase0, electra, gloas beacon-chain.md
         ["BLS_WITHDRAWAL_PREFIX"] = Hex(Presets.BlsWithdrawalPrefix),
@@ -58,7 +58,7 @@ internal static class SpecConstants
         // phase0/{deposit-contract,validator,fork-choice,p2p-interface,weak-subjectivity,fast-confirmation}.md
         ["DEPOSIT_CONTRACT_TREE_DEPTH"] = Number((ulong)Presets.DepositContractTreeDepth),
         ["TARGET_AGGREGATORS_PER_COMMITTEE"] = "16",
-        ["BASIS_POINTS"] = "10000",
+        ["BASIS_POINTS"] = Number(Presets.BasisPoints),
         ["NODE_ID_BITS"] = "256",
         ["ETH_TO_GWEI"] = "1000000000",
         ["COMMITTEE_WEIGHT_ESTIMATION_ADJUSTMENT_FACTOR"] = "5",
