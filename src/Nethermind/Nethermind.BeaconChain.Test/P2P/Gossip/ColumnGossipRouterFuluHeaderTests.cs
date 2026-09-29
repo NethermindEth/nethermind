@@ -8,6 +8,7 @@ using Autofac;
 using Google.Protobuf;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -26,6 +27,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 using Snappier;
 
@@ -132,6 +134,19 @@ public class ColumnGossipRouterFuluHeaderTests
             Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out DataColumnSidecar? pooled), Is.True);
             Assert.That(pooled!.KzgProofs, Is.EqualTo(honest.KzgProofs), "the honest copy is pooled, the garbage is not");
         }
+    }
+
+    /// <summary>fulu/p2p-interface.md: [REJECT] the sidecar's block's parent passes validation; a parent the importer never recorded stays the IGNORE of an unseen one.</summary>
+    [TestCase(true, MessageValidity.Rejected, 0, false, ColumnGossipDropReason.FailedBlockValidation)]
+    [TestCase(false, MessageValidity.Ignored, 1, true, null)]
+    public void A_sidecar_whose_parent_failed_validation_is_rejected_before_any_KZG_work(bool parentFailed, MessageValidity expected, int kzgBatches, bool consumed, ColumnGossipDropReason? reason)
+    {
+        FailedBlockRoots failedBlocks = new();
+        failedBlocks.Add(parentFailed ? ParentRoot : OtherRoot, CurrentSlot - 1);
+        (ColumnGossipRouter router, DataColumnSidecarPool pool, _) = Create(Ancestry.DescendsFromFinalized, parentInSnapshot: true, failedBlocks: failedBlocks);
+        DataColumnSidecar sidecar = Signed(DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot), signer: 0);
+
+        AssertVerdict(router, pool, sidecar, expected, kzgBatches, consumed, reason);
     }
 
     [Test]
@@ -379,6 +394,40 @@ public class ColumnGossipRouterFuluHeaderTests
             Assert.That(verdict, Is.EqualTo(expectedProposer ? MessageValidity.Accepted : MessageValidity.Rejected));
             Assert.That(router.GetDropCount(ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(expectedProposer ? 0 : 1));
             Assert.That((raised, router.KzgBatchCount), Is.EqualTo(expectedProposer ? (1, 1L) : (0, 0L)));
+        }
+    }
+
+    [Test]
+    public void The_container_router_and_importer_factory_share_one_set_of_failed_blocks()
+    {
+        DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot).AddSeconds(6);
+        ContainerBuilder builder = BeaconChainTestContainer.Builder();
+        builder.AddSingleton<ITimestamper>(new ManualTimestamper(now));
+        IEngineDriver engine = Substitute.For<IEngineDriver>();
+        engine.NotifyNewPayload(Arg.Any<BeaconBlockBody>()).Returns(ExecutionStatus.Valid);
+        builder.AddSingleton(engine);
+        using IContainer container = builder.Build();
+        UnsignedChain unsigned = UnsignedChain.Create();
+        IBlockImporter importer = container.Resolve<IBlockImporterFactory>().Create(new ForkedBeaconState.OfFulu(unsigned.Anchor.AnchorState), new ForkedSignedBeaconBlock.OfFulu(unsigned.Anchor.AnchorBlock), unsigned.AnchorRoot);
+        UnsignedChain.ChainBlock broken = unsigned.Extend(unsigned.AnchorRoot, slot: 1, payloadHashByte: 0xb1);
+        broken.Block.Message!.StateRoot = Keccak.Compute("wrong state root");
+        Hash256 brokenRoot = SszRoots.HashTreeRoot(broken.Block.Message);
+        container.Resolve<ForkChoiceSnapshotHolder>().Current = Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true);
+        container.Resolve<PubkeyCache>().Build(KeyedValidators());
+        ColumnGossipRouter router = container.Resolve<ColumnGossipRouter>();
+        router.Start(_ => new SilentTopic(), ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), [Column]);
+        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(Column, CurrentSlot);
+        sidecar.SignedBlockHeader!.Message!.ParentRoot = brokenRoot;
+
+        BlockImportResult imported = importer.Import(new ForkedSignedBeaconBlock.OfFulu(broken.Block), brokenRoot, verifySignatures: false);
+        MessageValidity verdict = router.Handle(Column, gloasTopic: false, Message(Signed(sidecar, signer: 0)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(imported, Is.EqualTo(BlockImportResult.Invalid), "fixture");
+            Assert.That(verdict, Is.EqualTo(MessageValidity.Rejected), "the importer's refusal reaches the router through the container");
+            Assert.That(router.GetDropCount(ColumnGossipDropReason.FailedBlockValidation), Is.EqualTo(1));
+            Assert.That(router.KzgBatchCount, Is.Zero);
         }
     }
 
@@ -780,16 +829,16 @@ public class ColumnGossipRouterFuluHeaderTests
     private static TestCaseData Unimported(string name, Action<DataColumnSidecar>? mutate, int signer, Ancestry ancestry, MessageValidity expected, int kzgBatches, bool consumed, ColumnGossipDropReason? reason, bool withPubkeys = true) =>
         new TestCaseData(mutate, signer, withPubkeys, ancestry, expected, kzgBatches, consumed, reason).SetName(name);
 
-    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, BeaconChainStore Store) Create(Ancestry ancestry, bool parentInSnapshot = false, ulong[]? subnets = null, bool withPubkeys = true, ProposerLookaheadHolder? lookaheads = null, PubkeyCache? keys = null) =>
-        Create(ancestry == Ancestry.NoSource ? null : Snapshot(ancestry, parentInSnapshot), subnets, withSource: ancestry != Ancestry.NoSource, withPubkeys, lookaheads, keys: keys);
+    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, BeaconChainStore Store) Create(Ancestry ancestry, bool parentInSnapshot = false, ulong[]? subnets = null, bool withPubkeys = true, ProposerLookaheadHolder? lookaheads = null, PubkeyCache? keys = null, FailedBlockRoots? failedBlocks = null) =>
+        Create(ancestry == Ancestry.NoSource ? null : Snapshot(ancestry, parentInSnapshot), subnets, withSource: ancestry != Ancestry.NoSource, withPubkeys, lookaheads, keys: keys, failedBlocks: failedBlocks);
 
-    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, BeaconChainStore Store) Create(ForkChoiceSnapshot? snapshot, ulong[]? subnets = null, bool withSource = true, bool withPubkeys = true, ProposerLookaheadHolder? lookaheads = null, ForkChoiceSnapshotHolder? forkChoice = null, PubkeyCache? keys = null)
+    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, BeaconChainStore Store) Create(ForkChoiceSnapshot? snapshot, ulong[]? subnets = null, bool withSource = true, bool withPubkeys = true, ProposerLookaheadHolder? lookaheads = null, ForkChoiceSnapshotHolder? forkChoice = null, PubkeyCache? keys = null, FailedBlockRoots? failedBlocks = null)
     {
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot).AddSeconds(6);
         DataColumnSidecarPool pool = new();
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
         ForkChoiceSnapshotHolder? holder = forkChoice ?? (withSource ? new ForkChoiceSnapshotHolder { Current = snapshot } : null);
-        ColumnGossipRouter router = new(Spec, new SlotClock(Spec, new ManualTimestamper(now)), LimboLogs.Instance, pool, store, forkChoice: holder, pubkeys: keys ?? (withPubkeys ? Pubkeys() : null), proposerLookahead: lookaheads);
+        ColumnGossipRouter router = new(Spec, new SlotClock(Spec, new ManualTimestamper(now)), LimboLogs.Instance, pool, store, forkChoice: holder, pubkeys: keys ?? (withPubkeys ? Pubkeys() : null), proposerLookahead: lookaheads, failedBlocks: failedBlocks);
         router.Start(_ => new SilentTopic(), ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), subnets ?? [Column]);
         return (router, pool, store);
     }

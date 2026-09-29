@@ -11,3 +11,9 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// during block processing means the block is invalid.
 /// </summary>
 public class BeaconStateException(string message) : Exception(message);
+
+/// <summary>
+/// Thrown when a block's proposer signature is invalid. The signature is not part of the block root,
+/// so it says nothing about the block a root names.
+/// </summary>
+public sealed class ProposerSignatureException(string message) : BeaconStateException(message);
