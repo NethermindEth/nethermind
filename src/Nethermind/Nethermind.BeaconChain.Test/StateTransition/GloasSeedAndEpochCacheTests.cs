@@ -24,6 +24,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// inside the previous epoch share the first and must not share the second. The committee memo is
 /// shared across the Gloas upgrade, so both forks must compute identical committees.
 /// </summary>
+[HardTimeout(60_000)]
 public class GloasSeedAndEpochCacheTests
 {
     private const ulong Gwei = 1_000_000_000;

@@ -18,6 +18,7 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
+[HardTimeout(60_000)]
 public class GloasForkTransitionTests
 {
     private const ulong Gwei = 1_000_000_000;

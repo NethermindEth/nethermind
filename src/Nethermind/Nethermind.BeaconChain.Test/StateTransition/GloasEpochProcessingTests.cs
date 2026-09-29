@@ -25,6 +25,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// availability reset in <c>process_slot</c> - plus the EIP-8061 pending-deposit queue, which draws
 /// on the new capped activation churn.
 /// </summary>
+[HardTimeout(60_000)]
 public class GloasEpochProcessingTests
 {
     private static readonly ulong SlotsPerEpoch = Presets.SlotsPerEpoch;
