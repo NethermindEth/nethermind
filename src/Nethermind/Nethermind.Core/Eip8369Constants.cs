@@ -29,7 +29,10 @@ public static class Eip8369Constants
 
     /// <summary><c>AA_VOPS_SLOT_COUNT</c>: the leading storage slots of <c>sender</c> and <c>payer</c> a Profile 2
     /// validation prefix may read.</summary>
-    /// <remarks>A placeholder: EIP-8369 leaves the value to the enforcing Standards Track EIP.</remarks>
+    /// <remarks>
+    /// EIP-8369 leaves the value to the enforcing Standards Track EIP ("candidate range 2 to 4, pending
+    /// benchmarks"), and neither EIP-7805 nor EIP-8369 fixes it yet. The top of that range is taken until one does.
+    /// </remarks>
     public const ulong AaVopsSlotCount = 4;
 
     /// <summary><c>MAX_INCLUSION_LIST_CLAIMS</c>: the builder claims one payload may carry.</summary>
