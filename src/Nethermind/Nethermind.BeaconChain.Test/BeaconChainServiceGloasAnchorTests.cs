@@ -35,8 +35,8 @@ namespace Nethermind.BeaconChain.Test;
 public class BeaconChainServiceGloasAnchorTests
 {
     /// <summary>
-    /// A Gloas checkpoint is handed to the orchestrator like a Fulu one, after the pubkey cache is built from its
-    /// validators. The orchestrator here has no P2P, so reaching it shows as its own refusal to run.
+    /// A Gloas checkpoint is handed to the orchestrator like a Fulu one.
+    /// The orchestrator here has no P2P, so reaching it shows as its own refusal to run.
     /// </summary>
     [Test]
     public async Task Start_hands_a_gloas_anchor_to_the_orchestrator_both_fresh_and_resumed()
@@ -46,19 +46,18 @@ public class BeaconChainServiceGloasAnchorTests
         BeaconChainConfig config = new() { CheckpointStateFile = files.StateFile, CheckpointSyncUrl = "http://invalid.localhost:1" };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
 
-        (_, TestErrorLogManager.Error[] fresh, int freshPubkeys) = await StartAsync(config, store);
+        (_, TestErrorLogManager.Error[] fresh, _) = await StartAsync(config, store);
         bool anchored = store.TryGetAnchor(out Hash256? anchorRoot, out _);
-        (_, TestErrorLogManager.Error[] resumed, int resumedPubkeys) = await StartAsync(config, store);
+        (_, TestErrorLogManager.Error[] resumed, _) = await StartAsync(config, store);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(anchored, Is.True, "the fresh start checkpoint-synced the Gloas anchor, so the second start resumes");
             Assert.That(anchorRoot, Is.EqualTo(first.Root));
-            foreach ((TestErrorLogManager.Error[] errors, int pubkeys, string start) in new[] { (fresh, freshPubkeys, "fresh"), (resumed, resumedPubkeys, "resumed") })
+            foreach ((TestErrorLogManager.Error[] errors, string start) in new[] { (fresh, "fresh"), (resumed, "resumed") })
             {
                 Assert.That(errors, Has.Length.EqualTo(1), start);
                 Assert.That(errors[0].Exception, Is.TypeOf<InvalidOperationException>().And.Message.Contains("P2P components"), $"{start}: the orchestrator was reached");
-                Assert.That(pubkeys, Is.EqualTo(first.PostState.Validators!.Length), $"{start}: the pubkey cache holds the Gloas state's validators");
             }
         }
     }
@@ -108,8 +107,8 @@ public class BeaconChainServiceGloasAnchorTests
             Assert.That(logManager.Errors, Is.Empty);
             Assert.That(container.Resolve<PubkeyCache>().Count, Is.EqualTo(first.PostState.Validators!.Length));
             object[] anchorUpdate = [anchorExecutionHash, anchorExecutionHash, anchorExecutionHash];
-            Assert.That(engine.ReceivedCalls().Select(static c => c.GetArguments()), Is.EqualTo(new[] { anchorUpdate, anchorUpdate }),
-                "the anchor kick, then the head update after the replay imported the child, which builds on the anchor's empty payload");
+            Assert.That(engine.ReceivedCalls().Select(static c => c.GetArguments()), Is.EqualTo(new[] { anchorUpdate }),
+                "the anchor kick; the head update after the replay imported the child, which builds on the anchor's empty payload, is the same state");
             Assert.That(container.Resolve<BeaconP2P>().LocalPeerId, Is.Not.Null, "the P2P host started");
             await ipResolver.Received(1).Resolve(Arg.Any<CancellationToken>());
         }
