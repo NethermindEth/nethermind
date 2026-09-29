@@ -41,6 +41,8 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
     private readonly Dictionary<(Hash256 BlockRoot, ulong Column), List<DataColumnSidecarGloas>> _pendingByKey = [];
     private int _pendingCount;
     private ulong _pendingPrunedAtSlot;
+    private readonly Dictionary<Hash256, ColumnWatch> _watches = [];
+    private int _watchCount;
 
     /// <summary>The most unverified Gloas sidecars <see cref="AddPendingGloas"/> holds at once.</summary>
     public const int MaxPendingGloasSidecars = 1 << 10;
@@ -82,11 +84,100 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
 
     public void Add(Hash256 blockRoot, ulong slot, DataColumnSidecar sidecar)
     {
+        Action? wake;
         lock (_servedLock)
         {
             MarkGiven(slot);
             _byRootAndColumn.Set((blockRoot, sidecar.Index), slot, sidecar);
+            wake = TakeWakeOnArrival(blockRoot, sidecar.Index);
         }
+
+        wake?.Invoke();
+    }
+
+    /// <summary>
+    /// Registers <paramref name="wake"/> to run once, on the thread that adds the last of the <paramref name="columns"/> not yet held for
+    /// <paramref name="blockRoot"/>, replacing an earlier watch on the root.
+    /// </summary>
+    /// <param name="gloas">Whether the columns are Gloas sidecars, where a parked candidate counts as held.</param>
+    /// <returns>Whether the watch is set; <c>false</c> when every column is held already, so no arrival would wake it.</returns>
+    /// <remarks>
+    /// A column counts once it is given to the pool, whether or not it later verifies, so the woken retry decides availability.
+    /// Only roots watched cost anything per sidecar, and the caller bounds the watches by the blocks it waits for.
+    /// </remarks>
+    internal bool TryWatch(Hash256 blockRoot, IReadOnlyList<ulong> columns, bool gloas, Action wake)
+    {
+        HashSet<ulong> missing = [];
+        lock (_servedLock)
+        {
+            foreach (ulong column in columns)
+            {
+                if (!(gloas ? _gloasByRootAndColumn.TryGet((blockRoot, column), out _) || HasPendingGloas(blockRoot, column) : _byRootAndColumn.TryGet((blockRoot, column), out _)))
+                {
+                    missing.Add(column);
+                }
+            }
+
+            if (missing.Count == 0)
+            {
+                _watches.Remove(blockRoot);
+                Volatile.Write(ref _watchCount, _watches.Count);
+                return false;
+            }
+
+            _watches[blockRoot] = new ColumnWatch(missing, wake);
+            Volatile.Write(ref _watchCount, _watches.Count);
+            return true;
+        }
+    }
+
+    /// <summary>Removes the watch on <paramref name="blockRoot"/>, if any.</summary>
+    internal void Unwatch(Hash256 blockRoot)
+    {
+        lock (_servedLock)
+        {
+            _watches.Remove(blockRoot);
+            Volatile.Write(ref _watchCount, _watches.Count);
+        }
+    }
+
+    /// <summary>The watched roots' current count; for tests and diagnostics.</summary>
+    internal int WatchCount
+    {
+        get
+        {
+            lock (_servedLock)
+            {
+                return _watches.Count;
+            }
+        }
+    }
+
+    private Action? TakeWakeOnArrival(Hash256 blockRoot, ulong column)
+    {
+        if (_watches.Count == 0 || !_watches.TryGetValue(blockRoot, out ColumnWatch? watch) || !watch.Missing.Remove(column) || watch.Missing.Count > 0)
+        {
+            return null;
+        }
+
+        _watches.Remove(blockRoot);
+        Volatile.Write(ref _watchCount, _watches.Count);
+        return watch.Wake;
+    }
+
+    private bool HasPendingGloas(Hash256 blockRoot, ulong column)
+    {
+        lock (_pendingLock)
+        {
+            return _pendingByKey.ContainsKey((blockRoot, column));
+        }
+    }
+
+    private sealed class ColumnWatch(HashSet<ulong> missing, Action wake)
+    {
+        public HashSet<ulong> Missing { get; } = missing;
+
+        public Action Wake { get; } = wake;
     }
 
     public bool TryGet(Hash256 blockRoot, ulong column, out DataColumnSidecar? sidecar)
@@ -102,10 +193,12 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
     public void AddGloas(DataColumnSidecarGloas sidecar)
     {
         Hash256 blockRoot = BlockRootOf(sidecar);
+        Action? wake;
         lock (_servedLock)
         {
             MarkGiven(sidecar.Slot);
             _gloasByRootAndColumn.Set((blockRoot, sidecar.Index), sidecar.Slot, sidecar);
+            wake = TakeWakeOnArrival(blockRoot, sidecar.Index);
         }
 
         lock (_pendingLock)
@@ -115,6 +208,8 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
                 _pendingCount -= candidates.Count;
             }
         }
+
+        wake?.Invoke();
     }
 
     public bool TryGetGloas(Hash256 blockRoot, ulong column, [NotNullWhen(true)] out DataColumnSidecarGloas? sidecar)
@@ -163,8 +258,22 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14)
 
             candidates.Add(sidecar);
             _pendingCount++;
+        }
+
+        if (Volatile.Read(ref _watchCount) == 0)
+        {
             return true;
         }
+
+        // After the pending lock is released: watches are guarded by the served lock, which registration takes before the pending one.
+        Action? wake;
+        lock (_servedLock)
+        {
+            wake = TakeWakeOnArrival(key.BlockRoot, key.Column);
+        }
+
+        wake?.Invoke();
+        return true;
     }
 
     /// <summary>A snapshot of the parked, unverified Gloas candidates for a block root and column, in arrival order.</summary>
