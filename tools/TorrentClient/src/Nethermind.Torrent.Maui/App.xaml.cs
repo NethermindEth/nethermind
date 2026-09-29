@@ -12,8 +12,8 @@ public partial class App : Application
         Window window = new(new AppShell())
         {
             Title = "Nethermind Torrent",
-            MinimumHeight = 720,
-            MinimumWidth = 1120,
+            MinimumHeight = 560,
+            MinimumWidth = 600,
         };
         window.Destroying += (_, _) => Nethermind.Torrent.Maui.MainPage.Active?.StopAllForShutdown(TimeSpan.FromSeconds(10));
         return window;

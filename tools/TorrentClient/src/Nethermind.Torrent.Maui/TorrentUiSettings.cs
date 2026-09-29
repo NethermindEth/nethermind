@@ -1,13 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace Nethermind.Torrent.Maui;
 
 internal sealed class TorrentUiSettings
 {
-    public string DefaultDownloadDirectory { get; set; } = Path.Combine(Environment.CurrentDirectory, "artifacts", "torrent-downloads");
+    private static readonly Guid DownloadsFolderId = new("374DE290-123F-4565-9164-39C4925E467B");
+
+    public string DefaultDownloadDirectory { get; set; } = GetDefaultDownloadDirectory();
     public bool StartOnAdd { get; set; } = true;
     public bool AddPaused { get; set; }
     public bool VerifyExistingData { get; set; } = true;
@@ -22,7 +25,32 @@ internal sealed class TorrentUiSettings
     public int PeerTimeoutSeconds { get; set; } = 45;
     public bool ConfirmRemove { get; set; } = true;
 
-    public TorrentClientOptions ToClientOptions(string torrentPath, string outputDirectory)
+    private static string GetDefaultDownloadDirectory()
+    {
+        Guid folderId = DownloadsFolderId;
+        int result = SHGetKnownFolderPath(ref folderId, 0, IntPtr.Zero, out IntPtr path);
+        try
+        {
+            if (result == 0 && path != IntPtr.Zero && Marshal.PtrToStringUni(path) is string knownPath)
+            {
+                return knownPath;
+            }
+        }
+        finally
+        {
+            if (path != IntPtr.Zero)
+            {
+                Marshal.FreeCoTaskMem(path);
+            }
+        }
+
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+    }
+
+    [DllImport("shell32.dll", ExactSpelling = true)]
+    private static extern int SHGetKnownFolderPath(ref Guid folderId, uint flags, IntPtr token, out IntPtr path);
+
+    public TorrentClientOptions ToClientOptions(string torrentPath, string outputDirectory, bool resumeExistingData = false)
         => new()
         {
             TorrentPath = torrentPath,
@@ -31,7 +59,7 @@ internal sealed class TorrentUiSettings
             MaxPeers = Math.Clamp(MaxPeersPerTorrent, 1, 512),
             EnableDht = EnableDht,
             EnableTrackers = EnableTrackers,
-            VerifyExistingData = VerifyExistingData,
+            VerifyExistingData = VerifyExistingData || resumeExistingData,
             TrackerTimeout = TimeSpan.FromSeconds(Math.Clamp(TrackerTimeoutSeconds, 1, 3600)),
             DhtLookupInterval = TimeSpan.FromSeconds(Math.Clamp(DhtLookupIntervalSeconds, 1, 3600)),
             DhtLookupTimeout = TimeSpan.FromSeconds(Math.Clamp(DhtLookupTimeoutSeconds, 1, 3600)),

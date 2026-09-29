@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\src\Nethermind\Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Nethermind\Nethermind.Kademlia\Nethermind.Kademlia.csproj" />
   </ItemGroup>
 
 </Project>

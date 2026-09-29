@@ -12,28 +12,32 @@ internal enum PieceState
     Complete,
 }
 
-internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath) : IAsyncDisposable
+internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath, bool readOnly = false) : IAsyncDisposable
 {
     private readonly TorrentMetadata _metadata = metadata;
     private readonly string _rootPath = rootPath;
     private readonly List<OpenFile> _files = [];
 
-    private sealed class OpenFile(TorrentFileEntry entry, FileStream stream)
+    private sealed class OpenFile(TorrentFileEntry entry, FileStream? stream)
     {
         public TorrentFileEntry Entry { get; } = entry;
 
-        public FileStream Stream { get; } = stream;
+        public FileStream? Stream { get; } = stream;
     }
 
     public async Task InitializeAsync(CancellationToken token)
     {
-        Directory.CreateDirectory(_rootPath);
+        if (!readOnly)
+        {
+            Directory.CreateDirectory(_rootPath);
+        }
+
         for (int i = 0; i < _metadata.Files.Count; i++)
         {
             TorrentFileEntry entry = _metadata.Files[i];
             string path = GetFullPath(entry);
             string? directory = Path.GetDirectoryName(path);
-            if (directory is not null)
+            if (!readOnly && directory is not null)
             {
                 Directory.CreateDirectory(directory);
             }
@@ -43,19 +47,27 @@ internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath) 
             {
                 stream = new FileStream(
                     path,
-                    FileMode.OpenOrCreate,
-                    FileAccess.ReadWrite,
-                    FileShare.Read,
+                    readOnly ? FileMode.Open : FileMode.OpenOrCreate,
+                    readOnly ? FileAccess.Read : FileAccess.ReadWrite,
+                    readOnly ? FileShare.ReadWrite : FileShare.Read,
                     bufferSize: 1 << 20,
                     FileOptions.Asynchronous | FileOptions.RandomAccess);
 
-                if (stream.Length != entry.Length)
+                if (!readOnly && stream.Length != entry.Length)
                 {
                     stream.SetLength(entry.Length);
                 }
 
                 _files.Add(new OpenFile(entry, stream));
                 stream = null;
+            }
+            catch (FileNotFoundException) when (readOnly)
+            {
+                _files.Add(new OpenFile(entry, null));
+            }
+            catch (DirectoryNotFoundException) when (readOnly)
+            {
+                _files.Add(new OpenFile(entry, null));
             }
             finally
             {
@@ -73,7 +85,11 @@ internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath) 
     public async Task<bool> VerifyPieceAsync(int pieceIndex, byte[] buffer, CancellationToken token)
     {
         int pieceSize = _metadata.GetPieceSize(pieceIndex);
-        await ReadPieceAsync(pieceIndex, buffer.AsMemory(0, pieceSize), token);
+        if (!await ReadPieceAsync(pieceIndex, buffer.AsMemory(0, pieceSize), token))
+        {
+            return false;
+        }
+
         Span<byte> hash = stackalloc byte[TorrentMetadata.Sha1Length];
         SHA1.HashData(buffer.AsSpan(0, pieceSize), hash);
         return hash.SequenceEqual(_metadata.GetPieceHash(pieceIndex));
@@ -81,6 +97,11 @@ internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath) 
 
     public async Task WritePieceAsync(int pieceIndex, ReadOnlyMemory<byte> data, CancellationToken token)
     {
+        if (readOnly)
+        {
+            throw new InvalidOperationException("Read-only torrent storage cannot write pieces.");
+        }
+
         if (data.Length != _metadata.GetPieceSize(pieceIndex))
         {
             throw new ArgumentException("Piece buffer length does not match torrent metadata.", nameof(data));
@@ -98,7 +119,7 @@ internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath) 
                 continue;
             }
 
-            await RandomAccess.WriteAsync(file.Stream.SafeFileHandle, data.Slice(sourceOffset, byteCount), fileOffset, token);
+            await RandomAccess.WriteAsync(file.Stream!.SafeFileHandle, data.Slice(sourceOffset, byteCount), fileOffset, token);
             sourceOffset += byteCount;
             remaining -= byteCount;
         }
@@ -109,11 +130,12 @@ internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath) 
         }
     }
 
-    private async Task ReadPieceAsync(int pieceIndex, Memory<byte> destination, CancellationToken token)
+    private async Task<bool> ReadPieceAsync(int pieceIndex, Memory<byte> destination, CancellationToken token)
     {
         long globalOffset = (long)pieceIndex * _metadata.PieceLength;
         int remaining = destination.Length;
         int destinationOffset = 0;
+        bool fullyRead = true;
         for (int i = 0; i < _files.Count && remaining > 0; i++)
         {
             OpenFile file = _files[i];
@@ -123,21 +145,31 @@ internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath) 
                 continue;
             }
 
-            int readTotal = 0;
-            while (readTotal < byteCount)
+            FileStream? stream = file.Stream;
+            if (stream is null)
             {
-                int read = await RandomAccess.ReadAsync(
-                    file.Stream.SafeFileHandle,
-                    destination.Slice(destinationOffset + readTotal, byteCount - readTotal),
-                    fileOffset + readTotal,
-                    token);
-                if (read == 0)
+                destination.Span.Slice(destinationOffset, byteCount).Clear();
+                fullyRead = false;
+            }
+            else
+            {
+                int readTotal = 0;
+                while (readTotal < byteCount)
                 {
-                    destination.Span.Slice(destinationOffset + readTotal, byteCount - readTotal).Clear();
-                    break;
-                }
+                    int read = await RandomAccess.ReadAsync(
+                        stream.SafeFileHandle,
+                        destination.Slice(destinationOffset + readTotal, byteCount - readTotal),
+                        fileOffset + readTotal,
+                        token);
+                    if (read == 0)
+                    {
+                        destination.Span.Slice(destinationOffset + readTotal, byteCount - readTotal).Clear();
+                        fullyRead = false;
+                        break;
+                    }
 
-                readTotal += read;
+                    readTotal += read;
+                }
             }
 
             destinationOffset += byteCount;
@@ -148,6 +180,8 @@ internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath) 
         {
             throw new InvalidOperationException("Piece read did not cover the full payload range.");
         }
+
+        return fullyRead;
     }
 
     private static bool Intersects(long globalOffset, int count, TorrentFileEntry file, out long fileOffset, out int byteCount)
@@ -185,7 +219,10 @@ internal sealed class TorrentStorage(TorrentMetadata metadata, string rootPath) 
     {
         for (int i = 0; i < _files.Count; i++)
         {
-            await _files[i].Stream.DisposeAsync();
+            if (_files[i].Stream is FileStream stream)
+            {
+                await stream.DisposeAsync();
+            }
         }
     }
 }

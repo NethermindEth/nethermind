@@ -47,18 +47,27 @@ public sealed class KademliaTests
     }
 
     [Test]
-    public void ToValueHash_zero_pads_dht_ids_deterministically()
+    public void Dht_key_operator_preserves_160_bit_identifier()
     {
         KadId id = new(CreateId(0x42));
 
-        byte[] first = DhtKeyOperator.ToValueHash(id).Bytes.ToArray();
-        byte[] second = DhtKeyOperator.ToValueHash(id).Bytes.ToArray();
+        KadId hash = new DhtKeyOperator().GetKeyHash(id);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(first, Is.EqualTo(second));
-            Assert.That(first.AsSpan(KadId.Length).ToArray(), Is.EqualTo(new byte[first.Length - KadId.Length]));
-        }
+        Assert.That(hash, Is.EqualTo(id));
+        Assert.That(hash.Bytes.Length, Is.EqualTo(KadId.Length));
+    }
+
+    [TestCase(1)]
+    [TestCase(8)]
+    [TestCase(80)]
+    [TestCase(160)]
+    public void Random_key_has_requested_dht_log_distance(int distance)
+    {
+        DhtKeyOperator keyOperator = new();
+        KadId origin = new(CreateId(0x42));
+        KadId generated = keyOperator.CreateRandomKeyAtDistance(origin, distance);
+
+        Assert.That(KadDistance.Instance.CalculateLogDistance(origin, generated), Is.EqualTo(distance));
     }
 
     [Test]

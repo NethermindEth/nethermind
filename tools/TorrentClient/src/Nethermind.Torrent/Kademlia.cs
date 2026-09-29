@@ -3,9 +3,8 @@
 
 using System.Buffers.Binary;
 using System.Net;
-using Nethermind.Core.Crypto;
-using Nethermind.Logging;
-using Nethermind.Network.Discovery.Kademlia;
+using System.Numerics;
+using Nethermind.Kademlia;
 
 namespace Nethermind.Torrent;
 
@@ -56,9 +55,9 @@ internal readonly record struct DhtNode(KadId Id, IPEndPoint EndPoint);
 internal sealed class TorrentKademlia
 {
     private readonly DhtKeyOperator _keyOperator = new();
-    private readonly INodeHashProvider<DhtNode> _nodeHashProvider;
-    private readonly IRoutingTable<DhtNode> _routingTable;
-    private readonly ILookupAlgo<DhtNode> _lookup;
+    private readonly INodeHashProvider<DhtNode, KadId> _nodeHashProvider;
+    private readonly IRoutingTable<DhtNode, KadId> _routingTable;
+    private readonly ILookupAlgo<DhtNode, KadId> _lookup;
     private readonly INodeHealthTracker<DhtNode> _nodeHealthTracker;
     private readonly KadId _selfId;
 
@@ -74,15 +73,15 @@ internal sealed class TorrentKademlia
             LookupFindNeighbourHardTimeout = TimeSpan.FromSeconds(5),
             NodeRequestFailureThreshold = 2,
         };
-        _nodeHashProvider = new FromKeyNodeHashProvider<KadId, DhtNode>(_keyOperator);
-        _routingTable = new KBucketTree<DhtNode>(config, _nodeHashProvider, LimboLogs.Instance);
+        _nodeHashProvider = new FromKeyNodeHashProvider<KadId, DhtNode, KadId>(_keyOperator);
+        _routingTable = new KBucketTree<DhtNode, KadId>(config, _nodeHashProvider, KadDistance.Instance);
         _nodeHealthTracker = new TorrentNodeHealthTracker(_routingTable, _nodeHashProvider);
-        _lookup = new LookupKNearestNeighbour<KadId, DhtNode>(
+        _lookup = new LookupKNearestNeighbour<KadId, DhtNode, KadId>(
             _routingTable,
             _nodeHashProvider,
+            KadDistance.Instance,
             _nodeHealthTracker,
-            config,
-            LimboLogs.Instance);
+            config);
     }
 
     public void AddOrRefresh(DhtNode node)
@@ -99,13 +98,12 @@ internal sealed class TorrentKademlia
 
     public List<DhtNode> GetClosest(KadId target, int count)
     {
-        ValueHash256 targetHash = DhtKeyOperator.ToValueHash(target);
-        DhtNode[] nodes = _routingTable.GetKNearestNeighbour(DhtKeyOperator.ToValueHash(target));
+        DhtNode[] nodes = _routingTable.GetKNearestNeighbour(target, excludeSelf: true);
         Array.Sort(nodes, (left, right) =>
-            Hash256XorUtils.Compare(
+            KadDistance.Instance.Compare(
                 _nodeHashProvider.GetHash(left),
                 _nodeHashProvider.GetHash(right),
-                targetHash));
+                target));
         if (nodes.Length <= count)
         {
             return [.. nodes];
@@ -127,11 +125,11 @@ internal sealed class TorrentKademlia
         int maxFreshCandidates = 256)
     {
         object candidateLock = new();
-        HashSet<ValueHash256> knownHashes = GetKnownHashes();
-        HashSet<ValueHash256> returnedCandidateHashes = [DhtKeyOperator.ToValueHash(_selfId)];
+        HashSet<KadId> knownHashes = GetKnownHashes();
+        HashSet<KadId> returnedCandidateHashes = [_selfId];
         int remainingFreshCandidates = maxFreshCandidates;
         DhtNode[] nodes = await _lookup.Lookup(
-            DhtKeyOperator.ToValueHash(target),
+            target,
             16,
             async (node, lookupToken) =>
             {
@@ -146,7 +144,7 @@ internal sealed class TorrentKademlia
                 {
                     for (int i = 0; i < neighbours.Count; i++)
                     {
-                        ValueHash256 neighbourHash = _nodeHashProvider.GetHash(neighbours[i]);
+                        KadId neighbourHash = _nodeHashProvider.GetHash(neighbours[i]);
                         if (!returnedCandidateHashes.Add(neighbourHash))
                         {
                             continue;
@@ -173,15 +171,14 @@ internal sealed class TorrentKademlia
         return [.. nodes];
     }
 
-    private HashSet<ValueHash256> GetKnownHashes()
+    private HashSet<KadId> GetKnownHashes()
     {
-        HashSet<ValueHash256> hashes = [DhtKeyOperator.ToValueHash(_selfId)];
-        foreach ((ValueHash256 _, int _, KBucket<DhtNode> bucket) in _routingTable.IterateBuckets())
+        HashSet<KadId> hashes = [_selfId];
+        foreach (RoutingTableBucket<DhtNode, KadId> bucket in _routingTable.IterateBuckets())
         {
-            (ValueHash256, DhtNode)[] items = bucket.GetAllWithHash();
-            for (int i = 0; i < items.Length; i++)
+            for (int i = 0; i < bucket.Nodes.Count; i++)
             {
-                hashes.Add(items[i].Item1);
+                hashes.Add(_nodeHashProvider.GetHash(bucket.Nodes[i]));
             }
         }
 
@@ -189,33 +186,85 @@ internal sealed class TorrentKademlia
     }
 }
 
-internal sealed class DhtKeyOperator : IKeyOperator<KadId, DhtNode>
+internal sealed class DhtKeyOperator : IKeyOperator<KadId, DhtNode, KadId>
 {
     public KadId GetKey(DhtNode node) => node.Id;
 
-    public ValueHash256 GetKeyHash(KadId key) => ToValueHash(key);
+    public KadId GetKeyHash(KadId key) => key;
 
-    public KadId CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth)
+    public KadId CreateRandomKeyAtDistance(KadId nodePrefix, int depth)
     {
-        ValueHash256 hash = Hash256XorUtils.GetRandomHashAtDistance(nodePrefix, depth);
-        return new KadId(hash.BytesAsSpan[..KadId.Length]);
-    }
+        ArgumentOutOfRangeException.ThrowIfLessThan(depth, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(depth, KadId.Length * 8);
 
-    public static ValueHash256 ToValueHash(KadId id)
-    {
-        Span<byte> bytes = stackalloc byte[ValueHash256.MemorySize];
-        bytes.Clear();
-        id.Bytes.CopyTo(bytes[..KadId.Length]);
-        return new ValueHash256(bytes);
+        Span<byte> bytes = stackalloc byte[KadId.Length];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        int bitIndex = KadId.Length * 8 - depth;
+        int byteIndex = bitIndex / 8;
+        nodePrefix.Bytes[..byteIndex].CopyTo(bytes);
+        int bitWithinByte = 7 - bitIndex % 8;
+        byte prefixMask = (byte)(0xFF << (bitWithinByte + 1));
+        byte distanceBit = (byte)(1 << bitWithinByte);
+        bytes[byteIndex] = (byte)((bytes[byteIndex] & ~(prefixMask | distanceBit)) |
+            (nodePrefix.Bytes[byteIndex] & prefixMask) |
+            ((~nodePrefix.Bytes[byteIndex]) & distanceBit));
+        return new KadId(bytes);
     }
 
     public static int CompareDistance(KadId left, KadId right, KadId target)
-        => Hash256XorUtils.Compare(ToValueHash(left), ToValueHash(right), ToValueHash(target));
+        => KadDistance.Instance.Compare(left, right, target);
+}
+
+internal sealed class KadDistance : IKademliaDistance<KadId>
+{
+    public static KadDistance Instance { get; } = new();
+
+    public int MaxDistance => KadId.Length * 8;
+
+    public KadId Zero { get; } = new(new byte[KadId.Length]);
+
+    public int CalculateLogDistance(KadId left, KadId right)
+    {
+        for (int i = 0; i < KadId.Length; i++)
+        {
+            byte xor = (byte)(left.Bytes[i] ^ right.Bytes[i]);
+            if (xor != 0)
+            {
+                return MaxDistance - i * 8 - (BitOperations.LeadingZeroCount((uint)xor) - 24);
+            }
+        }
+
+        return 0;
+    }
+
+    public int Compare(KadId left, KadId right, KadId target)
+    {
+        for (int i = 0; i < KadId.Length; i++)
+        {
+            int comparison = (left.Bytes[i] ^ target.Bytes[i]).CompareTo(right.Bytes[i] ^ target.Bytes[i]);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+        }
+
+        return 0;
+    }
+
+    public bool GetBit(KadId key, int index)
+        => (key.Bytes[index / 8] & (1 << (7 - index % 8))) != 0;
+
+    public KadId SetBit(KadId key, int index)
+    {
+        byte[] bytes = key.Bytes.ToArray();
+        bytes[index / 8] |= (byte)(1 << (7 - index % 8));
+        return new KadId(bytes);
+    }
 }
 
 internal sealed class TorrentNodeHealthTracker(
-    IRoutingTable<DhtNode> routingTable,
-    INodeHashProvider<DhtNode> nodeHashProvider) : INodeHealthTracker<DhtNode>
+    IRoutingTable<DhtNode, KadId> routingTable,
+    INodeHashProvider<DhtNode, KadId> nodeHashProvider) : INodeHealthTracker<DhtNode>
 {
     public void OnIncomingMessageFrom(DhtNode sender)
         => routingTable.TryAddOrRefresh(nodeHashProvider.GetHash(sender), sender, out _);

@@ -9,6 +9,7 @@ namespace Nethermind.Torrent.Maui;
 
 internal sealed class TorrentJob : INotifyPropertyChanged
 {
+    private static readonly string[] ByteUnits = ["B", "KiB", "MiB", "GiB", "TiB"];
     private string _name = "New torrent";
     private string _status = "Queued";
     private string _phase = "Queued";
@@ -22,6 +23,8 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     private int _knownPeers;
     private bool _isRunning;
     private bool _isComplete;
+    private bool _isChecking;
+    private bool _hasDataToResume;
     private double _progress;
     private DateTimeOffset _lastProgressAt = DateTimeOffset.UtcNow;
     private CancellationTokenSource? _cancellation;
@@ -31,6 +34,8 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     private double _downloadRateBytesPerSecond;
     private bool? _effectiveDht;
     private bool? _effectiveTrackers;
+    private readonly Lock _pendingLogLock = new();
+    private readonly Queue<string> _pendingLogLines = new();
 
     public TorrentJob(string torrentPath, string outputDirectory)
     {
@@ -40,6 +45,8 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     }
 
     public string TorrentPath { get; }
+
+    public string InfoHashHex { get; set; } = string.Empty;
 
     public string OutputDirectory
     {
@@ -89,6 +96,11 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         get => _downloadedBytes;
         set
         {
+            if (value > 0)
+            {
+                _hasDataToResume = true;
+            }
+
             if (SetField(ref _downloadedBytes, value))
             {
                 OnPropertyChanged(nameof(DownloadedText));
@@ -143,6 +155,18 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     {
         get => _isComplete;
         set => SetField(ref _isComplete, value);
+    }
+
+    public bool IsChecking
+    {
+        get => _isChecking;
+        set
+        {
+            if (SetField(ref _isChecking, value))
+            {
+                OnPropertyChanged(nameof(CanStart));
+            }
+        }
     }
 
     public double Progress
@@ -201,12 +225,16 @@ internal sealed class TorrentJob : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public bool CanStart => !IsRunning && !IsComplete;
+    public bool CanStart => PieceCount > 0 && !IsRunning && !IsComplete && !IsChecking;
+
+    public bool HasDataToResume => _hasDataToResume;
 
     public bool CanStop => IsRunning;
 
     public void ApplyMetadata(TorrentMetadata metadata)
     {
+        _hasDataToResume = false;
+        InfoHashHex = metadata.InfoHashHex;
         Name = metadata.Name;
         TotalBytes = metadata.TotalLength;
         PieceCount = metadata.PieceCount;
@@ -223,12 +251,58 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         {
             Trackers.Add(metadata.Trackers[i].ToString());
         }
+
+        OnPropertyChanged(nameof(CanStart));
+    }
+
+    public void BeginVerification()
+    {
+        DownloadedBytes = 0;
+        CompletedPieces = 0;
+        Progress = 0;
+        IsChecking = true;
+        Status = "Checking";
+        Phase = "Verifying";
+        Message = "Checking existing data";
+    }
+
+    public void ApplyVerificationProgress(TorrentVerificationProgress verification)
+    {
+        DownloadedBytes = verification.VerifiedBytes;
+        CompletedPieces = verification.VerifiedPieces;
+        Progress = TotalBytes == 0 ? 0 : (double)DownloadedBytes / TotalBytes;
+        Message = $"Checked {verification.ScannedPieces}/{verification.TotalPieces} pieces";
+    }
+
+    public void CompleteVerification(TorrentVerificationProgress verification)
+    {
+        ApplyVerificationProgress(verification);
+        bool complete = verification.VerifiedPieces == verification.TotalPieces;
+        IsComplete = complete;
+        IsChecking = false;
+        Status = complete ? "Complete" : "Paused";
+        Phase = complete ? "Completed" : "Paused";
+        Message = $"Verified {verification.VerifiedPieces}/{verification.TotalPieces} pieces";
+    }
+
+    public void AbortVerification(string status, string message)
+    {
+        DownloadedBytes = 0;
+        CompletedPieces = 0;
+        Progress = 0;
+        IsChecking = false;
+        Status = status;
+        Phase = "Queued";
+        Message = message;
     }
 
     public void AttachRun(Task runTask, CancellationTokenSource cancellation)
     {
         _runTask = runTask;
         _cancellation = cancellation;
+        _lastDownloadedBytes = DownloadedBytes;
+        _lastSpeedSampleAt = DateTimeOffset.UtcNow;
+        DownloadRateBytesPerSecond = 0;
         IsRunning = true;
         IsComplete = false;
         OnPropertyChanged(nameof(CanStart));
@@ -272,13 +346,15 @@ internal sealed class TorrentJob : INotifyPropertyChanged
         _runTask = null;
         IsRunning = false;
         IsComplete = completed;
+        DownloadRateBytesPerSecond = 0;
+        ActivePeers = 0;
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(CanStop));
     }
 
     public void AppendLog(string line)
     {
-        if (LogLines.Count > 800)
+        if (LogLines.Count >= 400)
         {
             LogLines.RemoveAt(0);
         }
@@ -288,14 +364,49 @@ internal sealed class TorrentJob : INotifyPropertyChanged
             line.StartsWith("dht ", StringComparison.OrdinalIgnoreCase) ||
             line.Contains(" peers", StringComparison.OrdinalIgnoreCase))
         {
-            if (PeerEvents.Count > 120)
+            if (PeerEvents.Count >= 120)
             {
                 PeerEvents.RemoveAt(0);
             }
 
             PeerEvents.Add(line);
         }
+    }
 
+    public void QueueLog(string line)
+    {
+        lock (_pendingLogLock)
+        {
+            if (_pendingLogLines.Count >= 200)
+            {
+                _pendingLogLines.Dequeue();
+            }
+
+            _pendingLogLines.Enqueue(line);
+        }
+    }
+
+    public void DrainLogs(int maxLines)
+    {
+        List<string> lines;
+        lock (_pendingLogLock)
+        {
+            if (_pendingLogLines.Count == 0 || maxLines <= 0)
+            {
+                return;
+            }
+
+            lines = new(Math.Min(maxLines, _pendingLogLines.Count));
+            while (lines.Count < maxLines && _pendingLogLines.TryDequeue(out string? line))
+            {
+                lines.Add(line);
+            }
+        }
+
+        foreach (string line in lines)
+        {
+            AppendLog(line);
+        }
     }
 
     public void ApplyProgress(TorrentSessionProgress progress)
@@ -347,18 +458,17 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
-    private static string FormatBytes(long bytes)
+    internal static string FormatBytes(long bytes)
     {
-        string[] units = ["B", "KiB", "MiB", "GiB", "TiB"];
         double value = bytes;
         int unit = 0;
-        while (value >= 1024 && unit < units.Length - 1)
+        while (value >= 1024 && unit < ByteUnits.Length - 1)
         {
             value /= 1024;
             unit++;
         }
 
-        return value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + " " + units[unit];
+        return value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + " " + ByteUnits[unit];
     }
 
     private static string FormatEnabled(bool? value)
@@ -376,19 +486,5 @@ internal sealed class TorrentFileItem(TorrentFileEntry entry)
 
     public long Length { get; } = entry.Length;
 
-    public string LengthText { get; } = FormatBytes(entry.Length);
-
-    private static string FormatBytes(long bytes)
-    {
-        string[] units = ["B", "KiB", "MiB", "GiB", "TiB"];
-        double value = bytes;
-        int unit = 0;
-        while (value >= 1024 && unit < units.Length - 1)
-        {
-            value /= 1024;
-            unit++;
-        }
-
-        return value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + " " + units[unit];
-    }
+    public string LengthText { get; } = TorrentJob.FormatBytes(entry.Length);
 }
