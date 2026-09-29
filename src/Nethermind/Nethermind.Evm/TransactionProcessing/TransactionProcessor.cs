@@ -1366,9 +1366,6 @@ namespace Nethermind.Evm.TransactionProcessing
                             codeInfo = spec.IsPrecompile(delegationAddress)
                                 ? CodeInfo.Empty
                                 : codeInfoRepository.GetCachedCodeInfo(delegationAddress, followDelegation: false, spec, out _);
-
-                            // EIP-7702: a precompile moved by a state override must not execute via delegation either.
-                            if (codeInfo.IsPrecompile) codeInfo = CodeInfo.Empty;
                         }
                     }
                     else
