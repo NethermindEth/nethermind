@@ -67,6 +67,7 @@ public class BeaconChainModule : Module
             .AddSingleton<BeaconSyncOrchestrator>()
             .AddSingleton<ForkChoiceSnapshotHolder>()
             .AddSingleton<ProposerLookaheadHolder>()
+            .AddSingleton<FailedBlockRoots>()
             .AddSingleton<IBlockImporterFactory, BlockImporterFactory>()
             .AddSingleton<ExternalClDetector>()
             .AddSingleton<EngineDriver>()

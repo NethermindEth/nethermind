@@ -70,15 +70,14 @@ public class DataColumnSidecarNetworkingTests
                 ("proposer index out of range", ColumnVerdict.Rejected(ColumnGossipDropReason.UnexpectedProposer)),
                 // A parent fork choice does not hold cannot name the expected proposer; the MAY-queue IGNORE applies.
                 ("sidecar's parent has not been seen", ColumnVerdict.Ignored(ColumnGossipDropReason.ProposerNotVerifiable)),
-                // No record of blocks that failed validation is kept, so such a parent reads as not seen and the vector is reported not-implemented.
-                ("sidecar's parent failed validation", ColumnVerdict.Ignored(ColumnGossipDropReason.ProposerNotVerifiable)),
+                // The importer records blocks it refused, which the vector's failed blocks seed.
+                ("sidecar's parent failed validation", ColumnVerdict.Rejected(ColumnGossipDropReason.FailedBlockValidation)),
             ],
-            // A sidecar whose block is not held is parked, so "block ... failed validation" is Ignored and reported not-implemented.
             ["gloas"] =
             [
                 ("already seen sidecar for this block root and index", ColumnVerdict.Ignored(ColumnGossipDropReason.Duplicate)),
                 ("block for sidecar's beacon block root has not been seen", ColumnVerdict.Ignored(ColumnGossipDropReason.UnknownBlock)),
-                ("block for sidecar's beacon block root failed validation", ColumnVerdict.Ignored(ColumnGossipDropReason.UnknownBlock)),
+                ("block for sidecar's beacon block root failed validation", ColumnVerdict.Rejected(ColumnGossipDropReason.FailedBlockValidation)),
                 ("sidecar is from a future slot", ColumnVerdict.Ignored(ColumnGossipDropReason.FutureSlot)),
                 ("sidecar is for wrong subnet", ColumnVerdict.Rejected(ColumnGossipDropReason.WrongSubnet)),
                 ("sidecar's slot does not match block's slot", ColumnVerdict.Rejected(ColumnGossipDropReason.SlotMismatch)),
@@ -174,10 +173,11 @@ public class DataColumnSidecarNetworkingTests
         };
         SlotClock clock = new(spec, timestamper);
         BeaconChainStore store = GossipValidationTests.SeedStore(testCase.CasePath, spec);
+        FailedBlockRoots failedBlocks = SeedFailedBlocks(testCase.CasePath, meta, spec);
         ColumnGossipRouter router;
         if (anchor is null)
         {
-            router = new(spec, clock, LimboLogs.Instance, store: store, status: status);
+            router = new(spec, clock, LimboLogs.Instance, store: store, status: status, failedBlocks: failedBlocks);
         }
         else
         {
@@ -185,7 +185,8 @@ public class DataColumnSidecarNetworkingTests
             router = new(spec, clock, LimboLogs.Instance, store: store, status: status,
                 forkChoice: new ForkChoiceSnapshotHolder { Current = snapshot },
                 pubkeys: FuluDriverSupport.BuildPubkeyCache(anchor.Validators!),
-                proposerLookahead: new ProposerLookaheadHolder { Current = lookahead });
+                proposerLookahead: new ProposerLookaheadHolder { Current = lookahead },
+                failedBlocks: failedBlocks);
         }
 
         ulong[] subnets = [.. Enumerable.Range(0, (int)Eip7594DasConstants.DataColumnSidecarSubnetCount).Select(static s => (ulong)s)];
@@ -249,6 +250,19 @@ public class DataColumnSidecarNetworkingTests
 
         if (uncheckedRejects.Count > 0)
             throw new NotImplementedInDriverException($"ColumnGossipRouter does not reject: {string.Join("; ", uncheckedRejects)}");
+    }
+
+    /// <summary>The blocks meta.yaml marks <c>failed</c>, as the importer records the ones it refuses.</summary>
+    private static FailedBlockRoots SeedFailedBlocks(string casePath, GossipValidationTests.VectorMeta meta, BeaconChainSpec spec)
+    {
+        FailedBlockRoots failedBlocks = new();
+        foreach (GossipValidationTests.VectorBlock block in meta.Blocks.Where(static block => block.Failed))
+        {
+            ForkedSignedBeaconBlock decoded = SignedBeaconBlockCodec.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, block.Name + ".ssz_snappy")), spec);
+            failedBlocks.Add(decoded.ComputeMessageRoot(), decoded.Slot);
+        }
+
+        return failedBlocks;
     }
 
     /// <summary>The fork-choice store and head lookahead of <c>get_forkchoice_store(anchor_state, anchor_block)</c> over the vector's accepted blocks.</summary>

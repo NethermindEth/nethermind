@@ -588,7 +588,7 @@ public class BlockSignatureBatchProcessingTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(() => ForkedStateTransition.Apply(new ForkedBeaconState.OfGloas(state), new ForkedSignedBeaconBlock.OfGloas(signedBlock), new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), validateResult: false),
-                Throws.TypeOf<BeaconStateException>().With.Message.EqualTo($"Invalid proposer signature for the block at slot {BlockSlot}"));
+                Throws.TypeOf<ProposerSignatureException>().With.Message.EqualTo($"Invalid proposer signature for the block at slot {BlockSlot}"));
             Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(SszRoots.HashTreeRoot(fixture.Pre)));
         }
     }
