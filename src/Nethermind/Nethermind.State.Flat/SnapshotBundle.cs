@@ -66,7 +66,8 @@ public sealed class SnapshotBundle : IDisposable
         _trieNodeCache = trieNodeCache;
         _resourcePool = resourcePool;
         _usage = usage;
-        _filterInMemorySlotReads = filterInMemorySlotReads;
+        // A bundle that can never have a filter would only pay GetSlotFiltered's extra checks on every read.
+        _filterInMemorySlotReads = filterInMemorySlotReads && readOnlySnapshotBundle.MayFilterSlots;
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);

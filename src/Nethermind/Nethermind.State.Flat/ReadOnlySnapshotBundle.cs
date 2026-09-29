@@ -315,6 +315,12 @@ public sealed class ReadOnlySnapshotBundle(
     internal BloomFilter? SlotFilter => Volatile.Read(ref _slotFilter);
 
     /// <summary>
+    /// <c>false</c> when <see cref="GetSlotFiltered"/> can only fall back to the plain loop: no bits per key, fewer than
+    /// two in-memory snapshots, or a build that failed.
+    /// </summary>
+    internal bool MayFilterSlots => Volatile.Read(ref _slotFilterState) != SlotFilterSkipped;
+
+    /// <summary>
     /// Test hook: publishes <paramref name="filter"/> as the slot filter as if a read had built it, e.g. one that
     /// answers "maybe" for every key. The bundle owns it from then on.
     /// </summary>
