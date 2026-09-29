@@ -33,7 +33,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingOpLevelLogs;
 
     // Resolved through the wrapper chain: a tracer that finds the frame hooks on this one stops looking deeper.
-    private readonly IFrameTxReceiptTracer? _frameTxTracer = FrameTxTracerOf(innerTracer);
+    private readonly IFrameTxReceiptTracer? _frameTxTracer = IFrameTxReceiptTracer.FindIn(innerTracer);
 
     /// <inheritdoc/>
     public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) =>
@@ -49,16 +49,6 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     /// <inheritdoc/>
     public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) =>
         _frameTxTracer?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
-
-    private static IFrameTxReceiptTracer? FrameTxTracerOf(ITxTracer tracer)
-    {
-        while (true)
-        {
-            if (tracer is IFrameTxReceiptTracer frameTxTracer) return frameTxTracer;
-            if (tracer is not ITxTracerWrapper wrapper) return null;
-            tracer = wrapper.InnerTracer;
-        }
-    }
 
     public ITxTracer InnerTracer => innerTracer;
 
