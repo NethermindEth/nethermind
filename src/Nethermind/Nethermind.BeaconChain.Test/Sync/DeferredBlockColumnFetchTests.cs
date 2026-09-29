@@ -9,6 +9,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -451,6 +452,240 @@ public class DeferredBlockColumnFetchTests
             Assert.That(orchestrator.SyncTip, Is.EqualTo((fixture.Chain.BlockRoot, fixture.Chain.Block.Message.Slot)));
             Assert.That(await BeaconSyncOrchestratorTests.EndsAsync(secondRound, token), Is.True);
         }
+    }
+
+    /// <summary>
+    /// A deferred block the full retry set refuses still gets its by-root column fetch and one import attempt from its result, so it
+    /// imports without waiting for range sync; that attempt does not fetch again, and the set stays at its cap.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_deferred_block_the_full_retry_set_refuses_still_fetches_its_columns_and_imports_once(
+        [Values] bool importerStaysUnavailable,
+        CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer custodian = fixture.Peer("custodian", fixture.Sampled);
+        fixture.Peers.Add(custodian);
+        Hash256 blockRoot = fixture.Chain.BlockRoot;
+        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token);
+
+        if (importerStaysUnavailable)
+        {
+            importer.Stuck.Add(blockRoot);
+        }
+
+        BlockImportResult refused = await orchestrator.ImportAndSettleAsync(fixture.Importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "the set stays at its cap");
+            Assert.That(custodian.RootColumnRequests, Is.EqualTo(1), "the refused block's columns are fetched once, and the import attempt after them does not fetch again");
+            Assert.That(refused, Is.EqualTo(importerStaysUnavailable ? BlockImportResult.DataUnavailable : BlockImportResult.Imported));
+            Assert.That(fixture.Importer.IsKnown(blockRoot), Is.EqualTo(!importerStaysUnavailable));
+            Assert.That(orchestrator.ColumnFetchRotationCount, Is.Zero, "a refused block keeps no rotation");
+            Assert.That(fixture.SidecarPool.WatchCount, Is.Zero, "a refused block keeps no pool watch");
+        }
+    }
+
+    /// <summary>The refused blocks are not tracked, so blocks the full retry set refuses cost one by-root fetch at a time, however many are sent.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Blocks_the_full_retry_set_refuses_cost_one_column_fetch_at_a_time(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        Gate neverOpens = new(expected: int.MaxValue);
+        UnansweringPeer custodian = new("custodian", fixture.Sampled, neverOpens, TimeSpan.FromSeconds(20));
+        fixture.Peers.Add(custodian);
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, stop.Token);
+        ForkedSignedBeaconBlock second = SecondBlobBlock(fixture);
+        importer.Stuck.UnionWith([fixture.Chain.BlockRoot, second.ComputeMessageRoot()]);
+
+        await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), stop.Token);
+        await orchestrator.ImportBlockAsync(second, stop.Token);
+        while (neverOpens.MaxInFlight == 0)
+        {
+            await Task.Delay(10, token);
+        }
+
+        await Task.Delay(200, token);
+        int inFlight = orchestrator.ColumnFetchesInFlight;
+        int requestsInFlight = neverOpens.MaxInFlight;
+        await stop.CancelAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inFlight, Is.EqualTo(1));
+            Assert.That(requestsInFlight, Is.EqualTo(1), "the second refused block asked nobody");
+            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity));
+        }
+    }
+
+    /// <summary>Each refused block's fetch ends and frees the one slot, so the refused block after it is asked too.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_second_refused_block_is_asked_once_the_first_refused_fetch_ended(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer custodian = fixture.Peer("custodian", fixture.Sampled);
+        fixture.Peers.Add(custodian);
+        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token);
+        ForkedSignedBeaconBlock first = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
+        ForkedSignedBeaconBlock second = SecondBlobBlock(fixture);
+        importer.Stuck.UnionWith([first.ComputeMessageRoot(), second.ComputeMessageRoot()]);
+
+        await orchestrator.ImportBlockAsync(first, token);
+        await orchestrator.SettleColumnFetchesAsync(token);
+        int afterFirst = custodian.RootColumnRequests;
+        await orchestrator.ImportBlockAsync(second, token);
+        await orchestrator.SettleColumnFetchesAsync(token);
+
+        Assert.That((afterFirst, custodian.RootColumnRequests), Is.EqualTo((1, 2)));
+    }
+
+    /// <summary>An ordinary deferred fetch does not take the refused-fetch slot, so a block the set later refuses is still asked.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task An_ordinary_deferred_fetch_does_not_stop_a_later_refused_block_being_asked(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer custodian = fixture.Peer("custodian", fixture.Sampled);
+        fixture.Peers.Add(custodian);
+        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token, fillers: RetrySetCapacity - 1);
+        ForkedSignedBeaconBlock ordinary = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
+        ForkedSignedBeaconBlock refused = SecondBlobBlock(fixture);
+        importer.Stuck.UnionWith([ordinary.ComputeMessageRoot(), refused.ComputeMessageRoot()]);
+
+        await orchestrator.ImportBlockAsync(ordinary, token);
+        await orchestrator.SettleColumnFetchesAsync(token);
+        int afterOrdinary = custodian.RootColumnRequests;
+        await orchestrator.ImportBlockAsync(refused, token);
+        await orchestrator.SettleColumnFetchesAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity));
+            Assert.That((afterOrdinary, custodian.RootColumnRequests), Is.EqualTo((1, 2)));
+        }
+    }
+
+    /// <summary>A refused block that another route imported while its fetch ran is not run through the importer again.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_refused_block_imported_meanwhile_is_not_imported_again_after_its_fetch(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer custodian = fixture.Peer("custodian", fixture.Sampled);
+        fixture.Peers.Add(custodian);
+        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token);
+        Hash256 blockRoot = fixture.Chain.BlockRoot;
+        importer.Stuck.Add(blockRoot);
+
+        await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+        while (orchestrator.QueuedWorkCount == 0)
+        {
+            await Task.Delay(10, token);
+        }
+
+        importer.Stuck.Remove(blockRoot);
+        BlockImportResult otherRoute = fixture.Importer.Import(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), blockRoot, verifySignatures: true);
+        await orchestrator.SettleColumnFetchesAsync(token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(otherRoute, Is.EqualTo(BlockImportResult.Imported), "fixture: the block imports once its columns are held");
+            Assert.That(importer.ImportCalls.Count(c => c == blockRoot), Is.EqualTo(1), "only the attempt the retry set refused");
+        }
+    }
+
+    /// <summary>A block deferred for the engine, not for columns, has nothing to fetch even when the full retry set refuses it.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task An_engine_unavailable_block_the_full_retry_set_refuses_asks_no_custodian(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer custodian = fixture.Peer("custodian", fixture.Sampled);
+        fixture.Peers.Add(custodian);
+        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token);
+        importer.EngineDown.Add(fixture.Chain.BlockRoot);
+
+        BlockImportResult result = await orchestrator.ImportAndSettleAsync(importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.EngineUnavailable));
+            Assert.That(custodian.RootColumnRequests, Is.Zero);
+            Assert.That(importer.ImportCalls.Count(c => c == fixture.Chain.BlockRoot), Is.EqualTo(1));
+        }
+    }
+
+    private static ForkedSignedBeaconBlock SecondBlobBlock(Fixture fixture)
+    {
+        SignedBeaconBlock other = Test.P2P.TestChain.CreateBlock(fixture.Chain.Block.Message!.Slot + 1, fixture.Chain.AnchorRoot);
+        other.Message!.Body!.BlobKzgCommitments = fixture.Chain.Block.Message.Body!.BlobKzgCommitments;
+        return new ForkedSignedBeaconBlock.OfFulu(other);
+    }
+
+    private const int RetrySetCapacity = 128;
+
+    /// <summary>An orchestrator over the real importer wrapped so that <paramref name="fixture"/>'s retry set holds <paramref name="fillers"/> blocks.</summary>
+    private static async Task<(BeaconSyncOrchestrator Orchestrator, StuckBlocksImporter Importer)> CreateOrchestratorWithFullRetrySetAsync(Fixture fixture, CancellationToken token, int fillers = RetrySetCapacity)
+    {
+        StuckBlocksImporter importer = new(fixture.Importer);
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
+        orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.AnchorBlock), fixture.Chain.AnchorRoot);
+        for (int i = 0; i < fillers; i++)
+        {
+            ForkedSignedBeaconBlock filler = new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(fixture.Chain.Block.Message!.Slot + 100 + (ulong)i, fixture.Chain.AnchorRoot));
+            importer.Stuck.Add(filler.ComputeMessageRoot());
+            await orchestrator.ImportBlockAsync(filler, token);
+        }
+
+        Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(fillers), "fixture: the retry set holds the fillers");
+        return (orchestrator, importer);
+    }
+
+    /// <summary>Answers <see cref="BlockImportResult.DataUnavailable"/> for the blocks in <see cref="Stuck"/>, <see cref="BlockImportResult.EngineUnavailable"/> for those in <see cref="EngineDown"/>, and defers to <paramref name="inner"/> for the rest.</summary>
+    private sealed class StuckBlocksImporter(IBlockImporter inner) : IBlockImporter
+    {
+        public HashSet<Hash256> Stuck { get; } = [];
+
+        public HashSet<Hash256> EngineDown { get; } = [];
+
+        public List<Hash256> ImportCalls { get; } = [];
+
+        public bool IsKnown(Hash256 blockRoot) => inner.IsKnown(blockRoot);
+
+        public bool IsExpectedProposer(ForkedSignedBeaconBlock block) => inner.IsExpectedProposer(block);
+
+        public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
+        {
+            ImportCalls.Add(blockRoot);
+            return Stuck.Contains(blockRoot) ? BlockImportResult.DataUnavailable
+                : EngineDown.Contains(blockRoot) ? BlockImportResult.EngineUnavailable
+                : inner.Import(block, blockRoot, verifySignatures);
+        }
+
+        public ExecutionPayloadEnvelopeImportResult ImportEnvelope(SignedExecutionPayloadEnvelope envelope) => inner.ImportEnvelope(envelope);
+
+        public void OnSlotTick(ulong slot) => inner.OnSlotTick(slot);
+
+        public HeadView ComputeHead() => inner.ComputeHead();
+
+        public void OnInvalidExecutionPayload(Hash256 blockRoot, Hash256? latestValidHash) => inner.OnInvalidExecutionPayload(blockRoot, latestValidHash);
+
+        public void OnFinalized(CheckpointRef finalized) => inner.OnFinalized(finalized);
+
+        public void OnGossipAggregate(SignedAggregateAndProof aggregate) => inner.OnGossipAggregate(aggregate);
+
+        public void OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => inner.OnGossipAggregate(aggregate);
+
+        public bool OnGossipAttesterSlashing(AttesterSlashing slashing) => inner.OnGossipAttesterSlashing(slashing);
+
+        public bool OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => inner.OnGossipAttesterSlashing(slashing);
+
+        public bool OnGossipPayloadAttestation(PayloadAttestationMessage message) => inner.OnGossipPayloadAttestation(message);
     }
 
     /// <summary>Runs the queued work on this thread, as the worker would, until <paramref name="done"/> holds.</summary>
