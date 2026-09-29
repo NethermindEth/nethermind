@@ -111,6 +111,25 @@ public class FrameTransactionForRpcTests
     }
 
     [Test]
+    public void FrameSignature_Signer_FollowsStrictHexFormat([Values] bool strictHexFormat)
+    {
+        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);
+        options.Converters.Insert(0, new AddressConverter(strictHexFormat));
+        Address? ReadSigner(string signer) =>
+            JsonSerializer.Deserialize<FrameSignatureForRpc>($$"""{"scheme":1,"signer":"{{signer}}"}""", options)!.Signer;
+        string unprefixed = TestItem.AddressA.ToString(withZeroX: false, withEip55Checksum: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSigner("0x"), Is.Null);
+            if (strictHexFormat)
+                Assert.That(() => ReadSigner(unprefixed), Throws.InstanceOf<FormatException>());
+            else
+                Assert.That(ReadSigner(unprefixed), Is.EqualTo(TestItem.AddressA));
+        }
+    }
+
+    [Test]
     public void Frame_RejectsEmptyTarget() =>
         Assert.That(() => Serializer.Deserialize<FrameForRpc>("""{"target":"0x"}"""), Throws.ArgumentException);
 
