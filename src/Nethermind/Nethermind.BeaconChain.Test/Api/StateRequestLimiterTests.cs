@@ -6,10 +6,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
@@ -154,6 +159,146 @@ public class StateRequestLimiterTests
         await limiter.InvokeAsync(afterRelease, _ => Task.CompletedTask);
         Assert.That(afterRelease.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK), "the client's permit is returned once its request completes");
     }
+
+    [TestCase(2, "192.0.2.7", TestName = "Two requests per client allowed")]
+    [TestCase(1, "127.0.0.1", TestName = "Loopback is limited like any other address")]
+    [TestCase(1, "::1", TestName = "IPv6 loopback is limited like any other address")]
+    public async Task The_configured_per_client_limit_is_the_number_of_state_requests_one_client_may_hold(int perClient, string client)
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { MaxConcurrentStateRequests = 4, StateDownloadsPerMinutePerClient = 0, MaxConcurrentStateRequestsPerClient = perClient });
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int reached = 0;
+        Task[] held = Enumerable.Range(0, perClient).Select(_ => limiter.InvokeAsync(StateRequest(Download, client), _ =>
+        {
+            Interlocked.Increment(ref reached);
+            return release.Task;
+        })).ToArray();
+        Assert.That(reached, Is.EqualTo(perClient), "every request within the limit must reach the endpoint");
+
+        DefaultHttpContext over = StateRequest(Download, client);
+        await limiter.InvokeAsync(over, _ => Task.CompletedTask);
+        Assert.That(over.Response.StatusCode, Is.EqualTo(StatusCodes.Status429TooManyRequests), $"request {perClient + 1} from one client exceeds its limit of {perClient}");
+
+        release.SetResult();
+        await Task.WhenAll(held);
+        DefaultHttpContext afterRelease = StateRequest(Download, client);
+        await limiter.InvokeAsync(afterRelease, _ => Task.CompletedTask);
+        Assert.That(afterRelease.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK), "a released permit admits the next request");
+    }
+
+    [Test]
+    public async Task A_response_unfinished_at_the_deadline_is_aborted_and_its_permits_are_released()
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { MaxConcurrentStateRequests = 1, StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 1 });
+        DefaultHttpContext slow = StateRequest(Download, "192.0.2.7");
+
+        await limiter.InvokeAsync(slow, c => Task.Delay(Timeout.Infinite, c.RequestAborted)).WaitAsync(Wait);
+
+        DefaultHttpContext next = StateRequest(Download, "192.0.2.7");
+        bool reached = false;
+        await limiter.InvokeAsync(next, _ =>
+        {
+            reached = true;
+            return Task.CompletedTask;
+        });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slow.RequestAborted.IsCancellationRequested, Is.True, "the handler must see the deadline through RequestAborted");
+            Assert.That(reached, Is.True, "both the node-wide and the per-client permit must be free after the deadline");
+        }
+    }
+
+    [Test]
+    public async Task A_client_that_stops_reading_a_state_cannot_hold_its_permit_past_the_deadline()
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 1 });
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using WebApplication app = builder.Build();
+        app.Use(limiter.InvokeAsync);
+        using SemaphoreSlim started = new(0);
+        app.MapGet(Download, async c =>
+        {
+            started.Release();
+            byte[] chunk = new byte[64 * 1024];
+            while (true)
+            {
+                await c.Response.Body.WriteAsync(chunk, c.RequestAborted);
+                await c.Response.Body.FlushAsync(c.RequestAborted);
+            }
+        });
+        await app.StartAsync();
+        int port = new Uri(app.Urls.First()).Port;
+
+        using TcpClient slowReader = new() { ReceiveBufferSize = 1024 };
+        await slowReader.ConnectAsync(IPAddress.Loopback, port);
+        await slowReader.GetStream().WriteAsync(Encoding.ASCII.GetBytes($"GET {Download} HTTP/1.1\r\nHost: localhost\r\nAccept: {Octet}\r\n\r\n"));
+        Assert.That(await started.WaitAsync(Wait), Is.True, "the slow reader's request must reach the endpoint");
+
+        using HttpClient client = new() { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+        await Task.Delay(200);
+        using (HttpResponseMessage held = await client.GetAsync(Download, HttpCompletionOption.ResponseHeadersRead))
+        {
+            Assert.That(held.StatusCode, Is.EqualTo(HttpStatusCode.TooManyRequests), "the stalled response must hold the client's permit before the deadline");
+        }
+
+        // The server's own minimum response rate would end the stall after its 5 s grace period; the configured deadline must come first.
+        DateTime giveUp = DateTime.UtcNow.AddSeconds(4);
+        HttpStatusCode status;
+        do
+        {
+            await Task.Delay(100);
+            using HttpResponseMessage probe = await client.GetAsync(Download, HttpCompletionOption.ResponseHeadersRead);
+            status = probe.StatusCode;
+        }
+        while (status == HttpStatusCode.TooManyRequests && DateTime.UtcNow < giveUp);
+
+        Assert.That(status, Is.EqualTo(HttpStatusCode.OK), "the stalled response's permit must be released at the deadline");
+    }
+
+    [Test]
+    public async Task A_state_cut_off_at_the_deadline_reaches_the_client_as_a_failed_read_not_a_complete_response()
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 1 });
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using WebApplication app = builder.Build();
+        app.Use(limiter.InvokeAsync);
+        app.MapGet(Download, async c =>
+        {
+            await c.Response.Body.WriteAsync(new byte[64 * 1024], c.RequestAborted);
+            await c.Response.Body.FlushAsync(c.RequestAborted);
+            await Task.Delay(Timeout.Infinite, c.RequestAborted);
+        });
+        await app.StartAsync();
+
+        using HttpClient client = new() { BaseAddress = new Uri(app.Urls.First()) };
+        Assert.ThrowsAsync<HttpRequestException>(async () => await client.GetByteArrayAsync(Download).WaitAsync(Wait),
+            "a truncated state must not be served as a complete 200");
+    }
+
+    [Test]
+    public void A_client_abort_reaches_the_host_instead_of_being_taken_for_the_deadline()
+    {
+        using StateRequestLimiter limiter = new(new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0, StateResponseTimeoutSeconds = 600 });
+        using CancellationTokenSource clientGone = new();
+        DefaultHttpContext request = StateRequest(Download, "192.0.2.7");
+        request.RequestAborted = clientGone.Token;
+        Task invocation = limiter.InvokeAsync(request, c => Task.Delay(Timeout.Infinite, c.RequestAborted));
+
+        clientGone.Cancel();
+
+        Assert.CatchAsync<OperationCanceledException>(async () => await invocation.WaitAsync(Wait));
+    }
+
+    [TestCase(0, 600, TestName = "No state request per client allowed")]
+    [TestCase(1, 0, TestName = "No time to answer a state request")]
+    [TestCase(1, StateRequestLimiter.MaxResponseTimeoutSeconds + 1, TestName = "A deadline CancelAfter cannot schedule")]
+    public void A_per_client_limit_or_deadline_out_of_range_fails_the_host_start(int perClient, int timeoutSeconds) =>
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet,
+            apiConfig: new BeaconApiConfig { MaxConcurrentStateRequestsPerClient = perClient, StateResponseTimeoutSeconds = timeoutSeconds }));
 
     [TestCase("/eth/v1/beacon/states/head/root", true)]
     [TestCase("/eth/v1/beacon/states/0x01/ROOT/", true)]
