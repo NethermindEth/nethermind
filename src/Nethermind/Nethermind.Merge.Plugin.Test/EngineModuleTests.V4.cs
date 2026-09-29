@@ -21,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -381,34 +382,62 @@ public partial class EngineModuleTests
         }
     }
 
-    [TestCaseSource(nameof(NewPayloadV3AndV4ForkWindowCases))]
-    public async Task<int> NewPayloadV3_and_V4_return_unsupported_fork_outside_their_fork_window(IReleaseSpec releaseSpec, int version)
+    [TestCaseSource(nameof(NewPayloadForkWindowCases))]
+    public async Task<int> NewPayload_returns_unsupported_fork_outside_its_fork_window(IReleaseSpec releaseSpec, int version)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec);
         Block block = Build.A.Block
             .WithNumber(chain.BlockTree.Head!.Number + 1)
-            .WithParentBeaconBlockRoot(Keccak.Zero)
-            .WithBlobGasUsed(0)
-            .WithExcessBlobGas(0)
-            .WithWithdrawals([])
+            .WithWithdrawals(releaseSpec.IsShanghaiEnabled ? [] : null)
+            .WithParentBeaconBlockRoot(releaseSpec.IsCancunEnabled ? Keccak.Zero : null)
+            .WithBlobGasUsed(releaseSpec.IsCancunEnabled ? 0UL : null)
+            .WithExcessBlobGas(releaseSpec.IsCancunEnabled ? 0UL : null)
+            .WithEncodedBlockAccessList(releaseSpec.IsAmsterdamEnabled ? Rlp.OfEmptyList.Bytes : null)
+            .WithSlotNumber(releaseSpec.IsAmsterdamEnabled ? 0UL : null)
             .TestObject;
-        ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(block);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        ResultWrapper<PayloadStatusV1> response = version == EngineApiVersions.NewPayload.V3
-            ? await chain.EngineRpcModule.engine_newPayloadV3(executionPayload, [], Keccak.Zero)
-            : await chain.EngineRpcModule.engine_newPayloadV4(executionPayload, [], Keccak.Zero, []);
-
-        return response.ErrorCode;
+        return version switch
+        {
+            EngineApiVersions.NewPayload.V1 => (await rpc.engine_newPayloadV1(ExecutionPayload.Create(block))).ErrorCode,
+            EngineApiVersions.NewPayload.V2 => (await rpc.engine_newPayloadV2(ExecutionPayload.Create(block))).ErrorCode,
+            EngineApiVersions.NewPayload.V3 => (await rpc.engine_newPayloadV3(ExecutionPayloadV3.Create(block), [], Keccak.Zero)).ErrorCode,
+            EngineApiVersions.NewPayload.V4 => (await rpc.engine_newPayloadV4(ExecutionPayloadV3.Create(block), [], Keccak.Zero, [])).ErrorCode,
+            EngineApiVersions.NewPayload.V5 => (await rpc.engine_newPayloadV5(ExecutionPayloadV4.Create(block), [], Keccak.Zero, [])).ErrorCode,
+            EngineApiVersions.NewPayload.V6 => (await rpc.engine_newPayloadV6(ExecutionPayloadV4.Create(block), [], Keccak.Zero, [], [])).ErrorCode,
+            _ => throw new ArgumentOutOfRangeException(nameof(version))
+        };
     }
 
-    private static IEnumerable<TestCaseData> NewPayloadV3AndV4ForkWindowCases()
+    private static IEnumerable<TestCaseData> NewPayloadForkWindowCases()
     {
-        yield return new TestCaseData(Cancun.Instance, EngineApiVersions.NewPayload.V3) { ExpectedResult = ErrorCodes.None };
-        yield return new TestCaseData(Prague.Instance, EngineApiVersions.NewPayload.V3) { ExpectedResult = MergeErrorCodes.UnsupportedFork };
-        yield return new TestCaseData(Cancun.Instance, EngineApiVersions.NewPayload.V4) { ExpectedResult = MergeErrorCodes.UnsupportedFork };
-        yield return new TestCaseData(Prague.Instance, EngineApiVersions.NewPayload.V4) { ExpectedResult = ErrorCodes.None };
-        yield return new TestCaseData(Osaka.Instance, EngineApiVersions.NewPayload.V4) { ExpectedResult = ErrorCodes.None };
-        yield return new TestCaseData(Amsterdam.Instance, EngineApiVersions.NewPayload.V4) { ExpectedResult = MergeErrorCodes.UnsupportedFork };
+        (IReleaseSpec Spec, int Version, int ExpectedErrorCode)[] cases =
+        [
+            (Paris.Instance, EngineApiVersions.NewPayload.V1, ErrorCodes.None),
+            // V1 predates -38005, so its fork check answers with invalid params.
+            (Cancun.Instance, EngineApiVersions.NewPayload.V1, ErrorCodes.InvalidParams),
+            (Paris.Instance, EngineApiVersions.NewPayload.V2, ErrorCodes.None),
+            (Shanghai.Instance, EngineApiVersions.NewPayload.V2, ErrorCodes.None),
+            (Cancun.Instance, EngineApiVersions.NewPayload.V2, MergeErrorCodes.UnsupportedFork),
+            (Shanghai.Instance, EngineApiVersions.NewPayload.V3, MergeErrorCodes.UnsupportedFork),
+            (Cancun.Instance, EngineApiVersions.NewPayload.V3, ErrorCodes.None),
+            (Prague.Instance, EngineApiVersions.NewPayload.V3, MergeErrorCodes.UnsupportedFork),
+            (Cancun.Instance, EngineApiVersions.NewPayload.V4, MergeErrorCodes.UnsupportedFork),
+            (Prague.Instance, EngineApiVersions.NewPayload.V4, ErrorCodes.None),
+            (Osaka.Instance, EngineApiVersions.NewPayload.V4, ErrorCodes.None),
+            (Amsterdam.Instance, EngineApiVersions.NewPayload.V4, MergeErrorCodes.UnsupportedFork),
+            (Osaka.Instance, EngineApiVersions.NewPayload.V5, MergeErrorCodes.UnsupportedFork),
+            (Amsterdam.Instance, EngineApiVersions.NewPayload.V5, ErrorCodes.None),
+            (Bogota.Instance, EngineApiVersions.NewPayload.V5, MergeErrorCodes.UnsupportedFork),
+            (Amsterdam.Instance, EngineApiVersions.NewPayload.V6, MergeErrorCodes.UnsupportedFork),
+            (Bogota.Instance, EngineApiVersions.NewPayload.V6, ErrorCodes.None),
+        ];
+
+        foreach ((IReleaseSpec spec, int version, int expectedErrorCode) in cases)
+        {
+            yield return new TestCaseData(spec, version) { ExpectedResult = expectedErrorCode }
+                .SetArgDisplayNames($"V{version}", spec.Name);
+        }
     }
 
     [TestCase(30)]

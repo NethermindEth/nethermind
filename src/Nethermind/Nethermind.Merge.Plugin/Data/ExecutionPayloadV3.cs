@@ -49,9 +49,9 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     {
         IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
         // V3 covers Cancun and V4 covers Prague until Amsterdam; Osaka added no newPayload version.
-        return spec.IsEip4844Enabled
-            && !spec.BlockLevelAccessListsEnabled
-            && spec.RequestsEnabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V4);
+        return spec.IsCancunEnabled
+            && !spec.IsAmsterdamEnabled
+            && spec.IsPragueEnabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V4);
     }
 
     /// <summary>
