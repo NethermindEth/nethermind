@@ -330,7 +330,8 @@ public class PeerBandTests
         {
             await remote.P2P.StartAsync(token);
             await local.P2P.StartAsync(token);
-            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+            // Admission failures are logged at Debug only; the test output then names why a session was dropped.
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, new TestLogManager(LogLevel.Debug));
 
             await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
 
