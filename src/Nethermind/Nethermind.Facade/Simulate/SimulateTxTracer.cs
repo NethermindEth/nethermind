@@ -34,9 +34,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
     private int _framesEnded;
     private int _frameLogEnd;
     private Stack<int>? _callLogStarts;
-    private byte[]? _frameRevertData;
     private EvmExceptionType? _frameError;
-    private byte[]? _frameErrorData;
 
     public SimulateTxTracer(
         bool isTracingTransfers,
@@ -135,11 +133,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         if (error is not null)
         {
             // The first failed frame is the one the aggregate status fails on.
-            if (_frameError is null)
-            {
-                _frameError = error == EvmExceptionType.None ? EvmExceptionType.Revert : error;
-                _frameErrorData = _frameRevertData;
-            }
+            _frameError ??= error == EvmExceptionType.None ? EvmExceptionType.Revert : error;
 
             TruncateLogs(_frameLogStarts[frameIndex]);
         }
@@ -149,7 +143,6 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         _frameOutputs[frameIndex] = _frameOutput;
         _frameLogCounts[frameIndex] = _logs.Count - _frameLogStarts[frameIndex];
         _frameOutput = null;
-        _frameRevertData = null;
         _frameLogEnd = _logs.Count;
     }
 
@@ -176,24 +169,28 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         Logs = _frameTxLogs ?? BuildLogs()
     };
 
-    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
-        GasUsed = gasSpent.SpentGas,
-        MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
-        Error = new Error
+        byte[] failedFrameOutput = _frameResults?.FirstOrDefault(static frame => frame.Status == TxFrameReceipt.StatusFailure)?.ReturnData ?? [];
+        TraceResult = new SimulateCallResult
         {
-            Message = FailureMessage(error),
-            // A frame transaction fails for the frame that failed, not for whichever call last errored.
-            EvmException = _frameError ?? _exceptionType,
-            // The processor reports no output for a frame transaction, so the revert data is the frame's own.
-            Data = _frameError is null ? output : _frameErrorData ?? []
-        },
-        ReturnData = _frameResults?.FirstOrDefault(static frame => frame.Status == TxFrameReceipt.StatusFailure)?.ReturnData ?? [],
-        FrameResults = _frameResults,
-        Status = StatusCode.Failure,
-        // A failed frame transaction keeps the logs of the frames that committed, as its receipt does.
-        Logs = _frameTxLogs ?? []
-    };
+            GasUsed = gasSpent.SpentGas,
+            MaxUsedGas = gasSpent.EffectiveMaxUsedGas,
+            Error = new Error
+            {
+                Message = FailureMessage(error),
+                // A frame transaction fails for the frame that failed, not for whichever call last errored.
+                EvmException = _frameError ?? _exceptionType,
+                // The processor reports no output for a frame transaction, so the revert data is the frame's own.
+                Data = _frameError is null ? output : failedFrameOutput
+            },
+            ReturnData = failedFrameOutput,
+            FrameResults = _frameResults,
+            Status = StatusCode.Failure,
+            // A failed frame transaction keeps the logs of the frames that committed, as its receipt does.
+            Logs = _frameTxLogs ?? []
+        };
+    }
 
     private string FailureMessage(string? error) => _frameError is { } frameError && frameError != EvmExceptionType.Revert
         ? frameError.GetEvmExceptionDescription() ?? frameError.ToString()
@@ -248,7 +245,7 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         TruncateLogs(logStart);
         if (_callLogStarts.Count == 0)
         {
-            _frameOutput = _frameRevertData = output.ToArray();
+            _frameOutput = output.ToArray();
         }
     }
 }
