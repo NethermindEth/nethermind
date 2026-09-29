@@ -681,16 +681,21 @@ public class TraceRpcModuleTests
     }
 
     // As in eth_getLogs, a bound past the head is invalid params, including a from bound that is also above to.
-    [TestCase("{\"fromBlock\":\"0x154\",\"after\":0}")]
-    [TestCase("{\"fromBlock\":\"head+1\",\"toBlock\":\"head\"}")]
-    [TestCase("{\"fromBlock\":\"head\",\"toBlock\":\"head+1\"}")]
-    [TestCase("{\"fromBlock\":\"head-1\",\"toBlock\":\"0xffff\"}")]
-    [TestCase("{\"toBlock\":\"head+1\"}")]
-    public async Task Trace_filter_return_invalid_params_for_a_bound_past_the_head(string request)
+    [Test]
+    public async Task Trace_filter_return_invalid_params_for_a_bound_past_the_head(
+        [Values(
+            "{\"fromBlock\":\"0x154\",\"after\":0}",
+            "{\"fromBlock\":\"head+1\",\"toBlock\":\"head\"}",
+            "{\"fromBlock\":\"head\",\"toBlock\":\"head+1\"}",
+            "{\"fromBlock\":\"head-1\",\"toBlock\":\"0xffff\"}",
+            "{\"toBlock\":\"head+1\"}")] string request,
+        [Values] bool streaming)
     {
         Context context = new();
         await context.Build();
-        ulong head = context.Blockchain.BlockTree.Head!.Number;
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        ulong head = blockchain.BlockTree.Head!.Number;
         request = request.Replace("head+1", $"0x{head + 1:x}").Replace("head-1", $"0x{head - 1:x}").Replace("head", $"0x{head:x}");
         string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule,
