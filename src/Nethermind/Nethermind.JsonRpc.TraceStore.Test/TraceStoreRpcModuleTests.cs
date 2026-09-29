@@ -429,6 +429,40 @@ public class TraceStoreRpcModuleTests
         test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
     }
 
+    // The stored head is block 2; an omitted toBlock is latest.
+    private static readonly (ulong From, ulong? To)[] RangesPastTheHead = [(3, null), (2, 3), (1, 0xffff)];
+
+    [Test]
+    public void trace_filter_returns_invalid_params_for_a_bound_past_the_head(
+        [ValueSource(nameof(RangesPastTheHead))] (ulong From, ulong? To) range, [Values(0, 1, 2)] int parallelization)
+    {
+        TestContext test = new(parallelization);
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = test.Module.trace_filter(new TraceFilterForRpc
+        {
+            FromBlock = new BlockParameter(range.From),
+            ToBlock = range.To is null ? null : new BlockParameter(range.To.Value)
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(result.Result.Error, Is.EqualTo("requested block range is in the future"));
+        }
+        test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
+    [Test]
+    public void trace_filter_returns_from_store_with_the_head_as_a_bound([Values(0, 1, 2)] int parallelization)
+    {
+        TestContext test = new(parallelization);
+
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(2), ToBlock = new BlockParameter(2) });
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> expected = ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(test.DbTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
+
+        Assert.That(JToken.Parse(Serializer.Serialize(result)), Is.EqualTo(JToken.Parse(Serializer.Serialize(expected))).Using(JToken.EqualityComparer));
+        test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
+    }
+
     [Test]
     public void trace_filter_returns_from_inner_module_when_any_block_trace_is_missing([Values(0, 1, 2)] int parallelization)
     {
