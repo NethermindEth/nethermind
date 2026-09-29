@@ -549,6 +549,7 @@ public class CarryForwardCachingPersistenceTests
         await using IContainer container = CreateCacheContainer();
         CarryForwardCachingPersistence cache = ResolveCache(container, model, capacity, capacity);
         using Barrier startLine = new(readerThreads + 1);
+        using CancellationTokenSource stopReaders = new();
 
         Task committer = Task.Factory.StartNew(() =>
         {
@@ -576,17 +577,25 @@ public class CarryForwardCachingPersistenceTests
                     ModelPersistence.State state = ModelPersistence.LastReaderState!;
                     for (int i = 0; i < readsPerReader; i++)
                     {
-                        string? mismatch = random.Next(8) == 0
+                        string? mismatch = random.Next(4) == 0
                             ? model.CheckAccountRead(reader, state, random)
                             : model.CheckSlotRead(reader, state, random);
                         if (mismatch is not null) mismatches.Add(mismatch);
                     }
-                } while (!committer.IsCompleted);
+                } while (!committer.IsCompleted && !stopReaders.IsCancellationRequested);
             }, TaskCreationOptions.LongRunning);
         }
 
-        // Only a hang guard: the work is fixed, so a slow machine takes longer rather than failing.
-        await Task.WhenAll([committer, .. readerTasks]).WaitAsync(TimeSpan.FromMinutes(5));
+        // Only a hang guard: the work is fixed, so a slow machine takes longer rather than failing. A run that times
+        // out stops its readers, so they do not keep spinning through the tests that follow.
+        try
+        {
+            await Task.WhenAll([committer, .. readerTasks]).WaitAsync(TimeSpan.FromMinutes(5));
+        }
+        finally
+        {
+            stopReaders.Cancel();
+        }
 
         Assert.That(mismatches.Count, Is.Zero, mismatches.ToString());
     }
