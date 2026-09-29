@@ -57,6 +57,31 @@ public class PubkeyCache
         return check == 1;
     }
 
+    /// <summary>Returns a validator's cached public key and whether it is in the prime-order subgroup G1, which <c>KeyValidate</c> requires of every key a signature is verified under.</summary>
+    /// <remarks>Unreachable from a registry whose keys were all validated on entry; refusing here keeps a key that slipped in from verifying signatures.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The index is not cached.</exception>
+    internal bool TryGetValidPublicKey(int validatorIndex, out G1Affine key)
+    {
+        key = GetPublicKey(validatorIndex);
+        return IsInSubgroup(validatorIndex);
+    }
+
+    /// <summary>Writes the sum of the public keys of <paramref name="validatorIndices"/> into <paramref name="sum"/> as <see cref="SumPublicKeys"/> does, unless one of them is outside G1.</summary>
+    /// <returns><c>false</c> when a key is not in the prime-order subgroup: a sum over it is not <c>KeyValidate</c>d key material, so <paramref name="sum"/> is then unspecified.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">An index is not cached, or <paramref name="sum"/> is not a G1 point buffer.</exception>
+    internal bool TrySumValidPublicKeys(ReadOnlySpan<ulong> validatorIndices, Span<long> sum)
+    {
+        foreach (ulong index in validatorIndices)
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, (ulong)Count, nameof(validatorIndices));
+            if (!IsInSubgroup((int)index))
+                return false;
+        }
+
+        SumPublicKeys(validatorIndices, sum);
+        return true;
+    }
+
     /// <summary>Writes the sum of the public keys of <paramref name="validatorIndices"/> into <paramref name="sum"/>, a Jacobian G1 point.</summary>
     /// <remarks>
     /// One batched affine addition shares a single field inversion across the batch; adding the keys one call at a time

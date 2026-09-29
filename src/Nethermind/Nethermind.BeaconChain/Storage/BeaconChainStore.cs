@@ -74,6 +74,9 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
 
     private const int StateChunkSize = 4 * 1024 * 1024;
     private const int StateManifestLength = sizeof(uint) + sizeof(ulong);
+
+    /// <summary>Byte offset of <c>slot</c> in a stored state, the same in the Fulu and Gloas layouts: <c>genesis_time</c> (8) plus <c>genesis_validators_root</c> (32).</summary>
+    private const int StateSlotOffset = 40;
     private const int AnchorValueLength = Hash256.Size + sizeof(ulong);
     private const byte ChildrenKeyPrefix = 0x01;
     private const int ChildrenKeyLength = 1 + Hash256.Size;
@@ -546,6 +549,95 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         return true;
     }
 
+    /// <summary>Deletes the state stored under <paramref name="blockRoot"/>, manifest and chunks in one write batch; a root with no state is left alone.</summary>
+    public void DeleteState(Hash256 blockRoot)
+    {
+        if (_states.Get(blockRoot.Bytes) is not { } manifest)
+        {
+            return;
+        }
+
+        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+        RemoveState(blockRoot, manifest, batch.GetColumnBatch(BeaconChainDbColumns.States));
+    }
+
+    private static void RemoveState(Hash256 blockRoot, byte[] manifest, IWriteBatch states)
+    {
+        // A malformed manifest names no chunks, so only the manifest goes; chunk keys the manifest does not name are never read.
+        uint chunkCount = manifest.Length == StateManifestLength ? BinaryPrimitives.ReadUInt32BigEndian(manifest) : 0;
+        Span<byte> chunkKey = stackalloc byte[Hash256.Size + sizeof(uint)];
+        blockRoot.Bytes.CopyTo(chunkKey);
+        for (uint i = 0; i < chunkCount; i++)
+        {
+            BinaryPrimitives.WriteUInt32BigEndian(chunkKey[Hash256.Size..], i);
+            states.Remove(chunkKey);
+        }
+
+        states.Remove(blockRoot.Bytes);
+    }
+
+    /// <summary>The slot recorded in the state stored under <paramref name="blockRoot"/>, read from its first chunk without decoding the state.</summary>
+    /// <returns><c>false</c> when the state is missing or its first chunk is too short or not valid snappy, so no slot is known.</returns>
+    private bool TryGetStateSlot(Hash256 blockRoot, byte[] manifest, out ulong slot)
+    {
+        slot = 0;
+        if (manifest.Length != StateManifestLength || BinaryPrimitives.ReadUInt32BigEndian(manifest) == 0)
+        {
+            return false;
+        }
+
+        Span<byte> chunkKey = stackalloc byte[Hash256.Size + sizeof(uint)];
+        blockRoot.Bytes.CopyTo(chunkKey);
+        if (_states.Get(chunkKey) is not { } chunk)
+        {
+            return false;
+        }
+
+        Span<byte> prefix = stackalloc byte[StateSlotOffset + sizeof(ulong)];
+        try
+        {
+            if (DecompressSnappyPrefix(chunk, prefix, StateChunkSize) != prefix.Length)
+            {
+                return false;
+            }
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
+
+        slot = BinaryPrimitives.ReadUInt64LittleEndian(prefix[StateSlotOffset..]);
+        return true;
+    }
+
+    /// <summary>Queues the removal of every stored state at or below <paramref name="throughSlot"/> other than <paramref name="keepRoot"/>.</summary>
+    /// <remarks>A state whose slot cannot be read is not known to be at or below <paramref name="throughSlot"/>, so it is kept.</remarks>
+    private void RemoveStatesThroughSlot(ulong throughSlot, Hash256 keepRoot, IWriteBatch states)
+    {
+        List<byte[]> manifestKeys = [];
+        foreach (byte[] key in _states.GetAllKeys())
+        {
+            if (key.Length == Hash256.Size)
+            {
+                manifestKeys.Add(key);
+            }
+        }
+
+        foreach (byte[] key in manifestKeys)
+        {
+            Hash256 root = new(key);
+            if (root == keepRoot || _states.Get(key) is not { } manifest)
+            {
+                continue;
+            }
+
+            if (TryGetStateSlot(root, manifest, out ulong slot) && slot <= throughSlot)
+            {
+                RemoveState(root, manifest, states);
+            }
+        }
+    }
+
     /// <summary>Stores a verified execution payload envelope under its beacon block root and indexes it by slot for <see cref="PruneExecutionPayloadEnvelopes"/>.</summary>
     /// <remarks>
     /// The slot indexed is the payload's <c>slot_number</c>, which <c>verify_execution_payload_envelope</c> (gloas/beacon-chain.md)
@@ -897,12 +989,22 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, BeaconChainSp
         PutMetadata(BeaconChainMetadataKeys.SchemaVersion, value);
     }
 
+    /// <summary>Records <paramref name="blockRoot"/> as the anchor and deletes every stored state at or below <paramref name="slot"/> but its own, in one write batch.</summary>
+    /// <remarks>
+    /// The anchor is the finalized checkpoint (or the checkpoint-sync start), and only states above it can still be
+    /// read by a justification or a replay, so older snapshots, old anchors and evicted checkpoint candidates are reclaimed
+    /// here. The batch makes a crash leave either the previous anchor with its state or the new one, never an anchor without its state.
+    /// Idempotent: a repeat finds nothing left to delete.
+    /// </remarks>
     public void SetAnchor(Hash256 blockRoot, ulong slot)
     {
         byte[] value = new byte[AnchorValueLength];
         blockRoot.Bytes.CopyTo(value.AsSpan());
         BinaryPrimitives.WriteUInt64BigEndian(value.AsSpan(Hash256.Size), slot);
-        PutMetadata(BeaconChainMetadataKeys.Anchor, value);
+
+        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+        batch.GetColumnBatch(BeaconChainDbColumns.Metadata).Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.Anchor), value);
+        RemoveStatesThroughSlot(slot, blockRoot, batch.GetColumnBatch(BeaconChainDbColumns.States));
     }
 
     public bool TryGetAnchor([NotNullWhen(true)] out Hash256? blockRoot, out ulong slot)

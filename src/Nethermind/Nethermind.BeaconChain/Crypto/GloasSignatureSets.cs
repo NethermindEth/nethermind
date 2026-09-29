@@ -34,7 +34,8 @@ public static class GloasSignatureSets
     public static bool VerifyIndexedAttestation(BeaconStateGloas state, IndexedAttestationGloas attestation, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral = null)
     {
         Span<long> sum = stackalloc long[Bls.P1.Sz];
-        pubkeys.SumPublicKeys(attestation.AttestingIndices, sum);
+        if (!pubkeys.TrySumValidPublicKeys(attestation.AttestingIndices, sum))
+            return false;
         BlsSigner.AggregatedPublicKey aggregate = new(sum);
 
         Hash256 domain = state.GetDomain(DomainType.BeaconAttester, attestation.Data!.Target!.Epoch);
@@ -57,7 +58,9 @@ public static class GloasSignatureSets
         BlsSigner.AggregatedPublicKey aggregate = new(stackalloc long[Bls.P1.Sz]);
         foreach (ulong index in attestation.AttestingIndices!)
         {
-            aggregate.Aggregate(pubkeys.GetPublicKey((int)index));
+            if (!pubkeys.TryGetValidPublicKey((int)index, out G1Affine key))
+                return false;
+            aggregate.Aggregate(key);
         }
 
         Hash256 domain = state.GetDomain(DomainType.PtcAttester, BeaconStateAccessors.ComputeEpochAtSlot(attestation.Data!.Slot));
@@ -71,7 +74,7 @@ public static class GloasSignatureSets
         BeaconBlockHeader header = signedHeader.Message!;
         Hash256 domain = state.GetDomain(DomainType.BeaconProposer, BeaconStateAccessors.ComputeEpochAtSlot(header.Slot));
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(header), domain);
-        return BlockSignatureBatch.Verify(pubkeys.GetPublicKey((int)header.ProposerIndex), signedHeader.Signature, signingRoot, deferral);
+        return pubkeys.TryGetValidPublicKey((int)header.ProposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedHeader.Signature, signingRoot, deferral);
     }
 
     /// <summary>Verifies a voluntary exit signature over the EIP-7044 fork-agnostic Capella domain.</summary>
@@ -80,7 +83,7 @@ public static class GloasSignatureSets
         VoluntaryExit exit = signedExit.Message!;
         Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).CapellaForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain);
-        return BlockSignatureBatch.Verify(pubkeys.GetPublicKey((int)exit.ValidatorIndex), signedExit.Signature, signingRoot, deferral);
+        return pubkeys.TryGetValidPublicKey((int)exit.ValidatorIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedExit.Signature, signingRoot, deferral);
     }
 
     /// <summary>
