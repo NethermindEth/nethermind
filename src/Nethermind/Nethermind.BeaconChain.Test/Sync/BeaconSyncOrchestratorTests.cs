@@ -646,6 +646,7 @@ public partial class BeaconSyncOrchestratorTests
         ScriptedImporter importer = new() { Head = CreateHead(TestItem.KeccakA, anchorSlot, finalizedEpoch: Spec.GetEpoch(anchorSlot)) };
         ScriptedEngine engine = new();
         StubPool pool = new(peers ?? []);
+        sidecarPool ??= new DataColumnSidecarPool();
         router ??= new GossipRouter(Spec, slotClock, LimboLogs.Instance);
         BeaconChainStatusHolder statusHolder = new(Spec, timestamper);
         ExecutionPayloadEnvelopePool envelopePool = new();
@@ -656,12 +657,14 @@ public partial class BeaconSyncOrchestratorTests
             new ScriptedFactory(importer),
             engine,
             pool,
-            new RangeSync(pool, LimboLogs.Instance, sidecarPool ?? new DataColumnSidecarPool(), Spec, RangeSyncTests.ClockAtGenesis(Spec), discovery),
+            new RangeSync(pool, LimboLogs.Instance, sidecarPool, Spec, RangeSyncTests.ClockAtGenesis(Spec), discovery),
             slotClock,
             router,
             statusHolder,
             logManager ?? LimboLogs.Instance,
             p2p: p2p,
+            discovery: discovery,
+            columnPool: sidecarPool,
             envelopePool: envelopePool);
 
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);

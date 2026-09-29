@@ -118,12 +118,13 @@ public class RangeSyncColumnCustodyTests
         BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator(bystander, custodian);
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
 
-        BlockImportResult first = await orchestrator.ImportBlockAsync(block, token);
+        BlockImportResult first = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
         serving = true;
-        BlockImportResult sameSlot = await orchestrator.ImportBlockAsync(block, token);
+        BlockImportResult sameSlot = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
         int requestsBeforeTick = custodian.RootColumnRequests;
         fixture.AdvanceSlots(1);
         await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+        await orchestrator.SettleColumnFetchesAsync(token);
 
         using (Assert.EnterMultipleScope())
         {
