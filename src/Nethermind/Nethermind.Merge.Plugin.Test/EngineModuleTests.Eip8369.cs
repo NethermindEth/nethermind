@@ -172,7 +172,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(bogota ? Bogota.Instance : Amsterdam.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         Hash256 head = chain.BlockTree.HeadHash;
         PayloadAttributes attributes = BuildBogotaPayloadAttributes(inclusionList: []);
-        if (!bogota) attributes.InclusionListTransactions = null;
+        if (!bogota) (attributes.InclusionListTransactions, attributes.InclusionListMembership) = (null, null);
         ForkchoiceStateV1 state = new(head, Keccak.Zero, head);
         string? id = bogota
             ? (await chain.EngineRpcModule.engine_forkchoiceUpdatedV5(state, attributes)).Data.PayloadId
@@ -232,10 +232,9 @@ public partial class EngineModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(invalid ? MergeErrorCodes.InvalidPayloadAttributes : ErrorCodes.None), result.Result.Error);
     }
 
-    /// <summary>Wherever EIP-8141 and EIP-7805 are both active a list must come with its membership; under EIP-7805
-    /// alone there is no Profile 2 entry to attribute, so a list without one is still accepted.</summary>
+    /// <summary>bogota.md makes the membership positional wherever inclusion lists are, with or without EIP-8141.</summary>
     [TestCase(true, TestName = "Membership is required when EIP-8141 frames are active")]
-    [TestCase(false, TestName = "Membership is optional under EIP-7805 alone")]
+    [TestCase(false, TestName = "Membership is required under EIP-7805 alone")]
     public async Task Membership_is_required_with_frame_transactions(bool frames)
     {
         using MergeTestBlockchain chain = frames ? await CreateProfile2Blockchain() : await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
@@ -246,12 +245,12 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV2> newPayload = await chain.EngineRpcModule.engine_newPayloadV6(
             built.ExecutionPayload, [], Keccak.Zero, built.ExecutionRequests, il, inclusionListMembership: null);
         ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await chain.EngineRpcModule.engine_forkchoiceUpdatedV5(
-            new ForkchoiceStateV1(head, Keccak.Zero, head), BuildBogotaPayloadAttributes(inclusionList: il));
+            new ForkchoiceStateV1(head, Keccak.Zero, head), WithoutMembership(BuildBogotaPayloadAttributes(inclusionList: il)));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(newPayload.ErrorCode, Is.EqualTo(frames ? ErrorCodes.InvalidParams : ErrorCodes.None), newPayload.Result.Error);
-            Assert.That(fcu.ErrorCode, Is.EqualTo(frames ? MergeErrorCodes.InvalidPayloadAttributes : ErrorCodes.None), fcu.Result.Error);
+            Assert.That(newPayload.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams), newPayload.Result.Error);
+            Assert.That(fcu.ErrorCode, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes), fcu.Result.Error);
         }
     }
 
@@ -358,6 +357,12 @@ public partial class EngineModuleTests
     {
         PayloadAttributes attributes = BuildBogotaPayloadAttributes(inclusionList: inclusionList.Transactions);
         attributes.InclusionListMembership = inclusionList.Membership;
+        return attributes;
+    }
+
+    private static PayloadAttributes WithoutMembership(PayloadAttributes attributes)
+    {
+        attributes.InclusionListMembership = null;
         return attributes;
     }
 

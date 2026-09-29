@@ -43,9 +43,8 @@ public partial class EngineRpcModule : IEngineRpcModule
             EngineApiVersions.NewPayload.V6);
     }
 
-    /// <summary>Membership attributes Profile 2 entries to committee positions, so it is required wherever there
-    /// can be one: EIP-8141 frame transactions under EIP-7805.</summary>
-    private static bool RequiresMembership(IReleaseSpec spec) => spec is { IsEip7805Enabled: true, IsEip8141Enabled: true };
+    /// <summary>bogota.md makes <c>inclusionListMembership</c> a positional parameter wherever inclusion lists are.</summary>
+    private static bool RequiresMembership(IReleaseSpec spec) => spec.IsEip7805Enabled;
 
     /// <summary>bogota.md <c>engine_newPayloadV6</c> point 2; a missing list is left to the aggregate checks.</summary>
     private static string? ValidateMembershipAndClaims(byte[][]? transactions, byte[][]? membership, InclusionListClaim[]? claims, bool membershipRequired) =>
