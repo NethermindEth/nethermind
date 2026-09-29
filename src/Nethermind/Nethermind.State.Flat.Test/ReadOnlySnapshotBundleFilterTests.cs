@@ -354,6 +354,43 @@ public class ReadOnlySnapshotBundleFilterTests
     }
 
     [Test]
+    [NonParallelizable]
+    public void First_reads_released_together_build_one_filter()
+    {
+        const int rounds = 300;
+        const int threads = 8;
+        using LayerStack stack = new();
+        stack.AddInMemory(MakeSnapshot(0, c => c.Storages[(Addresses[0], 1)] = 1));
+        stack.AddInMemory(MakeSnapshot(1, c => c.Storages[(Addresses[1], 1)] = 2));
+        long builds = Metrics.InMemorySlotFilterBuilds;
+        long memory = Metrics.InMemorySlotFilterMemory;
+
+        for (int round = 0; round < rounds; round++)
+        {
+            using ReadOnlySnapshotBundle bundle = stack.CreateBundle(RealBitsPerKey, detailedMetrics: false, out _);
+            int ready = 0;
+            int go = 0;
+            Thread[] readers = Enumerable.Range(0, threads).Select(i => new Thread(() =>
+            {
+                Interlocked.Increment(ref ready);
+                while (Volatile.Read(ref go) == 0) Thread.SpinWait(1);
+                bundle.GetSlotFiltered(-1, (Addresses[0], (UInt256)1), out _);
+            })).ToArray();
+            foreach (Thread reader in readers) reader.Start();
+            while (Volatile.Read(ref ready) < threads) Thread.SpinWait(1);
+            Volatile.Write(ref go, 1);
+            foreach (Thread reader in readers) reader.Join();
+        }
+
+        // A second build of the same bundle would publish over the first and leak it.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.InMemorySlotFilterBuilds - builds, Is.EqualTo(rounds));
+            Assert.That(Metrics.InMemorySlotFilterMemory, Is.EqualTo(memory));
+        }
+    }
+
+    [Test]
     public void Snapshot_bundle_uses_the_filter_only_when_asked([Values] bool filterInMemorySlotReads)
     {
         Address address = Addresses[0];
