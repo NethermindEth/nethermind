@@ -38,7 +38,7 @@ public interface ICodeInfoRepository
     {
         if (Eip7702Constants.IsDelegatedCode(code))
         {
-            address = new Address(code[Eip7702Constants.DelegationHeader.Length..]);
+            address = new Address(code[Eip7702Constants.DelegationHeaderLength..]);
             return true;
         }
 

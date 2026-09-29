@@ -11,6 +11,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
+/// <summary>Checks cancellation in tracer callbacks, never between an instruction's start and its completion.</summary>
+/// <remarks>Wrap the complete tracer graph so cancellation cannot interrupt delivery to sibling observers.</remarks>
 public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default) : ITxTracer, ITxTracerWrapper, IInstructionTracingFilter
 {
     private readonly bool _isTracingReceipt;
@@ -84,6 +86,8 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         init => _isTracingReturnData = value;
     }
 
+    public bool IsTracingCallOutputMemory => innerTracer.IsTracingCallOutputMemory;
+
     public bool IsTracingCode
     {
         get => _isTracingCode || innerTracer.IsTracingCode;
@@ -135,7 +139,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingState)
         {
             innerTracer.ReportBalanceChange(address, before, after);
@@ -144,7 +148,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingState)
         {
             innerTracer.ReportCodeChange(address, before, after);
@@ -153,7 +157,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingState)
         {
             innerTracer.ReportNonceChange(address, before, after);
@@ -162,7 +166,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportAccountRead(Address address)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingState)
         {
             innerTracer.ReportAccountRead(address);
@@ -171,7 +175,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingStorage)
         {
             innerTracer.ReportStorageChange(storageCell, before, after);
@@ -192,7 +196,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportStorageRead(in StorageCell storageCell)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingStorage)
         {
             innerTracer.ReportStorageRead(storageCell);
@@ -228,7 +232,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportOperationError(EvmExceptionType error)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingInstructions)
         {
             innerTracer.ReportOperationError(error);
@@ -237,7 +241,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportOperationRemainingGas(ulong gas)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingInstructions)
         {
             innerTracer.ReportOperationRemainingGas(gas);
@@ -246,7 +250,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportLog(LogEntry log)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingLogs)
         {
             innerTracer.ReportLog(log);
@@ -255,7 +259,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void SetOperationStack(TraceStack stack)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingStack)
         {
             innerTracer.SetOperationStack(stack);
@@ -264,7 +268,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingInstructions)
         {
             innerTracer.ReportStackPush(stackItem);
@@ -273,7 +277,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportStackPush(byte stackItem)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingInstructions)
         {
             innerTracer.ReportStackPush(stackItem);
@@ -282,7 +286,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void SetOperationMemory(TraceMemory memoryTrace)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingMemory)
         {
             innerTracer.SetOperationMemory(memoryTrace);
@@ -291,16 +295,16 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void SetOperationMemorySize(ulong newSize)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingMemory)
         {
             innerTracer.SetOperationMemorySize(newSize);
         }
     }
 
-    public void SetOperationReturnData(ReadOnlyMemory<byte> returnData)
+    public void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingReturnData)
         {
             innerTracer.SetOperationReturnData(returnData);
@@ -309,7 +313,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingInstructions)
         {
             innerTracer.ReportMemoryChange(offset, data);
@@ -318,7 +322,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportMemoryChange(UInt256 offset, byte data)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingInstructions)
         {
             innerTracer.ReportMemoryChange(offset, data);
@@ -327,7 +331,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingInstructions)
         {
             innerTracer.ReportOperationStorageChange(key, value);
@@ -336,7 +340,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingOpLevelStorage)
         {
             innerTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
@@ -345,7 +349,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingOpLevelStorage)
         {
             innerTracer.LoadOperationStorage(address, storageIndex, value);
@@ -354,7 +358,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingOpLevelStorage)
         {
             innerTracer.SetOperationTransientStorage(address, storageIndex, newValue, currentValue);
@@ -363,7 +367,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingOpLevelStorage)
         {
             innerTracer.LoadOperationTransientStorage(address, storageIndex, value);
@@ -372,7 +376,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingActions)
         {
             innerTracer.ReportSelfDestruct(address, balance, refundAddress);
@@ -381,7 +385,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingActions)
         {
             innerTracer.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
@@ -390,7 +394,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingActions)
         {
             innerTracer.ReportActionEnd(gas, output);
@@ -399,7 +403,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportActionError(EvmExceptionType evmExceptionType)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingActions)
         {
             innerTracer.ReportActionError(evmExceptionType);
@@ -408,16 +412,26 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportActionRemainingGas(ulong gas)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingActions)
         {
             innerTracer.ReportActionRemainingGas(gas);
         }
     }
 
+    public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    {
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
+        if (innerTracer.IsTracingActions)
+        {
+            innerTracer.ReportRejectedAction(gas, gasLeft, value, from, to, input, callType, error, isPrecompileCall);
+        }
+    }
+
     public void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingActions)
         {
             innerTracer.ReportActionRevert(gasLeft, output);
@@ -426,7 +440,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingActions)
         {
             innerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
@@ -435,7 +449,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportBlockHash(Hash256 blockHash)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingBlockHash)
         {
             innerTracer.ReportBlockHash(blockHash);
@@ -453,7 +467,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingInstructions)
         {
             innerTracer.ReportGasUpdateForVmTrace(refund, gasAvailable);
@@ -462,7 +476,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportRefund(long refund)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingRefunds)
         {
             innerTracer.ReportRefund(refund);
@@ -471,7 +485,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
 
     public void ReportExtraGasPressure(ulong extraGasPressure)
     {
-        token.ThrowIfCancellationRequested();
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingRefunds)
         {
             innerTracer.ReportExtraGasPressure(extraGasPressure);
@@ -494,6 +508,14 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         {
             innerTracer.ReportFees(fees, burntFees);
         }
+    }
+
+    // With instruction tracing, StartOperation checks before every start it forwards, so callbacks that can fire
+    // inside an instruction skip the check and cancellation cannot split a start from its completion.
+    private void ThrowIfCancellationRequestedUnlessTracingInstructions()
+    {
+        if (!innerTracer.IsTracingInstructions)
+            token.ThrowIfCancellationRequested();
     }
 
     public void Dispose() => innerTracer.Dispose();

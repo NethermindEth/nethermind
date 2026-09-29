@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
@@ -24,6 +25,7 @@ namespace Nethermind.Synchronization.Test
             AllocationContexts.Headers,
             AllocationContexts.Bodies,
             AllocationContexts.State,
+            AllocationContexts.BlockAccessLists,
             AllocationContexts.All,
         ];
 
@@ -35,10 +37,15 @@ namespace Nethermind.Synchronization.Test
             AllocationContexts.State,
             AllocationContexts.Snap,
             AllocationContexts.ForwardHeader,
+            AllocationContexts.BlockAccessLists,
         ];
 
-        private static PeerInfo NewPeer(AllocationAllowances? allowances = null) =>
-            new(Substitute.For<ISyncPeer>(), allowances);
+        private static PeerInfo NewPeer(AllocationAllowances? allowances = null)
+        {
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
+            return new(syncPeer, allowances);
+        }
 
         /// <summary>
         /// Bumps weakness up to (but not including) the threshold, then once more so all
@@ -205,7 +212,7 @@ namespace Nethermind.Synchronization.Test
         public void Free_clamps_at_allowance()
         {
             // Spurious frees (no prior TryAllocate) must not push the slot above its configured allowance.
-            AllocationAllowances allowances = new(headers: 2, bodies: 1, receipts: 1, state: 1, snap: 1, forwardHeader: 1);
+            AllocationAllowances allowances = new(headers: 2, bodies: 1, receipts: 1, state: 1, snap: 1, forwardHeader: 1, blockAccessLists: 1);
             PeerInfo peer = NewPeer(allowances);
 
             peer.Free(AllocationContexts.Headers);
@@ -311,7 +318,7 @@ namespace Nethermind.Synchronization.Test
             // verifying the lock-free CAS loop in TryAllocate neither loses nor duplicates slots.
             const byte slots = 8;
             const int threads = 32;
-            AllocationAllowances allowances = new(headers: slots, bodies: 1, receipts: 1, state: 1, snap: 1, forwardHeader: 1);
+            AllocationAllowances allowances = new(headers: slots, bodies: 1, receipts: 1, state: 1, snap: 1, forwardHeader: 1, blockAccessLists: 1);
             PeerInfo peer = NewPeer(allowances);
             int succeeded = 0;
             using Barrier barrier = new(threads);

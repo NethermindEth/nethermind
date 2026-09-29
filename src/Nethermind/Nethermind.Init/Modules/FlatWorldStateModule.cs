@@ -105,6 +105,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
+            .Add<CarryForwardCachingPersistence>()
             .AddDecorator<IRocksDbConfigFactory, FlatRocksDbConfigAdjuster>()
 
             .AddSingleton<IPersistence, IFlatDbConfig, IProcessExitSource, ILogManager, IComponentContext>((flatDbConfig, exitSource, logManager, ctx) =>
@@ -119,7 +120,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 };
 
                 IPersistence cachedReader = new CachedReaderPersistence(persistence, exitSource, logManager);
-                return flatDbConfig.EnableCarryForwardCache ? new CarryForwardCachingPersistence(cachedReader) : cachedReader;
+                return flatDbConfig.EnableCarryForwardCache
+                    ? ctx.Resolve<CarryForwardCachingPersistence>(TypedParameter.From<IPersistence>(cachedReader))
+                    : cachedReader;
             })
             ;
 
@@ -131,12 +134,14 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddSingleton<IPersistedSnapshotCompactor>(NullPersistedSnapshotCompactor.Instance);
         }
 
+        // Registered unconditionally so `nethermind import-flat-db` can always find it. Carrying
+        // [StepCommand] keeps it out of a normal node start; it runs only when selected below or by name.
+        builder
+            .AddSingleton<Importer>()
+            .AddStep(typeof(ImportFlatDb));
+
         if (flatDbConfig.ImportFromPruningTrieState)
-        {
-            builder
-                .AddSingleton<Importer>()
-                .AddStep(typeof(ImportFlatDb));
-        }
+            builder.SelectStepTarget(typeof(ImportFlatDb));
 
         // Only pulls the state DB open during init; PruningTrieStoreModule still decides.
         if (flatDbConfig.DropPruningTrieState)

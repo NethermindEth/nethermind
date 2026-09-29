@@ -49,6 +49,7 @@ internal sealed partial class PersistentStorageProvider
         // Schedule larger changes first to help balance the work
         storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
 
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         ParallelUnbalancedWork.For(
             0,
             storages.Count,

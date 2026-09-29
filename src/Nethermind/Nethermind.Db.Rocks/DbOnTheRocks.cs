@@ -77,8 +77,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private readonly List<OptionsHandle> _doNotGcOptions = [];
 
     private readonly IRocksDbConfig _perTableDbConfig;
-    internal bool VerifyChecksum => _perTableDbConfig.VerifyChecksum ?? true;
-    internal ulong ReadAheadSize => _perTableDbConfig.ReadAheadSize ?? 256UL.KiB;
+    internal bool VerifyChecksum { get; }
+    internal ulong ReadAheadSize { get; }
     private ulong _maxBytesForLevelBase;
     private ulong _targetFileSizeBase;
     private int _minWriteBufferToMerge;
@@ -127,6 +127,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _fileSystem = fileSystem ?? new RealFileSystem();
         _rocksDbConfigFactory = rocksDbConfigFactory;
         _perTableDbConfig = rocksDbConfigFactory.GetForDatabase(Name, null);
+        VerifyChecksum = _perTableDbConfig.VerifyChecksum ?? true;
+        ReadAheadSize = _perTableDbConfig.ReadAheadSize ?? 256UL.KiB;
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
         _iteratorManager = CreateLazyReadAheadIteratorManager(null);
         _seekIteratorManager = CreateLazySeekIteratorManager(null);
@@ -1340,6 +1342,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         try
         {
             readOptions.SetTailing(!ordered);
+            readOptions.SetTotalOrderSeek(true);
             iterator = CreateIterator(readOptions, ch);
 
             if (resumeKey is null)
@@ -2140,24 +2143,20 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    public byte[]? FirstKey
-    {
-        get
-        {
-            using Iterator iterator = _db.NewIterator();
-            iterator.SeekToFirst();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-        }
-    }
+    public byte[]? FirstKey => GetEdgeKey(first: true);
 
-    public byte[]? LastKey
+    public byte[]? LastKey => GetEdgeKey(first: false);
+
+    /// <summary>Returns the smallest or largest key of the database or column family, or null when it is empty.</summary>
+    /// <remarks>Uses total order, since a prefix-extractor database (code) otherwise skips its unflushed memtable.</remarks>
+    internal byte[]? GetEdgeKey(bool first, IColumnFamilyHandle? cf = null)
     {
-        get
-        {
-            using Iterator iterator = _db.NewIterator();
-            iterator.SeekToLast();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-        }
+        using ReadOptions readOptions = CreateReadOptions();
+        readOptions.SetTotalOrderSeek(true);
+        using Iterator iterator = CreateIterator(readOptions, cf);
+        if (first) iterator.SeekToFirst();
+        else iterator.SeekToLast();
+        return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
     }
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) => GetViewBetween(firstKey, lastKey, null, flags);
