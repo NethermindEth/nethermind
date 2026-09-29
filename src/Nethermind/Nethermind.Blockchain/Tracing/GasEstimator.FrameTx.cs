@@ -263,7 +263,8 @@ public partial class GasEstimator
         /// <summary>Probes frame <paramref name="index"/> with its room split differently between the dimensions,
         /// moving the capacity it takes from one pool to the other.</summary>
         /// <remarks>Only the gas cap couples the pools, so this applies only when it binds. A failed probe does not say
-        /// which dimension ran short, so split points on both sides of the current one are tried, coarsest first.</remarks>
+        /// which dimension ran short, so both ends of the range are tried first, then split points between them and the
+        /// current one; the minimisation that follows returns whatever the frame does not use.</remarks>
         private bool TryRebalancing(int index)
         {
             if (!_capLimited) return false;
@@ -273,6 +274,8 @@ public partial class GasEstimator
             ulong least = total - Math.Min(total, _stateRoom - (_statePool - state));
             if (!_fillState[index]) return most > execution && TryShift(index, execution, state, most);
             if (!_fillExecution[index]) return least < execution && TryShift(index, execution, state, least);
+            if (most > execution && TryShift(index, execution, state, most)) return true;
+            if (least < execution && TryShift(index, execution, state, least)) return true;
             for (int level = 1; level <= RebalanceLevels; level++)
             {
                 ulong parts = 1UL << level;

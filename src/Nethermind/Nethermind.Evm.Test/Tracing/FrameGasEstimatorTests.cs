@@ -44,6 +44,8 @@ public class FrameGasEstimatorTests
     /// one of its dimensions.</remarks>
     [TestCase(700_000UL, 0UL)]
     [TestCase(50_000UL, 700_000UL)]
+    [TestCase(900_000UL, 0UL)]
+    [TestCase(0UL, 900_000UL)]
     public void EstimateFrameGas_MovesCapacityBetweenDimensionsUnderTheGasCap(ulong execution, ulong state) =>
         AssertFills(i => i == 0 ? (execution, state) : (20_000UL, 0UL), errorMargin: 150, frameCount: 2, gasCap: 1_000_000);
 
