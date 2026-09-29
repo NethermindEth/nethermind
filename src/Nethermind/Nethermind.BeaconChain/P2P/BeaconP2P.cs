@@ -169,11 +169,14 @@ public sealed class BeaconP2P : IAsyncDisposable
                 mcache_gossip = 3,
                 MessageCacheTtl = 550 * 700, // seen_ttl: 550 heartbeats
             })
-            // Cap libp2p-internal logs at Debug: most mainnet dials fail and the library logs
-            // each failed upgrade as a Warning with a full stack trace, drowning the useful output.
-            .AddSingleton<ILoggerFactory>(new NethermindLoggerFactory(logManager, lowerLogLevel: true, maxLogLevel: Microsoft.Extensions.Logging.LogLevel.Debug))
+            .AddSingleton(CreateLibp2pLoggerFactory(logManager))
             .BuildServiceProvider();
     }
+
+    /// <summary>The logger factory for libp2p's own categories: nothing it logs reaches our log above Trace.</summary>
+    /// <remarks>Most mainnet dials fail and the library logs each failed upgrade as an error whose text holds the whole stack trace, which would drown the Debug output.</remarks>
+    internal static ILoggerFactory CreateLibp2pLoggerFactory(ILogManager logManager) =>
+        new NethermindLoggerFactory(logManager, lowerLogLevel: true, maxLogLevel: Microsoft.Extensions.Logging.LogLevel.Trace);
 
     /// <summary>Records a protocol violation by an inbound requester against the peer's failure count, when the peer is in the sync pool.</summary>
     private void ReportRequestViolation(PeerId peerId, string detail)
