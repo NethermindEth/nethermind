@@ -955,10 +955,9 @@ public partial class EthRpcModule(
         {
             CancellationToken cancellationToken = timeout.Token;
 
-            ulong? headNumber = _blockFinder.Head?.Number;
-            if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
+            if (_blockFinder.IsRangeInFuture(fromBlock, toBlock))
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail(BlockFinderExtensions.BlockRangeInFuture, ErrorCodes.InvalidParams);
             }
             if (fromBlock.BlockNumber > toBlock.BlockNumber)
             {
