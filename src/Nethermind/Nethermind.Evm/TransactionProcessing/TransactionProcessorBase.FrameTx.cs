@@ -229,7 +229,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // EIP-2929 warm/cold journal shared across frames (EIP-8141 § Cross-frame interactions): targets
         // per frame, sender and coinbase once per transaction. ENTRY_POINT-as-caller is unspecified: left cold.
-        using StackAccessTracker accessTracker = new(TTracing.IsActive && tracer.IsTracingAccess);
+        using StackAccessTracker accessTracker = new(TTracing.IsActive && _tracerFlags.IsTracingAccess);
         if (spec.UseHotAndColdStorage)
         {
             if (spec.AddCoinbaseToTxAccessList)
@@ -295,7 +295,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext)
             {
                 SuppressLogs = ShouldSuppressLogs(opts, tracer),
-                MaterializeLogMemory = TTracing.IsActive && (tracer.IsTracingInstructions || tracer.IsTracingMemory)
+                MaterializeLogMemory = TTracing.IsActive && (_tracerFlags.IsTracingInstructions || _tracerFlags.IsTracingMemory)
             });
 
             // The shared journal accumulates logs across frames; this frame's own logs start here.
@@ -576,7 +576,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
         else if (opts.HasFlag(ExecutionOptions.Commit))
         {
-            WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
+            WorldState.Commit(spec, _tracerFlags.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
         }
 
         if (TTracing.IsActive && tracer.IsTracingFees)
@@ -585,7 +585,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tracer.ReportFees(fees, effectiveBaseFee * spentGas + blobFee);
         }
 
-        if (TTracing.IsActive && tracer.IsTracingReceipt)
+        if (TTracing.IsActive && _tracerFlags.IsTracingReceipt)
         {
             frameReceiptTracer?.ReportFrameTxReceipt(payer, frameReceipts);
 
@@ -615,7 +615,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         Snapshot txSnapshot = WorldState.TakeSnapshot();
         try
         {
-            using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
+            using StackAccessTracker accessTracker = new(_tracerFlags.IsTracingAccess);
             TransactionResult prepared = PrepareValidationPrefixSimulation(
                 tx, opts, header, spec, in accessTracker,
                 out FrameTxContext frameContext, out UInt256 effectiveGasPrice, out ulong verifyGasUsed);
@@ -655,7 +655,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     caller, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice, frameContext)
                 {
                     SuppressLogs = ShouldSuppressLogs(opts, tracer),
-                    MaterializeLogMemory = tracer.IsTracingInstructions || tracer.IsTracingMemory
+                    MaterializeLogMemory = _tracerFlags.IsTracingInstructions || _tracerFlags.IsTracingMemory
                 });
 
                 // The deploy-frame carve-outs are scoped to one frame and everything it calls, which the
@@ -790,7 +790,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     {
         stateGasUsed = 0;
         UInt256 value = frame.Value;
-        bool isTracingInstructions = TTracing.IsActive && tracer.IsTracingInstructions;
+        bool isTracingInstructions = TTracing.IsActive && _tracerFlags.IsTracingInstructions;
 
         // create_evm_from_frame: the frame pays its target's access out of its own gas limit before the
         // balance check and before dispatch, resolving the target's code being what dispatch is. The charge
