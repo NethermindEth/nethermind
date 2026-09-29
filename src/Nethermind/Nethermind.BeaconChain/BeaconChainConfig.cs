@@ -17,6 +17,7 @@ public class BeaconChainConfig : IBeaconChainConfig
     public int MaxPeerCount { get; set; } = 80;
     public int MaxConcurrentOutboundDials { get; set; } = 8;
     public int FaultDisconnectsBeforeBan { get; set; } = 3;
+    public int PeerBanMinutes { get; set; } = 30;
     public int StateSnapshotIntervalEpochs { get; set; } = 32;
     public bool DisableOnExternalCl { get; set; } = true;
 }
