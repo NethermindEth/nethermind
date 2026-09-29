@@ -166,7 +166,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
-            if (_logger.IsDebug) _logger.Debug($"Blocks [{startSlot}, {startSlot + count}) by range from {peer.Id} failed after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms: {e.GetType().Name}: {e.Message}");
+            if (_logger.IsDebug) _logger.Debug($"Blocks [{startSlot}, {startSlot + count}) by range from {peer.Id} failed after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms: {PeerManager.DescribeFailure(e)}");
             // Includes per-request timeouts, which cancel the request without cancelling the sync.
             peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Blocks-by-range [{startSlot}, {startSlot + count}) failed: {e.Message}");
             return null;
