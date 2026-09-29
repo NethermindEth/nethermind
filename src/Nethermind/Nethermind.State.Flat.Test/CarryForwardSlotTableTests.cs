@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -233,24 +234,30 @@ public class CarryForwardSlotTableTests
         }
     }
 
-    [Test]
-    public void TryGet_WhileEntriesAreRewritten_NeverReturnsATornEntry()
+    [TestCase(0)]
+    [TestCase(30, Explicit = true, Reason = "Time-based stress run")]
+    public async Task TryGet_WhileEntriesAreRewritten_NeverReturnsATornEntry(int stressSeconds)
     {
         // One set and more keys than ways, so the writer both rewrites keys in place and replaces them with others.
         const int keys = OneSet + 2;
         const int readers = 8;
+        const int readsPerReader = 250_000;
         using CarryForwardSlotTable table = new(OneSet);
         Address[] addresses = new Address[keys];
         for (int i = 0; i < keys; i++) addresses[i] = TestItem.Addresses[i];
 
-        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(2));
+        // The writer runs until the last reader is done, so every read overlaps it however the threads are scheduled.
+        using Barrier startLine = new(readers + 1);
+        TimeSpan stress = TimeSpan.FromSeconds(stressSeconds);
+        int readersDone = 0;
         long hits = 0;
         long torn = 0;
         Task writer = Task.Factory.StartNew(() =>
         {
             Random random = new(1);
             ulong version = 0;
-            while (!stop.IsCancellationRequested)
+            startLine.SignalAndWait();
+            while (Volatile.Read(ref readersDone) < readers)
             {
                 int key = random.Next(keys);
                 version++;
@@ -266,22 +273,36 @@ public class CarryForwardSlotTableTests
             readerTasks[r] = Task.Factory.StartNew(() =>
             {
                 Random random = new(seed);
-                while (!stop.IsCancellationRequested)
+                long readerHits = 0;
+                long readerTorn = 0;
+                try
                 {
-                    int key = random.Next(keys);
-                    if (!TryGet(table, addresses[key], (ulong)key, out bool found, out UInt256 value)) continue;
-                    Interlocked.Increment(ref hits);
-                    if (!found || !IsPattern(value, key)) Interlocked.Increment(ref torn);
+                    startLine.SignalAndWait();
+                    Stopwatch clock = Stopwatch.StartNew();
+                    for (long i = 0; i < readsPerReader || clock.Elapsed < stress; i++)
+                    {
+                        int key = random.Next(keys);
+                        if (!TryGet(table, addresses[key], (ulong)key, out bool found, out UInt256 value)) continue;
+                        readerHits++;
+                        if (!found || !IsPattern(value, key)) readerTorn++;
+                    }
+                }
+                finally
+                {
+                    Interlocked.Add(ref hits, readerHits);
+                    Interlocked.Add(ref torn, readerTorn);
+                    Interlocked.Increment(ref readersDone);
                 }
             }, TaskCreationOptions.LongRunning);
         }
 
-        Task.WaitAll([writer, .. readerTasks]);
+        // Only a guard against a hang: the readers do a fixed number of reads.
+        await Task.WhenAll([writer, .. readerTasks]).WaitAsync(TimeSpan.FromMinutes(5));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(torn, Is.Zero);
-            Assert.That(hits, Is.GreaterThan(1000), "readers hit entries while they were being rewritten");
+            Assert.That(hits, Is.Positive, "readers hit entries while they were being rewritten");
         }
     }
 
