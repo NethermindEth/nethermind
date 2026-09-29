@@ -296,7 +296,6 @@ public class LogFinderTests
             yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToPendingBlock().Build(), 5).SetName("filter_by_earliest_to_pending");
             yield return new TestCaseData(FilterBuilder.New().FromEarliestBlock().ToEarliestBlock().Build(), 0).SetName("filter_by_earliest_to_earliest");
             yield return new TestCaseData(FilterBuilder.New().FromBlock(1).ToBlock(1).Build(), 2).SetName("filter_by_block_one");
-            yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToEarliestBlock().Build(), 0).SetName("filter_by_wrong_order");
         }
     }
 
@@ -460,14 +459,15 @@ public class LogFinderTests
         index.Received().GetEnumerator(TestItem.AddressA, BoundaryFrom, BoundaryTo);
     }
 
-    [Test]
-    public void Should_ReportAnInvertedRangeAsInvalid_NotAsPrunedData()
+    [TestCase(10UL)]
+    [TestCase(0UL)]
+    public void Should_ReportAnInvertedRangeAsInvalid_NotAsPrunedData(ulong toBlock)
     {
         IndexedLogFinder finder = CreateBoundaryFinder(out _, out _);
-        LogFilter inverted = FilterBuilder.New().FromBlock(30UL).ToBlock(10UL).WithAddress(TestItem.AddressA).Build();
+        LogFilter inverted = FilterBuilder.New().FromBlock(30UL).ToBlock(toBlock).WithAddress(TestItem.AddressA).Build();
 
         Assert.Throws<ArgumentException>(() =>
-            finder.FindLogs(inverted, BoundaryHeader(30), BoundaryHeader(10)).ToArray());
+            finder.FindLogs(inverted, BoundaryHeader(30), BoundaryHeader(toBlock)).ToArray());
     }
 
     [Test]
