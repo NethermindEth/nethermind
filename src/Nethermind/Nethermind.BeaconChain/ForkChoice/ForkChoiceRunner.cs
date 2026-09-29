@@ -247,6 +247,9 @@ public sealed class ForkChoiceRunner
     /// <inheritdoc cref="ProtoArrayForkChoice.EnumerateAncestorNodes"/>
     public IEnumerable<ProtoNode> EnumerateAncestors(Hash256 blockRoot) => _protoArray.EnumerateAncestorNodes(blockRoot);
 
+    /// <summary>The execution status of <paramref name="blockRoot"/>'s payload, or <c>null</c> when the block is unknown.</summary>
+    internal ExecutionStatus? GetBlockExecutionStatus(Hash256 blockRoot) => _protoArray.GetBlockExecutionStatus(blockRoot);
+
     /// <summary>An immutable copy of the store for readers off the import thread; see <see cref="ForkChoiceSnapshot"/>.</summary>
     /// <remarks>O(nodes): the tree is pruned at finalization, so this stays a few hundred entries and is taken on every head computation.</remarks>
     public ForkChoiceSnapshot Snapshot()

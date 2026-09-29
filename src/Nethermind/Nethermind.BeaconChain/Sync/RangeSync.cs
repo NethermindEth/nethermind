@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -125,6 +126,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             }
 
             consecutiveFailures = 0;
+            if (batchSize != DefaultBatchSize && _logger.IsDebug) _logger.Debug($"Restoring range sync batch size to {DefaultBatchSize} from {batchSize} after a served batch");
             batchSize = DefaultBatchSize;
             await FetchColumnsForBatchAsync(batch.Value.Blocks, token);
             await FetchGloasColumnsForBatchAsync(peer, batch.Value.Blocks, token);
@@ -152,16 +154,21 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         CancellationToken token)
     {
         IReadOnlyList<ForkedSignedBeaconBlock> batch;
+        if (_logger.IsDebug) _logger.Debug($"Requesting blocks [{startSlot}, {startSlot + count}) ({count}) by range from {peer.Id}");
+        long startedAt = Stopwatch.GetTimestamp();
         try
         {
             batch = await peer.RequestBlocksByRangeAsync(startSlot, count, token);
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
+            if (_logger.IsDebug) _logger.Debug($"Blocks [{startSlot}, {startSlot + count}) by range from {peer.Id} failed after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms: {e.GetType().Name}: {e.Message}");
             // Includes per-request timeouts, which cancel the request without cancelling the sync.
             peer.ReportFailure(PeerFailureClassifier.Classify(e), $"Blocks-by-range [{startSlot}, {startSlot + count}) failed: {e.Message}");
             return null;
         }
+
+        if (_logger.IsDebug) _logger.Debug($"Blocks [{startSlot}, {startSlot + count}) by range from {peer.Id}: {batch.Count} blocks in {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms");
 
         // Slot bounds and ordering are already enforced at the protocol layer; verify parent linkage here.
         Hash256 expectedParent = parentRoot;
@@ -262,8 +269,12 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     }
 
     /// <summary>The peers of <paramref name="peers"/> whose Status v2 <c>earliest_available_slot</c> is at or before <paramref name="startSlot"/>, so the range starts inside what they serve.</summary>
-    private static IReadOnlyList<IBeaconSyncPeer> ServingFrom(IReadOnlyList<IBeaconSyncPeer> peers, ulong startSlot) =>
-        [.. peers.Where(p => p.EarliestAvailableSlot <= startSlot)];
+    private IReadOnlyList<IBeaconSyncPeer> ServingFrom(IReadOnlyList<IBeaconSyncPeer> peers, ulong startSlot)
+    {
+        IReadOnlyList<IBeaconSyncPeer> serving = [.. peers.Where(p => p.EarliestAvailableSlot <= startSlot)];
+        if (serving.Count < peers.Count && _logger.IsDebug) _logger.Debug($"Left out {peers.Count - serving.Count} of {peers.Count} sync peers whose earliest available slot is after {startSlot}");
+        return serving;
+    }
 
     /// <returns>The peer's sidecars, or <c>null</c> when the request failed and the peer was penalized.</returns>
     private static async Task<IReadOnlyList<DataColumnSidecar>?> RequestColumnsByRangeAsync(IBeaconSyncPeer peer, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)

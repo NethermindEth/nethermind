@@ -491,7 +491,82 @@ public class BlockImporterTests
             Assert.That(headBeforeSlashing, Is.EqualTo(scenario.Voted.Root), "two votes on A's branch outweigh one on B");
             Assert.That(slashingImported, Is.EqualTo(BlockImportResult.Imported));
             Assert.That(importer.ComputeHead().HeadRoot, Is.EqualTo(scenario.B.Root), "the slashed validators' votes no longer count, so B's lone vote wins");
+            Assert.That(importer.LineageRoot, Is.EqualTo(scenario.B.Root), "a head on a competing branch is a reorg the lineage follows");
         });
+    }
+
+    /// <summary>
+    /// After checkpoint sync several epochs behind, <c>get_head</c> keeps the head on the anchor until an imported block's voting
+    /// source is viable (phase0/fork-choice.md <c>filter_block_tree</c>). Range sync keeps extending the chain above it, so the head
+    /// step must leave the lineage on the block being extended: on the anchor, every later block copies its parent's state and
+    /// hashes it without the cached hasher, which costs seconds per block on a large registry.
+    /// </summary>
+    [Test]
+    public void Head_falling_back_to_an_ancestor_leaves_the_lineage_on_the_chain_being_extended()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        UnsignedChain.ChainBlock anchor = chain.Extend(chain.AnchorRoot, slot: 3 * Presets.SlotsPerEpoch, payloadHashByte: 0x60);
+        BlockImporter importer = new(
+            chain.Spec,
+            new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
+            chain.Anchor.Pubkeys,
+            new ValidPayloadEngine(),
+            new BeaconChainConfig(),
+            LimboLogs.Instance,
+            ReplayedBlockAvailability.Instance,
+            static (_, _) => false,
+            new SlotClock(chain.Spec, Timestamper.Default),
+            new ForkedBeaconState.OfFulu(anchor.PostState),
+            new ForkedSignedBeaconBlock.OfFulu(anchor.Block),
+            anchor.Root);
+        UnsignedChain.ChainBlock a = chain.Extend(anchor.Root, anchor.Block.Message!.Slot + 1, payloadHashByte: 0x61);
+        UnsignedChain.ChainBlock b = chain.Extend(a.Root, a.Block.Message!.Slot + 1, payloadHashByte: 0x62);
+        UnsignedChain.ChainBlock c = chain.Extend(b.Root, b.Block.Message!.Slot + 1, payloadHashByte: 0x63);
+        importer.OnSlotTick(c.Block.Message!.Slot);
+        Assert.That(importer.Import(a.Block, a.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        Assert.That(importer.Import(b.Block, b.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+
+        Hash256 head = importer.ComputeHead().HeadRoot;
+        Hash256? lineageAfterHeadStep = importer.LineageRoot;
+        BlockImportResult extended = importer.Import(c.Block, c.Root, verifySignatures: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(head, Is.EqualTo(anchor.Root), "fixture bug: the blocks above the anchor must fail the voting-source check, as they do after checkpoint sync");
+            Assert.That(lineageAfterHeadStep, Is.EqualTo(b.Root), "a head that fell back to an ancestor is not a fork to move the lineage to");
+            Assert.That(extended, Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(importer.LineageRoot, Is.EqualTo(c.Root), "the next block must import onto the lineage, not onto a copy of its parent's state");
+        }
+    }
+
+    /// <summary>
+    /// A head that falls back to an ancestor because the execution layer invalidated the blocks above it is a reorg:
+    /// the lineage must leave the invalid branch, or gossip proposer checks read that branch's schedule and drop
+    /// a valid replacement block that extends the ancestor in a later epoch.
+    /// </summary>
+    [Test]
+    public void Head_falling_back_to_an_ancestor_after_invalidation_moves_the_lineage_to_it()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(),
+            engine: new ScriptedPayloadEngine(ExecutionStatus.Optimistic, ExecutionStatus.Optimistic, ExecutionStatus.Optimistic));
+        UnsignedChain.ChainBlock ancestor = chain.Extend(chain.AnchorRoot, slot: 1, payloadHashByte: 0x70);
+        // The first block of the next epoch retains the ancestor's post-state, as a reorg onto it needs.
+        UnsignedChain.ChainBlock invalid = chain.Extend(ancestor.Root, slot: Presets.SlotsPerEpoch, payloadHashByte: 0x71);
+        UnsignedChain.ChainBlock invalidChild = chain.Extend(invalid.Root, slot: Presets.SlotsPerEpoch + 1, payloadHashByte: 0x72);
+        importer.OnSlotTick(invalidChild.Block.Message!.Slot);
+        Assert.That(importer.Import(ancestor.Block, ancestor.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        Assert.That(importer.Import(invalid.Block, invalid.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+        Assert.That(importer.Import(invalidChild.Block, invalidChild.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
+
+        importer.OnInvalidExecutionPayload(invalid.Root, null);
+        Hash256 head = importer.ComputeHead().HeadRoot;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(head, Is.EqualTo(ancestor.Root), "fixture bug: invalidation must roll the head back to the ancestor");
+            Assert.That(importer.LineageRoot, Is.EqualTo(ancestor.Root), "the lineage must leave the invalid branch for the head");
+        }
     }
 
     /// <summary>

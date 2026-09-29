@@ -389,13 +389,28 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
     {
         List<ManagedPeer> best = [];
+        int noStatus = 0, behind = 0, failing = 0;
         foreach (KeyValuePair<string, ManagedPeer> peer in _peers)
         {
-            if (peer.Value.Status is not null && peer.Value.HeadSlot >= minHeadSlot && !peer.Value.IsAtFailureLimit)
+            if (peer.Value.Status is null)
+            {
+                noStatus++;
+            }
+            else if (peer.Value.HeadSlot < minHeadSlot)
+            {
+                behind++;
+            }
+            else if (peer.Value.IsAtFailureLimit)
+            {
+                failing++;
+            }
+            else
             {
                 best.Add(peer.Value);
             }
         }
+
+        if (noStatus + behind + failing > 0 && _logger.IsDebug) _logger.Debug($"Sync peers for head slot {minHeadSlot}: {best.Count} usable; left out {noStatus} without status, {behind} behind, {failing} at the request-failure limit");
 
         best.Sort(static (a, b) => b.HeadSlot.CompareTo(a.HeadSlot));
         return best;

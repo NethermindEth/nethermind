@@ -165,6 +165,9 @@ public sealed class BlockImporter : IBlockImporter
     /// <inheritdoc/>
     public bool IsKnown(Hash256 blockRoot) => _runner.ContainsBlock(blockRoot);
 
+    /// <summary>The block whose post-state a Fulu child imports onto without a state copy; for tests.</summary>
+    internal Hash256? LineageRoot => _states.LineageRoot;
+
     private bool IsGloasBlock(Hash256 blockRoot) => _runner.GetBlockSlot(blockRoot) is ulong slot && SignedBeaconBlockCodec.IsGloasSlot(slot, _spec);
 
     private Hash256 GetJustifiedRoot() => _runner.JustifiedCheckpoint.Root;
@@ -357,6 +360,7 @@ public sealed class BlockImporter : IBlockImporter
         }
         else
         {
+            if (_logger.IsDebug) _logger.Debug($"Importing block {blockRoot} at slot {block.Slot} on a copy of its parent's state and without the cached hasher: the lineage is at {_states.LineageRoot}");
             state = parentState; // CopyBlockState already cloned
             cache = new EpochCache(); // fork branch: stateless hasher, fresh balance memo
         }
@@ -913,6 +917,14 @@ public sealed class BlockImporter : IBlockImporter
             return;
         }
 
+        // A head that fell back to an ancestor (phase0/fork-choice.md filter_block_tree) is no fork: the next block still extends the lineage.
+        // An invalid lineage root is not: invalidation also marks every descendant, so no block can extend it again.
+        if (_runner.GetBlockExecutionStatus(lineageRoot) != ExecutionStatus.Invalid && IsStrictAncestor(head, lineageRoot))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Head {head} at slot {_runner.GetBlockSlot(head)} is an ancestor of lineage {lineageRoot}; lineage stays");
+            return;
+        }
+
         BeaconStateFulu? headState = _states.GetBlockState(head);
         if (headState is null)
         {
@@ -927,6 +939,24 @@ public sealed class BlockImporter : IBlockImporter
         _lineageCache = new EpochCache { Hasher = new CachedBeaconStateHasher() };
         // Unknown here; forces retention at the next epoch advance, which is harmless.
         _lineageBlockStartsEpoch = true;
+    }
+
+    private bool IsStrictAncestor(Hash256 ancestor, Hash256 root)
+    {
+        if (_runner.GetBlockSlot(ancestor) is not ulong ancestorSlot)
+        {
+            return false;
+        }
+
+        foreach (ProtoNode node in _runner.EnumerateAncestors(root))
+        {
+            if (node.Slot <= ancestorSlot)
+            {
+                return node.Root == ancestor && root != ancestor;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Makes the canonical slot index name exactly the new head's ancestry: each ancestor at its slot, and no entry at a slot the chain skips or above its head.</summary>
