@@ -169,6 +169,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Bits per key for the per-snapshot in-memory bloom filter. One unified filter covers address/slot/self-destruct keys plus state-trie and storage-trie node paths. Higher = lower false-positive rate but more RAM. 0 disables the filter (lookups behave as full sweeps).", DefaultValue = "14.0")]
     double PersistedSnapshotBloomBitsPerKey { get; set; }
 
+    [ConfigItem(Description = "Bits per key for the negative filter over the slots written by the in-memory snapshots. It is built once per read-only snapshot bundle, on the first slot read of read-only execution (eth_call, eth_estimateGas, eth_simulateV1, debug and trace calls), and lets those reads skip the per-snapshot lookups for a slot no in-memory snapshot wrote. Block processing never uses it. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "14.0")]
+    double InMemorySnapshotBloomBitsPerKey { get; set; }
+
     [ConfigItem(Description = "Persistent dedicated reader threads used to resolve hinted BAL read sets into the pre-block cache. -1 for 4x logical processor count capped at 64. Values below 1 are clamped to 1. Use --Blocks.ParallelExecutionBatchRead=false to disable BAL warming entirely.", DefaultValue = "-1")]
     int WarmReadConcurrency { get; set; }
 }
