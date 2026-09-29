@@ -140,7 +140,7 @@ public static class GloasBlockProcessing
     {
         const string invalidSignature = "Invalid RANDAO reveal";
         ulong epoch = state.GetCurrentEpoch();
-        if (verifySignature && !VerifyRandaoReveal(state, (int)state.GetBeaconProposerIndex(), epoch, body.RandaoReveal, pubkeys, batch?.Defer(invalidSignature)))
+        if (verifySignature && !VerifyRandaoReveal(state, state.GetBeaconProposerIndex(), epoch, body.RandaoReveal, pubkeys, batch?.Defer(invalidSignature)))
             throw new BeaconStateException(invalidSignature);
 
         Span<byte> mix = stackalloc byte[32];
@@ -153,13 +153,13 @@ public static class GloasBlockProcessing
         state.RandaoMixes![(int)(epoch % Presets.EpochsPerHistoricalVector)] = new Hash256(mix);
     }
 
-    private static bool VerifyRandaoReveal(BeaconStateGloas state, int proposerIndex, ulong epoch, BlsSignature reveal, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral)
+    private static bool VerifyRandaoReveal(BeaconStateGloas state, ulong proposerIndex, ulong epoch, BlsSignature reveal, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral)
     {
         Span<byte> epochRoot = stackalloc byte[32];
         System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(epochRoot, epoch);
         Hash256 domain = state.GetDomain(DomainType.Randao, epoch);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(epochRoot), domain);
-        return pubkeys.TryGetValidPublicKey(proposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, reveal, signingRoot, deferral);
+        return SignatureSets.TryGetValidatorKey(pubkeys, proposerIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, reveal, signingRoot, deferral);
     }
 
     /// <summary>Spec <c>process_eth1_data</c>: unchanged from Fulu except for the Gloas body type.</summary>
@@ -784,8 +784,8 @@ public static class GloasBlockProcessing
 
         if (envelope.BuilderIndex == Presets.BuilderIndexSelfBuild)
         {
-            int proposerIndex = (int)state.LatestBlockHeader!.ProposerIndex;
-            return pubkeys.TryGetValidPublicKey(proposerIndex, out G1Affine proposerKey) && BlsSigner.Verify(proposerKey, signedEnvelope.Signature.Bytes, signingRoot.Bytes);
+            ulong proposerIndex = state.LatestBlockHeader!.ProposerIndex;
+            return SignatureSets.TryGetValidatorKey(pubkeys, proposerIndex, out G1Affine proposerKey) && BlsSigner.Verify(proposerKey, signedEnvelope.Signature.Bytes, signingRoot.Bytes);
         }
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);
