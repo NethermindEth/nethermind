@@ -194,6 +194,29 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Engine.FcuCalls.Select(static call => call.Head), Is.EqualTo(new[] { TestItem.KeccakB, TestItem.KeccakD, TestItem.KeccakB }));
     }
 
+    /// <summary>A run stopped before the anchor kick sends the execution layer nothing and skips the work that follows the kick, the public-key cache build.</summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_run_cancelled_before_the_engine_kick_sends_no_forkchoice_update_and_builds_no_cache(CancellationToken testToken)
+    {
+        await using BeaconDiscovery discovery = CreateDiscovery();
+        PeerBandTests.Node node = PeerBandTests.CreateNode();
+        await using BeaconP2P p2p = node.P2P;
+        Harness harness = CreateHarness(discovery: discovery, p2p: p2p, peerManager: new PeerManager(p2p, node.Config, node.StatusHolder, LimboLogs.Instance));
+        (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(AnchorSlot);
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(testToken);
+        int cacheBuilds = 0;
+        cts.Cancel();
+
+        Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token, () => cacheBuilds++));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Engine.FcuCalls, Is.Empty);
+            Assert.That(cacheBuilds, Is.Zero);
+        }
+    }
+
     /// <summary>
     /// The anchor kick goes through the same send state as the head steps, so a head step that finds the anchor still the head
     /// does not send it again within the resend interval.
@@ -675,7 +698,9 @@ public partial class BeaconSyncOrchestratorTests
         BeaconDiscovery? discovery = null,
         GossipRouter? router = null,
         ILogManager? logManager = null,
-        BeaconP2P? p2p = null)
+        BeaconP2P? p2p = null,
+        PeerManager? peerManager = null,
+        bool filterPoolByHead = false)
     {
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + wallSlot * Spec.SecondsPerSlot).AddSeconds(6);
         ManualTimestamper timestamper = new(now);
@@ -683,7 +708,7 @@ public partial class BeaconSyncOrchestratorTests
         store ??= new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>());
         ScriptedImporter importer = new() { Head = CreateHead(TestItem.KeccakA, anchorSlot, finalizedEpoch: Spec.GetEpoch(anchorSlot)) };
         ScriptedEngine engine = new();
-        StubPool pool = new(peers ?? []);
+        StubPool pool = new(peers ?? [], filterPoolByHead);
         sidecarPool ??= new DataColumnSidecarPool();
         router ??= new GossipRouter(Spec, slotClock, LimboLogs.Instance);
         BeaconChainStatusHolder statusHolder = new(Spec, timestamper);
@@ -701,6 +726,7 @@ public partial class BeaconSyncOrchestratorTests
             statusHolder,
             logManager ?? LimboLogs.Instance,
             p2p: p2p,
+            peerManager: peerManager,
             discovery: discovery,
             columnPool: sidecarPool,
             envelopePool: envelopePool);
@@ -880,14 +906,14 @@ public partial class BeaconSyncOrchestratorTests
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 
-    private sealed class StubPool(IBeaconSyncPeer[] peers) : IBeaconSyncPeerPool
+    private sealed class StubPool(IBeaconSyncPeer[] peers, bool filterByHead = false) : IBeaconSyncPeerPool
     {
         public int GetBestPeersCalls { get; private set; }
 
         public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot)
         {
             GetBestPeersCalls++;
-            return peers;
+            return filterByHead ? [.. peers.Where(p => p.HeadSlot >= minHeadSlot)] : peers;
         }
     }
 

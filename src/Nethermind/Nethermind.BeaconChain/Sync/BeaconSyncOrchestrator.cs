@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -142,6 +143,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The roots whose by-root column fetch is running, at most one each; the fetch runs off the worker and ends with a <see cref="ColumnFetchEndedItem"/>.</summary>
     private readonly HashSet<Hash256> _columnFetchesInFlight = [];
 
+    /// <summary>The block whose refused-block fetch is running, so the blocks a full retry set refuses cost at most one fetch at a time.</summary>
+    private Hash256? _refusedFetchRoot;
+
     /// <summary>The roots the sidecar pool may wake the worker for, once every sampled column of one is held.</summary>
     private readonly HashSet<Hash256> _columnWatched = [];
 
@@ -221,8 +225,8 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The sidecar pool holds every sampled column awaited for <paramref name="BlockRoot"/>; queued at most once per watch.</summary>
     internal sealed record ColumnsHeldItem(Hash256 BlockRoot) : WorkItem;
 
-    /// <summary>A by-root column fetch for <paramref name="BlockRoot"/> ended; <paramref name="Complete"/> is whether every sampled column is then held.</summary>
-    internal sealed record ColumnFetchEndedItem(Hash256 BlockRoot, bool Complete) : WorkItem;
+    /// <summary>A by-root column fetch for <paramref name="BlockRoot"/> ended; <paramref name="Complete"/> is whether every sampled column is then held, and <paramref name="Refused"/> the deferred block the full retry set could not hold.</summary>
+    internal sealed record ColumnFetchEndedItem(Hash256 BlockRoot, bool Complete, ForkedSignedBeaconBlock? Refused = null) : WorkItem;
 
     /// <summary>Wakes the worker for queued gossip votes; carries no work of its own.</summary>
     private sealed record VoteWakeItem : WorkItem
@@ -267,6 +271,9 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The blocks whose by-root column fetches are tracked, bounded by the retry set; for tests.</summary>
     internal int ColumnFetchRotationCount => _columnFetchRotations.Count;
 
+    /// <summary>The blocks awaiting a data or engine retry, bounded by <see cref="MaxPendingRetryBlocks"/>; for tests.</summary>
+    internal int PendingRetryBlockCount => _pendingRetry.Count;
+
     /// <summary>Runs the full sync flow from the given anchor until cancelled.</summary>
     /// <param name="afterEngineKick">Runs once the execution layer has been pointed at the anchor and before any block is imported, so slow start-up work does not delay that first call.</param>
     public async Task RunAsync(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot, CancellationToken token, Action? afterEngineKick = null)
@@ -275,6 +282,9 @@ public sealed class BeaconSyncOrchestrator(
         {
             throw new InvalidOperationException($"{nameof(BeaconSyncOrchestrator)} requires the P2P components to run");
         }
+
+        // A run stopped before the kick must neither build the importer nor reach the execution layer.
+        token.ThrowIfCancellationRequested();
 
         Initialize(importerFactory.Create(anchorState, anchorBlock, anchorRoot), anchorBlock, anchorRoot);
 
@@ -541,10 +551,19 @@ public sealed class BeaconSyncOrchestrator(
                 break;
             case ColumnFetchEndedItem ended:
                 _columnFetchesInFlight.Remove(ended.BlockRoot);
+                if (ended.Refused is not null)
+                {
+                    _refusedFetchRoot = null;
+                }
+
                 if (ended.Complete)
                 {
                     _columnRecovery.Remove(ended.BlockRoot);
                     await RetryOnColumnsAsync(ended.BlockRoot, token);
+                    if (ended.Refused is { } refused && !_pendingRetry.ContainsKey(ended.BlockRoot) && !_importer!.IsKnown(ended.BlockRoot))
+                    {
+                        await ImportBlockAsync(refused, token, retryingOnColumns: true);
+                    }
                 }
 
                 break;
@@ -605,6 +624,11 @@ public sealed class BeaconSyncOrchestrator(
             if (!QueuePendingRetry(root, block))
             {
                 DropPendingChildren(root);
+                // The refused block's own fetch feeds back one import attempt; that attempt never fetches again, so the set stays the only place a block waits.
+                if (result == BlockImportResult.DataUnavailable && !retryingOnColumns)
+                {
+                    AwaitColumns(block, root, token, refused: true);
+                }
             }
             // A child of a deferred parent waits on that parent's import, not on an envelope fork choice could record.
             else if (result == BlockImportResult.ParentPayloadUnverified
@@ -648,20 +672,37 @@ public sealed class BeaconSyncOrchestrator(
     /// A custodian behind peers that answered with nothing, or one that connected since the last attempt, is still reached
     /// (fulu/das-core.md, every sampled column), while one fetch costs a bounded number of requests however many peers are connected.
     /// </remarks>
-    private void AwaitColumns(ForkedSignedBeaconBlock block, Hash256 root, CancellationToken token)
+    /// <param name="refused">Whether the retry set refused the block: it is neither watched nor given a stored rotation, and the fetch ends with an import attempt of it.</param>
+    private void AwaitColumns(ForkedSignedBeaconBlock block, Hash256 root, CancellationToken token, bool refused = false)
     {
         if (block is not ForkedSignedBeaconBlock.OfFulu { Block.Message: { Body.BlobKzgCommitments.Length: > 0 } message })
         {
             return;
         }
 
-        WatchColumns(root, gloas: false);
-        if (!_columnFetchRotations.TryGetValue(root, out RangeSync.ColumnFetchRotation? rotation))
+        RangeSync.ColumnFetchRotation? rotation;
+        if (refused)
         {
-            _columnFetchRotations[root] = rotation = new RangeSync.ColumnFetchRotation(slotClock);
+            if (_refusedFetchRoot is not null)
+            {
+                return;
+            }
+
+            rotation = new RangeSync.ColumnFetchRotation(slotClock);
+        }
+        else
+        {
+            WatchColumns(root, gloas: false);
+            if (!_columnFetchRotations.TryGetValue(root, out rotation))
+            {
+                _columnFetchRotations[root] = rotation = new RangeSync.ColumnFetchRotation(slotClock);
+            }
         }
 
-        StartColumnFetch(root, fetchToken => rangeSync.FetchColumnsByRootAsync(root, message, rotation, fetchToken), token);
+        if (StartColumnFetch(root, fetchToken => rangeSync.FetchColumnsByRootAsync(root, message, rotation, fetchToken), token, refused ? block : null) && refused)
+        {
+            _refusedFetchRoot = root;
+        }
     }
 
     /// <summary>Asks the pool to queue one <see cref="ColumnsHeldItem"/> for <paramref name="root"/> when every sampled column of it is held.</summary>
@@ -703,19 +744,19 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>Runs <paramref name="fetch"/> off the worker unless one is running for <paramref name="root"/>; it ends with a <see cref="ColumnFetchEndedItem"/>.</summary>
     /// <returns>Whether a fetch was started.</returns>
-    private bool StartColumnFetch(Hash256 root, Func<CancellationToken, Task<bool>> fetch, CancellationToken token)
+    private bool StartColumnFetch(Hash256 root, Func<CancellationToken, Task<bool>> fetch, CancellationToken token, ForkedSignedBeaconBlock? refused = null)
     {
         if (!_columnFetchesInFlight.Add(root))
         {
             return false;
         }
 
-        _ = RunColumnFetchAsync(root, fetch, token);
+        _ = RunColumnFetchAsync(root, fetch, token, refused);
         return true;
     }
 
     /// <remarks>Touches no worker state: the fetched sidecars reach the pool, which wakes the worker, and the end is reported as a work item.</remarks>
-    private async Task RunColumnFetchAsync(Hash256 root, Func<CancellationToken, Task<bool>> fetch, CancellationToken token)
+    private async Task RunColumnFetchAsync(Hash256 root, Func<CancellationToken, Task<bool>> fetch, CancellationToken token, ForkedSignedBeaconBlock? refused)
     {
         bool complete = false;
         if (_logger.IsDebug) _logger.Debug($"By-root column fetch for {root} started");
@@ -732,7 +773,7 @@ public sealed class BeaconSyncOrchestrator(
 
         try
         {
-            await _work.Writer.WriteAsync(new ColumnFetchEndedItem(root, complete), token);
+            await _work.Writer.WriteAsync(new ColumnFetchEndedItem(root, complete, refused), token);
         }
         catch (Exception e) when (e is OperationCanceledException or ChannelClosedException)
         {
@@ -1874,7 +1915,13 @@ public sealed class BeaconSyncOrchestrator(
 
         ulong startSlot = run[0].Slot;
         ulong count = run[^1].Slot - startSlot + 1;
-        IReadOnlyList<IBeaconSyncPeer> peers = peerPool.GetBestPeers(run[^1].Slot);
+        // Status v2 earliest_available_slot (fulu/p2p-interface.md): prefer peers serving from the run start; with none, a peer serving part of the run still beats none.
+        IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(startSlot);
+        IReadOnlyList<IBeaconSyncPeer> peers = [.. reaching.Where(peer => peer.EarliestAvailableSlot <= startSlot)];
+        if (peers.Count == 0)
+        {
+            peers = [.. reaching.Where(peer => peer.EarliestAvailableSlot <= run[^1].Slot)];
+        }
         for (int p = 0; p < peers.Count && p < MaxBackfillPeersPerRequest; p++)
         {
             IBeaconSyncPeer peer = peers[p];

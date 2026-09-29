@@ -783,6 +783,92 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    /// <summary>fulu/p2p-interface.md Status v2: a peer whose <c>earliest_available_slot</c> is past the start of the range cannot serve it, and one at the start can.</summary>
+    [TestCase(0UL, true)]
+    [TestCase(1UL, false)]
+    public async Task Range_feed_asks_for_envelopes_only_peers_that_serve_from_the_start_of_the_run(ulong earliestPastStart, bool candidateIsAsked)
+    {
+        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 2);
+        SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
+        EnvelopeServingPeer Serving(string id, ulong earliestAvailableSlot) => new(
+            id,
+            WallSlot,
+            byRange: (start, count) => [.. envelopes.Where(e => e.Message!.Payload!.SlotNumber >= start && e.Message.Payload.SlotNumber - start < count)],
+            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)],
+            earliestAvailableSlot: earliestAvailableSlot);
+        EnvelopeServingPeer candidate = Serving("candidate", chain[0].Slot + earliestPastStart);
+        EnvelopeServingPeer fallback = Serving("fallback", 0);
+        Harness harness = CreateHarness(peers: [candidate, fallback]);
+        harness.Importer.Known.Add(AnchorRoot());
+        harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
+
+        await RunRangeRoundAsync(harness);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(candidate.RangeRequests, Has.Count.EqualTo(candidateIsAsked ? 1 : 0));
+            Assert.That(fallback.RangeRequests, Has.Count.EqualTo(candidateIsAsked ? 0 : 1));
+            Assert.That(harness.Importer.ImportOrder, Is.EqualTo(chain.SelectMany(static b => new[] { (false, b.ComputeMessageRoot()), (true, b.ComputeMessageRoot()) })));
+        }
+    }
+
+    /// <summary>The envelopes of a run are asked of the peers that reach its first slot, so a peer whose head is inside the run, short of its last slot, is asked before the one ahead.</summary>
+    [Test]
+    public async Task Range_feed_asks_for_envelopes_the_peers_that_reach_the_start_of_the_run()
+    {
+        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 1, 3);
+        SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
+        EnvelopeServingPeer Serving(string id, ulong headSlot) => new(
+            id,
+            headSlot,
+            byRange: (start, count) => [.. envelopes.Where(e => e.Message!.Payload!.SlotNumber >= start && e.Message.Payload.SlotNumber - start < count)],
+            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)]);
+        EnvelopeServingPeer inside = Serving("inside", chain[1].Slot);
+        EnvelopeServingPeer ahead = Serving("ahead", WallSlot);
+        Harness harness = CreateHarness(peers: [inside, ahead], filterPoolByHead: true);
+        harness.Importer.Known.Add(AnchorRoot());
+        harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
+
+        await RunRangeRoundAsync(harness);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inside.RangeRequests, Has.Count.EqualTo(1));
+            Assert.That(ahead.RangeRequests, Is.Empty, "the first peer served every envelope");
+        }
+    }
+
+    /// <summary>fulu/p2p-interface.md Status v2: when no peer serves from the start of the run, one whose <c>earliest_available_slot</c> is inside the run is still asked, so the run does not go without envelopes.</summary>
+    [Test]
+    public async Task Range_feed_asks_for_envelopes_a_peer_serving_from_inside_the_run_when_none_serves_its_start()
+    {
+        List<ForkedSignedBeaconBlock.OfGloas> chain = BuildGloasRun(AnchorRoot(), AnchorSlot + 2, 2);
+        SignedExecutionPayloadEnvelope[] envelopes = EnvelopesOf(chain);
+        EnvelopeServingPeer Serving(string id, ulong headSlot, ulong earliestAvailableSlot) => new(
+            id,
+            headSlot,
+            byRange: (start, count) => [.. envelopes.Where(e => e.Message!.Payload!.SlotNumber >= start && e.Message.Payload.SlotNumber - start < count)],
+            blocksByRange: (start, count) => [.. chain.Where(b => b.Slot >= start && b.Slot - start < count)],
+            earliestAvailableSlot: earliestAvailableSlot);
+        // Serves the blocks from before the run but its head is short of the run, so only the late-starting peer reaches it.
+        EnvelopeServingPeer behind = Serving("behind", AnchorSlot + 1, 0);
+        EnvelopeServingPeer beyond = Serving("beyond", WallSlot, chain[^1].Slot + 1);
+        EnvelopeServingPeer late = Serving("late", WallSlot, chain[^1].Slot);
+        Harness harness = CreateHarness(peers: [behind, beyond, late], filterPoolByHead: true);
+        harness.Importer.Known.Add(AnchorRoot());
+        harness.Importer.UnverifiedPayloads.UnionWith(chain.Select(static b => b.ComputeMessageRoot()));
+
+        await RunRangeRoundAsync(harness);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(behind.RangeRequests, Is.Empty);
+            Assert.That(beyond.RangeRequests, Is.Empty, "it serves nothing of the run");
+            Assert.That(late.RangeRequests, Is.EqualTo(new[] { (chain[0].Slot, 2UL) }));
+            Assert.That(harness.Importer.ImportOrder, Is.EqualTo(chain.SelectMany(static b => new[] { (false, b.ComputeMessageRoot()), (true, b.ComputeMessageRoot()) })));
+        }
+    }
+
     /// <summary>Once one peer has served every envelope the run builds on, asking more peers only costs them requests.</summary>
     [Test]
     public async Task Range_feed_stops_asking_peers_once_every_on_chain_envelope_is_found()
