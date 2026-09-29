@@ -9,6 +9,8 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Collections;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
@@ -108,6 +110,38 @@ public class Snapshot : RefCountingDisposable
     public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out UInt256? value)
         => _isSorted ? _sorted!.TryGetStorage(key, out value) : _mutable!.Storages.TryGetValue(key, out value);
 
+    /// <summary>The key a storage key is filed under in a slot filter built by <see cref="AddStorageKeysTo"/>.</summary>
+    /// <remarks>The hash the dictionaries already bucket on, so a probe hashes nothing new.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong StorageFilterKey(in HashedKey<(Address, UInt256)> key) => (uint)key.GetHashCode();
+
+    /// <summary>Adds every storage key of this snapshot to <paramref name="filter"/> under <see cref="StorageFilterKey"/>.</summary>
+    /// <remarks>
+    /// Such a filter has no false negatives only because no storage key is added to a snapshot after it is
+    /// created (see <see cref="SnapshotContent.Storages"/>).
+    /// </remarks>
+    internal void AddStorageKeysTo(BloomFilter filter)
+    {
+        if (_isSorted)
+        {
+            // Entry.HashCode is (uint)key.GetHashCode(), i.e. StorageFilterKey, and reading it skips copying the keys.
+            foreach (ref readonly SortedMergeDictionary<HashedKey<(Address, UInt256)>, UInt256?>.Entry entry in _sorted!.SortedStorages.Entries)
+            {
+                filter.AddUnsynchronized(entry.HashCode);
+            }
+        }
+        else
+        {
+            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in _mutable!.Storages)
+            {
+                filter.AddUnsynchronized(StorageFilterKey(kv.Key));
+            }
+        }
+    }
+
+    /// <summary>Counts the storage keys now, not the count sealed at the first observation.</summary>
+    internal int CountStoragesNow() => _isSorted ? _sorted!.StoragesCount : _mutable!.Storages.Count;
+
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
         => _isSorted ? _sorted!.TryGetStateNode(key, out node) : _mutable!.StateNodes.TryGetValue(key, out node!);
 
@@ -127,6 +161,13 @@ public sealed class SnapshotContent : IDisposable, IResettable
 {
     // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots
     public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
+
+    /// <summary>Slot writes; <c>null</c> is a zero write (a deletion).</summary>
+    /// <remarks>
+    /// Sealed once a <see cref="Snapshot"/> wraps the content: only commit write batches add slots, and they finish
+    /// before the snapshot is created. The negative slot filter of <see cref="ReadOnlySnapshotBundle"/> relies on it -
+    /// a key added afterwards would be missing from a filter already built and a filtered read would skip it.
+    /// </remarks>
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
