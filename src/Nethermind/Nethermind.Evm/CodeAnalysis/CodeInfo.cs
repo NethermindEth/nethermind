@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,10 +33,7 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
-        _codeLength = code.Length;
-        _code = MemoryMarshal.TryGetArray(code, out ArraySegment<byte> segment) && segment.Offset == 0 && segment.Count == segment.Array!.Length
-            ? (object)segment.Array
-            : code;
+        InitializeCode(code);
         if (code.Length == 0)
         {
             _analyzer = _emptyAnalyzer;
@@ -55,16 +51,10 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
         _analyzer = null;
     }
 
-    // Until first execution, the caller's code: its array when that holds exactly the code, otherwise its
-    // memory boxed. After it, the padded copy. One reference, so replacing it cannot tear a reader's view.
-    private object _code = Array.Empty<byte>();
-    private readonly int _codeLength;
-
-    public ReadOnlyMemory<byte> Code => ViewOf(_code);
+    public partial ReadOnlyMemory<byte> Code { get; }
     public ReadOnlySpan<byte> CodeSpan => Code.Span;
 
-    private ReadOnlyMemory<byte> ViewOf(object code) =>
-        code is byte[] array ? new(array, 0, _codeLength) : Unsafe.Unbox<ReadOnlyMemory<byte>>(code);
+    partial void InitializeCode(ReadOnlyMemory<byte> code);
 
     /// <summary>The number of zero bytes that follow <see cref="ExecutionCodeSpan"/> in its backing array.</summary>
     /// <remarks>
@@ -76,15 +66,9 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     /// <summary>The code that dispatch runs, followed in memory by <see cref="ExecutionPadding"/> zero bytes.</summary>
     /// <remarks>
     /// Untraced dispatch reads into the padding instead of checking the program counter against the code
-    /// length. The padded copy is built on first execution and replaces the caller's code, so the code is
-    /// held once; a view of <see cref="Code"/> taken earlier stays valid. The padding is never JUMPDEST,
-    /// and jump destinations are bounded by the code length anyway.
+    /// length. The padding is never JUMPDEST, and jump destinations are bounded by the code length anyway.
     /// </remarks>
-    internal ReadOnlySpan<byte> ExecutionCodeSpan
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => new(GetExecutionCode(), 0, _codeLength);
-    }
+    internal partial ReadOnlySpan<byte> ExecutionCodeSpan { get; }
 
     private static byte[] CreatePaddedCode(ReadOnlySpan<byte> code)
     {

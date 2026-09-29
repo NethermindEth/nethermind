@@ -2,19 +2,28 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo
 {
-    // Guest execution is single-threaded; bitmap writes, the resume cursor and the execution copy are not synchronized.
+    private ReadOnlyMemory<byte> _code;
+
+    /// <remarks>
+    /// Always copies, as a caller's buffer promises nothing about the bytes after the code. Padding here rather
+    /// than on first execution keeps <see cref="Code"/> a plain field read, which the guest pays for on every
+    /// code access.
+    /// </remarks>
+    partial void InitializeCode(ReadOnlyMemory<byte> code) =>
+        _code = code.IsEmpty ? code : CreatePaddedCode(code.Span).AsMemory(0, code.Length);
+
+    public partial ReadOnlyMemory<byte> Code => _code;
+
+    internal partial ReadOnlySpan<byte> ExecutionCodeSpan => _code.Span;
+
+    // Guest execution is single-threaded; bitmap writes and the resume cursor are not synchronized.
     private long[]? _incrementalJumpBitmap;
     private nint _analyzedUntil;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private byte[] GetExecutionCode() =>
-        _code is byte[] code && code.Length != _codeLength ? code : (byte[])(_code = CreatePaddedCode(ViewOf(_code).Span));
 
     /// <summary>The jump-destination bitmap of this code, holding only the destinations analyzed so far.</summary>
     /// <remarks>
