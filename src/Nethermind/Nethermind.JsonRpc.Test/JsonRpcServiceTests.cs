@@ -816,7 +816,7 @@ public class JsonRpcServiceTests
 
     [Test]
     public void Trace_filter_rejects_unknown_member_in_utf8_params(
-        [Values("\"unknownDiagnosticFlag\":true", "\"limit\":1", "\"fromAdress\":null")] string member)
+        [Values("\"unknownDiagnosticFlag\":true", "\"limit\":1", "\"fromAddresses\":null")] string member)
     {
         ITraceRpcModule traceRpcModule = Substitute.For<ITraceRpcModule>();
 
