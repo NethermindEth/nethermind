@@ -17,8 +17,9 @@ namespace Nethermind.BeaconChain.Test.Api;
 
 /// <summary>
 /// <c>/eth/v1/config/spec</c> serves every key of <c>configs/mainnet.yaml</c> and of the consensus-specs v1.7.0-beta.2
-/// mainnet presets of phase0 to gloas (embedded verbatim in <see cref="PinnedMainnetSpec"/>), with the network's values
-/// where the network differs, so tooling that keys on any of them does not find it missing or wrong.
+/// mainnet presets of phase0 to gloas (embedded verbatim in <see cref="PinnedMainnetSpec"/>) and every constant of the
+/// specs' Constants tables (<see cref="PinnedSpecConstants"/>), with the network's values where the network differs, so
+/// tooling that keys on any of them does not find it missing or wrong.
 /// </summary>
 public class ConfigSpecEndpointTests
 {
@@ -56,7 +57,7 @@ public class ConfigSpecEndpointTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pinned.Keys.Except(data.Keys), Is.Empty, "keys of the pinned files that are not served");
-            Assert.That(data.Keys.Except(pinned.Keys).Except(ServedBeyondPinnedFiles).Except(["BLOB_SCHEDULE", "GAS_LIMIT_SCHEDULE"]), Is.Empty, "served keys that no pinned file has");
+            Assert.That(data.Keys.Except(pinned.Keys).Except(ServedBeyondPinnedFiles).Except(["BLOB_SCHEDULE", "GAS_LIMIT_SCHEDULE"]).Except(PinnedSpecConstants.All.Select(c => c.Name)), Is.Empty, "served keys that no pinned file has");
             Assert.That(pinned.Where(entry => data.TryGetValue(entry.Key, out JsonElement actual) && (actual.ValueKind != JsonValueKind.String || actual.GetString() != entry.Value))
                 .Select(entry => $"{entry.Key}={(data.TryGetValue(entry.Key, out JsonElement actual) ? actual.ToString() : "missing")} (pinned {entry.Value})"), Is.Empty);
 
@@ -66,6 +67,49 @@ public class ConfigSpecEndpointTests
                 Is.EqualTo(schedule.Select(m => (m.Groups["epoch"].Value, m.Groups["blobs"].Value))));
             Assert.That(data["GAS_LIMIT_SCHEDULE"].GetArrayLength(), Is.Zero);
         }
+    }
+
+    private const string ArrayConstant = "PARTICIPATION_FLAG_WEIGHTS";
+
+    /// <summary>Renders a served constant the way getSpec requires: a string, except the weights array whose elements are strings; any other JSON kind is reported by name.</summary>
+    private static string Rendered(string name, JsonElement value) =>
+        name == ArrayConstant
+            ? value.ValueKind == JsonValueKind.Array && value.EnumerateArray().All(e => e.ValueKind == JsonValueKind.String) ? string.Join(',', value.EnumerateArray().Select(e => e.GetString())) : $"<{value.ValueKind}>"
+            : value.ValueKind == JsonValueKind.String ? value.GetString()! : $"<{value.ValueKind}>";
+
+    private static IEnumerable<string> ConstantMismatches(JsonElement served) =>
+        PinnedSpecConstants.All.Select(c => served.TryGetProperty(c.Name, out JsonElement actual) ? (Name: c.Name, Actual: Rendered(c.Name, actual), Pinned: c.Value) : (Name: c.Name, Actual: "missing", Pinned: c.Value))
+            .Where(c => c.Actual != c.Pinned)
+            .Select(c => $"{c.Name}={c.Actual} (pinned {c.Pinned})");
+
+    [Test]
+    public async Task Serves_every_constant_of_the_specs_constants_tables_with_its_pinned_value()
+    {
+        JsonElement served = await ServedSpecAsync(BeaconChainSpec.Mainnet);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PinnedSpecConstants.All.Length, Is.GreaterThan(80));
+            Assert.That(ConstantMismatches(served), Is.Empty);
+        }
+    }
+
+    [TestCase("DOMAIN_BEACON_PROPOSER", "0x00000000")]
+    [TestCase("DOMAIN_BEACON_ATTESTER", "0x01000000")]
+    [TestCase("DOMAIN_BUILDER_DEPOSIT", "0x0e000000")]
+    [TestCase("FAR_FUTURE_EPOCH", "18446744073709551615")]
+    [TestCase("GENESIS_SLOT", "0")]
+    [TestCase("GENESIS_EPOCH", "0")]
+    [TestCase("BLS_WITHDRAWAL_PREFIX", "0x00")]
+    [TestCase("ETH1_ADDRESS_WITHDRAWAL_PREFIX", "0x01")]
+    [TestCase("COMPOUNDING_WITHDRAWAL_PREFIX", "0x02")]
+    [TestCase("TARGET_AGGREGATORS_PER_COMMITTEE", "16")]
+    [TestCase("PARTICIPATION_FLAG_WEIGHTS", "14,26,14")]
+    public async Task Serves_the_constants_tooling_keys_on_in_the_getSpec_format(string key, string expected)
+    {
+        JsonElement served = await ServedSpecAsync(BeaconChainSpec.Mainnet);
+
+        Assert.That(Rendered(key, served.GetProperty(key)), Is.EqualTo(expected));
     }
 
     /// <summary>The keys of the pinned <c>presets/mainnet/{heze,eip8148,eip8205,eip8321}.yaml</c>, which describe forks this node does not run.</summary>
@@ -148,6 +192,7 @@ public class ConfigSpecEndpointTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(PinnedScalars().Keys.Except(served.EnumerateObject().Select(p => p.Name)), Is.Empty);
+            Assert.That(ConstantMismatches(served), Is.Empty);
             Assert.That(served.GetProperty("BLOB_SCHEDULE").EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("MAX_BLOBS_PER_BLOCK").GetString())),
                 Is.EqualTo(spec.BlobSchedule.Select(e => (e.Epoch.ToString(), e.MaxBlobsPerBlock.ToString()))));
         }

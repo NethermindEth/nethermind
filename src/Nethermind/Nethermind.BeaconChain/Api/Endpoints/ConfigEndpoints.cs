@@ -57,7 +57,8 @@ internal static class ConfigEndpoints
     /// <remarks>
     /// Every key of the consensus-specs v1.7.0-beta.2 mainnet <c>config.yaml</c> and of the presets of phase0 to gloas, as the beacon-APIs
     /// <c>getSpec</c> asks for: numbers as decimal strings, <c>0x</c> values as hex, schedules as arrays. The mainnet
-    /// values come from <see cref="SpecValues.Mainnet"/> and the network's own replace them; every network runs the
+    /// values come from <see cref="SpecValues.Mainnet"/> and the network's own replace them, and the constants of the specs'
+    /// Constants tables come from <see cref="SpecConstants.All"/>; every network runs the
     /// mainnet preset. <c>SECONDS_PER_SLOT</c>, which that config no longer lists, stays for tooling that still reads it.
     /// </remarks>
     private static Task Spec(HttpContext c, BeaconApiContext ctx)
@@ -68,8 +69,13 @@ internal static class ConfigEndpoints
         }
 
         BeaconChainSpec spec = ctx.Spec;
-        Dictionary<string, object> data = new(SpecValues.Mainnet.Count + 4);
+        Dictionary<string, object> data = new(SpecValues.Mainnet.Count + SpecConstants.All.Count + 4);
         foreach ((string key, string value) in SpecValues.Mainnet)
+        {
+            data[key] = value;
+        }
+
+        foreach ((string key, object value) in SpecConstants.All)
         {
             data[key] = value;
         }
