@@ -125,6 +125,20 @@ class TestnetMatrixTest(unittest.TestCase):
             self.assertIsInstance(entry["local_ssd_count"], int)
             self.assertIsInstance(entry["spot"], bool)
 
+    def test_local_ssd_count_matches_what_the_machine_type_can_carry(self):
+        # startup-script.sh fails the runner when the SSDs it finds differ from local_ssd_count,
+        # and -lssd types come with a fixed complement instead of taking --local-ssd.
+        bundled = {"c3d-standard-8-lssd": 1, "c3d-standard-16-lssd": 1, "c3d-standard-30-lssd": 2}
+        for entry in json.loads(MATRIX.read_text()):
+            machine_type, count = entry["machine_type"], entry["local_ssd_count"]
+            with self.subTest(network=entry["network"], machine_type=machine_type):
+                self.assertRegex(machine_type, r"^(c2|c3d)-")
+                if machine_type.endswith("-lssd"):
+                    self.assertIn(machine_type, bundled)
+                    self.assertEqual(count, bundled[machine_type])
+                elif machine_type.startswith("c3d-"):
+                    self.assertEqual(count, 0, "C3D only has Local SSD in its -lssd types")
+
 
 class ProvisioningModelTest(unittest.TestCase):
     """STANDARD must only come from an explicit request; anything unstated resolves to SPOT."""
