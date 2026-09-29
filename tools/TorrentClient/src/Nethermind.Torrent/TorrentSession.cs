@@ -41,6 +41,9 @@ public sealed class TorrentClientOptions
     /// </summary>
     public bool EnableTrackers { get; init; } = true;
 
+    /// <summary>Gets explicit peer endpoints to try before tracker or DHT discovery.</summary>
+    public IReadOnlyList<string> ExplicitPeers { get; init; } = [];
+
     /// <summary>
     /// Gets or sets whether existing payload files should be SHA-1 verified before downloading.
     /// </summary>
@@ -187,6 +190,13 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
         Dictionary<Task, PeerEndpoint> activePeers = [];
         HashSet<PeerEndpoint> recentlyFailed = [];
         HashSet<PeerEndpoint> knownPeers = [];
+        for (int i = 0; i < _options.ExplicitPeers.Count; i++)
+        {
+            _ = MagnetLink.TryParsePeer(_options.ExplicitPeers[i], out PeerEndpoint peer);
+            knownPeers.Add(peer);
+        }
+
+        Volatile.Write(ref _knownPeerCount, knownPeers.Count);
         DateTimeOffset nextAnnounce = DateTimeOffset.MinValue;
         DateTimeOffset lastDht = DateTimeOffset.MinValue;
         PeerWireClient peerWire = new(
@@ -205,6 +215,12 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
 
         try
         {
+            if (!picker.IsComplete && knownPeers.Count > 0)
+            {
+                StartPeerWorkers(torrent, peerWire, knownPeers, recentlyFailed, activePeers, peerCts.Token);
+                Volatile.Write(ref _activePeerCount, activePeers.Count);
+            }
+
             while (!picker.IsComplete)
             {
                 token.ThrowIfCancellationRequested();
@@ -396,9 +412,22 @@ public sealed class TorrentSession(TorrentClientOptions options, Action<string>?
             throw new ArgumentOutOfRangeException(nameof(TorrentClientOptions.MaxPeers), options.MaxPeers, $"Max peers must be in the range 1..{MaxPeerConnections}.");
         }
 
-        if (!options.EnableDht && !options.EnableTrackers)
+        if (options.ExplicitPeers is null || options.ExplicitPeers.Count > 64)
         {
-            throw new ArgumentException("At least one peer discovery method must be enabled.");
+            throw new ArgumentException("Explicit peers must contain no more than 64 endpoints.", nameof(TorrentClientOptions.ExplicitPeers));
+        }
+
+        for (int i = 0; i < options.ExplicitPeers.Count; i++)
+        {
+            if (!MagnetLink.TryParsePeer(options.ExplicitPeers[i], out _))
+            {
+                throw new ArgumentException("Explicit peer endpoint is invalid.", nameof(TorrentClientOptions.ExplicitPeers));
+            }
+        }
+
+        if (!options.EnableDht && !options.EnableTrackers && options.ExplicitPeers.Count == 0)
+        {
+            throw new ArgumentException("A tracker, DHT, or explicit peer is required.");
         }
 
         ValidatePositiveTimeout(options.TrackerTimeout, nameof(TorrentClientOptions.TrackerTimeout));

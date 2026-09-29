@@ -50,7 +50,8 @@ internal sealed class TorrentUiSettings
     [DllImport("shell32.dll", ExactSpelling = true)]
     private static extern int SHGetKnownFolderPath(ref Guid folderId, uint flags, IntPtr token, out IntPtr path);
 
-    public TorrentClientOptions ToClientOptions(string torrentPath, string outputDirectory, bool resumeExistingData = false)
+    public TorrentClientOptions ToClientOptions(string torrentPath, string outputDirectory, bool resumeExistingData = false,
+        IReadOnlyList<string>? explicitPeers = null)
         => new()
         {
             TorrentPath = torrentPath,
@@ -59,11 +60,23 @@ internal sealed class TorrentUiSettings
             MaxPeers = Math.Clamp(MaxPeersPerTorrent, 1, 512),
             EnableDht = EnableDht,
             EnableTrackers = EnableTrackers,
+            ExplicitPeers = explicitPeers ?? [],
             VerifyExistingData = VerifyExistingData || resumeExistingData,
             TrackerTimeout = TimeSpan.FromSeconds(Math.Clamp(TrackerTimeoutSeconds, 1, 3600)),
             DhtLookupInterval = TimeSpan.FromSeconds(Math.Clamp(DhtLookupIntervalSeconds, 1, 3600)),
             DhtLookupTimeout = TimeSpan.FromSeconds(Math.Clamp(DhtLookupTimeoutSeconds, 1, 3600)),
             PeerTimeout = TimeSpan.FromSeconds(Math.Clamp(PeerTimeoutSeconds, 1, 3600)),
+        };
+
+    public MagnetResolveOptions ToMagnetResolveOptions()
+        => new()
+        {
+            EnableTrackers = EnableTrackers,
+            EnableDht = EnableDht,
+            ListenPort = RandomizePortOnStart ? Random.Shared.Next(49152, ushort.MaxValue + 1) : ListenPort,
+            TrackerTimeout = TimeSpan.FromSeconds(Math.Clamp(TrackerTimeoutSeconds, 1, 180)),
+            DhtTimeout = TimeSpan.FromSeconds(Math.Clamp(DhtLookupTimeoutSeconds, 1, 180)),
+            PeerTimeout = TimeSpan.FromSeconds(Math.Clamp(PeerTimeoutSeconds, 1, 180)),
         };
 }
 

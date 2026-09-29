@@ -27,4 +27,12 @@ public sealed class BencodeTests
 
         Assert.That(() => BencodeDocument.Decode(payload), Throws.TypeOf<FormatException>());
     }
+
+    [TestCase("i01e")]
+    [TestCase("i-0e")]
+    [TestCase("i+1e")]
+    [TestCase("01:a")]
+    [TestCase("d1:ai1e1:ai2ee")]
+    public void Decode_canonical_rejects_noncanonical_values(string encoded)
+        => Assert.That(() => BencodeDocument.Decode(Encoding.ASCII.GetBytes(encoded), requireCanonical: true), Throws.TypeOf<FormatException>());
 }

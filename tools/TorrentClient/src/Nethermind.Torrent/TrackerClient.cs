@@ -12,6 +12,8 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
 {
     private const int MaxTrackerResponseBytes = 1024 * 1024;
     private const int NumWant = 120;
+    private const int MaxTrackerPeers = 256;
+    private const int MaxTrackers = 64;
     private const long UdpConnectMagic = 0x41727101980;
 
     private readonly HttpClient _httpClient = httpClient;
@@ -19,7 +21,7 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
     private readonly TimeSpan _trackerTimeout = trackerTimeout;
     private readonly HashSet<Uri> _startedTrackers = [];
 
-    public async Task<TrackerAnnounceResult> AnnounceAsync(
+    public Task<TrackerAnnounceResult> AnnounceAsync(
         TorrentMetadata torrent,
         byte[] peerId,
         string trackerKey,
@@ -27,18 +29,34 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
         long downloaded,
         long uploaded,
         CancellationToken token)
+        => AnnounceAsync(torrent.Trackers, torrent.InfoHash, torrent.TotalLength, peerId, trackerKey,
+            listenPort, downloaded, uploaded, token, stopOnPeers: true);
+
+    internal async Task<TrackerAnnounceResult> AnnounceAsync(
+        IReadOnlyList<Uri> trackers,
+        byte[] infoHash,
+        long totalLength,
+        byte[] peerId,
+        string trackerKey,
+        int listenPort,
+        long downloaded,
+        long uploaded,
+        CancellationToken token,
+        bool stopOnPeers)
     {
         List<PeerEndpoint> peers = [];
+        HashSet<PeerEndpoint> seen = [];
         TimeSpan? interval = null;
-        for (int i = 0; i < torrent.Trackers.Count; i++)
+        for (int i = 0; i < trackers.Count && (stopOnPeers || i < MaxTrackers); i++)
         {
-            Uri tracker = torrent.Trackers[i];
+            Uri tracker = trackers[i];
             string? announceEvent = _startedTrackers.Contains(tracker) ? null : "started";
             try
             {
                 TrackerAnnounceResult trackerResult = await AnnounceOneAsync(
                     tracker,
-                    torrent,
+                    infoHash,
+                    totalLength,
                     peerId,
                     trackerKey,
                     listenPort,
@@ -47,8 +65,8 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
                     announceEvent,
                     token);
                 _startedTrackers.Add(tracker);
-                AddDistinct(peers, trackerResult.Peers);
-                if (peers.Count > 0)
+                AddDistinct(peers, seen, trackerResult.Peers);
+                if (peers.Count == MaxTrackerPeers || stopOnPeers && peers.Count > 0)
                 {
                     return new TrackerAnnounceResult(peers, trackerResult.Interval);
                 }
@@ -57,6 +75,11 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
+                if (!stopOnPeers && peers.Count != 0)
+                {
+                    return new TrackerAnnounceResult(peers, interval ?? TimeSpan.FromMinutes(1));
+                }
+
                 throw;
             }
             catch (OperationCanceledException exception)
@@ -72,7 +95,7 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
         return new TrackerAnnounceResult(peers, interval ?? TimeSpan.FromMinutes(1));
     }
 
-    public async Task AnnounceEventAsync(
+    public Task AnnounceEventAsync(
         TorrentMetadata torrent,
         byte[] peerId,
         string trackerKey,
@@ -81,41 +104,73 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
         long uploaded,
         string announceEvent,
         CancellationToken token)
+        => AnnounceEventAsync(torrent.InfoHash, torrent.TotalLength, peerId, trackerKey, listenPort,
+            downloaded, uploaded, announceEvent, token);
+
+    internal async Task AnnounceEventAsync(
+        byte[] infoHash,
+        long totalLength,
+        byte[] peerId,
+        string trackerKey,
+        int listenPort,
+        long downloaded,
+        long uploaded,
+        string announceEvent,
+        CancellationToken token,
+        bool concurrent = false)
     {
         Uri[] trackers = [.. _startedTrackers];
-        for (int i = 0; i < trackers.Length; i++)
+        if (concurrent)
+        {
+            await Parallel.ForEachAsync(trackers, new ParallelOptions
+            {
+                CancellationToken = token,
+                MaxDegreeOfParallelism = MaxTrackers,
+            }, SendAsync);
+        }
+        else
+        {
+            for (int i = 0; i < trackers.Length; i++)
+            {
+                await SendAsync(trackers[i], token);
+            }
+        }
+
+        async ValueTask SendAsync(Uri tracker, CancellationToken cancellationToken)
         {
             try
             {
                 await AnnounceOneAsync(
-                    trackers[i],
-                    torrent,
+                    tracker,
+                    infoHash,
+                    totalLength,
                     peerId,
                     trackerKey,
                     listenPort,
                     downloaded,
                     uploaded,
                     announceEvent,
-                    token);
+                    cancellationToken);
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
             catch (OperationCanceledException exception)
             {
-                _log($"tracker {trackers[i]} {announceEvent} failed: {exception.Message}");
+                _log($"tracker {tracker} {announceEvent} failed: {exception.Message}");
             }
             catch (Exception exception)
             {
-                _log($"tracker {trackers[i]} {announceEvent} failed: {exception.Message}");
+                _log($"tracker {tracker} {announceEvent} failed: {exception.Message}");
             }
         }
     }
 
     private async Task<TrackerAnnounceResult> AnnounceOneAsync(
         Uri tracker,
-        TorrentMetadata torrent,
+        byte[] infoHash,
+        long totalLength,
         byte[] peerId,
         string trackerKey,
         int listenPort,
@@ -127,12 +182,12 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
         if (tracker.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
             tracker.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
         {
-            return await AnnounceHttpAsync(tracker, torrent, peerId, trackerKey, listenPort, downloaded, uploaded, announceEvent, token);
+            return await AnnounceHttpAsync(tracker, infoHash, totalLength, peerId, trackerKey, listenPort, downloaded, uploaded, announceEvent, token);
         }
 
         if (tracker.Scheme.Equals("udp", StringComparison.OrdinalIgnoreCase))
         {
-            return await AnnounceUdpAsync(tracker, torrent, peerId, trackerKey, listenPort, downloaded, uploaded, announceEvent, token);
+            return await AnnounceUdpAsync(tracker, infoHash, totalLength, peerId, trackerKey, listenPort, downloaded, uploaded, announceEvent, token);
         }
 
         _log($"tracker {tracker} skipped: unsupported scheme");
@@ -141,7 +196,8 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
 
     private async Task<TrackerAnnounceResult> AnnounceHttpAsync(
         Uri tracker,
-        TorrentMetadata torrent,
+        byte[] infoHash,
+        long totalLength,
         byte[] peerId,
         string trackerKey,
         int listenPort,
@@ -150,7 +206,7 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
         string? announceEvent,
         CancellationToken token)
     {
-        Uri announceUri = BuildAnnounceUri(tracker, torrent, peerId, trackerKey, listenPort, downloaded, uploaded, announceEvent);
+        Uri announceUri = BuildAnnounceUri(tracker, infoHash, totalLength, peerId, trackerKey, listenPort, downloaded, uploaded, announceEvent);
         using HttpResponseMessage response = await _httpClient.GetAsync(announceUri, HttpCompletionOption.ResponseHeadersRead, token);
         response.EnsureSuccessStatusCode();
         byte[] payload = await ReadLimitedContentAsync(response, token);
@@ -205,7 +261,8 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
 
     private async Task<TrackerAnnounceResult> AnnounceUdpAsync(
         Uri tracker,
-        TorrentMetadata torrent,
+        byte[] infoHash,
+        long totalLength,
         byte[] peerId,
         string trackerKey,
         int listenPort,
@@ -234,10 +291,10 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
         BinaryPrimitives.WriteInt64BigEndian(announceRequest.AsSpan(0, 8), connectionId);
         BinaryPrimitives.WriteInt32BigEndian(announceRequest.AsSpan(8, 4), 1);
         BinaryPrimitives.WriteInt32BigEndian(announceRequest.AsSpan(12, 4), transactionId);
-        torrent.InfoHash.CopyTo(announceRequest.AsSpan(16, TorrentMetadata.Sha1Length));
+        infoHash.CopyTo(announceRequest.AsSpan(16, TorrentMetadata.Sha1Length));
         peerId.CopyTo(announceRequest.AsSpan(36, TorrentMetadata.Sha1Length));
         BinaryPrimitives.WriteInt64BigEndian(announceRequest.AsSpan(56, 8), downloaded);
-        BinaryPrimitives.WriteInt64BigEndian(announceRequest.AsSpan(64, 8), Math.Max(0, torrent.TotalLength - downloaded));
+        BinaryPrimitives.WriteInt64BigEndian(announceRequest.AsSpan(64, 8), Math.Max(0, totalLength - downloaded));
         BinaryPrimitives.WriteInt64BigEndian(announceRequest.AsSpan(72, 8), uploaded);
         BinaryPrimitives.WriteInt32BigEndian(announceRequest.AsSpan(80, 4), GetUdpEventId(announceEvent));
         BinaryPrimitives.WriteInt32BigEndian(announceRequest.AsSpan(84, 4), 0);
@@ -323,7 +380,8 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
 
     private static Uri BuildAnnounceUri(
         Uri tracker,
-        TorrentMetadata torrent,
+        byte[] infoHash,
+        long totalLength,
         byte[] peerId,
         string trackerKey,
         int listenPort,
@@ -332,12 +390,12 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
         string? announceEvent)
     {
         StringBuilder query = new();
-        AppendRawParameter(query, "info_hash", torrent.InfoHash);
+        AppendRawParameter(query, "info_hash", infoHash);
         AppendRawParameter(query, "peer_id", peerId);
         AppendParameter(query, "port", listenPort.ToString(System.Globalization.CultureInfo.InvariantCulture));
         AppendParameter(query, "uploaded", uploaded.ToString(System.Globalization.CultureInfo.InvariantCulture));
         AppendParameter(query, "downloaded", downloaded.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        AppendParameter(query, "left", Math.Max(0, torrent.TotalLength - downloaded).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendParameter(query, "left", Math.Max(0, totalLength - downloaded).ToString(System.Globalization.CultureInfo.InvariantCulture));
         AppendParameter(query, "compact", "1");
         AppendParameter(query, "numwant", NumWant.ToString(System.Globalization.CultureInfo.InvariantCulture));
         AppendParameter(query, "key", trackerKey);
@@ -420,7 +478,7 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
         }
 
         BList list = peersValue.AsList("peers");
-        for (int i = 0; i < list.Values.Count; i++)
+        for (int i = 0; i < list.Values.Count && peers.Count < MaxTrackerPeers; i++)
         {
             BDictionary item = list.Values[i].AsDictionary("peer");
             string host = item["ip"].AsText("peer.ip");
@@ -434,7 +492,7 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
 
     private static void ParseCompactPeers(ReadOnlySpan<byte> bytes, List<PeerEndpoint> peers)
     {
-        for (int i = 0; i + 6 <= bytes.Length; i += 6)
+        for (int i = 0; i + 6 <= bytes.Length && peers.Count < MaxTrackerPeers; i += 6)
         {
             IPAddress address = new(bytes.Slice(i, 4));
             int port = BinaryPrimitives.ReadUInt16BigEndian(bytes.Slice(i + 4, 2));
@@ -447,7 +505,7 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
 
     private static void ParseCompactPeers6(ReadOnlySpan<byte> bytes, List<PeerEndpoint> peers)
     {
-        for (int i = 0; i + 18 <= bytes.Length; i += 18)
+        for (int i = 0; i + 18 <= bytes.Length && peers.Count < MaxTrackerPeers; i += 18)
         {
             IPAddress address = new(bytes.Slice(i, 16));
             int port = BinaryPrimitives.ReadUInt16BigEndian(bytes.Slice(i + 16, 2));
@@ -458,22 +516,12 @@ internal sealed class TrackerClient(HttpClient httpClient, Action<string> log, T
         }
     }
 
-    private static void AddDistinct(List<PeerEndpoint> peers, IReadOnlyList<PeerEndpoint> trackerPeers)
+    private static void AddDistinct(List<PeerEndpoint> peers, HashSet<PeerEndpoint> seen, IReadOnlyList<PeerEndpoint> trackerPeers)
     {
-        for (int i = 0; i < trackerPeers.Count; i++)
+        for (int i = 0; i < trackerPeers.Count && peers.Count < MaxTrackerPeers; i++)
         {
             PeerEndpoint candidate = trackerPeers[i];
-            bool exists = false;
-            for (int j = 0; j < peers.Count; j++)
-            {
-                if (peers[j].Equals(candidate))
-                {
-                    exists = true;
-                    break;
-                }
-            }
-
-            if (!exists)
+            if (seen.Add(candidate))
             {
                 peers.Add(candidate);
             }

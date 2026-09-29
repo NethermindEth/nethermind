@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
 namespace Nethermind.Torrent.Maui;
 
-internal sealed record TorrentQueueEntry(string TorrentPath, string OutputDirectory, string Name, string InfoHashHex);
+internal sealed record TorrentQueueEntry(string TorrentPath, string OutputDirectory, string Name, string InfoHashHex, List<string>? ExplicitPeers = null);
 
 internal static class TorrentQueueStore
 {
@@ -56,7 +57,9 @@ internal static class TorrentQueueStore
                     string.IsNullOrWhiteSpace(entry.TorrentPath) || !Path.IsPathFullyQualified(entry.TorrentPath) ||
                     string.IsNullOrWhiteSpace(entry.OutputDirectory) || !Path.IsPathFullyQualified(entry.OutputDirectory) ||
                     string.IsNullOrWhiteSpace(entry.Name) || entry.InfoHashHex?.Length != 40 ||
-                    !entry.InfoHashHex.All(Uri.IsHexDigit))
+                    !entry.InfoHashHex.All(Uri.IsHexDigit) ||
+                    entry.ExplicitPeers is { Count: > 64 } ||
+                    entry.ExplicitPeers?.Any(peer => string.IsNullOrWhiteSpace(peer) || peer.Length > 300) == true)
                 {
                     throw new FormatException("Torrent queue contains an invalid entry.");
                 }
@@ -111,16 +114,89 @@ internal static class TorrentQueueStore
 
     public static string CacheMetainfo(string sourcePath, string cacheDirectory, string infoHashHex)
     {
-        string cachedPath = GetCachedMetainfoPath(cacheDirectory, infoHashHex);
+        _ = GetCachedMetainfoPath(cacheDirectory, infoHashHex);
+        if (File.Exists(sourcePath) && IsContentAddressedPath(sourcePath, cacheDirectory, infoHashHex))
+        {
+            return sourcePath;
+        }
+
+        byte[] contents = File.ReadAllBytes(sourcePath);
+        string cachedPath = GetContentAddressedPath(cacheDirectory, infoHashHex, contents);
         if (string.Equals(sourcePath, cachedPath, StringComparison.OrdinalIgnoreCase))
         {
             return cachedPath;
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(cachedPath)!);
+        Directory.CreateDirectory(cacheDirectory);
         string temporaryPath = cachedPath + ".tmp";
-        File.Copy(sourcePath, temporaryPath, overwrite: true);
-        File.Move(temporaryPath, cachedPath, overwrite: true);
-        return cachedPath;
+        try
+        {
+            File.WriteAllBytes(temporaryPath, contents);
+            File.Move(temporaryPath, cachedPath, overwrite: true);
+            return cachedPath;
+        }
+        finally
+        {
+            File.Delete(temporaryPath);
+        }
+    }
+
+    public static string CacheMetainfo(byte[] torrentBytes, string cacheDirectory, string infoHashHex)
+    {
+        ArgumentNullException.ThrowIfNull(torrentBytes);
+        string cachedPath = GetContentAddressedPath(cacheDirectory, infoHashHex, torrentBytes);
+        Directory.CreateDirectory(cacheDirectory);
+        string temporaryPath = cachedPath + ".tmp";
+        try
+        {
+            File.WriteAllBytes(temporaryPath, torrentBytes);
+            TorrentMetadata metadata = TorrentMetadata.Load(temporaryPath);
+            if (!string.Equals(metadata.InfoHashHex, infoHashHex, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("Resolved magnet metadata has the wrong info hash.");
+            }
+
+            File.Move(temporaryPath, cachedPath, overwrite: true);
+            return cachedPath;
+        }
+        finally
+        {
+            File.Delete(temporaryPath);
+        }
+    }
+
+    private static string GetContentAddressedPath(string cacheDirectory, string infoHashHex, ReadOnlySpan<byte> contents)
+    {
+        string legacyPath = GetCachedMetainfoPath(cacheDirectory, infoHashHex);
+        string digest = Convert.ToHexString(SHA256.HashData(contents)).ToLowerInvariant();
+        return Path.Combine(cacheDirectory, Path.GetFileNameWithoutExtension(legacyPath) + "-" + digest + ".torrent");
+    }
+
+    private static bool IsContentAddressedPath(string sourcePath, string cacheDirectory, string infoHashHex)
+    {
+        if (!string.Equals(Path.GetDirectoryName(Path.GetFullPath(sourcePath)), Path.GetFullPath(cacheDirectory),
+            StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string fileName = Path.GetFileName(sourcePath);
+        string prefix = infoHashHex + "-";
+        if (fileName.Length != prefix.Length + 64 + ".torrent".Length ||
+            !fileName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            !fileName.EndsWith(".torrent", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        for (int i = prefix.Length; i < prefix.Length + 64; i++)
+        {
+            if (!Uri.IsHexDigit(fileName[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

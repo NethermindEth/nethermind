@@ -46,6 +46,11 @@ public sealed class MainPage : ContentPage
     private readonly Button _pauseButton;
     private readonly Button _removeButton;
     private readonly Button _folderButton;
+    private readonly Button _copyMagnetButton;
+    private readonly Button _addButton;
+    private readonly Button _pasteButton;
+    private readonly ActivityIndicator _importIndicator = new() { Color = PrimaryColor, IsVisible = false, HorizontalOptions = LayoutOptions.End, VerticalOptions = LayoutOptions.Center };
+    private readonly ContentView _progressContent = new();
     private Button _settingsButton = null!;
     private Button _backButton = null!;
     private View _queuePane = null!;
@@ -53,6 +58,7 @@ public sealed class MainPage : ContentPage
     private HorizontalStackLayout _tabStrip = null!;
     private Grid _bodyGrid = null!;
     private TorrentJob? _selectedJob;
+    private TorrentJob? _progressJob;
     private string _activeTab = "Overview";
     private string _queueFilter = "All";
     private bool _showSettings;
@@ -62,6 +68,9 @@ public sealed class MainPage : ContentPage
     private bool _filteringJobs;
     private bool _queueStorageAvailable = true;
     private IDispatcherTimer? _activityTimer;
+    private CancellationTokenSource? _magnetImportCancellation;
+    private Task<byte[]>? _magnetResolutionTask;
+    private bool _importPending;
 
     internal static MainPage? Active { get; private set; }
 
@@ -75,7 +84,10 @@ public sealed class MainPage : ContentPage
         _startButton = ToolButton("Start", "\uE768", StartSelectedAsync);
         _pauseButton = ToolButton("Pause", "\uE769", PauseSelectedAsync);
         _folderButton = ToolButton("Open folder", "\uE8B7", OpenSelectedFolderAsync);
+        _copyMagnetButton = ToolButton("Copy magnet link", "\uE71B", CopyMagnetAsync);
         _removeButton = ToolButton("Remove", "\uE74D", RemoveSelectedAsync);
+        _addButton = ToolButton("Add torrent", "\uE710", AddTorrentAsync, primary: true);
+        _pasteButton = ToolButton("Paste link", "\uE8C8", PasteLinkAsync);
         Content = BuildLayout();
         RestoreQueue();
         SetQueueFilter("All");
@@ -96,6 +108,7 @@ public sealed class MainPage : ContentPage
         {
             _activityTimer?.Stop();
             CancelAllVerifications();
+            _magnetImportCancellation?.Cancel();
         };
         if (!string.IsNullOrWhiteSpace(TorrentUiSettingsStore.LastLoadError))
         {
@@ -127,54 +140,31 @@ public sealed class MainPage : ContentPage
     {
         Grid toolbar = new()
         {
-            Padding = new Thickness(20, 12, 20, 10),
-            RowDefinitions =
-            {
-                new RowDefinition(GridLength.Auto),
-                new RowDefinition(GridLength.Auto),
-            },
+            Padding = new Thickness(16, 8),
             ColumnDefinitions =
             {
+                new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
             },
-            ColumnSpacing = 10,
-            RowSpacing = 12,
+            ColumnSpacing = 8,
             BackgroundColor = PanelBackground,
         };
 
-        HorizontalStackLayout identity = new() { Spacing = 11, VerticalOptions = LayoutOptions.Center };
-        identity.Add(new Label
-        {
-            Text = "\uE896",
-            FontFamily = "Segoe Fluent Icons",
-            FontSize = 21,
-            TextColor = PrimaryColor,
-            VerticalTextAlignment = TextAlignment.Center,
-        });
-        identity.Add(new Label
-        {
-            Text = "Nethermind Torrent",
-            FontSize = 19,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = TextColor,
-            VerticalTextAlignment = TextAlignment.Center,
-        });
-        toolbar.Add(identity, 0, 0);
-
-        _settingsButton = ToolButton("Settings", "\uE713", ShowSettingsAsync);
-        toolbar.Add(_settingsButton, 1, 0);
-        toolbar.Add(ToolButton("Add torrent", "\uE710", AddTorrentAsync, primary: true), 2, 0);
-
         HorizontalStackLayout commands = new() { Spacing = 4 };
+        commands.Add(_addButton);
+        commands.Add(_pasteButton);
         commands.Add(_startButton);
         commands.Add(_pauseButton);
         commands.Add(_folderButton);
+        commands.Add(_copyMagnetButton);
         commands.Add(_removeButton);
-        toolbar.Add(commands, 0, 1);
-        toolbar.Add(_summaryLabel, 1, 1);
-        Grid.SetColumnSpan(_summaryLabel, 2);
+        toolbar.Add(commands, 0, 0);
+        toolbar.Add(_importIndicator, 1, 0);
+        toolbar.Add(_summaryLabel, 2, 0);
+        _settingsButton = ToolButton("Settings", "\uE713", ShowSettingsAsync);
+        toolbar.Add(_settingsButton, 3, 0);
 
         return toolbar;
     }
@@ -209,8 +199,8 @@ public sealed class MainPage : ContentPage
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star),
             },
-            Padding = new Thickness(16, 18, 16, 0),
-            RowSpacing = 14,
+            Padding = new Thickness(16, 12, 16, 0),
+            RowSpacing = 10,
         };
 
         Grid heading = new()
@@ -257,14 +247,15 @@ public sealed class MainPage : ContentPage
     {
         Grid details = new()
         {
-            Padding = new Thickness(24, 18, 24, 14),
+            Padding = new Thickness(24, 12, 24, 12),
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star),
             },
-            RowSpacing = 16,
+            RowSpacing = 10,
         };
 
         Grid heading = new()
@@ -285,9 +276,10 @@ public sealed class MainPage : ContentPage
         heading.Add(title, 1, 0);
         details.Add(heading, 0, 0);
 
+        details.Add(_progressContent, 0, 1);
         _tabStrip = BuildTabStrip();
-        details.Add(_tabStrip, 0, 1);
-        details.Add(_detailContent, 0, 2);
+        details.Add(_tabStrip, 0, 2);
+        details.Add(_detailContent, 0, 3);
         return details;
     }
 
@@ -321,6 +313,7 @@ public sealed class MainPage : ContentPage
 
     private View BuildStatusBar()
     {
+        _statusLabel.LineBreakMode = LineBreakMode.TailTruncation;
         Grid bar = new()
         {
             Padding = new Thickness(18, 6),
@@ -457,6 +450,13 @@ public sealed class MainPage : ContentPage
     {
         _detailTitle.Text = _showSettings ? "Settings" : _selectedJob?.Name ?? "Torrents";
         _detailSubtitle.Text = _showSettings ? "" : _selectedJob is null ? "" : $"{_selectedJob.Status}  \u00b7  {_selectedJob.TotalText}";
+        if (!ReferenceEquals(_progressJob, _selectedJob))
+        {
+            _progressJob = _selectedJob;
+            _progressContent.Content = _selectedJob is null ? null : BuildProgressHeader(_selectedJob);
+        }
+
+        _progressContent.IsVisible = !_showSettings && _selectedJob is not null;
         _tabStrip.IsVisible = !_showSettings && _selectedJob is not null;
         _settingsButton.BackgroundColor = _showSettings ? MutedBackground : Colors.Transparent;
         _detailContent.Content = _showSettings ? BuildOptionsPanel() : _selectedJob is null ? EmptyState("No torrent selected") : _activeTab switch
@@ -592,10 +592,12 @@ public sealed class MainPage : ContentPage
         _startButton.IsEnabled = _selectedJob?.CanStart == true;
         _pauseButton.IsEnabled = _selectedJob?.CanStop == true;
         _folderButton.IsEnabled = _selectedJob is not null;
+        _copyMagnetButton.IsEnabled = _selectedJob is not null && _selectedJob.InfoHashHex.Length == 40;
         _removeButton.IsEnabled = _selectedJob is not null;
         _startButton.Opacity = _startButton.IsEnabled ? 1 : 0.35;
         _pauseButton.Opacity = _pauseButton.IsEnabled ? 1 : 0.35;
         _folderButton.Opacity = _folderButton.IsEnabled ? 1 : 0.35;
+        _copyMagnetButton.Opacity = _copyMagnetButton.IsEnabled ? 1 : 0.35;
         _removeButton.Opacity = _removeButton.IsEnabled ? 1 : 0.35;
     }
 
@@ -604,6 +606,7 @@ public sealed class MainPage : ContentPage
         if (Width <= 0) return;
 
         _isCompact = Width < 850;
+        _summaryLabel.IsVisible = !_isCompact;
         bool showQueue = !_isCompact || _showQueueOnCompact && !_showSettings;
         _bodyGrid.ColumnDefinitions[0].Width = _isCompact
             ? new GridLength(showQueue ? 1 : 0, GridUnitType.Star)
@@ -651,8 +654,7 @@ public sealed class MainPage : ContentPage
             return EmptyState("Add a torrent to begin.");
         }
 
-        VerticalStackLayout stack = new() { Spacing = 24, BindingContext = job };
-        stack.Add(BuildProgressHeader(job));
+        VerticalStackLayout stack = new() { Spacing = 16, BindingContext = job };
 
         Grid metrics = new()
         {
@@ -690,7 +692,7 @@ public sealed class MainPage : ContentPage
             return EmptyState("No torrent selected.");
         }
 
-        Grid grid = TabContentGrid(job);
+        Grid grid = TabContentGrid();
         CollectionView files = new()
         {
             ItemsSource = job.Files,
@@ -719,7 +721,7 @@ public sealed class MainPage : ContentPage
             }),
         };
 
-        grid.Add(files, 0, 1);
+        grid.Add(files, 0, 0);
         return grid;
     }
 
@@ -730,7 +732,7 @@ public sealed class MainPage : ContentPage
             return EmptyState("No torrent selected.");
         }
 
-        Grid grid = TabContentGrid(job);
+        Grid grid = TabContentGrid();
         CollectionView trackers = new()
         {
             ItemsSource = job.Trackers,
@@ -745,7 +747,7 @@ public sealed class MainPage : ContentPage
             }),
         };
 
-        grid.Add(trackers, 0, 1);
+        grid.Add(trackers, 0, 0);
         return grid;
     }
 
@@ -761,18 +763,16 @@ public sealed class MainPage : ContentPage
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Auto),
-                new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star),
             },
             RowSpacing = 10,
         };
-        grid.Add(BuildProgressHeader(job), 0, 0);
         grid.Add(InfoPanel("Peer Summary", [
             BoundInfo("Active peers", nameof(TorrentJob.ActivePeers)),
             BoundInfo("Known peers", nameof(TorrentJob.KnownPeers)),
             BoundInfo("DHT", nameof(TorrentJob.EffectiveDhtText)),
             BoundInfo("Trackers", nameof(TorrentJob.EffectiveTrackersText)),
-        ], job), 0, 1);
+        ], job), 0, 0);
 
         CollectionView eventsView = new()
         {
@@ -786,7 +786,7 @@ public sealed class MainPage : ContentPage
                 return label;
             }),
         };
-        grid.Add(eventsView, 0, 2);
+        grid.Add(eventsView, 0, 1);
         return grid;
     }
 
@@ -797,7 +797,7 @@ public sealed class MainPage : ContentPage
             return EmptyState("No torrent selected.");
         }
 
-        Grid grid = TabContentGrid(job);
+        Grid grid = TabContentGrid();
         CollectionView log = new()
         {
             ItemsSource = job.LogLines,
@@ -813,22 +813,16 @@ public sealed class MainPage : ContentPage
                 return label;
             }),
         };
-        grid.Add(log, 0, 1);
+        grid.Add(log, 0, 0);
         return grid;
     }
 
-    private static Grid TabContentGrid(TorrentJob job)
+    private static Grid TabContentGrid()
     {
         Grid grid = new()
         {
-            RowDefinitions =
-            {
-                new RowDefinition(GridLength.Auto),
-                new RowDefinition(GridLength.Star),
-            },
-            RowSpacing = 10,
+            RowDefinitions = { new RowDefinition(GridLength.Star) },
         };
-        grid.Add(BuildProgressHeader(job), 0, 0);
         return grid;
     }
 
@@ -999,18 +993,18 @@ public sealed class MainPage : ContentPage
             TorrentJob job;
             try
             {
-                string cachedPath = TorrentQueueStore.GetCachedMetainfoPath(TorrentQueueStore.AppMetainfoDirectory, entry.InfoHashHex);
+                string legacyPath = TorrentQueueStore.GetCachedMetainfoPath(TorrentQueueStore.AppMetainfoDirectory, entry.InfoHashHex);
                 TorrentMetadata metadata;
                 string sourcePath;
                 try
                 {
-                    metadata = LoadMatchingMetadata(cachedPath, entry.InfoHashHex);
-                    sourcePath = cachedPath;
-                }
-                catch (Exception) when (!string.Equals(cachedPath, entry.TorrentPath, StringComparison.OrdinalIgnoreCase))
-                {
                     metadata = LoadMatchingMetadata(entry.TorrentPath, entry.InfoHashHex);
                     sourcePath = entry.TorrentPath;
+                }
+                catch (Exception) when (!string.Equals(legacyPath, entry.TorrentPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    metadata = LoadMatchingMetadata(legacyPath, entry.InfoHashHex);
+                    sourcePath = legacyPath;
                 }
 
                 string durablePath = TorrentQueueStore.CacheMetainfo(sourcePath, TorrentQueueStore.AppMetainfoDirectory, entry.InfoHashHex);
@@ -1030,6 +1024,11 @@ public sealed class MainPage : ContentPage
                 };
                 job.Status = "Unavailable";
                 job.Message = exception.Message;
+            }
+
+            if (entry.ExplicitPeers is not null)
+            {
+                job.ExplicitPeers.AddRange(entry.ExplicitPeers);
             }
 
             TrackJob(job);
@@ -1083,13 +1082,15 @@ public sealed class MainPage : ContentPage
         {
             if (!ReferenceEquals(job, removed))
             {
-                entries.Add(new TorrentQueueEntry(job.TorrentPath, job.OutputDirectory, job.Name, job.InfoHashHex));
+                entries.Add(new TorrentQueueEntry(job.TorrentPath, job.OutputDirectory, job.Name, job.InfoHashHex,
+                    job.ExplicitPeers.Count == 0 ? null : [.. job.ExplicitPeers]));
             }
         }
 
         if (added is not null)
         {
-            entries.Add(new TorrentQueueEntry(added.TorrentPath, added.OutputDirectory, added.Name, added.InfoHashHex));
+            entries.Add(new TorrentQueueEntry(added.TorrentPath, added.OutputDirectory, added.Name, added.InfoHashHex,
+                added.ExplicitPeers.Count == 0 ? null : [.. added.ExplicitPeers]));
         }
 
         try
@@ -1209,71 +1210,218 @@ public sealed class MainPage : ContentPage
 
     private async Task AddTorrentAsync()
     {
+        if (_importPending)
+        {
+            return;
+        }
+
+        _importPending = true;
         try
         {
-            string? choice = await DisplayActionSheetAsync("Add torrent", "Cancel", null, "Choose a file", "Enter file path");
-            string? torrentPath = choice switch
+            string? choice = await DisplayActionSheetAsync("Add torrent", "Cancel", null, "Choose a file", "Enter file path", "Enter magnet link", "Paste clipboard");
+            if (choice == "Paste clipboard")
+            {
+                await PasteFromClipboardAsync();
+                return;
+            }
+
+            string? source = choice switch
             {
                 "Choose a file" => await PickTorrentFileAsync(),
                 "Enter file path" => await DisplayPromptAsync("Add torrent", "Path to a .torrent file", "Add", "Cancel", "C:\\path\\file.torrent"),
+                "Enter magnet link" => await DisplayPromptAsync("Add magnet link", "Paste a magnet URI", "Add", "Cancel", "magnet:?xt=urn:btih:..."),
                 _ => null,
             };
-            if (string.IsNullOrWhiteSpace(torrentPath))
+            if (string.IsNullOrWhiteSpace(source))
             {
                 return;
             }
 
-            torrentPath = torrentPath.Trim().Trim('"');
-            if (!Path.IsPathFullyQualified(torrentPath) || !File.Exists(torrentPath))
-            {
-                await DisplayAlertAsync("Torrent file not found", "Enter an existing absolute path to a .torrent file.", "OK");
-                return;
-            }
-
-            TorrentMetadata metadata = TorrentMetadata.Load(torrentPath);
-            foreach (TorrentJob existing in _jobs)
-            {
-                if (string.Equals(existing.InfoHashHex, metadata.InfoHashHex, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(existing.OutputDirectory, _settings.DefaultDownloadDirectory, StringComparison.OrdinalIgnoreCase))
-                {
-                    _searchEntry.Text = string.Empty;
-                    SetQueueFilter("All");
-                    _queueView.SelectedItem = existing;
-                    SelectJob(existing);
-                    _statusLabel.Text = $"{existing.Name} is already in the queue";
-                    return;
-                }
-            }
-
-            string cachedPath = TorrentQueueStore.CacheMetainfo(torrentPath, TorrentQueueStore.AppMetainfoDirectory, metadata.InfoHashHex);
-            TorrentJob job = new(cachedPath, _settings.DefaultDownloadDirectory);
-            job.ApplyMetadata(metadata);
-            job.Status = "Ready";
-            job.Message = $"{metadata.PieceCount} pieces, {metadata.Trackers.Count} trackers";
-            if (!SaveQueue(added: job))
-            {
-                return;
-            }
-
-            TrackJob(job);
-            _searchEntry.Text = string.Empty;
-            SetQueueFilter("All");
-            _queueView.SelectedItem = job;
-            SelectJob(job);
-            _statusLabel.Text = $"Added {job.Name}";
-
-            if (_settings.StartOnAdd && !_settings.AddPaused)
-            {
-                await StartJobAsync(job);
-            }
-            else
-            {
-                QueueVerification(job, metadata);
-            }
+            await AddSourceAsync(source);
+        }
+        catch (OperationCanceledException)
+        {
+            _statusLabel.Text = "Magnet import canceled";
         }
         catch (Exception exception)
         {
             await DisplayAlertAsync("Add torrent failed", exception.Message, "OK");
+        }
+        finally
+        {
+            _importPending = false;
+        }
+    }
+
+    private async Task PasteLinkAsync()
+    {
+        if (_magnetImportCancellation is not null)
+        {
+            _magnetImportCancellation.Cancel();
+            return;
+        }
+
+        if (_importPending)
+        {
+            return;
+        }
+
+        _importPending = true;
+        try
+        {
+            await PasteFromClipboardAsync();
+        }
+        finally
+        {
+            _importPending = false;
+        }
+    }
+
+    private async Task PasteFromClipboardAsync()
+    {
+        string? source = await Clipboard.Default.GetTextAsync();
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            await DisplayAlertAsync("Clipboard is empty", "Copy a magnet link or an absolute .torrent path first.", "OK");
+            return;
+        }
+
+        await AddSourceAsync(source);
+    }
+
+    private async Task AddSourceAsync(string source)
+    {
+        source = source.Trim().Trim('"');
+        if (source.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+        {
+            await AddMagnetAsync(source);
+            return;
+        }
+
+        if (!Path.IsPathFullyQualified(source) || !File.Exists(source))
+        {
+            await DisplayAlertAsync("Torrent file not found", "Enter an existing absolute .torrent path or a magnet link.", "OK");
+            return;
+        }
+
+        TorrentMetadata metadata = TorrentMetadata.Load(source);
+        if (SelectExistingTorrent(metadata.InfoHashHex))
+        {
+            return;
+        }
+
+        string cachedPath = TorrentQueueStore.CacheMetainfo(source, TorrentQueueStore.AppMetainfoDirectory, metadata.InfoHashHex);
+        await AddCachedTorrentAsync(cachedPath, metadata);
+    }
+
+    private async Task AddMagnetAsync(string magnetUri)
+    {
+        MagnetLink link = MagnetLink.Parse(magnetUri);
+        if (SelectExistingTorrent(link.InfoHashHex))
+        {
+            return;
+        }
+
+        using CancellationTokenSource cancellation = new();
+        _magnetImportCancellation = cancellation;
+        SetImportState(true);
+        _statusLabel.Text = $"Finding metadata for {link.DisplayName ?? link.InfoHashHex}";
+        try
+        {
+            MagnetResolveOptions options = _settings.ToMagnetResolveOptions();
+            _magnetResolutionTask = Task.Run(() => MagnetMetadataResolver.ResolveAsync(
+                magnetUri,
+                options,
+                message => MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    if (ReferenceEquals(_magnetImportCancellation, cancellation))
+                    {
+                        _statusLabel.Text = message;
+                    }
+                }),
+                cancellation.Token), cancellation.Token);
+            byte[] torrentBytes = await _magnetResolutionTask;
+            cancellation.Token.ThrowIfCancellationRequested();
+            string cachedPath = TorrentQueueStore.CacheMetainfo(torrentBytes, TorrentQueueStore.AppMetainfoDirectory, link.InfoHashHex);
+            TorrentMetadata metadata = TorrentMetadata.Load(cachedPath);
+            await AddCachedTorrentAsync(cachedPath, metadata, link.ExplicitPeers);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            _statusLabel.Text = "Magnet import canceled";
+        }
+        finally
+        {
+            _magnetResolutionTask = null;
+            _magnetImportCancellation = null;
+            SetImportState(false);
+        }
+    }
+
+    private void SetImportState(bool importing)
+    {
+        _addButton.IsEnabled = !importing;
+        _importIndicator.IsVisible = importing;
+        _importIndicator.IsRunning = importing;
+        _pasteButton.Text = importing ? "\uE711" : "\uE8C8";
+        string label = importing ? "Cancel magnet import" : "Paste link";
+        ToolTipProperties.SetText(_pasteButton, label);
+        SemanticProperties.SetDescription(_pasteButton, label);
+    }
+
+    private bool SelectExistingTorrent(string infoHashHex)
+    {
+        foreach (TorrentJob existing in _jobs)
+        {
+            if (string.Equals(existing.InfoHashHex, infoHashHex, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(existing.OutputDirectory, _settings.DefaultDownloadDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                _searchEntry.Text = string.Empty;
+                SetQueueFilter("All");
+                _queueView.SelectedItem = existing;
+                SelectJob(existing);
+                _statusLabel.Text = $"{existing.Name} is already in the queue";
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task AddCachedTorrentAsync(string cachedPath, TorrentMetadata metadata, IReadOnlyList<string>? explicitPeers = null)
+    {
+        if (SelectExistingTorrent(metadata.InfoHashHex))
+        {
+            return;
+        }
+
+        TorrentJob job = new(cachedPath, _settings.DefaultDownloadDirectory);
+        job.ApplyMetadata(metadata);
+        if (explicitPeers is not null)
+        {
+            job.ExplicitPeers.AddRange(explicitPeers);
+        }
+        job.Status = "Ready";
+        job.Message = $"{metadata.PieceCount} pieces, {metadata.Trackers.Count} trackers";
+        if (!SaveQueue(added: job))
+        {
+            return;
+        }
+
+        TrackJob(job);
+        _searchEntry.Text = string.Empty;
+        SetQueueFilter("All");
+        _queueView.SelectedItem = job;
+        SelectJob(job);
+        _statusLabel.Text = $"Added {job.Name}";
+
+        if (_settings.StartOnAdd && !_settings.AddPaused)
+        {
+            await StartJobAsync(job);
+        }
+        else
+        {
+            QueueVerification(job, metadata);
         }
     }
 
@@ -1308,13 +1456,14 @@ public sealed class MainPage : ContentPage
 
         try
         {
-            if (!_settings.EnableDht && !_settings.EnableTrackers)
+            if (!_settings.EnableDht && !_settings.EnableTrackers && job.ExplicitPeers.Count == 0)
             {
-                await DisplayAlertAsync("Discovery disabled", "Enable trackers, DHT, or both before starting.", "OK");
+                await DisplayAlertAsync("Discovery disabled", "Enable trackers or DHT, or add a magnet with an explicit peer.", "OK");
                 return;
             }
 
-            TorrentClientOptions options = _settings.ToClientOptions(job.TorrentPath, job.OutputDirectory, job.HasDataToResume);
+            TorrentClientOptions options = _settings.ToClientOptions(job.TorrentPath, job.OutputDirectory,
+                job.HasDataToResume, job.ExplicitPeers);
             job.ApplyEffectiveOptions(options);
             CancellationTokenSource cancellation = new();
             Progress<TorrentSessionProgress> progress = new(snapshot =>
@@ -1415,23 +1564,41 @@ public sealed class MainPage : ContentPage
 
     private async Task OpenSelectedFolderAsync()
     {
-        if (_selectedJob is null)
+        string? path = _selectedJob?.PayloadPath;
+        if (path is null)
         {
             return;
         }
 
-        string path = Path.GetFullPath(_selectedJob.OutputDirectory);
-        Directory.CreateDirectory(path);
-        System.Diagnostics.ProcessStartInfo startInfo = new("explorer.exe", "\"" + path + "\"")
+        if (!Directory.Exists(path) && !File.Exists(path))
+        {
+            await DisplayAlertAsync("Location unavailable", "This torrent has no files on disk yet.", "OK");
+            return;
+        }
+
+        System.Diagnostics.ProcessStartInfo startInfo = new("explorer.exe")
         {
             UseShellExecute = false,
         };
+        startInfo.Arguments = File.Exists(path) ? "/select,\"" + path + "\"" : "\"" + path + "\"";
         System.Diagnostics.Process.Start(startInfo);
-        await Task.CompletedTask;
+    }
+
+    private async Task CopyMagnetAsync()
+    {
+        TorrentJob? job = _selectedJob;
+        if (job is null || job.InfoHashHex.Length != 40)
+        {
+            return;
+        }
+
+        await Clipboard.Default.SetTextAsync(job.MagnetUri);
+        _statusLabel.Text = $"Copied magnet link for {job.Name}";
     }
 
     internal async Task StopAllAsync(TimeSpan timeout)
     {
+        _magnetImportCancellation?.Cancel();
         CancelAllVerifications();
         List<Task> stops = CreateStopTasks();
         if (stops.Count == 0)
@@ -1447,10 +1614,14 @@ public sealed class MainPage : ContentPage
         {
             MainThread.BeginInvokeOnMainThread(() => _statusLabel.Text = "Timed out while stopping active torrents");
         }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     internal void StopAllForShutdown(TimeSpan timeout)
     {
+        _magnetImportCancellation?.Cancel();
         CancelAllVerifications();
         List<Task> stops = CreateStopTasks();
         if (stops.Count == 0)
@@ -1463,6 +1634,10 @@ public sealed class MainPage : ContentPage
             _ = Task.WhenAll(stops).Wait(timeout);
         }
         catch (AggregateException exception)
+            when (exception.Flatten().InnerExceptions.All(error => error is OperationCanceledException))
+        {
+        }
+        catch (AggregateException exception)
         {
             _statusLabel.Text = "Shutdown stop failed: " + exception.GetBaseException().Message;
         }
@@ -1471,6 +1646,11 @@ public sealed class MainPage : ContentPage
     private List<Task> CreateStopTasks()
     {
         List<Task> stops = [];
+        if (_magnetResolutionTask is not null)
+        {
+            stops.Add(_magnetResolutionTask);
+        }
+
         for (int i = 0; i < _jobs.Count; i++)
         {
             if (_jobs[i].IsRunning)
@@ -1516,8 +1696,8 @@ public sealed class MainPage : ContentPage
             CornerRadius = 4,
             HeightRequest = 38,
             MinimumHeightRequest = 38,
-            WidthRequest = primary ? 146 : 40,
-            MinimumWidthRequest = primary ? 146 : 40,
+            WidthRequest = primary ? 128 : 40,
+            MinimumWidthRequest = primary ? 128 : 40,
             Padding = primary ? new Thickness(12, 5) : new Thickness(8, 5),
             BackgroundColor = primary ? PrimaryColor : Colors.Transparent,
             TextColor = primary ? Colors.White : TextColor,

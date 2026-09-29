@@ -4,6 +4,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace Nethermind.Torrent.Maui;
 
@@ -203,6 +204,43 @@ internal sealed class TorrentJob : INotifyPropertyChanged
 
     public ObservableCollection<string> Trackers { get; } = [];
 
+    public List<string> ExplicitPeers { get; } = [];
+
+    public string MagnetUri
+    {
+        get
+        {
+            StringBuilder link = new("magnet:?xt=urn:btih:");
+            link.Append(InfoHashHex);
+            AppendMagnetParameter(link, "dn", Name);
+            foreach (string peer in ExplicitPeers)
+            {
+                AppendMagnetParameter(link, "x.pe", peer);
+            }
+
+            foreach (string tracker in Trackers.Take(64))
+            {
+                AppendMagnetParameter(link, "tr", tracker);
+            }
+
+            return link.ToString();
+        }
+    }
+
+    private static void AppendMagnetParameter(StringBuilder link, string name, string value)
+    {
+        if (value.Length > MagnetLink.MaxUriLength)
+        {
+            return;
+        }
+
+        string encoded = Uri.EscapeDataString(value);
+        if (link.Length + name.Length + encoded.Length + 2 <= MagnetLink.MaxUriLength)
+        {
+            link.Append('&').Append(name).Append('=').Append(encoded);
+        }
+    }
+
     public ObservableCollection<string> PeerEvents { get; } = [];
 
     public ObservableCollection<string> LogLines { get; } = [];
@@ -216,6 +254,22 @@ internal sealed class TorrentJob : INotifyPropertyChanged
     public string PiecesText => $"{CompletedPieces}/{PieceCount}";
 
     public string ProgressText => (Progress * 100.0).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+    public string? PayloadPath
+    {
+        get
+        {
+            if (Files.Count == 0)
+            {
+                return null;
+            }
+
+            string firstPath = Files[0].Path;
+            int separator = firstPath.IndexOfAny(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string topLevel = separator < 0 ? firstPath : firstPath[..separator];
+            return Path.GetFullPath(Path.Combine(OutputDirectory, topLevel));
+        }
+    }
 
     public string DownloadRateText => FormatBytes((long)DownloadRateBytesPerSecond) + "/s";
 

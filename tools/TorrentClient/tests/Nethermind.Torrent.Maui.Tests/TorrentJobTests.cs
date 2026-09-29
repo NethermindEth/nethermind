@@ -101,4 +101,40 @@ public sealed class TorrentJobTests
 
         Assert.That(job.HasDataToResume, Is.True);
     }
+
+    [TestCase("payload.iso", "payload.iso")]
+    [TestCase("collection\\disc1.iso", "collection")]
+    public void Payload_path_points_to_torrent_file_or_top_level_directory(string filePath, string expectedName)
+    {
+        string outputDirectory = Path.Combine(Path.GetTempPath(), "torrent-output");
+        TorrentJob job = new("source.torrent", outputDirectory);
+        job.Files.Add(new TorrentFileItem(new TorrentFileEntry(filePath, 1, 0)));
+
+        Assert.That(job.PayloadPath, Is.EqualTo(Path.Combine(outputDirectory, expectedName)));
+    }
+
+    [Test]
+    public void Copied_magnet_retains_explicit_peers_and_stays_importable_with_many_trackers()
+    {
+        TorrentJob job = new("source.torrent", Path.GetTempPath())
+        {
+            InfoHashHex = new string('a', 40),
+            Name = "Example",
+        };
+        job.ExplicitPeers.Add("127.0.0.1:6881");
+        for (int i = 0; i < 1000; i++)
+        {
+            job.Trackers.Add($"https://tracker-{i}.example/announce");
+        }
+
+        MagnetLink parsed = MagnetLink.Parse(job.MagnetUri);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(job.MagnetUri.Length, Is.LessThanOrEqualTo(MagnetLink.MaxUriLength));
+            Assert.That(parsed.InfoHashHex, Is.EqualTo(job.InfoHashHex));
+            Assert.That(parsed.ExplicitPeers, Is.EqualTo(new[] { "127.0.0.1:6881" }));
+            Assert.That(parsed.Trackers, Is.Not.Empty);
+        }
+    }
 }

@@ -43,9 +43,9 @@ internal sealed class BencodeDocument(BValue root, byte[]? infoBytes)
 
     public byte[]? InfoBytes { get; } = infoBytes;
 
-    public static BencodeDocument Decode(ReadOnlySpan<byte> data)
+    public static BencodeDocument Decode(ReadOnlySpan<byte> data, bool requireCanonical = false)
     {
-        BencodeParser parser = new(data);
+        BencodeParser parser = new(data, requireCanonical);
         BValue value = parser.ParseValue(0);
         if (parser.Position != data.Length)
         {
@@ -56,10 +56,11 @@ internal sealed class BencodeDocument(BValue root, byte[]? infoBytes)
     }
 }
 
-internal ref struct BencodeParser(ReadOnlySpan<byte> data)
+internal ref struct BencodeParser(ReadOnlySpan<byte> data, bool requireCanonical = false)
 {
     private const int MaxDepth = 128;
     private readonly ReadOnlySpan<byte> _data = data;
+    private readonly bool _requireCanonical = requireCanonical;
 
     public int Position { get; private set; }
 
@@ -109,6 +110,13 @@ internal ref struct BencodeParser(ReadOnlySpan<byte> data)
         EnsureAvailable(1);
         ReadOnlySpan<byte> numberBytes = _data[start..Position];
         Position++;
+        if (_requireCanonical && (numberBytes.IsEmpty || numberBytes[0] == (byte)'+' ||
+            numberBytes.Length > 1 && numberBytes[0] == (byte)'0' ||
+            numberBytes.Length > 1 && numberBytes[0] == (byte)'-' && numberBytes[1] == (byte)'0'))
+        {
+            throw new FormatException("Noncanonical bencode integer.");
+        }
+
         string numberText = Encoding.ASCII.GetString(numberBytes);
         if (!long.TryParse(numberText, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long value))
         {
@@ -120,6 +128,7 @@ internal ref struct BencodeParser(ReadOnlySpan<byte> data)
 
     private BString ParseString()
     {
+        int start = Position;
         int length = 0;
         bool hasDigit = false;
         while (Position < _data.Length && _data[Position] != (byte)':')
@@ -143,6 +152,11 @@ internal ref struct BencodeParser(ReadOnlySpan<byte> data)
         if (!hasDigit)
         {
             throw new FormatException("Bencode string length is empty.");
+        }
+
+        if (_requireCanonical && Position - start > 1 && _data[start] == (byte)'0')
+        {
+            throw new FormatException("Noncanonical bencode string length.");
         }
 
         Position++;
@@ -177,6 +191,7 @@ internal ref struct BencodeParser(ReadOnlySpan<byte> data)
     {
         Position++;
         Dictionary<string, BValue> values = new(StringComparer.Ordinal);
+        byte[]? previousKey = null;
         while (true)
         {
             EnsureAvailable(1);
@@ -187,6 +202,12 @@ internal ref struct BencodeParser(ReadOnlySpan<byte> data)
             }
 
             BString key = ParseString();
+            if (_requireCanonical && previousKey is not null && previousKey.AsSpan().SequenceCompareTo(key.Bytes) >= 0)
+            {
+                throw new FormatException("Bencode dictionary keys must be unique and sorted by raw bytes.");
+            }
+
+            previousKey = key.Bytes;
             string keyText = Encoding.UTF8.GetString(key.Bytes);
             int valueStart = Position;
             BValue value = ParseValue(depth + 1);
