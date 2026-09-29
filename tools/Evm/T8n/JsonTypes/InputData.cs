@@ -83,7 +83,7 @@ public class InputData
 
     private static void SignFrameTransaction(Transaction transaction, TransactionMetaData transactionMetaData)
     {
-        PrivateKey? privateKey = transactionMetaData.SecretKey is null ? null : new PrivateKey(transactionMetaData.SecretKey);
+        using PrivateKey? privateKey = transactionMetaData.SecretKey is null ? null : new PrivateKey(transactionMetaData.SecretKey);
 
         if (privateKey is not null)
         {
