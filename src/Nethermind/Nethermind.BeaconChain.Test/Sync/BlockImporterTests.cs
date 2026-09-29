@@ -25,12 +25,15 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Network;
+using NSubstitute;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
+using Snappier;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
@@ -327,6 +330,112 @@ public class BlockImporterTests
         importer.ComputeHead();
 
         Assert.That(snapshots.Current?.Nodes.Select(n => n.Root), Is.EqualTo(new[] { chain.AnchorRoot }), "the container's holder must be the one the importer writes to");
+    }
+
+    [Test]
+    public void ComputeHead_after_an_import_publishes_the_head_states_proposer_lookahead()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        ProposerLookaheadHolder lookaheads = new();
+        BlockImporterFactory factory = new(chain.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), chain.Pubkeys, new ValidPayloadEngine(), new BeaconChainConfig(), LimboLogs.Instance, new DataColumnSidecarPool(), clock: chain.ClockAtSlot(chain.Block.Message!.Slot), proposerLookaheads: lookaheads);
+        IBlockImporter importer = factory.Create(new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
+
+        BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+        ProposerLookaheadSnapshot? beforeAnyHead = lookaheads.Current;
+        HeadView head = importer.ComputeHead();
+        ProposerLookaheadSnapshot? published = lookaheads.Current;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(beforeAnyHead, Is.Null, "nothing is published until a head has been computed");
+            Assert.That(head.HeadRoot, Is.EqualTo(chain.BlockRoot));
+            Assert.That(published?.Epoch, Is.EqualTo(0UL));
+            // Nothing precedes the head's epoch, so the shuffling was decided below the fork-choice tree root.
+            Assert.That(published?.DependentRoot, Is.EqualTo(chain.AnchorRoot));
+            Assert.That(published!.TryGetProposer(chain.Block.Message.Slot, out ulong proposer) ? proposer : (ulong?)null, Is.EqualTo(chain.Block.Message.ProposerIndex));
+            Assert.That(published.TryGetProposer(Presets.ProposerLookaheadSlots, out _), Is.False, "the lookahead covers two epochs");
+        }
+    }
+
+    [Test]
+    public void ComputeHead_after_a_reorg_publishes_the_new_heads_proposer_lookahead()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        ProposerLookaheadHolder lookaheads = new();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), proposerLookaheads: lookaheads);
+        UnsignedChain.Equivocation scenario = chain.BuildEquivocation();
+        // B's branch reaches epoch 1, so its lookahead differs from A's branch in both epoch and dependent root.
+        UnsignedChain.ChainBlock nextEpoch = chain.Extend(scenario.B.Root, slot: chain.Spec.SlotsPerEpoch + 1, payloadHashByte: 0xb2);
+        importer.OnSlotTick(nextEpoch.Block.Message!.Slot + 1);
+        BlockImportResult[] imported =
+        [
+            importer.Import(scenario.A.Block, scenario.A.Root, verifySignatures: false),
+            importer.Import(scenario.B.Block, scenario.B.Root, verifySignatures: false),
+            importer.Import(scenario.Voted.Block, scenario.Voted.Root, verifySignatures: false),
+            importer.Import(nextEpoch.Block, nextEpoch.Root, verifySignatures: false),
+        ];
+        Hash256 headBefore = importer.ComputeHead().HeadRoot;
+        ProposerLookaheadSnapshot? before = lookaheads.Current;
+
+        BlockImportResult slashingImported = importer.Import(scenario.Slashing.Block, scenario.Slashing.Root, verifySignatures: false);
+        Hash256 headAfter = importer.ComputeHead().HeadRoot;
+        ProposerLookaheadSnapshot? after = lookaheads.Current;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(imported.Append(slashingImported), Is.All.EqualTo(BlockImportResult.Imported));
+            Assert.That((headBefore, headAfter), Is.EqualTo((scenario.Voted.Root, nextEpoch.Root)), "the slashing moves the head to B's branch");
+            Assert.That((before?.Epoch, before?.DependentRoot), Is.EqualTo(((ulong?)0, (Hash256?)chain.AnchorRoot)));
+            Assert.That((after?.Epoch, after?.DependentRoot), Is.EqualTo(((ulong?)1, (Hash256?)scenario.B.Root)), "the new head's lookahead replaces the old branch's");
+        }
+    }
+
+    [Test]
+    public void Column_gossip_checks_a_child_of_the_imported_head_against_the_published_lookahead([Values] bool expectedProposer)
+    {
+        const ulong column = 5;
+        const ulong childSlot = 2;
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        ForkChoiceSnapshotHolder snapshots = new();
+        ProposerLookaheadHolder lookaheads = new();
+        BlockImporterFactory factory = new(chain.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), chain.Pubkeys, new ValidPayloadEngine(), new BeaconChainConfig(), LimboLogs.Instance, new DataColumnSidecarPool(), clock: chain.ClockAtSlot(chain.Block.Message!.Slot), forkChoiceSnapshots: snapshots, proposerLookaheads: lookaheads);
+        IBlockImporter importer = factory.Create(new ForkedBeaconState.OfFulu(chain.AnchorState), new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), chain.AnchorRoot);
+        importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+        importer.ComputeHead();
+        ColumnGossipRouter router = new(chain.Spec, chain.ClockAtSlot(childSlot), LimboLogs.Instance, forkChoice: snapshots, pubkeys: chain.Pubkeys, proposerLookahead: lookaheads);
+        router.Start(_ => Substitute.For<ITopic>(), [0, 0, 0, 0], [column]);
+        // The fixture's lookahead is all zeros, so validator 0 is the expected proposer of the child's slot.
+        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, childSlot, proposerIndex: expectedProposer ? 0UL : 1UL);
+        sidecar.SignedBlockHeader!.Message!.ParentRoot = chain.BlockRoot;
+
+        MessageValidity verdict = router.Handle(column, gloasTopic: false, Snappy.CompressToArray(DataColumnSidecar.Encode(sidecar)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The expected proposer's unsigned header gets past the lookahead to the signature check.
+            Assert.That(verdict, Is.EqualTo(MessageValidity.Rejected));
+            Assert.That(router.GetDropCount(expectedProposer ? ColumnGossipDropReason.InvalidHeaderSignature : ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(1));
+            Assert.That(router.GetDropCount(ColumnGossipDropReason.ProposerNotVerifiable), Is.Zero, "the imported head's branch is covered");
+        }
+    }
+
+    [TestCase(0xD, 32UL, 0xB, TestName = "a block at the lookahead's first slot is walked past")]
+    [TestCase(0xD, 33UL, 0xC, TestName = "the latest block before the first slot is the dependent root")]
+    [TestCase(0xD, 41UL, 0xD, TestName = "a block before the first slot is its own dependent root")]
+    [TestCase(0xE, 32UL, 0xB, TestName = "a fork shares the dependent root of the block it branches from")]
+    [TestCase(0xD, 10UL, 0xA, TestName = "a first slot at or below the tree root resolves to the tree root")]
+    [TestCase(0xF, 32UL, null, TestName = "a block fork choice does not hold has no dependent root")]
+    public void The_dependent_root_is_the_latest_block_before_the_lookahead(int from, ulong startSlot, int? expected)
+    {
+        static Hash256 Root(int id) => new([.. Enumerable.Repeat((byte)id, Hash256.Size)]);
+        static ForkChoiceSnapshotNode Node(ulong slot, int id, int? parent) =>
+            new(slot, Root(id), parent is { } p ? Root(p) : null, 0, 0, 0, ExecutionStatus.Valid, Hash256.Zero);
+
+        // Proto-array order, parents before children: A at 10, B at 20, C at 32, D at 40, and E at 35 forking from B.
+        ForkChoiceSnapshotNode[] nodes = [Node(10, 0xA, null), Node(20, 0xB, 0xA), Node(32, 0xC, 0xB), Node(35, 0xE, 0xB), Node(40, 0xD, 0xC)];
+
+        Assert.That(ProposerLookaheadSnapshot.FindDependentRoot(nodes, Root(from), startSlot), Is.EqualTo(expected is { } id ? Root(id) : null));
     }
 
     [Test]
@@ -775,7 +884,7 @@ public class BlockImporterTests
     private static long RefusedByForkChoice(string operation) =>
         Metrics.BeaconChainForkChoiceRejections.GetValueOrDefault(new StringLabel(operation));
 
-    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null) =>
+    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null, SlotClock? clock = null, ForkChoiceSnapshotHolder? forkChoiceSnapshots = null, SlotClock? importClock = null, ProposerLookaheadHolder? proposerLookaheads = null) =>
         new(
             chain.Spec,
             new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
@@ -789,7 +898,8 @@ public class BlockImporterTests
             new ForkedBeaconState.OfFulu(chain.AnchorState),
             new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock),
             chain.AnchorRoot,
-            forkChoiceSnapshots);
+            forkChoiceSnapshots,
+            proposerLookaheads);
 
     private sealed class FixedCustodySource(NodeColumnCustody? custody) : INodeColumnCustodySource
     {

@@ -5,9 +5,14 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Test.Types;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using NUnit.Framework;
 using Snappier;
 using static Nethermind.BeaconChain.Test.P2P.Gossip.GossipDigestWindowTests;
@@ -52,7 +57,7 @@ public class ColumnGossipRouterSubscriptionTests
     }
 
     [Test]
-    public void Reconstructed_column_is_published_only_on_the_digest_of_its_slot()
+    public void Reconstructed_column_is_published_on_no_digest()
     {
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         using IContainer container = BuildContainer();
@@ -61,6 +66,13 @@ public class ColumnGossipRouterSubscriptionTests
         router.Start(id => topics[id] = new RecordingTopic(), Bpo1Digest, [.. Enumerable.Range(0, required + 1).Select(static i => (ulong)i)]);
         router.SubscribeDigest(Bpo2Digest);
 
+        // An imported block's header needs no key cache or lookahead, so its columns reach reconstruction.
+        BeaconBlockHeader header = DataColumnSidecarTestFixture.BuildValidSidecar(0, Bpo2Slot).SignedBlockHeader!.Message!;
+        Hash256 blockRoot = SszRoots.HashTreeRoot(header);
+        SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(Bpo2Slot);
+        block.Signature = DataColumnSidecarTestFixture.BuildValidSidecar(0, Bpo2Slot).SignedBlockHeader!.Signature;
+        container.Resolve<BeaconChainStore>().PutBlock(blockRoot, block);
+
         for (ulong column = 0; column < required; column++)
         {
             router.Handle(column, gloasTopic: false, Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(column, Bpo2Slot))));
@@ -68,7 +80,8 @@ public class ColumnGossipRouterSubscriptionTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(topics[SubnetTopic(Bpo2Digest, required)].Published, Has.Count.EqualTo(1), "published under the digest of the sidecar's slot");
+            Assert.That(container.Resolve<DataColumnSidecarPool>().TryGet(blockRoot, required, out _), Is.True, "the missing column was reconstructed");
+            Assert.That(topics[SubnetTopic(Bpo2Digest, required)].Published, Is.Empty, "the pinned library signs every publish, which StrictNoSign peers drop");
             Assert.That(topics[SubnetTopic(Bpo1Digest, required)].Published, Is.Empty, "never re-broadcast on the other fork's topic");
         }
     }

@@ -74,6 +74,7 @@ public sealed class BlockImporter : IBlockImporter
     private readonly ForkChoiceRunner _runner;
     private readonly ExecutionPayloadEnvelopeImporter _envelopes;
     private readonly ForkChoiceSnapshotHolder? _forkChoiceSnapshots;
+    private readonly ProposerLookaheadHolder? _proposerLookaheads;
 
     /// <summary>Imported-but-not-finalized block roots and their slots, for store pruning at finalization.</summary>
     private readonly Dictionary<Hash256, ulong> _unfinalized = [];
@@ -109,6 +110,7 @@ public sealed class BlockImporter : IBlockImporter
     /// <param name="clock">The node's slot clock; a block after its current slot (within <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>) is refused.</param>
     /// <param name="anchorState">The post-state of <paramref name="anchorBlock"/>, of the same fork.</param>
     /// <param name="forkChoiceSnapshots">Where <see cref="ComputeHead"/> publishes a copy of the fork-choice store for readers off the import thread; <c>null</c> publishes nothing.</param>
+    /// <param name="proposerLookaheads">Where <see cref="ComputeHead"/> publishes the head state's proposer lookahead; <c>null</c> publishes nothing.</param>
     /// <exception cref="ArgumentException">The anchor state and block belong to different forks.</exception>
     public BlockImporter(
         BeaconChainSpec spec,
@@ -123,7 +125,8 @@ public sealed class BlockImporter : IBlockImporter
         ForkedBeaconState anchorState,
         ForkedSignedBeaconBlock anchorBlock,
         Hash256 anchorRoot,
-        ForkChoiceSnapshotHolder? forkChoiceSnapshots = null)
+        ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
+        ProposerLookaheadHolder? proposerLookaheads = null)
     {
         _spec = spec;
         _store = store;
@@ -134,6 +137,7 @@ public sealed class BlockImporter : IBlockImporter
         _logger = logManager.GetClassLogger<BlockImporter>();
         _availability = availability;
         _forkChoiceSnapshots = forkChoiceSnapshots;
+        _proposerLookaheads = proposerLookaheads;
 
         switch (anchorState, anchorBlock)
         {
@@ -679,8 +683,10 @@ public sealed class BlockImporter : IBlockImporter
         ForkChoiceNode headNode = _runner.GetHeadNode();
         Hash256 head = headNode.Root;
         // After GetHeadNode, so the copy carries the weights this head was chosen by.
-        _forkChoiceSnapshots?.Current = _runner.Snapshot();
+        ForkChoiceSnapshot? snapshot = _forkChoiceSnapshots is null && _proposerLookaheads is null ? null : _runner.Snapshot();
+        _forkChoiceSnapshots?.Current = snapshot;
         AdoptHeadLineage(head);
+        PublishProposerLookahead(head, snapshot);
         UpdateCanonicalIndex(head);
         return new HeadView(
             head,
@@ -959,6 +965,28 @@ public sealed class BlockImporter : IBlockImporter
         return false;
     }
 
+    /// <summary>Publishes the EIP-7917 proposer lookahead of <paramref name="head"/>'s post-state with the block its shuffling was decided by.</summary>
+    /// <remarks>A head whose post-state is not held keeps the previous lookahead, which stays right for chains through its own dependent root.</remarks>
+    private void PublishProposerLookahead(Hash256 head, ForkChoiceSnapshot? snapshot)
+    {
+        if (_proposerLookaheads is null || snapshot is null)
+        {
+            return;
+        }
+
+        (ulong epoch, ulong[]? lookahead) = head == _states.LineageRoot && _states.LineageState is { } lineageState
+            ? (lineageState.GetCurrentEpoch(), lineageState.ProposerLookahead)
+            : _states.GetGloasBlockState(head) is { } gloasState ? (gloasState.GetCurrentEpoch(), gloasState.ProposerLookahead) : default;
+        if (lookahead is null)
+        {
+            return;
+        }
+
+        // The head is a node of the snapshot, so a root is always found.
+        Hash256 dependentRoot = ProposerLookaheadSnapshot.FindDependentRoot(snapshot.Nodes, head, BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch))!;
+        _proposerLookaheads.Current = new ProposerLookaheadSnapshot(epoch, dependentRoot, lookahead);
+    }
+
     /// <summary>Makes the canonical slot index name exactly the new head's ancestry: each ancestor at its slot, and no entry at a slot the chain skips or above its head.</summary>
     /// <remarks>
     /// The walk stops below the first already-canonical ancestor whose empty slots under it hold no entry. So one head change
@@ -1110,6 +1138,7 @@ public sealed class BlockImporter : IBlockImporter
 /// some tests run) leaves the identity unknown, so no blob-carrying block is ever available.
 /// </param>
 /// <param name="forkChoiceSnapshots">Where every importer publishes its fork-choice snapshots; <c>null</c> publishes nothing.</param>
+/// <param name="proposerLookaheads">Where every importer publishes its head's proposer lookahead; <c>null</c> publishes nothing.</param>
 public sealed class BlockImporterFactory(
     BeaconChainSpec spec,
     BeaconChainStore store,
@@ -1120,7 +1149,8 @@ public sealed class BlockImporterFactory(
     DataColumnSidecarPool pool,
     SlotClock clock,
     BeaconDiscovery? discovery = null,
-    ForkChoiceSnapshotHolder? forkChoiceSnapshots = null) : IBlockImporterFactory
+    ForkChoiceSnapshotHolder? forkChoiceSnapshots = null,
+    ProposerLookaheadHolder? proposerLookaheads = null) : IBlockImporterFactory
 {
     public IBlockImporter Create(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot)
     {
@@ -1138,7 +1168,8 @@ public sealed class BlockImporterFactory(
             anchorState,
             anchorBlock,
             anchorRoot,
-            forkChoiceSnapshots);
+            forkChoiceSnapshots,
+            proposerLookaheads);
     }
 
 }
