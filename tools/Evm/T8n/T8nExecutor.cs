@@ -34,6 +34,7 @@ public static class T8nExecutor
         KzgPolynomialCommitments.InitializeAsync().Wait();
 
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
