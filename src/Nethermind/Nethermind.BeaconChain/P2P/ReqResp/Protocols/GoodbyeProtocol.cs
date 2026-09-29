@@ -42,7 +42,7 @@ public sealed class GoodbyeProtocol : ReqRespProtocolBase, ISessionProtocol<ulon
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using IDisposable? inboundSlot = TryEnterInbound(context, Id);
+        using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
             return;
@@ -51,7 +51,7 @@ public sealed class GoodbyeProtocol : ReqRespProtocolBase, ISessionProtocol<ulon
         using CancellationTokenSource cts = StartTimeout(RespTimeout);
         try
         {
-            ulong reason = Eth2PingProtocol.DecodeUint64(await ReqRespFraming.ReadRequestAsync(stream, sizeof(ulong), cts.Token));
+            ulong reason = Eth2PingProtocol.DecodeUint64(await inboundSlot.ReadRequestAsync(stream, sizeof(ulong), cts.Token));
             await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, Eth2PingProtocol.EncodeUint64(reason), cts.Token);
         }
         catch (Eth2ReqRespException e)

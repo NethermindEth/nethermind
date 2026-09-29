@@ -59,7 +59,7 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using IDisposable? inboundSlot = TryEnterInbound(context, Id);
+        using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
             return;
@@ -69,7 +69,7 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
         CancellationTokenSource cts = timeout.Cts;
         try
         {
-            byte[] requestSsz = await ReqRespFraming.ReadRequestAsync(stream, MaxRequestLength, cts.Token, allowEmpty: true);
+            byte[] requestSsz = await inboundSlot.ReadRequestAsync(stream, MaxRequestLength, cts.Token, allowEmpty: true);
             BeaconBlocksByRootRequest request;
             try
             {

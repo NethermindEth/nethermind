@@ -117,7 +117,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using IDisposable? inboundSlot = TryEnterInbound(context, Id);
+        using InboundRequest? inboundSlot = TryEnterInbound(context, Id);
         if (inboundSlot is null)
         {
             return;
@@ -127,7 +127,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
         CancellationTokenSource cts = timeout.Cts;
         try
         {
-            byte[] requestSsz = await ReqRespFraming.ReadRequestAsync(stream, MaxRequestLength, cts.Token);
+            byte[] requestSsz = await inboundSlot.ReadRequestAsync(stream, MaxRequestLength, cts.Token);
             DataColumnSidecarsByRangeRequest request;
             try
             {
