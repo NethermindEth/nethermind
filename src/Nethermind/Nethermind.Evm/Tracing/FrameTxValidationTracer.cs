@@ -85,15 +85,6 @@ public sealed class FrameTxValidationTracer(
     /// <summary>The first violation recorded; later ones do not overwrite it.</summary>
     public string? ViolationReason { get; private set; }
 
-    /// <summary>True when the prefix touched storage outside the permitted surface, as opposed to breaking
-    /// one of the opcode rules or simply executing and failing.</summary>
-    /// <remarks>
-    /// A caller reconstructing state from a partial projection must treat this apart from a failed prefix:
-    /// an out-of-surface read would have been served from whatever the projection falls back to, so the
-    /// execution it produced decides nothing.
-    /// </remarks>
-    public bool OutsideSurface { get; private set; }
-
     public Address? Payer { get; private set; }
 
     ulong IFrameTxPrefixTracer.MaxVerifyGas => maxVerifyGas;
@@ -246,18 +237,13 @@ public sealed class FrameTxValidationTracer(
 
     private bool InSlotBound(in UInt256 slot) => storageSlotBound.IsZero || slot < storageSlotBound;
 
-    /// <summary>Records an out-of-surface storage access, which <see cref="OutsideSurface"/> reports apart
-    /// from the other trace-rule violations even though both fail the same eligibility condition.</summary>
-    private void ViolateSurface(string op, Address address, in UInt256 slot)
-    {
-        if (Violated) return;
-        OutsideSurface = true;
-        // The default surface keeps its original wording; a widened or slot-bounded one names the cell,
-        // since the address alone no longer says which half of the rule failed.
+    /// <summary>Records an out-of-surface storage access as a trace-rule violation.</summary>
+    // The default surface keeps its original wording; a widened or slot-bounded one names the cell,
+    // since the address alone no longer says which half of the rule failed.
+    private void ViolateSurface(string op, Address address, in UInt256 slot) =>
         Violate(payer is null && storageSlotBound.IsZero
             ? $"{op} outside tx.sender storage"
             : $"{op} outside the permitted storage surface at {address}:{slot}");
-    }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
