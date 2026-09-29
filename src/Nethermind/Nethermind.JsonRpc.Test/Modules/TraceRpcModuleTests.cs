@@ -1681,6 +1681,99 @@ public class TraceRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expected), serialized.Replace("\"", "\\\""));
     }
 
+    public enum CallFees { Omitted, ZeroGasPrice, ZeroFeeCaps, GasPrice, FeeCap }
+
+    private static bool IsPriced(CallFees fees) => fees is CallFees.GasPrice or CallFees.FeeCap;
+
+    // Returns BASEFEE as a word.
+    private static readonly byte[] BaseFeeReturnCode = Prepare.EvmCode
+        .Op(Instruction.BASEFEE)
+        .PushData(0)
+        .Op(Instruction.MSTORE)
+        .PushData("0x20")
+        .PushData("0x0")
+        .Op(Instruction.RETURN)
+        .Done;
+
+    private static string Word(UInt256 value) => $"0x{value.ToBigEndian().ToHexString()}";
+
+    private static async Task<(Context Context, Address Contract, UInt256 BaseFee)> BuildWithBaseFeeContract()
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(new OverridableReleaseSpec(London.Instance) { Eip1559TransitionBlock = 1 }));
+        TestRpcBlockchain blockchain = context.Blockchain;
+        ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        await blockchain.AddBlock(Build.A.Transaction.WithNonce(nonce).WithTo(null).WithGasLimit(200_000)
+            .WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei).WithMaxPriorityFeePerGas(1.GWei).WithChainId(blockchain.SpecProvider.ChainId)
+            .WithData(Prepare.EvmCode.ForInitOf(BaseFeeReturnCode).Done)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject);
+        UInt256 baseFee = blockchain.BlockTree.Head!.BaseFeePerGas;
+        Assert.That(baseFee, Is.GreaterThan(UInt256.Zero), "precondition: the head block has a base fee");
+        return (context, ContractAddress.From(TestItem.AddressA, nonce), baseFee);
+    }
+
+    private static string BaseFeeCall(Address contract, CallFees fees, UInt256 baseFee)
+    {
+        string price = baseFee.ToHexString(skipLeadingZeros: true);
+        string feeFields = fees switch
+        {
+            CallFees.Omitted => "",
+            CallFees.ZeroGasPrice => ",\"gasPrice\":\"0x0\"",
+            CallFees.ZeroFeeCaps => ",\"maxFeePerGas\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\"",
+            CallFees.GasPrice => $",\"gasPrice\":\"{price}\"",
+            _ => $",\"maxFeePerGas\":\"{price}\",\"maxPriorityFeePerGas\":\"0x0\"",
+        };
+        return $"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{contract}\",\"gas\":\"0x186a0\"{feeFields}}}";
+    }
+
+    [Test]
+    public async Task Trace_call_sees_the_base_fee_eth_call_sees([Values] CallFees fees, [Values] bool streaming)
+    {
+        (Context context, Address contract, UInt256 baseFee) = await BuildWithBaseFeeContract();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        using JsonDocument call = JsonDocument.Parse(BaseFeeCall(contract, fees, baseFee));
+
+        string trace = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call", call.RootElement, new[] { "trace" }, "latest");
+        string eth = await RpcTest.TestSerializedRequest(blockchain.EthRpcModule, "eth_call", call.RootElement, "latest");
+
+        // A call priced at zero runs with a zero base fee, as eth_call runs it; a priced call sees the block's.
+        string expected = Word(IsPriced(fees) ? baseFee : UInt256.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(trace)["result"]?["output"]?.Value<string>(), Is.EqualTo(expected), trace);
+            Assert.That(JToken.Parse(eth)["result"]?.Value<string>(), Is.EqualTo(expected), eth);
+        }
+    }
+
+    [Test]
+    public async Task Trace_callMany_gives_each_call_the_base_fee_of_its_own_price([Values] bool streaming)
+    {
+        (Context context, Address contract, UInt256 baseFee) = await BuildWithBaseFeeContract();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        CallFees[] fees = [CallFees.Omitted, CallFees.GasPrice, CallFees.ZeroFeeCaps];
+        using JsonDocument calls = JsonDocument.Parse(
+            $"[{string.Join(",", fees.Select(f => $"[{BaseFeeCall(contract, f, baseFee)},[\"trace\",\"stateDiff\"]]"))}]");
+        ulong nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls.RootElement, "latest");
+
+        JToken[] results = [.. JToken.Parse(response)["result"] ?? new JArray()];
+        Assert.That(results, Has.Length.EqualTo(fees.Length), response);
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < fees.Length; i++)
+            {
+                JToken? sender = results[i]["stateDiff"]?[TestItem.AddressA.ToString()];
+                Assert.That(results[i]["output"]?.Value<string>(), Is.EqualTo(Word(IsPriced(fees[i]) ? baseFee : UInt256.Zero)), $"call {i}: {response}");
+                // Each call runs on the state the previous one left, and only the priced one is charged.
+                Assert.That(sender?["nonce"]?["*"]?["from"]?.Value<string>(), Is.EqualTo($"0x{nonce + (ulong)i:x}"), $"call {i}: {response}");
+                Assert.That(sender?["balance"]?.Type, Is.EqualTo(IsPriced(fees[i]) ? JTokenType.Object : JTokenType.String), $"call {i}: {response}");
+            }
+        }
+    }
+
     [Test]
     public async Task Trace_replayBlockTransactions_transactions_deploying_contract()
     {
@@ -2514,6 +2607,7 @@ public class TraceRpcModuleTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlocksConfig>(),
             NullPrefixStateSeedSource.Instance,
+            new UnpricedTraceCalls(),
             LimboLogs.Instance);
     }
 
