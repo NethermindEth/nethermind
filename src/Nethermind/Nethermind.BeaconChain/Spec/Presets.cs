@@ -24,6 +24,12 @@ public static class Presets
     public const ulong HysteresisDownwardMultiplier = 1;
     public const ulong HysteresisUpwardMultiplier = 5;
 
+    /// <summary><c>BASIS_POINTS</c> (specs/phase0/fork-choice.md).</summary>
+    public const ulong BasisPoints = 10_000;
+
+    /// <summary><c>JUSTIFICATION_BITS_LENGTH</c> (specs/phase0/beacon-chain.md).</summary>
+    public const int JustificationBitsLength = 4;
+
     // Phase0 — gwei values
     public const ulong MinDepositAmount = 1_000_000_000;
     public const ulong MaxEffectiveBalance = 32_000_000_000;

@@ -902,8 +902,8 @@ public class BlockImporterTests
             state.FinalizedCheckpoint = new Checkpoint { Epoch = 1, Root = chain.AnchorRoot };
         }
 
-        // Its post-state finalizes epoch 1 on the anchor, which leaves this block, at a slot of epoch 0, off the finalized chain.
-        UnsignedChain.ChainBlock offChain = chain.Extend(first.Root, slot: 2, payloadHashByte: 0xa2);
+        // Its post-state finalizes epoch 1 on the anchor, which leaves this block, the checkpoint block of epoch 1 on its own chain, off the finalized chain.
+        UnsignedChain.ChainBlock offChain = chain.Extend(first.Root, slot: Presets.SlotsPerEpoch, payloadHashByte: 0xa2);
         UnsignedChain.ChainBlock child = chain.Extend(offChain.Root, slot: Presets.SlotsPerEpoch + 1, payloadHashByte: 0xa3);
         Assert.That(importer.Import(offChain.Block, offChain.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported), "fixture bug");
 
