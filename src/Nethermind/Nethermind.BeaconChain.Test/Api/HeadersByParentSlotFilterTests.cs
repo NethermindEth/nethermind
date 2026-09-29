@@ -96,6 +96,26 @@ public class HeadersByParentSlotFilterTests
         Assert.That(await ListedRootsAsync(""), Is.EqualTo(new[] { Kept.ToString() }));
     }
 
+    [Test]
+    public async Task A_parent_stored_before_the_index_lists_all_its_children_once_the_database_is_upgraded()
+    {
+        Hash256 legacyParent = BeaconApiTestHost.TestRoot(0x80);
+        Hash256 legacyChild = BeaconApiTestHost.TestRoot(0x81);
+        Hash256 laterChild = BeaconApiTestHost.TestRoot(0x82);
+        _host.WriteLegacyBlock(legacyParent, BeaconApiTestHost.RichBlock(Slot + 10, BeaconApiTestHost.FilledHash(0x00)));
+        _host.WriteLegacyBlock(legacyChild, BeaconApiTestHost.RichBlock(Slot + 11, legacyParent));
+        _host.Store.PutBlock(laterChild, BeaconApiTestHost.RichBlock(Slot + 12, legacyParent));
+        _host.Store.SetSchemaVersion(1);
+        _host.Store.EnsureSchemaVersion();
+
+        HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={legacyParent}", Json);
+        string raw = await response.Content.ReadAsStringAsync();
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw);
+        Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("data").EnumerateArray().Select(entry => entry.GetProperty("root").GetString()),
+            Is.EquivalentTo(new[] { legacyChild.ToString(), laterChild.ToString() }), "after the rebuild the index covers every stored block, so the list is complete");
+    }
+
     private void BreakRecord(BrokenRecord record)
     {
         IDb blocks = _host.Db.GetColumnDb(BeaconChainDbColumns.Blocks);
