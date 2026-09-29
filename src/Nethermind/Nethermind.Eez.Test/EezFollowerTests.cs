@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Follower;
+using Nethermind.Eez.Sequencer;
 using Nethermind.Logging;
 using NSubstitute;
 using NSubstitute.Core;
@@ -33,12 +34,10 @@ public class EezFollowerTests
     private IL1BatchScanner _scanner = null!;
     private IBatchReconciler _reconciler = null!;
     private IUnsafeHeadSource _unsafeHead = null!;
-    private IProcessExitSource _processExit = null!;
     private IBlockTree _chain = null!;
     private ChainEngine _engine = null!;
     private EezConfig _config = null!;
     private EezFollower _follower = null!;
-    private int? _exitCode;
 
     [SetUp]
     public void SetUp()
@@ -61,14 +60,9 @@ public class EezFollowerTests
         SettleTo(2);
 
         _unsafeHead = Substitute.For<IUnsafeHeadSource>();
-        _processExit = Substitute.For<IProcessExitSource>();
-        _processExit.When(static p => p.Exit(Arg.Any<int>())).Do(call => _exitCode = call.ArgAt<int>(0));
         ResumePointFinder resumePoints = new(_l1, _chain, Registry, RollupId, _config.RegistryDeployBlock, _config.L1LogScanBlocks);
-        _follower = new EezFollower(_l1, _scanner, _reconciler, resumePoints, _unsafeHead, _chain, _engine, _config, _processExit, LimboLogs.Instance);
+        _follower = new EezFollower(_l1, _scanner, _reconciler, resumePoints, _unsafeHead, _chain, _engine, _config, LimboLogs.Instance);
     }
-
-    [TearDown]
-    public async Task TearDown() => await _follower.DisposeAsync();
 
     [Test]
     public async Task Poll_L1BlockSettlesTheRollup_MovesSafeToItsEnd()
@@ -209,22 +203,61 @@ public class EezFollowerTests
     }
 
     [Test]
+    public void Boot_L1OnAnotherChain_Throws() =>
+        Assert.ThrowsAsync<EezFollowerException>(() =>
+        {
+            _l1.GetChainId(Arg.Any<CancellationToken>()).Returns(L1ChainId + 1);
+            return _follower.Boot(CancellationToken.None);
+        }, "following another L1 would derive a chain that was never settled");
+
+    [Test]
+    public async Task Step_FollowerCaughtUp_LetsTheSequencerAct()
+    {
+        IEezSequencer sequencer = Substitute.For<IEezSequencer>();
+        await using EezDriver driver = Driver(sequencer);
+        await _follower.Boot(CancellationToken.None);
+
+        await driver.Step(default, CancellationToken.None);
+
+        await sequencer.Received(1).Advance(_follower.Heads, Arg.Is<EezL1Block?>(static b => b!.Value.Number == 5), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Step_FollowerBehindL1_HoldsTheSequencer()
+    {
+        IEezSequencer sequencer = Substitute.For<IEezSequencer>();
+        _config.L1LogScanBlocks = 2;
+        await using EezDriver driver = Driver(sequencer);
+        await _follower.Boot(CancellationToken.None);
+
+        await driver.Step(default, CancellationToken.None);
+
+        Assert.That(sequencer.ReceivedCalls(), Is.Empty, "a batch posted from a cursor L1 already moved past would revert");
+    }
+
+    [Test]
     public async Task Start_L1OnAnotherChain_StopsTheNode()
     {
         _l1.GetChainId(Arg.Any<CancellationToken>()).Returns(L1ChainId + 1);
+        IProcessExitSource processExit = Substitute.For<IProcessExitSource>();
+        await using EezDriver driver = Driver(null, processExit);
 
-        await _follower.Start();
+        await driver.Start();
 
-        Assert.That(_exitCode, Is.EqualTo(ExitCodes.InvalidBlock), "following another L1 would derive a chain that was never settled");
+        processExit.Received(1).Exit(ExitCodes.InvalidBlock);
     }
 
     [Test]
     public async Task DisposeAsync_Twice_DoesNotThrow()
     {
-        await _follower.DisposeAsync();
+        EezDriver driver = Driver(null);
+        await driver.DisposeAsync();
 
-        Assert.DoesNotThrowAsync(async () => await _follower.DisposeAsync(), "the stopper and the container may both release the follower");
+        Assert.DoesNotThrowAsync(async () => await driver.DisposeAsync(), "the stopper and the container may both release the driver");
     }
+
+    private EezDriver Driver(IEezSequencer? sequencer, IProcessExitSource? processExit = null) =>
+        new(_follower, sequencer, _config, Timestamper.Default, processExit ?? Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
 
     private Task<BlockHeader> Settled(CallInfo call, ulong l2Block)
     {

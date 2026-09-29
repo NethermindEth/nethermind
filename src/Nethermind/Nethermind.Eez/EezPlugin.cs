@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -9,7 +11,9 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
+using Nethermind.Eez.Proving;
 using Nethermind.Eez.Rpc;
+using Nethermind.Eez.Sequencer;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Eez;
@@ -26,6 +30,7 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig) : INethermindP
     {
         EnsureEezGenesis(chainSpec);
         EnsureFollowerConfig(eezConfig);
+        EnsureSequencerConfig(eezConfig);
         api.RegisterTxType<EezSystemTransactionForRpc>(EezTxType.CreateDecoder(), EezTxType.CreateValidator(api.SpecProvider!.ChainId));
     }
 
@@ -55,6 +60,49 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig) : INethermindP
             throw new InvalidConfigurationException(
                 $"{nameof(IEezConfig)}.{nameof(IEezConfig.FollowerEnabled)} requires a valid {nameof(IEezConfig)}.{missing}.", ExitCodes.ConflictingConfigurations);
         }
+    }
+
+    internal static void EnsureSequencerConfig(IEezConfig config)
+    {
+        if (!config.SequencerEnabled)
+        {
+            return;
+        }
+
+        RollupTiming timing = new(config.L1BlockTimeMs, (uint)Math.Min(config.L2BlockTimeSeconds * 1000, uint.MaxValue), config.ProofTimeMs, config.SubmissionSlackMs);
+        string? violation = config switch
+        {
+            { FollowerEnabled: false } => $"requires {nameof(IEezConfig)}.{nameof(IEezConfig.FollowerEnabled)}, which confirms what L1 settled",
+            { SequencerRpcUrl: { Length: > 0 } } => $"excludes {nameof(IEezConfig)}.{nameof(IEezConfig.SequencerRpcUrl)}: the node is the sequencer",
+            { Provers.Length: 0 or > AttestationQuorum.MaxAttesters } => $"requires 1 to {AttestationQuorum.MaxAttesters} {nameof(IEezConfig)}.{nameof(IEezConfig.Provers)}",
+            { PosterAddress: var poster } when !Address.TryParse(poster, out _) => $"requires a valid {nameof(IEezConfig)}.{nameof(IEezConfig.PosterAddress)}",
+            { SequencerFeeRecipient: { Length: > 0 } recipient } when !Address.TryParse(recipient, out _) =>
+                $"requires {nameof(IEezConfig)}.{nameof(IEezConfig.SequencerFeeRecipient)} to be an address",
+            _ => timing.FindViolation() is { } rule ? $"needs a timing where {rule}" : ProversViolation(config.Provers),
+        };
+        if (violation is not null)
+        {
+            throw new InvalidConfigurationException($"{nameof(IEezConfig)}.{nameof(IEezConfig.SequencerEnabled)} {violation}.", ExitCodes.ConflictingConfigurations);
+        }
+    }
+
+    private static string? ProversViolation(string[] provers)
+    {
+        HashSet<Address> proofSystems = [];
+        foreach (string entry in provers)
+        {
+            if (ProverEndpoint.Parse(entry) is not { } endpoint)
+            {
+                return $"requires every {nameof(IEezConfig)}.{nameof(IEezConfig.Provers)} entry as url=attester=proofSystem, not '{entry}'";
+            }
+
+            if (!proofSystems.Add(endpoint.ProofSystem))
+            {
+                return $"names proof system {endpoint.ProofSystem} in more than one {nameof(IEezConfig)}.{nameof(IEezConfig.Provers)} entry";
+            }
+        }
+
+        return null;
     }
 
     internal static void EnsureEezGenesis(ChainSpec chainSpec)

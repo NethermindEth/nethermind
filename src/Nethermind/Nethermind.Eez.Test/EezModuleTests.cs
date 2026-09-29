@@ -14,6 +14,8 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Follower;
+using Nethermind.Eez.Proving;
+using Nethermind.Eez.Sequencer;
 using Nethermind.Merge.Plugin;
 using NSubstitute;
 using Nethermind.Evm;
@@ -70,6 +72,33 @@ public class EezModuleTests
         Assert.That(container.Resolve<EezFollower>(), Is.Not.Null, "the follower and everything it drives resolve");
         using IDerivedBlockSession session = container.Resolve<IDerivedBlockExecutor>().BeginSession();
         Assert.That(session, Is.Not.Null, "a derived block session opens its own processing scope with the strict executor");
+    }
+
+    [Test]
+    public void Resolve_SequencerEnabled_BuildsEverythingThatProducesProvesAndPosts()
+    {
+        EezConfig config = new()
+        {
+            FollowerEnabled = true,
+            SequencerEnabled = true,
+            L1RpcUrl = "http://127.0.0.1:8545",
+            L1ChainId = 3151908,
+            RegistryAddress = "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+            RegistryDeployBlock = 1,
+            RollupId = 2,
+            Provers = ["http://127.0.0.1:50061=0x70997970c51812dc3a010c7d01b50e0d17dc79c8=0xe7f1725e7734ce288f8367e1bb143e90bb3f0512"],
+            PosterAddress = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IEezConfig>(config)
+            .AddSingleton(Substitute.For<IEngineRpcModule>())
+            .AddModule(new EezModule(config))
+            .Build();
+
+        Assert.That(container.Resolve<ISyncSlotComposer>(), Is.Not.Null, "the composer, the quorum, the registration reader and the poster resolve");
+        Assert.That(container.Resolve<ILiveBlockProducer>(), Is.Not.Null, "the Live block producer opens its producer environment");
+        Assert.That(container.Resolve<AttestationQuorum>().ProofSystems, Has.Length.EqualTo(1), "one attester per configured prover");
     }
 
     [Test]

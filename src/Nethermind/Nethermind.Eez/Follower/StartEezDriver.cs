@@ -9,20 +9,20 @@ using Nethermind.Logging;
 
 namespace Nethermind.Eez.Follower;
 
-/// <summary>Starts the EEZ follower once the blockchain and the engine it drives are initialized.</summary>
+/// <summary>Starts the EEZ driver once the blockchain and the engine it drives are initialized.</summary>
 /// <remarks>
-/// <see cref="EezFollower"/> runs in the background and handles its own failures; the service stopper stops it with
-/// the other services, before anything is disposed.
+/// <see cref="EezDriver"/> runs in the background and handles its own failures; the service stopper stops it with the
+/// other services, before anything is disposed.
 /// </remarks>
 [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(InitializeBlockProducer), typeof(InitializeNetwork))]
-public class StartEezFollower(EezFollower follower, ILogManager logManager) : IStep
+public class StartEezDriver(EezDriver driver, ILogManager logManager) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
-        _ = follower.Start();
+        _ = driver.Start();
 
-        ILogger logger = logManager.GetClassLogger<StartEezFollower>();
-        if (logger.IsInfo) logger.Info("EEZ follower started");
+        ILogger logger = logManager.GetClassLogger<StartEezDriver>();
+        if (logger.IsInfo) logger.Info("EEZ driver started");
 
         return Task.CompletedTask;
     }

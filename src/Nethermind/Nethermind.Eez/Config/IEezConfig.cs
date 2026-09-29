@@ -45,4 +45,50 @@ public interface IEezConfig : IConfig
 
     [ConfigItem(Description = "The most L1 blocks the follower reads logs for in one request.", DefaultValue = "100000")]
     ulong L1LogScanBlocks { get; set; }
+
+    [ConfigItem(Description = "Whether to sequence the rollup: produce its blocks on the L1 slot schedule and post the batches that settle them. " +
+        "Requires `Eez.FollowerEnabled`, which confirms what L1 settled, and excludes `Eez.SequencerRpcUrl`.", DefaultValue = "false")]
+    bool SequencerEnabled { get; set; }
+
+    [ConfigItem(Description = "The L1 block time in milliseconds; an L1 slot holds this over the L2 block time L2 blocks.", DefaultValue = "12000")]
+    uint L1BlockTimeMs { get; set; }
+
+    [ConfigItem(Description = "The most time attesters take to prove a slot, in milliseconds: the slot is composed this long, plus the " +
+        "submission slack, before the next L1 block.", DefaultValue = "2000")]
+    uint ProofTimeMs { get; set; }
+
+    [ConfigItem(Description = "How long before the next L1 block a proven batch must reach the builder, in milliseconds.", DefaultValue = "100")]
+    uint SubmissionSlackMs { get; set; }
+
+    [ConfigItem(Description = "The attesters asked to sign each batch, as `url=attester=proofSystem` entries: the prove.v1 endpoint, the address " +
+        "it signs with and the proof system that verifies it. Required when `Eez.SequencerEnabled` is set; at most 16.", DefaultValue = "[]")]
+    string[] Provers { get; set; }
+
+    [ConfigItem(Description = "How long to keep collecting proofs once the threshold is met, in milliseconds, so the same fastest attesters are " +
+        "not the only ones ever recorded.", DefaultValue = "250")]
+    int AttestationGraceMs { get; set; }
+
+    [ConfigItem(Description = "The L1 account that signs the batches, unlocked through `KeyStore.UnlockAccounts`. Required when " +
+        "`Eez.SequencerEnabled` is set.", DefaultValue = "null")]
+    string? PosterAddress { get; set; }
+
+    [ConfigItem(Description = "The builder that takes each batch as a bundle pinned to its L1 block. Without one, batches go to the L1 mempool, " +
+        "which cannot pin them to their slot.", DefaultValue = "null")]
+    string? L1BuilderRpcUrl { get; set; }
+
+    [ConfigItem(Description = "The priority fee of a batch transaction, in wei.", DefaultValue = "10000000000")]
+    ulong PostBatchPriorityFee { get; set; }
+
+    [ConfigItem(Description = "The gas limit of a batch transaction; a batch that needs more is cut down.", DefaultValue = "16777216")]
+    ulong MaxPostBatchGas { get; set; }
+
+    [ConfigItem(Description = "The most L2 blocks one batch settles; a longer backlog is settled in chunks ending on the slot grid. Rounded down " +
+        "to whole slots.", DefaultValue = "300")]
+    ulong MaxBlocksPerBatch { get; set; }
+
+    [ConfigItem(Description = "How many blocks the sequencer may build above what L1 settled before it waits; 0 for no limit.", DefaultValue = "64")]
+    ulong MaxSpeculativeDepth { get; set; }
+
+    [ConfigItem(Description = "The beneficiary of the blocks the sequencer produces; the batch's DA carries it.", DefaultValue = "null")]
+    string? SequencerFeeRecipient { get; set; }
 }

@@ -46,6 +46,45 @@ public class EezPluginTests
     public void EnsureFollowerConfig_FollowerDisabled_IgnoresItsFields() =>
         Assert.That(() => EezPlugin.EnsureFollowerConfig(new EezConfig()), Throws.Nothing, "a node that only executes EEZ blocks needs no L1");
 
+    [TestCaseSource(nameof(IncompleteSequencerConfigs))]
+    public void EnsureSequencerConfig_FieldMissingOrInvalid_RefusesToStart(EezConfig config, string field) =>
+        Assert.That(() => EezPlugin.EnsureSequencerConfig(config), Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains(field),
+            "a sequencer that cannot confirm, prove or post its batches must not start");
+
+    [Test]
+    public void EnsureSequencerConfig_Complete_Starts() =>
+        Assert.That(() => EezPlugin.EnsureSequencerConfig(SequencerConfig()), Throws.Nothing, "every field the sequencer needs is set");
+
+    private static EezConfig SequencerConfig()
+    {
+        EezConfig config = FollowerConfig();
+        config.SequencerEnabled = true;
+        config.Provers = ["http://127.0.0.1:50061=0x70997970c51812dc3a010c7d01b50e0d17dc79c8=0xe7f1725e7734ce288f8367e1bb143e90bb3f0512"];
+        config.PosterAddress = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+        return config;
+    }
+
+    private static TestCaseData[] IncompleteSequencerConfigs()
+    {
+        return
+        [
+            Case(static c => c.FollowerEnabled = false, nameof(IEezConfig.FollowerEnabled), "WithoutTheFollower"),
+            Case(static c => c.SequencerRpcUrl = "http://127.0.0.1:8545", nameof(IEezConfig.SequencerRpcUrl), "FollowingAnotherSequencer"),
+            Case(static c => c.Provers = [], nameof(IEezConfig.Provers), "NoProvers"),
+            Case(static c => c.Provers = ["http://127.0.0.1:50061=0x7099"], nameof(IEezConfig.Provers), "MalformedProver"),
+            Case(static c => c.Provers = [.. c.Provers, c.Provers[0]], "more than one", "DuplicateProofSystem"),
+            Case(static c => c.PosterAddress = null, nameof(IEezConfig.PosterAddress), "NoPoster"),
+            Case(static c => c.ProofTimeMs = 12_000, "timing", "ProofLongerThanTheSlot"),
+        ];
+
+        static TestCaseData Case(Action<EezConfig> spoil, string field, string name)
+        {
+            EezConfig config = SequencerConfig();
+            spoil(config);
+            return new TestCaseData(config, field) { TestName = name };
+        }
+    }
+
     private static EezConfig FollowerConfig() => new()
     {
         FollowerEnabled = true,

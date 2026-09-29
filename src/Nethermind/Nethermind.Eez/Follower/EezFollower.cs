@@ -8,10 +8,8 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.ServiceStopper;
 using Nethermind.Eez.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -23,7 +21,7 @@ namespace Nethermind.Eez.Follower;
 /// the safe head to what L1 stores, and the finalized head to what a finalized L1 block stores. An L1 reorganization
 /// sends it back to the last settlement that survived. A settlement the local chain cannot reproduce stops the node,
 /// since serving blocks L1 disagrees with would be worse than serving none. Progress is kept per L1 block, so a read
-/// that fails resumes at the block it failed in.
+/// that fails resumes at the block it failed in. <see cref="EezDriver"/> runs it.
 /// </summary>
 public sealed class EezFollower(
     IEezL1Api l1,
@@ -34,8 +32,7 @@ public sealed class EezFollower(
     IBlockTree blockTree,
     IEezL2Engine engine,
     IEezConfig config,
-    IProcessExitSource processExit,
-    ILogManager logManager) : IStoppableService, IAsyncDisposable
+    ILogManager logManager)
 {
     /// <summary>
     /// How many settling L1 blocks are kept while L1 finalizes none of them, as on a chain without a finalized tag; an
@@ -47,7 +44,6 @@ public sealed class EezFollower(
     internal static readonly TimeSpan SequencerBudget = TimeSpan.FromSeconds(10);
 
     private readonly ILogger _logger = logManager.GetClassLogger<EezFollower>();
-    private readonly CancellationTokenSource _cancellation = new();
     private readonly Queue<SettledRecord> _settled = new();
 
     private FollowerHeads _heads = null!;
@@ -55,51 +51,17 @@ public sealed class EezFollower(
     private EezL1Block _lastScanned;
     private Hash256? _followedLatest;
     private ulong _nextL1;
-    private Task? _running;
-    private int _stopped;
 
-    public string Description => "EEZ follower";
+    public FollowerHeads Heads => _heads;
 
-    internal FollowerHeads Heads => _heads;
+    /// <summary>The latest L1 block the last poll saw, or <see langword="null"/> before the first.</summary>
+    public EezL1Block? LatestL1 { get; private set; }
 
-    /// <summary>Starts following; the returned task runs until the node stops.</summary>
-    /// <remarks>Every failure is handled inside: transient ones are retried, the rest stop the node.</remarks>
-    public Task Start() => _running ??= Run(_cancellation.Token);
-
-    private async Task Run(CancellationToken token)
-    {
-        try
-        {
-            while (!await Attempt(Boot, token))
-            {
-                await Task.Delay(config.L1PollingIntervalMs, token);
-            }
-
-            while (true)
-            {
-                if (!await Poll(token))
-                {
-                    await Task.Delay(config.L1PollingIntervalMs, token);
-                }
-            }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-        }
-        catch (EezFollowerException e)
-        {
-            if (_logger.IsError) _logger.Error($"EEZ follower stopped: {e.Message}");
-            processExit.Exit(ExitCodes.InvalidBlock);
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsError) _logger.Error("EEZ follower failed.", e);
-            processExit.Exit(ExitCodes.GeneralError);
-        }
-    }
+    /// <returns>Whether the follower booted; a transient failure is logged and left to the next attempt.</returns>
+    public Task<bool> TryBoot(CancellationToken token) => Attempt(Boot, token);
 
     /// <summary>Finds where to resume from, on L1 and on the local chain.</summary>
-    internal async Task Boot(CancellationToken token)
+    public async Task Boot(CancellationToken token)
     {
         ulong chainId = await l1.GetChainId(token) ?? throw new L1SourceIncompleteException(0, "L1 does not report its chain ID.");
         if (chainId != config.L1ChainId)
@@ -114,7 +76,7 @@ public sealed class EezFollower(
 
     /// <summary>One poll: what L1 settled since the last one, then the sequencer's head.</summary>
     /// <returns>Whether L1 has more blocks to scan right away.</returns>
-    internal async Task<bool> Poll(CancellationToken token)
+    public async Task<bool> Poll(CancellationToken token)
     {
         engine.EnsureSoleDriver();
         bool behind = await Attempt(FollowL1, token) && _followedLatest is null;
@@ -137,13 +99,15 @@ public sealed class EezFollower(
         }
     }
 
-    private static bool IsTransient(Exception e, CancellationToken token) =>
+    /// <summary>Whether <paramref name="e"/> clears on its own: an L1 or engine read that failed or came back incomplete.</summary>
+    internal static bool IsTransient(Exception e, CancellationToken token) =>
         !token.IsCancellationRequested
         && e is L1SourceIncompleteException or EezEngineUnavailableException or HttpRequestException or DataException or OperationCanceledException;
 
     private async Task FollowL1(CancellationToken token)
     {
         EezL1Block latest = await Latest(token);
+        LatestL1 = latest;
         if (latest.Hash == _followedLatest)
         {
             return;
@@ -298,24 +262,4 @@ public sealed class EezFollower(
         await l1.GetLatestBlock(token) ?? throw new L1SourceIncompleteException(0, "L1 does not report its latest block.");
 
     private BlockHeader? Header(Hash256? hash) => hash is null ? null : blockTree.FindHeader(hash);
-
-    public async Task StopAsync()
-    {
-        if (Interlocked.Exchange(ref _stopped, 1) == 1)
-        {
-            return;
-        }
-
-        await _cancellation.CancelAsync();
-        if (_running is not null)
-        {
-            await _running;
-        }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        await StopAsync();
-        _cancellation.Dispose();
-    }
 }
