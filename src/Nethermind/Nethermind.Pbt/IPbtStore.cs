@@ -29,7 +29,7 @@ public interface IPbtStore
     /// A non-null result transfers exactly one reference to the caller, which must invoke
     /// <see cref="IDisposable.Dispose"/> exactly once. Consumers must treat the payload as immutable.
     /// The reference keeps the payload valid until released, independently of the store. A missing group
-    /// returns <see langword="null"/>. Implementations validate group boundary keys even on misses.
+    /// returns <see langword="null"/>. Implementations validate four-level boundary keys even on misses.
     /// The path is borrowed only for this call; retained identities must be immutable snapshots,
     /// never aliases of the cursor buffer.
     /// The expected <paramref name="groupHash"/> identifies the logical subtree anchored at the group boundary,

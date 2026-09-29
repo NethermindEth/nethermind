@@ -121,9 +121,6 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Number of parallel workers scanning ranges within each PBT column. 0 uses the processor count.", DefaultValue = "0")]
     int ScanTreeConcurrency { get; set; }
 
-    [ConfigItem(Description = "The number of tree levels one persisted node group holds, from 1 to 8. Null keeps the built-in four. Fixed when the pbt database is created; a populated database created with another value is rejected.", DefaultValue = "null", HiddenFromDocs = true)]
-    int? LevelsPerGroup { get; set; }
-
     [ConfigItem(Description = "Cache persisted account and storage-run reads across heads, so a new head does not re-read the serving working set from the database. Only the write-set of each persisted batch is dropped.", DefaultValue = "true", HiddenFromDocs = true)]
     bool CarryForwardCache { get; set; }
 

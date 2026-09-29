@@ -19,15 +19,7 @@ public class PbtNodeGroupKeyTests
     [TestCase(PbtColumns.CodeNodeGroups, "01ab", 16, "01ab00")]
     [TestCase(PbtColumns.StorageNodeGroups, "f0", 4, "f001")]
     [TestCase(PbtColumns.StorageNodeGroups, "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0", 524, "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff001")]
-    [TestCase(PbtColumns.TopNodeGroups, "80", 1, "8004")]
-    [TestCase(PbtColumns.TopNodeGroups, "c0", 2, "c002")]
-    [TestCase(PbtColumns.TopNodeGroups, "e0", 3, "e003")]
-    [TestCase(PbtColumns.TopNodeGroups, "f8", 5, "f805")]
-    [TestCase(PbtColumns.TopNodeGroups, "fc", 6, "fc06")]
-    [TestCase(PbtColumns.TopNodeGroups, "fe", 7, "fe07")]
-    [TestCase(PbtColumns.AccountNodeGroups, "ab80", 9, "ab8004")]
-    [TestCase(PbtColumns.StorageNodeGroups, "ff00e0", 21, "ff00e005")]
-    public void Encode_trails_the_path_with_its_last_byte_bit_count(PbtColumns column, string pathHex, int bitDepth, string keyHex)
+    public void Encode_trails_the_path_with_its_alignment(PbtColumns column, string pathHex, int bitDepth, string keyHex)
     {
         byte[] expected = Bytes.FromHexString(keyHex);
         PbtStorageNodePath storagePath = new(Bytes.FromHexString(pathHex), bitDepth);
@@ -37,10 +29,7 @@ public class PbtNodeGroupKeyTests
             Assert.That(storagePath.ToStorageKey(column), Is.EqualTo(expected));
             if (bitDepth <= PbtNodePath.MaxBitDepth)
                 Assert.That(new PbtNodePath(Bytes.FromHexString(pathHex), bitDepth).ToStorageKey(column), Is.EqualTo(expected));
-            if (PbtGroupGeometry.IsGroupDepth(bitDepth))
-                Assert.That(PbtNodeGroupKey.Decode(expected), Is.EqualTo(storagePath));
-            else
-                Assert.That(() => PbtNodeGroupKey.Decode(expected), Throws.TypeOf<InvalidDataException>());
+            Assert.That(PbtNodeGroupKey.Decode(expected), Is.EqualTo(storagePath));
         }
     }
 
@@ -50,8 +39,6 @@ public class PbtNodeGroupKeyTests
     [TestCase("a0", 4, "a1", 8, true, TestName = "Nibble_group_precedes_non_zero_nibble_child")]
     [TestCase("a0", 4, "a010", 16, true, TestName = "Nibble_group_precedes_non_zero_byte_descendant")]
     [TestCase("a0", 4, "a000", 16, false, TestName = "Nibble_group_follows_zero_byte_descendant")]
-    [TestCase("e0", 3, "e4", 6, true, TestName = "Three_bit_group_precedes_its_descendant_past_the_trailer")]
-    [TestCase("e0", 3, "e002", 16, false, TestName = "Three_bit_group_follows_descendant_below_the_trailer")]
     public void Sorts_a_group_relative_to_its_descendants(string groupHex, int groupDepth, string descendantHex, int descendantDepth, bool groupFirst)
     {
         byte[] group = new PbtStorageNodePath(Bytes.FromHexString(groupHex), groupDepth).ToStorageKey(PbtColumns.StorageNodeGroups);
@@ -66,10 +53,9 @@ public class PbtNodeGroupKeyTests
 
     [TestCase("", TestName = "Rejects_empty_key")]
     [TestCase("01", TestName = "Rejects_trailer_only_key")]
-    [TestCase("ab08", TestName = "Rejects_trailer_past_seven_bits")]
-    [TestCase("ab02", TestName = "Rejects_non_zero_unused_bits_of_a_two_bit_path")]
-    [TestCase("0f01", TestName = "Rejects_non_zero_unused_bits_of_a_nibble_path")]
-    [TestCase("c004", TestName = "Rejects_non_zero_unused_bits_of_a_one_bit_path")]
+    [TestCase("ab02", TestName = "Rejects_unknown_trailer")]
+    [TestCase("ab04", TestName = "Rejects_bit_count_trailer")]
+    [TestCase("0f01", TestName = "Rejects_non_zero_unused_bits")]
     [TestCase("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", TestName = "Rejects_depth_past_the_maximum_group_depth")]
     [TestCase("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", TestName = "Rejects_path_past_the_storage_capacity")]
     public void Decode_rejects_malformed_keys(string keyHex) =>

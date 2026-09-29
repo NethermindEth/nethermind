@@ -27,9 +27,6 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
     /// <summary>The stamp of the variable node-group key layout, the only one left; databases without it are padded.</summary>
     private const byte VariableLayoutStamp = 1;
-    private static ReadOnlySpan<byte> NodeGroupLevelsKey => "nodeGroupLevels"u8;
-    /// <summary>The levels per group of databases stamped before the levels became configurable.</summary>
-    private const int UnstampedLevelsPerGroup = 4;
     private static ReadOnlySpan<byte> PrefixlessBranchOmissionKey => "prefixlessBranchOmission"u8;
     private const byte InteriorOmissionStamp = 1;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
@@ -47,8 +44,7 @@ public class PbtRocksDbPersistence(
 
     /// <summary>Whether a metadata key is one written when the schema is stamped, so an otherwise empty database still counts as empty.</summary>
     internal static bool IsSchemaStamp(ReadOnlySpan<byte> key) =>
-        key.SequenceEqual(SchemaEpochKey) || key.SequenceEqual(NodeGroupKeyLayoutKey) || key.SequenceEqual(NodeGroupLevelsKey)
-        || key.SequenceEqual(PrefixlessBranchOmissionKey);
+        key.SequenceEqual(SchemaEpochKey) || key.SequenceEqual(NodeGroupKeyLayoutKey) || key.SequenceEqual(PrefixlessBranchOmissionKey);
 
     private static IColumnsDb<PbtColumns> Initialize(IColumnsDb<PbtColumns> db, bool allowInterruptedImport)
     {
@@ -63,7 +59,6 @@ public class PbtRocksDbPersistence(
         byte[]? storedCurrentState = metadata.Get(CurrentStateKey);
         byte[]? storedValidity = metadata.Get(ValidStateKey);
         byte[]? storedLayout = metadata.Get(NodeGroupKeyLayoutKey);
-        byte[]? storedLevels = metadata.Get(NodeGroupLevelsKey);
         byte[]? storedOmission = metadata.Get(PrefixlessBranchOmissionKey);
 
         if (storedEpoch is not null && storedEpoch.Length != sizeof(int))
@@ -82,7 +77,6 @@ public class PbtRocksDbPersistence(
             BinaryPrimitives.WriteInt32BigEndian(value, SchemaEpoch);
             metadata.PutSpan(SchemaEpochKey, value, WriteFlags.None);
             metadata.PutSpan(NodeGroupKeyLayoutKey, [VariableLayoutStamp], WriteFlags.None);
-            metadata.PutSpan(NodeGroupLevelsKey, [(byte)PbtGroupGeometry.LevelsPerGroup], WriteFlags.None);
             metadata.PutSpan(PrefixlessBranchOmissionKey, [InteriorOmissionStamp], WriteFlags.None);
             return;
         }
@@ -93,7 +87,6 @@ public class PbtRocksDbPersistence(
             throw new InvalidDataException($"The pbt database uses schema epoch {epoch}, but this build reads epoch {SchemaEpoch}. Rebuild or re-import into a new pbt database.");
         }
         ValidateLayout(storedLayout);
-        ValidateLevels(storedLevels);
         ValidateOmission(storedOmission);
 
         if ((storedCurrentState is null) != (storedValidity is null))
@@ -171,19 +164,6 @@ public class PbtRocksDbPersistence(
             throw new InvalidDataException("The pbt database uses the padded or an unknown node-group key layout, which is no longer supported. Rebuild or re-import into a new pbt database.");
     }
 
-    /// <remarks>Databases stamped before the levels per group became configurable carry no stamp and use four.</remarks>
-    private static void ValidateLevels(byte[]? value)
-    {
-        int stored = value switch
-        {
-            null => UnstampedLevelsPerGroup,
-            [byte levels] => levels,
-            _ => throw new InvalidDataException("Malformed PBT node-group levels stamp. Rebuild or re-import into a new pbt database."),
-        };
-        if (stored != PbtGroupGeometry.LevelsPerGroup)
-            throw new InvalidDataException($"The pbt database uses {stored} levels per node group, but {nameof(IPbtConfig.LevelsPerGroup)} is {PbtGroupGeometry.LevelsPerGroup}. Match the setting, or rebuild or re-import into a new pbt database.");
-    }
-
     /// <remarks>
     /// The stamp records that every interior prefixless branch is omitted. Omission changes a group's bytes but not its
     /// hash, and the node-group caches key on the hash, so a database written with another omission can serve a group
@@ -204,14 +184,10 @@ public class PbtRocksDbPersistence(
         return groupKey.BitDepth <= topDepth ? PbtColumns.TopNodeGroups : partition;
     }
 
-    /// <summary>Whether a group shallower than the zone byte lies under the storage zone, the only zone with high bits set.</summary>
-    internal static bool IsShallowStorageGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> =>
-        groupKey.BitDepth is > 0 and < 8 && groupKey.GetByte(0) == (byte)(0xFF << (8 - groupKey.BitDepth));
-
-    /// <summary>The partition column of a group, ignoring the top split.</summary>
+    /// <summary>The partition column of a group keyed below the shared depth-four groups, ignoring the top split.</summary>
     internal static PbtColumns PartitionColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {
-        if (IsShallowStorageGroup(groupKey)
+        if (groupKey.BitDepth == 4 && groupKey.GetByte(0) == 0xF0
             || groupKey.BitDepth >= 8 && groupKey.GetByte(0) == Eip8297KeyDerivation.StorageZone)
             return PbtColumns.StorageNodeGroups;
         if (groupKey.BitDepth >= 8 && groupKey.GetByte(0) == Eip8297KeyDerivation.CodeZone)

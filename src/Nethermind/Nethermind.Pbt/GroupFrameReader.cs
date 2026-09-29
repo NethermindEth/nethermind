@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
+using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -15,8 +15,6 @@ namespace Nethermind.Pbt;
 /// A frame reader only ever wraps a stored payload: never construct one for a group that does not exist. A group the
 /// boundary node proves absent is folded through <see cref="AbsentGroupFrame{TKey, TPath}"/> instead, and the tree
 /// root's group, the only one whose existence is learned from the store, is probed with <see cref="TryLoad"/>.
-/// Frames nest once per fold level, so a group wider than <see cref="PbtGroupGeometry.InlinePositionCapacity"/> positions
-/// rents its offset table rather than holding it inline, and <see cref="Dispose"/> returns it.
 /// </remarks>
 internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposable
     where TKey : unmanaged, IPbtKey<TKey>
@@ -24,11 +22,9 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
 {
     private readonly ValueHash256 _groupHash;
     private RefCountingMemory? _lease;
-    private OffsetBuffer _inlineOffsets;
-    private OffsetBuffer _inlineLengths;
-    private int[]? _rented;
-    private readonly PbtBitmap _stored;
-    private readonly PbtBitmap _descendantMask;
+    private OffsetBuffer _offsets;
+    private LengthBuffer _lengths;
+    private readonly uint _stored;
 
     /// <summary>Loads the group stored at <paramref name="path"/>, keyed by <paramref name="groupHash"/>.</summary>
     /// <exception cref="InvalidDataException">The store holds no group at <paramref name="path"/>.</exception>
@@ -45,53 +41,28 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
             // The store validated the payload, so the offsets are walked by the availability bits alone, which a small group has few of.
             ReadOnlySpan<byte> payload = lease.GetSpan();
             ReadOnlySpan<byte> entries = payload[PbtNodeGroupCodec.HeaderLength..];
-            PbtNodeGroupCodec.ReadAvailability(entries, out _stored);
-            PbtNodeGroupCodec.ReadDescendantMask(payload, out _descendantMask);
-            Debug.Assert(bitDepth == 0 || !_stored.IsSet(PbtGroupGeometry.RootPosition), "Only the root group stores the root position.");
-            int entriesEnd = PbtNodeGroupCodec.HeaderLength + entries.Length - PbtNodeGroupCodec.GetTrailerLength(_stored, payload);
+            uint availability = PbtNodeGroupCodec.ReadAvailability(entries);
+            Debug.Assert(bitDepth == 0 || (availability & (1u << PbtFourLevelGroupGeometry.RootPosition)) == 0, "Only the root group stores the root position.");
+            int entriesEnd = PbtNodeGroupCodec.HeaderLength + entries.Length - PbtNodeGroupCodec.GetTrailerLength(availability, payload);
             ReadOnlySpan<byte> offsets = payload[entriesEnd..];
-            scoped Span<int> offsetTable, lengths;
-            if (PbtGroupGeometry.PositionCount <= PbtGroupGeometry.InlinePositionCapacity)
-            {
-                offsetTable = _inlineOffsets;
-                lengths = _inlineLengths;
-            }
-            else
-            {
-                _rented = ArrayPool<int>.Shared.Rent(2 * PbtGroupGeometry.PositionCount);
-                offsetTable = _rented;
-                lengths = _rented.AsSpan(PbtGroupGeometry.PositionCount);
-            }
-            offsetTable = offsetTable[..PbtGroupGeometry.PositionCount];
-            lengths = lengths[..PbtGroupGeometry.PositionCount];
-            lengths.Clear();
             int previous = -1;
-            for (int position = _stored.NextSetBit(0); position >= 0; position = _stored.NextSetBit(position + 1))
+            for (uint remaining = availability; remaining != 0; remaining &= remaining - 1)
             {
-                offsetTable[position] = PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.ReadOffset(offsets);
-                offsets = offsets[PbtNodeGroupCodec.OffsetLength..];
-                if (previous >= 0) lengths[previous] = offsetTable[position] - offsetTable[previous];
+                int position = BitOperations.TrailingZeroCount(remaining);
+                _offsets[position] = PbtNodeGroupCodec.HeaderLength + BinaryPrimitives.ReadUInt16LittleEndian(offsets);
+                offsets = offsets[sizeof(ushort)..];
+                if (previous >= 0) _lengths[previous] = _offsets[position] - _offsets[previous];
                 previous = position;
             }
-            if (previous >= 0) lengths[previous] = entriesEnd - offsetTable[previous];
+            if (previous >= 0) _lengths[previous] = entriesEnd - _offsets[previous];
+            _stored = availability;
         }
         catch
         {
             ((IDisposable)lease).Dispose();
-            if (_rented is not null) ArrayPool<int>.Shared.Return(_rented);
             throw;
         }
     }
-
-    [UnscopedRef]
-    private readonly ReadOnlySpan<int> Offsets => PbtGroupGeometry.PositionCount <= PbtGroupGeometry.InlinePositionCapacity
-        ? ((ReadOnlySpan<int>)_inlineOffsets)[..PbtGroupGeometry.PositionCount]
-        : _rented.AsSpan(0, PbtGroupGeometry.PositionCount);
-
-    [UnscopedRef]
-    private readonly ReadOnlySpan<int> Lengths => PbtGroupGeometry.PositionCount <= PbtGroupGeometry.InlinePositionCapacity
-        ? ((ReadOnlySpan<int>)_inlineLengths)[..PbtGroupGeometry.PositionCount]
-        : _rented.AsSpan(PbtGroupGeometry.PositionCount, PbtGroupGeometry.PositionCount);
 
     /// <summary>Loads the group stored at <paramref name="path"/>, or reports that the store holds none.</summary>
     /// <remarks>
@@ -112,42 +83,41 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
     public readonly int PayloadLength => _lease!.GetSpan().Length;
 
     /// <inheritdoc/>
-    public readonly long DescendantBytes(int slot) =>
-        !_descendantMask.IsSet(slot) ? 0 : PbtNodeGroupCodec.ReadDescendantBytes(_lease!.GetSpan(), _descendantMask, slot);
-
-    /// <inheritdoc/>
-    public readonly PbtBitmap DescendantMask => _descendantMask;
-
-    /// <inheritdoc/>
-    public readonly ReadOnlyMemory<byte> GetEncoding(int position)
+    public readonly long DescendantBytes(int slot)
     {
-        int length = Lengths[position];
-        return length == 0 ? default : _lease!.Memory.Slice(Offsets[position], length);
+        ReadOnlySpan<byte> payload = _lease!.GetSpan();
+        ushort descendantMask = PbtNodeGroupCodec.ReadDescendantMask(payload);
+        return (descendantMask & (1 << slot)) == 0 ? 0 : PbtNodeGroupCodec.ReadDescendantBytes(payload, descendantMask, slot);
     }
+
+    /// <inheritdoc/>
+    public readonly ushort DescendantMask => PbtNodeGroupCodec.ReadDescendantMask(_lease!.GetSpan());
+
+    /// <inheritdoc/>
+    public readonly ReadOnlyMemory<byte> GetEncoding(int position) =>
+        _lengths[position] == 0 ? default : _lease!.Memory.Slice(_offsets[position], _lengths[position]);
 
     /// <inheritdoc/>
     public readonly int CopyRange(PbtNodeGroupWriter<TPath> writer, int startPosition, int endPosition)
     {
         if (startPosition == endPosition) return 0;
-        ReadOnlySpan<int> offsets = Offsets;
-        ReadOnlySpan<int> lengths = Lengths;
-        while (startPosition < endPosition && lengths[startPosition] == 0) startPosition++;
+        while (startPosition < endPosition && _lengths[startPosition] == 0) startPosition++;
         if (startPosition == endPosition) return 0;
         int lastPosition = endPosition - 1;
-        while (lengths[lastPosition] == 0) lastPosition--;
-        int startOffset = offsets[startPosition];
+        while (_lengths[lastPosition] == 0) lastPosition--;
+        int startOffset = _offsets[startPosition];
         ReadOnlySpan<byte> entries = _lease!.GetSpan().Slice(startOffset,
-            offsets[lastPosition] + lengths[lastPosition] - startOffset);
-        return writer.CopyRange(entries, offsets, lengths, startPosition, lastPosition);
+            _offsets[lastPosition] + _lengths[lastPosition] - startOffset);
+        return writer.CopyRange(entries, _offsets, _lengths, startPosition, lastPosition);
     }
 
     /// <inheritdoc/>
-    public readonly PbtBitmap StoredPositions => _stored;
+    public readonly uint StoredPositions => _stored;
 
     /// <summary>Takes the group's own root, whose hash is this frame's identity.</summary>
     internal readonly TrieUpdater<TKey, TPath>.BoundaryNode TakeRoot()
     {
-        ReadOnlyMemory<byte> encoding = GetEncoding(PbtGroupGeometry.RootPosition);
+        ReadOnlyMemory<byte> encoding = GetEncoding(PbtFourLevelGroupGeometry.RootPosition);
         if (encoding.IsEmpty) return default;
         return PbtNodeReader.FromValidated(encoding.Span).IsLeaf
             ? new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, _groupHash)
@@ -160,20 +130,17 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
         ReadOnlyMemory<byte> encoding = GetEncoding(position);
         if (encoding.IsEmpty) throw new InvalidDataException("A referenced PBT node is missing.");
         if (PbtNodeReader.FromValidated(encoding.Span).IsLeaf) return new(encoding, _groupHash);
-        return new(encoding, BitDepth + PbtGroupGeometry.LocalPathOf(position).Length, hash);
+        return new(encoding, BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length, hash);
     }
 
     /// <inheritdoc/>
     public readonly TrieUpdater<TKey, TPath>.BoundaryNode TakeInlineLeaf(int position, bool right) =>
-        new(GetEncoding(position), BitDepth + PbtGroupGeometry.LocalPathOf(position).Length, right);
+        new(GetEncoding(position), BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length, right);
 
     public void Dispose()
     {
         ((IDisposable?)_lease)?.Dispose();
         _lease = null;
-        if (_rented is null) return;
-        ArrayPool<int>.Shared.Return(_rented);
-        _rented = null;
     }
 
     /// <summary>Releases the actual mutable frames, including payloads loaded after this scope was opened.</summary>
@@ -189,8 +156,14 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
         }
     }
 
-    [InlineArray(PbtGroupGeometry.InlinePositionCapacity)]
+    [InlineArray(PbtNodeGroupCodec.PositionCount)]
     private struct OffsetBuffer
+    {
+        private int _element;
+    }
+
+    [InlineArray(PbtNodeGroupCodec.PositionCount)]
+    private struct LengthBuffer
     {
         private int _element;
     }

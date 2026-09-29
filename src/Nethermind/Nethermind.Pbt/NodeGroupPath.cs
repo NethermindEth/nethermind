@@ -5,34 +5,28 @@ using System.Numerics;
 
 namespace Nethermind.Pbt;
 
-/// <summary>A path to a node within a group.</summary>
-/// <remarks>The low eight bits hold the path left-aligned to the group's boundary slots; bits 8–11 hold its length.</remarks>
+/// <summary>A path to a node within a four-level group.</summary>
+/// <remarks>The low four bits hold the left-aligned path; bits 4–6 hold its length (0–4).</remarks>
 internal readonly struct NodeGroupPath
 {
-    private readonly ushort _value;
+    private readonly byte _value;
 
     internal NodeGroupPath(int slot, int length)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)length, (uint)PbtGroupGeometry.LevelsPerGroup);
-        if ((uint)slot >= (uint)PbtGroupGeometry.BoundarySlots || (slot & ((PbtGroupGeometry.BoundarySlots >> length) - 1)) != 0)
+        ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)length, 4u);
+        if ((uint)slot > 15 || (slot & ((16 >> length) - 1)) != 0)
             throw new ArgumentOutOfRangeException(nameof(slot));
-        _value = (ushort)(slot | (length << 8));
+        _value = (byte)(slot | (length << 4));
     }
 
-    private NodeGroupPath(ushort value) => _value = value;
-
-    internal static NodeGroupPath FromValidated(int slot, int length) => new((ushort)(slot | (length << 8)));
-
-    internal int Slot => _value & 0xFF;
-    internal int Length => _value >> 8;
-    internal int Width => PbtGroupGeometry.BoundarySlots >> Length;
-
-    internal int Position => PositionOf(Slot, Width);
+    internal int Slot => _value & 0xF;
+    internal int Length => (_value >> 4) & 7;
+    internal int Width => PbtFourLevelGroupGeometry.BoundarySlots >> Length;
 
     // Each preceding leaf contributes two post-order positions, except its still-open ancestors.
-    internal static int PositionOf(int slot, int width) => 2 * (slot + width) - 2 - BitOperations.PopCount((uint)slot);
+    internal int Position => 2 * (Slot + Width) - 2 - BitOperations.PopCount((uint)Slot);
 
-    internal int GetBit(int bit) => (Slot >> (PbtGroupGeometry.LevelsPerGroup - 1 - bit)) & 1;
+    internal int GetBit(int bit) => (Slot >> (3 - bit)) & 1;
     internal NodeGroupPath Left => new(Slot, Length + 1);
     internal NodeGroupPath Right => new(Slot + Width / 2, Length + 1);
 }

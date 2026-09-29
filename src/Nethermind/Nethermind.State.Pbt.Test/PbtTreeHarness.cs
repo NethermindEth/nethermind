@@ -84,30 +84,14 @@ internal sealed class PbtTreeHarness : IDisposable
     }
 }
 
-internal static class PbtTestBitmaps
-{
-    /// <summary>A bitmap with its low <paramref name="count"/> bits set.</summary>
-    internal static PbtBitmap Ones(int count)
-    {
-        PbtBitmap bitmap = default;
-        for (int bit = 0; bit < count; bit++) bitmap.Set(bit);
-        return bitmap;
-    }
-
-    internal static PbtBitmap AllSlots => Ones(PbtNodeGroupCodec.DescendantSlots);
-
-    /// <summary>The low 64 bits of <paramref name="bitmap"/>, which hold every position or slot of a group of up to five levels.</summary>
-    internal static ulong Low(this PbtBitmap bitmap) => bitmap[0];
-}
-
 internal static class PbtStoreTestExtensions
 {
     internal static long[] ReadDescendantBytes(ReadOnlySpan<byte> payload)
     {
-        PbtNodeGroupCodec.ReadDescendantMask(payload, out PbtBitmap descendantMask);
+        ushort descendantMask = PbtNodeGroupCodec.ReadDescendantMask(payload);
         long[] descendantBytes = new long[PbtNodeGroupCodec.DescendantSlots];
         for (int slot = 0; slot < descendantBytes.Length; slot++)
-            descendantBytes[slot] = !descendantMask.IsSet(slot) ? 0 : PbtNodeGroupCodec.ReadDescendantBytes(payload, descendantMask, slot);
+            descendantBytes[slot] = (descendantMask & (1 << slot)) == 0 ? 0 : PbtNodeGroupCodec.ReadDescendantBytes(payload, descendantMask, slot);
         return descendantBytes;
     }
 
@@ -168,9 +152,7 @@ internal static class PbtStoreTestExtensions
                 foreach (PbtPhysicalPayload candidate in payloads)
                 {
                     if (candidate.Key.BitDepth <= groupDepth || !candidate.Key.Prefix(groupDepth).Equals(group.Key)) continue;
-                    byte[] candidatePath = new byte[PbtBitPrefix.ByteCount(candidate.Key.BitDepth)];
-                    PbtNodePathOperations.CopyTo(candidate.Key, candidatePath);
-                    int slot = PbtGroupGeometry.ReadSlot(candidatePath, groupDepth);
+                    int slot = (candidate.Key.GetByte(groupDepth >> 3) >> (4 - (groupDepth & 4))) & 0xF;
                     expected[slot] += candidate.Payload.Length;
                 }
                 long[] stored = ReadDescendantBytes(group.Payload.Span);
@@ -190,7 +172,7 @@ internal static class PbtStoreTestExtensions
         PbtStorageNodePath path = new([], 0);
         while (true)
         {
-            PbtNodeGroupLocation<PbtStorageNodePath> location = PbtGroupGeometry.Locate(path);
+            PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(path);
             byte[]? encoding = null;
             foreach (PbtPhysicalPayload physical in groups)
                 if (physical.Key.Equals(location.GroupKey))
@@ -222,7 +204,7 @@ internal static class PbtStoreTestExtensions
         if (path.BitDepth != 0) throw new ArgumentException("Use canonical traversal for non-root reads.", nameof(path));
         using RefCountingMemory? payload = store.GetNodeGroup(path, root);
         if (payload is null) return null;
-        return ResolveNode(PbtStoreTestExtensions.ReadGroup(path, payload.GetSpan()), path, PbtGroupGeometry.RootPosition);
+        return ResolveNode(PbtStoreTestExtensions.ReadGroup(path, payload.GetSpan()), path, PbtFourLevelGroupGeometry.RootPosition);
     }
 
     internal static byte[] ToPathArray<TPath>(this TPath path) where TPath : struct, IPbtNodePath<TPath>
@@ -320,7 +302,7 @@ internal static class PbtStoreTestExtensions
 
     private static byte[]? GetLogicalNode<TPath>(PbtNodeGroupStore store, TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtNodeGroupLocation<TPath> location = PbtGroupGeometry.Locate(path);
+        PbtNodeGroupLocation<TPath> location = PbtFourLevelGroupGeometry.Locate(path);
         using RefCountingMemory? payload = store.GetPhysicalNodeGroup(location.GroupKey);
         if (payload is null) return null;
         PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload.GetSpan());
@@ -330,10 +312,10 @@ internal static class PbtStoreTestExtensions
     private static byte[]? ResolveNode<TPath>(PbtNodeGroupReader reader, TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath>
     {
         if (reader.TryGetNode(position, out ReadOnlySpan<byte> encoding)) return encoding.ToArray();
-        TPath path = PbtGroupGeometry.PathOf(groupKey, position);
+        TPath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
         int relativeDepth = path.BitDepth - groupKey.BitDepth;
-        if (relativeDepth < 1 || relativeDepth >= PbtGroupGeometry.LevelsPerGroup) return null;
-        int width = 1 << (PbtGroupGeometry.LevelsPerGroup - relativeDepth);
+        if (relativeDepth is < 1 or > 3) return null;
+        int width = 1 << (4 - relativeDepth);
         byte[]? left = ResolveNode(reader, groupKey, position - width);
         byte[]? right = ResolveNode(reader, groupKey, position - 1);
         return left is null || right is null ? null : PbtTreeHarness.EncodeBranch([], 0,
@@ -343,7 +325,7 @@ internal static class PbtStoreTestExtensions
     internal static void SetNode<TPath>(this PbtNodeGroupStore store, TPath path, byte[]? encoding,
         IRefCountingMemoryProvider? memoryProvider = null) where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtNodeGroupLocation<TPath> location = PbtGroupGeometry.Locate(path);
+        PbtNodeGroupLocation<TPath> location = PbtFourLevelGroupGeometry.Locate(path);
         using RefCountingMemory? priorPayload = store.GetPhysicalNodeGroup(location.GroupKey);
         List<PbtNodeRecord> records = [];
         if (priorPayload is not null)
@@ -353,7 +335,7 @@ internal static class PbtStoreTestExtensions
             while (enumerator.MoveNext())
             {
                 if (enumerator.CurrentPosition != location.Position)
-                    records.Add(new PbtNodeRecord(PbtGroupGeometry.PathOf(location.GroupKey, enumerator.CurrentPosition).ToPath<PbtStorageNodePath>(), enumerator.Current));
+                    records.Add(new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(location.GroupKey, enumerator.CurrentPosition).ToPath<PbtStorageNodePath>(), enumerator.Current));
             }
         }
         if (encoding is not null) records.Add(new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), encoding));

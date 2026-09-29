@@ -94,7 +94,11 @@ public static partial class TrieUpdater
 
     private static bool ClaimAdmissionSlot(ref int admissionSlotClaimed) => Interlocked.Exchange(ref admissionSlotClaimed, 1) == 0;
 
-    internal static int BoundarySlot(ReadOnlySpan<byte> key, int groupDepth) => PbtGroupGeometry.ReadSlot(key, groupDepth);
+    internal static int BoundarySlot(ReadOnlySpan<byte> key, int groupDepth)
+    {
+        byte value = key[groupDepth >> 3];
+        return (value >> (4 - (groupDepth & 4))) & 0x0F;
+    }
 
 }
 
@@ -113,10 +117,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         Span<long> descendantBytes = stackalloc long[PbtNodeGroupCodec.DescendantSlots];
-        PbtBitmap candidateSlots = reader.DescendantMask;
-        candidateSlots.Or(writer.DescendantDeltaMask);
-        for (int slot = candidateSlots.NextSetBit(0); slot >= 0; slot = candidateSlots.NextSetBit(slot + 1))
+        ushort candidateSlots = (ushort)(reader.DescendantMask | writer.DescendantDeltaMask);
+        for (uint remaining = candidateSlots; remaining != 0; remaining &= remaining - 1)
+        {
+            int slot = BitOperations.TrailingZeroCount(remaining);
             descendantBytes[slot] = reader.DescendantBytes(slot) + writer.DescendantDelta(slot);
+        }
         using RefCountingMemory? payload = writer.Detach(descendantBytes, candidateSlots);
         if (payload is not null || reader.PayloadLength != 0) sink.SetNodeGroup(path, hash, payload);
         return (payload?.GetSpan().Length ?? 0) - reader.PayloadLength + writer.DescendantDelta();
@@ -149,9 +155,9 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>The boundary slot of the group at <paramref name="bitDepth"/> that <paramref name="current"/>'s prefix passes through.</summary>
     internal static int BranchSlot(scoped in BoundaryNode current, scoped in PbtTraversalPath path, int bitDepth)
     {
-        Debug.Assert(current.BranchDepth >= bitDepth + PbtGroupGeometry.LevelsPerGroup);
+        Debug.Assert(current.BranchDepth >= bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup);
         int slot = 0;
-        for (int bit = bitDepth; bit < bitDepth + PbtGroupGeometry.LevelsPerGroup; bit++)
+        for (int bit = bitDepth; bit < bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup; bit++)
             slot = (slot << 1) | current.PrefixBit(path, bit);
         return slot;
     }
@@ -160,7 +166,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     internal static bool IsAbsentGroupBelow(scoped in BoundaryNode current, int bitDepth)
     {
         Debug.Assert(bitDepth != 0, "The root group always exists.");
-        return !current.IsEmpty && !current.IsLeaf && current.BranchDepth >= bitDepth + PbtGroupGeometry.LevelsPerGroup;
+        return !current.IsEmpty && !current.IsLeaf && current.BranchDepth >= bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
     }
 
     /// <summary>Per-fold state shared by every frame of one root update.</summary>
@@ -190,19 +196,20 @@ internal static partial class TrieUpdater<TKey, TPath>
         scoped ref Frontier frontier, int slot)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        if (frontier.Unresolved.IsSet(slot))
+        if ((frontier.Unresolved >> slot & 1) != 0)
         {
-            frontier.Unresolved.Clear(slot);
-            ResolveBlock(ref reader, path.BitDepth, slot, 1, ref frontier);
+            frontier.Unresolved &= ~(1 << slot);
+            ResolveBlock(ref reader, path.BitDepth, frontier.Stored, frontier.Copies, slot, 1, ref frontier);
         }
-        if (!frontier.Mask.IsSet(BoundaryPosition(slot))) return default;
+        uint bit = 1u << BoundaryPosition(slot);
+        if ((frontier.Mask & bit) == 0) return default;
         return frontier.TakeBoundaryNode(ref reader, ref hashes, slot);
     }
 
     internal static void SetBoundary(ref Frontier frontier, scoped Span<FoldResult> results, int slot, ref FoldResult result)
     {
-        if (result.IsEmpty) frontier.Mask.Clear(BoundaryPosition(slot));
-        else frontier.Mask.Set(BoundaryPosition(slot));
+        uint bit = 1u << BoundaryPosition(slot);
+        frontier.Mask = result.IsEmpty ? frontier.Mask & ~bit : frontier.Mask | bit;
         frontier.Set(results, slot, ref result);
     }
 
@@ -217,16 +224,16 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// </remarks>
     [SkipLocalsInit]
     internal static void Decompose<TFrame>(ref TFrame reader, scoped in PbtTraversalPath path, ref BoundaryNode input,
-        int bitDepth, ref Frontier frontier, in PbtBitmap touched)
+        int bitDepth, ref Frontier frontier, int touchedMask)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         if (input.IsEmpty) return;
         frontier.Root = BoundaryNode.Move(ref input);
-        int boundaryDepth = bitDepth + PbtGroupGeometry.LevelsPerGroup;
+        int boundaryDepth = bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
         // A leaf, or a branch reaching past this group, is the whole subtree under one slot and needs no group read.
         if (frontier.Root.IsLeaf)
         {
-            // The postfix omits whole bytes only, so the slot's bits stay where the shifted depth finds them.
+            // The postfix omits whole bytes only, so the slot's nibble stays where the shifted depth finds it.
             int leafSlot = BoundarySlot(frontier.Root.LeafKeyPostfix, bitDepth - (frontier.Root.KeyOffset << 3));
             frontier.Place(leafSlot, BoundaryPosition(leafSlot), EntrySource.AtPosition, RootSource);
             return;
@@ -239,35 +246,39 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         // The root is held by the frontier, not by the group, so its position never answers the climb.
-        frontier.Stored = reader.StoredPositions;
-        frontier.Stored.Clear(PbtGroupGeometry.RootPosition);
-        DirectCopyPositions(frontier.Stored, touched, ref frontier.Copies);
-        frontier.Unresolved = touched;
-        for (int slot = 0; slot < PbtGroupGeometry.BoundarySlots;)
+        uint stored = reader.StoredPositions & ~(1u << PbtFourLevelGroupGeometry.RootPosition);
+        uint copies = DirectCopyPositions(stored, touchedMask);
+        frontier.Copies = copies;
+        frontier.Stored = stored;
+        frontier.Unresolved = touchedMask;
+        for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots;)
         {
             // A touched slot is resolved when its fold takes it; everything else in the widest aligned untouched block it starts.
-            if (touched.IsSet(slot))
+            if ((touchedMask >> slot & 1) != 0)
             {
                 slot++;
                 continue;
             }
             int width = 1;
-            while (width < PbtGroupGeometry.BoundarySlots
+            while (width < PbtFourLevelGroupGeometry.BoundarySlots
                    && (slot & (2 * width - 1)) == 0
-                   && !touched.AnyInRange(slot, 2 * width))
+                   && (touchedMask & (((1 << (2 * width)) - 1) << slot)) == 0)
                 width <<= 1;
-            ResolveBlock(ref reader, bitDepth, slot, width, ref frontier);
+            ResolveBlock(ref reader, bitDepth, stored, copies, slot, width, ref frontier);
             slot += width;
         }
 
         // The stored positions below the group root with no touched slot under them, which composition copies unchanged.
-        static void DirectCopyPositions(in PbtBitmap stored, in PbtBitmap touched, ref PbtBitmap copies)
+        static uint DirectCopyPositions(uint stored, int touchedMask)
         {
-            for (int position = stored.NextSetBit(0); position >= 0; position = stored.NextSetBit(position + 1))
+            uint copies = 0;
+            for (uint remaining = stored & ~(1u << PbtFourLevelGroupGeometry.RootPosition); remaining != 0; remaining &= remaining - 1)
             {
-                NodeGroupPath local = PbtGroupGeometry.LocalPathOf(position);
-                if (!touched.AnyInRange(local.Slot, local.Width)) copies.Set(position);
+                int position = BitOperations.TrailingZeroCount(remaining);
+                NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
+                if ((touchedMask & (((1 << local.Width) - 1) << local.Slot)) == 0) copies |= 1u << position;
             }
+            return copies;
         }
     }
 
@@ -278,13 +289,13 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// the block itself, holds the block's whole subtree as an inlined leaf, or names it through a link, whose hash
     /// composition reads back through <see cref="LinkHash"/>.
     /// </remarks>
-    private static void ResolveBlock<TFrame>(ref TFrame reader, int bitDepth, int slot, int width, ref Frontier frontier)
+    private static void ResolveBlock<TFrame>(ref TFrame reader, int bitDepth, uint stored, uint copies, int slot, int width, ref Frontier frontier)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        int level = PbtGroupGeometry.LevelsPerGroup - BitOperations.Log2((uint)width);
+        int level = PbtFourLevelGroupGeometry.LevelsPerGroup - BitOperations.Log2((uint)width);
         int position = new NodeGroupPath(slot, level).Position;
         int depth = bitDepth + level;
-        int covering = DeepestStoredAbove(frontier.Stored, position);
+        int covering = DeepestStoredAbove(stored, position);
         SpineNode node = NodeAt(ref reader, frontier.Root, bitDepth, covering);
 
         int branchDepth = node.BranchDepth;
@@ -294,12 +305,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (branchDepth >= depth)
         {
             // The covering node is the only subtree under this block, so it settles where its own branch reaches.
-            int entryLevel = Math.Min(branchDepth, bitDepth + PbtGroupGeometry.LevelsPerGroup) - bitDepth;
+            int entryLevel = Math.Min(branchDepth, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup) - bitDepth;
             int entrySlot = 0;
             // Above its anchor the covering node's path is this block's own, since it is stored on the block's chain.
             for (int bit = bitDepth; bit < bitDepth + entryLevel; bit++)
                 entrySlot = (entrySlot << 1) | (bit < node.AnchorDepth ? SlotBit(slot, bitDepth, bit) : GetBit(node.Prefix.Bytes, bit - node.AnchorDepth));
-            entrySlot <<= PbtGroupGeometry.LevelsPerGroup - entryLevel;
+            entrySlot <<= PbtFourLevelGroupGeometry.LevelsPerGroup - entryLevel;
             frontier.Place(entrySlot, new NodeGroupPath(entrySlot, entryLevel).Position, EntrySource.AtPosition,
                 covering < 0 ? RootSource : covering);
             return;
@@ -322,10 +333,10 @@ internal static partial class TrieUpdater<TKey, TPath>
         // The link names a node, so every level between it and this block holds a prefixless branch left implicit,
         // and this block's position holds a node of its own.
         int linkLevel = branchDepth + 1 - bitDepth;
-        int linkPosition = new NodeGroupPath(slot & ~((PbtGroupGeometry.BoundarySlots >> linkLevel) - 1), linkLevel).Position;
-        Debug.Assert(linkPosition == position || level < PbtGroupGeometry.LevelsPerGroup,
+        int linkPosition = new NodeGroupPath(slot & ~((PbtFourLevelGroupGeometry.BoundarySlots >> linkLevel) - 1), linkLevel).Position;
+        Debug.Assert(linkPosition == position || level < PbtFourLevelGroupGeometry.LevelsPerGroup,
             "A boundary node is never left implicit, so its link addresses it directly.");
-        if (!frontier.Copies.IsSet(position)) frontier.Place(slot, position, EntrySource.AtPosition, position);
+        if ((copies & (1u << position)) == 0) frontier.Place(slot, position, EntrySource.AtPosition, position);
     }
 
     /// <summary>The hash the parent's link holds for the untouched node at <paramref name="position"/>, or default when no link names it.</summary>
@@ -360,23 +371,23 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// <summary>The hash the link naming <paramref name="position"/> holds, or default when no link names it.</summary>
         internal ValueHash256 HashOf(int position)
         {
-            NodeGroupPath local = PbtGroupGeometry.LocalPathOf(position);
+            NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
             if (local.Length != _linkLength) return default;
             return local.GetBit(local.Length - 1) == 0 ? _leftHash : _rightHash;
         }
     }
 
     /// <summary>The deepest position above <paramref name="position"/> that the group stores a node at, or -1 for its root.</summary>
-    private static int DeepestStoredAbove(in PbtBitmap stored, int position)
+    private static int DeepestStoredAbove(uint stored, int position)
     {
-        int ancestor = PbtGroupGeometry.ParentOf(position);
-        while (ancestor >= 0 && !stored.IsSet(ancestor)) ancestor = PbtGroupGeometry.ParentOf(ancestor);
+        int ancestor = PbtFourLevelGroupGeometry.ParentOf(position);
+        while (ancestor >= 0 && (stored & (1u << ancestor)) == 0) ancestor = PbtFourLevelGroupGeometry.ParentOf(ancestor);
         return ancestor;
     }
 
     /// <summary>The bit at <paramref name="bit"/> of the path to a boundary slot, which only spans this group.</summary>
     private static int SlotBit(int slot, int bitDepth, int bit) =>
-        (slot >> (bitDepth + PbtGroupGeometry.LevelsPerGroup - 1 - bit)) & 1;
+        (slot >> (bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup - 1 - bit)) & 1;
 
     /// <summary>A node the decomposition reads for its links: one the group stores, or the group's own root.</summary>
     private readonly ref struct SpineNode(PbtNodeReader node, int anchorDepth)
@@ -392,7 +403,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         position < 0
             ? new SpineNode(root.Reader, root.AnchorDepth)
             : new SpineNode(PbtNodeReader.FromValidated(reader.GetEncoding(position).Span),
-                bitDepth + PbtGroupGeometry.LocalPathOf(position).Length);
+                bitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length);
 
     internal static int MatchingPrefixBits(CompressedPrefix prefix, TKey key, int keyOffset)
     {

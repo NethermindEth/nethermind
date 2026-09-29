@@ -17,8 +17,8 @@ namespace Nethermind.Pbt;
 internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     where TPath : struct, IPbtNodePath<TPath>
 {
-    private static readonly int MaxEntriesLength = PbtNodeGroupCodec.MaxEntriesLength;
-    private static readonly int MaxCapacity = PbtNodeGroupCodec.MaxPayloadLength;
+    private const int MaxEntriesLength = ushort.MaxValue;
+    private const int MaxCapacity = PbtNodeGroupCodec.MaxPayloadLength;
     /// <summary>A scratch size that holds most groups outright, so growth rarely copies more than once.</summary>
     private const int InitialCapacity = 1024;
     /// <summary>How many disposed writers each thread keeps for <see cref="Rent"/>, enough for the deepest fold's frames.</summary>
@@ -30,9 +30,9 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private byte[]? _scratch;
     private OffsetBuffer _offsets;
     private DescendantDeltaBuffer _descendantDeltas;
-    private PbtBitmap _descendantDeltaMask;
+    private ushort _descendantDeltaMask;
     private long _descendantDeltaTotal;
-    private PbtBitmap _availability;
+    private uint _availability;
     private int _written;
     private int _lastPosition = -1;
     private int _pendingPosition = -1;
@@ -44,7 +44,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     internal PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider)
     {
         ArgumentNullException.ThrowIfNull(memoryProvider);
-        Debug.Assert(PbtGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a group boundary.");
+        Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a four-level boundary.");
         _bitDepth = bitDepth;
         _memoryProvider = memoryProvider;
     }
@@ -56,13 +56,13 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         if (t_cache is not { Count: > 0 } cache) return new(bitDepth, memoryProvider) { _rented = true };
         PbtNodeGroupWriter<TPath> writer = cache.Pop();
         ArgumentNullException.ThrowIfNull(memoryProvider);
-        Debug.Assert(PbtGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a group boundary.");
+        Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a four-level boundary.");
         writer._bitDepth = bitDepth;
         writer._memoryProvider = memoryProvider;
-        ((Span<long>)writer._descendantDeltas)[..PbtNodeGroupCodec.DescendantSlots].Clear();
-        writer._descendantDeltaMask = default;
+        ((Span<long>)writer._descendantDeltas).Clear();
+        writer._descendantDeltaMask = 0;
         writer._descendantDeltaTotal = 0;
-        writer._availability = default;
+        writer._availability = 0;
         writer._written = 0;
         writer._lastPosition = -1;
         writer._pendingPosition = -1;
@@ -74,14 +74,14 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
 
     internal int WrittenCount => _written;
     /// <summary>The number of leading key bytes inline leaf keys omit in a branch written at <paramref name="position"/>.</summary>
-    internal int KeyOffsetAt(int position) => PbtNodeCodec.InlineKeyOffset(_bitDepth + PbtGroupGeometry.LocalPathOf(position).Length);
+    internal int KeyOffsetAt(int position) => PbtNodeCodec.InlineKeyOffset(_bitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length);
     internal int LastPosition => _lastPosition;
 
     /// <summary>The size change folded below boundary slot <paramref name="slot"/> since this frame was opened.</summary>
     internal long DescendantDelta(int slot) => _descendantDeltas[slot];
 
     /// <summary>The boundary slots a size change was folded below; every other slot's change is zero.</summary>
-    internal ref readonly PbtBitmap DescendantDeltaMask => ref _descendantDeltaMask;
+    internal ushort DescendantDeltaMask => _descendantDeltaMask;
 
     /// <summary>The summed size change folded below every boundary slot.</summary>
     internal long DescendantDelta() => _descendantDeltaTotal;
@@ -90,7 +90,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     internal void AddDescendantDelta(int slot, long delta)
     {
         _descendantDeltas[slot] += delta;
-        _descendantDeltaMask.Set(slot);
+        _descendantDeltaMask |= (ushort)(1 << slot);
         _descendantDeltaTotal += delta;
     }
 
@@ -98,12 +98,12 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     internal Span<byte> GetSpan(int position, int encodingLength)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if ((uint)position >= (uint)PbtNodeGroupCodec.PositionCount
-            || (position == PbtGroupGeometry.RootPosition && _bitDepth != 0))
+        if ((uint)position >= PbtNodeGroupCodec.PositionCount
+            || (position == PbtFourLevelGroupGeometry.RootPosition && _bitDepth != 0))
             throw new ArgumentOutOfRangeException(nameof(position));
         ValidatePositionOrder(position);
         if (encodingLength <= 0 || encodingLength > MaxEntriesLength - _written)
-            throw new InvalidDataException("PBT node group entries exceed the offset limit or have an invalid length.");
+            throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit or have an invalid length.");
 
         EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + encodingLength);
         _pendingPosition = position;
@@ -121,8 +121,8 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         ValidateEncoding(path, _pendingPosition, encoding);
         if (!PbtNodeGroupCodec.ShouldOmit(_pendingPosition, encoding))
         {
-            _offsets[_pendingPosition] = _written;
-            _availability.Set(_pendingPosition);
+            _offsets[_pendingPosition] = (ushort)_written;
+            _availability |= 1u << _pendingPosition;
             _written += _pendingLength;
         }
         _lastPosition = _pendingPosition;
@@ -142,11 +142,11 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         ValidateCommitted();
         ValidatePositionOrder(position);
         if (length <= 0 || length > MaxEntriesLength - _written)
-            throw new InvalidDataException("PBT node group entries exceed the offset limit or have an invalid length.");
+            throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit or have an invalid length.");
         EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + length);
         Span<byte> entry = _scratch.AsSpan(PbtNodeGroupCodec.HeaderLength + _written, length);
-        _offsets[position] = _written;
-        _availability.Set(position);
+        _offsets[position] = (ushort)_written;
+        _availability |= 1u << position;
         _written += length;
         _lastPosition = position;
         return entry;
@@ -158,8 +158,8 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     /// <summary>Removes the last entry, appended at <paramref name="position"/>, so the next one is written over it.</summary>
     internal void DropLast(int position)
     {
-        Debug.Assert(_availability.IsSet(position), "Only an appended entry is dropped.");
-        _availability.Clear(position);
+        Debug.Assert((_availability & (1u << position)) != 0, "Only an appended entry is dropped.");
+        _availability &= ~(1u << position);
         _written = _offsets[position];
         // Every earlier entry sits below the dropped one, so its position may be written again.
         _lastPosition = position - 1;
@@ -178,7 +178,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         where TKey : unmanaged, IPbtKey<TKey>
     {
         if (node.IsEmpty) return default;
-        Span<byte> encoding = GetSpan(PbtGroupGeometry.RootPosition, node.EncodedLength(path, 0));
+        Span<byte> encoding = GetSpan(PbtFourLevelGroupGeometry.RootPosition, node.EncodedLength(path, 0));
         ValueHash256 hash = node.EncodeAt(path, 0, encoding);
         Commit(path);
         return hash;
@@ -192,7 +192,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         ValidateCommitted();
         ValidatePositionOrder(firstPosition);
         if (entries.Length > MaxEntriesLength - _written)
-            throw new InvalidDataException("PBT node group entries exceed the offset limit.");
+            throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
         EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + entries.Length);
         entries.CopyTo(_scratch.AsSpan(PbtNodeGroupCodec.HeaderLength + _written));
         int offsetAdjustment = _written - offsets[firstPosition];
@@ -200,8 +200,8 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         for (int position = firstPosition; position <= lastPosition; position++)
         {
             if (lengths[position] == 0) continue;
-            _offsets[position] = offsets[position] + offsetAdjustment;
-            _availability.Set(position);
+            _offsets[position] = (ushort)(offsets[position] + offsetAdjustment);
+            _availability |= 1U << position;
             copiedNodes++;
         }
         _written += entries.Length;
@@ -212,17 +212,17 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     /// <summary>Finishes the footer and transfers the output lease, or returns null for an empty group.</summary>
     /// <param name="descendantBytes">The summed payload lengths of the groups physically stored below each boundary slot, or empty for none; ignored for an empty group.</param>
     /// <param name="candidateSlots">The slots of <paramref name="descendantBytes"/> that may be nonzero; every other slot is known to be zero.</param>
-    internal RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes, in PbtBitmap candidateSlots)
+    internal RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ValidateCommitted();
-        if (_availability.IsEmpty)
+        if (_availability == 0)
         {
             Release();
             return null;
         }
 
-        PbtNodeGroupCodec.DescendantMask(descendantBytes, candidateSlots, out PbtBitmap descendantMask);
+        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, candidateSlots);
         int trailerLength = PbtNodeGroupCodec.GetTrailerLength(_availability, descendantMask, descendantBytes);
         int length = PbtNodeGroupCodec.HeaderLength + _written + trailerLength;
         // The snapshot retains the payload's whole capacity until the segment is persisted, so it is rented at its final size.
@@ -298,13 +298,13 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         _scratch = grown;
     }
 
-    [InlineArray(PbtGroupGeometry.MaxPositionCount)]
+    [InlineArray(PbtNodeGroupCodec.PositionCount)]
     private struct OffsetBuffer
     {
-        private int _element;
+        private ushort _element;
     }
 
-    [InlineArray(PbtGroupGeometry.MaxBoundarySlots)]
+    [InlineArray(PbtNodeGroupCodec.DescendantSlots)]
     private struct DescendantDeltaBuffer
     {
         private long _element;

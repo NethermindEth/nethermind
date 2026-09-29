@@ -38,7 +38,6 @@ public class PbtConfig : IPbtConfig
     public bool ScanTree { get; set; }
     public int ScanTreeConcurrency { get; set; }
 
-    public int? LevelsPerGroup { get; set; }
     public bool CarryForwardCache { get; set; } = true;
     public bool NativeNodeGroupMemory { get; set; } = true;
 

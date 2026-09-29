@@ -13,7 +13,7 @@ namespace Nethermind.State.Pbt.Test;
 /// <summary>Batch node-group encoder used as the oracle for <see cref="PbtNodeGroupWriter{TPath}"/> output.</summary>
 internal static class PbtNodeGroupEncoder
 {
-    private static readonly int MaxOffset = PbtNodeGroupCodec.MaxEntriesLength;
+    private const int MaxOffset = ushort.MaxValue;
 
     /// <summary>
     /// Validates and writes a canonical group payload directly through <paramref name="writer"/>.
@@ -32,27 +32,28 @@ internal static class PbtNodeGroupEncoder
         where TPath : struct, IPbtNodePath<TPath>
     {
         ArgumentNullException.ThrowIfNull(nodes);
-        PbtNodeGroupCodec.DescendantMask(descendantBytes, PbtTestBitmaps.Ones(PbtNodeGroupCodec.DescendantSlots), out PbtBitmap descendantMask);
+        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, ushort.MaxValue);
         ValidateGroupKey(groupKey);
         if (nodes.Count == 0) throw new InvalidDataException("A PBT node group cannot be empty.");
-        if (nodes.Count > PbtGroupGeometry.PositionCount) throw new InvalidDataException("A PBT node group has too many nodes.");
+        if (nodes.Count > PbtFourLevelGroupGeometry.PositionCount) throw new InvalidDataException("A PBT node group has too many nodes.");
 
-        Span<int> recordIndices = stackalloc int[PbtGroupGeometry.PositionCount];
+        Span<int> recordIndices = stackalloc int[PbtFourLevelGroupGeometry.PositionCount];
         recordIndices.Fill(-1);
-        PbtBitmap availability = default;
-        PbtBitmap seenPositions = default;
+        uint availability = 0;
+        uint seenPositions = 0;
         int entriesLength = 0;
         for (int index = 0; index < nodes.Count; index++)
         {
             PbtNodeRecord record = nodes[index] ?? throw new InvalidDataException("A PBT node group contains a null record.");
-            PbtNodeGroupLocation<PbtStorageNodePath> location = PbtGroupGeometry.Locate(record.Path);
+            PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(record.Path);
             if (!location.GroupKey.Equals(groupKey)) throw new InvalidDataException("Node does not belong to the group key.");
-            if ((uint)location.Position >= PbtGroupGeometry.PositionCount
-                || (location.Position == PbtGroupGeometry.RootPosition && groupKey.BitDepth != 0))
+            if ((uint)location.Position >= PbtFourLevelGroupGeometry.PositionCount
+                || (location.Position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0))
                 throw new InvalidDataException("The group contains a reserved node position.");
 
-            if (seenPositions.IsSet(location.Position)) throw new InvalidDataException("Duplicate node position in group.");
-            seenPositions.Set(location.Position);
+            uint bit = 1u << location.Position;
+            if ((seenPositions & bit) != 0) throw new InvalidDataException("Duplicate node position in group.");
+            seenPositions |= bit;
             ReadOnlySpan<byte> encoding = record.Encoding.Span;
             PbtNodeCodec.ValidateExact(encoding);
             PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
@@ -61,22 +62,22 @@ internal static class PbtNodeGroupEncoder
             entriesLength = checked(entriesLength + encoding.Length);
             if (entriesLength > MaxOffset) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
             recordIndices[location.Position] = index;
-            availability.Set(location.Position);
+            availability |= bit;
         }
 
-        if (availability.IsEmpty) throw new InvalidDataException("A PBT node group cannot be empty.");
+        if (availability == 0) throw new InvalidDataException("A PBT node group cannot be empty.");
         int initialWrittenCount = writer.WrittenCount;
         try
         {
             writer.Write(PbtNodeGroupCodec.Header);
-            Span<int> offsets = stackalloc int[PbtGroupGeometry.PositionCount];
+            Span<ushort> offsets = stackalloc ushort[PbtFourLevelGroupGeometry.PositionCount];
             int offset = 0;
-            for (int position = 0; position < PbtGroupGeometry.PositionCount; position++)
+            for (int position = 0; position < PbtFourLevelGroupGeometry.PositionCount; position++)
             {
                 int recordIndex = recordIndices[position];
                 if (recordIndex < 0) continue;
                 if ((uint)offset > MaxOffset) throw new InvalidDataException("PBT node group start offset exceeds the uint16 limit.");
-                offsets[position] = offset;
+                offsets[position] = (ushort)offset;
                 ReadOnlySpan<byte> encoding = nodes[recordIndex].Encoding.Span;
                 writer.Write(encoding);
                 offset = checked(offset + encoding.Length);
@@ -96,40 +97,40 @@ internal static class PbtNodeGroupEncoder
     public static void Encode<TPath>(ref BufferWriter writer, TPath groupKey, scoped ReadOnlySpan<ReadOnlyMemory<byte>> encodings, scoped ReadOnlySpan<bool> present, ReadOnlySpan<long> descendantBytes)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtNodeGroupCodec.DescendantMask(descendantBytes, PbtTestBitmaps.Ones(PbtNodeGroupCodec.DescendantSlots), out PbtBitmap descendantMask);
+        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, ushort.MaxValue);
         ValidateGroupKey(groupKey);
-        if (encodings.Length != PbtGroupGeometry.PositionCount || present.Length != PbtGroupGeometry.PositionCount)
+        if (encodings.Length != PbtFourLevelGroupGeometry.PositionCount || present.Length != PbtFourLevelGroupGeometry.PositionCount)
             throw new ArgumentException("A PBT node group must have one slot per position.");
 
-        PbtBitmap availability = default;
+        uint availability = 0;
         int entriesLength = 0;
-        for (int position = 0; position < PbtGroupGeometry.PositionCount; position++)
+        for (int position = 0; position < PbtFourLevelGroupGeometry.PositionCount; position++)
         {
             if (!present[position]) continue;
             ReadOnlySpan<byte> encoding = encodings[position].Span;
             if (encoding.IsEmpty) continue;
-            if (position == PbtGroupGeometry.RootPosition && groupKey.BitDepth != 0)
+            if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0)
                 throw new InvalidDataException("The group contains a reserved node position.");
             PbtNodeCodec.ValidateExact(encoding);
             PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
-            ValidateNodePath(node, PbtGroupGeometry.PathOf(groupKey, position));
+            ValidateNodePath(node, PbtFourLevelGroupGeometry.PathOf(groupKey, position));
             if (PbtNodeGroupCodec.ShouldOmit(position, encoding)) continue;
             entriesLength = checked(entriesLength + encoding.Length);
             if (entriesLength > MaxOffset) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
-            availability.Set(position);
+            availability |= 1u << position;
         }
 
-        if (availability.IsEmpty) throw new InvalidDataException("A PBT node group cannot be empty.");
+        if (availability == 0) throw new InvalidDataException("A PBT node group cannot be empty.");
         int initialWrittenCount = writer.WrittenCount;
         try
         {
             writer.Write(PbtNodeGroupCodec.Header);
-            Span<int> offsets = stackalloc int[PbtGroupGeometry.PositionCount];
+            Span<ushort> offsets = stackalloc ushort[PbtFourLevelGroupGeometry.PositionCount];
             int offset = 0;
-            for (int position = 0; position < PbtGroupGeometry.PositionCount; position++)
+            for (int position = 0; position < PbtFourLevelGroupGeometry.PositionCount; position++)
             {
-                if (!availability.IsSet(position)) continue;
-                offsets[position] = offset;
+                if ((availability & (1u << position)) == 0) continue;
+                offsets[position] = (ushort)offset;
                 ReadOnlySpan<byte> encoding = encodings[position].Span;
                 writer.Write(encoding);
                 offset = checked(offset + encoding.Length);
@@ -170,7 +171,7 @@ internal static class PbtNodeGroupEncoder
 
     private static void ValidateGroupKey<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {
-        if (!PbtGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
             throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
     }
 }

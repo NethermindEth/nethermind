@@ -26,7 +26,7 @@ internal static class PbtNodeTraverser
         PbtStorageNodePath path = new([], 0);
         ValueHash256 groupHash = root;
         Span<byte> groupPathBuffer = stackalloc byte[PbtStorageTreeKey.MaxLength];
-        PbtNodeGroupLocation<PbtStorageNodePath> location = PbtGroupGeometry.Locate(path);
+        PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(path);
         // A pinned group is known by its path alone, so the hash keying the store is only computed for the others.
         RefCountingMemory? pinned = pinnedGroups?.Get(location.GroupKey);
         while (true)
@@ -44,8 +44,7 @@ internal static class PbtNodeTraverser
                 PbtStorageNodePath childPath;
                 if (!group.TryGetNode(location.Position, out ReadOnlySpan<byte> encoding))
                 {
-                    int width = PbtGroupGeometry.WidthOf(location.Position);
-                    if (width == 1 || width == PbtGroupGeometry.BoundarySlots) return default;
+                    if (PbtFourLevelGroupGeometry.WidthOf(location.Position) is 1 or PbtFourLevelGroupGeometry.BoundarySlots) return default;
                     if (!TryDescendToStored(group, key, groupKey, path, out childPath, out location)) return default;
                 }
                 else
@@ -61,7 +60,7 @@ internal static class PbtNodeTraverser
                     if (!inlineLeafKey.IsEmpty)
                         return inlineLeafKey.SequenceEqual(key.Bytes[(groupKey.BitDepth >> 3)..]) ? (direction == 0 ? node.LeftHash : node.RightHash) : default;
                     childPath = path.Append(node.Prefix, direction);
-                    location = PbtGroupGeometry.Locate(childPath);
+                    location = PbtFourLevelGroupGeometry.Locate(childPath);
                     if (!location.GroupKey.Equals(groupKey))
                     {
                         pinned = pinnedGroups?.Get(location.GroupKey);
@@ -85,14 +84,14 @@ internal static class PbtNodeTraverser
     {
         int groupDepth = groupKey.BitDepth;
         int implicitDepth = path.BitDepth - groupDepth;
-        // A key reaching into a group spans all of its levels, save a key end that falls inside the last one, read as zeros.
-        int slot = PbtGroupGeometry.ReadSlot(key.Bytes, groupDepth);
-        for (int depth = implicitDepth + 1; depth <= PbtGroupGeometry.LevelsPerGroup; depth++)
+        // Group depths are nibble-aligned, and a key reaching into a group spans all of its levels.
+        int slot = (key.Bytes[groupDepth >> 3] >> (4 - (groupDepth & 4))) & 0xF;
+        for (int depth = implicitDepth + 1; depth <= PbtFourLevelGroupGeometry.LevelsPerGroup; depth++)
         {
-            int position = new NodeGroupPath(slot & ~((PbtGroupGeometry.BoundarySlots >> depth) - 1), depth).Position;
+            int position = new NodeGroupPath(slot & ~((PbtFourLevelGroupGeometry.BoundarySlots >> depth) - 1), depth).Position;
             if (!group.TryGetNode(position, out _)) continue;
             int descended = depth - implicitDepth;
-            storedPath = path.AppendBits((slot >> (PbtGroupGeometry.LevelsPerGroup - depth)) & ((1 << descended) - 1), descended);
+            storedPath = path.AppendBits((slot >> (PbtFourLevelGroupGeometry.LevelsPerGroup - depth)) & ((1 << descended) - 1), descended);
             location = new(groupKey, position);
             return true;
         }

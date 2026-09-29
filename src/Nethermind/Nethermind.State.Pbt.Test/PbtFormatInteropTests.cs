@@ -71,7 +71,6 @@ public class PbtFormatInteropTests
     }
 
     [Test]
-    [Category("FourLevelGroups")]
     public void Mixed_width_fixture_survives_storage_root_collapse_and_reopen()
     {
         byte[] address = new byte[32];

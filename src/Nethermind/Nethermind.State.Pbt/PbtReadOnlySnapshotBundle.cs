@@ -84,7 +84,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     internal static int GetNodeGroupPartition<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
         if (path.BitDepth == 0) return 0;
-        if (PbtRocksDbPersistence.IsShallowStorageGroup(path)
+        if (path.BitDepth == 4 && path.GetByte(0) == 0xF0
             || path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.StorageZone)
             return 2;
         return path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.CodeZone ? 1 : 0;

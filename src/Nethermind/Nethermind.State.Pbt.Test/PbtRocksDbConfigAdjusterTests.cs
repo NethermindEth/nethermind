@@ -127,7 +127,6 @@ public class PbtRocksDbConfigAdjusterTests
     }
 
     [Test]
-    [Category("FourLevelGroups")]
     public void NodeGroupsReopenFromRocksDbAsCanonicalNodes()
     {
         using TempPath dbPath = TempPath.GetTempDirectory();
@@ -173,7 +172,7 @@ public class PbtRocksDbConfigAdjusterTests
             {
                 foreach ((PbtStorageNodePath path, PbtColumns _) in groups)
                 {
-                    PbtStorageNodePath nodePath = PbtGroupGeometry.PathOf(path, NodePosition(path));
+                    PbtStorageNodePath nodePath = PbtFourLevelGroupGeometry.PathOf(path, NodePosition(path));
                     PbtNodeGroupEncoder.Encode(ref writer, path, [new PbtNodeRecord(nodePath, encoding)], default);
                     using RefCountingMemory payload = writer.Detach()!;
                     batch.SetNodeGroup(path, payload);
@@ -220,7 +219,7 @@ public class PbtRocksDbConfigAdjusterTests
             }
         }
 
-        static int NodePosition(PbtStorageNodePath path) => path.BitDepth == 0 ? PbtGroupGeometry.RootPosition : 0;
+        static int NodePosition(PbtStorageNodePath path) => path.BitDepth == 0 ? PbtFourLevelGroupGeometry.RootPosition : 0;
 
         ColumnsDb<PbtColumns> NewDb() => new(dbPath.Path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig,
             adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());
