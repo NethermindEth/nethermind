@@ -813,6 +813,37 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
     }
 
+    /// <summary>
+    /// A <c>blockOverride.gasLimit</c> above <c>JsonRpc.GasCap</c> is rejected, but <c>GasCap</c> being
+    /// <see langword="null"/> or <c>0</c> means uncapped everywhere else (<see cref="GasCapExtensions"/>):
+    /// a null cap must not throw, and a zero cap must not reject every override as "too large".
+    /// </summary>
+    [TestCase(null, null, null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(null cap, no override)")]
+    [TestCase(0UL, null, null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(zero cap, no override)")]
+    [TestCase(null, "0x2540BE400", null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(null cap, huge override)")]
+    [TestCase(0UL, "0x2540BE400", null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(zero cap, huge override)")]
+    [TestCase(1_000_000UL, "0xF4240", null, TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(capped, override at cap)")]
+    [TestCase(1_000_000UL, "0xF4241", "GasLimit value is too large, max value 1000000", TestName = "Eth_call_blockOverride_gasLimit_vs_gas_cap(capped, override above cap)")]
+    public async Task Eth_call_blockOverride_gasLimit_vs_gas_cap(ulong? gasCap, string? gasLimitOverrideHex, string? expectedError)
+    {
+        using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.GasCap = gasCap;
+
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"to\": \"{SecondaryTestAddress}\", \"gas\": \"0x5208\"}}")!;
+        object? blockOverride = gasLimitOverrideHex is null
+            ? null
+            : JsonSerializer.Deserialize<object>($$"""{"gasLimit":"{{gasLimitOverrideHex}}"}""");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
+        JToken parsed = JToken.Parse(serialized);
+
+        if (expectedError is null)
+            Assert.That(parsed["error"], Is.Null, serialized);
+        else
+            Assert.That(parsed["error"]?["message"]?.Value<string>(), Is.EqualTo(expectedError));
+    }
+
     [Test]
     public async Task Eth_call_ignores_invalid_nonce()
     {
