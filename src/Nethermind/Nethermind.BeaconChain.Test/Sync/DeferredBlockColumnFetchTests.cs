@@ -48,10 +48,10 @@ public class DeferredBlockColumnFetchTests
         fixture.Peers.Add(bystander);
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
 
-        BlockImportResult withoutCustodian = await orchestrator.ImportBlockAsync(block, token);
-        BlockImportResult sameCustodians = await orchestrator.ImportBlockAsync(block, token);
+        BlockImportResult withoutCustodian = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
+        BlockImportResult sameCustodians = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
         fixture.Peers.Add(custodian);
-        BlockImportResult custodianConnected = await orchestrator.ImportBlockAsync(block, token);
+        BlockImportResult custodianConnected = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
 
         using (Assert.EnterMultipleScope())
         {
@@ -75,7 +75,7 @@ public class DeferredBlockColumnFetchTests
         BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
         fixture.Peers.Add(behind);
 
-        BlockImportResult result = await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+        BlockImportResult result = await orchestrator.ImportAndSettleAsync(fixture.Importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
 
         using (Assert.EnterMultipleScope())
         {
@@ -98,10 +98,10 @@ public class DeferredBlockColumnFetchTests
         fixture.Peers.Add(holdingOnly);
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
 
-        BlockImportResult custodyingOnlyHeld = await orchestrator.ImportBlockAsync(block, token);
+        BlockImportResult custodyingOnlyHeld = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
         // The same peer after its MetaData raised its custody group count.
         fixture.Peers[0] = grown;
-        BlockImportResult custodyGrown = await orchestrator.ImportBlockAsync(block, token);
+        BlockImportResult custodyGrown = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
 
         using (Assert.EnterMultipleScope())
         {
@@ -123,7 +123,7 @@ public class DeferredBlockColumnFetchTests
         BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
         fixture.Peers.AddRange([honest, late]);
 
-        BlockImportResult result = await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+        BlockImportResult result = await orchestrator.ImportAndSettleAsync(fixture.Importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
 
         using (Assert.EnterMultipleScope())
         {
@@ -161,7 +161,7 @@ public class DeferredBlockColumnFetchTests
         for (int attempt = 0; attempt < attemptsNeeded; attempt++)
         {
             int before = custodians.Sum(static p => p.RootColumnRequests);
-            results.Add(await orchestrator.ImportBlockAsync(block, token));
+            results.Add(await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token));
             requestsPerAttempt.Add(custodians.Sum(static p => p.RootColumnRequests) - before);
         }
 
@@ -211,7 +211,7 @@ public class DeferredBlockColumnFetchTests
             }
 
             int before = silent.Sum(static p => p.RootColumnRequests) + honest.RootColumnRequests;
-            result = await orchestrator.ImportBlockAsync(block, token);
+            result = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
             requestsPerAttempt.Add(silent.Sum(static p => p.RootColumnRequests) + honest.RootColumnRequests - before);
             attempts++;
         }
@@ -252,7 +252,7 @@ public class DeferredBlockColumnFetchTests
             // Last, so the pool's own order would put it behind every newcomer.
             fixture.Peers.Add(honest);
             int before = churned.Sum(static p => p.RootColumnRequests) + honest.RootColumnRequests;
-            result = await orchestrator.ImportBlockAsync(block, token);
+            result = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
             requestsPerImport.Add(churned.Sum(static p => p.RootColumnRequests) + honest.RootColumnRequests - before);
         }
 
@@ -295,12 +295,13 @@ public class DeferredBlockColumnFetchTests
         fixture.Peers.Add(custodian);
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
 
-        BlockImportResult silentReply = await orchestrator.ImportBlockAsync(block, token);
+        BlockImportResult silentReply = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
         serving = true;
-        BlockImportResult sameSlot = await orchestrator.ImportBlockAsync(block, token);
+        BlockImportResult sameSlot = await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
         int requestsInFirstSlot = custodian.RootColumnRequests;
         fixture.AdvanceSlots(1);
         await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
+        await orchestrator.SettleColumnFetchesAsync(token);
 
         using (Assert.EnterMultipleScope())
         {
@@ -322,12 +323,12 @@ public class DeferredBlockColumnFetchTests
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
         await orchestrator.ProcessSlotAsync(fixture.Clock.CurrentSlot, token);
 
-        await orchestrator.ImportBlockAsync(block, token);
+        await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
         int whileDeferred = orchestrator.ColumnFetchRotationCount;
         if (imports)
         {
             fixture.Peers.Add(fixture.Peer("custodian", fixture.Sampled));
-            await orchestrator.ImportBlockAsync(block, token);
+            await orchestrator.ImportAndSettleAsync(fixture.Importer, block, token);
         }
         else
         {
@@ -356,7 +357,7 @@ public class DeferredBlockColumnFetchTests
         fixture.Peers.AddRange(custodians);
 
         Stopwatch elapsed = Stopwatch.StartNew();
-        BlockImportResult result = await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
+        BlockImportResult result = await orchestrator.ImportAndSettleAsync(fixture.Importer, new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), token);
         elapsed.Stop();
 
         using (Assert.EnterMultipleScope())
@@ -462,7 +463,7 @@ public class DeferredBlockColumnFetchTests
         }
     }
 
-    private sealed class Fixture : IAsyncDisposable
+    internal sealed class Fixture : IAsyncDisposable
     {
         private readonly BeaconChainStore _store = new(new MemColumnsDb<BeaconChainDbColumns>());
         private BeaconDiscovery _discovery = null!;
@@ -499,6 +500,9 @@ public class DeferredBlockColumnFetchTests
         }
 
         public void AdvanceSlots(ulong slots) => _time.Add(TimeSpan.FromSeconds(slots * Chain.Spec.SecondsPerSlot));
+
+        /// <summary>Gives the pool the chain block's sidecar of <paramref name="column"/>, as gossip does.</summary>
+        public void GiveColumn(ulong column) => SidecarPool.Add(Chain.BlockRoot, Chain.Block.Message!.Slot, Chain.Columns[(int)column]);
 
         /// <summary>An honest peer serving by root only the asked columns it custodies.</summary>
         public StubPeer Peer(string id, ulong[] custodied)
