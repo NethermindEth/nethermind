@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Serializing_receipt_does_not_allocate_per_log([Values] bool throughTxReceiptConverter)
         {
-            const int logCount = 256;
+            const int logCount = 1024;
             LogEntry[] logEntries = new LogEntry[logCount];
             Array.Fill(logEntries, Build.A.LogEntry.TestObject);
             TxReceipt receipt = Build.A.Receipt.WithLogs(logEntries).TestObject;
