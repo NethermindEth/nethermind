@@ -54,6 +54,8 @@ public sealed class FlatStorageTree(
     {
         public readonly StorageTree Tree = tree;
         public readonly StorageTree Warmup = warmup;
+        // Tree's root before its first write: sealed, or null for an empty trie, so a tree built on it copies on write.
+        public readonly TrieNode? PreBlockRoot = tree.RootRef;
     }
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
@@ -161,6 +163,7 @@ public sealed class FlatStorageTree(
 
             if (entries.Count == 0) return;
 
+            OnEarlyPassDrained?.Invoke();
             StorageTree tree = _earlyTree ??= CreateEarlyTree();
             // Nothing here may fan out onto the thread pool, where it would compete at normal priority.
             tree.BulkSet(entries, PatriciaTree.Flags.DoNotParallelize);
@@ -186,13 +189,19 @@ public sealed class FlatStorageTree(
     /// <summary>Whether every queued write has been applied to the early tree. For tests.</summary>
     internal bool EarlyWritesDrained => Volatile.Read(ref _earlyWrites) is not { IsEmpty: false } && Volatile.Read(ref _earlyState) != EarlyApplying && Volatile.Read(ref _earlyQueued) == 0;
 
+    /// <summary>Runs on the early apply thread once a pass has taken its writes, before it builds on the tree. For tests.</summary>
+    internal Action? OnEarlyPassDrained;
+
     private StorageTree CreateEarlyTree()
     {
-        // Reads go through the warmer's adapter, which is safe off the block thread. Sharing the block tree's
-        // untouched root, like the warm-up tree, keeps the nodes both resolve in one place.
+        // Reads go through the warmer's adapter, which is safe off the block thread. The tree starts from the block
+        // tree's root before its first write, never its current one: a pass the block-end batch has abandoned can
+        // still be running while the batch writes into the block tree, and building on the batch's unsealed nodes
+        // would change them in place. Sharing the untouched root, like the warm-up tree, keeps the nodes both resolve
+        // in one place.
         StorageTree tree = new(new StorageTrieStoreWarmerAdapter(_bundle, AddressHash), _logManager);
         tree.SetRootHash(_storageRoot, false);
-        tree.RootRef = GetTrees().Tree.RootRef;
+        tree.RootRef = GetTrees().PreBlockRoot;
         return tree;
     }
 
