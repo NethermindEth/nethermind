@@ -113,7 +113,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (headerSearch.IsError)
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
 
-            Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(headerSearch.Object!));
+            Result<Transaction> txResult = ToCallTransaction(call, specProvider.GetSpec(headerSearch.Object!));
             return !txResult.Success(out Transaction? transaction, out string? error)
                 ? ResultWrapper<ParityTxTraceFromReplay>.Fail(error, ErrorCodes.InvalidInput)
                 : TraceTx(transaction, traceTypes, blockParameter, stateOverride);
@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Transaction[] txs = new Transaction[calls.Count];
             for (int i = 0; i < calls.Count; i++)
             {
-                Result<Transaction> txResult = calls[i].Transaction.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header));
+                Result<Transaction> txResult = ToCallTransaction(calls[i].Transaction, specProvider.GetSpec(header));
                 if (!txResult.Success(out Transaction? tx, out string? error))
                 {
                     return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(error, ErrorCodes.InvalidInput);
@@ -187,6 +187,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     IReadOnlyCollection<ParityLikeTxTrace> traces = TraceBlock(block, new(traceTypeByTransaction, specProvider));
                     return traces.Select(static t => new ParityTxTraceFromReplay(t));
                 });
+        }
+
+        /// <summary>
+        /// Converts <paramref name="call"/> for trace_call and trace_callMany, rejecting a priority fee above the fee cap as eth_call does.
+        /// </summary>
+        private Result<Transaction> ToCallTransaction(TransactionForRpc call, IReleaseSpec spec)
+        {
+            Result<Transaction> result = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: spec);
+            return result.Success(out Transaction? tx, out _) && tx.GetTipAboveFeeCapError(spec) is { } tipAboveFeeCap
+                ? Result<Transaction>.Fail(tipAboveFeeCap)
+                : result;
         }
 
         /// <summary>

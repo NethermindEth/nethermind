@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -80,6 +83,19 @@ public class TransactionExtensionsTests
             Assert.That(premiumPerGas, Is.EqualTo(UInt256.Zero));
             Assert.That(tryResult, Is.False);
         }
+    }
+
+    [TestCase(true, 0, 1, ExpectedResult = true)]
+    [TestCase(false, 0, 1, ExpectedResult = false)]
+    [TestCase(true, 0, 0, ExpectedResult = false)]
+    [TestCase(true, 1, 1, ExpectedResult = false)]
+    [TestCase(true, 2, 1, ExpectedResult = false)]
+    public bool GetTipAboveFeeCapError_rejects_only_a_priced_tip_above_the_fee_cap_after_london(bool london, int feeCap, int tip)
+    {
+        Transaction transaction = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas((UInt256)feeCap)
+            .WithMaxPriorityFeePerGas((UInt256)tip).WithSenderAddress(TestItem.AddressA).TestObject;
+        IReleaseSpec spec = london ? London.Instance : Berlin.Instance;
+        return transaction.GetTipAboveFeeCapError(spec) is not null;
     }
 
     public class TransactionPotentialCostsAndEffectiveGasPrice
